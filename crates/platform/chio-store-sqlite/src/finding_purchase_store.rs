@@ -392,6 +392,10 @@ impl SqliteFindingPurchaseStore {
     /// so the cap bounds live exposure only: an abandoned reservation
     /// releases its encumbrance here rather than occupying the seller's
     /// capacity forever.
+    /// If a bounded cleanup pass still leaves the request overcommitted,
+    /// the cleanup commits before the refusal is returned. A retry then
+    /// advances to the next batch instead of rolling back and revisiting
+    /// the same expired rows forever.
     ///
     /// Idempotent on the reservation id: a replay carrying the same
     /// purchase identity returns
@@ -447,12 +451,15 @@ impl SqliteFindingPurchaseStore {
             .checked_add(input.amount_units)
             .ok_or_else(|| invariant("seller exposure total overflowed u64"))?;
         if committed > input.maximum_sale_exposure_units {
-            return Err(FindingPurchaseStoreError::ExposureOvercommitted {
+            let error = FindingPurchaseStoreError::ExposureOvercommitted {
                 allocation_id: input.allocation_id.to_owned(),
                 outstanding,
                 requested: input.amount_units,
                 maximum: input.maximum_sale_exposure_units,
-            });
+            };
+            self.commit_write(transaction)?;
+            self.sync_after_write(&connection)?;
+            return Err(error);
         }
         let created_at = sqlite_i64(input.created_at, "created_at")?;
         let inserted = transaction

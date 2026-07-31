@@ -79,6 +79,7 @@ use chio_kernel::checkpoint::{
     build_checkpoint, build_inclusion_proof, checkpoint_body_sha256, checkpoint_log_id,
     KernelCheckpoint,
 };
+use chio_open_market::evidence::{OpenMarketEvidenceKind, OpenMarketEvidenceReference};
 use chio_open_market::fee_schedule::{
     build_open_market_fee_schedule_artifact, OpenMarketBondClass, OpenMarketBondRequirement,
     OpenMarketCollateralReferenceKind, OpenMarketEconomicsScope, OpenMarketFeeScheduleIssueRequest,
@@ -106,7 +107,11 @@ use chio_open_market::listing::{
     SignedGenericTrustActivation, GENERIC_LISTING_ARTIFACT_SCHEMA,
     GENERIC_NAMESPACE_ARTIFACT_SCHEMA,
 };
-use chio_open_market::penalty::OpenMarketPenaltyEffectiveState;
+use chio_open_market::penalty::{
+    OpenMarketAbuseClass, OpenMarketPenaltyAction, OpenMarketPenaltyArtifact,
+    OpenMarketPenaltyEffectiveState, OpenMarketPenaltyState, SignedOpenMarketPenalty,
+    OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA,
+};
 use chio_settle::{
     settlement_devnet_rpc_egress_contract, EvmBondSnapshot, EvmTransactionReceipt,
     FindingBondObservationRecheck, FindingImpairmentAttempt, FindingImpairmentOutcome,
@@ -428,6 +433,14 @@ struct Deployment {
 }
 
 fn deployment() -> Result<Deployment, AnyError> {
+    deployment_publishing_terms(&[])
+}
+
+/// Build the reference deployment with any caller-selected terms added to
+/// the venue's published digest index.
+fn deployment_publishing_terms(
+    extra_terms: &[SignedFindingMarketTerms],
+) -> Result<Deployment, AnyError> {
     let temp = tempfile::tempdir()?;
     secure_directory(temp.path())?;
     let database: PathBuf = temp.path().join("authority.db");
@@ -440,7 +453,7 @@ fn deployment() -> Result<Deployment, AnyError> {
     let purchases = authority.finding_purchase_store();
     let challenges = authority.finding_challenge_store();
     let allocation_id = consume_allocation(&market, LISTING_ID, &hex64('1'))?;
-    let filings = PublishedArtifacts::default()
+    let mut filings = PublishedArtifacts::default()
         .publish_schedule(&published_fee_schedule()?)?
         .publish_round(&published_audit_round()?)?
         .publish_round(&unrelated_audit_round()?)?
@@ -448,6 +461,9 @@ fn deployment() -> Result<Deployment, AnyError> {
         .publish_terms(&lapsed_window_terms()?)?
         .publish_terms(&audit_disabled_terms()?)?
         .publish_terms(&narrow_bond_terms()?)?;
+    for terms in extra_terms {
+        filings = filings.publish_terms(terms)?;
+    }
     Ok(Deployment {
         _temp: temp,
         database,
@@ -1482,6 +1498,7 @@ fn replay_case(
 fn buyer_challenge(buyer: &Keypair) -> Result<SignedFindingChallenge, AnyError> {
     let (finding, raw) = finding_artifact()?;
     let schedule_envelope_sha256 = signed_envelope_sha256(&published_fee_schedule()?)?;
+    let profile_envelope_sha256 = signed_envelope_sha256(&verifier_profile()?)?;
     let mut body = FindingChallenge {
         schema: FINDING_CHALLENGE_SCHEMA_V1.to_string(),
         challenge_id: String::new(),
@@ -1489,7 +1506,7 @@ fn buyer_challenge(buyer: &Keypair) -> Result<SignedFindingChallenge, AnyError> 
         finding_artifact_sha256: sha256_hex(raw.as_bytes()),
         listing_id: LISTING_ID.to_string(),
         terms_envelope_sha256: admitted_terms_digest()?,
-        profile_envelope_sha256: hex64('3'),
+        profile_envelope_sha256,
         backing_envelope_sha256: hex64('6'),
         filed_at: NOW,
         affected_deliveries: vec![chio_finding::FindingAffectedDelivery {
@@ -1611,6 +1628,7 @@ fn venue_audit_authorization(
 
 fn venue_audit_challenge() -> Result<SignedFindingChallenge, AnyError> {
     let (finding, raw) = finding_artifact()?;
+    let profile_envelope_sha256 = signed_envelope_sha256(&verifier_profile()?)?;
     let mut body = FindingChallenge {
         schema: FINDING_CHALLENGE_SCHEMA_V1.to_string(),
         challenge_id: String::new(),
@@ -1618,7 +1636,7 @@ fn venue_audit_challenge() -> Result<SignedFindingChallenge, AnyError> {
         finding_artifact_sha256: sha256_hex(raw.as_bytes()),
         listing_id: LISTING_ID.to_string(),
         terms_envelope_sha256: admitted_terms_digest()?,
-        profile_envelope_sha256: hex64('3'),
+        profile_envelope_sha256,
         backing_envelope_sha256: hex64('6'),
         filed_at: NOW,
         affected_deliveries: Vec::new(),
@@ -2067,6 +2085,7 @@ fn sample_fee_schedule(signer: &Keypair) -> Result<SignedOpenMarketFeeSchedule, 
 fn market_terms(claim_window_secs: u64) -> Result<SignedFindingMarketTerms, AnyError> {
     let (finding, raw_finding) = finding_artifact()?;
     let seller = keypair(22);
+    let profile_envelope_sha256 = signed_envelope_sha256(&verifier_profile()?)?;
     let mut terms = FindingMarketTerms {
         schema: FINDING_MARKET_TERMS_SCHEMA_V1.to_string(),
         terms_id: String::new(),
@@ -2079,13 +2098,13 @@ fn market_terms(claim_window_secs: u64) -> Result<SignedFindingMarketTerms, AnyE
             maximum_sale_exposure: usd(REGISTERED_EXPOSURE_CAP),
             collateral_policy: "venue_ledger_exclusive_v1".to_string(),
         },
-        filing_window_secs: 86_400,
+        filing_window_secs: 1_000_000,
         claim_window_secs,
         appeal_window_secs: 259_200,
         audit_epoch_length_secs: 2_592_000,
         audit_eligible: true,
         decision_rule_refs: vec!["decision/replay-v1".to_string()],
-        verifier_profile_envelope_sha256: hex64('3'),
+        verifier_profile_envelope_sha256: profile_envelope_sha256,
         challenge_bond_limits: vec![FindingChallengeBondLimit {
             guarantee_class: FindingGuaranteeClass::DeterministicReplay,
             min_bond: usd(10),
@@ -2146,7 +2165,7 @@ fn admitted_terms_digest() -> Result<String, AnyError> {
 fn uphold_across_claim_window(
     coordinator: &FindingChallengeCoordinator,
     terms: &SignedFindingMarketTerms,
-    challenge_id: &str,
+    challenge: &SignedFindingChallenge,
     outcome: &SignedFindingChallengeOutcome,
     identity: &FindingLiabilityIdentity<'_>,
     cutoff_slot: u64,
@@ -2157,7 +2176,8 @@ fn uphold_across_claim_window(
     now: u64,
 ) -> Result<UpheldLiability, ChallengeCoordinatorError> {
     let opened = coordinator.uphold(
-        challenge_id,
+        &challenge.body.challenge_id,
+        challenge,
         outcome,
         identity,
         terms,
@@ -2173,7 +2193,8 @@ fn uphold_across_claim_window(
         "the claim window can never close in the call that opens it"
     );
     coordinator.uphold(
-        challenge_id,
+        &challenge.body.challenge_id,
+        challenge,
         outcome,
         identity,
         terms,
@@ -2319,7 +2340,7 @@ fn upheld_outcome(
         backing_allocation_id: allocation_id.to_string(),
         authorization: challenge.body.authorization.kind(),
         evidence_kind: challenge.body.evidence.kind(),
-        verifier_profile_envelope_sha256: hex64('3'),
+        verifier_profile_envelope_sha256: challenge.body.profile_envelope_sha256.clone(),
         evidence_bundle_digest: hex64('e'),
         verdict: chio_finding::FindingChallengeVerdict::Upheld,
         facet: chio_finding::FindingChallengeFacet::EvidenceInvalid(
@@ -2697,6 +2718,36 @@ fn finding_challenge_a_filing_binding_unadmitted_terms_is_refused() -> TestResul
 }
 
 #[test]
+fn finding_challenge_terms_for_another_encoding_bind_no_filing() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (finding, canonical_raw) = finding_artifact()?;
+    let reformatted_raw = serde_json::to_string_pretty(&finding)?;
+    assert_ne!(
+        sha256_hex(reformatted_raw.as_bytes()),
+        sha256_hex(canonical_raw.as_bytes())
+    );
+
+    let mut challenge = buyer_challenge(&keypair(41))?;
+    challenge.body.finding_artifact_sha256 = sha256_hex(reformatted_raw.as_bytes());
+    challenge.body.challenge_id = compute_challenge_id(&challenge.body)?;
+    let challenge = SignedExportEnvelope::sign(challenge.body, &keypair(41))?;
+    let error = coordinator
+        .submit(&challenge, &reformatted_raw, NOW)
+        .expect_err("terms admitted for one exact artifact cannot govern another encoding");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::FilingTermsBinding("finding_artifact_sha256")
+    ));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_a_filing_past_the_signed_filing_window_is_refused() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -2710,6 +2761,56 @@ fn finding_challenge_a_filing_past_the_signed_filing_window_is_refused() -> Test
     let error = coordinator
         .submit(&challenge, &raw, NOW)
         .expect_err("a filing past the seller-signed window reaches no adjudication");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::FilingWindowClosed
+    ));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_late_venue_audit_is_refused() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (_, raw) = finding_artifact()?;
+
+    let lapsed = signed_envelope_sha256(&lapsed_window_terms()?)?;
+    let challenge = venue_audit_challenge_bound_to_terms(&lapsed)?;
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("the filing window applies to venue audits too");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::FilingWindowClosed
+    ));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_backdated_filing_cannot_reopen_a_lapsed_window() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (_, raw) = finding_artifact()?;
+
+    let terms = lapsed_window_terms()?;
+    let terms_digest = signed_envelope_sha256(&terms)?;
+    let mut challenge = buyer_challenge_bound_to_terms(&keypair(41), &terms_digest)?;
+    challenge.body.filed_at = terms.body.issued_at + terms.body.filing_window_secs;
+    challenge.body.challenge_id = compute_challenge_id(&challenge.body)?;
+    let challenge = SignedExportEnvelope::sign(challenge.body, &keypair(41))?;
+
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("a caller-signed timestamp cannot override the venue clock");
     assert!(matches!(
         error,
         ChallengeCoordinatorError::FilingWindowClosed
@@ -3059,7 +3160,7 @@ fn upheld_liability() -> Result<Upheld, AnyError> {
     let upheld = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &challenge.body.challenge_id,
+        &challenge,
         &outcome,
         &identity,
         2,
@@ -3109,6 +3210,7 @@ fn finding_challenge_uphold_blocks_sales_and_freezes_the_cutoff() -> TestResult 
 struct ReadyToUphold {
     finding: Finding,
     challenge_id: String,
+    challenge: SignedFindingChallenge,
     outcome: SignedFindingChallengeOutcome,
 }
 
@@ -3116,8 +3218,20 @@ fn ready_to_uphold(
     deployment: &Deployment,
     coordinator: &FindingChallengeCoordinator,
 ) -> Result<ReadyToUphold, AnyError> {
+    ready_to_uphold_with_terms(deployment, coordinator, &market_terms(CLAIM_WINDOW_SECS)?)
+}
+
+/// One upheld challenge whose signed filing commits to caller-selected
+/// admitted terms. Tests that bend a term must bend the filing that names
+/// it as well, or they are exercising terms substitution rather than the
+/// downstream invariant they set out to isolate.
+fn ready_to_uphold_with_terms(
+    deployment: &Deployment,
+    coordinator: &FindingChallengeCoordinator,
+    terms: &SignedFindingMarketTerms,
+) -> Result<ReadyToUphold, AnyError> {
     let (finding, raw) = finding_artifact()?;
-    let challenge = buyer_challenge(&keypair(41))?;
+    let challenge = buyer_challenge_bound_to_terms(&keypair(41), &signed_envelope_sha256(terms)?)?;
     coordinator.submit(&challenge, &raw, NOW)?;
     let outcome = upheld_outcome(&challenge, &deployment.allocation_id)?;
     close_challenge(
@@ -3130,6 +3244,7 @@ fn ready_to_uphold(
     Ok(ReadyToUphold {
         finding,
         challenge_id: challenge.body.challenge_id.clone(),
+        challenge,
         outcome,
     })
 }
@@ -3149,6 +3264,7 @@ fn finding_challenge_a_governance_bundle_no_pinned_root_signed_mints_no_penalty(
     let refused = coordinator
         .uphold(
             &ready.challenge_id,
+            &ready.challenge,
             &ready.outcome,
             &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
             &market_terms(CLAIM_WINDOW_SECS)?,
@@ -3174,6 +3290,42 @@ fn finding_challenge_a_governance_bundle_no_pinned_root_signed_mints_no_penalty(
 }
 
 #[test]
+fn finding_challenge_a_bad_signature_under_the_pinned_case_key_blocks_nothing() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let ready = ready_to_uphold(&deployment, &coordinator)?;
+
+    // Advertising the pinned key does not make a signature produced by
+    // another key authentic. This must fail before the upheld transaction
+    // raises the durable sales block.
+    let mut forged_case =
+        SignedExportEnvelope::sign(governance.sanction_case.body.clone(), &keypair(99))?;
+    forged_case.signer_key = governing_keypair().public_key();
+    let stake = usd(300);
+    let required = usd(5_000);
+    let refused = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.challenge,
+            &ready.outcome,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+            &market_terms(CLAIM_WINDOW_SECS)?,
+            0,
+            &[],
+            &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+            &governance.context(),
+            &forged_case,
+            NOW + 2,
+        )
+        .expect_err("a forged governance case opens no liability");
+    assert!(matches!(refused, ChallengeCoordinatorError::PenaltyMint(_)));
+    assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
+    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_exhausted_collateral_never_blocks_the_listing() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -3185,6 +3337,7 @@ fn finding_challenge_exhausted_collateral_never_blocks_the_listing() -> TestResu
     let refused = coordinator
         .uphold(
             &ready.challenge_id,
+            &ready.challenge,
             &ready.outcome,
             &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
             &market_terms(CLAIM_WINDOW_SECS)?,
@@ -3228,6 +3381,7 @@ fn finding_challenge_collateral_facts_for_another_allocation_uphold_nothing() ->
     let refused = coordinator
         .uphold(
             &ready.challenge_id,
+            &ready.challenge,
             &ready.outcome,
             &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
             &market_terms(CLAIM_WINDOW_SECS)?,
@@ -3270,6 +3424,7 @@ fn finding_challenge_collateral_facts_must_carry_the_signed_stake() -> TestResul
     let refused = coordinator
         .uphold(
             &ready.challenge_id,
+            &ready.challenge,
             &ready.outcome,
             &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
             &market_terms(CLAIM_WINDOW_SECS)?,
@@ -3294,6 +3449,34 @@ fn finding_challenge_collateral_facts_must_carry_the_signed_stake() -> TestResul
         !deployment.purchases.sales_blocked(LISTING_ID)?,
         "nothing durable happens before the stake binding is proven"
     );
+
+    // Matching the facts to a different, valid seller-signed stake is not
+    // enough. The upheld challenge commits to one exact terms envelope,
+    // so a caller cannot substitute another envelope after adjudication.
+    let alternate_terms = market_terms_shaped(|terms| {
+        terms.backing_requirement.base_finding_stake = inflated.clone();
+    })?;
+    let substituted = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.challenge,
+            &ready.outcome,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+            &alternate_terms,
+            0,
+            &[],
+            &collateral_facts(&inflated, &required, &deployment.allocation_id, 5_000),
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2,
+        )
+        .expect_err("alternate signed terms cannot replace the challenged envelope");
+    assert!(matches!(
+        substituted,
+        ChallengeCoordinatorError::TermsBinding("terms_envelope_sha256")
+    ));
+    assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
+    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
@@ -3331,7 +3514,7 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
     let refused = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &ready.challenge_id,
+        &ready.challenge,
         &ready.outcome,
         &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
         2,
@@ -3361,12 +3544,6 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
 
 #[test]
 fn finding_challenge_harm_in_another_currency_seals_nothing() -> TestResult {
-    let deployment = deployment()?;
-    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
-    let governance = governance()?;
-    let ready = ready_to_uphold(&deployment, &coordinator)?;
-    let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 60, NOW)?;
-
     // A verified harm carries bare units, so a bond denominated in
     // anything but the currency the sale realized would pay those units
     // out one for one against collateral that never priced them. The
@@ -3385,10 +3562,15 @@ fn finding_challenge_harm_in_another_currency_seals_nothing() -> TestResult {
         terms.backing_requirement.base_finding_stake.currency = "EUR".to_string();
         terms.backing_requirement.maximum_sale_exposure.currency = "EUR".to_string();
     })?;
+    let deployment = deployment_publishing_terms(std::slice::from_ref(&eur_terms))?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let ready = ready_to_uphold_with_terms(&deployment, &coordinator, &eur_terms)?;
+    let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 60, NOW)?;
     let refused = uphold_across_claim_window(
         &coordinator,
         &eur_terms,
-        &ready.challenge_id,
+        &ready.challenge,
         &ready.outcome,
         &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
         1,
@@ -3424,19 +3606,20 @@ fn finding_challenge_the_payout_never_seals_inside_the_claim_window() -> TestRes
     /// governance fixture signs its sanction under.
     const CLAIM_WINDOW: u64 = 86_400;
 
-    let deployment = deployment()?;
+    let signed = market_terms(CLAIM_WINDOW)?;
+    let deployment = deployment_publishing_terms(std::slice::from_ref(&signed))?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
-    let ready = ready_to_uphold(&deployment, &coordinator)?;
+    let ready = ready_to_uphold_with_terms(&deployment, &coordinator, &signed)?;
     let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 50, NOW)?;
 
     let stake = usd(300);
     let required = usd(5_000);
     let identity = liability_identity(&ready.finding.finding_id, &deployment.allocation_id);
-    let signed = market_terms(CLAIM_WINDOW)?;
     let uphold_at = |terms: &SignedFindingMarketTerms, now: u64| {
         coordinator.uphold(
             &ready.challenge_id,
+            &ready.challenge,
             &ready.outcome,
             &identity,
             terms,
@@ -3475,10 +3658,12 @@ fn finding_challenge_the_payout_never_seals_inside_the_claim_window() -> TestRes
         Err(ChallengeCoordinatorError::ClaimWindowOpen)
     ));
     // Nor can a shorter window signed after the fact bring the deadline
-    // forward: the head froze it when the window opened.
+    // forward: the challenge admits only its exact terms envelope.
     assert!(matches!(
         uphold_at(&market_terms(1)?, opened_at + CLAIM_WINDOW - 1),
-        Err(ChallengeCoordinatorError::ClaimWindowOpen)
+        Err(ChallengeCoordinatorError::TermsBinding(
+            "terms_envelope_sha256"
+        ))
     ));
     assert!(
         coordinator.sealed_claim(&head.liability_key)?.is_none(),
@@ -3578,6 +3763,49 @@ fn finding_challenge_successful_appeal_reverses_before_impairment() -> TestResul
         FindingLiabilityState::ReversedBeforeImpairment
     );
     assert!(!liability.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_an_appeal_case_id_cannot_be_substituted() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    let refused = case
+        .coordinator
+        .resolve_appeal(
+            &case.upheld.liability_key,
+            &case.outcome,
+            &identity,
+            &case.upheld.sealed,
+            &case.governance.context(),
+            &AppealDisposition::Successful {
+                appeal_case: &case.governance.appeal_case,
+                appeal_case_id: "case-appeal-substituted-01",
+            },
+            &case.upheld.sanction_case_id,
+            &case.upheld.hold,
+            &hex64('7'),
+            NOW + 20,
+        )
+        .expect_err("an unsigned appeal case id can supersede nothing");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::AppealNotFinal(_)
+    ));
+    let liability = case
+        .deployment
+        .challenges
+        .get_liability(&case.upheld.liability_key)?
+        .ok_or("liability head remains durable")?;
+    assert_eq!(liability.state, FindingLiabilityState::PendingAppeal);
+    assert_eq!(
+        case.deployment
+            .challenges
+            .resolve_case_head(&case.upheld.liability_key)?
+            .ok_or("sanction remains live")?
+            .case_id,
+        case.upheld.sanction_case_id
+    );
     Ok(())
 }
 
@@ -4300,6 +4528,7 @@ struct FinalizingLiability {
     seller: PublicKey,
     intent_key: String,
     enforcement: SignedFindingChallengeEnforcement,
+    penalty: SignedOpenMarketPenalty,
     snapshot: SignedFindingFinalizedBondSnapshot,
 }
 
@@ -4346,9 +4575,8 @@ fn finalizing_liability_rooted(root: EnforcementRoot) -> Result<FinalizingLiabil
     // The sanction the impairment settles under. Dispatch requires it to
     // still be the live case head, exactly as the coordinator records it
     // when it upholds a liability.
-    deployment
-        .challenges
-        .record_governance_case(&chio_store_sqlite::FindingGovernanceCaseInput {
+    deployment.challenges.record_governance_case(
+        &chio_store_sqlite::FindingGovernanceCaseInput {
             case_id: FIXTURE_SANCTION_CASE_ID,
             finding_id: &finding.finding_id,
             listing_id: LISTING_ID,
@@ -4358,20 +4586,24 @@ fn finalizing_liability_rooted(root: EnforcementRoot) -> Result<FinalizingLiabil
             appeal_of_case_id: None,
             supersedes_case_id: None,
             recorded_at: NOW + 2,
-        })?;
+        },
+    )?;
     deployment.challenges.begin_appeal_window(
         &liability_key,
         FindingLiabilityState::UpheldPendingClaims,
         NOW + 3,
     )?;
-    deployment.challenges.begin_finalizing(
+    deployment.challenges.begin_finalizing_under_sanction(
         &liability_key,
         FindingLiabilityState::PendingAppeal,
+        FIXTURE_SANCTION_CASE_ID,
         NOW + 4,
     )?;
 
     let seller = keypair(73).public_key();
     let intent_key = byte_hex64(0xc1);
+    let penalty = fixture_slash_penalty()?;
+    let penalty_envelope_sha256 = signed_envelope_sha256(&penalty)?;
     deployment.challenges.record_effect_intent(
         &intent_key,
         chio_store_sqlite::FindingEffectIntentKind::SellerImpair,
@@ -4385,9 +4617,7 @@ fn finalizing_liability_rooted(root: EnforcementRoot) -> Result<FinalizingLiabil
     deployment.challenges.record_effect_intent(
         &enforcement_root_intent_key(),
         chio_store_sqlite::FindingEffectIntentKind::RootIntent,
-        &sha256_hex(
-            root_intent_commitment(&liability_key, &enforcement_penalty_digest()).as_bytes(),
-        ),
+        &sha256_hex(root_intent_commitment(&liability_key, &penalty_envelope_sha256).as_bytes()),
         Some(&liability_key),
         NOW + 5,
     )?;
@@ -4403,8 +4633,13 @@ fn finalizing_liability_rooted(root: EnforcementRoot) -> Result<FinalizingLiabil
             )?;
         }
     }
-    let (enforcement, snapshot) =
-        enforcement_pair(&liability_key, &finding.finding_id, &seller, &intent_key)?;
+    let (enforcement, snapshot) = enforcement_pair(
+        &liability_key,
+        &finding.finding_id,
+        &seller,
+        &intent_key,
+        &penalty_envelope_sha256,
+    )?;
     Ok(FinalizingLiability {
         deployment,
         coordinator,
@@ -4412,6 +4647,7 @@ fn finalizing_liability_rooted(root: EnforcementRoot) -> Result<FinalizingLiabil
         seller,
         intent_key,
         enforcement,
+        penalty,
         snapshot,
     })
 }
@@ -4438,6 +4674,7 @@ impl FinalizingLiability {
         Ok(self.coordinator.finalize(
             &self.liability_key,
             &self.enforcement,
+            &self.penalty,
             &self.snapshot,
             &self.seller,
             MAX_SNAPSHOT_AGE_SECS,
@@ -4477,10 +4714,41 @@ fn enforcement_root_intent_key() -> String {
     byte_hex64(0xc2)
 }
 
-/// Digest of the penalty envelope the enforcement pays for. The fenced
-/// root intent commits to it, so both sides read it from one place.
-fn enforcement_penalty_digest() -> String {
-    byte_hex64(0xb5)
+/// The penalty-authority-signed slash the manual finalization fixture
+/// binds. Its case id is the durable sanction head, so final dispatch can
+/// compare the exact authority rather than merely seeing a sanction kind.
+fn fixture_slash_penalty() -> Result<SignedOpenMarketPenalty, AnyError> {
+    let artifact = OpenMarketPenaltyArtifact {
+        schema: OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA.to_string(),
+        penalty_id: "market-penalty-finalizing-fixture".to_string(),
+        fee_schedule_id: "fee-schedule-finalizing-fixture".to_string(),
+        charter_id: "charter-finalizing-fixture".to_string(),
+        case_id: FIXTURE_SANCTION_CASE_ID.to_string(),
+        governing_operator_id: OPERATOR_ID.to_string(),
+        namespace: NAMESPACE.to_string(),
+        listing_id: LISTING_ID.to_string(),
+        activation_id: None,
+        subject_operator_id: Some(OPERATOR_ID.to_string()),
+        abuse_class: OpenMarketAbuseClass::FraudulentListing,
+        bond_class: OpenMarketBondClass::Listing,
+        action: OpenMarketPenaltyAction::SlashBond,
+        state: OpenMarketPenaltyState::Enforced,
+        penalty_amount: usd(250),
+        opened_at: NOW + 4,
+        updated_at: NOW + 4,
+        expires_at: Some(KEY_VALID_UNTIL),
+        evidence_refs: vec![OpenMarketEvidenceReference {
+            kind: OpenMarketEvidenceKind::External,
+            reference_id: "outcome-finalizing-fixture".to_string(),
+            uri: None,
+            sha256: Some(byte_hex64(0xb4)),
+        }],
+        supersedes_penalty_id: None,
+        issued_by: "market@chio.example".to_string(),
+        note: None,
+    };
+    artifact.validate()?;
+    Ok(SignedOpenMarketPenalty::sign(artifact, &keypair(33))?)
 }
 
 /// The leaf the vault burns for the anchored receipt in the example
@@ -4497,6 +4765,7 @@ fn enforcement_pair(
     finding_id: &str,
     seller: &PublicKey,
     seller_impair_intent_id: &str,
+    penalty_envelope_sha256: &str,
 ) -> Result<
     (
         SignedFindingChallengeEnforcement,
@@ -4509,6 +4778,7 @@ fn enforcement_pair(
         finding_id,
         seller,
         seller_impair_intent_id,
+        penalty_envelope_sha256,
         &chain_hash(0x44),
     )
 }
@@ -4521,6 +4791,7 @@ fn enforcement_pair_at_vault(
     finding_id: &str,
     seller: &PublicKey,
     seller_impair_intent_id: &str,
+    penalty_envelope_sha256: &str,
     vault_id: &str,
 ) -> Result<
     (
@@ -4561,7 +4832,7 @@ fn enforcement_pair_at_vault(
         listing_id: LISTING_ID.to_string(),
         outcome_id: byte_hex64(0xb3),
         outcome_envelope_sha256: byte_hex64(0xb4),
-        penalty_envelope_sha256: enforcement_penalty_digest(),
+        penalty_envelope_sha256: penalty_envelope_sha256.to_string(),
         bond_snapshot_envelope_sha256: snapshot_digest,
         purchase_snapshot_digest: byte_hex64(0xb6),
         deterministic_allocation_digest: byte_hex64(0xb7),
@@ -4705,23 +4976,23 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
 #[test]
 fn finding_challenge_a_superseded_sanction_never_reaches_the_publisher() -> TestResult {
     let case = finalizing_liability()?;
-    // A successful appeal recorded after the enforcement was signed and
-    // fenced. It supersedes the sanction, so the authority the impairment
-    // would slash under no longer governs the liability.
+    // Another sanction recorded after the enforcement was signed and
+    // fenced supersedes the one its penalty names. The head is still a
+    // sanction, but it is not the exact authority this impairment binds.
     let head = case.head()?;
-    case.deployment
-        .challenges
-        .record_governance_case(&chio_store_sqlite::FindingGovernanceCaseInput {
-            case_id: "case-appeal-late-01",
+    case.deployment.challenges.record_governance_case(
+        &chio_store_sqlite::FindingGovernanceCaseInput {
+            case_id: "case-sanction-replacement-01",
             finding_id: &head.finding_id,
             listing_id: LISTING_ID,
             liability_key: &case.liability_key,
-            case_kind: chio_store_sqlite::FindingGovernanceCaseKind::Appeal,
+            case_kind: chio_store_sqlite::FindingGovernanceCaseKind::Sanction,
             case_state: "enforced",
-            appeal_of_case_id: Some(FIXTURE_SANCTION_CASE_ID),
+            appeal_of_case_id: None,
             supersedes_case_id: Some(FIXTURE_SANCTION_CASE_ID),
             recorded_at: SETTLEMENT_NOW - 1,
-        })?;
+        },
+    )?;
 
     let refused = case
         .finalize_observing(
@@ -4962,6 +5233,7 @@ fn finding_challenge_an_enforcement_naming_another_vault_never_reaches_the_publi
         &case.enforcement.body.finding_id,
         &case.seller,
         &case.intent_key,
+        &case.enforcement.body.penalty_envelope_sha256,
         &elsewhere,
     )?;
 
@@ -4970,6 +5242,7 @@ fn finding_challenge_an_enforcement_naming_another_vault_never_reaches_the_publi
         .finalize(
             &case.liability_key,
             &enforcement,
+            &case.penalty,
             &snapshot,
             &case.seller,
             MAX_SNAPSHOT_AGE_SECS,
@@ -5061,7 +5334,7 @@ fn finding_challenge_digest_mismatch_reaches_an_enforced_sanction() -> TestResul
     let upheld = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &challenge_id,
+        &case.challenge,
         &evaluated.outcome,
         &identity,
         0,
@@ -5168,7 +5441,7 @@ fn finding_challenge_evidence_invalid_reaches_an_enforced_sanction() -> TestResu
     let upheld = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &challenge_id,
+        &case.challenge,
         &evaluated.outcome,
         &identity,
         2,
@@ -5296,7 +5569,7 @@ fn finding_challenge_replay_contradiction_reaches_an_enforced_sanction() -> Test
     let upheld = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &challenge_id,
+        &case.challenge,
         &evaluated.outcome,
         &identity,
         1,
@@ -5524,6 +5797,7 @@ fn assert_denial_cannot_sanction(shape: &DenyShape, expected_reason: &str) -> Te
     let refused = coordinator
         .uphold(
             &case.challenge.body.challenge_id,
+            &case.challenge,
             &evaluated.outcome,
             &identity,
             &market_terms(CLAIM_WINDOW_SECS)?,
@@ -5881,7 +6155,7 @@ fn finding_challenge_harmed_buyer_allocation_is_capped_and_exactly_summed() -> T
     let upheld = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &case.challenge.body.challenge_id,
+        &case.challenge,
         &evaluated.outcome,
         &identity,
         2,
@@ -5970,7 +6244,7 @@ fn finding_challenge_a_payout_destination_that_was_never_admitted_is_refused() -
     let refused = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &case.challenge.body.challenge_id,
+        &case.challenge,
         &evaluated.outcome,
         &identity,
         1,
@@ -6328,7 +6602,7 @@ fn finding_challenge_a_second_challenge_for_one_defect_authorizes_no_second_slas
     let upheld = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &invalid.challenge.body.challenge_id,
+        &invalid.challenge,
         &first.outcome,
         &identity,
         1,
@@ -6341,6 +6615,7 @@ fn finding_challenge_a_second_challenge_for_one_defect_authorizes_no_second_slas
     let refused = coordinator
         .uphold(
             &replay.challenge.body.challenge_id,
+            &replay.challenge,
             &second.outcome,
             &identity,
             &market_terms(CLAIM_WINDOW_SECS)?,
@@ -6440,13 +6715,13 @@ fn finding_challenge_concurrent_upholds_authorize_one_slash() -> TestResult {
     let terms = market_terms(CLAIM_WINDOW_SECS)?;
     let race = |now: u64| {
         let filings = [
-            (&invalid.challenge.body.challenge_id, &first.outcome),
-            (&replay.challenge.body.challenge_id, &second.outcome),
+            (&invalid.challenge, &first.outcome),
+            (&replay.challenge, &second.outcome),
         ];
         std::thread::scope(|scope| {
             let handles: Vec<_> = filings
                 .into_iter()
-                .map(|(challenge_id, outcome)| {
+                .map(|(challenge, outcome)| {
                     let coordinator = &coordinator;
                     let governance = &governance;
                     let identity = &identity;
@@ -6455,7 +6730,8 @@ fn finding_challenge_concurrent_upholds_authorize_one_slash() -> TestResult {
                     let terms = &terms;
                     scope.spawn(move || {
                         coordinator.uphold(
-                            challenge_id,
+                            &challenge.body.challenge_id,
+                            challenge,
                             outcome,
                             identity,
                             terms,
@@ -6552,7 +6828,7 @@ fn finding_challenge_a_restart_resumes_the_same_durable_state() -> TestResult {
     let upheld = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &challenge_id,
+        &case.challenge,
         &evaluated.outcome,
         &identity,
         1,
@@ -6599,6 +6875,7 @@ fn finding_challenge_a_restart_resumes_the_same_durable_state() -> TestResult {
     );
     let replayed = coordinator.uphold(
         &challenge_id,
+        &case.challenge,
         &evaluated.outcome,
         &identity,
         &market_terms(CLAIM_WINDOW_SECS)?,
@@ -6705,7 +6982,7 @@ fn finding_challenge_an_expired_reservation_neither_wedges_nor_inflates_the_clai
     let upheld = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &challenge.body.challenge_id,
+        &challenge,
         &outcome,
         &liability_identity(&finding.finding_id, &deployment.allocation_id),
         2,
@@ -6757,7 +7034,8 @@ fn finding_challenge_uphold_refuses_an_outcome_for_a_different_challenge() -> Te
                 finding_id: &finding.finding_id,
                 listing_id: LISTING_ID,
                 challenge_envelope_sha256: &signed_envelope_sha256(challenge)?,
-                authorization_branch: chio_store_sqlite::FindingChallengeAuthorizationBranch::VenueAudit,
+                authorization_branch:
+                    chio_store_sqlite::FindingChallengeAuthorizationBranch::VenueAudit,
                 evidence_class: chio_store_sqlite::FindingChallengeEvidenceClass::EvidenceInvalid,
                 challenger_hex: None,
                 submitted_at: at,
@@ -6783,6 +7061,7 @@ fn finding_challenge_uphold_refuses_an_outcome_for_a_different_challenge() -> Te
     let refused = coordinator
         .uphold(
             &second.body.challenge_id,
+            &second,
             &first_outcome,
             &identity,
             &market_terms(CLAIM_WINDOW_SECS)?,
@@ -6806,7 +7085,7 @@ fn finding_challenge_uphold_refuses_an_outcome_for_a_different_challenge() -> Te
     let upheld = uphold_across_claim_window(
         &coordinator,
         &market_terms(CLAIM_WINDOW_SECS)?,
-        &first.body.challenge_id,
+        &first,
         &first_outcome,
         &identity,
         0,

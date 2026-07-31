@@ -524,6 +524,7 @@ impl Web {
                 prepared_admission_id: None,
                 accepted_at: ADMISSION_ISSUED_AT,
             },
+            bond_backing_observed_at: None,
             penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
             collateral_authority: &self.collateral_key,
             constituent_expiry_bounds: FindingConstituentExpiryBounds {
@@ -900,6 +901,32 @@ fn expired_released_or_mismatched_allocation_snapshot_rejects() {
             verify_finding_admission(&web.admission, &context).err(),
             Some(FindingAdmissionError::AllocationSnapshotMismatch)
         );
+    });
+}
+
+#[test]
+fn bond_backing_observed_before_the_allocation_rejects() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        // Observed at the same instant the allocation was registered: the
+        // observation cannot have seen this collateral.
+        let mut context = web.context(resolver);
+        context.bond_backing_observed_at = Some(context.allocation_snapshot.accepted_at);
+        let error = verify_finding_admission(&web.admission, &context).test_unwrap_err();
+        assert_eq!(
+            error,
+            FindingAdmissionError::BondObservationBeforeAllocation
+        );
+
+        // Observed strictly after registration: the ordering holds.
+        let mut context = web.context(resolver);
+        context.bond_backing_observed_at = Some(context.allocation_snapshot.accepted_at + 1);
+        verify_finding_admission(&web.admission, &context).test_expect("ordered observation");
+
+        // No affirmative bond claim carries no ordering obligation.
+        let context = web.context(resolver);
+        assert!(context.bond_backing_observed_at.is_none());
+        verify_finding_admission(&web.admission, &context).test_expect("no bond claim");
     });
 }
 

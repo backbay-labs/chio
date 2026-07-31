@@ -1377,6 +1377,7 @@ fn admission_witness(
             prepared_admission_id: None,
             accepted_at,
         },
+        bond_backing_observed_at: None,
         penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
         collateral_authority: &collateral_key,
         constituent_expiry_bounds: FindingConstituentExpiryBounds {

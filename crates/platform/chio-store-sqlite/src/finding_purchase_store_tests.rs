@@ -1483,6 +1483,76 @@ fn the_exposure_query_follows_reservation_expiry_without_a_sweep() {
 }
 
 #[test]
+fn an_overcommitted_retry_advances_past_each_expiry_batch() {
+    const LARGE_CAP: u64 = 1_024;
+
+    let fixture = fixture();
+    let mut backing = backing_body("vault:expiry-batch", LISTING_ID);
+    backing.locked_amount = usd(LARGE_CAP + 50);
+    backing.maximum_sale_exposure = usd(LARGE_CAP);
+    backing.allocation_id = String::new();
+    backing.allocation_id = compute_allocation_id(&backing).expect("large allocation id");
+    let allocation_id = backing.allocation_id.clone();
+    let envelope = envelope_string(&backing, &keypair(21));
+    fixture
+        .market
+        .register_allocation(&envelope, &backing, NOW)
+        .expect("register large allocation");
+    fixture
+        .market
+        .consume_allocation(&allocation_id)
+        .expect("consume large allocation");
+
+    for index in 0..=MAX_EXPIRY_BATCH {
+        let purchase =
+            Purchase::new(&format!("expiry-batch-{index}"), LISTING_ID, 1).expiring_at(NOW + 1);
+        let mut input = purchase.input(&allocation_id);
+        input.maximum_sale_exposure_units = LARGE_CAP;
+        fixture
+            .store
+            .open_reservation(&input)
+            .expect("open batch reservation");
+        fixture
+            .store
+            .reserve_slot(&purchase.reservation_id, NOW)
+            .expect("reserve batch slot");
+    }
+
+    let next = Purchase::new("after-expiry-batch", LISTING_ID, LARGE_CAP);
+    let mut input = next.input(&allocation_id);
+    input.maximum_sale_exposure_units = LARGE_CAP;
+    input.created_at = NOW + 1;
+    let first = fixture
+        .store
+        .open_reservation(&input)
+        .expect_err("one expired row remains after the bounded cleanup");
+    assert!(matches!(
+        first,
+        FindingPurchaseStoreError::ExposureOvercommitted {
+            outstanding: 1,
+            requested: LARGE_CAP,
+            maximum: LARGE_CAP,
+            ..
+        }
+    ));
+
+    assert_eq!(
+        fixture
+            .store
+            .open_reservation(&input)
+            .expect("the retry advances to the remaining expired row"),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        fixture
+            .store
+            .list_outstanding_exposure_total(&allocation_id, NOW + 1)
+            .expect("large allocation exposure"),
+        LARGE_CAP
+    );
+}
+
+#[test]
 fn blocking_sales_stops_the_slot_line_and_the_wait_predicate_is_exact() {
     let fixture = fixture();
     let first = Purchase::new("alpha", LISTING_ID, 10);

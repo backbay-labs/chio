@@ -1053,9 +1053,10 @@ impl SqliteFindingChallengeStore {
         )
     }
 
-    /// Compare-and-set `pending_appeal -> finalizing`, marking the
-    /// liability publication-pending. Purchases stay blocked and the head
-    /// stays finalizing until every effect it enqueued is confirmed.
+    /// Test-only raw lifecycle edge. Production finalization must use
+    /// [`Self::begin_finalizing_under_sanction`] so the case head and the
+    /// liability state are serialized in one transaction.
+    #[cfg(test)]
     pub fn begin_finalizing(
         &self,
         liability_key: &str,
@@ -1070,6 +1071,60 @@ impl SqliteFindingChallengeStore {
             Some(true),
             now,
         )
+    }
+
+    /// Compare-and-set `pending_appeal -> finalizing` only while the named
+    /// sanction is still the exact live governance case.
+    ///
+    /// This check and the state transition share one immediate
+    /// transaction with appeal recording. Whichever write wins decides
+    /// the outcome: a successful appeal that supersedes the sanction makes
+    /// this edge refuse, while a finalizing edge that lands first makes a
+    /// later appeal refuse because the liability is no longer pending
+    /// appeal. Neither ordering can strand a successful appeal behind a
+    /// finalizing head.
+    pub fn begin_finalizing_under_sanction(
+        &self,
+        liability_key: &str,
+        expected_state: FindingLiabilityState,
+        sanction_case_id: &str,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        require_hex64(liability_key, "liability_key")?;
+        require_identifier(sanction_case_id, "sanction_case_id")?;
+        require_trusted_time(now, "now")?;
+        require_transition_source(
+            expected_state,
+            FindingLiabilityState::PendingAppeal,
+            FindingLiabilityState::Finalizing,
+        )?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let head = resolve_case_head_tx(&transaction, liability_key)?.ok_or_else(|| {
+            FindingChallengeStoreError::Conflict(
+                "liability carries no live governance case".to_owned(),
+            )
+        })?;
+        if head.case_kind != FindingGovernanceCaseKind::Sanction || head.case_id != sanction_case_id
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "the named sanction is not the live governance case".to_owned(),
+            ));
+        }
+        let (outcome, _) = apply_liability_transition_tx(
+            &transaction,
+            liability_key,
+            FindingLiabilityState::PendingAppeal,
+            FindingLiabilityState::Finalizing,
+            Some(true),
+            now,
+        )?;
+        if outcome == FindingChallengeWriteOutcome::ExistingSame {
+            return Ok(outcome);
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(outcome)
     }
 
     /// Compare-and-set `finalizing -> settled`, clearing the pending
@@ -1248,6 +1303,18 @@ impl SqliteFindingChallengeStore {
                 "governance case does not name the liability's finding and listing".to_owned(),
             ));
         }
+        // Successful appeal supersession and the transition to
+        // `finalizing` contend under the same immediate-write lock. Once
+        // finalization wins that compare-and-set, a late appeal cannot
+        // replace the sanction between the coordinator's finality check
+        // and impairment dispatch.
+        if input.case_kind == FindingGovernanceCaseKind::Appeal
+            && liability.state != FindingLiabilityState::PendingAppeal
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "an appeal may only be recorded while the liability is pending appeal".to_owned(),
+            ));
+        }
         if let Some(appealed) = input.appeal_of_case_id {
             let target = load_case_tx(&transaction, appealed)?.ok_or_else(|| {
                 FindingChallengeStoreError::Conflict("appealed case is not recorded".to_owned())
@@ -1337,37 +1404,7 @@ impl SqliteFindingChallengeStore {
         require_hex64(liability_key, "liability_key")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
-        let mut statement = transaction
-            .prepare(&format!(
-                r#"
-                SELECT {CASE_COLUMNS} FROM governance_case_index
-                WHERE liability_key = ?1 AND superseded_by_case_id IS NULL
-                ORDER BY recorded_at ASC, case_id ASC
-                LIMIT 2
-                "#
-            ))
-            .map_err(sqlite_error)?;
-        let rows = statement
-            .query_map([liability_key], map_case)
-            .map_err(sqlite_error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(sqlite_error)?;
-        let mut live = rows
-            .into_iter()
-            .map(case_from_raw)
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter();
-        let Some(head) = live.next() else {
-            return Ok(None);
-        };
-        if let Some(rival) = live.next() {
-            return Err(FindingChallengeStoreError::AmbiguousCaseHead {
-                liability_key: liability_key.to_owned(),
-                first_case_id: head.case_id,
-                second_case_id: rival.case_id,
-            });
-        }
-        Ok(Some(head))
+        resolve_case_head_tx(&transaction, liability_key)
     }
 
     /// One governance case by its id.
@@ -2184,6 +2221,46 @@ fn load_case_tx(
         .optional()
         .map_err(sqlite_error)?;
     raw.map(case_from_raw).transpose()
+}
+
+/// Resolve the unique unsuperseded case inside a caller-owned transaction.
+/// A write path uses this to serialize its lifecycle decision against case
+/// insertion; the public read path uses the same ambiguity semantics.
+fn resolve_case_head_tx(
+    transaction: &Transaction<'_>,
+    liability_key: &str,
+) -> Result<Option<FindingGovernanceCaseRecord>, FindingChallengeStoreError> {
+    let mut statement = transaction
+        .prepare(&format!(
+            r#"
+            SELECT {CASE_COLUMNS} FROM governance_case_index
+            WHERE liability_key = ?1 AND superseded_by_case_id IS NULL
+            ORDER BY recorded_at ASC, case_id ASC
+            LIMIT 2
+            "#
+        ))
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([liability_key], map_case)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    let mut live = rows
+        .into_iter()
+        .map(case_from_raw)
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter();
+    let Some(head) = live.next() else {
+        return Ok(None);
+    };
+    if let Some(rival) = live.next() {
+        return Err(FindingChallengeStoreError::AmbiguousCaseHead {
+            liability_key: liability_key.to_owned(),
+            first_case_id: head.case_id,
+            second_case_id: rival.case_id,
+        });
+    }
+    Ok(Some(head))
 }
 
 fn load_claim_snapshot_tx(

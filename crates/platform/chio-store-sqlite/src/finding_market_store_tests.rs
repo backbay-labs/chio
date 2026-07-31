@@ -1013,6 +1013,58 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
         new_allocation.active_admission_id.as_deref(),
         Some(second_admission.admission_id.as_str())
     );
+
+    // (v) Admission and the sales block contend under the same immediate
+    // transaction. Once the block lands, a fresh activation cannot
+    // consume its collateral or replace the active admission.
+    fixture
+        ._authority
+        .finding_purchase_store()
+        .block_new_slots(LISTING_ID, NOW + 21)
+        .expect("block listing sales");
+    let third_backing = backing_body(&finding_id, "vault:finding-collateral-3");
+    let third_backing_envelope = envelope_string(&third_backing, &collateral);
+    let third_backing_sha256 = chio_core::sha256_hex(third_backing_envelope.as_bytes());
+    fixture
+        .store
+        .register_allocation(&third_backing_envelope, &third_backing, NOW + 22)
+        .expect("register third allocation");
+    let third_admission = admission_body(
+        &finding_id,
+        &artifact_sha256,
+        &third_backing,
+        &third_backing_sha256,
+    );
+    let third_envelope = envelope_string(&third_admission, &venue);
+    assert!(
+        matches!(
+            fixture
+                .store
+                .prepare_listing_activation(&third_envelope, &third_admission, NOW + 23),
+            Err(FindingMarketStoreError::Conflict(_))
+        ),
+        "a live sales block must refuse fresh activation"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_allocation(&third_backing.allocation_id)
+            .expect("get third allocation")
+            .expect("third allocation present")
+            .state,
+        FindingAllocationState::Live,
+        "the refused activation cannot consume collateral"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_current_admission(&finding_id)
+            .expect("get current admission")
+            .expect("active admission remains")
+            .admission_id,
+        second_admission.admission_id,
+        "the refused activation cannot supersede the active row"
+    );
 }
 
 #[test]

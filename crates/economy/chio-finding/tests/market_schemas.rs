@@ -600,6 +600,13 @@ fn terms_schema_rejects_zero_base_finding_stake() -> TestResult {
 }
 
 #[test]
+fn terms_schema_rejects_unknown_payout_policy() -> TestResult {
+    let mut value = serde_json::to_value(signed_terms()?)?;
+    value["body"]["payout_policy"] = json!("winner_takes_all_v1");
+    assert_family_schema_rejects(&TERMS, &value, "unknown payout policy")
+}
+
+#[test]
 fn authorization_envelope_conforms_to_schema() -> TestResult {
     validate_family_schema(
         &AUTHORIZATION,

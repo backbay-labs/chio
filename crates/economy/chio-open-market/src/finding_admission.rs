@@ -94,6 +94,8 @@ pub enum FindingAdmissionError {
     AllocationUnavailableForActivation,
     #[error("admission is not active for the consumed backing allocation")]
     AdmissionNotActiveForAllocation,
+    #[error("verifier report claims bond backing before the allocation existed")]
+    BondObservationBeforeAllocation,
     #[error("penalty evaluation does not name the admitted listing")]
     PenaltyEvaluationMismatch,
     #[error("penalty evaluation carries findings and establishes nothing")]
@@ -222,6 +224,12 @@ pub struct FindingAdmissionContext<'a> {
     pub backing: &'a SignedFindingBondBacking,
     /// Fresh allocation-state snapshot for the named backing allocation.
     pub allocation_snapshot: FindingAllocationSnapshot,
+    /// The instant the verifier report affirmed bond backing, or `None`
+    /// when the report made no affirmative bond claim. An affirmative
+    /// observation must postdate the allocation's registration: a report
+    /// evaluated before the allocation existed observed some other
+    /// collateral, whatever its verdict names.
+    pub bond_backing_observed_at: Option<u64>,
     /// Penalty posture for the admitted listing. A venue that runs the
     /// penalty lane resolves the listing's current evaluation and passes
     /// it here; a listing under an enforced hold or slash never
@@ -410,6 +418,13 @@ fn verify_finding_admission_inner(
             {
                 return Err(FindingAdmissionError::AdmissionNotActiveForAllocation);
             }
+        }
+    }
+    // Report-before-backing ordering: collateral registered at or after
+    // an affirmative observation cannot be what that observation saw.
+    if let Some(observed_at) = context.bond_backing_observed_at {
+        if context.allocation_snapshot.accepted_at >= observed_at {
+            return Err(FindingAdmissionError::BondObservationBeforeAllocation);
         }
     }
 

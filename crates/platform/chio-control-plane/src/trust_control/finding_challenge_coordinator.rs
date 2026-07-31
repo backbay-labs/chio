@@ -54,10 +54,10 @@ use chio_finding::{
     signed_envelope_sha256, verify_finding, verify_pinned_envelope, verify_signed_audit_epoch,
     verify_signed_challenge, verify_signed_challenge_outcome, verify_signed_market_terms,
     verify_signed_purchase_record, Finding, FindingChallenge, FindingChallengeAuthorization,
-    FindingChallengeEnforcement, FindingChallengeEvidenceKind,
-    FindingChallengeOutcome, FindingEffectIntentBinding, FindingEnforcementDestination,
-    FindingPenaltyCalculation, FindingPurchaseRecord, SignedFindingAuditEpoch,
-    SignedFindingChallenge, SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
+    FindingChallengeEnforcement, FindingChallengeEvidenceKind, FindingChallengeOutcome,
+    FindingEffectIntentBinding, FindingEnforcementDestination, FindingPenaltyCalculation,
+    FindingPurchaseRecord, SignedFindingAuditEpoch, SignedFindingChallenge,
+    SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
     SignedFindingChallengeVerifierProfile, SignedFindingFinalizedBondSnapshot,
     SignedFindingMarketTerms, SignedFindingPurchaseRecord, FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1,
     FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
@@ -80,7 +80,8 @@ use chio_open_market::finding_slash_amount::{
 };
 use chio_open_market::governance::generic::SignedGenericGovernanceCase;
 use chio_open_market::listing::{
-    GenericRegistryPublisher, SignedGenericListing, SignedGenericTrustActivation,
+    ensure_generic_listing_signed_by_namespace_owner, GenericRegistryPublisher,
+    SignedGenericListing, SignedGenericTrustActivation,
 };
 use chio_open_market::penalty::{
     build_open_market_penalty_artifact_with_trusted_signers, OpenMarketAbuseClass,
@@ -849,10 +850,10 @@ impl FindingChallengeCoordinator {
         // terms carry the filing window, the audit toggle, and the bond
         // limits the seller committed the listing to.
         let terms = self.resolve_market_terms(body)?;
+        self.require_filing_window(&terms.body, body.filed_at, now)?;
         match &body.authorization {
             FindingChallengeAuthorization::BuyerSubmission(submission) => {
                 self.require_dispute_terms(submission, now)?;
-                self.require_filing_window(&terms.body, now)?;
                 self.require_bond_within_terms_limits(
                     &terms.body,
                     submission,
@@ -1134,6 +1135,7 @@ impl FindingChallengeCoordinator {
     pub fn uphold(
         &self,
         challenge_id: &str,
+        signed_challenge: &SignedFindingChallenge,
         outcome: &SignedFindingChallengeOutcome,
         identity: &FindingLiabilityIdentity<'_>,
         terms: &SignedFindingMarketTerms,
@@ -1155,19 +1157,28 @@ impl FindingChallengeCoordinator {
         {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
         }
+        verify_signed_challenge(signed_challenge, &self.pins.audit_authority)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeEnvelope(error.to_string()))?;
+        if signed_challenge.body.challenge_id != challenge_id {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
+        let challenge_envelope_sha256 = self.envelope_digest(signed_challenge)?;
+        if outcome.body.challenge_envelope_sha256 != challenge_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
         // The outcome adjudicates exactly one challenge: the one whose
         // signed envelope digest it embeds. The durable row for the
         // challenge being upheld carries that digest, so an outcome
         // presented beside any other challenge id sanctions nothing, even
         // when both challenges target the same finding and listing.
-        let challenge = self
+        let recorded_challenge = self
             .challenges
             .get_challenge(challenge_id)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
             .ok_or_else(|| {
                 ChallengeCoordinatorError::ChallengeStore("challenge is not recorded".to_owned())
             })?;
-        if outcome.body.challenge_envelope_sha256 != challenge.challenge_envelope_sha256 {
+        if challenge_envelope_sha256 != recorded_challenge.challenge_envelope_sha256 {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
         }
         // Every exposure figure behind the penalty is read against one
@@ -1177,6 +1188,12 @@ impl FindingChallengeCoordinator {
         // refused here, before anything durable is written.
         if collateral.allocation_id != identity.allocation_id {
             return Err(ChallengeCoordinatorError::CollateralAllocation);
+        }
+        let terms_envelope_sha256 = self.envelope_digest(terms)?;
+        if terms_envelope_sha256 != signed_challenge.body.terms_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::TermsBinding(
+                "terms_envelope_sha256",
+            ));
         }
         let claim_deadline = self.require_claim_window(terms, identity, now)?;
         // The stake the slash math starts from is a seller precommitment,
@@ -1365,6 +1382,11 @@ impl FindingChallengeCoordinator {
                 appeal_case,
                 appeal_case_id,
             } => {
+                if appeal_case.body.case_id != *appeal_case_id {
+                    return Err(ChallengeCoordinatorError::AppealNotFinal(
+                        "appeal case id does not match its signed artifact",
+                    ));
+                }
                 // The reversal is minted before the case is indexed. A
                 // recorded appeal stamps the sanction superseded, and the
                 // index admits exactly one supersession per case, so an
@@ -1486,6 +1508,7 @@ impl FindingChallengeCoordinator {
         &self,
         liability_key: &str,
         enforcement: &SignedFindingChallengeEnforcement,
+        penalty: &SignedOpenMarketPenalty,
         bond_snapshot: &SignedFindingFinalizedBondSnapshot,
         seller: &PublicKey,
         max_snapshot_age_secs: u64,
@@ -1539,6 +1562,7 @@ impl FindingChallengeCoordinator {
                 return Err(ChallengeCoordinatorError::LiabilityIdentity(label));
             }
         }
+        self.require_penalty_matches_enforcement(&liability, enforcement, penalty)?;
         let pins = FindingEnforcementPins {
             finalization_authority: self.finalization_authority.public_key(),
             settlement_observer: self.pins.settlement_observer.clone(),
@@ -1582,7 +1606,7 @@ impl FindingChallengeCoordinator {
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
             return Ok(FindingFinalization::AlreadyConfirmed);
         }
-        self.require_sanction_governs(liability_key)?;
+        self.require_sanction_governs(liability_key, &penalty.body.case_id)?;
         self.require_confirmed_enforcement_root(liability_key, &verified)?;
         self.fence_anchor_evidence(liability_key, &verified, planned.intent(), now)?;
         self.challenges
@@ -1974,14 +1998,14 @@ impl FindingChallengeCoordinator {
 
     /// Resolve the seller-signed market terms one filing binds by digest,
     /// and prove they are the terms this venue admitted for the exact
-    /// finding and listing being challenged.
+    /// finding artifact and listing being challenged.
     ///
     /// The digest is re-derived from the resolved envelope, so a resolver
     /// answering with any other artifact is caught here. The envelope must
     /// verify under its embedded seller, and it must name the challenged
-    /// finding and listing: terms for another listing would lend this
-    /// filing a window, an audit toggle, and bond limits their seller
-    /// never signed for it.
+    /// finding bytes and listing: terms for another artifact or listing
+    /// would lend this filing a window, an audit toggle, and bond limits
+    /// their seller never signed for it.
     fn resolve_market_terms(
         &self,
         challenge: &FindingChallenge,
@@ -2000,31 +2024,44 @@ impl FindingChallengeCoordinator {
         if terms.body.finding_id != challenge.finding_id {
             return Err(ChallengeCoordinatorError::FilingTermsBinding("finding_id"));
         }
+        if terms.body.finding_artifact_sha256 != challenge.finding_artifact_sha256 {
+            return Err(ChallengeCoordinatorError::FilingTermsBinding(
+                "finding_artifact_sha256",
+            ));
+        }
+        if terms.body.verifier_profile_envelope_sha256 != challenge.profile_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::FilingTermsBinding(
+                "verifier_profile_envelope_sha256",
+            ));
+        }
         if terms.body.listing_id != challenge.listing_id {
             return Err(ChallengeCoordinatorError::FilingTermsBinding("listing_id"));
         }
         Ok(terms)
     }
 
-    /// Require the venue clock to still be inside the seller-signed
-    /// filing window.
+    /// Require both the signed filing instant and the venue's receipt
+    /// instant to sit inside the seller-signed filing window.
     ///
     /// The window is the exposure horizon the seller committed to when
     /// the terms were issued: `filing_window_secs` from their issuance is
-    /// how long a challenge may still be filed against the listing. The
-    /// bound is enforced on the venue clock, which also bounds the signed
-    /// `filed_at` the filing clock check already holds to `now`. A window
-    /// end that is not representable admits nothing.
+    /// how long a challenge may still be filed against the listing. A
+    /// self-signed `filed_at` alone is not an authoritative receipt
+    /// clock: a caller could backdate a freshly signed filing after the
+    /// deadline. The signed instant still has to follow terms issuance,
+    /// and the venue clock must not have crossed the same deadline. A
+    /// window end that is not representable admits nothing.
     fn require_filing_window(
         &self,
         terms: &chio_finding::FindingMarketTerms,
-        now: u64,
+        filed_at: u64,
+        received_at: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
         let deadline = terms
             .issued_at
             .checked_add(terms.filing_window_secs)
             .ok_or(ChallengeCoordinatorError::FilingWindowClosed)?;
-        if now > deadline {
+        if filed_at < terms.issued_at || filed_at > deadline || received_at > deadline {
             return Err(ChallengeCoordinatorError::FilingWindowClosed);
         }
         Ok(())
@@ -2115,6 +2152,79 @@ impl FindingChallengeCoordinator {
                 "prior penalty",
             ));
         }
+        ensure_generic_listing_signed_by_namespace_owner(governance.listing, "penalty listing")
+            .map_err(ChallengeCoordinatorError::PenaltyMint)?;
+        governance
+            .fee_schedule
+            .body
+            .validate()
+            .map_err(ChallengeCoordinatorError::PenaltyMint)?;
+        if !governance
+            .fee_schedule
+            .verify_signature()
+            .map_err(|error| ChallengeCoordinatorError::PenaltyMint(error.to_string()))?
+        {
+            return Err(ChallengeCoordinatorError::PenaltyMint(
+                "fee schedule signature is invalid".to_owned(),
+            ));
+        }
+        governance
+            .charter
+            .body
+            .validate()
+            .map_err(ChallengeCoordinatorError::PenaltyMint)?;
+        if !governance
+            .charter
+            .verify_signature()
+            .map_err(|error| ChallengeCoordinatorError::PenaltyMint(error.to_string()))?
+        {
+            return Err(ChallengeCoordinatorError::PenaltyMint(
+                "governance charter signature is invalid".to_owned(),
+            ));
+        }
+        case.body
+            .validate()
+            .map_err(ChallengeCoordinatorError::PenaltyMint)?;
+        if !case
+            .verify_signature()
+            .map_err(|error| ChallengeCoordinatorError::PenaltyMint(error.to_string()))?
+        {
+            return Err(ChallengeCoordinatorError::PenaltyMint(
+                "governance case signature is invalid".to_owned(),
+            ));
+        }
+        if let Some(activation) = governance.activation {
+            activation
+                .body
+                .validate()
+                .map_err(ChallengeCoordinatorError::PenaltyMint)?;
+            if !activation
+                .verify_signature()
+                .map_err(|error| ChallengeCoordinatorError::PenaltyMint(error.to_string()))?
+            {
+                return Err(ChallengeCoordinatorError::PenaltyMint(
+                    "trust activation signature is invalid".to_owned(),
+                ));
+            }
+        }
+        if let Some(prior) = prior_penalty {
+            prior
+                .body
+                .validate()
+                .map_err(ChallengeCoordinatorError::PenaltyMint)?;
+            if !prior
+                .verify_signature()
+                .map_err(|error| ChallengeCoordinatorError::PenaltyMint(error.to_string()))?
+            {
+                return Err(ChallengeCoordinatorError::PenaltyMint(
+                    "prior penalty signature is invalid".to_owned(),
+                ));
+            }
+        }
+        governance
+            .current_publisher
+            .validate()
+            .map_err(ChallengeCoordinatorError::PenaltyMint)?;
         Ok(())
     }
 
@@ -2411,6 +2521,7 @@ impl FindingChallengeCoordinator {
     fn require_sanction_governs(
         &self,
         liability_key: &str,
+        sanction_case_id: &str,
     ) -> Result<(), ChallengeCoordinatorError> {
         let head = self
             .challenges
@@ -2419,9 +2530,58 @@ impl FindingChallengeCoordinator {
             .ok_or(ChallengeCoordinatorError::AppealNotFinal(
                 "liability carries no live governance case",
             ))?;
-        if head.case_kind != FindingGovernanceCaseKind::Sanction {
+        if head.case_kind != FindingGovernanceCaseKind::Sanction || head.case_id != sanction_case_id
+        {
             return Err(ChallengeCoordinatorError::AppealNotFinal(
                 "the sanction no longer governs this liability",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Authenticate the exact slash penalty the enforcement commits to.
+    ///
+    /// The enforcement carries only an envelope digest. Presenting the
+    /// signed artifact here recovers the governance case identity behind
+    /// that digest, while the pinned penalty key prevents a caller from
+    /// inventing a different case under otherwise self-consistent bytes.
+    fn require_penalty_matches_enforcement(
+        &self,
+        liability: &FindingLiabilityRecord,
+        enforcement: &SignedFindingChallengeEnforcement,
+        penalty: &SignedOpenMarketPenalty,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        penalty
+            .body
+            .validate()
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        verify_pinned_envelope(
+            penalty,
+            &self.penalty_authority.public_key(),
+            "market penalty",
+        )
+        .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        let digest = self.envelope_digest(penalty)?;
+        if digest != enforcement.body.penalty_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "enforcement does not bind the presented penalty envelope".to_owned(),
+            ));
+        }
+        if penalty.body.listing_id != liability.listing_id {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "penalty does not name this liability's listing".to_owned(),
+            ));
+        }
+        if penalty.body.action != OpenMarketPenaltyAction::SlashBond
+            || penalty.body.state != OpenMarketPenaltyState::Enforced
+        {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "finalization requires an enforced slash penalty".to_owned(),
+            ));
+        }
+        if penalty.body.penalty_amount != enforcement.body.amount {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "enforcement amount does not match the bound penalty".to_owned(),
             ));
         }
         Ok(())
@@ -2987,7 +3147,12 @@ impl FindingChallengeCoordinator {
         let enforcement_envelope_sha256 = self.envelope_digest(&signed)?;
 
         self.challenges
-            .begin_finalizing(liability_key, FindingLiabilityState::PendingAppeal, now)
+            .begin_finalizing_under_sanction(
+                liability_key,
+                FindingLiabilityState::PendingAppeal,
+                &slash.penalty.body.case_id,
+                now,
+            )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
 
         Ok(AppealResolution::Finalizing(Box::new(

@@ -1908,6 +1908,7 @@ async fn finding_publish_discover_admission() -> TestResult {
             prepared_admission_id: None,
             accepted_at: allocation.accepted_at,
         },
+        bond_backing_observed_at: None,
         penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
         collateral_authority: &collateral_key,
         constituent_expiry_bounds: FindingConstituentExpiryBounds {
@@ -2007,6 +2008,29 @@ async fn finding_publish_discover_admission() -> TestResult {
         Some(1)
     );
     Ok(())
+}
+
+#[tokio::test]
+async fn enforced_penalty_block_refuses_a_fresh_activation() -> TestResult {
+    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    stack.seed_market().await?;
+    let authority = stack
+        .state
+        .joint_authority_store
+        .as_ref()
+        .ok_or_else(|| missing("joint authority store"))?;
+    authority
+        .finding_purchase_store()
+        .block_new_slots(LISTING_ID, ISSUED_AT)?;
+
+    assert_activation_rejected(
+        &stack,
+        stack
+            .web
+            .activate_request(&stack.web.admission, &stack.web.schedule, &stack.web.report)?,
+        "listing admission is blocked by an enforced penalty",
+    )
+    .await
 }
 
 #[tokio::test]

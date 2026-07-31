@@ -886,6 +886,26 @@ pub(crate) async fn handle_activate_finding(
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 
+    let purchase_store = match state.joint_authority_store.as_ref() {
+        Some(authority) => authority.finding_purchase_store(),
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "finding market requires the joint authority store",
+            )
+        }
+    };
+    match purchase_store.sales_blocked(&admission.listing_id) {
+        Ok(true) => {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "listing admission is blocked by an enforced penalty",
+            )
+        }
+        Ok(false) => {}
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    }
+
     // The published finding is the root of every binding.
     let artifact_json = match store.get_finding_bytes(&finding_id) {
         Ok(Some(bytes)) => bytes,
@@ -1108,6 +1128,15 @@ pub(crate) async fn handle_activate_finding(
         }
         None => FindingFeeScheduleGate::Legacy,
     };
+    if let Err(error) = verify_signed_verifier_report(&request.verifier_report, &verifier_key) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+    }
+    // The report's affirmative bond claim, if any, feeds the admission
+    // seam's report-before-backing ordering check.
+    let report = &request.verifier_report.body;
+    let bond_backing_observed_at = (report.facet_outcome(FindingFacetKind::BondBacking)
+        == Some(FindingFacetOutcome::Verified))
+    .then_some(report.evaluation_time);
     let admission_context = FindingAdmissionContext {
         venue_authority: &venue_key,
         venue_id: &config.venue_id,
@@ -1131,9 +1160,9 @@ pub(crate) async fn handle_activate_finding(
             prepared_admission_id: prepared_replay.then(|| admission.admission_id.clone()),
             accepted_at: allocation.accepted_at,
         },
-        // This surface holds no penalty evaluation for the listing; a
-        // venue operating the challenge lane resolves the listing's
-        // current evaluation and gates admission on it.
+        bond_backing_observed_at,
+        // The HTTP surface gates on the durable sales block above. It
+        // never accepts a caller-supplied penalty evaluation.
         penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
         collateral_authority: &collateral_key,
         constituent_expiry_bounds: FindingConstituentExpiryBounds {

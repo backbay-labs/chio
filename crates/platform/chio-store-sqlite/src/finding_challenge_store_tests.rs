@@ -1931,6 +1931,32 @@ fn case_head_resolves_one_live_case_and_rejects_two() {
         "case-sanction-01"
     );
 
+    let challenge = Challenge::buyer("case-head");
+    close_challenge(
+        &fixture,
+        &challenge,
+        FindingChallengeVerdict::Upheld,
+        NOW + 1,
+    );
+    fixture
+        .store
+        .uphold_liability(
+            &head.liability_key,
+            &challenge.challenge_id,
+            0,
+            NOW + CLAIM_WINDOW,
+            NOW + 3,
+        )
+        .expect("uphold liability");
+    fixture
+        .store
+        .begin_appeal_window(
+            &head.liability_key,
+            FindingLiabilityState::UpheldPendingClaims,
+            NOW + 4,
+        )
+        .expect("open appeal window");
+
     let appeal = FindingGovernanceCaseInput {
         case_id: "case-appeal-01",
         case_kind: FindingGovernanceCaseKind::Appeal,
@@ -2047,6 +2073,184 @@ fn case_head_resolves_one_live_case_and_rejects_two() {
             Err(FindingChallengeStoreError::NotFound)
         ),
         "a case must target a recorded liability"
+    );
+}
+
+#[test]
+fn finalizing_wins_the_race_against_appeal_supersession() {
+    let fixture = fixture();
+    let head = Liability::new("finality-race", LISTING_ID, &fixture.allocation_id);
+    open_liability(&fixture, &head);
+    let challenge = Challenge::buyer("finality-race");
+    close_challenge(
+        &fixture,
+        &challenge,
+        FindingChallengeVerdict::Upheld,
+        NOW + 1,
+    );
+    fixture
+        .store
+        .uphold_liability(
+            &head.liability_key,
+            &challenge.challenge_id,
+            0,
+            NOW + CLAIM_WINDOW,
+            NOW + 3,
+        )
+        .expect("uphold liability");
+
+    let sanction = FindingGovernanceCaseInput {
+        case_id: "case-sanction-finality-race",
+        finding_id: &head.finding_id,
+        listing_id: LISTING_ID,
+        liability_key: &head.liability_key,
+        case_kind: FindingGovernanceCaseKind::Sanction,
+        case_state: "Enforced",
+        appeal_of_case_id: None,
+        supersedes_case_id: None,
+        recorded_at: NOW + 3,
+    };
+    fixture
+        .store
+        .record_governance_case(&sanction)
+        .expect("record sanction");
+    fixture
+        .store
+        .begin_appeal_window(
+            &head.liability_key,
+            FindingLiabilityState::UpheldPendingClaims,
+            NOW + 4,
+        )
+        .expect("open appeal window");
+    fixture
+        .store
+        .begin_finalizing_under_sanction(
+            &head.liability_key,
+            FindingLiabilityState::PendingAppeal,
+            sanction.case_id,
+            NOW + 5,
+        )
+        .expect("finalizing compare-and-set wins");
+
+    let appeal = FindingGovernanceCaseInput {
+        case_id: "case-appeal-finality-race",
+        case_kind: FindingGovernanceCaseKind::Appeal,
+        appeal_of_case_id: Some(sanction.case_id),
+        supersedes_case_id: Some(sanction.case_id),
+        recorded_at: NOW + 5,
+        ..sanction
+    };
+    assert!(
+        matches!(
+            fixture.store.record_governance_case(&appeal),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "an appeal cannot supersede the sanction after finalizing wins"
+    );
+    let resolved = fixture
+        .store
+        .resolve_case_head(&head.liability_key)
+        .expect("resolve case head")
+        .expect("sanction remains live");
+    assert_eq!(resolved.case_id, sanction.case_id);
+    assert_eq!(resolved.case_kind, FindingGovernanceCaseKind::Sanction);
+    assert_eq!(
+        liability(&fixture, &head.liability_key).state,
+        FindingLiabilityState::Finalizing
+    );
+}
+
+#[test]
+fn appeal_supersession_wins_the_race_against_finalizing() {
+    let fixture = fixture();
+    let head = Liability::new("appeal-race", LISTING_ID, &fixture.allocation_id);
+    open_liability(&fixture, &head);
+    let challenge = Challenge::buyer("appeal-race");
+    close_challenge(
+        &fixture,
+        &challenge,
+        FindingChallengeVerdict::Upheld,
+        NOW + 1,
+    );
+    fixture
+        .store
+        .uphold_liability(
+            &head.liability_key,
+            &challenge.challenge_id,
+            0,
+            NOW + CLAIM_WINDOW,
+            NOW + 3,
+        )
+        .expect("uphold liability");
+
+    let sanction = FindingGovernanceCaseInput {
+        case_id: "case-sanction-appeal-race",
+        finding_id: &head.finding_id,
+        listing_id: LISTING_ID,
+        liability_key: &head.liability_key,
+        case_kind: FindingGovernanceCaseKind::Sanction,
+        case_state: "Enforced",
+        appeal_of_case_id: None,
+        supersedes_case_id: None,
+        recorded_at: NOW + 3,
+    };
+    fixture
+        .store
+        .record_governance_case(&sanction)
+        .expect("record sanction");
+    fixture
+        .store
+        .begin_appeal_window(
+            &head.liability_key,
+            FindingLiabilityState::UpheldPendingClaims,
+            NOW + 4,
+        )
+        .expect("open appeal window");
+
+    let appeal = FindingGovernanceCaseInput {
+        case_id: "case-appeal-wins-race",
+        case_kind: FindingGovernanceCaseKind::Appeal,
+        appeal_of_case_id: Some(sanction.case_id),
+        supersedes_case_id: Some(sanction.case_id),
+        recorded_at: NOW + 5,
+        ..sanction
+    };
+    fixture
+        .store
+        .record_governance_case(&appeal)
+        .expect("appeal supersession wins");
+    assert!(
+        matches!(
+            fixture.store.begin_finalizing_under_sanction(
+                &head.liability_key,
+                FindingLiabilityState::PendingAppeal,
+                sanction.case_id,
+                NOW + 5,
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "a superseded sanction cannot carry the head into finalizing"
+    );
+    fixture
+        .store
+        .reverse_liability_before_impairment(
+            &head.liability_key,
+            FindingLiabilityState::PendingAppeal,
+            NOW + 6,
+        )
+        .expect("the successful appeal can still reverse the liability");
+    assert_eq!(
+        liability(&fixture, &head.liability_key).state,
+        FindingLiabilityState::ReversedBeforeImpairment
+    );
+    assert_eq!(
+        fixture
+            .store
+            .resolve_case_head(&head.liability_key)
+            .expect("resolve case head")
+            .expect("appeal remains live")
+            .case_id,
+        appeal.case_id
     );
 }
 

@@ -34,6 +34,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBe
 use thiserror::Error;
 
 use crate::admission_operation_store::verify_active_owner;
+use crate::finding_purchase_store::sales_blocked_tx;
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_MARKET_SCHEMA_KEY: &str = "finding_market";
@@ -1023,6 +1024,13 @@ impl SqliteFindingMarketStore {
                 "admission id is already bound to different bytes".to_owned(),
             ));
         }
+        if sales_blocked_tx(&transaction, &admission.listing_id)
+            .map_err(|error| FindingMarketStoreError::Unavailable(error.to_string()))?
+        {
+            return Err(FindingMarketStoreError::Conflict(
+                "listing activation is blocked by an enforced penalty".to_owned(),
+            ));
+        }
         let pending: Option<String> = transaction
             .query_row(
                 r#"
@@ -1141,6 +1149,13 @@ impl SqliteFindingMarketStore {
             }
             return Err(FindingMarketStoreError::Conflict(
                 "admission id is already bound to different bytes".to_owned(),
+            ));
+        }
+        if sales_blocked_tx(&transaction, &admission.listing_id)
+            .map_err(|error| FindingMarketStoreError::Unavailable(error.to_string()))?
+        {
+            return Err(FindingMarketStoreError::Conflict(
+                "listing activation is blocked by an enforced penalty".to_owned(),
             ));
         }
         transaction
