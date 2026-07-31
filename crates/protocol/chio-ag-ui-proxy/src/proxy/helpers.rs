@@ -114,10 +114,41 @@ fn trusted_custom_constraint_matches(
 }
 
 fn custom_constraint_matches_if_present(grant: &ToolGrant, key: &str, expected: &str) -> bool {
+    // Exhaustive on purpose: the proxy evaluates only the Custom bindings it
+    // understands and treats the rest of the vocabulary as satisfied, so a
+    // future variant must be classified here explicitly rather than falling
+    // into a wildcard that would silently satisfy it.
     grant.constraints.iter().all(|constraint| match constraint {
         Constraint::Custom(candidate_key, candidate_value) if candidate_key == key => {
             candidate_value == expected
         }
-        _ => true,
+        Constraint::Custom(_, _) => true,
+        // Delivery carriers require the output-aware durable terminal; the
+        // proxy has no such terminal, so a grant carrying one never binds
+        // an event.
+        Constraint::OutputDigestSha256(_) | Constraint::RequireFindingPurchase(_) => false,
+        Constraint::PathPrefix(_)
+        | Constraint::DomainExact(_)
+        | Constraint::DomainGlob(_)
+        | Constraint::RegexMatch(_)
+        | Constraint::MaxLength(_)
+        | Constraint::MaxArgsSize(_)
+        | Constraint::GovernedIntentRequired
+        | Constraint::RequireApprovalAbove { .. }
+        | Constraint::RequireCumulativeApprovalAbove { .. }
+        | Constraint::SellerExact(_)
+        | Constraint::MinimumRuntimeAssurance(_)
+        | Constraint::MinimumAutonomyTier(_)
+        | Constraint::TableAllowlist(_)
+        | Constraint::ColumnDenylist(_)
+        | Constraint::MaxRowsReturned(_)
+        | Constraint::OperationClass(_)
+        | Constraint::AudienceAllowlist(_)
+        | Constraint::ContentReviewTier(_)
+        | Constraint::MaxTransactionAmountUsd(_)
+        | Constraint::RequireDualApproval(_)
+        | Constraint::ModelConstraint { .. }
+        | Constraint::MemoryStoreAllowlist(_)
+        | Constraint::MemoryWriteDenyPatterns(_) => true,
     })
 }
