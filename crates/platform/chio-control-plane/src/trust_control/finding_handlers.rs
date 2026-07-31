@@ -17,7 +17,7 @@
 //! the standalone artifact surfaces (publish, recipes, profiles).
 
 use chio_finding::{
-    verify_pinned_envelope, verify_signed_bond_backing, verify_signed_seller_authorization,
+    verify_signed_bond_backing, verify_signed_profile, verify_signed_seller_authorization,
     verify_signed_verifier_report, Finding, FindingChallengeVerifierProfile, FindingEvidenceClass,
     FindingFacetKind, FindingFacetOutcome, FindingFeeEvent, FindingGuaranteeClass, FindingPayee,
     FindingReplayRecipeInput, SignedFindingAdmission, SignedFindingBondBacking,
@@ -565,10 +565,7 @@ pub(crate) async fn handle_register_finding_profile(
             return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
         }
     };
-    if let Err(error) = profile.body.validate() {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
-    }
-    if let Err(error) = verify_pinned_envelope(&profile, &governance_key, "profile") {
+    if let Err(error) = verify_signed_profile(&profile, &governance_key) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
     }
     let digest = chio_core::sha256_hex(&strict_bytes);

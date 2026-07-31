@@ -2007,6 +2007,31 @@ async fn profile_not_signed_by_governance_rejects() -> TestResult {
 }
 
 #[tokio::test]
+async fn profile_body_authority_must_match_governance() -> TestResult {
+    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let governance = keypair(1);
+    let interloper = keypair(9);
+    let checkpoint_id = checkpoint_log_id(&stack.web.checkpoint);
+    let profile = build_profile(&interloper, checkpoint_id)?;
+    let mismatched_profile = SignedExportEnvelope::sign(profile.body, &governance)?;
+    let (status, body) = send(
+        &stack.state,
+        authed_post(
+            "/v1/findings/profiles",
+            canonical_string(&mismatched_profile)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn unpaid_epoch_drops_the_marker_until_renewal() -> TestResult {
     // One-second audit epochs: the epoch lapses on the wall clock right
     // after activation, so the unpaid-epoch read-time filter is

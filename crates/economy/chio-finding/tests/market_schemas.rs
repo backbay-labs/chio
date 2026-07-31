@@ -13,19 +13,18 @@ use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_profile_id,
-    compute_report_id, compute_terms_id, signed_envelope_sha256, verify_pinned_envelope,
-    verify_signed_admission, verify_signed_bond_backing, verify_signed_market_terms,
-    verify_signed_seller_authorization, verify_signed_verifier_report, FindingAdmission,
-    FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
-    FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
-    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
-    FindingCollateralVault, FindingError, FindingFacetKind, FindingFacetOutcome,
-    FindingFacetResult, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
-    FindingMarketTerms, FindingPayee, FindingPoolBinding, FindingPredicate, FindingReceiptRole,
-    FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind,
-    FindingReplayRecipeInput, FindingResourceCaps, FindingSellerAuthorization,
-    FindingVerifierReport, SignedFindingAdmission, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
+    compute_report_id, compute_terms_id, signed_envelope_sha256, verify_signed_admission,
+    verify_signed_bond_backing, verify_signed_market_terms, verify_signed_seller_authorization,
+    verify_signed_verifier_report, FindingAdmission, FindingAuthorityKeyPolicy,
+    FindingBackingRequirement, FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass,
+    FindingChallengeBondLimit, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
+    FindingClaimedVerdict, FindingCollateralVault, FindingError, FindingFacetKind,
+    FindingFacetOutcome, FindingFacetResult, FindingFeeEvent, FindingFeeTerminalBinding,
+    FindingGuaranteeClass, FindingMarketTerms, FindingPayee, FindingPoolBinding, FindingPredicate,
+    FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase,
+    FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
+    FindingSellerAuthorization, FindingVerifierReport, SignedFindingAdmission,
+    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
     SignedFindingSellerAuthorization, SignedFindingVerifierReport, FINDING_ADMISSION_SCHEMA_V1,
     FINDING_BOND_BACKING_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
     FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
@@ -754,7 +753,7 @@ fn golden_verifier_profile_fixture_validates() -> TestResult {
     let signed: SignedFindingChallengeVerifierProfile = serde_json::from_str(GOLDEN_PROFILE_RAW)?;
     assert_eq!(strict_canonical, canonical_json_bytes(&signed)?);
     signed.body.validate()?;
-    verify_pinned_envelope(&signed, &keypair(1).public_key(), "profile")?;
+    chio_finding::verify_signed_profile(&signed, &keypair(1).public_key())?;
     assert_eq!(signed.body.profile_id, GOLDEN_PROFILE_ID);
     assert_eq!(
         signed_envelope_sha256(&signed)?,

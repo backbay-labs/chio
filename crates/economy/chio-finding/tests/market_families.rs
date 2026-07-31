@@ -383,7 +383,7 @@ fn every_family_validates_and_verifies_under_its_pinned_authority() -> TestResul
     let profile = profile_body()?;
     (profile.validate())?;
     let signed_profile = (SignedExportEnvelope::sign(profile, &governance))?;
-    (chio_finding::verify_pinned_envelope(&signed_profile, &governance.public_key(), "profile"))?;
+    (chio_finding::verify_signed_profile(&signed_profile, &governance.public_key()))?;
     assert!(!(signed_envelope_sha256(&signed_profile))?.is_empty());
 
     let terms = terms_body(&seller)?;
@@ -445,6 +445,22 @@ fn envelope_signed_by_another_key_is_rejected_for_every_family() -> TestResult {
     assert_eq!(
         verify_signed_admission(&signed_admission, &venue.public_key(), "venue-wedge"),
         Err(FindingError::AuthorityMismatch("admission"))
+    );
+    Ok(())
+}
+
+#[test]
+fn profile_body_authority_must_match_the_governance_pin() -> TestResult {
+    let governance = keypair(1);
+    let interloper = keypair(9);
+    let mut profile = profile_body()?;
+    profile.governance_authority = interloper.public_key();
+    profile.profile_id = compute_profile_id(&profile)?;
+    let signed = SignedExportEnvelope::sign(profile, &governance)?;
+
+    assert_eq!(
+        chio_finding::verify_signed_profile(&signed, &governance.public_key()),
+        Err(FindingError::AuthorityMismatch("profile"))
     );
     Ok(())
 }

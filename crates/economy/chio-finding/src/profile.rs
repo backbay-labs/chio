@@ -293,3 +293,15 @@ pub fn compute_profile_id(
         chio_core_types::canonical_json_bytes(&body).map_err(|_| FindingError::Canonicalization)?;
     Ok(chio_core_types::crypto::sha256_hex(&bytes))
 }
+
+/// Verify a profile against the externally configured governance root.
+pub fn verify_signed_profile(
+    signed: &SignedFindingChallengeVerifierProfile,
+    pinned_governance_authority: &PublicKey,
+) -> Result<(), FindingError> {
+    signed.body.validate()?;
+    if signed.body.governance_authority != *pinned_governance_authority {
+        return Err(FindingError::AuthorityMismatch("profile"));
+    }
+    crate::envelope::verify_pinned_envelope(signed, pinned_governance_authority, "profile")
+}

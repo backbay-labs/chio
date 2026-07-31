@@ -19,7 +19,7 @@ use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core_types::receipt::body::{chio_receipt_id, ChioReceipt};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
-    compute_report_id, verify_finding, verify_pinned_envelope, verify_signed_bond_backing, Finding,
+    compute_report_id, verify_finding, verify_signed_bond_backing, verify_signed_profile, Finding,
     FindingChallengeVerifierProfile, FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome,
     FindingFacetResult, FindingGuaranteeClass, FindingPredicate, FindingReceiptRole,
     FindingReplayRecipeInput, FindingVerifierReport, SignedFindingBondBacking,
@@ -219,12 +219,7 @@ pub fn verify_finding_evidence(
 
     // Pinned profile and kernel keys are preconditions, not facets: with
     // an unverified profile no facet below is meaningful.
-    verify_pinned_envelope(&trust.profile, &trust.governance_authority, "profile")
-        .map_err(|_| FindingVerifierError::ProfileInvalid)?;
-    trust
-        .profile
-        .body
-        .validate()
+    verify_signed_profile(&trust.profile, &trust.governance_authority)
         .map_err(|_| FindingVerifierError::ProfileInvalid)?;
     if trust.admitted_kernel_keys.is_empty() {
         return Err(FindingVerifierError::NoAdmittedKernelKeys);
