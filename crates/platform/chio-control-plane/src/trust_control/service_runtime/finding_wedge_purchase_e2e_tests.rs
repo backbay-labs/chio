@@ -1836,6 +1836,7 @@ fn reserve_and_accept(
         &handshake.ask,
         &handshake.buyer_signature_hex,
         &web.admission,
+        &web.authorization,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         now,
@@ -2760,6 +2761,7 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         &exchange.ask,
         &interloper,
         &deployment.web.admission,
+        &deployment.web.authorization,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         unix_timestamp_now(),
@@ -2779,6 +2781,7 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         &exchange.ask,
         &exchange.buyer_signature_hex,
         &deployment.web.admission,
+        &deployment.web.authorization,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         now,
@@ -2787,6 +2790,7 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         &exchange.ask,
         &exchange.buyer_signature_hex,
         &deployment.web.admission,
+        &deployment.web.authorization,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         now,
@@ -2822,6 +2826,7 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         &first.ask,
         &first.buyer_signature_hex,
         &deployment.web.admission,
+        &deployment.web.authorization,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         unix_timestamp_now(),
@@ -2840,6 +2845,7 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         &second.ask,
         &second.buyer_signature_hex,
         &deployment.web.admission,
+        &deployment.web.authorization,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         unix_timestamp_now(),
@@ -2905,6 +2911,7 @@ impl ReserveFixture {
             &self.exchange.ask,
             &self.exchange.buyer_signature_hex,
             admission,
+            &self.deployment.web.authorization,
             EXPOSURE_UNITS,
             RESERVATION_TTL_SECS,
             now,
@@ -2997,6 +3004,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
             &fixture.exchange.ask,
             &fixture.exchange.buyer_signature_hex,
             &fixture.deployment.web.admission,
+            &fixture.deployment.web.authorization,
             EXPOSURE_UNITS,
             RESERVATION_TTL_SECS,
             now,
@@ -3022,6 +3030,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
             &fixture.exchange.ask,
             &fixture.exchange.buyer_signature_hex,
             &fixture.deployment.web.admission,
+            &fixture.deployment.web.authorization,
             EXPOSURE_UNITS,
             RESERVATION_TTL_SECS,
             now,
@@ -3091,6 +3100,153 @@ async fn wedge_purchase_reserve_refuses_an_ask_outside_its_window() -> TestResul
     assert!(purchase_store
         .get_reservation(&fixture.exchange.reservation_id)?
         .is_some());
+    Ok(())
+}
+
+/// Reserve must bind the ask to a minter the finding issuer authorized:
+/// otherwise any holder of the live admission envelope can re-mint the
+/// token under its own issuer key, to itself, at its own price, and book
+/// exposure against the seller's collateral allocation.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reserve_refuses_a_self_minted_ask() -> TestResult {
+    let fixture = open_reserve_fixture().await?;
+    let purchase_store = fixture.authority.finding_purchase_store();
+    let now = unix_timestamp_now();
+
+    let interloper = keypair(9);
+    let mut forged_body = fixture.exchange.ask.body.clone();
+    let mut token = forged_body.token_offer.clone();
+    token.issuer = interloper.public_key();
+    token.subject = interloper.public_key();
+    for grant in &mut token.scope.grants {
+        grant.max_cost_per_invocation = Some(usd(1));
+        grant.max_total_cost = Some(usd(1));
+    }
+    forged_body.token_offer = token;
+    forged_body.quoted_price = usd(1);
+    let forged: SignedAskResponse = SignedExportEnvelope::sign(forged_body, &interloper)?;
+    let forged_digest = digest_of(&forged.body)?;
+    let forged_signature = interloper.sign(forged_digest.as_bytes()).to_hex();
+
+    assert!(matches!(
+        fixture.coordinator.reserve(
+            &forged,
+            &forged_signature,
+            &fixture.deployment.web.admission,
+            &fixture.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AskMinterUnauthorized)
+    ));
+    let forged_reservation_id =
+        derive_reservation_id(&forged_digest, &interloper.public_key().to_hex());
+    assert!(purchase_store
+        .get_reservation(&forged_reservation_id)?
+        .is_none());
+    assert_eq!(
+        purchase_store
+            .list_outstanding_exposure_total(&fixture.deployment.web.allocation_id, now)?,
+        0
+    );
+
+    // A seller authorization that is not the admission-bound envelope
+    // refuses even when internally valid.
+    let unrelated = build_authorization(
+        &keypair(3),
+        &keypair(9),
+        &fixture.deployment.web.finding,
+        &sha256_hex(fixture.deployment.web.raw_finding.as_bytes()),
+    )?;
+    assert!(matches!(
+        fixture.coordinator.reserve(
+            &fixture.exchange.ask,
+            &fixture.exchange.buyer_signature_hex,
+            &fixture.deployment.web.admission,
+            &unrelated,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::SellerAuthorizationBinding)
+    ));
+
+    // The authorized minter's genuine ask still reserves.
+    fixture.reserve_with(&fixture.deployment.web.admission, now)?;
+    assert!(purchase_store
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_some());
+    Ok(())
+}
+
+/// The reserved grant must be the one-shot, DPoP-bound, output-committed,
+/// purchase-marked delivery grant: anything looser books seller exposure
+/// for a sale the reveal gate would never admit.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reserve_refuses_a_malformed_purchase_grant() -> TestResult {
+    let fixture = open_reserve_fixture().await?;
+    let now = unix_timestamp_now();
+    let buyer = keypair(31);
+    let operator = fixture.deployment.web.operator.clone();
+
+    let reissue = |mutate: fn(&mut ToolGrant)| -> Result<(SignedAskResponse, String), AnyError> {
+        let mut body = fixture.exchange.ask.body.clone();
+        let mut token = body.token_offer.clone();
+        let grant = token
+            .scope
+            .grants
+            .first_mut()
+            .ok_or_else(|| missing("minted grant"))?;
+        mutate(grant);
+        body.token_offer = token;
+        let signed: SignedAskResponse = SignedExportEnvelope::sign(body, &operator)?;
+        let digest = digest_of(&signed.body)?;
+        let signature = buyer.sign(digest.as_bytes()).to_hex();
+        Ok((signed, signature))
+    };
+
+    let cases: [(&str, fn(&mut ToolGrant)); 4] = [
+        ("max_invocations", |grant| {
+            grant.max_invocations = Some(2);
+        }),
+        ("dpop_required", |grant| {
+            grant.dpop_required = None;
+        }),
+        ("output_digest", |grant| {
+            grant
+                .constraints
+                .retain(|constraint| !matches!(constraint, Constraint::OutputDigestSha256(_)));
+        }),
+        ("purchase_marker", |grant| {
+            grant
+                .constraints
+                .retain(|constraint| !matches!(constraint, Constraint::RequireFindingPurchase(_)));
+        }),
+    ];
+    for (label, mutate) in cases {
+        let (ask, signature) = reissue(mutate)?;
+        assert!(
+            matches!(
+                fixture.coordinator.reserve(
+                    &ask,
+                    &signature,
+                    &fixture.deployment.web.admission,
+                    &fixture.deployment.web.authorization,
+                    EXPOSURE_UNITS,
+                    RESERVATION_TTL_SECS,
+                    now,
+                ),
+                Err(PurchaseCoordinatorError::AskGrantShape(shape)) if shape == label
+            ),
+            "grant mutation {label} must refuse"
+        );
+    }
+    assert!(fixture
+        .authority
+        .finding_purchase_store()
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_none());
     Ok(())
 }
 

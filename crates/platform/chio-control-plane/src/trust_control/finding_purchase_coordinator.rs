@@ -19,10 +19,12 @@ use std::sync::Arc;
 
 use chio_core::canonical_json_bytes;
 use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
+use chio_core::capability::scope::{Constraint, FindingSettlementSelector};
 use chio_finding::{
-    compute_failed_delivery_id, derive_purchase_key, FindingFailedDelivery,
-    FindingHoldReleaseTerminal, FindingPurchaseRecord, SignedFindingAdmission,
-    SignedFindingFailedDelivery, SignedFindingPurchaseRecord, FINDING_FAILED_DELIVERY_SCHEMA_V1,
+    compute_failed_delivery_id, derive_purchase_key, verify_signed_seller_authorization,
+    FindingFailedDelivery, FindingHoldReleaseTerminal, FindingPurchaseRecord,
+    SignedFindingAdmission, SignedFindingFailedDelivery, SignedFindingPurchaseRecord,
+    SignedFindingSellerAuthorization, FINDING_FAILED_DELIVERY_SCHEMA_V1,
     FINDING_PURCHASE_RECORD_SCHEMA_V1,
 };
 use chio_open_market::bidding::{
@@ -75,6 +77,16 @@ pub enum PurchaseCoordinatorError {
     DeclaredAuthorityMismatch(&'static str),
     #[error("admission-declared {0} authority window does not cover the reservation instant")]
     DeclaredAuthorityWindow(&'static str),
+    #[error("seller authorization envelope rejected: {0}")]
+    SellerAuthorization(String),
+    #[error("seller authorization is not the admission-bound envelope for this sale")]
+    SellerAuthorizationBinding,
+    #[error("seller authorization is not live at the supplied clock")]
+    SellerAuthorizationWindow,
+    #[error("ask signer is neither the finding issuer nor the authorized seller")]
+    AskMinterUnauthorized,
+    #[error("ask grant is not the one-shot purchase delivery grant: {0}")]
+    AskGrantShape(&'static str),
     #[error("purchase amounts must be exactly equal in units and currency")]
     AmountMismatch,
     #[error("realized spend exceeds the accepted price")]
@@ -141,15 +153,18 @@ impl FindingPurchaseCoordinator {
     /// The buyer proves control of the token subject key by signing the
     /// exact ask digest; the venue admission is re-verified under the
     /// pinned venue authority and against its own liveness bounds before
-    /// any identity it names reaches durable state; the allocation cap
-    /// check and both reservations commit in one durable transaction.
-    /// Replaying the same ask and payer returns the same signed receipt.
+    /// any identity it names reaches durable state; the seller
+    /// authorization the admission binds by digest must be presented and
+    /// must name the ask's minter; the allocation cap check and both
+    /// reservations commit in one durable transaction. Replaying the same
+    /// ask and payer returns the same signed receipt.
     #[allow(clippy::too_many_arguments)]
     pub fn reserve(
         &self,
         ask: &SignedAskResponse,
         buyer_signature_over_ask_digest: &str,
         admission: &SignedFindingAdmission,
+        seller_authorization: &SignedFindingSellerAuthorization,
         maximum_sale_exposure_units: u64,
         reservation_ttl_secs: u64,
         now: u64,
@@ -214,6 +229,34 @@ impl FindingPurchaseCoordinator {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
         }
+        // The ask mints the delivery grant and prices the sale against the
+        // seller's collateral, so its signer must be a principal the
+        // finding issuer authorized for exactly this sale surface. The
+        // admission commits to that authorization by envelope digest;
+        // requiring the envelope here connects the minter to the issuer at
+        // the moment exposure opens. Without it, any holder of the live
+        // admission could mint an ask under its own key at its own price
+        // and encumber the seller's allocation.
+        let authorization_sha256 = canonical_json_bytes(seller_authorization)
+            .map(|bytes| sha256_hex(&bytes))
+            .map_err(|_| PurchaseCoordinatorError::Canonical)?;
+        if authorization_sha256 != admission.body.seller_authorization_envelope_sha256 {
+            return Err(PurchaseCoordinatorError::SellerAuthorizationBinding);
+        }
+        verify_signed_seller_authorization(seller_authorization)
+            .map_err(|error| PurchaseCoordinatorError::SellerAuthorization(error.to_string()))?;
+        let authorization = &seller_authorization.body;
+        if authorization.finding_id != admission.body.finding_id
+            || authorization.listing_id != admission.body.listing_id
+        {
+            return Err(PurchaseCoordinatorError::SellerAuthorizationBinding);
+        }
+        if now < authorization.issued_at || now >= authorization.expires_at {
+            return Err(PurchaseCoordinatorError::SellerAuthorizationWindow);
+        }
+        if ask.signer_key != authorization.issuer && ask.signer_key != authorization.seller {
+            return Err(PurchaseCoordinatorError::AskMinterUnauthorized);
+        }
         // The digest is derived from the envelope just verified, never
         // accepted from the caller: it is signed into the settlement
         // record as the venue admission this sale was made under.
@@ -223,6 +266,42 @@ impl FindingPurchaseCoordinator {
         let [grant] = ask.body.token_offer.scope.grants.as_slice() else {
             return Err(PurchaseCoordinatorError::AskEnvelope);
         };
+        // Exposure opens only for the exact one-shot delivery grant the
+        // reveal gate will admit: single invocation, DPoP-bound, committed
+        // to an output digest, purchase-marked for this sale on the
+        // admitted rail, and aimed at the authorized provider surface. A
+        // looser grant would hold seller collateral for a reveal that can
+        // never settle, or for more reveals than the sale sold.
+        if grant.server_id != authorization.provider_server_id
+            || grant.tool_name != authorization.provider_tool
+        {
+            return Err(PurchaseCoordinatorError::AskGrantShape("provider"));
+        }
+        if grant.max_invocations != Some(1) {
+            return Err(PurchaseCoordinatorError::AskGrantShape("max_invocations"));
+        }
+        if grant.dpop_required != Some(true) {
+            return Err(PurchaseCoordinatorError::AskGrantShape("dpop_required"));
+        }
+        if !grant
+            .constraints
+            .iter()
+            .any(|constraint| matches!(constraint, Constraint::OutputDigestSha256(_)))
+        {
+            return Err(PurchaseCoordinatorError::AskGrantShape("output_digest"));
+        }
+        let purchase_marked = grant.constraints.iter().any(|constraint| {
+            matches!(
+                constraint,
+                Constraint::RequireFindingPurchase(marker)
+                    if marker.finding_id == admission.body.finding_id
+                        && marker.listing_id == ask.body.listing_id
+                        && marker.settlement == FindingSettlementSelector::LocalReversibleHold
+            )
+        });
+        if !purchase_marked {
+            return Err(PurchaseCoordinatorError::AskGrantShape("purchase_marker"));
+        }
         let exact = |amount: &Option<chio_core::capability::scope::MonetaryAmount>| {
             amount.as_ref().is_some_and(|amount| {
                 amount.units == ask.body.quoted_price.units
