@@ -1,13 +1,4 @@
-//! Strict receipt verification for the evidence boundary.
-//!
-//! There is no strict receipt verifier elsewhere in the tree:
-//! `ChioReceipt::verify_signature` delegates to loose Ed25519
-//! verification, which accepts weak keys and small-order signature
-//! points. This module reconstructs the exact signing body (including the
-//! BBS binding) and verifies strictly, while keeping the receipt-id
-//! recomputation and BBS-binding checks the loose path performs; a
-//! partial reimplementation that lost those would be weaker, not
-//! stronger.
+//! Strict receipt verification for the finding evidence boundary.
 
 use chio_core_types::crypto::SigningAlgorithm;
 use chio_core_types::receipt::body::{chio_receipt_id, ChioReceipt};

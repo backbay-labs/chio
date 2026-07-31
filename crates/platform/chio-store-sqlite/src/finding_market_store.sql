@@ -249,8 +249,3 @@ BEFORE DELETE ON admissions
 BEGIN
     SELECT RAISE(ABORT, 'admission must be retained');
 END;
-
--- Bookkeeping for the bounded open-path invariant check: how far, by
--- SQLite `rowid`, each retained table's content digests have already been
--- verified. Not itself a market invariant any caller depends on; the four
--- tables above remain the durable record regardless of what this holds.

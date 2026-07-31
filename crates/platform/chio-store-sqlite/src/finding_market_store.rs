@@ -1064,8 +1064,6 @@ impl SqliteFindingMarketStore {
         Ok(FindingActivationOutcome::Activated)
     }
 
-    /// The current (active) admission for a finding: exact envelope bytes
-    /// plus the allocation-liveness hook data readers re-check.
     /// Re-hash every retained artifact and compare against its stored
     /// digest, rejecting on the first mismatch. This walks the full
     /// corpus, so it is an explicit operator and test entry point rather
@@ -1105,6 +1103,7 @@ impl SqliteFindingMarketStore {
         Ok(())
     }
 
+    /// Return the current admission and its allocation-liveness inputs.
     pub fn get_current_admission(
         &self,
         finding_id: &str,
