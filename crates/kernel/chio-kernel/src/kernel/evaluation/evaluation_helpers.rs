@@ -54,37 +54,50 @@ fn grant_is_delivery_marked(grant: &chio_core::capability::scope::ToolGrant) -> 
     })
 }
 
-/// The delivery selection rule over the full candidate set. Grant selection
-/// skips candidates on budget exhaustion and guard denials, and both the
-/// delivery gate and the purchase gate judge only the selected grant, so a
-/// skip that landed on an unmarked sibling would dispatch with full capture,
-/// full payload, and no delivery enforcement. When any candidate for this
-/// call carries a delivery carrier, the call is therefore admissible only
-/// through that exact candidate, and two marked candidates deny outright:
-/// recovery re-derives the selection and must never be able to land on a
-/// different committed digest.
-pub(super) fn delivery_marked_selection_denial(
+/// Resolves the only grant that may carry a delivery for this call. The
+/// selected grant is validated before durable admission, approval, guards,
+/// or budget mutation, and callers restrict grant selection to the returned
+/// index. Recovery applies the same rule to the recorded selection.
+pub(crate) fn required_delivery_grant_index(
+    matching_grants: &[MatchingGrant<'_>],
+) -> Result<Option<usize>, &'static str> {
+    let mut marked = matching_grants
+        .iter()
+        .filter(|matching| grant_is_delivery_marked(matching.grant));
+    let Some(required) = marked.next() else {
+        return Ok(None);
+    };
+    if marked.next().is_some() {
+        return Err("delivery-marked grant candidates are ambiguous for this call");
+    }
+    if required
+        .grant
+        .constraints
+        .iter()
+        .any(|constraint| matches!(constraint, Constraint::RequireFindingPurchase(_)))
+        && matching_grants.len() != 1
+    {
+        return Err("a purchase-marked call requires exactly one matching grant");
+    }
+    if let Some(reason) = delivery_commitment_denial(required.grant) {
+        return Err(reason);
+    }
+    Ok(Some(required.index))
+}
+
+/// Checks a recorded selection against the delivery policy derived from the
+/// complete matching-grant set.
+pub(crate) fn delivery_marked_selection_denial(
     matching_grants: &[MatchingGrant<'_>],
     matched_grant_index: usize,
 ) -> Option<&'static str> {
-    let marked = matching_grants
-        .iter()
-        .filter(|matching| grant_is_delivery_marked(matching.grant))
-        .count();
-    if marked == 0 {
-        return None;
+    match required_delivery_grant_index(matching_grants) {
+        Err(reason) => Some(reason),
+        Ok(Some(required)) if required != matched_grant_index => {
+            Some("a delivery-marked grant cannot be bypassed by sibling grant selection")
+        }
+        Ok(_) => None,
     }
-    let selected_is_marked = matching_grants
-        .iter()
-        .find(|matching| matching.index == matched_grant_index)
-        .is_some_and(|matching| grant_is_delivery_marked(matching.grant));
-    if !selected_is_marked {
-        return Some("a delivery-marked grant cannot be bypassed by sibling grant selection");
-    }
-    if marked > 1 {
-        return Some("delivery-marked grant candidates are ambiguous for this call");
-    }
-    None
 }
 
 /// The validity rule for the selected grant's delivery commitment,
@@ -94,7 +107,7 @@ pub(super) fn delivery_marked_selection_denial(
 /// marker missing its paired digest could otherwise run the tool and then
 /// sign a receipt violating the registered delivery-contract schema, or
 /// strand the operation in finalization with its hold open.
-pub(super) fn delivery_commitment_denial(
+pub(crate) fn delivery_commitment_denial(
     grant: &chio_core::capability::scope::ToolGrant,
 ) -> Option<&'static str> {
     let mut digests = grant.constraints.iter().filter_map(|constraint| {
@@ -929,5 +942,82 @@ impl ChioKernel {
             EXECUTION_NONCE_AUTHORIZATION_RESERVED_REASON,
             reserved_hold,
         )
+    }
+}
+
+#[cfg(test)]
+mod delivery_candidate_tests {
+    use super::*;
+
+    fn grant(constraints: Vec<Constraint>) -> ToolGrant {
+        ToolGrant {
+            server_id: "server".to_owned(),
+            tool_name: "tool".to_owned(),
+            operations: vec![Operation::Invoke],
+            constraints,
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        }
+    }
+
+    fn matching(index: usize, grant: &ToolGrant) -> MatchingGrant<'_> {
+        MatchingGrant {
+            index,
+            grant,
+            specificity: (0, 0, 0),
+        }
+    }
+
+    #[test]
+    fn delivery_candidate_policy_is_singular_closed_and_canonical() {
+        let digest = chio_core::crypto::sha256_hex(b"delivery");
+        let marked = grant(vec![Constraint::OutputDigestSha256(digest.clone())]);
+        let sibling = grant(Vec::new());
+        assert_eq!(
+            required_delivery_grant_index(&[matching(3, &marked), matching(7, &sibling)]),
+            Ok(Some(3))
+        );
+        assert_eq!(
+            delivery_marked_selection_denial(&[matching(3, &marked), matching(7, &sibling)], 7,),
+            Some("a delivery-marked grant cannot be bypassed by sibling grant selection")
+        );
+
+        let second = grant(vec![Constraint::OutputDigestSha256(digest)]);
+        assert_eq!(
+            required_delivery_grant_index(&[matching(3, &marked), matching(7, &second)]),
+            Err("delivery-marked grant candidates are ambiguous for this call")
+        );
+
+        let malformed = grant(vec![Constraint::OutputDigestSha256("zz".to_owned())]);
+        assert_eq!(
+            required_delivery_grant_index(&[matching(3, &malformed)]),
+            Err("a committed output digest must be canonical lowercase sha-256 hex")
+        );
+    }
+
+    #[test]
+    fn purchase_marked_delivery_requires_one_matching_grant() {
+        let purchase = grant(vec![
+            Constraint::OutputDigestSha256(chio_core::crypto::sha256_hex(b"delivery")),
+            Constraint::RequireFindingPurchase(Box::new(
+                chio_core::capability::scope::FindingPurchaseMarkerV1 {
+                    finding_id: "finding-1".to_owned(),
+                    listing_id: "listing-1".to_owned(),
+                    settlement:
+                        chio_core::capability::scope::FindingSettlementSelector::LocalReversibleHold,
+                },
+            )),
+        ]);
+        let sibling = grant(Vec::new());
+        assert_eq!(
+            required_delivery_grant_index(&[matching(1, &purchase), matching(2, &sibling)]),
+            Err("a purchase-marked call requires exactly one matching grant")
+        );
+        assert_eq!(
+            required_delivery_grant_index(&[matching(1, &purchase)]),
+            Ok(Some(1))
+        );
     }
 }

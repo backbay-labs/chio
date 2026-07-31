@@ -307,6 +307,20 @@ impl ChioKernel {
                 );
             }
         };
+        let required_delivery_grant_index =
+            match super::evaluation_helpers::required_delivery_grant_index(&matching_grants) {
+                Ok(index) => index,
+                Err(reason) => {
+                    warn!(request_id = %request.request_id, reason, "delivery contract denied");
+                    return self.build_deny_response_with_metadata(
+                        request,
+                        reason,
+                        now,
+                        None,
+                        extra_metadata.clone(),
+                    );
+                }
+            };
 
         // DPoP enforcement before budget charge: if any matching grant requires
         // DPoP, verify the proof now so an attacker cannot drain the budget with
@@ -415,6 +429,9 @@ impl ChioKernel {
         let mut guard_denial = None;
         let mut selected = None;
         for matching in &matching_grants {
+            if required_delivery_grant_index.is_some_and(|required| matching.index != required) {
+                continue;
+            }
             if durable_admission
                 .as_ref()
                 .is_some_and(|admission| !admission.permits_matching_grant(matching))
@@ -625,7 +642,18 @@ impl ChioKernel {
                         .release_runtime_admission_reservations_for_pre_dispatch_denial(
                             runtime_metadata,
                         );
-                    budget_error = Some(error);
+                    budget_error = Some(
+                        if required_delivery_grant_index == Some(matching.index)
+                            && matching_grants.len() > 1
+                        {
+                            KernelError::DurableAdmission(
+                                "a delivery-marked grant cannot be bypassed by sibling grant selection"
+                                    .to_string(),
+                            )
+                        } else {
+                            error
+                        },
+                    );
                     if !runtime_release_confirmed {
                         budget_error_metadata = runtime_metadata;
                         break;
@@ -794,51 +822,6 @@ impl ChioKernel {
                 );
             }
         };
-
-        // Delivery-marked selection rule: a candidate carrying a committed
-        // output digest or purchase marker must be the grant that serves the
-        // call. Selection falls through marked candidates on budget
-        // exhaustion and guard denials, and every delivery gate below judges
-        // only the selected grant, so an unmarked sibling selected in a
-        // marked candidate's place would dispatch ungated. Denying here,
-        // before any nonce mint, capture, or payment authorization, covers
-        // the preflight and dispatch paths alike.
-        if let Some(reason) = super::evaluation_helpers::delivery_marked_selection_denial(
-            &matching_grants,
-            matched_grant_index,
-        )
-        .or_else(|| {
-            // The selected commitment must be singular and canonical before
-            // any hold is placed: a malformed digest would be signed into a
-            // receipt violating the registered delivery-contract schema, and
-            // a duplicated one would strand the operation in finalization
-            // with its hold open.
-            matching_grants
-                .iter()
-                .find(|matching| matching.index == matched_grant_index)
-                .and_then(|selected| {
-                    super::evaluation_helpers::delivery_commitment_denial(selected.grant)
-                })
-        }) {
-            warn!(request_id = %request.request_id, reason, "delivery contract denied");
-            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                    request,
-                    reason,
-                    timestamp: now,
-                    matched_grant_index,
-                    cap,
-                    budget_mutation: &budget_mutation,
-                    payment_authorization: None,
-                    durable_operation: durable_admission
-                        .as_ref()
-                        .map(DurableToolAdmission::operation),
-                    runtime_admission_metadata: extra_metadata.clone(),
-                    verified_payee_binding: verified_governed_payee_binding.as_ref(),
-                    budget_lease_acquired,
-                })
-            });
-        }
 
         if self.execution_nonce_preflight_required(request) {
             // Nonce-preflight authorizes without producing output: reserve-
