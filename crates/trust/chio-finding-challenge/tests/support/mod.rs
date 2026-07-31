@@ -622,6 +622,7 @@ impl World {
             // record of the same sale that the challenge does not name.
             recorded_at: match shape {
                 StandingShape::UnnamedRecord => 1_740_000_001,
+                StandingShape::OutsideAuthorityWindow => KEY_VALID_UNTIL + 1,
                 _ => 1_740_000_000,
             },
         };
@@ -883,6 +884,8 @@ pub enum StandingShape {
     ForeignFinding,
     /// The record settles a different listing.
     ForeignListing,
+    /// The record settles after the purchase authority's key policy closes.
+    OutsideAuthorityWindow,
     /// The record names a buyer other than the challenger.
     ForeignBuyer,
     /// The declared standing names a purchase key the record does not carry.

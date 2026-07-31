@@ -346,6 +346,25 @@ fn standing_must_belong_to_the_challenger() -> TestResult {
     Ok(())
 }
 
+/// A key policy states when a key was an authority, not that it is one
+/// today. A record settled outside the purchase authority's window carries
+/// the right signature from the wrong moment, which is what an expired or
+/// withdrawn authority key would produce, so it establishes no standing.
+#[test]
+fn standing_must_settle_inside_the_purchase_authority_window() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::OutsideAuthorityWindow)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingAuthorityNotEstablished,
+    )?;
+    Ok(())
+}
+
 #[test]
 fn standing_must_name_the_purchase_key_the_record_carries() -> TestResult {
     let world = world()?;

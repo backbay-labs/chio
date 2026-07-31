@@ -13,6 +13,7 @@ use chio_finding::{
 
 use crate::evaluate::EvaluationContext;
 use crate::input::FindingChallengeInadmissible;
+use crate::receipts::policy_covers;
 
 /// Bind a signed purchase record to the challenge that offered it.
 pub(crate) fn bind_purchase_record<'a>(
@@ -27,9 +28,18 @@ pub(crate) fn bind_purchase_record<'a>(
             "purchase_record_envelope_sha256",
         ));
     }
-    verify_signed_purchase_record(record, &context.profile.purchase_authority.key)
+    let purchase_authority = &context.profile.purchase_authority;
+    verify_signed_purchase_record(record, &purchase_authority.key)
         .map_err(FindingChallengeInadmissible::StandingRejected)?;
     let body = &record.body;
+    // A key policy states when the key WAS an authority, not that it is one
+    // now, so the instant the record is tested at is the one it settled at.
+    // Without this, a key that expired or that governance withdrew could still
+    // mint standing for any buyer it names, and standing is what admits a
+    // challenge to the evidence-invalid and replay branches at all.
+    if !policy_covers(purchase_authority, body.recorded_at) {
+        return Err(FindingChallengeInadmissible::StandingAuthorityNotEstablished);
+    }
     if body.finding_id != context.finding.finding_id {
         return Err(FindingChallengeInadmissible::StandingBindingMismatch(
             "finding_id",

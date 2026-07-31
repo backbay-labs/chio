@@ -127,6 +127,8 @@ pub enum FindingChallengeInadmissible {
     ClassEvidenceMismatch,
     #[error("standing artifact rejected: {0}")]
     StandingRejected(FindingError),
+    #[error("purchase authority is not established for the instant the standing record settled")]
+    StandingAuthorityNotEstablished,
     #[error("standing artifact does not bind the challenge: {0}")]
     StandingBindingMismatch(&'static str),
     #[error("evidence reference does not bind the challenge: {0}")]
