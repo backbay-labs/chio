@@ -247,6 +247,45 @@ The lane landed across the tasks above. What it proves, and where:
   verifier suites all green; open-market green; the finding lane in the
   control plane 59 with none ignored.
 
+## Adversarial review
+
+A fleet of independent finders swept the lane along eight axes (evaluator
+soundness, money arithmetic, liability concurrency, effects and settle,
+artifact shapes, coordinator authority, test integrity, blast radius),
+with every claim put to two adversarial refutation passes before it was
+accepted. Fourteen findings survived and are fixed here; eighteen were
+refuted on reachability or mechanism and are not.
+
+Three fixes closed real authorization holes, and all three shared a
+shape: an input nobody had authenticated was being read as a fact about
+the seller.
+
+- The penalty lane built its trusted signer set from a key the caller
+  passed in, so a self-signed charter, case, listing, and fee schedule
+  could authorize a real slash at a bond ceiling the caller chose. The
+  governance artifacts now verify against the pinned governance root and
+  the fee schedule against the pinned operator roster.
+- Appeal finality took its target from the caller rather than the durable
+  head, so one liability could be pointed at another seller's vault.
+- The evaluator read a strict-verification failure as affirmative fraud
+  on bytes only the challenger's own claimed digest pinned, could uphold
+  on a checkpoint that did not verify under the pinned log signer, and
+  never bound a reproduction to the environment the recipe committed.
+
+Two findings were liveness rather than authority: an interrupted
+settlement and an ordinary unmined broadcast each wedged the liability
+permanently, because the only edge out of the intent state had already
+been closed. Both now resume.
+
+Two claims the fleet refuted turned out to be real when a second pass
+re-derived them independently: the penalty calculation skipped the I-JSON
+range check its registered schema imposes, and the inclusion wrapper half
+of the checkpoint contradiction rule was still reading resolver defects
+as seller fraud. Both are fixed. A refutation is evidence, not a verdict.
+
+Every fix carries a regression test that was confirmed to fail without
+it.
+
 ## Integration gaps found during implementation
 
 Two gaps surfaced while wiring the lane. Both are recorded rather than
