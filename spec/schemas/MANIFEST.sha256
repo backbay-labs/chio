@@ -1,4 +1,4 @@
-6b743e3c41d4a714cb59fa946bbc250f9821fe509850415a5dfff36180a324b6  spec/schemas/MANIFEST.sha256
+62200261b33a95b10bcf541624a3a954bd63a10b4843c72e63ca67192a4cfea3  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -118,7 +118,7 @@ fb33f0a18894dc039ea4a2d71c01469e9ef5a691f850235f32797cdfc99cfb9e  spec/schemas/c
 10fe3d8b4827bdf20f4b2ce46980b526e8b9ef4a24d10cb66e5494014fc3907c  spec/schemas/chio-finding/v1/finding.schema.json
 088afeb5ddea5a931126b45d61decc65e1dbe2e82bcf25f782a7343b42445d22  spec/schemas/chio-finding/v1/finding.schema.json
 a0a10cf87c6c75ad91cdc65623377f667b36e5c918c0173e1c529dc8e384b805  spec/schemas/chio-finding/v1/market-terms.schema.json
-9783d4f57917e76e81e384c50962993030ba6d9b70a64ed1b57e400f5ff7c33f  spec/schemas/chio-finding/v1/replay-recipe-input.schema.json
+1eb8be0325dd7762a919df4a563f166f8c0ec7c94c0fd1d219eb29541074e0bc  spec/schemas/chio-finding/v1/replay-recipe-input.schema.json
 89998987a738c70e40e02fff9f928082942043f4227c90d5582a3fbb1027c811  spec/schemas/chio-finding/v1/seller-authorization.schema.json
 fe5e1544b817c552e0ee99e6bb32eee5af4e6aae9c5d657bbb592157ad45d046  spec/schemas/chio-finding/v1/verifier-report.schema.json
 1cf7cb29f72bf81ef49a7219cb41050af8647f1fbe4ae8099be1e499eb5d8af3  spec/schemas/chio-fiscal/v1/activation.schema.json

@@ -23,6 +23,9 @@ use crate::validate::{require_hex64, require_non_empty, FindingError};
 /// Unsigned replay-recipe verifier input.
 pub const FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1: &str = "chio.finding.replay-recipe-input.v1";
 
+const BASELINE_PAYLOAD_APPLICATION: &str = "not_applied";
+const CANDIDATE_PAYLOAD_APPLICATION: &str = "apply_patch_v1";
+
 /// Replay phase order is normative: baseline first, candidate second.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -48,8 +51,7 @@ pub struct FindingRecipePhase {
     pub phase: FindingRecipePhaseKind,
     pub input_bundle_sha256: String,
     /// How the sealed payload applies in this phase (e.g. `not_applied`
-    /// for baseline, `apply_patch_v1` for candidate). Closed vocabulary
-    /// is enforced by the verifier profile, not this wire type.
+    /// for baseline, `apply_patch_v1` for candidate).
     pub payload_application: String,
 }
 
@@ -199,9 +201,13 @@ impl FindingReplayRecipeInput {
         {
             return Err(FindingError::InvalidField("phases"));
         }
+        if self.phases[0].payload_application != BASELINE_PAYLOAD_APPLICATION
+            || self.phases[1].payload_application != CANDIDATE_PAYLOAD_APPLICATION
+        {
+            return Err(FindingError::InvalidField("phases[].payload_application"));
+        }
         for phase in &self.phases {
             require_hex64(&phase.input_bundle_sha256, "phases[].input_bundle_sha256")?;
-            require_non_empty(&phase.payload_application, "phases[].payload_application")?;
         }
         require_hex64(&self.parameters_sha256, "parameters_sha256")?;
         self.environment.validate()?;

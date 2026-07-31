@@ -740,6 +740,13 @@ fn recipe_schema_rejects_swapped_phase_order() -> TestResult {
 }
 
 #[test]
+fn recipe_schema_rejects_unknown_payload_application() -> TestResult {
+    let mut value = serde_json::to_value(recipe_body())?;
+    value["phases"][1]["payload_application"] = json!("replace_tree_v1");
+    assert_family_schema_rejects(&RECIPE, &value, "unknown payload application")
+}
+
+#[test]
 fn golden_verifier_profile_fixture_validates() -> TestResult {
     let strict_canonical = canonical_json_bytes_from_str(GOLDEN_PROFILE_RAW)?;
     let value: Value = serde_json::from_str(GOLDEN_PROFILE_RAW)?;

@@ -67,7 +67,7 @@
               "$ref": "#/$defs/sha256"
             },
             "payload_application": {
-              "$ref": "#/$defs/nonBlankString"
+              "const": "not_applied"
             }
           }
         },
@@ -87,7 +87,7 @@
               "$ref": "#/$defs/sha256"
             },
             "payload_application": {
-              "$ref": "#/$defs/nonBlankString"
+              "const": "apply_patch_v1"
             }
           }
         }

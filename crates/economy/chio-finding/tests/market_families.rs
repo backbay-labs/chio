@@ -511,6 +511,23 @@ fn recipe_phase_order_is_normative() -> TestResult {
 }
 
 #[test]
+fn recipe_payload_application_vocabulary_is_phase_specific() {
+    let mut recipe = recipe_body();
+    recipe.phases[0].payload_application = "apply_patch_v1".to_string();
+    assert_eq!(
+        recipe.validate(),
+        Err(FindingError::InvalidField("phases[].payload_application"))
+    );
+
+    let mut recipe = recipe_body();
+    recipe.phases[1].payload_application = "replace_tree_v1".to_string();
+    assert_eq!(
+        recipe.validate(),
+        Err(FindingError::InvalidField("phases[].payload_application"))
+    );
+}
+
+#[test]
 fn recipe_unknown_fields_and_wrong_schema_reject() -> TestResult {
     let recipe = recipe_body();
     let mut value = (serde_json::to_value(&recipe))?;
