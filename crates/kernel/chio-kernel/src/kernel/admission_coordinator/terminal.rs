@@ -583,6 +583,7 @@ impl ChioKernel {
         let delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
             expected_output_digest.as_deref(),
             &receipt_content.content_hash,
+            matches!(output, ToolCallOutput::Value(_)),
             &receipt_content.canonical_content,
             purchase.as_ref(),
         );
@@ -1462,6 +1463,7 @@ impl ChioKernel {
         let delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
             expected_output_digest.as_deref(),
             resolved_output_digest.as_str(),
+            matches!(output, ToolCallOutput::Value(_)),
             &receipt_content.canonical_content,
             purchase.as_ref(),
         );

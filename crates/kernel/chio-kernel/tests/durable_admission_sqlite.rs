@@ -25,8 +25,9 @@ use chio_kernel::{
     BudgetStore, ChioKernel, KernelConfig, KernelError, NestedFlowBridge, PaymentAdapter,
     PaymentAuthorization, PaymentAuthorizationState, PaymentAuthorizeRequest, PaymentError,
     PaymentJournalState, PaymentRailMode, PaymentReleaseAuthorityKind, PaymentResult,
-    PaymentSettleAction, RailSettlementStatus, ReceiptStore, ToolCallRequest, ToolCallResponse,
-    ToolInvocationCost, ToolServerConnection, Verdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    PaymentSettleAction, RailSettlementStatus, ReceiptStore, ToolCallChunk, ToolCallRequest,
+    ToolCallResponse, ToolCallStream, ToolInvocationCost, ToolServerConnection,
+    ToolServerStreamResult, Verdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
     DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use chio_store_sqlite::{SqliteAuthorityStore, SqliteToolOutcomeStore};
@@ -183,6 +184,52 @@ impl ToolServerConnection for PaidMutationServer {
                 breakdown: None,
             }),
         ))
+    }
+}
+
+
+struct StreamingPaidMutationServer {
+    invocations: Arc<AtomicU64>,
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for StreamingPaidMutationServer {
+    fn server_id(&self) -> &str {
+        "sqlite-durable-stream-server"
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["mutate".to_owned()]
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Err(KernelError::Internal(
+            "the streaming server must be dispatched through invoke_stream".to_owned(),
+        ))
+    }
+
+    async fn invoke_stream(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<Option<ToolServerStreamResult>, KernelError> {
+        self.invocations.fetch_add(1, Ordering::SeqCst);
+        Ok(Some(ToolServerStreamResult::Complete(ToolCallStream {
+            chunks: vec![
+                ToolCallChunk {
+                    data: serde_json::json!({"chunk": 1}),
+                },
+                ToolCallChunk {
+                    data: serde_json::json!({"chunk": 2}),
+                },
+            ],
+        })))
     }
 }
 
@@ -1585,5 +1632,161 @@ fn output_digest_admission_rejects_malformed_commitments() -> Result<(), Box<dyn
     );
     assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);
     assert_eq!(payment_calls.releases.load(Ordering::SeqCst), 0);
+    Ok(())
+}
+
+// A committed output digest is a commitment over canonical value bytes. A
+// stream's content hash is derived from provider-authored chunk digests, so
+// a seller who commits the stream-form hash and then streams the chunks
+// would otherwise be paid for a delivery that never produced the committed
+// value. The delivery denies, releases the hold, and replays the same Deny.
+#[test]
+fn stream_delivery_cannot_satisfy_a_committed_output_digest() -> Result<(), Box<dyn Error>> {
+    let stream_scope = |constraints: Vec<Constraint>| ChioScope {
+        grants: vec![ToolGrant {
+            server_id: "sqlite-durable-stream-server".to_owned(),
+            tool_name: "mutate".to_owned(),
+            operations: vec![Operation::Invoke],
+            constraints,
+            max_invocations: None,
+            max_cost_per_invocation: Some(MonetaryAmount {
+                units: 10,
+                currency: "USD".to_owned(),
+            }),
+            max_total_cost: Some(MonetaryAmount {
+                units: 100,
+                currency: "USD".to_owned(),
+            }),
+            dpop_required: None,
+        }],
+        ..ChioScope::default()
+    };
+    let stream_request = |capability: &CapabilityToken, request_id: &str| ToolCallRequest {
+        request_id: request_id.to_owned(),
+        capability: capability.clone(),
+        tool_name: "mutate".to_owned(),
+        server_id: "sqlite-durable-stream-server".to_owned(),
+        agent_id: capability.subject.to_hex(),
+        arguments: serde_json::json!({"record": "ledger-stream"}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+
+    // Learn the stream-form content hash from an unconstrained delivery.
+    let stream_hash = {
+        let temp = tempfile::tempdir()?;
+        let database = temp.path().join("authority.db");
+        let lock_root = temp.path().join("locks");
+        std::fs::create_dir(&lock_root)?;
+        SqliteAuthorityStore::provision(&database, &lock_root)?;
+        let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+        let invocations = Arc::new(AtomicU64::new(0));
+        let mut kernel = ChioKernel::new(kernel_config(Keypair::generate()));
+        kernel.set_durable_admission_store(
+            Arc::new(authority.admission_operation_store()),
+            Arc::new(authority.tool_outcome_store()),
+            authority.mutation_fence(),
+        )?;
+        kernel.set_budget_store_handle(Arc::new(authority.budget_store()));
+        kernel.set_payment_adapter(Box::new(ReversiblePaymentAdapter { calls: None }));
+        kernel.register_tool_server(Box::new(StreamingPaidMutationServer {
+            invocations: invocations.clone(),
+        }));
+        let agent = Keypair::generate();
+        let capability =
+            kernel.issue_capability(&agent.public_key(), stream_scope(Vec::new()), 300)?;
+        let response =
+            kernel.evaluate_tool_call_blocking(&stream_request(&capability, "stream-probe"))?;
+        assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
+        response.receipt.content_hash
+    };
+
+    // Commit that exact hash as the output digest: the streamed delivery
+    // must still deny with a zero-charge release, not capture.
+    let temp = tempfile::tempdir()?;
+    let database = temp.path().join("authority.db");
+    let lock_root = temp.path().join("locks");
+    std::fs::create_dir(&lock_root)?;
+    SqliteAuthorityStore::provision(&database, &lock_root)?;
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+    let invocations = Arc::new(AtomicU64::new(0));
+    let payment_calls = Arc::new(PaymentCalls::default());
+    let operations = Arc::new(authority.admission_operation_store());
+    let mut kernel = ChioKernel::new(kernel_config(Keypair::generate()));
+    kernel.set_durable_admission_store(
+        operations.clone(),
+        Arc::new(authority.tool_outcome_store()),
+        authority.mutation_fence(),
+    )?;
+    kernel.set_budget_store_handle(Arc::new(authority.budget_store()));
+    kernel.set_payment_adapter(Box::new(ReversiblePaymentAdapter {
+        calls: Some(payment_calls.clone()),
+    }));
+    kernel.register_tool_server(Box::new(StreamingPaidMutationServer {
+        invocations: invocations.clone(),
+    }));
+    let agent = Keypair::generate();
+    let capability = kernel.issue_capability(
+        &agent.public_key(),
+        stream_scope(vec![Constraint::OutputDigestSha256(stream_hash.clone())]),
+        300,
+    )?;
+    let request = stream_request(&capability, "stream-committed");
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny, "{:?}", response.reason);
+    assert!(
+        response
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("single value delivery")),
+        "{:?}",
+        response.reason
+    );
+    assert!(response.output.is_none());
+    let block = delivery_block(&response)?;
+    assert_eq!(block.result, DeliveryResult::Mismatched);
+    assert_eq!(block.expected_digest, stream_hash);
+    assert_eq!(
+        block.observed_digest, stream_hash,
+        "the colliding stream hash is exactly what the denial must resist"
+    );
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
+    assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);
+    assert_eq!(payment_calls.releases.load(Ordering::SeqCst), 1);
+    let metadata: AdmissionReceiptMetadataV1 = serde_json::from_value(
+        response
+            .receipt
+            .metadata
+            .as_ref()
+            .and_then(serde_json::Value::as_object)
+            .and_then(|metadata| metadata.get(ADMISSION_RECEIPT_METADATA_KEY))
+            .cloned()
+            .ok_or_else(|| std::io::Error::other("admission receipt metadata is absent"))?,
+    )?;
+    let operation = operations
+        .load_by_operation_id(&metadata.operation_id)?
+        .ok_or_else(|| std::io::Error::other("denied admission operation is absent"))?;
+    assert_eq!(
+        operation.state(),
+        AdmissionOperationState::DeniedAfterDelivery
+    );
+
+    // Re-entry replays the persisted Deny without redispatching the tool.
+    let replay = kernel.evaluate_tool_call_blocking(&request)?;
+    assert_eq!(replay.verdict, Verdict::Deny);
+    assert_eq!(replay.receipt.id, response.receipt.id);
+    assert_eq!(
+        canonical_json_bytes(&replay.receipt)?,
+        canonical_json_bytes(&response.receipt)?
+    );
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
     Ok(())
 }
