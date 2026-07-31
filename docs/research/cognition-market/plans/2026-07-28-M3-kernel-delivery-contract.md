@@ -358,9 +358,15 @@ Files: `chio-conformance/verdict_matrix/**`; `spec/errors/registry.yaml`;
   hash at `docs/conformance/verdict-matrix.md:26`; the workflow count
   step; new deny-reason URNs in `spec/errors/registry.yaml`;
   `[drivers.wasm-browser] supported_categories` in `manifest.toml:70`.
-- Defer the bounded Lean entry with a named follow-up (the Lean model has
-  no output or content hash). State the enforcement asymmetry: only the
-  verdict-matrix rotation is a required PR gate; the Kani lane is nightly.
+- Add the root-imported bounded Lean decision model in
+  `Chio.Proofs.DeliveryContract`. It uses finite opaque digest identities and
+  proves that settlement admission implies Allow plus every enabled purchase
+  and digest check, that Allow cannot bypass either check, and that
+  `DeniedAfterDelivery` cannot settle. The finding-purchase input records the
+  M4 composition boundary; it is not a claim that M3 implements that gate or
+  that the Lean model refines Rust. State the enforcement asymmetry: only the
+  verdict-matrix rotation is a required PR gate; the Kani lane is nightly and
+  the Lean gate runs in release qualification.
 
 Sequence the rotation as its own commit (it can red the required
 python-go and deployment-shape jobs in ways unrelated to the kernel
@@ -401,8 +407,9 @@ class`.
    `projected_state` are registered with schema/registry/manifest/PROTOCOL
    parity, and the metadata-authenticity tests pass.
 4. The verdict matrix rotation is green (required PR gate); the Kani
-   harness is registered and green in its lane; the Lean entry is deferred
-   with a named follow-up.
+   harness is registered and green in its lane; the bounded Lean model is
+   root-imported, present in the theorem inventory and proof manifest, and
+   green under `scripts/check-formal-proofs.sh`.
 5. The full qualified workspace gate passes at the branch HEAD.
 6. CONF-1 and CONF-2 are resolved (default or overturned by review) and
    recorded.
@@ -411,6 +418,13 @@ class`.
 
 - Carrier, receipt block, 18th state, formal core, and verdict matrix
   landed across Tasks 1-6 (commits on `codex/cognition-market-m3`).
+- The M3 formal follow-up now lands as
+  `formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean`. Its finite model
+  couples the pre-delivery purchase evidence gate, the post-delivery digest
+  gate, and settlement admission. The theorem inventory and proof manifest
+  classify it as bounded P3 evidence, and `formal/MAPPING.md` records that M3
+  links only the digest and post-delivery terminal dimensions while M4 owns
+  the purchase-verification implementation.
 - Durable enforcement (Task 5) compares the delivered post-transform
   output digest against the grant's committed digest at the `Finalizing`
   terminal. A mismatch denies with a signed receipt, projects
