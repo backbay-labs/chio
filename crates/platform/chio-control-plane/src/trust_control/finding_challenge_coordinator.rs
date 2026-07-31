@@ -280,6 +280,8 @@ pub enum ChallengeCoordinatorError {
     DisputeBondWindow,
     #[error("dispute bond currency does not match the challenge-administration pool")]
     DisputeBondCurrency,
+    #[error("buyer filing has not collected its dispute fee and locked its bond")]
+    FilingUnfunded,
     #[error("dispute fee rail dispatch failed: {0}")]
     FeeRail(String),
     #[error("semantic effect intent is not durably fenced before dispatch")]
@@ -621,6 +623,11 @@ impl FindingChallengeCoordinator {
     /// reconciles or re-dispatches from `failed`, and the lock replays as
     /// the same lock.
     ///
+    /// That ordering is why the row is not evidence of a funded filing.
+    /// The lock is written only once the fee has reconciled, so it is the
+    /// lock that makes a buyer submission evaluable, and a filing that
+    /// stopped short of it stays inert until a replay completes it.
+    ///
     /// A venue audit takes none of that path. Its authorization branch has
     /// no fee, bond, forfeiture, or reward member at all, so those fields
     /// are unrepresentable on it rather than merely rejected, and this
@@ -661,10 +668,9 @@ impl FindingChallengeCoordinator {
                 (FindingChallengeAuthorizationBranch::VenueAudit, None)
             }
         };
-        // The durable row carries no fee or bond precondition, and the
-        // evaluation pipeline is fenced on that row alone, so a filing
-        // whose fee or bond cannot be authenticated must not become an
-        // evaluable challenge.
+        // The durable row carries no fee or bond precondition, so a filing
+        // whose fee or bond cannot be authenticated must be refused before
+        // anything about it becomes durable.
         if let FindingChallengeAuthorization::BuyerSubmission(submission) = &body.authorization {
             self.require_dispute_terms(submission, now)?;
         }
@@ -716,6 +722,10 @@ impl FindingChallengeCoordinator {
 
     /// Admit one evaluation attempt against the venue clock.
     ///
+    /// Evaluability is proved before the clock is consulted, so a filing
+    /// that never funded itself cannot enter evaluation and cannot be
+    /// moved on by a lapsed retry window either.
+    ///
     /// A challenge whose signed retry window has already lapsed is closed
     /// indeterminate by the store rather than admitted, and its bond is
     /// returned here, exactly once. That path charges no second fee: the
@@ -726,6 +736,7 @@ impl FindingChallengeCoordinator {
         challenge_id: &str,
         now: u64,
     ) -> Result<EvaluationAdmission, ChallengeCoordinatorError> {
+        self.require_funded_filing(challenge_id)?;
         let start = self
             .challenges
             .begin_evaluation(challenge_id, now)
@@ -1359,6 +1370,41 @@ impl FindingChallengeCoordinator {
             return Err(ChallengeCoordinatorError::FindingBinding("finding_id"));
         }
         Ok(finding)
+    }
+
+    /// Require a buyer filing to have finished paying for itself before it
+    /// can be adjudicated.
+    ///
+    /// The challenge row is recorded before the fee is charged, so a
+    /// filing whose charge failed leaves that row behind in `submitted`.
+    /// The dispute lock is the last write a submission makes and it
+    /// happens only after the fee has reconciled, so the lock, not the
+    /// row, is what proves both money steps landed. Without it the
+    /// challenge would be adjudicated with no fee collected and no stake
+    /// at risk, which is exactly what makes a frivolous filing free.
+    ///
+    /// A venue audit has no fee, bond, or lock member at all, so it is
+    /// evaluable on its authorization alone.
+    fn require_funded_filing(&self, challenge_id: &str) -> Result<(), ChallengeCoordinatorError> {
+        let challenge = self
+            .challenges
+            .get_challenge(challenge_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore("challenge is not recorded".to_owned())
+            })?;
+        if challenge.authorization_branch != FindingChallengeAuthorizationBranch::BuyerSubmission {
+            return Ok(());
+        }
+        if self
+            .challenges
+            .get_dispute_lock(challenge_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .is_none()
+        {
+            return Err(ChallengeCoordinatorError::FilingUnfunded);
+        }
+        Ok(())
     }
 
     /// Require the fee and bond a buyer submission carries to be the ones

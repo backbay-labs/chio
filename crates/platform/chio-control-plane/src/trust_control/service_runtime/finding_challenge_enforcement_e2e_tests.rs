@@ -20,6 +20,7 @@
 //! the same serving-owner fence the sale path uses.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chio_core::canonical_json_bytes;
@@ -266,10 +267,12 @@ fn market_config() -> FindingMarketConfig {
 }
 
 /// Rail that acknowledges every instruction and keeps what it was asked
-/// to move, so a test can prove which pool a charge actually reached.
+/// to move, so a test can prove which pool a charge actually reached, and
+/// that can be told to refuse, as a rail that cannot settle would.
 #[derive(Default)]
 struct RecordingRail {
     instructions: Mutex<Vec<FindingRailInstruction>>,
+    refusing: AtomicBool,
 }
 
 impl RecordingRail {
@@ -279,6 +282,14 @@ impl RecordingRail {
             .map(|guard| guard.clone())
             .unwrap_or_default()
     }
+
+    fn refuse(&self) {
+        self.refusing.store(true, Ordering::SeqCst);
+    }
+
+    fn accept(&self) {
+        self.refusing.store(false, Ordering::SeqCst);
+    }
 }
 
 impl FindingRailObserver for RecordingRail {
@@ -286,6 +297,9 @@ impl FindingRailObserver for RecordingRail {
         &self,
         instruction: &FindingRailInstruction,
     ) -> Result<FindingRailObservation, String> {
+        if self.refusing.load(Ordering::SeqCst) {
+            return Err("rail refused the instruction".to_string());
+        }
         if let Ok(mut guard) = self.instructions.lock() {
             guard.push(instruction.clone());
         }
@@ -2140,6 +2154,57 @@ fn finding_challenge_a_filing_refused_on_its_fee_leaves_no_evaluable_challenge_r
         "the evaluation pipeline is fenced on the row alone, so the row must not exist"
     );
     assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_filing_whose_fee_never_settled_is_not_evaluable() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenge = buyer_challenge(&keypair(41))?;
+    let challenge_id = challenge.body.challenge_id.clone();
+    let (_, raw) = finding_artifact()?;
+
+    // The row is recorded before the charge, so a rail that cannot move
+    // the fee leaves the challenge durable with nothing collected and
+    // nothing locked.
+    deployment.rail.refuse();
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("a filing whose dispute fee cannot be charged must fail");
+    assert!(matches!(error, ChallengeCoordinatorError::FeeRail(_)));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge_id)?
+        .is_some());
+    assert!(deployment
+        .challenges
+        .get_dispute_lock(&challenge_id)?
+        .is_none());
+
+    let error = coordinator
+        .admit_evaluation(&challenge_id, NOW + 1)
+        .expect_err("an unfunded filing must never be adjudicated");
+    assert!(matches!(error, ChallengeCoordinatorError::FilingUnfunded));
+    assert_eq!(
+        deployment
+            .challenges
+            .get_challenge(&challenge_id)?
+            .ok_or("challenge is durable")?
+            .state,
+        FindingChallengeState::Submitted,
+        "a refused admission leaves the challenge exactly where it was"
+    );
+
+    // Replaying the filing against a rail that settles collects the fee
+    // and locks the bond, and only then is the challenge evaluable.
+    deployment.rail.accept();
+    coordinator.submit(&challenge, &raw, NOW + 2)?;
+    assert_eq!(deployment.rail.charges().len(), 1);
+    assert_eq!(
+        coordinator.admit_evaluation(&challenge_id, NOW + 3)?,
+        EvaluationAdmission::Admitted
+    );
     Ok(())
 }
 
