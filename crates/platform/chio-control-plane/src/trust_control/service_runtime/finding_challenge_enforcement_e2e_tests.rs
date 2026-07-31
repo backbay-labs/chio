@@ -387,7 +387,7 @@ struct Deployment {
     database: PathBuf,
     lock_root: PathBuf,
     _authority: SqliteAuthorityStore,
-    _market: SqliteFindingMarketStore,
+    market: SqliteFindingMarketStore,
     purchases: SqliteFindingPurchaseStore,
     challenges: SqliteFindingChallengeStore,
     allocation_id: String,
@@ -407,7 +407,7 @@ fn deployment() -> Result<Deployment, AnyError> {
     let market = authority.finding_market_store();
     let purchases = authority.finding_purchase_store();
     let challenges = authority.finding_challenge_store();
-    let allocation_id = consume_allocation(&market, LISTING_ID)?;
+    let allocation_id = consume_allocation(&market, LISTING_ID, &hex64('1'))?;
     purchases.register_community_fund_destination(&allocation_id, COMMUNITY_FUND_RAIL, NOW)?;
     let filings = PublishedArtifacts::default()
         .publish_schedule(&published_fee_schedule()?)?
@@ -418,7 +418,7 @@ fn deployment() -> Result<Deployment, AnyError> {
         database,
         lock_root,
         _authority: authority,
-        _market: market,
+        market,
         purchases,
         challenges,
         allocation_id,
@@ -464,7 +464,7 @@ impl Deployment {
             database,
             lock_root,
             _authority,
-            _market,
+            market,
             purchases,
             challenges,
             allocation_id,
@@ -475,7 +475,7 @@ impl Deployment {
         // closes before the database can be served again.
         drop(challenges);
         drop(purchases);
-        drop(_market);
+        drop(market);
         drop(_authority);
         let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
         let market = authority.finding_market_store();
@@ -486,7 +486,7 @@ impl Deployment {
             database,
             lock_root,
             _authority: authority,
-            _market: market,
+            market,
             purchases,
             challenges,
             allocation_id,
@@ -496,16 +496,21 @@ impl Deployment {
     }
 }
 
+/// Register and consume one collateral allocation for a listing. The
+/// allocation id is content-addressed over the backing, so a distinct
+/// seller authorization is what makes a second allocation for the same
+/// listing a different vault rather than a replay of the first.
 fn consume_allocation(
     market: &SqliteFindingMarketStore,
     listing_id: &str,
+    authorization_envelope_sha256: &str,
 ) -> Result<String, AnyError> {
     let mut backing = FindingBondBacking {
         schema: FINDING_BOND_BACKING_SCHEMA_V1.to_string(),
         allocation_id: String::new(),
         collateral_authority: keypair(4).public_key(),
         seller: keypair(22).public_key(),
-        authorization_envelope_sha256: hex64('1'),
+        authorization_envelope_sha256: authorization_envelope_sha256.to_string(),
         finding_id: finding_artifact()?.0.finding_id,
         listing_id: listing_id.to_string(),
         terms_envelope_sha256: hex64('2'),
@@ -1632,6 +1637,7 @@ fn settle_purchase(
 ) -> Result<SettledPurchase, AnyError> {
     settle_purchase_with(
         deployment,
+        &deployment.allocation_id,
         tag,
         destination,
         realized_spend_units,
@@ -1640,8 +1646,12 @@ fn settle_purchase(
     )
 }
 
+/// The same settlement against a caller-chosen allocation, so a test can
+/// sell from the backing a listing carried before it was rebacked.
+#[allow(clippy::too_many_arguments)]
 fn settle_purchase_with(
     deployment: &Deployment,
+    allocation_id: &str,
     tag: &str,
     destination: &str,
     realized_spend_units: u64,
@@ -1670,7 +1680,7 @@ fn settle_purchase_with(
             currency: "USD",
             expires_at: now + 3_600,
             encumbrance_id: &format!("encumbrance-{tag}"),
-            allocation_id: &deployment.allocation_id,
+            allocation_id,
             maximum_sale_exposure_units: REGISTERED_EXPOSURE_CAP,
             created_at: now,
         })?;
@@ -1701,11 +1711,9 @@ fn settle_purchase_with(
     let record_json = canonical_json_bytes(&signed)?;
     let record_sha256 = sha256_hex(&record_json);
     if admission == PayoutAdmission::Admitted {
-        deployment.purchases.admit_payout_destination(
-            &deployment.allocation_id,
-            destination,
-            now,
-        )?;
+        deployment
+            .purchases
+            .admit_payout_destination(allocation_id, destination, now)?;
     }
     deployment
         .purchases
@@ -2956,6 +2964,66 @@ fn finding_challenge_collateral_facts_for_another_allocation_uphold_nothing() ->
     assert!(
         !deployment.purchases.sales_blocked(LISTING_ID)?,
         "nothing durable happens before the allocation binding is proven"
+    );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let ready = ready_to_uphold(&deployment, &coordinator)?;
+
+    // One sale under the allocation the liability is charged to, then the
+    // listing is rebacked and a second sale is charged to the new vault.
+    let liable = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 60, NOW)?;
+    let rebacked = consume_allocation(&deployment.market, LISTING_ID, &hex64('d'))?;
+    let elsewhere = settle_purchase_with(
+        &deployment,
+        &rebacked,
+        "beta",
+        BUYER_TWO_DESTINATION,
+        40,
+        NOW + 1,
+        PayoutAdmission::Admitted,
+    )?;
+    // The second buyer's destination is admitted under the liable
+    // allocation as well, as it would be for a buyer this seller had
+    // already paid, so the destination roster cannot be what refuses it.
+    deployment.purchases.admit_payout_destination(
+        &deployment.allocation_id,
+        BUYER_TWO_DESTINATION,
+        NOW + 1,
+    )?;
+
+    let stake = usd(300);
+    let required = usd(5_000);
+    let refused = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.outcome,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+            2,
+            &[liable.purchase_key, elsewhere.purchase_key],
+            &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2,
+        )
+        .expect_err("a sale charged to another vault is not this liability's harm");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::PurchaseOutsideAllocation(_)
+    ));
+    assert!(
+        coordinator.sealed_claim(&derive_liability_key(
+            &derive_defect_key(&ready.finding.finding_id),
+            VENUE_ID,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+        ))?
+        .is_none(),
+        "no accounting is sealed against collateral that never backed the sale"
     );
     Ok(())
 }
@@ -4788,6 +4856,7 @@ fn finding_challenge_a_payout_destination_that_was_never_admitted_is_refused() -
     let challenged = challenged_finding()?;
     let sale = settle_purchase_with(
         &deployment,
+        &deployment.allocation_id,
         "alpha",
         BUYER_ONE_DESTINATION,
         50,

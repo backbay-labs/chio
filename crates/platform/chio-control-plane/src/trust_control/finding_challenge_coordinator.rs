@@ -327,6 +327,8 @@ pub enum ChallengeCoordinatorError {
     UnknownPurchaseRecord(String),
     #[error("purchase record {0} does not belong to this liability at the frozen cutoff")]
     PurchaseOutsideCutoff(String),
+    #[error("purchase record {0} charged its exposure to a different collateral allocation")]
+    PurchaseOutsideAllocation(String),
     #[error("purchase record {0} names a payout destination that was never admitted")]
     UnadmittedPayoutDestination(String),
     #[error("checked slash arithmetic refused the distribution: {0}")]
@@ -2039,7 +2041,8 @@ impl FindingChallengeCoordinator {
     /// re-verified: the record must verify under the pinned purchase
     /// authority, name this liability's finding and listing, sit at or
     /// below the frozen cutoff on a slot that closed against a settled
-    /// record, and pay a destination that was admitted at capture. No
+    /// record, have charged its exposure to this liability's allocation,
+    /// and pay a destination that was admitted at capture. No
     /// caller-supplied amount or address survives.
     fn seal_claim_snapshot(
         &self,
@@ -2161,6 +2164,23 @@ impl FindingChallengeCoordinator {
                 })?;
             if slot.listing_id != identity.listing_id || slot.slot_ordinal > cutoff_slot {
                 return Err(ChallengeCoordinatorError::PurchaseOutsideCutoff(
+                    purchase_key.clone(),
+                ));
+            }
+            // The reservation's encumbrance is what charged this sale to a
+            // vault, and a listing may be rebacked between sales. A record
+            // whose exposure was booked against another allocation is not
+            // this liability's harm: paying it here would take the money
+            // from a seller who never sold it.
+            let encumbrance = self
+                .purchases
+                .get_encumbrance(&row.reservation_id)
+                .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?
+                .ok_or_else(|| {
+                    ChallengeCoordinatorError::PurchaseOutsideAllocation(purchase_key.clone())
+                })?;
+            if encumbrance.allocation_id != identity.allocation_id {
+                return Err(ChallengeCoordinatorError::PurchaseOutsideAllocation(
                     purchase_key.clone(),
                 ));
             }
