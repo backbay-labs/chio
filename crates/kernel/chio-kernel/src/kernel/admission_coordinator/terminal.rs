@@ -478,6 +478,24 @@ impl ChioKernel {
             request.model_metadata.as_ref(),
         )
         .map_err(|error| KernelError::DurableAdmission(error.to_string()))?;
+        let plan = self.durable_post_return_plan()?;
+        let recovered_request_hash =
+            immutable_tool_admission_request_hash(request, &matching_grants, &plan)?;
+        if &recovered_request_hash != admission.operation.binding().immutable_request_hash() {
+            return Err(KernelError::DurableAdmission(
+                "recovered post-return plan does not match durable admission".to_owned(),
+            ));
+        }
+        if let Some(reason) =
+            crate::kernel::evaluation::evaluation_helpers::delivery_marked_selection_denial(
+                &matching_grants,
+                matched_grant_index,
+            )
+        {
+            return Err(KernelError::DurableAdmission(format!(
+                "recorded delivery contract is invalid: {reason}"
+            )));
+        }
         let Some(selected_grant) = matching_grants.iter().find(|matching| {
             matching.index == matched_grant_index && admission.permits_matching_grant(matching)
         }) else {
@@ -499,14 +517,6 @@ impl ChioKernel {
                     ));
                 }
             }
-        }
-        let plan = self.durable_post_return_plan()?;
-        let recovered_request_hash =
-            immutable_tool_admission_request_hash(request, &matching_grants, &plan)?;
-        if &recovered_request_hash != admission.operation.binding().immutable_request_hash() {
-            return Err(KernelError::DurableAdmission(
-                "recovered post-return plan does not match durable admission".to_owned(),
-            ));
         }
         let stream_limits = raw.stream_limits();
         let normalized_context = PostReturnNormalizedRequestContextV1::from_verified_normalization(
@@ -1856,6 +1866,11 @@ impl ChioKernel {
                     chio_core::receipt::metadata::DeliveryResult::Matched
                 },
             };
+            block.validate().map_err(|error| {
+                KernelError::DurableAdmission(format!(
+                    "delivery contract metadata is invalid: {error}"
+                ))
+            })?;
             merge_metadata_objects(
                 metadata,
                 Some(
