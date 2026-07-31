@@ -336,6 +336,16 @@ pub enum ChallengeCoordinatorError {
     FeeScheduleArtifact(String),
     #[error("filing terms are not the ones the signed fee schedule sets: {0}")]
     DisputeTerms(&'static str),
+    #[error("filing binds market terms this venue never admitted")]
+    UnknownMarketTerms,
+    #[error("filing terms are not the ones this venue admitted for the listing: {0}")]
+    FilingTermsBinding(&'static str),
+    #[error("filing is outside the seller-signed filing window")]
+    FilingWindowClosed,
+    #[error("admitted market terms do not enable venue audits for this listing")]
+    AuditIneligible,
+    #[error("dispute bond is outside the admitted terms' challenge bond limits")]
+    DisputeBondOutsideTermsLimits,
     #[error("filing binds an audit round this venue never published")]
     UnknownAuditRound,
     #[error("signed audit epoch rejected: {0}")]
@@ -439,6 +449,10 @@ pub trait FindingFilingResolver: Send + Sync {
     /// The audit round published under this epoch envelope digest, or
     /// `None` when the venue published no such round.
     fn audit_round(&self, epoch_envelope_sha256: &str) -> Option<FindingAuditRound>;
+
+    /// The seller-signed market terms this venue admitted under this
+    /// envelope digest, or `None` when the venue admitted no such terms.
+    fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms>;
 }
 
 /// The pinned public roles this coordinator verifies against. None of
@@ -830,12 +844,28 @@ impl FindingChallengeCoordinator {
         // The durable row carries neither the money terms of a buyer
         // filing nor the round behind a bondless one, so a filing whose
         // branch cannot be authorized must be refused before anything
-        // about it becomes durable.
+        // about it becomes durable. Both branches file against the
+        // seller-signed market terms the challenge binds by digest: the
+        // terms carry the filing window, the audit toggle, and the bond
+        // limits the seller committed the listing to.
+        let terms = self.resolve_market_terms(body)?;
         match &body.authorization {
             FindingChallengeAuthorization::BuyerSubmission(submission) => {
                 self.require_dispute_terms(submission, now)?;
+                self.require_filing_window(&terms.body, now)?;
+                self.require_bond_within_terms_limits(
+                    &terms.body,
+                    submission,
+                    finding.guarantee_class,
+                )?;
             }
             FindingChallengeAuthorization::VenueAudit(audit) => {
+                // A seller may sign terms that never enter the audit
+                // rotation; a bondless audit against those terms has no
+                // authorization to stand on, whatever round drew it.
+                if !terms.body.audit_eligible {
+                    return Err(ChallengeCoordinatorError::AuditIneligible);
+                }
                 self.require_audit_selection(audit, body)?;
             }
         }
@@ -1928,6 +1958,93 @@ impl FindingChallengeCoordinator {
             .validate()
             .map_err(ChallengeCoordinatorError::FeeScheduleArtifact)?;
         Ok(schedule)
+    }
+
+    /// Resolve the seller-signed market terms one filing binds by digest,
+    /// and prove they are the terms this venue admitted for the exact
+    /// finding and listing being challenged.
+    ///
+    /// The digest is re-derived from the resolved envelope, so a resolver
+    /// answering with any other artifact is caught here. The envelope must
+    /// verify under its embedded seller, and it must name the challenged
+    /// finding and listing: terms for another listing would lend this
+    /// filing a window, an audit toggle, and bond limits their seller
+    /// never signed for it.
+    fn resolve_market_terms(
+        &self,
+        challenge: &FindingChallenge,
+    ) -> Result<SignedFindingMarketTerms, ChallengeCoordinatorError> {
+        let terms = self
+            .filings
+            .market_terms(&challenge.terms_envelope_sha256)
+            .ok_or(ChallengeCoordinatorError::UnknownMarketTerms)?;
+        if self.envelope_digest(&terms)? != challenge.terms_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::FilingTermsBinding(
+                "envelope digest",
+            ));
+        }
+        verify_signed_market_terms(&terms)
+            .map_err(|error| ChallengeCoordinatorError::TermsEnvelope(error.to_string()))?;
+        if terms.body.finding_id != challenge.finding_id {
+            return Err(ChallengeCoordinatorError::FilingTermsBinding("finding_id"));
+        }
+        if terms.body.listing_id != challenge.listing_id {
+            return Err(ChallengeCoordinatorError::FilingTermsBinding("listing_id"));
+        }
+        Ok(terms)
+    }
+
+    /// Require the venue clock to still be inside the seller-signed
+    /// filing window.
+    ///
+    /// The window is the exposure horizon the seller committed to when
+    /// the terms were issued: `filing_window_secs` from their issuance is
+    /// how long a challenge may still be filed against the listing. The
+    /// bound is enforced on the venue clock, which also bounds the signed
+    /// `filed_at` the filing clock check already holds to `now`. A window
+    /// end that is not representable admits nothing.
+    fn require_filing_window(
+        &self,
+        terms: &chio_finding::FindingMarketTerms,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let deadline = terms
+            .issued_at
+            .checked_add(terms.filing_window_secs)
+            .ok_or(ChallengeCoordinatorError::FilingWindowClosed)?;
+        if now > deadline {
+            return Err(ChallengeCoordinatorError::FilingWindowClosed);
+        }
+        Ok(())
+    }
+
+    /// Require a buyer's dispute bond to sit inside the seller-signed
+    /// bond limits for the challenged finding's guarantee class.
+    ///
+    /// The signed fee schedule fixes the bond exactly; these limits are
+    /// the seller's own anti-griefing floor and ceiling, signed into the
+    /// terms per guarantee class. Both artifacts must agree: a schedule
+    /// pricing the bond outside the seller's signed band, or a class the
+    /// terms never priced, refuses the filing.
+    fn require_bond_within_terms_limits(
+        &self,
+        terms: &chio_finding::FindingMarketTerms,
+        submission: &chio_finding::FindingBuyerSubmission,
+        guarantee_class: chio_finding::FindingGuaranteeClass,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let limit = terms
+            .challenge_bond_limits
+            .iter()
+            .find(|limit| limit.guarantee_class == guarantee_class)
+            .ok_or(ChallengeCoordinatorError::DisputeBondOutsideTermsLimits)?;
+        let bond = &submission.dispute_lock_ref.amount;
+        if bond.currency != limit.min_bond.currency
+            || bond.units < limit.min_bond.units
+            || bond.units > limit.max_bond.units
+        {
+            return Err(ChallengeCoordinatorError::DisputeBondOutsideTermsLimits);
+        }
+        Ok(())
     }
 
     /// Require every governance artifact behind a penalty to carry a

@@ -370,6 +370,7 @@ impl FindingRailObserver for RecordingRail {
 struct PublishedArtifacts {
     fee_schedules: BTreeMap<String, SignedOpenMarketFeeSchedule>,
     audit_rounds: BTreeMap<String, FindingAuditRound>,
+    market_terms: BTreeMap<String, SignedFindingMarketTerms>,
 }
 
 impl PublishedArtifacts {
@@ -387,6 +388,12 @@ impl PublishedArtifacts {
             .insert(signed_envelope_sha256(&round.epoch)?, round.clone());
         Ok(self)
     }
+
+    fn publish_terms(mut self, terms: &SignedFindingMarketTerms) -> Result<Self, AnyError> {
+        self.market_terms
+            .insert(signed_envelope_sha256(terms)?, terms.clone());
+        Ok(self)
+    }
 }
 
 impl FindingFilingResolver for PublishedArtifacts {
@@ -396,6 +403,10 @@ impl FindingFilingResolver for PublishedArtifacts {
 
     fn audit_round(&self, epoch_envelope_sha256: &str) -> Option<FindingAuditRound> {
         self.audit_rounds.get(epoch_envelope_sha256).cloned()
+    }
+
+    fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms> {
+        self.market_terms.get(envelope_sha256).cloned()
     }
 }
 
@@ -432,7 +443,11 @@ fn deployment() -> Result<Deployment, AnyError> {
     let filings = PublishedArtifacts::default()
         .publish_schedule(&published_fee_schedule()?)?
         .publish_round(&published_audit_round()?)?
-        .publish_round(&unrelated_audit_round()?)?;
+        .publish_round(&unrelated_audit_round()?)?
+        .publish_terms(&market_terms(CLAIM_WINDOW_SECS)?)?
+        .publish_terms(&lapsed_window_terms()?)?
+        .publish_terms(&audit_disabled_terms()?)?
+        .publish_terms(&narrow_bond_terms()?)?;
     Ok(Deployment {
         _temp: temp,
         database,
@@ -1024,7 +1039,7 @@ impl ChallengedFinding {
             finding_id: self.finding.finding_id.clone(),
             finding_artifact_sha256: self.finding_artifact_sha256.clone(),
             listing_id: LISTING_ID.to_string(),
-            terms_envelope_sha256: hex64('2'),
+            terms_envelope_sha256: admitted_terms_digest()?,
             profile_envelope_sha256: self.profile_envelope_sha256.clone(),
             backing_envelope_sha256: hex64('6'),
             filed_at: NOW,
@@ -1473,7 +1488,7 @@ fn buyer_challenge(buyer: &Keypair) -> Result<SignedFindingChallenge, AnyError> 
         finding_id: finding.finding_id.clone(),
         finding_artifact_sha256: sha256_hex(raw.as_bytes()),
         listing_id: LISTING_ID.to_string(),
-        terms_envelope_sha256: hex64('2'),
+        terms_envelope_sha256: admitted_terms_digest()?,
         profile_envelope_sha256: hex64('3'),
         backing_envelope_sha256: hex64('6'),
         filed_at: NOW,
@@ -1602,7 +1617,7 @@ fn venue_audit_challenge() -> Result<SignedFindingChallenge, AnyError> {
         finding_id: finding.finding_id.clone(),
         finding_artifact_sha256: sha256_hex(raw.as_bytes()),
         listing_id: LISTING_ID.to_string(),
-        terms_envelope_sha256: hex64('2'),
+        terms_envelope_sha256: admitted_terms_digest()?,
         profile_envelope_sha256: hex64('3'),
         backing_envelope_sha256: hex64('6'),
         filed_at: NOW,
@@ -2044,9 +2059,11 @@ fn sample_fee_schedule(signer: &Keypair) -> Result<SignedOpenMarketFeeSchedule, 
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/// The seller-signed terms this listing sells under. The claim window is
-/// the only term the penalty lane reads: it is what the upheld
-/// transaction freezes, and the payout cannot close inside it.
+/// The seller-signed terms this listing sells under: the claim window the
+/// upheld transaction freezes, and the filing window, audit toggle, and
+/// bond limits every filing is admitted against. Issued shortly before
+/// the fixture clock so a filing at `NOW` sits inside the signed filing
+/// window.
 fn market_terms(claim_window_secs: u64) -> Result<SignedFindingMarketTerms, AnyError> {
     let (finding, raw_finding) = finding_artifact()?;
     let seller = keypair(22);
@@ -2075,11 +2092,48 @@ fn market_terms(claim_window_secs: u64) -> Result<SignedFindingMarketTerms, AnyE
             max_bond: usd(100),
         }],
         payout_policy: "pro_rata_capped_v1".to_string(),
-        issued_at: KEY_VALID_FROM,
+        issued_at: NOW - 3_600,
         expires_at: KEY_VALID_UNTIL,
     };
     terms.terms_id = compute_terms_id(&terms)?;
     Ok(SignedExportEnvelope::sign(terms, &seller)?)
+}
+
+/// The standard admitted terms with one field bent, re-addressed and
+/// re-signed, so the variant is a distinct admitted envelope.
+fn market_terms_shaped(
+    shape: impl FnOnce(&mut FindingMarketTerms),
+) -> Result<SignedFindingMarketTerms, AnyError> {
+    let signed = market_terms(CLAIM_WINDOW_SECS)?;
+    let mut terms = signed.body;
+    shape(&mut terms);
+    terms.terms_id = compute_terms_id(&terms)?;
+    Ok(SignedExportEnvelope::sign(terms, &keypair(22))?)
+}
+
+/// Admitted terms whose filing window lapsed before the fixture clock.
+fn lapsed_window_terms() -> Result<SignedFindingMarketTerms, AnyError> {
+    market_terms_shaped(|terms| terms.filing_window_secs = 600)
+}
+
+/// Admitted terms that keep the listing out of the audit rotation.
+fn audit_disabled_terms() -> Result<SignedFindingMarketTerms, AnyError> {
+    market_terms_shaped(|terms| terms.audit_eligible = false)
+}
+
+/// Admitted terms whose bond ceiling sits below the schedule's dispute
+/// requirement.
+fn narrow_bond_terms() -> Result<SignedFindingMarketTerms, AnyError> {
+    market_terms_shaped(|terms| {
+        if let Some(limit) = terms.challenge_bond_limits.first_mut() {
+            limit.max_bond = usd(DISPUTE_BOND_UNITS - 10);
+        }
+    })
+}
+
+/// Envelope digest of the admitted terms every reference filing binds.
+fn admitted_terms_digest() -> Result<String, AnyError> {
+    Ok(signed_envelope_sha256(&market_terms(CLAIM_WINDOW_SECS)?)?)
 }
 
 /// Uphold across the seller-signed claim window, ending at `now`.
@@ -2597,6 +2651,125 @@ fn buyer_challenge_filed_at(
     challenge.body.filed_at = filed_at;
     challenge.body.challenge_id = compute_challenge_id(&challenge.body)?;
     Ok(SignedExportEnvelope::sign(challenge.body, buyer)?)
+}
+
+/// The reference buyer filing, bound to a caller-chosen terms envelope.
+fn buyer_challenge_bound_to_terms(
+    buyer: &Keypair,
+    terms_envelope_sha256: &str,
+) -> Result<SignedFindingChallenge, AnyError> {
+    let mut challenge = buyer_challenge(buyer)?;
+    challenge.body.terms_envelope_sha256 = terms_envelope_sha256.to_string();
+    challenge.body.challenge_id = compute_challenge_id(&challenge.body)?;
+    Ok(SignedExportEnvelope::sign(challenge.body, buyer)?)
+}
+
+/// The reference venue audit, bound to a caller-chosen terms envelope.
+fn venue_audit_challenge_bound_to_terms(
+    terms_envelope_sha256: &str,
+) -> Result<SignedFindingChallenge, AnyError> {
+    let mut challenge = venue_audit_challenge()?;
+    challenge.body.terms_envelope_sha256 = terms_envelope_sha256.to_string();
+    challenge.body.challenge_id = compute_challenge_id(&challenge.body)?;
+    Ok(SignedExportEnvelope::sign(challenge.body, &keypair(35))?)
+}
+
+#[test]
+fn finding_challenge_a_filing_binding_unadmitted_terms_is_refused() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (_, raw) = finding_artifact()?;
+
+    let unadmitted = buyer_challenge_bound_to_terms(&keypair(41), &hex64('9'))?;
+    let error = coordinator
+        .submit(&unadmitted, &raw, NOW)
+        .expect_err("terms the venue never admitted authorize no filing");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::UnknownMarketTerms
+    ));
+    assert!(deployment
+        .challenges
+        .get_challenge(&unadmitted.body.challenge_id)?
+        .is_none());
+    assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_filing_past_the_signed_filing_window_is_refused() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (_, raw) = finding_artifact()?;
+
+    // The bound terms are admitted and verify cleanly; what has lapsed is
+    // the exposure horizon the seller signed for. The schedule window is
+    // still open, so only the terms window can refuse this filing.
+    let lapsed = signed_envelope_sha256(&lapsed_window_terms()?)?;
+    let challenge = buyer_challenge_bound_to_terms(&keypair(41), &lapsed)?;
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("a filing past the seller-signed window reaches no adjudication");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::FilingWindowClosed
+    ));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_venue_audit_the_terms_disabled_is_refused() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (_, raw) = finding_artifact()?;
+
+    // The published round did draw this listing, so the draw is not what
+    // refuses the filing: the admitted terms keep the listing out of the
+    // audit rotation entirely.
+    let disabled = signed_envelope_sha256(&audit_disabled_terms()?)?;
+    let challenge = venue_audit_challenge_bound_to_terms(&disabled)?;
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("an audit against audit-disabled terms is never admitted");
+    assert!(matches!(error, ChallengeCoordinatorError::AuditIneligible));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_bond_outside_the_signed_limits_is_refused() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (_, raw) = finding_artifact()?;
+
+    // The bond equals the schedule's dispute requirement exactly, so the
+    // schedule check passes; what refuses the filing is the seller-signed
+    // ceiling sitting below that requirement. The two signed artifacts
+    // disagree, and a filing admitted under either alone would ignore the
+    // other's commitment.
+    let narrow = signed_envelope_sha256(&narrow_bond_terms()?)?;
+    let challenge = buyer_challenge_bound_to_terms(&keypair(41), &narrow)?;
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("a bond outside the seller-signed limits stakes no filing");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::DisputeBondOutsideTermsLimits
+    ));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    assert!(deployment.rail.charges().is_empty());
+    Ok(())
 }
 
 #[test]
