@@ -3354,6 +3354,91 @@ fn finding_challenge_successful_appeal_reverses_before_impairment() -> TestResul
 }
 
 #[test]
+fn finding_challenge_an_unauthenticated_appeal_supersedes_nothing() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    // An appeal filed under a key the governance root never delegated to,
+    // naming the real sanction. It is exactly the filing an attacker can
+    // produce, and the index must be left able to accept the real one.
+    let forged = sample_case(
+        &keypair(99),
+        &case.governance.listing,
+        &case.governance.activation,
+        &case.governance.charter,
+        GenericGovernanceCaseKind::Appeal,
+        Some(case.upheld.sanction_case_id.clone()),
+        Some(case.upheld.sanction_case_id.clone()),
+    )?;
+
+    let refused = case
+        .coordinator
+        .resolve_appeal(
+            &case.upheld.liability_key,
+            &case.outcome,
+            &identity,
+            &case.upheld.sealed,
+            &case.governance.context(),
+            &AppealDisposition::Successful {
+                appeal_case: &forged,
+                appeal_case_id: &forged.body.case_id,
+            },
+            &case.upheld.sanction_case_id,
+            &case.upheld.hold,
+            &hex64('7'),
+            NOW + 20,
+        )
+        .expect_err("an appeal no pinned authority signed reverses nothing");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::AuthorityPinMismatch(_)
+    ));
+
+    let cases = case
+        .deployment
+        .challenges
+        .list_governance_cases(&case.upheld.liability_key)?;
+    assert_eq!(
+        cases.len(),
+        1,
+        "a refused appeal leaves no case head behind it"
+    );
+    let sanction = cases.first().ok_or("the sanction is indexed")?;
+    assert_eq!(sanction.case_id, case.upheld.sanction_case_id);
+    assert_eq!(
+        sanction.superseded_by_case_id, None,
+        "the sanction still governs the liability"
+    );
+
+    // The legitimate appeal that follows must still be able to supersede.
+    let resolution = case.coordinator.resolve_appeal(
+        &case.upheld.liability_key,
+        &case.outcome,
+        &identity,
+        &case.upheld.sealed,
+        &case.governance.context(),
+        &AppealDisposition::Successful {
+            appeal_case: &case.governance.appeal_case,
+            appeal_case_id: &case.governance.appeal_case.body.case_id,
+        },
+        &case.upheld.sanction_case_id,
+        &case.upheld.hold,
+        &hex64('7'),
+        NOW + 40,
+    )?;
+    assert!(matches!(
+        resolution,
+        AppealResolution::ReversedBeforeImpairment { .. }
+    ));
+    let head = case
+        .deployment
+        .challenges
+        .resolve_case_head(&case.upheld.liability_key)?
+        .ok_or("the appeal is the live case head")?;
+    assert_eq!(head.case_id, case.governance.appeal_case.body.case_id);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_appeal_finality_impairs_and_fences_every_effect_intent() -> TestResult {
     let case = upheld_liability()?;
     let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);

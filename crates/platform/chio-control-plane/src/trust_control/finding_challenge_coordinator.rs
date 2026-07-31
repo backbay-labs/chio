@@ -1272,6 +1272,25 @@ impl FindingChallengeCoordinator {
                 appeal_case,
                 appeal_case_id,
             } => {
+                // The reversal is minted before the case is indexed. A
+                // recorded appeal stamps the sanction superseded, and the
+                // index admits exactly one supersession per case, so an
+                // appeal that cannot authenticate must leave no head
+                // behind: otherwise a malformed filing would permanently
+                // consume the supersession a legitimate appeal needs.
+                // Minting moves nothing on its own; it authenticates the
+                // filing and signs, which is why it can run first.
+                let reversal = self.mint_penalty(
+                    FindingPenaltyBranch::SuccessfulAppeal,
+                    governance,
+                    appeal_case,
+                    Some(&hold.penalty),
+                    &sealed.distribution.slash,
+                    outcome,
+                    sanction_case_id,
+                    Some(&hold.evaluation.penalty_id),
+                    now,
+                )?;
                 self.challenges
                     .record_governance_case(&FindingGovernanceCaseInput {
                         case_id: appeal_case_id,
@@ -1287,17 +1306,6 @@ impl FindingChallengeCoordinator {
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;
-                let reversal = self.mint_penalty(
-                    FindingPenaltyBranch::SuccessfulAppeal,
-                    governance,
-                    appeal_case,
-                    Some(&hold.penalty),
-                    &sealed.distribution.slash,
-                    outcome,
-                    sanction_case_id,
-                    Some(&hold.evaluation.penalty_id),
-                    now,
-                )?;
                 self.challenges
                     .reverse_liability_before_impairment(
                         liability_key,
