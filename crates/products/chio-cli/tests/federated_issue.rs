@@ -1,5 +1,8 @@
 #![allow(clippy::expect_used, clippy::too_many_arguments, clippy::unwrap_used)]
 
+#[path = "federated_issue/enterprise_provider_fixtures.rs"]
+mod enterprise_provider_fixtures;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -19,6 +22,7 @@ use chio_core::receipt::{
 use chio_kernel::{BudgetStore, CapabilityAuthority, LocalCapabilityAuthority, ReceiptStore};
 use chio_store_sqlite::{SqliteBudgetStore, SqliteReceiptStore};
 use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
+use enterprise_provider_fixtures::{enterprise_provider_record, scim_enterprise_provider_record};
 use reqwest::blocking::Client;
 
 fn unique_dir(prefix: &str) -> PathBuf {
@@ -553,72 +557,6 @@ fn write_enterprise_provider_registry(path: &Path, records: &[serde_json::Value]
         .expect("serialize enterprise provider registry"),
     )
     .expect("write enterprise provider registry");
-}
-
-fn enterprise_provider_record(
-    provider_id: &str,
-    enabled: bool,
-    organization_id: &str,
-) -> serde_json::Value {
-    serde_json::json!({
-        "provider_id": provider_id,
-        "kind": "oidc_jwks",
-        "enabled": enabled,
-        "provenance": {
-            "configured_from": "manual",
-            "source_ref": "operator",
-            "trust_material_ref": "jwks:enterprise-login",
-            "subject_mapping_source": "manual"
-        },
-        "trust_boundary": {
-            "allowed_issuers": ["https://issuer.enterprise.example"],
-            "allowed_tenants": ["tenant-123"],
-            "allowed_organizations": [organization_id]
-        },
-        "issuer": "https://issuer.enterprise.example",
-        "jwks_url": "https://issuer.enterprise.example/jwks",
-        "tenant_id": "tenant-123",
-        "organization_id": organization_id,
-        "subject_mapping": {
-            "principal_source": "sub",
-            "tenant_id_field": "tid",
-            "organization_id_field": "org_id",
-            "groups_field": "groups",
-            "roles_field": "roles"
-        }
-    })
-}
-
-fn scim_enterprise_provider_record(
-    provider_id: &str,
-    enabled: bool,
-    organization_id: &str,
-) -> serde_json::Value {
-    serde_json::json!({
-        "provider_id": provider_id,
-        "kind": "scim",
-        "enabled": enabled,
-        "provenance": {
-            "configured_from": "manual",
-            "source_ref": "operator",
-            "trust_material_ref": "scim:enterprise-login",
-            "subject_mapping_source": "manual"
-        },
-        "trust_boundary": {
-            "allowed_tenants": ["tenant-123"],
-            "allowed_organizations": [organization_id]
-        },
-        "scim_base_url": "https://issuer.enterprise.example/scim/v2",
-        "tenant_id": "tenant-123",
-        "organization_id": organization_id,
-        "subject_mapping": {
-            "principal_source": "userName",
-            "tenant_id_field": "tenantId",
-            "organization_id_field": "organizationId",
-            "groups_field": "groups",
-            "roles_field": "roles"
-        }
-    })
 }
 
 fn write_enterprise_identity(
