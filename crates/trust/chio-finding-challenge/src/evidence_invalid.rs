@@ -119,6 +119,7 @@ pub(crate) fn evaluate_evidence_invalid(
     if verify_checkpoint_membership(
         evidence.challenged_receipts,
         core::slice::from_ref(evidence.challenged_checkpoint),
+        evidence.checkpoint_transparency,
         context.profile,
         &challenged_checkpoint_ref.checkpoint_ref,
     )

@@ -98,6 +98,7 @@ use chio_settle::{
     VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
+    derive_dispute_bond_funding_intent_key, dispute_bond_funding_intent_digest,
     FindingChallengeAuthorizationBranch, FindingChallengeEvaluationStart,
     FindingChallengeEvidenceClass, FindingChallengeState, FindingChallengeSubmission,
     FindingChallengeVerdict as StoreVerdict, FindingChallengeWriteOutcome,
@@ -108,7 +109,9 @@ use chio_store_sqlite::{
     SqliteFindingPurchaseStore,
 };
 
-use super::finding_handlers::{FindingRailInstruction, FindingRailObserver};
+use super::finding_handlers::{
+    FindingRailInstruction, FindingRailObservation, FindingRailObserver,
+};
 use super::service_types::{FindingAuthorityPin, FindingMarketConfig, FindingPoolPin};
 
 /// Domain separator for the per-finding defect identity.
@@ -240,6 +243,12 @@ pub fn derive_fee_intent_key(submission_id: &str, fee_operation_id: &str) -> Str
     sha256_hex(format!("{EFFECT_FEE_DOMAIN}\0{submission_id}\0{fee_operation_id}").as_bytes())
 }
 
+fn dispute_fee_intent_key(challenge_id: &str) -> String {
+    let operation_id =
+        sha256_hex(format!("{DISPUTE_FEE_OPERATION_DOMAIN}\0{challenge_id}").as_bytes());
+    derive_fee_intent_key(challenge_id, &operation_id)
+}
+
 /// Domain-keyed identity of the enforcement/root semantic intent.
 ///
 /// The key is liability-scoped identity only. The penalty envelope digest
@@ -364,8 +373,12 @@ pub enum ChallengeCoordinatorError {
     EvaluatorKeyEpoch,
     #[error("evaluator key revocation status will not support a signature: {0}")]
     EvaluatorRevocation(&'static str),
+    #[error("settlement observer key is outside the lifecycle its pin declares: {0}")]
+    SettlementObserverLifecycle(&'static str),
     #[error("dispute fee rail dispatch failed: {0}")]
     FeeRail(String),
+    #[error("dispute bond funding rail dispatch failed: {0}")]
+    DisputeBondRail(String),
     #[error("semantic effect intent is not durably fenced before dispatch")]
     EffectIntentUnfenced,
     #[error("enforcement root is not confirmed: {0}")]
@@ -478,7 +491,7 @@ struct ChallengeRolePins {
     audit_authority: PublicKey,
     governance_authority: PublicKey,
     purchase_authority: PublicKey,
-    settlement_observer: PublicKey,
+    settlement_observer: FindingAuthorityPin,
     settlement_finality_requirement: FindingFinalityRequirement,
 }
 
@@ -708,7 +721,6 @@ pub struct FindingChallengeCoordinator {
     filings: Arc<dyn FindingFilingResolver>,
     venue_id: String,
     challenge_administration_pool: FindingPoolPin,
-    community_fund_destination: String,
     status_feed_operator_ref: String,
     /// Disposition a rejected challenge's bond takes, predeclared by the
     /// admitted market terms rather than chosen per case.
@@ -785,7 +797,7 @@ impl FindingChallengeCoordinator {
                 audit_authority: pin(&config.audit_authority, "audit")?,
                 governance_authority: pin(&config.governance_root, "governance")?,
                 purchase_authority: pin(&config.purchase, "purchase")?,
-                settlement_observer: pin(&config.settlement_observer, "settlement observer")?,
+                settlement_observer: config.settlement_observer.clone(),
                 settlement_finality_requirement: config.settlement_finality_requirement,
             },
             evaluator_authority,
@@ -796,7 +808,6 @@ impl FindingChallengeCoordinator {
             filings,
             venue_id: config.venue_id.clone(),
             challenge_administration_pool: config.challenge_administration_pool.clone(),
-            community_fund_destination: config.community_fund_destination.clone(),
             status_feed_operator_ref: config.status_feed_operator_ref.clone(),
             failed_challenge_disposition,
         })
@@ -928,6 +939,7 @@ impl FindingChallengeCoordinator {
         };
         let lock = &submission.dispute_lock_ref;
         let fee_intent_key = self.charge_dispute_fee(&body.challenge_id, submission, now)?;
+        self.fund_dispute_bond(&body.challenge_id, submission, now)?;
         self.challenges
             .lock_dispute_bond(&FindingDisputeLockInput {
                 lock_id: &lock.lock_id,
@@ -1208,6 +1220,12 @@ impl FindingChallengeCoordinator {
         if signed_challenge.body.challenge_id != challenge_id {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
         }
+        let admission = self.resolve_admission(&signed_challenge.body)?;
+        if admission.body.backing_allocation_id != identity.allocation_id {
+            return Err(ChallengeCoordinatorError::AdmissionBinding(
+                "backing_allocation_id",
+            ));
+        }
         let challenge_envelope_sha256 = self.envelope_digest(signed_challenge)?;
         if outcome.body.challenge_envelope_sha256 != challenge_envelope_sha256 {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
@@ -1325,6 +1343,7 @@ impl FindingChallengeCoordinator {
             claim_candidates,
             collateral,
             &authoritative_calculation.penalty_amount,
+            &admission.body.community_fund_destination,
             now,
         )?;
 
@@ -1558,7 +1577,7 @@ impl FindingChallengeCoordinator {
         penalty: &SignedOpenMarketPenalty,
         bond_snapshot: &SignedFindingFinalizedBondSnapshot,
         seller: &PublicKey,
-        max_snapshot_age_secs: u64,
+        settlement_observer_revocation: FindingKeyRevocationStatus<'_>,
         settlement_config: &SettlementChainConfig,
         operator_address: &str,
         vault_snapshot: &EvmBondSnapshot,
@@ -1610,12 +1629,18 @@ impl FindingChallengeCoordinator {
             }
         }
         self.require_penalty_matches_enforcement(&liability, enforcement, penalty)?;
+        self.require_live_settlement_observer(bond_snapshot, settlement_observer_revocation, now)?;
+        let settlement_observer = self
+            .pins
+            .settlement_observer
+            .key()
+            .map_err(|error| ChallengeCoordinatorError::Configuration(error.to_string()))?;
         let pins = FindingEnforcementPins {
             finalization_authority: self.finalization_authority.public_key(),
-            settlement_observer: self.pins.settlement_observer.clone(),
+            settlement_observer,
             seller: seller.clone(),
             finality_requirement: self.pins.settlement_finality_requirement,
-            max_snapshot_age_secs,
+            max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
         };
         let verified = verify_finding_enforcement(enforcement, bond_snapshot, &pins, now)
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
@@ -1829,6 +1854,11 @@ impl FindingChallengeCoordinator {
                 &challenge.backing_envelope_sha256,
             )
             .ok_or(ChallengeCoordinatorError::UnknownAdmission)?;
+        if self.envelope_digest(&admission)? != challenge.venue_admission_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::AdmissionBinding(
+                "venue_admission_envelope_sha256",
+            ));
+        }
         verify_signed_admission(&admission, &self.pins.venue_authority, &self.venue_id)
             .map_err(|error| ChallengeCoordinatorError::AdmissionEnvelope(error.to_string()))?;
         let bindings: [(&str, &str, &'static str); 6] = [
@@ -2066,6 +2096,44 @@ impl FindingChallengeCoordinator {
         {
             return Err(ChallengeCoordinatorError::EvaluatorRevocation(
                 "status is not a live reading",
+            ));
+        }
+        Ok(())
+    }
+
+    fn require_live_settlement_observer(
+        &self,
+        snapshot: &SignedFindingFinalizedBondSnapshot,
+        status: FindingKeyRevocationStatus<'_>,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let pin = &self.pins.settlement_observer;
+        if !pin.covers(snapshot.body.observed_at) {
+            return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
+                "snapshot was signed outside the configured validity window",
+            ));
+        }
+        if snapshot.body.operator_key_epoch != pin.key_epoch {
+            return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
+                "snapshot names another key epoch",
+            ));
+        }
+        if status.status_ref != pin.revocation_status_ref {
+            return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
+                "status answers another revocation reference",
+            ));
+        }
+        if status.revoked {
+            return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
+                "key is revoked",
+            ));
+        }
+        if status.observed_at < snapshot.body.observed_at
+            || status.observed_at > now
+            || now.saturating_sub(status.observed_at) > MAX_REVOCATION_STATUS_AGE_SECS
+        {
+            return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
+                "status is not a live reading at or after the snapshot",
             ));
         }
         Ok(())
@@ -2882,14 +2950,7 @@ impl FindingChallengeCoordinator {
         now: u64,
     ) -> Result<String, ChallengeCoordinatorError> {
         let fee = &submission.dispute_fee_terminal;
-        let fee_operation_id = sha256_hex(
-            format!(
-                "{DISPUTE_FEE_OPERATION_DOMAIN}\0{challenge_id}\0{schedule}",
-                schedule = fee.fee_schedule_envelope_sha256,
-            )
-            .as_bytes(),
-        );
-        let intent_key = derive_fee_intent_key(challenge_id, &fee_operation_id);
+        let intent_key = dispute_fee_intent_key(challenge_id);
         let instruction = FindingRailInstruction {
             idempotency_key: intent_key.clone(),
             payer: fee.payer.to_hex(),
@@ -2930,13 +2991,25 @@ impl FindingChallengeCoordinator {
             .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, now)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         match self.rail.dispatch(&instruction) {
-            Ok(_) => {
+            Ok(observation)
+                if rail_observation_matches(&instruction, &intent_digest, &observation) =>
+            {
                 self.challenges
                     .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;
                 Ok(intent_key)
+            }
+            Ok(_) => {
+                let _ = self.challenges.advance_effect_intent(
+                    &intent_key,
+                    FindingEffectIntentState::Failed,
+                    now,
+                );
+                Err(ChallengeCoordinatorError::FeeRail(
+                    "rail observation does not reconcile to the dispatched instruction".to_owned(),
+                ))
             }
             Err(reason) => {
                 // The intent stays durable and unreconciled, so the filing
@@ -2948,6 +3021,90 @@ impl FindingChallengeCoordinator {
                     now,
                 );
                 Err(ChallengeCoordinatorError::FeeRail(reason))
+            }
+        }
+    }
+
+    fn fund_dispute_bond(
+        &self,
+        challenge_id: &str,
+        submission: &chio_finding::FindingBuyerSubmission,
+        now: u64,
+    ) -> Result<String, ChallengeCoordinatorError> {
+        let lock = &submission.dispute_lock_ref;
+        let input = FindingDisputeLockInput {
+            lock_id: &lock.lock_id,
+            challenge_id,
+            owner_hex: &submission.challenger.to_hex(),
+            schedule_envelope_sha256: &lock.fee_schedule_envelope_sha256,
+            amount_units: lock.amount.units,
+            currency: &lock.amount.currency,
+            expires_at: lock.expiry,
+            locked_at: now,
+        };
+        let intent_key = derive_dispute_bond_funding_intent_key(challenge_id, &lock.lock_id);
+        let intent_digest = dispute_bond_funding_intent_digest(&input);
+        let fenced = self
+            .challenges
+            .record_effect_intent(
+                &intent_key,
+                FindingEffectIntentKind::ChallengeBond,
+                &intent_digest,
+                None,
+                false,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        if fenced == FindingChallengeWriteOutcome::ExistingSame {
+            let state = self
+                .challenges
+                .get_effect_intent(&intent_key)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+                .map(|record| record.state);
+            if state == Some(FindingEffectIntentState::Confirmed) {
+                return Ok(intent_key);
+            }
+        }
+        self.challenges
+            .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, now)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        let instruction = FindingRailInstruction {
+            idempotency_key: intent_key.clone(),
+            payer: submission.challenger.to_hex(),
+            amount_units: lock.amount.units,
+            currency: lock.amount.currency.clone(),
+            pool_principal_id: self.challenge_administration_pool.principal_id.clone(),
+            rail_destination: self.challenge_administration_pool.rail_destination.clone(),
+        };
+        let instruction_digest = canonical_digest_of(&instruction)?;
+        match self.rail.dispatch(&instruction) {
+            Ok(observation)
+                if rail_observation_matches(&instruction, &instruction_digest, &observation) =>
+            {
+                self.challenges
+                    .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+                Ok(intent_key)
+            }
+            Ok(_) => {
+                let _ = self.challenges.advance_effect_intent(
+                    &intent_key,
+                    FindingEffectIntentState::Failed,
+                    now,
+                );
+                Err(ChallengeCoordinatorError::DisputeBondRail(
+                    "rail observation does not reconcile to the dispatched instruction".to_owned(),
+                ))
+            }
+            Err(reason) => {
+                let _ = self.challenges.advance_effect_intent(
+                    &intent_key,
+                    FindingEffectIntentState::Failed,
+                    now,
+                );
+                Err(ChallengeCoordinatorError::DisputeBondRail(reason))
             }
         }
     }
@@ -3006,6 +3163,7 @@ impl FindingChallengeCoordinator {
         claim_candidates: &[String],
         collateral: &FindingCollateralFacts<'_>,
         expected_penalty: &MonetaryAmount,
+        community_fund_destination: &str,
         now: u64,
     ) -> Result<SealedClaimSnapshot, ChallengeCoordinatorError> {
         let harms = self.verified_harms(
@@ -3033,7 +3191,7 @@ impl FindingChallengeCoordinator {
                 open_per_sale_encumbrances: open,
                 live_allocated_collateral: collateral.live_allocated_collateral_units,
                 listing_required_amount: collateral.listing_required_amount,
-                community_fund_destination: &self.community_fund_destination,
+                community_fund_destination,
             },
             &harms,
         )
@@ -3315,6 +3473,29 @@ impl FindingChallengeCoordinator {
                 if lock.state != FindingDisputeLockState::Returned {
                     return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
                 }
+                let collected_fee_key = dispute_fee_intent_key(challenge_id);
+                let collected_fee = self
+                    .challenges
+                    .get_effect_intent(&collected_fee_key)
+                    .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+                    .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+                if collected_fee.kind != FindingEffectIntentKind::Fee
+                    || collected_fee.liability_key.is_some()
+                    || collected_fee.settlement_required
+                    || collected_fee.state != FindingEffectIntentState::Confirmed
+                {
+                    return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
+                }
+                let fee_key = derive_fee_intent_key(liability_key, &collected_fee_key);
+                let fee_commitment = format!(
+                    "{EFFECT_FEE_DOMAIN}\0collected\0{collected_fee_key}\0{digest}",
+                    digest = collected_fee.intent_digest,
+                );
+                bindings.push(FindingEffectIntentBinding {
+                    kind: chio_finding::FindingEffectIntentKind::Fee,
+                    intent_id: fee_key.clone(),
+                });
+                fenced.push((FindingEffectIntentKind::Fee, fee_key, fee_commitment));
                 let key = derive_challenge_bond_intent_key(challenge_id, &lock.lock_id);
                 // The commitment separately binds the disposition, amount,
                 // currency, and destination, so two conflicting
@@ -3347,7 +3528,10 @@ impl FindingChallengeCoordinator {
                     now,
                 )
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
-            if *kind == FindingEffectIntentKind::ChallengeBond {
+            if matches!(
+                *kind,
+                FindingEffectIntentKind::ChallengeBond | FindingEffectIntentKind::Fee
+            ) {
                 let state = self
                     .challenges
                     .get_effect_intent(key)
@@ -3608,6 +3792,18 @@ fn canonical_digest_of<T: serde::Serialize>(
     let bytes =
         chio_core::canonical_json_bytes(value).map_err(|_| ChallengeCoordinatorError::Canonical)?;
     Ok(sha256_hex(&bytes))
+}
+
+fn rail_observation_matches(
+    instruction: &FindingRailInstruction,
+    instruction_digest: &str,
+    observation: &FindingRailObservation,
+) -> bool {
+    observation.instruction_sha256 == instruction_digest
+        && observation.amount_units == instruction.amount_units
+        && observation.currency == instruction.currency
+        && observation.rail_destination == instruction.rail_destination
+        && !observation.rail.trim().is_empty()
 }
 
 /// The sealed purchase-snapshot commitment: every verified harm in

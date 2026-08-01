@@ -179,6 +179,7 @@ fn market_config() -> FindingMarketConfig {
         venue_finalization: authority_pin(32, "venue-finalization"),
         market_penalty: authority_pin(33, "market-penalty"),
         settlement_observer: authority_pin(34, "settlement-observer"),
+        max_snapshot_age_secs: 3_600,
         settlement_finality_requirement: chio_settle::FindingFinalityRequirement::Confirmations {
             min_depth: 64,
         },

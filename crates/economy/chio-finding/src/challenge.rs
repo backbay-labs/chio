@@ -530,6 +530,8 @@ pub struct FindingChallenge {
     pub listing_id: String,
     pub terms_envelope_sha256: String,
     pub profile_envelope_sha256: String,
+    /// Exact retained venue admission whose backing governed the sale.
+    pub venue_admission_envelope_sha256: String,
     pub backing_envelope_sha256: String,
     pub filed_at: u64,
     /// Standing hints only, never the payout set.
@@ -552,6 +554,10 @@ impl FindingChallenge {
         require_bounded_id(&self.listing_id, "listing_id")?;
         require_hex64(&self.terms_envelope_sha256, "terms_envelope_sha256")?;
         require_hex64(&self.profile_envelope_sha256, "profile_envelope_sha256")?;
+        require_hex64(
+            &self.venue_admission_envelope_sha256,
+            "venue_admission_envelope_sha256",
+        )?;
         require_hex64(&self.backing_envelope_sha256, "backing_envelope_sha256")?;
         require_nonzero(self.filed_at, "filed_at")?;
         if self.affected_deliveries.len() > MAX_CHALLENGE_AFFECTED_DELIVERIES {

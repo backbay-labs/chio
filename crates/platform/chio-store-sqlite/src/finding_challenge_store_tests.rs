@@ -432,6 +432,38 @@ fn lock_input<'a>(
     }
 }
 
+fn fund_lock(fixture: &Fixture, input: &FindingDisputeLockInput<'_>) {
+    let key = derive_dispute_bond_funding_intent_key(input.challenge_id, input.lock_id);
+    fixture
+        .store
+        .record_effect_intent(
+            &key,
+            FindingEffectIntentKind::ChallengeBond,
+            &dispute_bond_funding_intent_digest(input),
+            None,
+            false,
+            NOW,
+        )
+        .expect("fence dispute bond funding");
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        fixture
+            .store
+            .advance_effect_intent(&key, state, NOW)
+            .expect("confirm dispute bond funding");
+    }
+}
+
+fn lock_dispute_bond(
+    fixture: &Fixture,
+    input: &FindingDisputeLockInput<'_>,
+) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+    fund_lock(fixture, input);
+    fixture.store.lock_dispute_bond(input)
+}
+
 /// One reservation on the fixture listing, taken through to a reserved
 /// slot so the cutoff line has something on it.
 fn reserve_slot(fixture: &Fixture, tag: &str, listing_id: &str, allocation_id: &str) -> u64 {
@@ -922,14 +954,11 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
 
     let audit = Challenge::audit("audit");
     submit(&fixture, &audit);
+    let audit_lock = lock_input("lock-audit", &audit.challenge_id, &owner, &schedule);
+    fund_lock(&fixture, &audit_lock);
     assert!(
         matches!(
-            fixture.store.lock_dispute_bond(&lock_input(
-                "lock-audit",
-                &audit.challenge_id,
-                &owner,
-                &schedule
-            )),
+            fixture.store.lock_dispute_bond(&audit_lock),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
         "a bondless venue audit posts no dispute bond"
@@ -937,21 +966,33 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
 
     let upheld = Challenge::buyer("alpha");
     submit(&fixture, &upheld);
+    let unfunded = lock_input("lock-unfunded", &upheld.challenge_id, &owner, &schedule);
     assert!(
         matches!(
-            fixture.store.lock_dispute_bond(&lock_input(
-                "lock-wrong-owner",
-                &upheld.challenge_id,
-                &hex64('c'),
-                &schedule
-            )),
+            fixture.store.lock_dispute_bond(&unfunded),
+            Err(FindingChallengeStoreError::Conflict(ref detail))
+                if detail.contains("independently confirmed funding")
+        ),
+        "a caller-provided lock id is not evidence of funded collateral"
+    );
+    let wrong_owner = hex64('c');
+    let wrong_owner_lock = lock_input(
+        "lock-wrong-owner",
+        &upheld.challenge_id,
+        &wrong_owner,
+        &schedule,
+    );
+    fund_lock(&fixture, &wrong_owner_lock);
+    assert!(
+        matches!(
+            fixture.store.lock_dispute_bond(&wrong_owner_lock),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
         "a bond owned by anyone but the challenger must reject"
     );
     let lock = lock_input("lock-alpha", &upheld.challenge_id, &owner, &schedule);
     assert_eq!(
-        fixture.store.lock_dispute_bond(&lock).expect("lock bond"),
+        lock_dispute_bond(&fixture, &lock).expect("lock bond"),
         FindingChallengeWriteOutcome::Inserted
     );
     assert_eq!(
@@ -991,14 +1032,11 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
     // A lock id is bound to exactly one challenge and is never reused.
     let other = Challenge::buyer("beta");
     submit(&fixture, &other);
+    let reused_lock = lock_input("lock-alpha", &other.challenge_id, &owner, &schedule);
+    fund_lock(&fixture, &reused_lock);
     assert!(
         matches!(
-            fixture.store.lock_dispute_bond(&lock_input(
-                "lock-alpha",
-                &other.challenge_id,
-                &owner,
-                &schedule
-            )),
+            fixture.store.lock_dispute_bond(&reused_lock),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
         "one lock cannot back two challenges"
@@ -1075,15 +1113,8 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
     );
 
     // A rejected challenge is the only one whose bond may be forfeited.
-    fixture
-        .store
-        .lock_dispute_bond(&lock_input(
-            "lock-beta",
-            &other.challenge_id,
-            &owner,
-            &schedule,
-        ))
-        .expect("lock beta bond");
+    let beta_lock = lock_input("lock-beta", &other.challenge_id, &owner, &schedule);
+    lock_dispute_bond(&fixture, &beta_lock).expect("lock beta bond");
     fixture
         .store
         .begin_evaluation(&other.challenge_id, NOW + 1)
@@ -1121,15 +1152,8 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
     // An indeterminate close never forfeits for an infrastructure failure.
     let stalled = Challenge::buyer("gamma");
     submit(&fixture, &stalled);
-    fixture
-        .store
-        .lock_dispute_bond(&lock_input(
-            "lock-gamma",
-            &stalled.challenge_id,
-            &owner,
-            &schedule,
-        ))
-        .expect("lock gamma bond");
+    let gamma_lock = lock_input("lock-gamma", &stalled.challenge_id, &owner, &schedule);
+    lock_dispute_bond(&fixture, &gamma_lock).expect("lock gamma bond");
     fixture
         .store
         .begin_evaluation(&stalled.challenge_id, NOW + 1)

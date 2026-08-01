@@ -242,6 +242,7 @@ pub use encrypted_blob::{
 pub use execution_nonce_store::{SqliteExecutionNonceStore, SqliteExecutionNonceStoreError};
 #[cfg(feature = "cognition-market-experimental")]
 pub use finding_challenge_store::{
+    derive_dispute_bond_funding_intent_key, dispute_bond_funding_intent_digest,
     FindingChallengeAuthorizationBranch, FindingChallengeEvaluationStart,
     FindingChallengeEvidenceClass, FindingChallengeRecord, FindingChallengeState,
     FindingChallengeStoreError, FindingChallengeSubmission, FindingChallengeVerdict,

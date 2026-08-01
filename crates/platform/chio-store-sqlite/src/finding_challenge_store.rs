@@ -63,7 +63,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chio_core::StoreMutationFence;
+use chio_core::{sha256_hex, StoreMutationFence};
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use thiserror::Error;
@@ -88,6 +88,8 @@ const MAX_IDENTIFIER_BYTES: usize = 512;
 /// surface owns that vocabulary; the store only refuses one too long to
 /// be a state name.
 const MAX_CASE_STATE_BYTES: usize = 64;
+
+const DISPUTE_BOND_FUNDING_DOMAIN: &str = "chio.finding.dispute-bond-funding.v1";
 /// Retries one challenge may take after an indeterminate verdict. An
 /// indeterminate result is an infrastructure or authority failure rather
 /// than an answer, so the challenge is entitled to exactly one further
@@ -291,6 +293,33 @@ pub struct FindingDisputeLockInput<'a> {
     pub currency: &'a str,
     pub expires_at: u64,
     pub locked_at: u64,
+}
+
+/// Durable key for the independently confirmed funding behind one dispute
+/// lock. The challenge and lock identities are both present so one funded
+/// lock cannot be claimed by another filing.
+#[must_use]
+pub fn derive_dispute_bond_funding_intent_key(challenge_id: &str, lock_id: &str) -> String {
+    sha256_hex(format!("{DISPUTE_BOND_FUNDING_DOMAIN}\0{challenge_id}\0{lock_id}").as_bytes())
+}
+
+/// Commitment a confirmed funding intent must carry before the store will
+/// turn it into an evaluable dispute lock.
+#[must_use]
+pub fn dispute_bond_funding_intent_digest(input: &FindingDisputeLockInput<'_>) -> String {
+    sha256_hex(
+        format!(
+            "{DISPUTE_BOND_FUNDING_DOMAIN}\0{challenge}\0{lock}\0{owner}\0{schedule}\0{units}\0{currency}\0{expiry}",
+            challenge = input.challenge_id,
+            lock = input.lock_id,
+            owner = input.owner_hex,
+            schedule = input.schedule_envelope_sha256,
+            units = input.amount_units,
+            currency = input.currency,
+            expiry = input.expires_at,
+        )
+        .as_bytes(),
+    )
 }
 
 /// One dispute bond lock row.
@@ -800,6 +829,22 @@ impl SqliteFindingChallengeStore {
         validate_dispute_lock(input)?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
+        let funding_key = derive_dispute_bond_funding_intent_key(input.challenge_id, input.lock_id);
+        let funding = load_effect_intent_tx(&transaction, &funding_key)?.ok_or_else(|| {
+            FindingChallengeStoreError::Conflict(
+                "dispute bond has no independently confirmed funding intent".to_owned(),
+            )
+        })?;
+        if funding.kind != FindingEffectIntentKind::ChallengeBond
+            || funding.liability_key.is_some()
+            || funding.settlement_required
+            || funding.intent_digest != dispute_bond_funding_intent_digest(input)
+            || funding.state != FindingEffectIntentState::Confirmed
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "dispute bond funding intent is not confirmed for this lock".to_owned(),
+            ));
+        }
         if let Some(existing) = load_dispute_lock_tx(&transaction, input.challenge_id)? {
             if dispute_lock_matches(&existing, input) {
                 return Ok(FindingChallengeWriteOutcome::ExistingSame);

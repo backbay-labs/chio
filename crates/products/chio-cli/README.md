@@ -143,7 +143,8 @@ is required:
     "backing_envelope_sha256": "<64 hex>",
     "listing_id": "finding-listing-01",
     "profile_envelope_sha256": "<64 hex>",
-    "terms_envelope_sha256": "<64 hex>"
+    "terms_envelope_sha256": "<64 hex>",
+    "venue_admission_envelope_sha256": "<64 hex>"
   }
 }
 ```

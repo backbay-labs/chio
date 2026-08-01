@@ -20,6 +20,7 @@ pub mod attestation;
 pub mod certify;
 mod durable_admission;
 pub use chio_enterprise_export as enterprise_export;
+#[cfg(test)]
 use durable_admission::create_private_directory;
 pub use durable_admission::*;
 pub(crate) use durable_admission::{durable_admission_lock_root, write_private_file_atomically};

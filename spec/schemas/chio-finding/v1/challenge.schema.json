@@ -21,6 +21,7 @@
         "listing_id",
         "terms_envelope_sha256",
         "profile_envelope_sha256",
+        "venue_admission_envelope_sha256",
         "backing_envelope_sha256",
         "filed_at",
         "affected_deliveries",
@@ -47,6 +48,9 @@
           "$ref": "#/$defs/sha256"
         },
         "profile_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "venue_admission_envelope_sha256": {
           "$ref": "#/$defs/sha256"
         },
         "backing_envelope_sha256": {

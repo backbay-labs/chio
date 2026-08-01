@@ -180,6 +180,7 @@ pub(crate) fn evaluate_digest_mismatch(
     if verify_checkpoint_membership(
         core::slice::from_ref(evidence.deny_receipt),
         core::slice::from_ref(evidence.deny_checkpoint),
+        evidence.checkpoint_transparency,
         context.profile,
         &deny_checkpoint_ref.checkpoint_ref,
     )
@@ -255,6 +256,19 @@ pub(crate) fn evaluate_digest_mismatch(
 
     match overlay.digest_check {
         DeliveryResult::Matched => {
+            // Both authenticated metadata blocks describe the same digest
+            // comparison. A disagreement between them, or a comparison
+            // against anything other than the finding's own commitment,
+            // establishes no result and cannot forfeit a buyer's bond.
+            if contract.result != DeliveryResult::Matched
+                || contract.observed_digest != contract.expected_digest
+                || contract.expected_digest != committed
+            {
+                return Ok(unresolved(
+                    committed,
+                    FindingChallengeReason::DeliveryEvidenceNotEstablished,
+                ));
+            }
             let reason = match overlay.media_type_check {
                 FindingMediaTypeCheck::Mismatched => {
                     FindingChallengeReason::DenialMediaTypeMismatch

@@ -13,7 +13,7 @@ use chio_finding::{
     SignedFindingPurchaseRecord,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
-use chio_kernel::checkpoint::KernelCheckpoint;
+use chio_kernel::checkpoint::{CheckpointTransparencySummary, KernelCheckpoint};
 
 use crate::ingress::FindingIngressError;
 use crate::reason::FindingChallengeReason;
@@ -58,6 +58,8 @@ pub struct FindingDigestMismatchEvidence<'a> {
     pub deny_receipt: &'a ResolvedReceiptEvidence,
     /// The checkpoint the denial is proved against.
     pub deny_checkpoint: &'a KernelCheckpoint,
+    /// Retained publication records for the exact checkpoint set.
+    pub checkpoint_transparency: &'a CheckpointTransparencySummary,
 }
 
 /// Resolved evidence for an `evidence_invalid` challenge.
@@ -69,6 +71,8 @@ pub struct FindingEvidenceInvalidEvidence<'a> {
     pub challenged_receipts: &'a [ResolvedReceiptEvidence],
     /// The checkpoint the contested subset is proved against.
     pub challenged_checkpoint: &'a KernelCheckpoint,
+    /// Retained publication records for the exact checkpoint set.
+    pub checkpoint_transparency: &'a CheckpointTransparencySummary,
     /// What the caller resolved from the revocation feeds the profile pins.
     /// A statement that only holds from after publication is a key-lifecycle
     /// event, not retroactive fabrication, and cannot uphold.
@@ -102,6 +106,7 @@ pub struct FindingReplayContradictionEvidence<'a> {
 pub struct FindingResolvedReproduction<'a> {
     pub receipt: &'a ResolvedReceiptEvidence,
     pub checkpoint: &'a KernelCheckpoint,
+    pub checkpoint_transparency: &'a CheckpointTransparencySummary,
 }
 
 /// Why a submission never became evaluable.

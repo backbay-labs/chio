@@ -57,8 +57,8 @@ use chio_finding_challenge::{
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_kernel::checkpoint::{
-    build_checkpoint, build_inclusion_proof, checkpoint_body_sha256, checkpoint_log_id,
-    KernelCheckpoint,
+    build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_body_sha256,
+    checkpoint_log_id, CheckpointTransparencySummary, KernelCheckpoint,
 };
 
 pub type TestResult = Result<(), Box<dyn Error>>;
@@ -311,7 +311,7 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
     let first_bytes = canonical_json_bytes(&first)?;
     let second_bytes = canonical_json_bytes(&second)?;
     let leaves = vec![first_bytes, second_bytes];
-    let evidence_checkpoint = build_checkpoint(1, 100, 101, &leaves, &production_kernel)?;
+    let evidence_checkpoint = build_checkpoint(1, 1, 2, &leaves, &production_kernel)?;
     let evidence_checkpoint_ref = checkpoint_reference(&evidence_checkpoint)?;
     let first_id = first.id.clone();
     let second_id = second.id.clone();
@@ -321,8 +321,8 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
         first.signature = second.signature.clone();
     }
     let evidence_receipts = vec![
-        resolve(first, &leaves, 0, 1, 100)?,
-        resolve(second, &leaves, 1, 1, 101)?,
+        resolve(first, &leaves, 0, 1, 1)?,
+        resolve(second, &leaves, 1, 1, 2)?,
     ];
 
     // Step 2: the governance profile, which pins every role and log.
@@ -560,6 +560,16 @@ impl World {
         evidence: FindingChallengeEvidence,
         affected: Vec<FindingAffectedDelivery>,
     ) -> Built<SignedFindingChallenge> {
+        self.sign_challenge_with_admission(authorization, evidence, affected, HEX64)
+    }
+
+    fn sign_challenge_with_admission(
+        &self,
+        authorization: FindingChallengeAuthorization,
+        evidence: FindingChallengeEvidence,
+        affected: Vec<FindingAffectedDelivery>,
+        venue_admission_envelope_sha256: &str,
+    ) -> Built<SignedFindingChallenge> {
         let signer = match &authorization {
             FindingChallengeAuthorization::BuyerSubmission(_) => &self.buyer,
             FindingChallengeAuthorization::VenueAudit(_) => &self.audit_authority,
@@ -572,6 +582,7 @@ impl World {
             listing_id: LISTING_ID.to_string(),
             terms_envelope_sha256: HEX64.to_string(),
             profile_envelope_sha256: self.profile_envelope_sha256.clone(),
+            venue_admission_envelope_sha256: venue_admission_envelope_sha256.to_string(),
             backing_envelope_sha256: HEX64_ALT.to_string(),
             filed_at: 1_750_000_000,
             affected_deliveries: affected,
@@ -614,7 +625,10 @@ impl World {
             venue_admission_envelope_sha256: HEX64.to_string(),
             accepted_price: usd(5_000),
             realized_spend: usd(5_000),
-            seller_backing_envelope_sha256: HEX64_ALT.to_string(),
+            seller_backing_envelope_sha256: match shape {
+                StandingShape::ForeignBacking => HEX64_THIRD.to_string(),
+                _ => HEX64_ALT.to_string(),
+            },
             encumbrance_id: "encumbrance-42".to_string(),
             delivery_receipt_id: "delivery-receipt-42".to_string(),
             payment_reference: "payment-reference-42".to_string(),
@@ -749,6 +763,7 @@ pub struct DigestCase {
     pub failed_delivery: SignedFindingFailedDelivery,
     pub deny_receipt: ResolvedReceiptEvidence,
     pub deny_checkpoint: KernelCheckpoint,
+    pub checkpoint_transparency: CheckpointTransparencySummary,
 }
 
 impl DigestCase {
@@ -757,6 +772,7 @@ impl DigestCase {
             failed_delivery: &self.failed_delivery,
             deny_receipt: &self.deny_receipt,
             deny_checkpoint: &self.deny_checkpoint,
+            checkpoint_transparency: &self.checkpoint_transparency,
         })
     }
 }
@@ -821,9 +837,9 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
         Some(serde_json::Value::Object(metadata)),
     )?;
     let leaves = vec![canonical_json_bytes(&receipt)?];
-    let deny_checkpoint = build_checkpoint(2, 200, 200, &leaves, kernel)?;
+    let deny_checkpoint = build_checkpoint(1, 1, 1, &leaves, kernel)?;
     let named_checkpoint_ref = checkpoint_reference(&deny_checkpoint)?;
-    let deny_receipt = resolve(receipt, &leaves, 0, 2, 200)?;
+    let deny_receipt = resolve(receipt, &leaves, 0, 1, 1)?;
     let deny_receipt_ref = receipt_reference(&deny_receipt);
 
     let mut terminal = FindingFailedDelivery {
@@ -874,16 +890,19 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
     // A substituted checkpoint proves the same leaves under a different
     // identity, so the reference no longer resolves.
     let deny_checkpoint = if shape.substitute_checkpoint {
-        build_checkpoint(7, 200, 200, &leaves, kernel)?
+        build_checkpoint(7, 1, 1, &leaves, kernel)?
     } else {
         deny_checkpoint
     };
 
+    let checkpoint_transparency =
+        build_checkpoint_transparency(core::slice::from_ref(&deny_checkpoint))?;
     Ok(DigestCase {
         challenge,
         failed_delivery,
         deny_receipt,
         deny_checkpoint,
+        checkpoint_transparency,
     })
 }
 
@@ -929,6 +948,10 @@ pub enum StandingShape {
     ForeignFinding,
     /// The record settles a different listing.
     ForeignListing,
+    /// The record was sold under a different backing revision.
+    ForeignBacking,
+    /// The record was sold under another venue admission.
+    ForeignAdmission,
     /// The record settles after the purchase authority's key policy closes.
     OutsideAuthorityWindow,
     /// The record names a buyer other than the challenger.
@@ -986,6 +1009,7 @@ impl EvidenceCase {
             purchase_record: &self.purchase_record,
             challenged_receipts: &self.challenged_receipts,
             challenged_checkpoint: &self.challenged_checkpoint,
+            checkpoint_transparency: &self.checkpoint_transparency,
             revoked_keys: proofs,
         })
     }
@@ -1049,8 +1073,8 @@ fn build_evidence_case(
         | EvidenceShape::ContradictoryCheckpoint => world.evidence_checkpoint.clone(),
         EvidenceShape::UnresolvedCheckpoint => build_checkpoint(
             1,
-            100,
-            101,
+            1,
+            2,
             &[
                 challenged_receipts[0].canonical_receipt_bytes.clone(),
                 b"other-leaf-b".to_vec(),
@@ -1064,7 +1088,7 @@ fn build_evidence_case(
                 .iter()
                 .map(|resolved| resolved.canonical_receipt_bytes.clone())
                 .collect();
-            let mut forged = build_checkpoint(1, 100, 101, &leaves, &keypair(88))?;
+            let mut forged = build_checkpoint(1, 1, 2, &leaves, &keypair(88))?;
             forged.body.kernel_key = world.production_kernel.public_key();
             forged
         }
@@ -1114,7 +1138,16 @@ fn build_evidence_case(
         purchase_record_envelope_sha256,
     });
     let affected = vec![world.affected_delivery(&challenged_refs[0])];
-    let challenge = world.sign_challenge(authorization, evidence, affected)?;
+    let venue_admission_envelope_sha256 = match standing {
+        StandingShape::ForeignAdmission => HEX64_THIRD,
+        _ => HEX64,
+    };
+    let challenge = world.sign_challenge_with_admission(
+        authorization,
+        evidence,
+        affected,
+        venue_admission_envelope_sha256,
+    )?;
 
     // Negative shapes may intentionally carry a checkpoint whose signature
     // cannot produce valid derived transparency. Keep the supplied summary
@@ -1214,6 +1247,8 @@ pub struct ReplayShape {
     pub break_content_commitment: bool,
     /// Report an environment other than the one the recipe committed.
     pub environment_digest: Option<String>,
+    /// Decision carried by each replay receipt.
+    pub decision: Decision,
 }
 
 impl Default for ReplayShape {
@@ -1224,6 +1259,7 @@ impl Default for ReplayShape {
             signer: None,
             break_content_commitment: false,
             environment_digest: None,
+            decision: Decision::Allow,
         }
     }
 }
@@ -1233,6 +1269,7 @@ pub struct ReplayCase {
     pub purchase_record: SignedFindingPurchaseRecord,
     pub receipts: Vec<ResolvedReceiptEvidence>,
     pub checkpoint: KernelCheckpoint,
+    pub checkpoint_transparency: CheckpointTransparencySummary,
 }
 
 impl ReplayCase {
@@ -1242,6 +1279,7 @@ impl ReplayCase {
             .map(|receipt| FindingResolvedReproduction {
                 receipt,
                 checkpoint: &self.checkpoint,
+                checkpoint_transparency: &self.checkpoint_transparency,
             })
             .collect()
     }
@@ -1315,7 +1353,7 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
                 "replay_run_id": REPLAY_RUN_ID,
                 "phase": index,
             }))?,
-            Decision::Allow,
+            shape.decision.clone(),
             &content_hash,
             None,
         )?;
@@ -1323,11 +1361,11 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
         receipts.push(receipt);
         observation_texts.push(text);
     }
-    let checkpoint = build_checkpoint(3, 300, 300 + receipts.len() as u64 - 1, &leaves, &kernel)?;
+    let checkpoint = build_checkpoint(1, 1, receipts.len() as u64, &leaves, &kernel)?;
     let checkpoint_ref = checkpoint_reference(&checkpoint)?;
     let mut resolved = Vec::with_capacity(receipts.len());
     for (index, receipt) in receipts.into_iter().enumerate() {
-        resolved.push(resolve(receipt, &leaves, index, 3, 300 + index as u64)?);
+        resolved.push(resolve(receipt, &leaves, index, 1, 1 + index as u64)?);
     }
 
     let reproduction: Vec<FindingReplayReproduction> = resolved
@@ -1352,11 +1390,14 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
     let affected = vec![world.affected_delivery(&receipt_reference(&world.evidence_receipts[0]))];
     let challenge = world.sign_challenge(authorization, evidence, affected)?;
 
+    let checkpoint_transparency =
+        build_checkpoint_transparency(core::slice::from_ref(&checkpoint))?;
     Ok(ReplayCase {
         challenge,
         purchase_record,
         receipts: resolved,
         checkpoint,
+        checkpoint_transparency,
     })
 }
 

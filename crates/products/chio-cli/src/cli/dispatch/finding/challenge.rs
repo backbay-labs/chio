@@ -56,6 +56,7 @@ struct FindingChallengeListingBinding {
     listing_id: String,
     profile_envelope_sha256: String,
     terms_envelope_sha256: String,
+    venue_admission_envelope_sha256: String,
 }
 
 /// A challenge that cleared every local gate: assembled, schema-checked,
@@ -340,6 +341,7 @@ pub(super) fn prepare_challenge(
         listing_id: document.listing.listing_id,
         terms_envelope_sha256: document.listing.terms_envelope_sha256,
         profile_envelope_sha256: document.listing.profile_envelope_sha256,
+        venue_admission_envelope_sha256: document.listing.venue_admission_envelope_sha256,
         backing_envelope_sha256: document.listing.backing_envelope_sha256,
         filed_at: document.filed_at,
         affected_deliveries: document.affected_deliveries,

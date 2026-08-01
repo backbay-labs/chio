@@ -24,6 +24,7 @@
 
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::crypto::sha256_hex;
+use chio_core_types::receipt::decision::Decision;
 use chio_finding::{
     FindingChallengeFacet, FindingClaimedVerdict, FindingPredicate, FindingReceiptRole,
     FindingRecipePhaseKind, FindingReplayContradictionFacet, FindingReplayObservation,
@@ -174,6 +175,12 @@ pub(crate) fn evaluate_replay_contradiction(
             ));
         }
         let receipt = &resolved.receipt.receipt;
+        if !matches!(receipt.decision, Some(Decision::Allow)) {
+            return Ok(facet.adjudication(
+                FindingReplayPredicateResult::Indeterminate,
+                FindingChallengeReason::ReplayObservationNotEstablished,
+            ));
+        }
         if receipt.kernel_key != replay_policy.key
             || !policy_covers(replay_policy, receipt.timestamp)
         {
@@ -185,6 +192,7 @@ pub(crate) fn evaluate_replay_contradiction(
         if verify_checkpoint_membership(
             core::slice::from_ref(resolved.receipt),
             core::slice::from_ref(resolved.checkpoint),
+            resolved.checkpoint_transparency,
             context.profile,
             &tuple.checkpoint_ref.checkpoint_ref,
         )

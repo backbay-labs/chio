@@ -298,6 +298,7 @@ fn challenge_body(
         listing_id: "finding-listing-01".to_string(),
         terms_envelope_sha256: HEX64.to_string(),
         profile_envelope_sha256: HEX64_THIRD.to_string(),
+        venue_admission_envelope_sha256: HEX64.to_string(),
         backing_envelope_sha256: HEX64_ALT.to_string(),
         filed_at: 1_750_000_000,
         affected_deliveries: vec![affected_delivery()],

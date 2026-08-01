@@ -447,6 +447,7 @@ fn an_evidence_set_smaller_than_the_contested_subset_is_inadmissible() -> TestRe
         purchase_record: &case.purchase_record,
         challenged_receipts: &case.challenged_receipts[..1],
         challenged_checkpoint: &case.challenged_checkpoint,
+        checkpoint_transparency: &case.checkpoint_transparency,
         revoked_keys: &proofs,
     });
     let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));

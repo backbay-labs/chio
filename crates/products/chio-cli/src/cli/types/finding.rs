@@ -130,7 +130,8 @@ pub(crate) enum FindingCommands {
         ///   "listing": {"backing_envelope_sha256": "<64 hex>",
         ///     "listing_id": "...",
         ///     "profile_envelope_sha256": "<64 hex>",
-        ///     "terms_envelope_sha256": "<64 hex>"}
+        ///     "terms_envelope_sha256": "<64 hex>",
+        ///     "venue_admission_envelope_sha256": "<64 hex>"}
         /// }
         ///
         /// Both unions and every branch member use the registered

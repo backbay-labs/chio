@@ -360,6 +360,36 @@ fn standing_must_settle_the_challenged_listing() -> TestResult {
 }
 
 #[test]
+fn standing_must_settle_under_the_challenged_backing() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::ForeignBacking)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingBindingMismatch("seller_backing_envelope_sha256"),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn standing_must_settle_under_the_challenged_admission() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::ForeignAdmission)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingBindingMismatch("venue_admission_envelope_sha256"),
+    )?;
+    Ok(())
+}
+
+#[test]
 fn standing_must_belong_to_the_challenger() -> TestResult {
     let world = world()?;
     let case = evidence_case_with_standing(&world, StandingShape::ForeignBuyer)?;

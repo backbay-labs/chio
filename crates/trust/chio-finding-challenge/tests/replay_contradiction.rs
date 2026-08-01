@@ -3,6 +3,7 @@
 
 mod support;
 
+use chio_core_types::receipt::decision::Decision;
 use chio_finding::{
     verdict_for_replay_predicate, FindingChallengeVerdict, FindingEvidenceClass,
     FindingGuaranteeClass, FindingReplayPredicateResult, FindingReplayTerminalResult,
@@ -180,6 +181,29 @@ fn a_receipt_that_does_not_commit_its_observation_is_indeterminate() -> TestResu
     let world = world()?;
     let shape = ReplayShape {
         break_content_commitment: true,
+        ..ReplayShape::default()
+    };
+    let case = replay_case(&world, &shape)?;
+    let reproductions = case.reproductions();
+    let evidence = case.evidence(&reproductions);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_reason(
+        &evaluation,
+        FindingChallengeReason::ReplayObservationNotEstablished,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_denied_replay_receipt_cannot_establish_an_execution() -> TestResult {
+    let world = world()?;
+    let shape = ReplayShape {
+        phases: vec![PhaseShape::baseline_fails(), PhaseShape::candidate_fails()],
+        decision: Decision::Deny {
+            reason: "replay execution was not authorized".to_string(),
+            guard: "replay_policy".to_string(),
+        },
         ..ReplayShape::default()
     };
     let case = replay_case(&world, &shape)?;

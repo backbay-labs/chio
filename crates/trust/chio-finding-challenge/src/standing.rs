@@ -50,6 +50,16 @@ pub(crate) fn bind_purchase_record<'a>(
             "listing_id",
         ));
     }
+    if body.seller_backing_envelope_sha256 != context.challenge.backing_envelope_sha256 {
+        return Err(FindingChallengeInadmissible::StandingBindingMismatch(
+            "seller_backing_envelope_sha256",
+        ));
+    }
+    if body.venue_admission_envelope_sha256 != context.challenge.venue_admission_envelope_sha256 {
+        return Err(FindingChallengeInadmissible::StandingBindingMismatch(
+            "venue_admission_envelope_sha256",
+        ));
+    }
     if let Some(challenger) = context.challenger {
         if body.buyer != *challenger {
             return Err(FindingChallengeInadmissible::StandingBindingMismatch(

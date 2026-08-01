@@ -239,7 +239,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs": allow(
         "2026-08-31",
         "trust-control cluster and reports surface; capped to current size until split",
-        max_lines=2_752,
+        max_lines=2_753,
     ),
     "crates/platform/chio-store-sqlite/src/budget_store/tests.rs": allow(
         "2026-08-31",
@@ -308,7 +308,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
-        "durable evaluation core with purchase finalization; capped to current size until split",
+        "kernel async evaluation core with M5 terminal continuity; capped to current size until split",
         max_lines=2_145,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/budget.rs": allow(
@@ -349,27 +349,27 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/economy/chio-finding/tests/challenge_families.rs": allow(
         "2026-08-31",
         "cognition challenge artifact and schema regression suite; capped to current size until split",
-        max_lines=2_016,
+        max_lines=2_017,
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",
         "cognition challenge lifecycle coordinator; capped to current size until split",
-        max_lines=3_701,
+        max_lines=3_897,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs": allow(
         "2026-08-31",
         "cognition challenge enforcement end-to-end regression suite; capped to current size until split",
-        max_lines=7_846,
+        max_lines=7_969,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
         "2026-08-31",
         "cognition market exit regression suite; capped to current size until split",
-        max_lines=2_461,
+        max_lines=2_462,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
         "cognition purchase and recovery end-to-end regression suite; capped to current size until split",
-        max_lines=4_715,
+        max_lines=4_716,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",
@@ -389,12 +389,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/finding_challenge_store.rs": allow(
         "2026-08-31",
         "cognition challenge authority store; capped to current size until split",
-        max_lines=3_506,
+        max_lines=3_551,
     ),
     "crates/platform/chio-store-sqlite/src/finding_challenge_store_tests.rs": allow(
         "2026-08-31",
         "cognition challenge authority store regression suite; capped to current size until split",
-        max_lines=3_216,
+        max_lines=3_240,
     ),
     "crates/platform/chio-store-sqlite/src/finding_purchase_store.rs": allow(
         "2026-08-31",

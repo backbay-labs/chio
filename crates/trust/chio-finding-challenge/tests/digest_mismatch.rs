@@ -68,6 +68,45 @@ fn a_delivery_that_matched_its_commitment_is_rejected() -> TestResult {
 }
 
 #[test]
+fn a_matched_overlay_disagreeing_with_the_delivery_contract_is_indeterminate() -> TestResult {
+    let world = world()?;
+    let shape = DenyShape {
+        contract_result: DeliveryResult::Mismatched,
+        overlay_digest_check: DeliveryResult::Matched,
+        observed_digest: HEX64_THIRD.to_string(),
+        ..DenyShape::matched()
+    };
+    let case = digest_case(&world, &shape)?;
+    let evidence = case.evidence();
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_reason(
+        &evaluation,
+        FindingChallengeReason::DeliveryEvidenceNotEstablished,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_matched_comparison_against_an_operator_expectation_is_indeterminate() -> TestResult {
+    let world = world()?;
+    let shape = DenyShape {
+        expected_digest: Some(HEX64_THIRD.to_string()),
+        observed_digest: HEX64_THIRD.to_string(),
+        ..DenyShape::matched()
+    };
+    let case = digest_case(&world, &shape)?;
+    let evidence = case.evidence();
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_reason(
+        &evaluation,
+        FindingChallengeReason::DeliveryEvidenceNotEstablished,
+    )?;
+    Ok(())
+}
+
+#[test]
 fn a_generic_digest_denial_can_never_uphold() -> TestResult {
     let world = world()?;
     // No finding-delivery overlay: nothing establishes that the expectation

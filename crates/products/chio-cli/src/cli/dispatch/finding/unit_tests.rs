@@ -994,6 +994,7 @@ fn challenge_document(
             "listing_id": "finding-listing-01",
             "profile_envelope_sha256": CHALLENGE_PROFILE_DIGEST,
             "terms_envelope_sha256": CHALLENGE_TERMS_DIGEST,
+            "venue_admission_envelope_sha256": CHALLENGE_RECEIPT_DIGEST,
         },
     }))
     .unwrap()

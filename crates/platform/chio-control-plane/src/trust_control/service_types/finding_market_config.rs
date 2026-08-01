@@ -136,6 +136,8 @@ pub struct FindingMarketConfig {
     /// Signs finalized bond snapshots. The control plane only verifies
     /// against this pin; it never holds the observer's private key.
     pub settlement_observer: FindingAuthorityPin,
+    /// Oldest collateral snapshot the settlement choke point may accept.
+    pub max_snapshot_age_secs: u64,
     /// Chain finality required before a finding enforcement may impair
     /// collateral. The settlement observer cannot weaken this requirement in
     /// a signed snapshot.
@@ -166,6 +168,11 @@ impl FindingMarketConfig {
         self.settlement_finality_requirement
             .validate()
             .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        if self.max_snapshot_age_secs == 0 {
+            return Err(CliError::cli_other_error(
+                "finding-market maximum snapshot age must be nonzero".to_string(),
+            ));
+        }
         self.audit_pool.validate("audit")?;
         self.challenge_administration_pool
             .validate("challenge administration")?;
@@ -226,6 +233,7 @@ impl FindingMarketConfig {
     pub fn roster(&self) -> Result<Vec<(&'static str, PublicKey)>, CliError> {
         let roster = [
             ("venue", &self.venue),
+            ("listing", &self.listing),
             ("governance root", &self.governance_root),
             ("verifier report", &self.verifier_report),
             ("collateral", &self.collateral),
