@@ -53,7 +53,7 @@
     },
     "relationKind": {
       "type": "string",
-      "enum": ["local_child", "continued"]
+      "enum": ["local_child", "continued", "finding_memory_write_to_delivery"]
     },
     "evidenceClass": {
       "type": "string",

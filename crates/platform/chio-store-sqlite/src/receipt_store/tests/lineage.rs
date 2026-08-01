@@ -432,6 +432,12 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
         .list_receipt_lineage_statement_links(&child_receipt.id)
         .test_unwrap();
     assert_eq!(child_links, parent_links);
+    let loaded_statement = store
+        .receipt_lineage_statement(&child_receipt.id)
+        .test_unwrap()
+        .test_expect("signed receipt lineage statement");
+    assert_eq!(loaded_statement, statement);
+    assert!(loaded_statement.verify_signature().test_unwrap());
 
     let verification = store
         .receipt_lineage_verification(&child_receipt.id)

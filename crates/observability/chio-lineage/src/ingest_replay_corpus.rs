@@ -201,12 +201,32 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> Result<LineageGraph, CorpusIn
             } else {
                 EvidenceClass::Observed
             };
+            let finding_dependency = row.signed_lineage_statement.as_ref().is_some_and(
+                |statement| {
+                    statement.relation_kind
+                        == chio_core_types::receipt::lineage::ReceiptLineageRelationKind::FindingMemoryWriteToDelivery
+                        && signed_lineage_statement_verifies(row, parent)
+                },
+            );
+            let (from, to, kind) = if finding_dependency {
+                (
+                    receipt_id.clone(),
+                    parent_node.clone(),
+                    EdgeKind::FindingMemoryWriteToDelivery,
+                )
+            } else {
+                (
+                    parent_node.clone(),
+                    receipt_id.clone(),
+                    EdgeKind::ReceiptLineageParent,
+                )
+            };
             push_edge(
                 &mut graph,
                 LineageEdge {
-                    from: parent_node,
-                    to: receipt_id,
-                    kind: EdgeKind::ReceiptLineageParent,
+                    from,
+                    to,
+                    kind,
                     evidence_class: evidence,
                     source_table: Some("replay.corpus".to_string()),
                     source_id: Some(row.receipt_id.clone()),
@@ -398,6 +418,55 @@ mod tests {
         if let Some(e) = edge {
             assert_eq!(e.evidence_class, EvidenceClass::Verified);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn finding_memory_dependency_keeps_its_typed_child_to_parent_direction(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use chio_core_types::crypto::Keypair;
+        use chio_core_types::receipt::{
+            lineage::ReceiptLineageEndpoints, lineage::ReceiptLineageRelationKind,
+            lineage::ReceiptLineageStatementBody,
+        };
+        use chio_core_types::session::{RequestId, SessionAnchorReference};
+
+        let keypair = Keypair::generate();
+        let statement = ReceiptLineageStatement::sign(
+            ReceiptLineageStatementBody::new(
+                "stmt-finding-memory",
+                ReceiptLineageEndpoints::new(
+                    "delivery",
+                    "memory-write",
+                    RequestId::new("delivery-request"),
+                    RequestId::new("memory-request"),
+                    SessionAnchorReference::new("delivery-anchor", "delivery-hash"),
+                    SessionAnchorReference::new("memory-anchor", "memory-hash"),
+                ),
+                ReceiptLineageRelationKind::FindingMemoryWriteToDelivery,
+                1,
+                keypair.public_key(),
+            ),
+            &keypair,
+        )?;
+        let graph = ingest_corpus(&[CorpusReceiptRow {
+            receipt_id: "memory-write".into(),
+            parent_receipt_id: Some("delivery".into()),
+            capability_id: None,
+            parent_capability_id: None,
+            tool_name: None,
+            tenant_id: None,
+            recorded_at: None,
+            signed_lineage_statement: Some(statement),
+        }])?;
+        let edge = graph
+            .edges
+            .iter()
+            .find(|edge| edge.kind == EdgeKind::FindingMemoryWriteToDelivery)
+            .ok_or("typed Finding memory edge missing")?;
+        assert_eq!(edge.from, "rcpt:memory-write");
+        assert_eq!(edge.to, "rcpt:delivery");
+        assert_eq!(edge.evidence_class, EvidenceClass::Verified);
         Ok(())
     }
 

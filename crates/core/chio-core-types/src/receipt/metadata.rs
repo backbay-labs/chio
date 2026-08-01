@@ -12,7 +12,10 @@ use crate::error::{Error, Result};
 
 use super::decision::Decision;
 use super::kinds::{BoundaryClass, ObservationOutcome, ReceiptKind, RedactionMode, ToolOrigin};
-use super::validation::{require_exact, require_lowercase_hex_chars, require_wire_identifier};
+use super::validation::{
+    require_exact, require_lowercase_hex_chars, require_wire_hierarchical_identifier,
+    require_wire_identifier,
+};
 
 /// Actor reference carried by signed receipt semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -342,7 +345,11 @@ pub struct FindingStatusProofMetadata {
 impl FindingStatusProofMetadata {
     /// Validate the closed receipt-side representation.
     pub fn validate(&self) -> Result<()> {
-        require_wire_identifier(&self.feed_id, 512, "finding_delivery.status_proof.feed_id")?;
+        require_wire_hierarchical_identifier(
+            &self.feed_id,
+            512,
+            "finding_delivery.status_proof.feed_id",
+        )?;
         if self.key_domain_nonce == 0 || self.map_epoch == 0 || self.non_inclusion_checked_at == 0 {
             return Err(Error::CanonicalJson(
                 "finding delivery status proof numeric fields must be nonzero".to_string(),

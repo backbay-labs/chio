@@ -137,6 +137,36 @@ impl SqliteReceiptStore {
         })
     }
 
+    pub fn receipt_lineage_statement(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<chio_core::receipt::lineage::ReceiptLineageStatement>, ReceiptStoreError>
+    {
+        let receipt_id = receipt_id.to_string();
+        self.writer_handle().run_write(move |connection| {
+            let tx =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt_id)?;
+            let raw = tx
+                .query_row(
+                    "SELECT raw_json FROM receipt_lineage_statements WHERE receipt_id = ?1",
+                    params![&receipt_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            let statement = raw
+                .map(|raw| {
+                    serde_json::from_str::<chio_core::receipt::lineage::ReceiptLineageStatement>(
+                        &raw,
+                    )
+                    .map_err(ReceiptStoreError::from)
+                })
+                .transpose()?;
+            tx.commit()?;
+            Ok(statement)
+        })
+    }
+
     pub fn receipt_lineage_verification(
         &self,
         receipt_id: &str,
@@ -732,6 +762,14 @@ impl ReceiptStore for SqliteReceiptStore {
         receipt_id: &str,
     ) -> Result<Vec<ReceiptLineageStatementLink>, ReceiptStoreError> {
         SqliteReceiptStore::list_receipt_lineage_statement_links(self, receipt_id)
+    }
+
+    fn load_receipt_lineage_statement(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<chio_core::receipt::lineage::ReceiptLineageStatement>, ReceiptStoreError>
+    {
+        self.receipt_lineage_statement(receipt_id)
     }
 
     fn as_any_mut(&self) -> Option<&dyn std::any::Any> {

@@ -52,3 +52,21 @@ pub(crate) fn require_wire_identifier(value: &str, max_chars: usize, field: &str
     }
     Ok(())
 }
+
+pub(crate) fn require_wire_hierarchical_identifier(
+    value: &str,
+    max_chars: usize,
+    field: &str,
+) -> Result<()> {
+    if value.is_empty()
+        || value.len() > max_chars
+        || !value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-' | b'/')
+        })
+    {
+        return Err(Error::CanonicalJson(format!(
+            "{field} must match ^[A-Za-z0-9._:/-]{{1,{max_chars}}}$"
+        )));
+    }
+    Ok(())
+}

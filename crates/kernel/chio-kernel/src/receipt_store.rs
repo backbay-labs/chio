@@ -2,7 +2,10 @@ use chio_core::canonical::CanonicalBytes;
 use chio_core::capability::token::CapabilityToken;
 use chio_core::credit::CreditBondRow;
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{body::ChioReceipt, lineage::ChildRequestReceipt};
+use chio_core::receipt::{
+    body::ChioReceipt,
+    lineage::{ChildRequestReceipt, ReceiptLineageStatement},
+};
 use chio_log_redact::redacted;
 
 use crate::capability_lineage::CapabilitySnapshot;
@@ -840,6 +843,16 @@ pub trait ReceiptStore: Send + Sync {
         _receipt_id: &str,
     ) -> Result<Vec<ReceiptLineageStatementLink>, ReceiptStoreError> {
         Ok(Vec::new())
+    }
+
+    /// Load the signed lineage statement whose child is `receipt_id`.
+    /// Stores that cannot return the exact typed statement leave the default
+    /// miss, which makes typed Finding quarantine resolution deny.
+    fn load_receipt_lineage_statement(
+        &self,
+        _receipt_id: &str,
+    ) -> Result<Option<ReceiptLineageStatement>, ReceiptStoreError> {
+        Ok(None)
     }
 
     fn as_any_mut(&self) -> Option<&dyn std::any::Any> {
