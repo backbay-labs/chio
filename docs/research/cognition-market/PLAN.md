@@ -105,7 +105,7 @@ production surface half-wired.
 | M5 | Challenge and audit lane | frozen-v1 `FraudulentListing` mapping plus signed finding challenge outcome; challenge evaluator; verifiable audit schedule; slash wiring | M4 | implemented on `codex/cognition-market-m5`; plan and recorded results [plans/2026-07-30-M5-challenge-and-audit-lane.md](plans/2026-07-30-M5-challenge-and-audit-lane.md) |
 | M6 | Status feed and retraction | oracle instance; control-plane root/proof surfaces; purchase-time non-inclusion; challenge-outcome outbox; quarantine guard rule; ops runbook | M4, M5 | implemented; plan and recorded results [plans/2026-07-31-M6-status-feed-retraction.md](plans/2026-07-31-M6-status-feed-retraction.md) |
 | M7 | Cross-org escrow path | delivery-receipt settlement-authority bridge; bilateral evidence flow; funded escrow and watchdog runbook | M4, M5, M6 | blocked pending bilateral demand and ADR-C |
-| M8 | Pool purchasing and SDK | swarm purchasing convention; elicitation ceiling in SDKs; pheromone hint convention | M4 | plan after M4 |
+| M8 | Pool purchasing and SDK | swarm purchasing convention; elicitation ceiling in SDKs; pheromone hint convention | M4 | implemented; plan and recorded results [plans/2026-07-31-M8-pool-purchasing-sdk.md](plans/2026-07-31-M8-pool-purchasing-sdk.md) |
 | M9 | Qualification and claims | bounded-matrix entries; CLAIM_REGISTRY rows; RC guarantee entries; R&D-instance extensions | M5, M6 | plan after M6 |
 
 ## 2. Per-milestone definition

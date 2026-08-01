@@ -65,17 +65,19 @@ grants no purchase authority.
 
 ## Named exit evidence
 
-The M8 worktree recorded these results on 2026-07-31:
+The reconciled M8 stack recorded these results on 2026-08-01:
 
 | Exit | Command | Result |
 |---|---|---|
-| Rust ceiling, real marketplace, and pheromone convention | `cargo test -p chio-open-market --features cognition-market-experimental --test finding_bid_policy --test cognition_market_flow --test finding_admission -j1` | 38 passed on the final cumulative base |
+| Rust ceiling, real marketplace, and pheromone convention | `cargo test -p chio-open-market --features cognition-market-experimental --test finding_bid_policy --test cognition_market_flow --test finding_admission -j1` | 38 passed on the cumulative M6 base |
 | Authenticated pool concurrency and restart | `cargo test -p chio-store-sqlite --features cognition-market-experimental --test finding_pool_ledger -j1` | 4 passed |
 | TypeScript SDK suite and parity vectors | `node --experimental-strip-types --test ./test/*.test.ts` in `sdks/typescript/chio-ts` | 88 passed |
 | TypeScript strict type check | `tsc --noEmit -p chio-ts/tsconfig.json` | passed |
 | Python SDK suite and parity vectors | `uv run --project . --extra dev pytest -q` in `sdks/python/chio-sdk-python` | 145 passed |
+| Signed-artifact registry parity | `cargo test -p chio-core-types --test signed_artifact_schema -j1` | 22 passed |
 | Schema registry | `bash scripts/check-chio-schema-registry.sh` | passed |
-| Formatting | `cargo fmt --all -- --check` | passed |
+| Strict all-target Clippy across modified Rust crates | five crate-specific invocations with `-D warnings` | passed |
+| Four-language codegen, review slices, Rust file hygiene, and formatting | repository gates | passed |
 
 The final cumulative branch, after reconciling its M5 base and the other
 cognition-market milestones, must additionally pass without exclusions:

@@ -868,6 +868,12 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/market-terms.schema.json",
         ),
         (
+            "chio.finding.pool-allocation.v1",
+            "finding_pool_allocation",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/pool-allocation.schema.json",
+        ),
+        (
             "chio.finding.purchase-record.v1",
             "finding_purchase_record",
             "finding-market-v1",

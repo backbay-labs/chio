@@ -91,6 +91,7 @@ fn debit(
         authoritative_payment_operation_id: format!("payment:{purchase_id}"),
         accepted_bid_envelope_sha256: sha256_hex(purchase_id.as_bytes()),
         venue_admission_envelope_sha256: "d".repeat(64),
+        status_proof: None,
     };
     debit_finding_pool_purchase(
         ledger,
@@ -255,6 +256,7 @@ fn cognition_market_pool_binds_one_purchaser_allocation_per_pool() {
         authoritative_payment_operation_id: "payment:second".to_string(),
         accepted_bid_envelope_sha256: sha256_hex(b"purchase:second"),
         venue_admission_envelope_sha256: "d".repeat(64),
+        status_proof: None,
     };
 
     let error = debit_finding_pool_purchase(
