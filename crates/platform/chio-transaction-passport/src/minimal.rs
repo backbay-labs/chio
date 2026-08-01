@@ -3,7 +3,7 @@ use std::path::{Component, Path};
 
 use chio_core_types::{
     canonical::{canonical_json_bytes, canonical_json_bytes_from_str},
-    crypto::{Keypair, Signature},
+    crypto::{Keypair, Signature, SigningAlgorithm},
     hashing::Hash,
     merkle::{leaf_hash, MerkleProof},
     PublicKey,
@@ -565,18 +565,24 @@ pub fn transaction_evidence_graph_transparency_state(
 /// Transparency state derived with artifact bytes and separately pinned
 /// checkpoint signer keys. This is the product integration surface for merged
 /// family reports whose passport verification happens in a separate step.
+///
+/// Both signer roles are required so the anchored tier stays subject to the
+/// same disjointness rule the passport-verifying entry points enforce: a
+/// checkpoint self-signed by the passport issuer must not promote evidence to
+/// `trust_anchored`.
 pub fn transaction_evidence_graph_transparency_state_with_anchors(
     evidence_graph_bytes: &[u8],
     artifacts: &BTreeMap<String, Vec<u8>>,
-    trusted_checkpoint_signer_keys: &[PublicKey],
+    trust_anchors: TransactionTrustAnchors<'_>,
 ) -> Result<String, TransactionPassportError> {
+    trust_anchors.validate()?;
     let evidence_graph: Value = serde_json::from_slice(evidence_graph_bytes).map_err(|error| {
         TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
     })?;
     Ok(evidence_graph_transparency_state(
         evidence_graph_nodes(&evidence_graph)?,
         artifacts,
-        trusted_checkpoint_signer_keys,
+        trust_anchors.checkpoint_signers,
     )?
     .to_string())
 }
@@ -1127,6 +1133,16 @@ fn transparency_anchor_state(
     if !kernel_key.verify(&body_bytes, &signature) {
         return invalid("checkpoint statement signature does not verify");
     }
+    // The claimed log must be the one this signer's checkpoints define.
+    // Without the binding, a genuine proof from a pinned signer for one log
+    // could be presented as evidence for a different log.
+    let signer_log_id = checkpoint_log_id(&kernel_key);
+    if artifact.log_id != signer_log_id {
+        return TransparencyAnchor::Invalid(format!(
+            "inclusion proof log_id {} is not the checkpoint signer log {signer_log_id}",
+            artifact.log_id
+        ));
+    }
     let checkpoint_body: CheckpointStatementBody = match serde_json::from_value(statement.body) {
         Ok(checkpoint_body) => checkpoint_body,
         Err(error) => {
@@ -1231,6 +1247,21 @@ fn transparency_anchor_state(
             "proven leaf is not the RFC 6962 leaf hash of the receipt".to_string(),
         )
     }
+}
+
+/// Local log identity derived from a checkpoint signing key.
+///
+/// Mirrors the kernel convention: SHA-256 over the raw key bytes for Ed25519
+/// and over the hex encoding for every other algorithm, prefixed with
+/// `local-log-`.
+fn checkpoint_log_id(kernel_key: &PublicKey) -> String {
+    let log_key_bytes: Vec<u8> = match kernel_key.algorithm() {
+        SigningAlgorithm::Ed25519 => kernel_key.as_bytes().to_vec(),
+        SigningAlgorithm::P256 | SigningAlgorithm::P384 | SigningAlgorithm::Hybrid => {
+            kernel_key.to_hex().into_bytes()
+        }
+    };
+    format!("local-log-{}", super::sha256_hex(&log_key_bytes))
 }
 
 fn hash_encoding_is_canonical(encoded: &str, hash: &Hash) -> bool {

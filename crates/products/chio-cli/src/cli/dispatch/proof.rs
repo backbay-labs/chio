@@ -1066,7 +1066,10 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         transaction_evidence_graph_transparency_state_with_anchors(
             &evidence_graph_bytes,
             &transparency_artifacts,
-            &trusted_transaction_checkpoint_keys,
+            chio_control_plane::transaction_passport::TransactionTrustAnchors {
+                passport_root_signers: &trusted_transaction_root_keys,
+                checkpoint_signers: &trusted_transaction_checkpoint_keys,
+            },
         )
         .map_err(map_proof_error)?;
     let mut report = if family_reports.is_empty() {

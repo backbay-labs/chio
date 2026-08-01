@@ -2495,16 +2495,17 @@ fn transparency_anchored_fixture(
         )
         .to_hex();
 
+    let log_id = transparency_checkpoint_log_id();
     let mut inclusion_artifact = json!({
         "schema": "chio.transparency.inclusion-proof.v2",
         "proof_id": "transparency-proof-governed-action",
-        "log_id": "local-log-governed-action",
+        "log_id": log_id,
         "artifact_ref": subject_sha256,
         "root_hash": leaf_hex,
         "leaf_hash": leaf_hex,
         "tree_size": 1,
         "leaf_index": 0,
-        "checkpoint": "local-log-governed-action:1",
+        "checkpoint": format!("{log_id}:1"),
         "inclusion_path": [],
         "verified_at": 1_749_000_000u64,
         "checkpoint_statement": {
@@ -2547,6 +2548,15 @@ fn transparency_anchored_fixture(
 
 fn transparency_checkpoint_keypair() -> Keypair {
     Keypair::from_seed(&[71u8; 32])
+}
+
+/// Log identity the verifier derives from the checkpoint signing key, using
+/// the kernel `local-log-<sha256>` convention over the raw Ed25519 key bytes.
+fn transparency_checkpoint_log_id() -> String {
+    format!(
+        "local-log-{}",
+        sha256_hex(transparency_checkpoint_keypair().public_key().as_bytes())
+    )
 }
 
 fn transparency_checkpoint_keys() -> Vec<chio_core_types::PublicKey> {

@@ -967,17 +967,25 @@ pub(crate) fn merge_source_family_verifier_reports(
         .map(serde_json::Value::String)
         .collect::<Vec<_>>();
     let claim_results = source_claim_results(&verified_claims);
-    let trusted_checkpoint_signer_keys = if verify_transaction_passport_signature {
-        crate::transaction_trusted_checkpoint_keys_from_env()
-            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?
-    } else {
-        Vec::new()
-    };
+    let (trusted_root_signer_keys, trusted_checkpoint_signer_keys) =
+        if verify_transaction_passport_signature {
+            (
+                crate::transaction_trusted_root_keys_from_env()
+                    .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?,
+                crate::transaction_trusted_checkpoint_keys_from_env()
+                    .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?,
+            )
+        } else {
+            (Vec::new(), Vec::new())
+        };
     let transparency_state =
         chio_transaction_passport::transaction_evidence_graph_transparency_state_with_anchors(
             &context.evidence_graph_bytes,
             &context.artifacts,
-            &trusted_checkpoint_signer_keys,
+            chio_transaction_passport::TransactionTrustAnchors {
+                passport_root_signers: &trusted_root_signer_keys,
+                checkpoint_signers: &trusted_checkpoint_signer_keys,
+            },
         )
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
 

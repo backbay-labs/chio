@@ -540,3 +540,63 @@ fn standalone_minimal_passport_keeps_preview_when_the_anchor_is_not_evaluable() 
         "an unjudgeable anchor must degrade rather than error: {error}"
     );
 }
+
+#[test]
+fn standalone_minimal_passport_rejects_an_anchor_claiming_another_log() {
+    // A pinned signer's genuine checkpoint anchors exactly one log. Renaming
+    // the log in the proof envelope must not let that anchor stand in as
+    // evidence for a different transparency log.
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            artifact["log_id"] = json!("local-log-somebody-elses-log");
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a relabelled log must deny");
+
+    assert!(
+        error
+            .to_string()
+            .contains("is not the checkpoint signer log local-log-"),
+        "{error}"
+    );
+}
+
+#[test]
+fn transparency_state_api_requires_disjoint_signer_roles() {
+    // The state-only surface derives the same anchored tier as the passport
+    // verifiers, so it enforces the same role separation: a checkpoint signed
+    // by a passport root signer is issuer self-assertion, not an anchor.
+    let (artifacts, evidence_graph_bytes, _) = transparency_anchored_fixture(|_| {});
+    let checkpoint_keys = transparency_checkpoint_keys();
+
+    let state =
+        chio_transaction_passport::transaction_evidence_graph_transparency_state_with_anchors(
+            &evidence_graph_bytes,
+            &artifacts,
+            chio_transaction_passport::TransactionTrustAnchors {
+                passport_root_signers: &governed_action_trusted_root_keys(),
+                checkpoint_signers: &checkpoint_keys,
+            },
+        )
+        .test_expect("disjoint signer roles derive the anchored tier");
+    assert_eq!(state, "trust_anchored");
+
+    let error =
+        chio_transaction_passport::transaction_evidence_graph_transparency_state_with_anchors(
+            &evidence_graph_bytes,
+            &artifacts,
+            chio_transaction_passport::TransactionTrustAnchors {
+                passport_root_signers: &checkpoint_keys,
+                checkpoint_signers: &checkpoint_keys,
+            },
+        )
+        .test_expect_err("an issuer-signed checkpoint must not promote");
+    assert!(
+        error.to_string().contains(
+            "trusted checkpoint signer keys must be disjoint from passport root signer keys"
+        ),
+        "{error}"
+    );
+}
