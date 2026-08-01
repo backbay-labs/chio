@@ -214,7 +214,7 @@ init_case "$expired_allowlist"
 write_lines "$expired_allowlist/crates/chio-small/src/main.rs" 25
 track_case "$expired_allowlist"
 expired_checker="$work/expired-check-rust-file-hygiene.py"
-sed 's/"2026-07-31"/"2000-01-01"/g' "$CHECKER" > "$expired_checker"
+sed 's/"2026-08-31"/"2000-01-01"/g' "$CHECKER" > "$expired_checker"
 assert_rc "$(run_checker_script "$expired_checker" "$expired_allowlist" "$work/expired-allowlist.out" "$work/expired-allowlist.err")" 1 \
   "expired allowlist date fails"
 grep -F "allowlist entry expired on 2000-01-01" \

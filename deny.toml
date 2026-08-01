@@ -66,6 +66,11 @@ ignore = [
     # crate versions. Clears when the iroh/plist chain updates quick-xml upstream.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+    # last-checked = 2026-07-31; wasmtime 43 type-index confusion across engines (RUSTSEC-2026-0222).
+    # The guard runtime holds one Arc<Engine> per backend and builds every Store from that same
+    # engine, so no store is ever paired with a Module from a different engine. Clears with the
+    # wasmtime 46/47 upgrade tracked for the guard runtime.
+    "RUSTSEC-2026-0222",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are

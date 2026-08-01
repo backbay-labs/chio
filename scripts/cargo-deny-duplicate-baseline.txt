@@ -1,9 +1,9 @@
 addr2line 0.25.1 0.26.1
-ark-ff 0.3.0 0.4.2 0.5.0
-ark-ff-asm 0.3.0 0.4.2 0.5.0
-ark-ff-macros 0.3.0 0.4.2 0.5.0
-ark-serialize 0.3.0 0.4.2 0.5.0
-ark-std 0.3.0 0.4.0 0.5.0
+ark-ff 0.3.0 0.4.2 0.5.0 0.6.0
+ark-ff-asm 0.3.0 0.4.2 0.5.0 0.6.0
+ark-ff-macros 0.3.0 0.4.2 0.5.0 0.6.0
+ark-serialize 0.3.0 0.4.2 0.5.0 0.6.0
+ark-std 0.3.0 0.4.0 0.5.0 0.6.0
 asn1-rs 0.6.2 0.7.2
 asn1-rs-derive 0.5.1 0.6.0
 axum 0.7.9 0.8.8
