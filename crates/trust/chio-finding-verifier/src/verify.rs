@@ -26,11 +26,11 @@ use chio_core_types::receipt::body::{chio_receipt_id, ChioReceipt};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
     compute_report_id, signed_envelope_sha256, verify_finding, verify_pinned_envelope,
-    verify_signed_bond_backing, verify_signed_profile, Finding, FindingChallengeVerifierProfile,
-    FindingAuthorityKeyPolicy, FindingChallengeVerifierProfile, FindingEvidenceClass,
-    FindingFacetKind, FindingFacetOutcome, FindingFacetResult, FindingGuaranteeClass,
-    FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput, FindingVerifierReport,
-    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
+    verify_signed_bond_backing, verify_signed_profile, Finding, FindingAuthorityKeyPolicy,
+    FindingChallengeVerifierProfile, FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome,
+    FindingFacetResult, FindingGuaranteeClass, FindingPredicate, FindingReceiptRole,
+    FindingReplayRecipeInput, FindingVerifierReport, SignedFindingBondBacking,
+    SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{

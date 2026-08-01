@@ -836,11 +836,31 @@ fn activation_and_current_admission_require_distinct_allocation_states() {
             Some(FindingAdmissionError::AllocationUnavailableForActivation)
         );
 
+        // A byte-identical durable prepare replay still owns the consumed
+        // allocation, but it is not yet an active admission and cannot
+        // produce a bid witness.
+        context.allocation_snapshot.active_admission_id = None;
+        context.allocation_snapshot.prepared_admission_id =
+            Some(web.admission.body.admission_id.clone());
+        verify_finding_admission_for_activation(&web.admission, &context)
+            .test_expect("exact prepared replay may resume activation");
+        assert_eq!(
+            verify_finding_admission(&web.admission, &context).err(),
+            Some(FindingAdmissionError::AdmissionNotActiveForAllocation)
+        );
+
+        context.allocation_snapshot.prepared_admission_id = Some(hex64('f'));
+        assert_eq!(
+            verify_finding_admission_for_activation(&web.admission, &context).err(),
+            Some(FindingAdmissionError::AllocationUnavailableForActivation)
+        );
+
         // Before the transaction the same exact allocation is available
         // and unbound. It may pass activation validation but cannot
         // produce a spendable admission witness.
         context.allocation_snapshot.status = FindingAllocationStatus::Available;
         context.allocation_snapshot.active_admission_id = None;
+        context.allocation_snapshot.prepared_admission_id = None;
         verify_finding_admission_for_activation(&web.admission, &context)
             .test_expect("available allocation may enter activation");
         assert_eq!(
