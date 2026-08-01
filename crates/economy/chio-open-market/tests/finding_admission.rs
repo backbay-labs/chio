@@ -510,10 +510,7 @@ impl Web {
             trusted_local_operator_signers: &self.trusted_signers,
             terms: &self.terms,
             backing: &self.backing,
-            allocation_snapshot: FindingAllocationSnapshot {
-                live: true,
-                accepted_at: ADMISSION_ISSUED_AT,
-            },
+            allocation_snapshot: FindingAllocationSnapshot { live: true },
             collateral_authority: &self.collateral_key,
             earliest_constituent_expiry: CONSTITUENT_EXPIRES_AT,
         }
@@ -727,6 +724,35 @@ fn terms_digest_mismatch_rejects() {
         let context = web.context(resolver);
         let error = verify_finding_admission(&web.admission, &context).test_unwrap_err();
         assert_eq!(error, FindingAdmissionError::TermsDigestMismatch);
+    });
+}
+
+#[test]
+fn terms_identity_must_match_the_admitted_finding_and_listing() {
+    with_fiscal(|resolver| {
+        for (mismatch, wrong_finding) in [("finding", true), ("listing", false)] {
+            let mut web = base_web();
+            let mut terms = web.terms.body.clone();
+            if wrong_finding {
+                terms.finding_id = hex64('f');
+            } else {
+                terms.listing_id = "listing-other".to_string();
+            }
+            terms.terms_id = String::new();
+            terms.terms_id = compute_terms_id(&terms).test_expect("mismatched terms id");
+            web.terms = SignedFindingMarketTerms::sign(terms, &web.seller)
+                .test_expect("sign mismatched terms");
+            web.terms_sha256 =
+                signed_envelope_sha256(&web.terms).test_expect("mismatched terms digest");
+            let bindings = web.bindings();
+            web.admission = signed_admission(&web.venue, &web.finding, &bindings);
+
+            assert_eq!(
+                verify_finding_admission(&web.admission, &web.context(resolver)).err(),
+                Some(FindingAdmissionError::TermsIdentityMismatch),
+                "{mismatch} mismatch must deny"
+            );
+        }
     });
 }
 

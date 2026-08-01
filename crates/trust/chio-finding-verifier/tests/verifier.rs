@@ -454,6 +454,32 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
 }
 
 #[test]
+fn failed_optional_facet_denies_the_draft() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let mut draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::StatusLiveness),
+        Some(FindingFacetOutcome::Unavailable)
+    );
+    assert!(!draft
+        .required_facets(&fx.profile.body)
+        .contains(&FindingFacetKind::StatusLiveness));
+
+    let status = draft
+        .facets
+        .iter_mut()
+        .find(|result| result.facet == FindingFacetKind::StatusLiveness)
+        .ok_or("status liveness facet")?;
+    status.outcome = FindingFacetOutcome::Failed;
+    status.reason = "status proof contradicted the signed snapshot".to_string();
+
+    assert!(!draft.satisfies_required_facets(&fx.profile.body));
+    Ok(())
+}
+
+#[test]
 fn raw_ingress_rejects_noncanonical_and_oversized_findings() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);

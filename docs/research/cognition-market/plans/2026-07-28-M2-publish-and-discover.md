@@ -262,8 +262,8 @@ seam list, `.github/workflows/ci.yml` lanes,
    (D14).
 5. Money math: `checked_add`/`checked_mul` only, currency equality before
    addition, lowercase 64-hex digests, `is_hex128` signature prechecks.
-6. Every facet or admission failure is a typed rejection; `asserted` and
-   `unavailable` never satisfy a required facet.
+6. Every admission failure and every `failed` facet is a typed rejection;
+   `asserted` and `unavailable` never satisfy a required facet.
 
 ## Task 1: Artifact families - types, validators, schemas, registration
 
@@ -452,8 +452,9 @@ Deliverables, in the normative 9-step order (ARCHITECTURE.md 4.1.1):
   policy returns the raw seller tier - explicitly rejected), appraisal
   bound via `matches_evidence` (`chio-appraisal/src/appraisal.rs:62-68`),
   non-`Allow`/reason-coded appraisal outcomes deny.
-- Facet report: the 13-facet structured result; every facet required by
-  the profile or by a present Finding claim must be exactly `verified`.
+- Facet report: the 13-facet structured result; any `failed` facet denies,
+  and every facet required by the profile or by a present Finding claim must
+  be exactly `verified`.
 - Report production: `sign_finding_verifier_report` binding the report
   body to the pinned verifier authority (strict sign; body authority ==
   signer), used by the venue at activation; plus

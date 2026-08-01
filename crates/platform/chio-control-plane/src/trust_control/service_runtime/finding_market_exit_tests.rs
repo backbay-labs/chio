@@ -25,20 +25,20 @@ use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_core::sha256_hex;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
-    compute_profile_id, compute_terms_id, sign_finding, Finding, FindingAdmission,
-    FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
+    compute_profile_id, compute_report_id, compute_terms_id, sign_finding, Finding,
+    FindingAdmission, FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
     FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
     FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
     FindingCollateralVault, FindingDescriptor, FindingEvidenceClass, FindingFacetKind,
-    FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass, FindingMarketTerms,
-    FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate, FindingReceiptRole,
-    FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind,
-    FindingReplayRecipeInput, FindingResourceCaps, FindingSellerAuthorization,
-    SignedFindingAdmission, SignedFindingBondBacking, SignedFindingChallengeVerifierProfile,
-    SignedFindingMarketTerms, SignedFindingSellerAuthorization, SignedFindingVerifierReport,
-    FINDING_ADMISSION_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
-    FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1,
-    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
+    FindingFacetOutcome, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
+    FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
+    FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase,
+    FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
+    FindingSellerAuthorization, SignedFindingAdmission, SignedFindingBondBacking,
+    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
+    SignedFindingSellerAuthorization, SignedFindingVerifierReport, FINDING_ADMISSION_SCHEMA_V1,
+    FINDING_BOND_BACKING_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
+    FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
     FINDING_SELLER_AUTHORIZATION_SCHEMA_V1,
 };
 use chio_finding_verifier::{
@@ -1551,6 +1551,31 @@ async fn finding_publish_discover_admission() -> TestResult {
     )
     .await?;
 
+    // A failed optional facet is a contradictory check result, not an
+    // unavailable optional input. It denies even though status liveness is
+    // not required by this profile.
+    let mut failed_report_body = web.report.body.clone();
+    let status_facet = failed_report_body
+        .facets
+        .iter_mut()
+        .find(|facet| facet.facet == FindingFacetKind::StatusLiveness)
+        .ok_or_else(|| missing("status liveness facet"))?;
+    status_facet.outcome = FindingFacetOutcome::Failed;
+    status_facet.reason = "signed status proof contradicted the snapshot".to_string();
+    failed_report_body.report_id = String::new();
+    failed_report_body.report_id = compute_report_id(&failed_report_body)?;
+    let failed_report = SignedExportEnvelope::sign(failed_report_body, &keypair(15))?;
+    let failed_report_admission = sign_admission(
+        web.admission_body(&web.schedule_sha256, &failed_report, ADMISSION_EXPIRES_AT)?,
+        &web.venue,
+    )?;
+    assert_activation_rejected(
+        &stack,
+        web.activate_request(&failed_report_admission, &web.schedule, &failed_report)?,
+        "failed facet",
+    )
+    .await?;
+
     // Wrong collateral: the admission names an allocation the venue never
     // registered.
     let mut unknown_allocation =
@@ -1784,10 +1809,6 @@ async fn finding_publish_discover_admission() -> TestResult {
 
     // The bid leg: the REAL marketplace path, gated by the verified
     // admission witness over the pinned deployment authorities.
-    let allocation = stack
-        .store
-        .get_allocation(&web.allocation_id)?
-        .ok_or_else(|| missing("allocation snapshot"))?;
     let venue_key = keypair(6).public_key();
     let collateral_key = keypair(4).public_key();
     let trusted_signers = vec![web.operator.public_key()];
@@ -1800,10 +1821,7 @@ async fn finding_publish_discover_admission() -> TestResult {
         trusted_local_operator_signers: &trusted_signers,
         terms: &web.terms,
         backing: &web.backing,
-        allocation_snapshot: SeamAllocationSnapshot {
-            live: true,
-            accepted_at: allocation.accepted_at,
-        },
+        allocation_snapshot: SeamAllocationSnapshot { live: true },
         collateral_authority: &collateral_key,
         earliest_constituent_expiry: WINDOW_EXPIRES_AT,
     };

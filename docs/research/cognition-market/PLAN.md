@@ -258,9 +258,11 @@ normative scope statement.
   Neither proves paid honest work or compute burn. A projected disclosure
   authenticates only disclosed statements; full receipt, checkpoint, hidden
   semantic, and both cost facets remain unavailable unless separately proven.
-  Every facet required by the profile or by a present Finding claim must be
-  exactly `verified`; `asserted`, `unavailable`, and `failed` all deny that
-  activation or purchase. The deterministic wedge rejects projected mode.
+  A `failed` facet always denies activation or purchase because it records a
+  check that ran and contradicted its evidence. Every facet required by the
+  profile or by a present Finding claim must be exactly `verified`; `asserted`
+  and `unavailable` deny when that facet is required. The deterministic wedge
+  rejects projected mode.
   Define and register signed
   `chio.finding.verifier-report.v1` rather than leaving the result as an
   untyped blob. Its body binds the Finding id and exact signed-envelope

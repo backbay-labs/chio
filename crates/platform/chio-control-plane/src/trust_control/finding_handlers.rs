@@ -957,7 +957,6 @@ pub(crate) async fn handle_activate_finding(
         allocation_snapshot: AdmissionAllocationSnapshot {
             live: allocation.state == FindingAllocationState::Live
                 || (prepared_replay && allocation.state == FindingAllocationState::Consumed),
-            accepted_at: allocation.accepted_at,
         },
         collateral_authority: &collateral_key,
         earliest_constituent_expiry,
@@ -1028,6 +1027,16 @@ pub(crate) async fn handle_activate_finding(
                 )
             }
         };
+    if report
+        .facets
+        .iter()
+        .any(|facet| facet.outcome == FindingFacetOutcome::Failed)
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "verifier report contains a failed facet; admission denied",
+        );
+    }
     for facet in required_facets(&finding, &profile.body) {
         if report.facet_outcome(facet) != Some(FindingFacetOutcome::Verified) {
             return plain_http_error(

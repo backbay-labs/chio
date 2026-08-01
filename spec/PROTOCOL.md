@@ -1516,9 +1516,10 @@ order (`artifact_integrity`, `receipt_authenticity`,
 `unavailable`, or `failed` with a reason, the verifier key epoch, and the
 evaluation time. A `verified` `bond_backing` facet MUST name the exact
 backing allocation, and acceptance MUST reject a report whose named
-allocation did not exist before the report's evaluation time. Every facet
-required by the profile or by a present finding claim MUST be exactly
-`verified`; `asserted` and `unavailable` deny. Only the externally
+allocation did not exist before the report's evaluation time. A `failed`
+facet MUST always deny. Every facet required by the profile or by a present
+finding claim MUST be exactly `verified`; `asserted` and `unavailable` deny
+when that facet is required. Only the externally
 pinned, profile-authorized verifier key that was valid and unrevoked at
 evaluation may sign.
 

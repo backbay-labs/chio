@@ -60,7 +60,8 @@ impl FindingFacetKind {
     ];
 }
 
-/// Facet outcomes. `asserted`, `unavailable`, and `failed` all deny a
+/// Facet outcomes. `Failed` always denies admission because a check ran
+/// and contradicted its evidence. `Asserted` and `Unavailable` deny a
 /// facet required by the profile or by a present Finding claim; nothing
 /// ever collapses them into a verified badge.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

@@ -110,9 +110,6 @@ pub struct FindingAllocationSnapshot {
     /// True only while the allocation is live (not consumed, expired, or
     /// released).
     pub live: bool,
-    /// Venue trusted time when the collateral authority registered the
-    /// allocation (the report-before-backing ordering input).
-    pub accepted_at: u64,
 }
 
 /// Externally pinned inputs for [`verify_finding_admission`]. Every
@@ -219,6 +216,11 @@ pub fn verify_finding_admission(
         return Err(FindingAdmissionError::TermsDigestMismatch);
     }
     verify_signed_market_terms(context.terms).map_err(FindingAdmissionError::TermsEnvelope)?;
+    if context.terms.body.finding_id != admission.finding_id
+        || context.terms.body.listing_id != admission.listing_id
+    {
+        return Err(FindingAdmissionError::TermsIdentityMismatch);
+    }
 
     // The exact backing envelope, bound by digest, verified under the
     // pinned collateral authority, naming a live allocation.

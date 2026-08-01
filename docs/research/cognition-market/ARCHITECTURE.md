@@ -298,8 +298,9 @@ The result is a structured facet report, not one Boolean:
 one of `verified`, `asserted`,
 `unavailable`, or `failed`, with evidence references and reasons. Every facet
 required by the profile or a present Finding claim must be exactly `verified`;
-`asserted`, `unavailable`, and `failed` all deny listing activation or
-purchase for that requirement.
+`asserted` and `unavailable` deny listing activation or purchase for that
+requirement. A `failed` facet always denies because it records a check that ran
+and contradicted its evidence.
 `chio finding verify` renders this report and never collapses `asserted` or
 `unavailable` into a verified badge.
 

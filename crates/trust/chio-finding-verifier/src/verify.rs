@@ -170,11 +170,20 @@ impl FindingVerifierDraft {
         required.into_iter().collect()
     }
 
-    /// True when every required facet is exactly `verified`.
+    /// True when no facet failed and every required facet is exactly
+    /// `verified`. `Failed` records a check that ran and contradicted its
+    /// evidence, so it denies even when the profile did not require that
+    /// facet. Optional `asserted` and `unavailable` results remain visible
+    /// without being upgraded to verified.
     pub fn satisfies_required_facets(&self, profile: &FindingChallengeVerifierProfile) -> bool {
-        self.required_facets(profile)
-            .into_iter()
-            .all(|kind| self.facet_outcome(kind) == Some(FindingFacetOutcome::Verified))
+        !self
+            .facets
+            .iter()
+            .any(|result| result.outcome == FindingFacetOutcome::Failed)
+            && self
+                .required_facets(profile)
+                .into_iter()
+                .all(|kind| self.facet_outcome(kind) == Some(FindingFacetOutcome::Verified))
     }
 }
 
