@@ -1,7 +1,7 @@
 use std::ffi::{OsStr, OsString};
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::os::windows::fs::OpenOptionsExt;
+use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::os::windows::io::{AsRawHandle, FromRawHandle};
 use std::path::{Component, Path, PathBuf, Prefix};
 
@@ -34,6 +34,24 @@ pub(super) struct PreparedPrivateDirectory {
 }
 
 impl PreparedPrivateDirectory {
+    pub(super) fn validate_path_identity(&self, path: &Path) -> Result<(), std::io::Error> {
+        let pinned = self.directory.metadata()?;
+        let current = fs::symlink_metadata(path)?;
+        let pinned_identity = pinned.volume_serial_number().zip(pinned.file_index());
+        let current_identity = current.volume_serial_number().zip(current.file_index());
+        if current.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+            || !current.is_dir()
+            || pinned_identity.is_none()
+            || pinned_identity != current_identity
+        {
+            return Err(invalid_data(format!(
+                "prepared private directory path `{}` no longer identifies the pinned directory",
+                path.display()
+            )));
+        }
+        Ok(())
+    }
+
     pub(super) fn is_empty(&self) -> Result<bool, std::io::Error> {
         let name_offset = std::mem::offset_of!(FILE_NAMES_INFORMATION, FileName);
         let minimum_buffer_bytes = usize::from(u16::MAX)

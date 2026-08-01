@@ -53,6 +53,7 @@ pub(crate) fn cmd_init(path: &Path) -> Result<(), CliError> {
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| "/path/to/chio".to_string());
 
+    directory.validate_path_identity()?;
     println!("created Chio scaffold at {}", path.display());
     println!();
     println!("Next steps:");

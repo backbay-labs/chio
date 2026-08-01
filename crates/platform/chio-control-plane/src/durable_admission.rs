@@ -217,6 +217,17 @@ pub(crate) fn create_private_directory(path: &Path) -> Result<(), std::io::Error
     Ok(())
 }
 
+#[cfg(test)]
+pub(crate) fn private_tempdir() -> Result<tempfile::TempDir, CliError> {
+    let directory = tempfile::tempdir()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(directory)
+}
+
 /// A private directory pinned by a platform directory handle.
 ///
 /// Relative operations remain anchored to the validated directory even if its
@@ -236,6 +247,43 @@ impl PreparedPrivateDirectory {
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Verifies that the prepared pathname still identifies the pinned
+    /// directory.
+    ///
+    /// Relative operations remain safe when the pathname is replaced, but a
+    /// caller must use this check before reporting that the pathname contains
+    /// those operations' results.
+    pub fn validate_path_identity(&self) -> Result<(), std::io::Error> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+
+            let pinned = self.directory.metadata()?;
+            let current = fs::symlink_metadata(&self.path)?;
+            if !current.is_dir() || pinned.dev() != current.dev() || pinned.ino() != current.ino() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "prepared private directory path `{}` no longer identifies the pinned directory",
+                        self.path.display()
+                    ),
+                ));
+            }
+            Ok(())
+        }
+        #[cfg(windows)]
+        {
+            self.directory.validate_path_identity(&self.path)
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "secure private-directory identity validation is unavailable on this platform",
+            ))
+        }
     }
 
     /// Reports whether the pinned directory contains no entries.
@@ -1535,9 +1583,17 @@ mod tests {
         let target = directory.path().join("project");
         let pinned = directory.path().join("pinned-project");
         let prepared = prepare_private_directory(&target)?;
+        prepared.validate_path_identity()?;
         fs::rename(&target, &pinned)?;
         fs::create_dir(&target)?;
         fs::set_permissions(&target, fs::Permissions::from_mode(0o700))?;
+
+        let Err(identity_error) = prepared.validate_path_identity() else {
+            return Err(CliError::cli_other_error(
+                "replacement path retained the pinned directory identity",
+            ));
+        };
+        assert_eq!(identity_error.kind(), std::io::ErrorKind::InvalidData);
 
         assert!(prepared.is_empty()?);
         prepared.create_dir_all(Path::new("src/bin"))?;
