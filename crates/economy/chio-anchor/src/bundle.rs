@@ -102,6 +102,18 @@ pub fn verify_proof_bundle(
         ));
     }
 
+    // The report claims the EVM primary lane is verified, so a v2 bundle must
+    // carry the on-chain anchor record that claim rests on. Without it the
+    // bundle proves checkpoint inclusion and nothing about any chain.
+    if bundle.schema == CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2
+        && bundle.primary_proof.chain_anchor.is_none()
+    {
+        return Err(AnchorError::Verification(
+            "v2 proof bundle must carry primary_proof.chain_anchor for the EVM primary lane"
+                .to_string(),
+        ));
+    }
+
     let mut lanes = Vec::new();
     verify_anchor_inclusion_proof(&bundle.primary_proof)
         .map_err(|error| AnchorError::Verification(error.to_string()))?;

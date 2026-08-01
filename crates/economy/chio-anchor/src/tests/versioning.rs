@@ -34,8 +34,27 @@ fn sample_v2_primary_proof() -> AnchorInclusionProof {
     let tree = chio_core::merkle::MerkleTree::from_leaves(std::slice::from_ref(&receipt_bytes))
         .test_unwrap();
     let inclusion = build_inclusion_proof(&tree, 0, 1, 1).test_unwrap();
+    let chain_anchor = chio_core::web3::anchors::Web3ChainAnchorRecord {
+        chain_id: "eip155:8453".to_string(),
+        contract_address: "0x1000000000000000000000000000000000000001".to_string(),
+        operator_address: "0x1000000000000000000000000000000000000002".to_string(),
+        tx_hash: format!("0x{}", "a1".repeat(32)),
+        block_number: 21_000_000,
+        block_hash: format!("0x{}", "b2".repeat(32)),
+        operator_key_hash: crate::operator_key_hash_hex(&binding).test_unwrap(),
+        operator_epoch: 1,
+        anchored_merkle_root: checkpoint.body.merkle_root,
+        anchored_checkpoint_seq: checkpoint.body.checkpoint_seq,
+    };
 
-    build_anchor_inclusion_proof(receipt, &inclusion, &checkpoint, None, binding).test_unwrap()
+    build_anchor_inclusion_proof(
+        receipt,
+        &inclusion,
+        &checkpoint,
+        Some(chain_anchor),
+        binding,
+    )
+    .test_unwrap()
 }
 
 /// A kernel-signed checkpoint must still verify after crossing the web3
@@ -112,6 +131,65 @@ fn proof_bundle_schema_tracks_the_primary_proof_version() {
     assert!(error.to_string().contains(
         "bundle schema chio.anchor-proof-bundle.v1 requires primary proof schema chio.anchor-inclusion-proof.v1"
     ));
+}
+
+/// The report states the EVM primary lane is verified, so the on-chain anchor
+/// record that claim rests on has to be there and has to check out.
+#[test]
+fn v2_proof_bundle_requires_evm_anchor_evidence_for_the_primary_lane() {
+    let proof = sample_v2_primary_proof();
+    let checkpoint = kernel_checkpoint_from_statement(&proof.checkpoint_statement);
+    let prepared = prepare_solana_memo_publication(
+        &checkpoint,
+        "solana:mainnet-beta",
+        "7xKXtg2CW9Q4hN7kD6A6tVWyQGm9Xxq6u9rY2T6yQkZp",
+    )
+    .test_unwrap();
+    let solana = SolanaMemoAnchorRecord::from_prepared(
+        &prepared,
+        "5W8D7gF9w3mP2nL6e1c4k7T9y2V6a1b3s5d7f9g2h4j6k8m1n3p5q7r9t1u3v5w7".to_string(),
+        310_045_221,
+        1_743_600_000,
+    );
+    let mut bundle = AnchorProofBundle {
+        schema: CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2.to_string(),
+        primary_proof: proof,
+        secondary_lanes: vec![AnchorLaneKind::SolanaMemo],
+        solana_anchor: Some(solana),
+        note: None,
+    };
+
+    let report = verify_proof_bundle(&bundle).test_unwrap();
+    assert!(report
+        .lanes
+        .iter()
+        .any(|lane| lane.lane == AnchorLaneKind::EvmPrimary && lane.verified));
+
+    let mut anchored = bundle.primary_proof.clone();
+    bundle.primary_proof.chain_anchor = None;
+    let error = verify_proof_bundle(&bundle).test_unwrap_err();
+    assert!(
+        error.to_string().contains(
+            "v2 proof bundle must carry primary_proof.chain_anchor for the EVM primary lane"
+        ),
+        "{error}"
+    );
+
+    // A present but unbound anchor record fails the same lane rather than
+    // riding through on presence alone.
+    anchored
+        .chain_anchor
+        .as_mut()
+        .test_unwrap()
+        .anchored_checkpoint_seq += 1;
+    bundle.primary_proof = anchored;
+    let error = verify_proof_bundle(&bundle).test_unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("chain anchor checkpoint seq must match checkpoint statement"),
+        "{error}"
+    );
 }
 
 #[test]
