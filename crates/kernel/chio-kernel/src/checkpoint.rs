@@ -414,6 +414,9 @@ pub fn checkpoint_chain_leaf_hash(body: &KernelCheckpointBody) -> Result<Hash, C
 pub struct CheckpointChainFrontier {
     /// `(subtree root, leaf span)`, spans strictly decreasing powers of two.
     subtrees: Vec<(Hash, u64)>,
+    /// Rightmost chain leaf. This binds a rootless legacy predecessor to the
+    /// frontier being extended during v1-to-v2 migration.
+    last_leaf: Option<Hash>,
 }
 
 impl CheckpointChainFrontier {
@@ -443,6 +446,7 @@ impl CheckpointChainFrontier {
     /// Extend by one chain leaf, merging equal-span neighbours so the spans
     /// stay strictly decreasing powers of two.
     pub fn append(&mut self, chain_leaf_hash: Hash) {
+        self.last_leaf = Some(chain_leaf_hash);
         self.subtrees.push((chain_leaf_hash, 1));
         while self.subtrees.len() >= 2 {
             let (right, right_span) = self.subtrees[self.subtrees.len() - 1];
@@ -1708,6 +1712,11 @@ pub fn build_checkpoint_with_chain_frontier(
                         previous.body.checkpoint_seq
                     )));
                 }
+            } else if prior_chain.last_leaf != Some(checkpoint_chain_leaf_hash(&previous.body)?) {
+                return Err(CheckpointError::Continuity(format!(
+                    "legacy predecessor {} is not the final supplied chain leaf",
+                    previous.body.checkpoint_seq
+                )));
             }
             let mut chain = prior_chain.clone();
             chain.append(own_chain_leaf);

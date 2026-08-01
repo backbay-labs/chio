@@ -52,13 +52,13 @@ rather than passing vacuously. No `unwrap`/`expect`; every path yields a typed
 
 ```bash
 # Default PR-tier run:
-cargo test -p chio-chaos
+cargo test -p chio-chaos --features chaos-victim
 
 # Extra flake shake at higher strength:
-CHIO_CHAOS_ITERATIONS=10 cargo test -p chio-chaos
+CHIO_CHAOS_ITERATIONS=10 cargo test -p chio-chaos --features chaos-victim
 
 # Pin a seed to reproduce a failure:
-CHIO_CHAOS_SEED=0xC10A0515 cargo test -p chio-chaos
+CHIO_CHAOS_SEED=0xC10A0515 cargo test -p chio-chaos --features chaos-victim
 ```
 
 The nightly lane `.github/workflows/chio-chaos-nightly.yml` runs the suite at a

@@ -162,6 +162,34 @@ fn build_checkpoint_with_chain_frontier_accepts_canonical_successor() -> Result<
 }
 
 #[test]
+fn build_checkpoint_with_chain_frontier_rejects_foreign_legacy_predecessor_leaf(
+) -> Result<(), CheckpointError> {
+    let keypair = Keypair::generate();
+    let mut legacy = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &keypair)?;
+    legacy.body.schema = CHECKPOINT_SCHEMA_V1.to_string();
+    legacy.body.chain_root = None;
+    legacy.signature = keypair.sign(&canonical_json_bytes(&legacy.body)?);
+
+    let foreign_frontier = CheckpointChainFrontier::from_leaves(&[Hash::zero()]);
+    let result = build_checkpoint_with_chain_frontier(
+        2,
+        4,
+        6,
+        &make_receipt_bytes(3),
+        &keypair,
+        Some(&legacy),
+        &foreign_frontier,
+    );
+
+    assert!(matches!(
+        result,
+        Err(CheckpointError::Continuity(message))
+            if message.contains("legacy predecessor 1 is not the final supplied chain leaf")
+    ));
+    Ok(())
+}
+
+#[test]
 fn build_checkpoint_with_chain_frontier_rejects_invalid_predecessor() -> Result<(), CheckpointError>
 {
     let keypair = Keypair::generate();
