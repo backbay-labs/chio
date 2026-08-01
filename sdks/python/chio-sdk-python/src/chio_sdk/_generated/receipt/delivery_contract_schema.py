@@ -11,14 +11,26 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, constr
+from pydantic import BaseModel, ConfigDict, Field, RootModel, constr
 
 
-class ChioToolcallerrorCapabilityDenied(BaseModel):
+class Result(Enum):
+    matched = "matched"
+    mismatched = "mismatched"
+
+
+class Digest(RootModel[constr(pattern=r"^[0-9a-f]{64}$")]):
+    root: constr(pattern=r"^[0-9a-f]{64}$")
+
+
+class ChioDeliveryContractReceiptMetadata(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    code: Literal["capability_denied"]
-    detail: constr(min_length=1)
+    schema_: Literal["chio.delivery-contract.v1"] = Field(..., alias="schema")
+    expected_digest: Digest
+    observed_digest: Digest
+    result: Result

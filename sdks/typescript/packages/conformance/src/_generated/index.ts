@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: 582094cbf4cb918a2be49620a49e069724971ff99732340623d2f7b24082442e
+// Schema SHA: 38bbab8443b9dce6f9d6d665e6f288580efae27c49609d0ec10bda7ded157a29
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -2286,6 +2286,7 @@ export namespace Receipt_AdmissionMetadata {
       | "compensated_before_dispatch"
       | "not_accepted_after_dispatch_commit"
       | "outcome_unknown_after_dispatch"
+      | "denied_after_delivery"
       | "mutation_ready"
       | "mutation_submitted"
       | "economic_mutation_applied"
@@ -2323,6 +2324,41 @@ export namespace Receipt_AdmissionMetadata {
     attempt_id: Identifier;
     transport_id: Identifier;
     transport_key_epoch: PositiveIJsonInteger;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Source: spec/schemas/chio-wire/v1/receipt/delivery-contract.schema.json
+export namespace Receipt_DeliveryContract {
+  export type Digest = string;
+
+  export interface ChioDeliveryContractReceiptMetadata {
+    schema: "chio.delivery-contract.v1";
+    expected_digest: Digest;
+    observed_digest: Digest;
+    result: "matched" | "mismatched";
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Source: spec/schemas/chio-wire/v1/receipt/finding-delivery.schema.json
+export namespace Receipt_FindingDelivery {
+  export type Identifier = string;
+  export type Digest = string;
+
+  export interface ChioFindingDeliveryReceiptMetadata {
+    schema: "chio.finding.delivery.v1";
+    finding_id: Identifier;
+    listing_id: Identifier;
+    transform_profile: "identity";
+    digest_check: "matched" | "mismatched";
+    media_type_check: "matched" | "mismatched" | "not_evaluated";
+    settlement_mode: "local_reversible_hold";
+    accepted_bid_envelope_sha256: Digest;
+    venue_admission_envelope_sha256: Digest;
+    reservation_id: Identifier;
+    purchase_intent_id: Identifier;
+    authoritative_payment_operation_id: Identifier;
   }
 }
 

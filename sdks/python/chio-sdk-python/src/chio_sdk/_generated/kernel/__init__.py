@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 27975bf17d3c195d530b2e28ac498870376a2aeb649e8b3126f61b882beedf84
+# Schema sha256: d7264a73c6278a903994c0945d1fc7ba5300063d0cc3a6b8666fdf08f66175e5
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -16,7 +16,7 @@ from .combined_capture_metadata_schema import ChioCombinedAdmissionCaptureMetada
 from .execution_nonce_schema import BoundTo, ChioSignedExecutionNonce, Nonce
 from .heartbeat_schema import ChioKernelmessageHeartbeat
 from .tool_call_chunk_schema import ChioKernelmessageToolCallChunk
-from .tool_call_response_schema import ChioKernelmessageToolCallResponse, Detail, Error, Error10, Error11, Error12, Error13, Error9, Result, Result1, Result2, Result3, Result4
+from .tool_call_response_schema import ChioKernelmessageToolCallResponse, Detail, Error, Error10, Error11, Error12, Error13, Error9, Result, Result2, Result3, Result4, Result5
 
 __all__ = [
     "BoundTo",
@@ -37,8 +37,8 @@ __all__ = [
     "Nonce",
     "QuotaKey",
     "Result",
-    "Result1",
     "Result2",
     "Result3",
     "Result4",
+    "Result5",
 ]

@@ -34373,6 +34373,7 @@ pub mod receipt_admission_metadata {
     ///        "compensated_before_dispatch",
     ///        "not_accepted_after_dispatch_commit",
     ///        "outcome_unknown_after_dispatch",
+    ///        "denied_after_delivery",
     ///        "mutation_ready",
     ///        "mutation_submitted",
     ///        "economic_mutation_applied",
@@ -34666,6 +34667,7 @@ pub mod receipt_admission_metadata {
     ///    "compensated_before_dispatch",
     ///    "not_accepted_after_dispatch_commit",
     ///    "outcome_unknown_after_dispatch",
+    ///    "denied_after_delivery",
     ///    "mutation_ready",
     ///    "mutation_submitted",
     ///    "economic_mutation_applied",
@@ -34713,6 +34715,8 @@ pub mod receipt_admission_metadata {
         NotAcceptedAfterDispatchCommit,
         #[serde(rename = "outcome_unknown_after_dispatch")]
         OutcomeUnknownAfterDispatch,
+        #[serde(rename = "denied_after_delivery")]
+        DeniedAfterDelivery,
         #[serde(rename = "mutation_ready")]
         MutationReady,
         #[serde(rename = "mutation_submitted")]
@@ -34745,6 +34749,7 @@ pub mod receipt_admission_metadata {
                     f.write_str("not_accepted_after_dispatch_commit")
                 }
                 Self::OutcomeUnknownAfterDispatch => f.write_str("outcome_unknown_after_dispatch"),
+                Self::DeniedAfterDelivery => f.write_str("denied_after_delivery"),
                 Self::MutationReady => f.write_str("mutation_ready"),
                 Self::MutationSubmitted => f.write_str("mutation_submitted"),
                 Self::EconomicMutationApplied => f.write_str("economic_mutation_applied"),
@@ -34769,6 +34774,7 @@ pub mod receipt_admission_metadata {
                 "compensated_before_dispatch" => Ok(Self::CompensatedBeforeDispatch),
                 "not_accepted_after_dispatch_commit" => Ok(Self::NotAcceptedAfterDispatchCommit),
                 "outcome_unknown_after_dispatch" => Ok(Self::OutcomeUnknownAfterDispatch),
+                "denied_after_delivery" => Ok(Self::DeniedAfterDelivery),
                 "mutation_ready" => Ok(Self::MutationReady),
                 "mutation_submitted" => Ok(Self::MutationSubmitted),
                 "economic_mutation_applied" => Ok(Self::EconomicMutationApplied),
@@ -35157,6 +35163,830 @@ pub mod receipt_admission_metadata {
     impl ::std::convert::From<&StoreFence> for StoreFence {
         fn from(value: &StoreFence) -> Self {
             value.clone()
+        }
+    }
+}
+pub mod receipt_delivery_contract {
+    /// Error types.
+    pub mod error {
+        /// Error from a `TryFrom` or `FromStr` implementation.
+        pub struct ConversionError(::std::borrow::Cow<'static, str>);
+        impl ::std::error::Error for ConversionError {}
+        impl ::std::fmt::Display for ConversionError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), ::std::fmt::Error> {
+                ::std::fmt::Display::fmt(&self.0, f)
+            }
+        }
+        impl ::std::fmt::Debug for ConversionError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), ::std::fmt::Error> {
+                ::std::fmt::Debug::fmt(&self.0, f)
+            }
+        }
+        impl From<&'static str> for ConversionError {
+            fn from(value: &'static str) -> Self {
+                Self(value.into())
+            }
+        }
+        impl From<String> for ConversionError {
+            fn from(value: String) -> Self {
+                Self(value.into())
+            }
+        }
+    }
+    ///`ChioDeliveryContractReceiptMetadata`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "$id": "https://chio.world/schemas/chio-wire/v1/receipt/delivery-contract.schema.json",
+    ///  "title": "Chio Delivery Contract Receipt Metadata",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "expected_digest",
+    ///    "observed_digest",
+    ///    "result",
+    ///    "schema"
+    ///  ],
+    ///  "properties": {
+    ///    "expected_digest": {
+    ///      "$ref": "#/$defs/digest"
+    ///    },
+    ///    "observed_digest": {
+    ///      "$ref": "#/$defs/digest"
+    ///    },
+    ///    "result": {
+    ///      "enum": [
+    ///        "matched",
+    ///        "mismatched"
+    ///      ]
+    ///    },
+    ///    "schema": {
+    ///      "const": "chio.delivery-contract.v1"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct ChioDeliveryContractReceiptMetadata {
+        pub expected_digest: Digest,
+        pub observed_digest: Digest,
+        pub result: ChioDeliveryContractReceiptMetadataResult,
+        pub schema: ::serde_json::Value,
+    }
+    impl ::std::convert::From<&ChioDeliveryContractReceiptMetadata>
+        for ChioDeliveryContractReceiptMetadata
+    {
+        fn from(value: &ChioDeliveryContractReceiptMetadata) -> Self {
+            value.clone()
+        }
+    }
+    ///`ChioDeliveryContractReceiptMetadataResult`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "enum": [
+    ///    "matched",
+    ///    "mismatched"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ChioDeliveryContractReceiptMetadataResult {
+        #[serde(rename = "matched")]
+        Matched,
+        #[serde(rename = "mismatched")]
+        Mismatched,
+    }
+    impl ::std::convert::From<&Self> for ChioDeliveryContractReceiptMetadataResult {
+        fn from(value: &ChioDeliveryContractReceiptMetadataResult) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::fmt::Display for ChioDeliveryContractReceiptMetadataResult {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Matched => f.write_str("matched"),
+                Self::Mismatched => f.write_str("mismatched"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for ChioDeliveryContractReceiptMetadataResult {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "matched" => Ok(Self::Matched),
+                "mismatched" => Ok(Self::Mismatched),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for ChioDeliveryContractReceiptMetadataResult {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for ChioDeliveryContractReceiptMetadataResult {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for ChioDeliveryContractReceiptMetadataResult {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`Digest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "pattern": "^[0-9a-f]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct Digest(::std::string::String);
+    impl ::std::ops::Deref for Digest {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<Digest> for ::std::string::String {
+        fn from(value: Digest) -> Self {
+            value.0
+        }
+    }
+    impl ::std::convert::From<&Digest> for Digest {
+        fn from(value: &Digest) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::str::FromStr for Digest {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[0-9a-f]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for Digest {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for Digest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for Digest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for Digest {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+}
+pub mod receipt_finding_delivery {
+    /// Error types.
+    pub mod error {
+        /// Error from a `TryFrom` or `FromStr` implementation.
+        pub struct ConversionError(::std::borrow::Cow<'static, str>);
+        impl ::std::error::Error for ConversionError {}
+        impl ::std::fmt::Display for ConversionError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), ::std::fmt::Error> {
+                ::std::fmt::Display::fmt(&self.0, f)
+            }
+        }
+        impl ::std::fmt::Debug for ConversionError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), ::std::fmt::Error> {
+                ::std::fmt::Debug::fmt(&self.0, f)
+            }
+        }
+        impl From<&'static str> for ConversionError {
+            fn from(value: &'static str) -> Self {
+                Self(value.into())
+            }
+        }
+        impl From<String> for ConversionError {
+            fn from(value: String) -> Self {
+                Self(value.into())
+            }
+        }
+    }
+    ///`ChioFindingDeliveryReceiptMetadata`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "$id": "https://chio.world/schemas/chio-wire/v1/receipt/finding-delivery.schema.json",
+    ///  "title": "Chio Finding Delivery Receipt Metadata",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "accepted_bid_envelope_sha256",
+    ///    "authoritative_payment_operation_id",
+    ///    "digest_check",
+    ///    "finding_id",
+    ///    "listing_id",
+    ///    "media_type_check",
+    ///    "purchase_intent_id",
+    ///    "reservation_id",
+    ///    "schema",
+    ///    "settlement_mode",
+    ///    "transform_profile",
+    ///    "venue_admission_envelope_sha256"
+    ///  ],
+    ///  "properties": {
+    ///    "accepted_bid_envelope_sha256": {
+    ///      "$ref": "#/$defs/digest"
+    ///    },
+    ///    "authoritative_payment_operation_id": {
+    ///      "$ref": "#/$defs/identifier"
+    ///    },
+    ///    "digest_check": {
+    ///      "enum": [
+    ///        "matched",
+    ///        "mismatched"
+    ///      ]
+    ///    },
+    ///    "finding_id": {
+    ///      "$ref": "#/$defs/identifier"
+    ///    },
+    ///    "listing_id": {
+    ///      "$ref": "#/$defs/identifier"
+    ///    },
+    ///    "media_type_check": {
+    ///      "enum": [
+    ///        "matched",
+    ///        "mismatched",
+    ///        "not_evaluated"
+    ///      ]
+    ///    },
+    ///    "purchase_intent_id": {
+    ///      "$ref": "#/$defs/identifier"
+    ///    },
+    ///    "reservation_id": {
+    ///      "$ref": "#/$defs/identifier"
+    ///    },
+    ///    "schema": {
+    ///      "const": "chio.finding.delivery.v1"
+    ///    },
+    ///    "settlement_mode": {
+    ///      "enum": [
+    ///        "local_reversible_hold"
+    ///      ]
+    ///    },
+    ///    "transform_profile": {
+    ///      "enum": [
+    ///        "identity"
+    ///      ]
+    ///    },
+    ///    "venue_admission_envelope_sha256": {
+    ///      "$ref": "#/$defs/digest"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct ChioFindingDeliveryReceiptMetadata {
+        pub accepted_bid_envelope_sha256: Digest,
+        pub authoritative_payment_operation_id: Identifier,
+        pub digest_check: ChioFindingDeliveryReceiptMetadataDigestCheck,
+        pub finding_id: Identifier,
+        pub listing_id: Identifier,
+        pub media_type_check: ChioFindingDeliveryReceiptMetadataMediaTypeCheck,
+        pub purchase_intent_id: Identifier,
+        pub reservation_id: Identifier,
+        pub schema: ::serde_json::Value,
+        pub settlement_mode: ChioFindingDeliveryReceiptMetadataSettlementMode,
+        pub transform_profile: ChioFindingDeliveryReceiptMetadataTransformProfile,
+        pub venue_admission_envelope_sha256: Digest,
+    }
+    impl ::std::convert::From<&ChioFindingDeliveryReceiptMetadata>
+        for ChioFindingDeliveryReceiptMetadata
+    {
+        fn from(value: &ChioFindingDeliveryReceiptMetadata) -> Self {
+            value.clone()
+        }
+    }
+    ///`ChioFindingDeliveryReceiptMetadataDigestCheck`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "enum": [
+    ///    "matched",
+    ///    "mismatched"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ChioFindingDeliveryReceiptMetadataDigestCheck {
+        #[serde(rename = "matched")]
+        Matched,
+        #[serde(rename = "mismatched")]
+        Mismatched,
+    }
+    impl ::std::convert::From<&Self> for ChioFindingDeliveryReceiptMetadataDigestCheck {
+        fn from(value: &ChioFindingDeliveryReceiptMetadataDigestCheck) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::fmt::Display for ChioFindingDeliveryReceiptMetadataDigestCheck {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Matched => f.write_str("matched"),
+                Self::Mismatched => f.write_str("mismatched"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for ChioFindingDeliveryReceiptMetadataDigestCheck {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "matched" => Ok(Self::Matched),
+                "mismatched" => Ok(Self::Mismatched),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for ChioFindingDeliveryReceiptMetadataDigestCheck {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String>
+        for ChioFindingDeliveryReceiptMetadataDigestCheck
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String>
+        for ChioFindingDeliveryReceiptMetadataDigestCheck
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`ChioFindingDeliveryReceiptMetadataMediaTypeCheck`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "enum": [
+    ///    "matched",
+    ///    "mismatched",
+    ///    "not_evaluated"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ChioFindingDeliveryReceiptMetadataMediaTypeCheck {
+        #[serde(rename = "matched")]
+        Matched,
+        #[serde(rename = "mismatched")]
+        Mismatched,
+        #[serde(rename = "not_evaluated")]
+        NotEvaluated,
+    }
+    impl ::std::convert::From<&Self> for ChioFindingDeliveryReceiptMetadataMediaTypeCheck {
+        fn from(value: &ChioFindingDeliveryReceiptMetadataMediaTypeCheck) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::fmt::Display for ChioFindingDeliveryReceiptMetadataMediaTypeCheck {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Matched => f.write_str("matched"),
+                Self::Mismatched => f.write_str("mismatched"),
+                Self::NotEvaluated => f.write_str("not_evaluated"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for ChioFindingDeliveryReceiptMetadataMediaTypeCheck {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "matched" => Ok(Self::Matched),
+                "mismatched" => Ok(Self::Mismatched),
+                "not_evaluated" => Ok(Self::NotEvaluated),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for ChioFindingDeliveryReceiptMetadataMediaTypeCheck {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String>
+        for ChioFindingDeliveryReceiptMetadataMediaTypeCheck
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String>
+        for ChioFindingDeliveryReceiptMetadataMediaTypeCheck
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`ChioFindingDeliveryReceiptMetadataSettlementMode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "enum": [
+    ///    "local_reversible_hold"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ChioFindingDeliveryReceiptMetadataSettlementMode {
+        #[serde(rename = "local_reversible_hold")]
+        LocalReversibleHold,
+    }
+    impl ::std::convert::From<&Self> for ChioFindingDeliveryReceiptMetadataSettlementMode {
+        fn from(value: &ChioFindingDeliveryReceiptMetadataSettlementMode) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::fmt::Display for ChioFindingDeliveryReceiptMetadataSettlementMode {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::LocalReversibleHold => f.write_str("local_reversible_hold"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for ChioFindingDeliveryReceiptMetadataSettlementMode {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "local_reversible_hold" => Ok(Self::LocalReversibleHold),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for ChioFindingDeliveryReceiptMetadataSettlementMode {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String>
+        for ChioFindingDeliveryReceiptMetadataSettlementMode
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String>
+        for ChioFindingDeliveryReceiptMetadataSettlementMode
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`ChioFindingDeliveryReceiptMetadataTransformProfile`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "enum": [
+    ///    "identity"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ChioFindingDeliveryReceiptMetadataTransformProfile {
+        #[serde(rename = "identity")]
+        Identity,
+    }
+    impl ::std::convert::From<&Self> for ChioFindingDeliveryReceiptMetadataTransformProfile {
+        fn from(value: &ChioFindingDeliveryReceiptMetadataTransformProfile) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::fmt::Display for ChioFindingDeliveryReceiptMetadataTransformProfile {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Identity => f.write_str("identity"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for ChioFindingDeliveryReceiptMetadataTransformProfile {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "identity" => Ok(Self::Identity),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for ChioFindingDeliveryReceiptMetadataTransformProfile {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String>
+        for ChioFindingDeliveryReceiptMetadataTransformProfile
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String>
+        for ChioFindingDeliveryReceiptMetadataTransformProfile
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`Digest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "pattern": "^[0-9a-f]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct Digest(::std::string::String);
+    impl ::std::ops::Deref for Digest {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<Digest> for ::std::string::String {
+        fn from(value: Digest) -> Self {
+            value.0
+        }
+    }
+    impl ::std::convert::From<&Digest> for Digest {
+        fn from(value: &Digest) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::str::FromStr for Digest {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[0-9a-f]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for Digest {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for Digest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for Digest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for Digest {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+    ///`Identifier`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "pattern": "^[A-Za-z0-9._:-]{1,512}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct Identifier(::std::string::String);
+    impl ::std::ops::Deref for Identifier {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<Identifier> for ::std::string::String {
+        fn from(value: Identifier) -> Self {
+            value.0
+        }
+    }
+    impl ::std::convert::From<&Identifier> for Identifier {
+        fn from(value: &Identifier) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::str::FromStr for Identifier {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[A-Za-z0-9._:-]{1,512}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[A-Za-z0-9._:-]{1,512}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for Identifier {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for Identifier {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for Identifier {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for Identifier {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
         }
     }
 }

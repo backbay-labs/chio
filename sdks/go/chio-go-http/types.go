@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: cdcd7261dc30d37b2a47e8b2d8185b0427d09e892fd10176f20fd5ba268208d6
+// Schema content SHA-256: a1b2793b479da17c2087a99f8b4ab4db073877eca9aacd688a9ac31ee6840e44
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -507,6 +507,7 @@ const (
 	ReceiptAdmissionMetadataProjectedStateCapturePending                 ReceiptAdmissionMetadataProjectedState = "capture_pending"
 	ReceiptAdmissionMetadataProjectedStateCompensatedBeforeDispatch      ReceiptAdmissionMetadataProjectedState = "compensated_before_dispatch"
 	ReceiptAdmissionMetadataProjectedStateCompleted                      ReceiptAdmissionMetadataProjectedState = "completed"
+	ReceiptAdmissionMetadataProjectedStateDeniedAfterDelivery            ReceiptAdmissionMetadataProjectedState = "denied_after_delivery"
 	ReceiptAdmissionMetadataProjectedStateDispatchCommitted              ReceiptAdmissionMetadataProjectedState = "dispatch_committed"
 	ReceiptAdmissionMetadataProjectedStateEconomicMutationApplied        ReceiptAdmissionMetadataProjectedState = "economic_mutation_applied"
 	ReceiptAdmissionMetadataProjectedStateEconomicMutationNotApplied     ReceiptAdmissionMetadataProjectedState = "economic_mutation_not_applied"
@@ -522,6 +523,45 @@ const (
 // Defines values for ReceiptAdmissionMetadataSchema.
 const (
 	ReceiptAdmissionMetadataSchemaChioAdmissionReceiptV1 ReceiptAdmissionMetadataSchema = "chio.admission-receipt.v1"
+)
+
+// Defines values for ReceiptDeliveryContractResult.
+const (
+	ReceiptDeliveryContractResultMatched    ReceiptDeliveryContractResult = "matched"
+	ReceiptDeliveryContractResultMismatched ReceiptDeliveryContractResult = "mismatched"
+)
+
+// Defines values for ReceiptDeliveryContractSchema.
+const (
+	ReceiptDeliveryContractSchemaChioDeliveryContractV1 ReceiptDeliveryContractSchema = "chio.delivery-contract.v1"
+)
+
+// Defines values for ReceiptFindingDeliveryDigestCheck.
+const (
+	ReceiptFindingDeliveryDigestCheckMatched    ReceiptFindingDeliveryDigestCheck = "matched"
+	ReceiptFindingDeliveryDigestCheckMismatched ReceiptFindingDeliveryDigestCheck = "mismatched"
+)
+
+// Defines values for ReceiptFindingDeliveryMediaTypeCheck.
+const (
+	ReceiptFindingDeliveryMediaTypeCheckMatched      ReceiptFindingDeliveryMediaTypeCheck = "matched"
+	ReceiptFindingDeliveryMediaTypeCheckMismatched   ReceiptFindingDeliveryMediaTypeCheck = "mismatched"
+	ReceiptFindingDeliveryMediaTypeCheckNotEvaluated ReceiptFindingDeliveryMediaTypeCheck = "not_evaluated"
+)
+
+// Defines values for ReceiptFindingDeliverySchema.
+const (
+	ReceiptFindingDeliverySchemaChioFindingDeliveryV1 ReceiptFindingDeliverySchema = "chio.finding.delivery.v1"
+)
+
+// Defines values for ReceiptFindingDeliverySettlementMode.
+const (
+	ReceiptFindingDeliverySettlementModeLocalReversibleHold ReceiptFindingDeliverySettlementMode = "local_reversible_hold"
+)
+
+// Defines values for ReceiptFindingDeliveryTransformProfile.
+const (
+	ReceiptFindingDeliveryTransformProfileIdentity ReceiptFindingDeliveryTransformProfile = "identity"
 )
 
 // Defines values for ReceiptLineageStatementEvidenceClass.
@@ -2085,6 +2125,60 @@ type ReceiptAdmissionMetadataStoreFence struct {
 	OwnerEpoch ReceiptAdmissionMetadataPositiveIJsonInteger `json:"owner_epoch"`
 	StoreUuid  ReceiptAdmissionMetadataIdentifier           `json:"store_uuid"`
 }
+
+// ReceiptDeliveryContract defines model for ReceiptDeliveryContract.
+type ReceiptDeliveryContract struct {
+	ExpectedDigest ReceiptDeliveryContractDigest `json:"expected_digest"`
+	ObservedDigest ReceiptDeliveryContractDigest `json:"observed_digest"`
+	Result         ReceiptDeliveryContractResult `json:"result"`
+	Schema         ReceiptDeliveryContractSchema `json:"schema"`
+}
+
+// ReceiptDeliveryContractResult defines model for ReceiptDeliveryContract.Result.
+type ReceiptDeliveryContractResult string
+
+// ReceiptDeliveryContractSchema defines model for ReceiptDeliveryContract.Schema.
+type ReceiptDeliveryContractSchema string
+
+// ReceiptDeliveryContractDigest defines model for ReceiptDeliveryContractDigest.
+type ReceiptDeliveryContractDigest = string
+
+// ReceiptFindingDelivery defines model for ReceiptFindingDelivery.
+type ReceiptFindingDelivery struct {
+	AcceptedBidEnvelopeSha256       ReceiptFindingDeliveryDigest           `json:"accepted_bid_envelope_sha256"`
+	AuthoritativePaymentOperationId ReceiptFindingDeliveryIdentifier       `json:"authoritative_payment_operation_id"`
+	DigestCheck                     ReceiptFindingDeliveryDigestCheck      `json:"digest_check"`
+	FindingId                       ReceiptFindingDeliveryIdentifier       `json:"finding_id"`
+	ListingId                       ReceiptFindingDeliveryIdentifier       `json:"listing_id"`
+	MediaTypeCheck                  ReceiptFindingDeliveryMediaTypeCheck   `json:"media_type_check"`
+	PurchaseIntentId                ReceiptFindingDeliveryIdentifier       `json:"purchase_intent_id"`
+	ReservationId                   ReceiptFindingDeliveryIdentifier       `json:"reservation_id"`
+	Schema                          ReceiptFindingDeliverySchema           `json:"schema"`
+	SettlementMode                  ReceiptFindingDeliverySettlementMode   `json:"settlement_mode"`
+	TransformProfile                ReceiptFindingDeliveryTransformProfile `json:"transform_profile"`
+	VenueAdmissionEnvelopeSha256    ReceiptFindingDeliveryDigest           `json:"venue_admission_envelope_sha256"`
+}
+
+// ReceiptFindingDeliveryDigestCheck defines model for ReceiptFindingDelivery.DigestCheck.
+type ReceiptFindingDeliveryDigestCheck string
+
+// ReceiptFindingDeliveryMediaTypeCheck defines model for ReceiptFindingDelivery.MediaTypeCheck.
+type ReceiptFindingDeliveryMediaTypeCheck string
+
+// ReceiptFindingDeliverySchema defines model for ReceiptFindingDelivery.Schema.
+type ReceiptFindingDeliverySchema string
+
+// ReceiptFindingDeliverySettlementMode defines model for ReceiptFindingDelivery.SettlementMode.
+type ReceiptFindingDeliverySettlementMode string
+
+// ReceiptFindingDeliveryTransformProfile defines model for ReceiptFindingDelivery.TransformProfile.
+type ReceiptFindingDeliveryTransformProfile string
+
+// ReceiptFindingDeliveryDigest defines model for ReceiptFindingDeliveryDigest.
+type ReceiptFindingDeliveryDigest = string
+
+// ReceiptFindingDeliveryIdentifier defines model for ReceiptFindingDeliveryIdentifier.
+type ReceiptFindingDeliveryIdentifier = string
 
 // ReceiptInclusionProof Merkle inclusion proof for a single receipt leaf in a receipt-log Merkle tree. Mirrors the serde shape of `MerkleProof` in `crates/core/chio-core-types/src/merkle.rs`. The proof allows an auditor, holding only the published Merkle root and the original leaf bytes, to verify that the leaf was included in a tree of the given size at the given position. The audit path is the ordered list of sibling hashes encountered when walking from the leaf up to the root; siblings whose subtree was carried upward without pairing (the right-edge of an unbalanced level) are omitted. Deterministic-replay consumes this schema as the contract for golden-bundle inclusion artifacts under `tests/replay/goldens/<family>/<name>/`.
 type ReceiptInclusionProof struct {
