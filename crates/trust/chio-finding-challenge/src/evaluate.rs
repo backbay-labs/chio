@@ -9,7 +9,7 @@
 use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_finding::{
     ensure_challenge_class_compatibility, signed_envelope_sha256, verify_finding,
-    verify_pinned_envelope, verify_signed_challenge, Finding, FindingChallenge,
+    verify_signed_challenge, verify_signed_profile, Finding, FindingChallenge,
     FindingChallengeAuthorization, FindingChallengeEvidence, FindingChallengeVerifierProfile,
 };
 use chio_finding_verifier::MAX_RAW_FINDING_BYTES;
@@ -63,12 +63,7 @@ fn adjudicate(
 
     // The profile is a precondition, not evidence: with an unverified profile
     // no role key below means anything.
-    verify_pinned_envelope(input.profile, input.governance_authority, "profile")
-        .map_err(FindingChallengeInadmissible::ProfileRejected)?;
-    input
-        .profile
-        .body
-        .validate()
+    verify_signed_profile(input.profile, input.governance_authority)
         .map_err(FindingChallengeInadmissible::ProfileRejected)?;
     let profile_envelope_sha256 = signed_envelope_sha256(input.profile)
         .map_err(FindingChallengeInadmissible::ProfileRejected)?;

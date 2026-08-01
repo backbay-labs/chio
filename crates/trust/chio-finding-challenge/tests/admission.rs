@@ -16,9 +16,10 @@ use chio_finding_challenge::{
 };
 
 use support::{
-    digest_case, evidence_case, evidence_case_with_standing, expect_inadmissible, keypair,
-    reissued_profile, replay_case, tampered_finding, venue_digest_case, world, world_with_classes,
-    DenyShape, EvidenceShape, FindingClasses, ReplayShape, StandingShape, TestResult,
+    buyer_challenge_bound_to_profile, digest_case, evidence_case, evidence_case_with_standing,
+    expect_inadmissible, keypair, profile_with_foreign_governance_authority, reissued_profile,
+    replay_case, tampered_finding, venue_digest_case, world, world_with_classes, DenyShape,
+    EvidenceShape, FindingClasses, ReplayShape, StandingShape, TestResult,
 };
 
 const GUARANTEE_CLASSES: [FindingGuaranteeClass; 3] = [
@@ -213,6 +214,32 @@ fn the_profile_must_verify_under_the_pinned_governance_root() -> TestResult {
             FindingChallengeInadmissible::ProfileRejected(_),
         ) => {}
         other => panic!("expected the profile to be rejected, got {other:?}"),
+    }
+    Ok(())
+}
+
+#[test]
+fn the_profile_body_must_name_the_pinned_governance_root() -> TestResult {
+    let world = world()?;
+    let case = digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let profile = profile_with_foreign_governance_authority(&world)?;
+    let challenge = buyer_challenge_bound_to_profile(&world, &case.challenge, &profile)?;
+    let input = FindingChallengeEvaluationInput {
+        challenge: &challenge,
+        pinned_audit_authority: &world.audit_authority_key,
+        raw_finding: &world.raw_finding,
+        profile: &profile,
+        governance_authority: &world.governance_key,
+        evidence: &evidence,
+    };
+
+    let evaluation = evaluate_finding_challenge(&input);
+    match &evaluation {
+        FindingChallengeEvaluation::Inadmissible(
+            FindingChallengeInadmissible::ProfileRejected(_),
+        ) => {}
+        other => panic!("expected the profile body authority to be rejected, got {other:?}"),
     }
     Ok(())
 }

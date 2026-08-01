@@ -1384,6 +1384,30 @@ pub fn reissued_profile(
     Ok(SignedExportEnvelope::sign(body, &world.governance)?)
 }
 
+/// A profile whose envelope has the pinned governance signature but whose
+/// signed body names a different governance authority.
+pub fn profile_with_foreign_governance_authority(
+    world: &World,
+) -> Built<SignedFindingChallengeVerifierProfile> {
+    let mut body = world.profile.body.clone();
+    body.governance_authority = keypair(99).public_key();
+    body.profile_id = compute_profile_id(&body)?;
+    Ok(SignedExportEnvelope::sign(body, &world.governance)?)
+}
+
+/// Re-sign an otherwise unchanged buyer challenge against a replacement
+/// profile, preserving every unrelated binding.
+pub fn buyer_challenge_bound_to_profile(
+    world: &World,
+    challenge: &SignedFindingChallenge,
+    profile: &SignedFindingChallengeVerifierProfile,
+) -> Built<SignedFindingChallenge> {
+    let mut body = challenge.body.clone();
+    body.profile_envelope_sha256 = signed_envelope_sha256(profile)?;
+    body.challenge_id = compute_challenge_id(&body)?;
+    Ok(SignedExportEnvelope::sign(body, &world.buyer)?)
+}
+
 // ---------------------------------------------------------------------------
 // assertions
 // ---------------------------------------------------------------------------
