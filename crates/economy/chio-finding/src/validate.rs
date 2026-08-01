@@ -68,8 +68,6 @@ pub enum FindingError {
     CurrencyMismatch(&'static str),
     #[error("amount arithmetic overflow: {0}")]
     AmountOverflow(&'static str),
-    #[error("value exceeds its size bound: {0}")]
-    SizeLimitExceeded(&'static str),
     #[error("value is not canonical JSON: {0}")]
     NonCanonicalBytes(&'static str),
 }
