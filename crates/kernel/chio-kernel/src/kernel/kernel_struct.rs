@@ -575,6 +575,8 @@ pub struct ChioKernel {
         Option<Arc<dyn crate::finding_purchase::FindingPurchaseVerifier>>,
     pub(super) finding_recovery_verifier:
         Option<Arc<dyn crate::finding_recovery::FindingRecoveryVerifier>>,
+    pub(super) finding_status_proof_verifier:
+        Option<Arc<dyn crate::finding_purchase::FindingStatusProofVerifier>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
     pub(super) runtime_admission_readiness_timeout: Duration,

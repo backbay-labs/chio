@@ -105,6 +105,7 @@ impl FindingPurchaseVerifier for MarketFindingPurchaseVerifier {
             authoritative_payment_operation_id: outcome.authoritative_payment_operation_id.clone(),
             accepted_bid_envelope_sha256: outcome.accepted_bid_envelope_sha256.clone(),
             venue_admission_envelope_sha256: outcome.venue_admission_envelope_sha256.clone(),
+            status_proof: None,
         })
     }
 

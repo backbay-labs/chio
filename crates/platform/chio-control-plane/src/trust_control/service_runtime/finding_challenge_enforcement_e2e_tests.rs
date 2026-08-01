@@ -1871,6 +1871,7 @@ fn digest_mismatch_case(
                 reservation_id: DENY_RESERVATION_ID.to_string(),
                 purchase_intent_id: DENY_INTENT_ID.to_string(),
                 authoritative_payment_operation_id: DENY_PAYMENT_ID.to_string(),
+                status_proof: None,
             })?,
         );
     }

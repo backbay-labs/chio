@@ -289,6 +289,7 @@ impl ChioKernel {
             payment_adapter: None,
             finding_purchase_verifier: None,
             finding_recovery_verifier: None,
+            finding_status_proof_verifier: None,
             price_oracle: None,
             runtime_admission_hook: None,
             runtime_admission_readiness_timeout: Duration::from_millis(
@@ -907,6 +908,15 @@ impl ChioKernel {
         verifier: Arc<dyn crate::finding_recovery::FindingRecoveryVerifier>,
     ) {
         self.finding_recovery_verifier = Some(verifier);
+    }
+
+    /// Install the M6 portable status-proof verifier. Once installed, every
+    /// purchase-marked reveal requires a fresh verified non-inclusion proof.
+    pub fn set_finding_status_proof_verifier(
+        &mut self,
+        verifier: Arc<dyn crate::finding_purchase::FindingStatusProofVerifier>,
+    ) {
+        self.finding_status_proof_verifier = Some(verifier);
     }
 
     pub fn set_price_oracle(&mut self, price_oracle: Box<dyn PriceOracle>) {

@@ -8,8 +8,9 @@ use chio_core::capability::scope::{
 use serde::Deserialize;
 
 use crate::finding_purchase::{
-    FindingPurchaseContextView, VerifiedFindingPurchase, FINDING_ESCROW_WITNESS_CONTEXT_KEY,
-    FINDING_PURCHASE_CONTEXT_KEY,
+    FindingPurchaseContextView, FindingStatusProofContextView, VerifiedFindingPurchase,
+    FINDING_ESCROW_WITNESS_CONTEXT_KEY, FINDING_PURCHASE_CONTEXT_KEY,
+    FINDING_STATUS_PROOF_CONTEXT_KEY, MAX_FINDING_STATUS_PROOF_B64_BYTES,
 };
 use crate::runtime::ToolCallRequest;
 
@@ -185,6 +186,17 @@ pub(crate) fn finding_delivery_block(
         reservation_id: binding.reservation_id.clone(),
         purchase_intent_id: binding.purchase_intent_id.clone(),
         authoritative_payment_operation_id: binding.authoritative_payment_operation_id.clone(),
+        status_proof: binding.status_proof.as_ref().map(|status| {
+            chio_core::receipt::metadata::FindingStatusProofMetadata {
+                feed_id: status.feed_id.clone(),
+                key_domain_nonce: status.key_domain_nonce,
+                map_epoch: status.map_epoch,
+                status_epoch_artifact_sha256: status.status_epoch_artifact_sha256.clone(),
+                proof_sha256: status.proof_sha256.clone(),
+                root_hash: status.root_hash.clone(),
+                non_inclusion_checked_at: status.non_inclusion_checked_at,
+            }
+        }),
     }
 }
 
@@ -299,7 +311,7 @@ impl ChioKernel {
             arguments: &request.arguments,
             expected_output_digest: marked.expected_output_digest,
         };
-        let verified = verifier
+        let mut verified = verifier
             .verify_purchase(&view)
             .map_err(|error| format!("purchase context rejected: {error}"))?;
         if verified.finding_id != marked.marker.finding_id
@@ -324,6 +336,42 @@ impl ChioKernel {
         };
         if !exact(&grant.max_cost_per_invocation) || !exact(&grant.max_total_cost) {
             return Err("purchase grant ceilings do not equal the accepted price".to_owned());
+        }
+        let status_proof_b64 = context
+            .get(FINDING_STATUS_PROOF_CONTEXT_KEY)
+            .map(|value| {
+                value.as_str().ok_or_else(|| {
+                    "finding status proof carrier must be a base64 string".to_owned()
+                })
+            })
+            .transpose()?;
+        match (
+            self.finding_status_proof_verifier.as_ref(),
+            status_proof_b64,
+        ) {
+            (Some(status_verifier), Some(proof_b64)) => {
+                if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
+                    return Err(
+                        "finding status proof carrier exceeds the kernel size bound".to_owned()
+                    );
+                }
+                let status = status_verifier
+                    .verify_status_proof(&FindingStatusProofContextView {
+                        proof_b64,
+                        expected_finding_id: &verified.finding_id,
+                    })
+                    .map_err(|error| format!("finding status proof rejected: {error}"))?;
+                verified.status_proof = Some(status);
+            }
+            (Some(_), None) => {
+                return Err(
+                    "M6-qualified finding purchase requires a portable status proof".to_owned(),
+                );
+            }
+            (None, Some(_)) => {
+                return Err("finding status proof requires a configured kernel verifier".to_owned());
+            }
+            (None, None) => {}
         }
         Ok(Some(verified))
     }
@@ -376,6 +424,29 @@ impl ChioKernel {
         verifier
             .verify_purchase_admission(&view, &verified, now_unix_secs)
             .map_err(|error| format!("purchase admission rejected: {error}"))?;
+        if let Some(status) = verified.status_proof.as_ref() {
+            let proof_b64 = request
+                .governed_intent
+                .as_ref()
+                .and_then(|intent| intent.context.as_ref())
+                .and_then(serde_json::Value::as_object)
+                .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "verified finding status proof carrier disappeared".to_owned())?;
+            let Some(status_verifier) = self.finding_status_proof_verifier.as_ref() else {
+                return Err("finding status verifier disappeared during admission".to_owned());
+            };
+            status_verifier
+                .verify_status_admission(
+                    &FindingStatusProofContextView {
+                        proof_b64,
+                        expected_finding_id: &verified.finding_id,
+                    },
+                    status,
+                    now_unix_secs,
+                )
+                .map_err(|error| format!("finding status admission rejected: {error}"))?;
+        }
         Ok(Some(verified))
     }
 }

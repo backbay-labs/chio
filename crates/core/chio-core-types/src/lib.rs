@@ -91,8 +91,9 @@ pub use plan::{
 };
 pub use receipt::metadata::{
     DeliveryContract, DeliveryResult, FindingDelivery, FindingDeliverySettlementMode,
-    FindingMediaTypeCheck, FindingTransformProfile, DELIVERY_CONTRACT_METADATA_KEY,
-    DELIVERY_CONTRACT_SCHEMA, FINDING_DELIVERY_METADATA_KEY, FINDING_DELIVERY_SCHEMA,
+    FindingMediaTypeCheck, FindingStatusProofMetadata, FindingTransformProfile,
+    DELIVERY_CONTRACT_METADATA_KEY, DELIVERY_CONTRACT_SCHEMA, FINDING_DELIVERY_METADATA_KEY,
+    FINDING_DELIVERY_SCHEMA,
 };
 pub use runtime_attestation::{
     verifier_family_for_attestation_schema, AttestationVerifierFamily,

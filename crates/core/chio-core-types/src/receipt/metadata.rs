@@ -317,6 +317,54 @@ pub enum FindingDeliverySettlementMode {
     LocalReversibleHold,
 }
 
+/// Kernel-verified live-status evidence attached to an M6-qualified finding
+/// delivery. All digest and root fields derive from the exact canonical
+/// portable proof and its embedded signed epoch, never from caller metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingStatusProofMetadata {
+    /// Governance-pinned feed identity.
+    pub feed_id: String,
+    /// Fixed numeric key domain used by the sparse map.
+    pub key_domain_nonce: u64,
+    /// Monotonic signed map generation accepted by the durable floor.
+    pub map_epoch: u64,
+    /// Digest of the exact canonical signed status epoch envelope.
+    pub status_epoch_artifact_sha256: String,
+    /// Digest of the exact canonical portable proof input.
+    pub proof_sha256: String,
+    /// Sparse root committed by the signed epoch.
+    pub root_hash: String,
+    /// Trusted-time observation bound by the verified non-inclusion proof.
+    pub non_inclusion_checked_at: u64,
+}
+
+impl FindingStatusProofMetadata {
+    /// Validate the closed receipt-side representation.
+    pub fn validate(&self) -> Result<()> {
+        require_wire_identifier(&self.feed_id, 512, "finding_delivery.status_proof.feed_id")?;
+        if self.key_domain_nonce == 0 || self.map_epoch == 0 || self.non_inclusion_checked_at == 0 {
+            return Err(Error::CanonicalJson(
+                "finding delivery status proof numeric fields must be nonzero".to_string(),
+            ));
+        }
+        for (value, field) in [
+            (
+                &self.status_epoch_artifact_sha256,
+                "finding_delivery.status_proof.status_epoch_artifact_sha256",
+            ),
+            (
+                &self.proof_sha256,
+                "finding_delivery.status_proof.proof_sha256",
+            ),
+            (&self.root_hash, "finding_delivery.status_proof.root_hash"),
+        ] {
+            require_lowercase_hex_chars(value, 64, field)?;
+        }
+        Ok(())
+    }
+}
+
 /// Finding-specific delivery overlay for a receipt whose grant carried a
 /// provider-signed purchase marker (`Constraint::RequireFindingPurchase`).
 ///
@@ -355,6 +403,10 @@ pub struct FindingDelivery {
     pub purchase_intent_id: String,
     /// Coordinator-preallocated payment operation identity.
     pub authoritative_payment_operation_id: String,
+    /// Portable non-inclusion evidence for M6-qualified receipts. Optional
+    /// only so previously issued M4 receipts continue to decode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_proof: Option<FindingStatusProofMetadata>,
 }
 
 impl FindingDelivery {
@@ -394,6 +446,9 @@ impl FindingDelivery {
             ),
         ] {
             require_wire_identifier(value, 512, field)?;
+        }
+        if let Some(status_proof) = self.status_proof.as_ref() {
+            status_proof.validate()?;
         }
         Ok(())
     }
