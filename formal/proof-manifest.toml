@@ -40,6 +40,7 @@ root_modules = [
   "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
   "formal/lean4/Chio/Chio/Guards/WasmBoundary.lean",
   "formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean",
+  "formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean",
   "formal/lean4/Chio/Chio/Capability/Delegation.lean",
   "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
   "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
@@ -166,7 +167,7 @@ property_matrix = [
   "P7|receipt-lineage soundness|lean_root_imported,symbolic_crypto,audited_crypto_assumption|proof.canonical_inj,proof.verified_receipt_lineage_sound",
   "P8|session continuity soundness|lean_root_imported,audited_transport_assumption,dpop_binding_tests,aeneas_equivalence|proof.session_continuity_sound,proof.admitSession_invalid_anchor_rejects,proof.dpop_reused_nonce_rejects,proof.dpop_binding_allows_only_when_all_fields_match,proof.generated_dpop_admits_eq_model",
   "P9|delegation and provenance consistency|lean_root_imported,audited_registry_assumption|proof.capability_lineage_consistency_sound",
-  "P10|report truthfulness|lean_root_imported,claim_gate|proof.report_truthfulness_asserted_not_verified,proof.report_truthfulness_observed_not_verified",
+  "P10|report truthfulness|lean_root_imported,claim_gate|proof.report_truthfulness_asserted_not_verified,proof.report_truthfulness_observed_not_verified,proof.finding_status_epoch_advance_is_strict,proof.finding_status_non_inclusion_not_expired,proof.finding_status_pending_is_sticky,proof.finding_status_retracted_is_sticky",
 ]
 
 rust_refinement_lanes = [

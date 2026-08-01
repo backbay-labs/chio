@@ -1697,6 +1697,50 @@
       "status": "proved",
       "mapsTo": ["P3"],
       "notes": "A checked syntactic delta establishes closure refinement only on the exact supplied domain."
+    },
+    {
+      "id": "proof.finding_status_epoch_advance_is_strict",
+      "leanName": "Chio.Proofs.FindingStatusFreshness.epoch_advance_is_strict",
+      "file": "formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P10"],
+      "notes": "A verified signed status epoch advances the durable floor only when its map epoch is strictly greater. Cryptographic and SQLite correctness remain outside this bounded model."
+    },
+    {
+      "id": "proof.finding_status_non_inclusion_not_expired",
+      "leanName": "Chio.Proofs.FindingStatusFreshness.admitted_non_inclusion_not_past_valid_until",
+      "file": "formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P10"],
+      "notes": "An admitted portable non-inclusion decision has checked_at at or before the signed status epoch valid_until bound."
+    },
+    {
+      "id": "proof.finding_status_pending_is_sticky",
+      "leanName": "Chio.Proofs.FindingStatusFreshness.pending_never_accepts_non_inclusion",
+      "file": "formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P10"],
+      "notes": "A local pending retraction cannot be cleared by a contradictory non-inclusion proof in the bounded decision model."
+    },
+    {
+      "id": "proof.finding_status_retracted_is_sticky",
+      "leanName": "Chio.Proofs.FindingStatusFreshness.retracted_never_accepts_non_inclusion",
+      "file": "formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P10"],
+      "notes": "A local retracted observation cannot be cleared by a contradictory non-inclusion proof in the bounded decision model."
     }
   ]
 }

@@ -399,6 +399,22 @@ the Rust state machine.
 | `allow_requires_verified_evidence` | `formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean` | `crates/kernel/chio-kernel-core/src/formal_core.rs::delivery_contract_admits` | `formal/proof-manifest.toml` P3; bounded model with opaque digest identities | An Allow cannot bypass either enabled evidence requirement. |
 | `denied_after_delivery_cannot_settle` | `formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean` | `crates/kernel/chio-kernel/src/admission_operation/state.rs`; `crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs` | `formal/proof-manifest.toml` P3; external rail behavior remains outside the model | Every reachable post-delivery denial keeps the bounded settlement gate closed. |
 
+## Lean finding-status freshness theorems
+
+Source file:
+`formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean`. These bounded
+theorems model the pure M6 status decision. Signature verification, canonical
+JSON, sparse hashing, and SQLite durability remain implementation checks and
+audited assumptions.
+
+| Property | Rust path constrained | Assumption discharge | One-line description |
+| --- | --- | --- | --- |
+| `epoch_advance_is_strict` | `chio_finding::status::verify_status_proof_input`, durable status-floor install | P10; storage and crypto remain audited | Any candidate that advances the local floor has a strictly greater `map_epoch`. |
+| `same_epoch_equivocation_rejected` | durable status-floor install | P10; storage and crypto remain audited | Another id or root at the same `map_epoch` is equivocation and rejects. |
+| `admitted_non_inclusion_not_past_valid_until` | `chio_finding::status::verify_status_proof_input` | P10; OS clock remains audited | An admitted non-inclusion proof is checked no later than the signed `valid_until`. |
+| `pending_never_accepts_non_inclusion` | kernel status cache and purchase gate | P10; durable cache availability remains audited | Sticky local pending state denies a contradictory non-inclusion proof. |
+| `retracted_never_accepts_non_inclusion` | kernel status cache and purchase gate | P10; durable cache availability remains audited | Sticky local retracted state denies a contradictory non-inclusion proof. |
+
 ## Adding a new property
 
 1. Add the named TLA+ definition to `formal/tla/RevocationPropagation.tla`
