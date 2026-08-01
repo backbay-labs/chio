@@ -288,6 +288,7 @@ fn market_config() -> FindingMarketConfig {
             equivocation_slash_units: 1_000,
             evidence_sha256: sha256_hex(b"status-bond-venue-wedge"),
         },
+        status_max_epoch_age_secs: 300,
         fee_schedule_operator_keys: vec![keypair(24).public_key().to_hex()],
     }
 }

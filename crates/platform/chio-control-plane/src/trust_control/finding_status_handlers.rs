@@ -236,36 +236,37 @@ fn status_context(
 fn require_current_epoch(
     operator: &FindingStatusOperatorPin,
     service_bond: &FindingStatusServiceBond,
+    max_epoch_age_secs: u64,
     epoch: &FindingStatusEpochRecord,
     now: u64,
 ) -> Result<(), Response> {
-    let pinned_key = operator
-        .require_live(&epoch.feed_id, now)
-        .map_err(|error| plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error.to_string()))?;
-    if !service_bond.covers(now)
-        || epoch.operator_id != operator.authority.authority_id
-        || epoch.operator_key != pinned_key.to_hex()
-        || epoch.operator_key_epoch != operator.authority.key_epoch
-        || epoch.operator_authorization_sha256 != operator.authorization_sha256
-        || epoch.key_domain_nonce != FINDING_STATUS_KEY_DOMAIN_NONCE
-        || epoch.generated_at > now
-        || now >= epoch.valid_until
-        || epoch.signed_epoch_sha256 != sha256_hex(&epoch.signed_epoch_bytes)
-    {
-        return Err(plain_http_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "finding status epoch is stale or not authorized by the pinned operator",
-        ));
-    }
-    Ok(())
+    super::finding_status_verifier::verify_epoch_record(
+        operator,
+        service_bond,
+        max_epoch_age_secs,
+        epoch,
+        now,
+    )
+    .map_err(|error| plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error))
 }
 
 fn require_current_proof(
     store: &SqliteFindingStatusStore,
+    operator: &FindingStatusOperatorPin,
+    service_bond: &FindingStatusServiceBond,
+    max_epoch_age_secs: u64,
     epoch: &FindingStatusEpochRecord,
     proof: &FindingStatusProofRecord,
     now: u64,
 ) -> Result<(), Response> {
+    super::finding_status_verifier::verify_proof_record(
+        operator,
+        service_bond,
+        max_epoch_age_secs,
+        proof,
+        now,
+    )
+    .map_err(|error| plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error))?;
     if proof.feed_id != epoch.feed_id
         || proof.operator_id != epoch.operator_id
         || proof.key_domain_nonce != FINDING_STATUS_KEY_DOMAIN_NONCE
@@ -413,6 +414,7 @@ pub(crate) async fn handle_get_finding_status_root(
     if let Err(response) = require_current_epoch(
         &config.status_feed_operator,
         &config.status_feed_service_bond,
+        config.status_max_epoch_age_secs,
         &epoch,
         now,
     ) {
@@ -448,6 +450,7 @@ pub(crate) async fn handle_get_finding_status_proof(
     if let Err(response) = require_current_epoch(
         &config.status_feed_operator,
         &config.status_feed_service_bond,
+        config.status_max_epoch_age_secs,
         &epoch,
         now,
     ) {
@@ -463,7 +466,15 @@ pub(crate) async fn handle_get_finding_status_proof(
         }
         Err(error) => return status_read_error(error),
     };
-    if let Err(response) = require_current_proof(&store, &epoch, &proof, now) {
+    if let Err(response) = require_current_proof(
+        &store,
+        &config.status_feed_operator,
+        &config.status_feed_service_bond,
+        config.status_max_epoch_age_secs,
+        &epoch,
+        &proof,
+        now,
+    ) {
         return response;
     }
     let proof_kind = match proof.kind {
@@ -569,9 +580,7 @@ mod tests {
     use std::time::Duration;
 
     use chio_core::crypto::Keypair;
-    use chio_store_sqlite::{
-        SqliteAuthorityStore, VerifiedFindingStatusEpochInput, VerifiedFindingStatusProofInput,
-    };
+    use chio_store_sqlite::SqliteAuthorityStore;
     use chio_test_support::prelude::*;
 
     const FEED_ID: &str = "status-feed/test";
@@ -701,6 +710,7 @@ mod tests {
                 equivocation_slash_units: 1_000,
                 evidence_sha256: sha256_hex(b"status-bond"),
             },
+            status_max_epoch_age_secs: 300,
             fee_schedule_operator_keys: vec![Keypair::from_seed(&[90; 32]).public_key().to_hex()],
         }
     }
@@ -841,38 +851,34 @@ mod tests {
     }
 
     #[test]
-    fn root_projection_rejects_stale_or_substituted_epoch_authority() {
+    fn root_projection_rejects_stale_or_substituted_epoch_authority(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let (operator, bond) = config();
-        let signed_epoch_bytes = br#"{"schema":"chio.finding.status-epoch.v1"}"#.to_vec();
-        let mut epoch = FindingStatusEpochRecord {
-            feed_id: FEED_ID.to_string(),
-            operator_id: operator.authority.authority_id.clone(),
-            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
-            map_epoch: 9,
-            epoch_id: sha256_hex(b"epoch-9"),
-            root_hash: sha256_hex(b"root-9"),
-            signed_epoch_sha256: sha256_hex(&signed_epoch_bytes),
-            signed_epoch_bytes,
-            operator_key: operator.authority.key_hex.clone(),
-            operator_key_epoch: operator.authority.key_epoch,
-            operator_authorization_sha256: operator.authorization_sha256.clone(),
-            generated_at: NOW - 1,
-            valid_until: NOW + 100,
-            recorded_at: NOW,
-        };
-        require_current_epoch(&operator, &bond, &epoch, NOW)
+        let (_temp, authority) = provision_authority()?;
+        let store = authority.finding_status_store();
+        let publisher = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store.clone(),
+            operator.clone(),
+            bond.clone(),
+            operator_key(),
+            300,
+        )?;
+        publisher.publish_non_inclusion(&sha256_hex(b"root-test-finding"), &[], NOW)?;
+        let mut epoch = store.get_current_epoch(FEED_ID)?;
+        require_current_epoch(&operator, &bond, 300, &epoch, NOW)
             .test_expect("authorized current epoch");
 
         epoch.operator_key = Keypair::from_seed(&[83; 32]).public_key().to_hex();
-        let response = require_current_epoch(&operator, &bond, &epoch, NOW)
+        let response = require_current_epoch(&operator, &bond, 300, &epoch, NOW)
             .test_expect_err("substitute epoch operator must reject");
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 
         epoch.operator_key = operator.authority.key_hex.clone();
         epoch.valid_until = NOW;
-        let response = require_current_epoch(&operator, &bond, &epoch, NOW)
+        let response = require_current_epoch(&operator, &bond, 300, &epoch, NOW)
             .test_expect_err("stale epoch must reject");
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        Ok(())
     }
 
     #[tokio::test]
@@ -883,42 +889,17 @@ mod tests {
         let market = live_market_config(now);
         market.validate()?;
         let store = authority.finding_status_store();
-        let epoch_bytes = br#"{"signed":"epoch"}"#;
-        let epoch_id = sha256_hex(b"status-epoch-current");
-        let root_hash = sha256_hex(b"status-root-current");
-        store.observe_verified_epoch(&VerifiedFindingStatusEpochInput {
-            feed_id: FEED_ID,
-            operator_id: "status-operator",
-            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
-            map_epoch: 1,
-            epoch_id: &epoch_id,
-            root_hash: &root_hash,
-            signed_epoch_bytes: epoch_bytes,
-            operator_key: &market.status_feed_operator.authority.key_hex,
-            operator_key_epoch: market.status_feed_operator.authority.key_epoch,
-            operator_authorization_sha256: &market.status_feed_operator.authorization_sha256,
-            generated_at: now,
-            valid_until: now + 1_000,
-            recorded_at: now,
-        })?;
         let finding_id = sha256_hex(b"proof-finding");
-        let proof_bytes = br#"{"proof_kind":"non_inclusion"}"#;
-        store.record_verified_proof(&VerifiedFindingStatusProofInput {
-            feed_id: FEED_ID,
-            operator_id: "status-operator",
-            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
-            map_epoch: 1,
-            epoch_id: &epoch_id,
-            root_hash: &root_hash,
-            finding_id: &finding_id,
-            kind: FindingStatusProofKind::NonInclusion,
-            proof_bytes,
-            status_value_bytes: None,
-            retraction_intent_sha256: None,
-            checked_at: now,
-            valid_until: now + 1_000,
-            recorded_at: now,
-        })?;
+        let publisher = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store,
+            market.status_feed_operator.clone(),
+            market.status_feed_service_bond.clone(),
+            operator_key(),
+            market.status_max_epoch_age_secs,
+        )?;
+        let published = publisher.publish_non_inclusion(&finding_id, &[], now)?;
+        let epoch_bytes = published.signed_epoch_bytes.clone();
+        let proof_bytes = published.proof_bytes.clone();
         let state = service_state(authority, market);
 
         let root =
@@ -929,7 +910,7 @@ mod tests {
         let root_json: serde_json::Value = serde_json::from_slice(&root_body)?;
         assert_eq!(
             root_json["signed_epoch_b64"],
-            serde_json::Value::String(STANDARD.encode(epoch_bytes))
+            serde_json::Value::String(STANDARD.encode(&epoch_bytes))
         );
 
         let proof = handle_get_finding_status_proof(
@@ -942,11 +923,11 @@ mod tests {
         let proof_json: serde_json::Value = serde_json::from_slice(&proof_body)?;
         assert_eq!(
             proof_json["signed_epoch_b64"],
-            serde_json::Value::String(STANDARD.encode(epoch_bytes))
+            serde_json::Value::String(STANDARD.encode(&epoch_bytes))
         );
         assert_eq!(
             proof_json["proof_input_b64"],
-            serde_json::Value::String(STANDARD.encode(proof_bytes))
+            serde_json::Value::String(STANDARD.encode(&proof_bytes))
         );
         Ok(())
     }

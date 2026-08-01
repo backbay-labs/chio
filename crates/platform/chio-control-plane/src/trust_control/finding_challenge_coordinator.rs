@@ -123,15 +123,19 @@ use chio_store_sqlite::{
     FindingDisputeLockInput, FindingDisputeLockRecord, FindingDisputeLockState,
     FindingEffectIntentKind, FindingEffectIntentState, FindingFinalizingAuthorizationInput,
     FindingGovernanceCaseInput, FindingGovernanceCaseKind, FindingLiabilityInput,
-    FindingLiabilityRecord, FindingLiabilityState, SqliteFindingChallengeStore,
-    SqliteFindingPurchaseStore,
+    FindingLiabilityRecord, FindingLiabilityState, FindingRetractionIntentInput,
+    FindingRetractionIntentSource,
+    FindingRetractionIntentState, SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
+    SqliteFindingStatusStore,
 };
 use serde::{Deserialize, Serialize};
 
 use super::finding_handlers::{
     FindingRailInstruction, FindingRailObservation, FindingRailObserver,
 };
-use super::service_types::{FindingAuthorityPin, FindingMarketConfig};
+use super::service_types::{
+    FindingAuthorityPin, FindingMarketConfig, FindingStatusOperatorPin, FindingStatusServiceBond,
+};
 
 #[path = "finding_challenge_coordinator/anchor_publisher.rs"]
 mod anchor_publisher;
@@ -873,9 +877,9 @@ pub enum FindingFinalization {
     /// before it could settle the head. Nothing was dispatched a second
     /// time; this call finished the interrupted settlement.
     AlreadyConfirmed,
-    /// The seller impairment is confirmed, but another effect bound by
-    /// the signed enforcement is still pending. Publication remains open.
-    AwaitingEffects,
+    /// The impairment is confirmed, but the exact retraction is not yet in a
+    /// signed status epoch (or another required effect is still unfinished).
+    AwaitingStatusPublication,
 }
 
 /// The authoritative single-operator challenge coordinator.
@@ -883,6 +887,7 @@ pub struct FindingChallengeCoordinator {
     challenges: SqliteFindingChallengeStore,
     purchases: SqliteFindingPurchaseStore,
     market_config: FindingMarketConfig,
+    status: SqliteFindingStatusStore,
     pins: ChallengeRolePins,
     evaluator_authority: Keypair,
     /// The evaluator role's full lifecycle pin. Like every other
@@ -899,6 +904,8 @@ pub struct FindingChallengeCoordinator {
     filings: Arc<dyn FindingFilingResolver>,
     venue_id: String,
     status_feed_operator_ref: String,
+    status_feed_operator: FindingStatusOperatorPin,
+    status_feed_service_bond: FindingStatusServiceBond,
     /// Disposition a rejected challenge's bond takes, predeclared by the
     /// admitted market terms rather than chosen per case.
     failed_challenge_disposition: FindingDisputeLockDisposition,
@@ -917,6 +924,7 @@ impl FindingChallengeCoordinator {
     pub fn new(
         challenges: SqliteFindingChallengeStore,
         purchases: SqliteFindingPurchaseStore,
+        status: SqliteFindingStatusStore,
         config: &FindingMarketConfig,
         evaluator_authority: Keypair,
         finalization_authority: Keypair,
@@ -929,9 +937,12 @@ impl FindingChallengeCoordinator {
         config
             .validate()
             .map_err(|error| ChallengeCoordinatorError::Configuration(error.to_string()))?;
-        if challenges.mutation_fence() != purchases.mutation_fence() {
+        if challenges.mutation_fence() != purchases.mutation_fence()
+            || challenges.mutation_fence() != status.mutation_fence()
+        {
             return Err(ChallengeCoordinatorError::Configuration(
-                "challenge and purchase stores do not share one serving authority".to_string(),
+                "challenge, purchase, and status stores do not share one serving authority"
+                    .to_string(),
             ));
         }
         let pin = |pin: &super::service_types::FindingAuthorityPin, label: &'static str| {
@@ -969,6 +980,7 @@ impl FindingChallengeCoordinator {
             challenges,
             purchases,
             market_config: config.clone(),
+            status,
             pins: ChallengeRolePins {
                 audit_authority: config.audit_authority.clone(),
                 audit_randomness_witness: config.audit_randomness_witness.clone(),
@@ -988,6 +1000,8 @@ impl FindingChallengeCoordinator {
             filings,
             venue_id: config.venue_id.clone(),
             status_feed_operator_ref: config.status_feed_operator_ref.clone(),
+            status_feed_operator: config.status_feed_operator.clone(),
+            status_feed_service_bond: config.status_feed_service_bond.clone(),
             failed_challenge_disposition,
         })
     }
@@ -2379,8 +2393,9 @@ impl FindingChallengeCoordinator {
     ///
     /// Resumable. The confirmed intent and the settled head are two
     /// transactions, so an attempt can die between them. A re-entry that
-    /// finds the fenced intent already confirmed dispatches nothing and
-    /// finishes the settlement instead.
+    /// finds the fenced intent already confirmed dispatches nothing, resumes
+    /// the status-publication gate, and settles only after every durable
+    /// effect is confirmed.
     ///
     /// Live state. A signed snapshot attests what an observer saw at one
     /// block, which is not the same as what is true now. Before dispatch,
@@ -2641,6 +2656,9 @@ impl FindingChallengeCoordinator {
                     })?;
                 return Err(error);
             }
+            self.require_confirmed_enforcement_root(liability_key, &verified, planned.intent())?;
+            let anchor_key = derive_anchor_evidence_intent_key(&planned.intent().evidence_hash);
+            self.confirm_effect_intent(&anchor_key, now)?;
             return self.finish_confirmed_impairment(
                 liability_key,
                 enforcement,
@@ -2719,6 +2737,10 @@ impl FindingChallengeCoordinator {
                         })?;
                     return Err(error);
                 }
+                // Only a transaction that survived the immediate receipt,
+                // canonical-block, finality, and collateral rechecks makes
+                // the status retraction dispatchable.
+                self.mark_retraction_dispatch_eligible(enforcement, tx_hash, now)?;
                 // A finalized transaction was proved to be this exact
                 // intent, so the intent is confirmed: leaving it
                 // dispatchable would invite a second impairment of the
@@ -2728,7 +2750,9 @@ impl FindingChallengeCoordinator {
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;
-                self.settle_if_enforcement_effects_confirmed(liability_key, enforcement, now)?;
+                let anchor_key = derive_anchor_evidence_intent_key(&planned.intent().evidence_hash);
+                self.confirm_effect_intent(&anchor_key, now)?;
+                self.reconcile_status_publication_and_settle(liability_key, enforcement, now)?;
             }
             FindingImpairmentOutcome::Quarantined { reason } if quarantine_is_pending(*reason) => {
                 // A broadcast whose receipt has not arrived, has not
@@ -2766,6 +2790,146 @@ impl FindingChallengeCoordinator {
             }
         }
         Ok(FindingFinalization::Reconciled(outcome))
+    }
+
+    fn retraction_effect_key<'a>(
+        &self,
+        enforcement: &'a SignedFindingChallengeEnforcement,
+    ) -> Result<&'a str, ChallengeCoordinatorError> {
+        let mut keys = enforcement
+            .body
+            .effect_intents
+            .iter()
+            .filter_map(|binding| {
+                (binding.kind == chio_finding::FindingEffectIntentKind::Retraction)
+                    .then_some(binding.intent_id.as_str())
+            });
+        let Some(key) = keys.next() else {
+            return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
+        };
+        if keys.next().is_some() {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "enforcement carries more than one retraction effect".to_owned(),
+            ));
+        }
+        Ok(key)
+    }
+
+    fn mark_retraction_dispatch_eligible(
+        &self,
+        enforcement: &SignedFindingChallengeEnforcement,
+        tx_hash: &str,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let intent_id = self.retraction_effect_key(enforcement)?;
+        let evidence = chio_core::canonical_json_bytes(&serde_json::json!({
+            "schema": "chio.finding.impairment-finality.v1",
+            "enforcement_id": enforcement.body.enforcement_id,
+            "finding_id": enforcement.body.finding_id,
+            "liability_key": enforcement.body.liability_key,
+            "tx_hash": tx_hash,
+        }))
+        .map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        let record = self
+            .status
+            .get_retraction_intent(intent_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        match record.state {
+            FindingRetractionIntentState::WaitingFinality => {
+                self.status
+                    .mark_retraction_dispatch_eligible(intent_id, &evidence, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+            }
+            FindingRetractionIntentState::DispatchEligible
+            | FindingRetractionIntentState::Published => {
+                let evidence_sha256 = sha256_hex(&evidence);
+                if record.finality_evidence_sha256.as_deref() != Some(evidence_sha256.as_str())
+                    || record.finality_evidence_bytes.as_deref() != Some(evidence.as_slice())
+                {
+                    return Err(ChallengeCoordinatorError::Settlement(
+                        "status outbox finality evidence conflicts with the confirmed impairment"
+                            .to_owned(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn confirm_effect_intent(
+        &self,
+        intent_key: &str,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let intent = self
+            .challenges
+            .get_effect_intent(intent_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        match intent.state {
+            FindingEffectIntentState::Pending | FindingEffectIntentState::Failed => {
+                self.challenges
+                    .advance_effect_intent(intent_key, FindingEffectIntentState::Dispatched, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+                self.challenges
+                    .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+            }
+            FindingEffectIntentState::Dispatched => {
+                self.challenges
+                    .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+            }
+            FindingEffectIntentState::Confirmed => {}
+            FindingEffectIntentState::Quarantined => {
+                return Err(ChallengeCoordinatorError::Settlement(
+                    "a quarantined effect cannot be confirmed by status publication".to_owned(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn reconcile_status_publication_and_settle(
+        &self,
+        liability_key: &str,
+        enforcement: &SignedFindingChallengeEnforcement,
+        now: u64,
+    ) -> Result<bool, ChallengeCoordinatorError> {
+        let retraction_key = self.retraction_effect_key(enforcement)?;
+        let status = self
+            .status
+            .get_retraction_intent(retraction_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if status.state != FindingRetractionIntentState::Published {
+            return Ok(false);
+        }
+        self.confirm_effect_intent(retraction_key, now)?;
+        let effects = self
+            .challenges
+            .list_effect_intents(liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        if effects.is_empty()
+            || effects
+                .iter()
+                .any(|effect| effect.state != FindingEffectIntentState::Confirmed)
+        {
+            return Ok(false);
+        }
+        self.challenges
+            .settle_liability(liability_key, FindingLiabilityState::Finalizing, now)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        Ok(true)
     }
 
     /// The sealed claim snapshot for one liability, when one exists.
@@ -4373,10 +4537,10 @@ impl FindingChallengeCoordinator {
                 .set_liability_quarantine(liability_key, false, now)
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         }
-        if self.settle_if_enforcement_effects_confirmed(liability_key, enforcement, now)? {
+        if self.reconcile_status_publication_and_settle(liability_key, enforcement, now)? {
             Ok(FindingFinalization::AlreadyConfirmed)
         } else {
-            Ok(FindingFinalization::AwaitingEffects)
+            Ok(FindingFinalization::AwaitingStatusPublication)
         }
     }
 
@@ -5930,9 +6094,8 @@ impl FindingChallengeCoordinator {
             SignedFindingChallengeEnforcement::sign(enforcement, &self.finalization_authority)
                 .map_err(|_| ChallengeCoordinatorError::Signing)?;
         let enforcement_envelope_sha256 = self.envelope_digest(&signed)?;
-
         let authorized = AuthorizedImpairment {
-            enforcement: signed,
+            enforcement: signed.clone(),
             enforcement_envelope_sha256,
             slash: slash.clone(),
             effect_intent_keys: fenced
@@ -5950,16 +6113,47 @@ impl FindingChallengeCoordinator {
         let authorization_json =
             canonical_json_bytes(&retained).map_err(|_| ChallengeCoordinatorError::Canonical)?;
         let authorization_sha256 = sha256_hex(&authorization_json);
-        self.challenges
-            .begin_finalizing_under_sanction(
+        self.status_feed_operator
+            .require_live(&self.status_feed_operator_ref, now)
+            .map_err(|error| ChallengeCoordinatorError::Configuration(error.to_string()))?;
+        if !self.status_feed_service_bond.covers(now) {
+            return Err(ChallengeCoordinatorError::Configuration(
+                "finding status service bond is not live at appeal finality".to_owned(),
+            ));
+        }
+        let inclusion_deadline = now
+            .checked_add(self.status_feed_service_bond.inclusion_sla_secs)
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::Configuration(
+                    "finding status inclusion deadline overflowed".to_owned(),
+                )
+            })?;
+        let enforcement_bytes = chio_core::canonical_json_bytes(&signed)
+            .map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        // The appeal-final transition and exact status outbox item share one
+        // SQLite transaction. Nothing before this edge can make the finding
+        // sticky pending, and no finalizing head can exist without the item
+        // needed to clear publication_pending.
+        self.status
+            .begin_finalizing_with_retraction(
                 liability_key,
-                FindingLiabilityState::PendingAppeal,
                 &slash.penalty.body.case_id,
                 &FindingFinalizingAuthorizationInput {
                     liability_key,
                     authorization_json: &authorization_json,
                     authorization_sha256: &authorization_sha256,
                     recorded_at: now,
+                },
+                &FindingRetractionIntentInput {
+                    intent_id: &retraction_key,
+                    feed_id: &self.status_feed_operator_ref,
+                    operator_id: &self.status_feed_operator.authority.authority_id,
+                    finding_id: &record.finding_id,
+                    source: FindingRetractionIntentSource::Enforcement,
+                    intent_bytes: &enforcement_bytes,
+                    issued_at: now,
+                    inclusion_deadline,
+                    created_at: now,
                 },
                 now,
             )

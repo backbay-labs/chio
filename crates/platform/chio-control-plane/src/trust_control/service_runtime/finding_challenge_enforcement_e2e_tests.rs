@@ -441,6 +441,7 @@ fn market_config() -> FindingMarketConfig {
             equivocation_slash_units: 1_000,
             evidence_sha256: digest("status-bond-venue-challenge"),
         },
+        status_max_epoch_age_secs: 300,
         fee_schedule_operator_keys: vec![fee_schedule_keypair().public_key().to_hex()],
     }
 }
@@ -793,6 +794,7 @@ struct Deployment {
     market: SqliteFindingMarketStore,
     purchases: SqliteFindingPurchaseStore,
     challenges: SqliteFindingChallengeStore,
+    status: chio_store_sqlite::SqliteFindingStatusStore,
     allocation_id: String,
     admission_envelope_sha256: String,
     rail: Arc<RecordingRail>,
@@ -826,6 +828,7 @@ fn deployment_publishing_terms_and_rounds(
     let market = authority.finding_market_store();
     let purchases = authority.finding_purchase_store();
     let challenges = authority.finding_challenge_store();
+    let status = authority.finding_status_store();
     let challenged = challenged_finding()?;
     market.put_finding(
         &FindingRecordInput {
@@ -912,6 +915,7 @@ fn deployment_publishing_terms_and_rounds(
         market,
         purchases,
         challenges,
+        status,
         allocation_id,
         admission_envelope_sha256,
         rail: Arc::new(RecordingRail::default()),
@@ -965,6 +969,7 @@ impl Deployment {
         Ok(FindingChallengeCoordinator::new(
             self.challenges.clone(),
             self.purchases.clone(),
+            self.status.clone(),
             config,
             evaluator,
             keypair(32),
@@ -1003,6 +1008,7 @@ impl Deployment {
             market,
             purchases,
             challenges,
+            status,
             allocation_id,
             admission_envelope_sha256,
             rail,
@@ -1011,6 +1017,7 @@ impl Deployment {
         // The serving lock lives on the open handles, so every one of them
         // closes before the database can be served again.
         drop(challenges);
+        drop(status);
         drop(purchases);
         drop(market);
         drop(_authority);
@@ -1018,6 +1025,7 @@ impl Deployment {
         let market = authority.finding_market_store();
         let purchases = authority.finding_purchase_store();
         let challenges = authority.finding_challenge_store();
+        let status = authority.finding_status_store();
         Ok(Self {
             _temp,
             database,
@@ -1026,6 +1034,7 @@ impl Deployment {
             market,
             purchases,
             challenges,
+            status,
             allocation_id,
             admission_envelope_sha256,
             rail,
@@ -7963,17 +7972,28 @@ fn finalizing_liability_with(
     });
     let authorization_json = canonical_json_bytes(&retained)?;
     let authorization_sha256 = sha256_hex(&authorization_json);
-    deployment.challenges.begin_finalizing_under_sanction(
+    let enforcement_bytes = canonical_json_bytes(&enforcement)?;
+    deployment.status.begin_finalizing_with_retraction(
         &liability_key,
-        FindingLiabilityState::PendingAppeal,
         FIXTURE_SANCTION_CASE_ID,
         &chio_store_sqlite::FindingFinalizingAuthorizationInput {
             liability_key: &liability_key,
             authorization_json: &authorization_json,
             authorization_sha256: &authorization_sha256,
-            recorded_at: NOW + 4,
+            recorded_at: NOW + 5,
         },
-        NOW + 4,
+        &chio_store_sqlite::FindingRetractionIntentInput {
+            intent_id: &retraction_key,
+            feed_id: "status-feed/venue-challenge",
+            operator_id: "status-operator",
+            finding_id: &finding.finding_id,
+            source: chio_store_sqlite::FindingRetractionIntentSource::Enforcement,
+            intent_bytes: &enforcement_bytes,
+            issued_at: NOW + 5,
+            inclusion_deadline: NOW + 3_605,
+            created_at: NOW + 5,
+        },
+        NOW + 5,
     )?;
     let case = FinalizingLiability {
         deployment,
@@ -8132,6 +8152,36 @@ impl FinalizingLiability {
             .challenges
             .get_liability(&self.liability_key)?
             .ok_or("liability head is durable")?)
+    }
+
+    fn mark_status_eligible(&self, tx_hash: &str, now: u64) -> Result<(), AnyError> {
+        let evidence = canonical_json_bytes(&serde_json::json!({
+            "schema": "chio.finding.impairment-finality.v1",
+            "enforcement_id": self.enforcement.body.enforcement_id,
+            "finding_id": self.enforcement.body.finding_id,
+            "liability_key": self.enforcement.body.liability_key,
+            "tx_hash": tx_hash,
+        }))?;
+        self.deployment.status.mark_retraction_dispatch_eligible(
+            &byte_hex64(0xc3),
+            &evidence,
+            now,
+        )?;
+        Ok(())
+    }
+
+    fn publish_status(&self, now: u64) -> Result<(), AnyError> {
+        let config = market_config();
+        let publisher =
+            crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+                self.deployment.status.clone(),
+                config.status_feed_operator,
+                config.status_feed_service_bond,
+                keypair(36),
+                config.status_max_epoch_age_secs,
+            )?;
+        publisher.publish_retraction(&byte_hex64(0xc3), &[], now)?;
+        Ok(())
     }
 }
 
@@ -8359,8 +8409,9 @@ fn finding_challenge_an_unmined_broadcast_stays_dispatchable_and_settles_when_it
     assert_eq!(parked.state, FindingLiabilityState::Finalizing);
     assert!(!parked.quarantined);
 
-    // The same transaction then mines and finalizes, and the liability
-    // reaches its terminal instead of staying blocked forever.
+    // The same transaction then mines and finalizes. This only makes the
+    // retraction outbox eligible: the liability remains publication-pending
+    // until a signed status epoch includes the exact intent.
     let second = case.finalize(&publisher, SETTLEMENT_NOW + 60)?;
     let FindingFinalization::Reconciled(FindingImpairmentOutcome::Confirmed { reconciliation }) =
         second
@@ -8380,6 +8431,13 @@ fn finding_challenge_an_unmined_broadcast_stays_dispatchable_and_settles_when_it
     );
     assert_eq!(publisher.attempts(), 2);
     assert_eq!(case.intent_state()?, FindingEffectIntentState::Confirmed);
+    let pending = case.head()?;
+    assert_eq!(pending.state, FindingLiabilityState::Finalizing);
+    assert!(pending.publication_pending);
+
+    case.publish_status(SETTLEMENT_NOW + 61)?;
+    let resumed = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 62)?;
+    assert_eq!(resumed, FindingFinalization::AlreadyConfirmed);
     let settled = case.head()?;
     assert_eq!(settled.state, FindingLiabilityState::Settled);
     assert!(!settled.publication_pending);
@@ -8425,8 +8483,10 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
         FindingEffectIntentState::Confirmed,
         SETTLEMENT_NOW,
     )?;
+    case.mark_status_eligible(&chain_hash(0x77), SETTLEMENT_NOW)?;
+    case.publish_status(SETTLEMENT_NOW + 1)?;
 
-    let resumed = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?;
+    let resumed = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 2)?;
     assert_eq!(resumed, FindingFinalization::AlreadyConfirmed);
     let settled = case.head()?;
     assert_eq!(
@@ -11396,6 +11456,7 @@ fn finding_challenge_construction_refuses_a_key_reused_across_roles() -> TestRes
     let refused = FindingChallengeCoordinator::new(
         deployment.challenges.clone(),
         deployment.purchases.clone(),
+        deployment.status.clone(),
         &config,
         keypair(31),
         keypair(31),

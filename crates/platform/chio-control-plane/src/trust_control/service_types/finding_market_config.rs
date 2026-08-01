@@ -139,7 +139,7 @@ impl FindingPoolPin {
 /// `feed_id` and `rotation_policy_ref`. The durable feed floor is keyed by the
 /// stable feed identity and therefore cannot reset when the authorized key
 /// rotates.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingStatusOperatorPin {
     pub feed_id: String,
     pub role: String,
@@ -219,7 +219,7 @@ impl FindingStatusOperatorPin {
 
 /// Live service bond that makes missed inclusion and equivocation objective
 /// slash conditions for a status-feed operator.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingStatusServiceBond {
     pub bond_id: String,
     pub feed_id: String,
@@ -378,6 +378,8 @@ pub struct FindingMarketConfig {
     pub status_feed_operator_ref: String,
     pub status_feed_operator: FindingStatusOperatorPin,
     pub status_feed_service_bond: FindingStatusServiceBond,
+    /// Maximum age of a signed epoch and its portable proof at admission.
+    pub status_max_epoch_age_secs: u64,
     /// Trusted open-market fee-schedule signer keys (canonical bare
     /// lowercase Ed25519 hex). A schedule verifies only against this
     /// pinned set; the envelope's own embedded signer never
@@ -438,6 +440,11 @@ impl FindingMarketConfig {
         self.status_feed_operator.validate()?;
         self.status_feed_service_bond
             .validate(&self.status_feed_operator)?;
+        if self.status_max_epoch_age_secs == 0 {
+            return Err(CliError::cli_other_error(
+                "finding-market status max epoch age must be nonzero".to_string(),
+            ));
+        }
         if self.fee_schedule_operator_keys.is_empty() {
             return Err(CliError::cli_other_error(
                 "finding-market fee schedule operator keys must be non-empty".to_string(),

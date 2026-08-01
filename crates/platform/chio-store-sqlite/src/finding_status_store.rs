@@ -11,7 +11,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chio_core::sha256_hex;
+use chio_core::{sha256_hex, StoreMutationFence};
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use rusqlite::{
     params, Connection, ErrorCode, OptionalExtension, Row, Transaction, TransactionBehavior,
@@ -19,6 +19,9 @@ use rusqlite::{
 use thiserror::Error;
 
 use crate::admission_operation_store::verify_active_owner;
+use crate::finding_challenge_store::{
+    begin_finalizing_under_sanction_tx, FindingFinalizingAuthorizationInput, FindingLiabilityState,
+};
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_STATUS_SCHEMA_KEY: &str = "finding_status";
@@ -330,6 +333,12 @@ impl SqliteFindingStatusStore {
         }
     }
 
+    /// Serving identity shared by every store opened alongside this one.
+    #[must_use]
+    pub fn mutation_fence(&self) -> StoreMutationFence {
+        self.serving_owner.fence.clone()
+    }
+
     fn connection(&self) -> Result<MutexGuard<'_, Connection>, FindingStatusStoreError> {
         self.connection.lock().map_err(|_| {
             FindingStatusStoreError::Unavailable(
@@ -486,6 +495,134 @@ impl SqliteFindingStatusStore {
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingStatusWriteOutcome::Inserted)
+    }
+
+    /// Atomically enter an appeal-final liability into `finalizing`, set its
+    /// publication-pending bit, and persist the exact enforcement retraction
+    /// outbox item plus sticky pending status.
+    ///
+    /// This is the M5/M6 transaction boundary. An evaluation or reversible
+    /// hold cannot call it because the liability must still be in the durable
+    /// `pending_appeal` state. Exact replay accepts an already-finalizing head
+    /// only when the outbox bytes and sticky row are identical.
+    pub fn begin_finalizing_with_retraction(
+        &self,
+        liability_key: &str,
+        sanction_case_id: &str,
+        authorization: &FindingFinalizingAuthorizationInput<'_>,
+        input: &FindingRetractionIntentInput<'_>,
+        now: u64,
+    ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+        require_hex64(liability_key, "liability_key")?;
+        validate_intent_input(input)?;
+        require_positive(now, "now")?;
+        if input.source != FindingRetractionIntentSource::Enforcement || input.created_at != now {
+            return Err(invariant(
+                "finalizing transition requires a current enforcement retraction intent",
+            ));
+        }
+        let intent_sha256 = sha256_hex(input.intent_bytes);
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let transition_outcome = begin_finalizing_under_sanction_tx(
+            &transaction,
+            liability_key,
+            FindingLiabilityState::PendingAppeal,
+            sanction_case_id,
+            authorization,
+            now,
+        )
+        .map_err(|error| {
+            FindingStatusStoreError::Conflict(format!(
+                "appeal-final liability transition rejected: {error}"
+            ))
+        })?;
+
+        ensure_feed_tx(
+            &transaction,
+            input.feed_id,
+            input.operator_id,
+            input.created_at,
+        )?;
+        let intent_outcome = if let Some(existing) = load_intent_tx(&transaction, input.intent_id)?
+        {
+            verify_intent_replay(&existing, input, &intent_sha256)?;
+            let status = load_status_tx(&transaction, input.feed_id, input.finding_id)?
+                .ok_or_else(|| invariant("exact intent replay is missing its sticky status row"))?;
+            if status.retraction_intent_sha256 != intent_sha256
+                || (existing.state != FindingRetractionIntentState::Published
+                    && status.state != FindingStickyStatus::Pending)
+                || (existing.state == FindingRetractionIntentState::Published
+                    && status.state != FindingStickyStatus::Retracted)
+            {
+                return Err(invariant(
+                    "exact intent replay does not match its sticky status row",
+                ));
+            }
+            FindingStatusWriteOutcome::ExactReplay
+        } else {
+            if let Some(status) = load_status_tx(&transaction, input.feed_id, input.finding_id)? {
+                return Err(FindingStatusStoreError::Conflict(format!(
+                    "finding {} is already {:?} under intent {}",
+                    input.finding_id, status.state, status.retraction_intent_sha256
+                )));
+            }
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO finding_retraction_intents (
+                        intent_id, feed_id, operator_id, finding_id, source,
+                        intent_sha256, intent_bytes, issued_at, inclusion_deadline,
+                        state, created_at, updated_at
+                    ) VALUES (?1, ?2, ?3, ?4, 'enforcement', ?5, ?6, ?7, ?8,
+                              'waiting_finality', ?9, ?9)
+                    "#,
+                    params![
+                        input.intent_id,
+                        input.feed_id,
+                        input.operator_id,
+                        input.finding_id,
+                        intent_sha256,
+                        input.intent_bytes,
+                        sqlite_i64(input.issued_at, "issued_at")?,
+                        sqlite_i64(input.inclusion_deadline, "inclusion_deadline")?,
+                        sqlite_i64(input.created_at, "created_at")?,
+                    ],
+                )
+                .map_err(sqlite_error)?;
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO finding_status_states (
+                        feed_id, operator_id, finding_id, state,
+                        retraction_intent_sha256, first_observed_at, updated_at
+                    ) VALUES (?1, ?2, ?3, 'pending', ?4, ?5, ?5)
+                    "#,
+                    params![
+                        input.feed_id,
+                        input.operator_id,
+                        input.finding_id,
+                        intent_sha256,
+                        sqlite_i64(input.created_at, "created_at")?,
+                    ],
+                )
+                .map_err(sqlite_error)?;
+            FindingStatusWriteOutcome::Inserted
+        };
+
+        self.serving_owner
+            .append_finding_challenge_projection_if_changed(&transaction)
+            .map_err(|error| FindingStatusStoreError::Unavailable(error.to_string()))?;
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        if intent_outcome == FindingStatusWriteOutcome::Inserted
+            || transition_outcome
+                == crate::finding_challenge_store::FindingChallengeWriteOutcome::Inserted
+        {
+            Ok(FindingStatusWriteOutcome::Inserted)
+        } else {
+            Ok(FindingStatusWriteOutcome::ExactReplay)
+        }
     }
 
     /// Mark a persisted intent dispatch-eligible after exact finality evidence

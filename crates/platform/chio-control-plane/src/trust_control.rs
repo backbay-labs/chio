@@ -331,6 +331,12 @@ pub mod finding_reveal_server;
 #[cfg(feature = "cognition-market-experimental")]
 #[path = "trust_control/finding_status_handlers.rs"]
 mod finding_status_handlers;
+#[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_status_publisher.rs"]
+pub mod finding_status_publisher;
+#[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_status_verifier.rs"]
+pub mod finding_status_verifier;
 #[path = "trust_control/passport_handlers.rs"]
 mod passport_handlers;
 #[path = "trust_control/receipt_handlers.rs"]

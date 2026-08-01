@@ -1,0 +1,328 @@
+//! Operator-side status epoch publisher used by the external M6 cron.
+//!
+//! The workspace has no job daemon. Deployments invoke this component from
+//! their scheduler after the durable outbox reports an eligible intent, or to
+//! mint a fresh non-inclusion proof for an admitted purchase. The component
+//! rebuilds the sparse map from sticky leaves, signs one advancing epoch, then
+//! atomically persists the exact epoch, proof, and any new retracted leaf.
+
+use chio_core::crypto::Keypair;
+use chio_core::receipt::lineage::SignedExportEnvelope;
+use chio_finding::{
+    build_status_inclusion_proof_input, build_status_non_inclusion_proof_input,
+    compute_status_epoch_id, verify_status_proof_input, FindingStatusEpoch,
+    FindingStatusFreshnessPolicy, FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
+};
+use chio_revocation_oracle::{
+    finding_status_empty_leaf_hash, FindingStatusSparseMap, FINDING_STATUS_BRANCH_DOMAIN,
+    FINDING_STATUS_EMPTY_LEAF_DOMAIN, FINDING_STATUS_HASH_ALGORITHM,
+    FINDING_STATUS_KEY_DOMAIN_NONCE, FINDING_STATUS_KEY_HASH_DOMAIN, FINDING_STATUS_MAP_VERSION,
+    FINDING_STATUS_OCCUPIED_LEAF_DOMAIN, FINDING_STATUS_PROOF_SEMANTICS,
+    FINDING_STATUS_SPARSE_DEPTH,
+};
+use chio_store_sqlite::{
+    FindingRetractionIntentState, FindingStatusEpochAdvance, FindingStatusProofKind,
+    FindingStatusProofRecord, FindingStatusStoreError, SqliteFindingStatusStore,
+    VerifiedFindingStatusEpochInput, VerifiedFindingStatusLeafInput,
+    VerifiedFindingStatusProofInput,
+};
+
+use super::finding_status_verifier::authorization;
+use super::{FindingStatusOperatorPin, FindingStatusServiceBond};
+
+/// External-cron status publisher with the operator signing key.
+pub struct FindingStatusEpochPublisher {
+    store: SqliteFindingStatusStore,
+    operator: FindingStatusOperatorPin,
+    service_bond: FindingStatusServiceBond,
+    operator_keypair: Keypair,
+    max_epoch_age_secs: u64,
+}
+
+impl FindingStatusEpochPublisher {
+    /// Construct only when the private key matches the governance pin.
+    pub fn new(
+        store: SqliteFindingStatusStore,
+        operator: FindingStatusOperatorPin,
+        service_bond: FindingStatusServiceBond,
+        operator_keypair: Keypair,
+        max_epoch_age_secs: u64,
+    ) -> Result<Self, String> {
+        authorization(&operator)?
+            .validate()
+            .map_err(|error| error.to_string())?;
+        if max_epoch_age_secs == 0
+            || operator_keypair.public_key()
+                != operator.authority.key().map_err(|e| e.to_string())?
+            || service_bond.feed_id != operator.feed_id
+            || service_bond.operator_id != operator.authority.authority_id
+        {
+            return Err("finding status publisher configuration is not authorized".to_owned());
+        }
+        Ok(Self {
+            store,
+            operator,
+            service_bond,
+            operator_keypair,
+            max_epoch_age_secs,
+        })
+    }
+
+    fn require_live(&self, now: u64) -> Result<u64, String> {
+        self.operator
+            .require_live(&self.operator.feed_id, now)
+            .map_err(|error| error.to_string())?;
+        if !self.service_bond.covers(now) {
+            return Err("finding status publisher service bond is expired".to_owned());
+        }
+        let configured_until = now
+            .checked_add(self.max_epoch_age_secs)
+            .ok_or_else(|| "finding status epoch validity overflowed".to_owned())?;
+        let valid_until = configured_until
+            .min(self.operator.authority.valid_until)
+            .min(self.service_bond.valid_until);
+        if valid_until <= now {
+            return Err("finding status publisher has no live validity window".to_owned());
+        }
+        Ok(valid_until)
+    }
+
+    fn rebuild_map(&self) -> Result<FindingStatusSparseMap, String> {
+        let mut map = FindingStatusSparseMap::new();
+        let leaves = match self.store.list_leaves(&self.operator.feed_id) {
+            Ok(leaves) => leaves,
+            Err(FindingStatusStoreError::MissingFloor { .. }) => Vec::new(),
+            Err(error) => return Err(error.to_string()),
+        };
+        for leaf in leaves {
+            map.insert(&leaf.finding_id, &leaf.retraction_intent_sha256)
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(map)
+    }
+
+    fn next_map_epoch(&self) -> Result<u64, String> {
+        match self.store.get_feed_floor(&self.operator.feed_id) {
+            Ok(floor) => floor
+                .map_epoch
+                .checked_add(1)
+                .ok_or_else(|| "finding status map epoch overflowed".to_owned()),
+            Err(FindingStatusStoreError::MissingFloor { .. }) => Ok(1),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn sign_epoch(
+        &self,
+        map: &FindingStatusSparseMap,
+        map_epoch: u64,
+        anchor_refs: &[String],
+        now: u64,
+    ) -> Result<chio_finding::SignedFindingStatusEpoch, String> {
+        let valid_until = self.require_live(now)?;
+        let mut body = FindingStatusEpoch {
+            schema: FINDING_STATUS_EPOCH_SCHEMA_V1.to_owned(),
+            status_epoch_id: String::new(),
+            signature_domain: FINDING_STATUS_SIGNATURE_DOMAIN.to_owned(),
+            status_map_version: FINDING_STATUS_MAP_VERSION.to_owned(),
+            proof_semantics: FINDING_STATUS_PROOF_SEMANTICS.to_owned(),
+            feed_id: self.operator.feed_id.clone(),
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            map_epoch,
+            operator_id: self.operator.authority.authority_id.clone(),
+            operator_key: self.operator_keypair.public_key(),
+            operator_key_epoch: self.operator.authority.key_epoch,
+            root_hash: hex::encode(map.root().root_hash),
+            tree_depth: FINDING_STATUS_SPARSE_DEPTH as u16,
+            hash_algorithm: FINDING_STATUS_HASH_ALGORITHM.to_owned(),
+            key_hash_domain: FINDING_STATUS_KEY_HASH_DOMAIN.to_owned(),
+            empty_leaf_domain: FINDING_STATUS_EMPTY_LEAF_DOMAIN.to_owned(),
+            occupied_leaf_domain: FINDING_STATUS_OCCUPIED_LEAF_DOMAIN.to_owned(),
+            branch_domain: FINDING_STATUS_BRANCH_DOMAIN.to_owned(),
+            empty_leaf_hash: hex::encode(finding_status_empty_leaf_hash()),
+            anchor_refs: anchor_refs.to_vec(),
+            generated_at: now,
+            valid_from: now,
+            valid_until,
+        };
+        body.status_epoch_id = compute_status_epoch_id(&body).map_err(|error| error.to_string())?;
+        SignedExportEnvelope::sign(body, &self.operator_keypair).map_err(|error| error.to_string())
+    }
+
+    /// Publish one dispatch-eligible local retraction exactly once.
+    pub fn publish_retraction(
+        &self,
+        intent_id: &str,
+        anchor_refs: &[String],
+        now: u64,
+    ) -> Result<FindingStatusProofRecord, String> {
+        let intent = self
+            .store
+            .get_retraction_intent(intent_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "finding retraction intent is not durable".to_owned())?;
+        if intent.state == FindingRetractionIntentState::Published {
+            return self
+                .store
+                .get_latest_proof(&intent.feed_id, &intent.finding_id)
+                .map_err(|error| error.to_string())?
+                .filter(|proof| proof.kind == FindingStatusProofKind::Inclusion)
+                .ok_or_else(|| "published retraction is missing its inclusion proof".to_owned());
+        }
+        if intent.state != FindingRetractionIntentState::DispatchEligible
+            || intent.feed_id != self.operator.feed_id
+            || intent.operator_id != self.operator.authority.authority_id
+        {
+            return Err("finding retraction is not eligible for this publisher".to_owned());
+        }
+        let mut map = self.rebuild_map()?;
+        map.insert(&intent.finding_id, &intent.intent_sha256)
+            .map_err(|error| error.to_string())?;
+        let map_epoch = self.next_map_epoch()?;
+        let signed = self.sign_epoch(&map, map_epoch, anchor_refs, now)?;
+        let sparse = map
+            .proof(&intent.finding_id)
+            .map_err(|error| error.to_string())?;
+        let proof = build_status_inclusion_proof_input(
+            &signed,
+            &intent.finding_id,
+            &intent.intent_sha256,
+            &sparse,
+            now,
+        )
+        .map_err(|error| error.to_string())?;
+        verify_status_proof_input(
+            &proof,
+            &authorization(&self.operator)?,
+            FindingStatusFreshnessPolicy {
+                now,
+                max_epoch_age_secs: self.max_epoch_age_secs,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        let epoch_bytes = chio_core::canonical_json_bytes(&signed).map_err(|e| e.to_string())?;
+        let proof_bytes = chio_core::canonical_json_bytes(&proof).map_err(|e| e.to_string())?;
+        self.store
+            .advance_epoch(&FindingStatusEpochAdvance {
+                epoch: VerifiedFindingStatusEpochInput {
+                    feed_id: &signed.body.feed_id,
+                    operator_id: &signed.body.operator_id,
+                    key_domain_nonce: signed.body.key_domain_nonce,
+                    map_epoch: signed.body.map_epoch,
+                    epoch_id: &signed.body.status_epoch_id,
+                    root_hash: &signed.body.root_hash,
+                    signed_epoch_bytes: &epoch_bytes,
+                    operator_key: &signed.body.operator_key.to_hex(),
+                    operator_key_epoch: signed.body.operator_key_epoch,
+                    operator_authorization_sha256: &self.operator.authorization_sha256,
+                    generated_at: signed.body.generated_at,
+                    valid_until: signed.body.valid_until,
+                    recorded_at: now,
+                },
+                leaves: &[VerifiedFindingStatusLeafInput {
+                    finding_id: &intent.finding_id,
+                    status_value_bytes: b"retracted",
+                    retraction_intent_sha256: &intent.intent_sha256,
+                    local_intent_id: Some(&intent.intent_id),
+                }],
+                proofs: &[VerifiedFindingStatusProofInput {
+                    feed_id: &signed.body.feed_id,
+                    operator_id: &signed.body.operator_id,
+                    key_domain_nonce: signed.body.key_domain_nonce,
+                    map_epoch: signed.body.map_epoch,
+                    epoch_id: &signed.body.status_epoch_id,
+                    root_hash: &signed.body.root_hash,
+                    finding_id: &intent.finding_id,
+                    kind: FindingStatusProofKind::Inclusion,
+                    proof_bytes: &proof_bytes,
+                    status_value_bytes: Some(b"retracted"),
+                    retraction_intent_sha256: Some(&intent.intent_sha256),
+                    checked_at: now,
+                    valid_until: signed.body.valid_until,
+                    recorded_at: now,
+                }],
+            })
+            .map_err(|error| error.to_string())?;
+        self.store
+            .get_latest_proof(&intent.feed_id, &intent.finding_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "published retraction proof disappeared".to_owned())
+    }
+
+    /// Publish a fresh non-inclusion proof for one live finding. This is the
+    /// same verifier input the CLI/SDK can precheck and the kernel must verify.
+    pub fn publish_non_inclusion(
+        &self,
+        finding_id: &str,
+        anchor_refs: &[String],
+        now: u64,
+    ) -> Result<FindingStatusProofRecord, String> {
+        match self
+            .store
+            .get_finding_status(&self.operator.feed_id, finding_id)
+        {
+            Ok(Some(_)) => {
+                return Err("pending or retracted finding cannot receive non-inclusion".to_owned());
+            }
+            Ok(None) | Err(FindingStatusStoreError::MissingFloor { .. }) => {}
+            Err(error) => return Err(error.to_string()),
+        }
+        let map = self.rebuild_map()?;
+        let map_epoch = self.next_map_epoch()?;
+        let signed = self.sign_epoch(&map, map_epoch, anchor_refs, now)?;
+        let sparse = map.proof(finding_id).map_err(|error| error.to_string())?;
+        let proof = build_status_non_inclusion_proof_input(&signed, finding_id, &sparse, now)
+            .map_err(|error| error.to_string())?;
+        verify_status_proof_input(
+            &proof,
+            &authorization(&self.operator)?,
+            FindingStatusFreshnessPolicy {
+                now,
+                max_epoch_age_secs: self.max_epoch_age_secs,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        let epoch_bytes = chio_core::canonical_json_bytes(&signed).map_err(|e| e.to_string())?;
+        let proof_bytes = chio_core::canonical_json_bytes(&proof).map_err(|e| e.to_string())?;
+        self.store
+            .advance_epoch(&FindingStatusEpochAdvance {
+                epoch: VerifiedFindingStatusEpochInput {
+                    feed_id: &signed.body.feed_id,
+                    operator_id: &signed.body.operator_id,
+                    key_domain_nonce: signed.body.key_domain_nonce,
+                    map_epoch: signed.body.map_epoch,
+                    epoch_id: &signed.body.status_epoch_id,
+                    root_hash: &signed.body.root_hash,
+                    signed_epoch_bytes: &epoch_bytes,
+                    operator_key: &signed.body.operator_key.to_hex(),
+                    operator_key_epoch: signed.body.operator_key_epoch,
+                    operator_authorization_sha256: &self.operator.authorization_sha256,
+                    generated_at: signed.body.generated_at,
+                    valid_until: signed.body.valid_until,
+                    recorded_at: now,
+                },
+                leaves: &[],
+                proofs: &[VerifiedFindingStatusProofInput {
+                    feed_id: &signed.body.feed_id,
+                    operator_id: &signed.body.operator_id,
+                    key_domain_nonce: signed.body.key_domain_nonce,
+                    map_epoch: signed.body.map_epoch,
+                    epoch_id: &signed.body.status_epoch_id,
+                    root_hash: &signed.body.root_hash,
+                    finding_id,
+                    kind: FindingStatusProofKind::NonInclusion,
+                    proof_bytes: &proof_bytes,
+                    status_value_bytes: None,
+                    retraction_intent_sha256: None,
+                    checked_at: now,
+                    valid_until: signed.body.valid_until,
+                    recorded_at: now,
+                }],
+            })
+            .map_err(|error| error.to_string())?;
+        self.store
+            .get_latest_proof(&signed.body.feed_id, finding_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "published non-inclusion proof disappeared".to_owned())
+    }
+}

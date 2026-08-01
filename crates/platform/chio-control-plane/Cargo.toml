@@ -25,6 +25,7 @@ pq = ["chio-core/pq", "chio-kernel/pq", "chio-store-sqlite/pq"]
 cognition-market-experimental = [
     "dep:chio-finding",
     "dep:chio-finding-challenge",
+    "dep:chio-revocation-oracle",
     "dep:chio-spec-validate",
     "chio-store-sqlite/cognition-market-experimental",
     "chio-open-market/cognition-market-experimental",
@@ -36,6 +37,7 @@ async-trait = { workspace = true }
 chio-agent-web-interop = { workspace = true }
 chio-finding = { workspace = true, optional = true }
 chio-finding-challenge = { workspace = true, optional = true }
+chio-revocation-oracle = { workspace = true, optional = true }
 chio-spec-validate = { workspace = true, optional = true }
 chio-appraisal = { workspace = true }
 chio-commerce-order = { workspace = true }
