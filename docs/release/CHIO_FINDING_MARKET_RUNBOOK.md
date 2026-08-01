@@ -74,6 +74,17 @@ Both responses preserve the exact canonical epoch and proof bytes in bounded
 base64 fields. Decode and verify them locally. Do not reconstruct signed bytes
 from copied JSON fields.
 
+Operators and buyers can perform that exact-byte verification through the CLI:
+
+```bash
+chio finding status --id <finding-id> --feed <governance-pinned-feed-id>
+```
+
+The command fetches the current proof from the configured control-plane URL,
+verifies the proof and embedded signed epoch locally, cross-checks the response
+projection, and prints the verified status. A transport, canonicalization,
+signature, digest, feed, finding, epoch, or sparse-path failure exits nonzero.
+
 At minimum, monitoring checks:
 
 - outer signature and governance-pinned operator authorization;

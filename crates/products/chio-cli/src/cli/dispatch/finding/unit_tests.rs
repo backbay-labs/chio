@@ -459,6 +459,42 @@ fn buy_requires_a_venue_url_and_service_token() {
 }
 
 #[test]
+fn status_subcommand_parses() {
+    let cli = parse_cli([
+        "chio",
+        "finding",
+        "status",
+        "--id",
+        GOLDEN_FINDING_ID,
+        "--feed",
+        "status-feed/venue-01",
+    ])
+    .unwrap();
+    match cli.command {
+        Commands::Finding {
+            command: FindingCommands::Status { id, feed },
+        } => {
+            assert_eq!(id, GOLDEN_FINDING_ID);
+            assert_eq!(feed, "status-feed/venue-01");
+        }
+        _ => panic!("expected finding status command"),
+    }
+}
+
+#[test]
+fn status_requires_a_venue_url() {
+    let error = cmd_finding_status(
+        GOLDEN_FINDING_ID,
+        "status-feed/venue-01",
+        false,
+        None,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("--control-url"), "unexpected error: {error}");
+}
+
+#[test]
 fn finding_ids_must_be_lowercase_content_addresses() {
     assert!(require_finding_id(GOLDEN_FINDING_ID).is_ok());
     assert!(require_finding_id(&GOLDEN_FINDING_ID.to_uppercase()).is_err());

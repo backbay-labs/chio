@@ -75,6 +75,16 @@ pub(crate) enum FindingCommands {
         deadline_secs: Option<u64>,
     },
 
+    /// Inspect the venue-verified portable status proof for one finding.
+    Status {
+        /// Finding id whose current status proof should be fetched.
+        #[arg(long)]
+        id: String,
+        /// Governance-pinned status feed configured by the venue.
+        #[arg(long)]
+        feed: String,
+    },
+
     /// Open a dispute against one admitted finding listing.
     ///
     /// Exactly one authorization branch and exactly one mechanical evidence

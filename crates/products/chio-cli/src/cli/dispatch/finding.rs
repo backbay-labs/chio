@@ -16,6 +16,10 @@ use finding_verify::cmd_finding_verify;
 mod finding_challenge;
 use finding_challenge::cmd_finding_challenge;
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+
 /// Authenticated canonical-artifact ingress.
 const FINDING_PUBLISH_PATH: &str = "/v1/findings/publish";
 /// Public bounded descriptor index.
@@ -84,6 +88,12 @@ pub(crate) fn dispatch_finding(
             json_output,
             control_url.as_deref(),
             control_token.as_deref(),
+        ),
+        FindingCommands::Status { id, feed } => cmd_finding_status(
+            &id,
+            &feed,
+            json_output,
+            control_url.as_deref(),
         ),
         FindingCommands::Challenge {
             finding,
@@ -583,6 +593,230 @@ fn emit_purchase_result(result: &FindingPurchaseResult, json_output: bool) -> Re
     if let Some(output) = result.output.as_ref() {
         println!("media_type:        {}", output.media_type);
         println!("payload_b64:       {}", output.payload_b64);
+    }
+    Ok(())
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct FindingStatusProofResponse {
+    feed_id: String,
+    key_domain_nonce: u64,
+    map_epoch: u64,
+    epoch_id: String,
+    root_hash: String,
+    finding_id: String,
+    proof_kind: String,
+    proof_sha256: String,
+    proof_input_b64: String,
+    signed_epoch_sha256: String,
+    signed_epoch_b64: String,
+    checked_at: u64,
+    valid_until: u64,
+}
+
+fn require_feed_id(feed_id: &str) -> Result<&str, CliError> {
+    if feed_id.is_empty()
+        || feed_id.len() > 512
+        || !feed_id.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-' | b'/')
+        })
+    {
+        return Err(CliError::cli_other_error(
+            "status feed id contains characters outside [A-Za-z0-9._:/-]".to_string(),
+        ));
+    }
+    Ok(feed_id)
+}
+
+fn verify_status_projection(
+    response: &FindingStatusProofResponse,
+    expected_feed: &str,
+    expected_finding: &str,
+) -> Result<(), CliError> {
+    if response.feed_id != expected_feed || response.finding_id != expected_finding {
+        return Err(CliError::cli_other_error(
+            "finding status response binds a different feed or finding".to_string(),
+        ));
+    }
+    let proof_bytes = STANDARD.decode(&response.proof_input_b64).map_err(|_| {
+        CliError::cli_other_error("finding status proof is not valid base64".to_string())
+    })?;
+    if chio_core::sha256_hex(&proof_bytes) != response.proof_sha256 {
+        return Err(CliError::cli_other_error(
+            "finding status proof digest does not match its exact bytes".to_string(),
+        ));
+    }
+    let proof = chio_finding::parse_status_proof_input(&proof_bytes).map_err(|error| {
+        CliError::cli_other_error(format!("finding status proof is not strict canonical input: {error}"))
+    })?;
+    let (
+        proof_kind,
+        feed_id,
+        key_domain_nonce,
+        map_epoch,
+        finding_id,
+        epoch_id,
+        epoch_sha256,
+        epoch_b64,
+        root_hash,
+        checked_at,
+    ) = match &proof {
+        chio_finding::FindingStatusProofInput::NonInclusion(value) => (
+            "non_inclusion",
+            value.feed_id.as_str(),
+            value.key_domain_nonce,
+            value.map_epoch,
+            value.finding_id.as_str(),
+            value.status_epoch_id.as_str(),
+            value.status_epoch_sha256.as_str(),
+            value.signed_status_epoch_b64.as_str(),
+            value.root_hash.as_str(),
+            value.checked_at,
+        ),
+        chio_finding::FindingStatusProofInput::Inclusion(value) => (
+            "inclusion",
+            value.feed_id.as_str(),
+            value.key_domain_nonce,
+            value.map_epoch,
+            value.finding_id.as_str(),
+            value.status_epoch_id.as_str(),
+            value.status_epoch_sha256.as_str(),
+            value.signed_status_epoch_b64.as_str(),
+            value.root_hash.as_str(),
+            value.checked_at,
+        ),
+    };
+    if response.proof_kind != proof_kind
+        || response.feed_id != feed_id
+        || response.key_domain_nonce != key_domain_nonce
+        || response.map_epoch != map_epoch
+        || response.finding_id != finding_id
+        || response.epoch_id != epoch_id
+        || response.signed_epoch_sha256 != epoch_sha256
+        || response.signed_epoch_b64 != epoch_b64
+        || response.root_hash != root_hash
+        || response.checked_at != checked_at
+    {
+        return Err(CliError::cli_other_error(
+            "finding status response fields differ from the strict portable proof".to_string(),
+        ));
+    }
+    let epoch_bytes = STANDARD.decode(&response.signed_epoch_b64).map_err(|_| {
+        CliError::cli_other_error("finding status epoch is not valid base64".to_string())
+    })?;
+    if chio_core::sha256_hex(&epoch_bytes) != response.signed_epoch_sha256 {
+        return Err(CliError::cli_other_error(
+            "finding status epoch digest does not match its exact bytes".to_string(),
+        ));
+    }
+    let epoch = chio_finding::parse_signed_status_epoch(&epoch_bytes).map_err(|error| {
+        CliError::cli_other_error(format!("finding status epoch is not strict canonical input: {error}"))
+    })?;
+    if epoch.body.feed_id != response.feed_id
+        || epoch.body.key_domain_nonce != response.key_domain_nonce
+        || epoch.body.map_epoch != response.map_epoch
+        || epoch.body.status_epoch_id != response.epoch_id
+        || epoch.body.root_hash != response.root_hash
+        || epoch.body.valid_until != response.valid_until
+        || epoch.signer_key != epoch.body.operator_key
+        || !epoch.verify_signature().map_err(|error| {
+            CliError::cli_other_error(format!("finding status epoch signature check failed: {error}"))
+        })?
+    {
+        return Err(CliError::cli_other_error(
+            "finding status epoch signature or response binding is invalid".to_string(),
+        ));
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| CliError::cli_other_error(format!("system clock is invalid: {error}")))?
+        .as_secs();
+    let max_epoch_age_secs = epoch
+        .body
+        .valid_until
+        .checked_sub(epoch.body.generated_at)
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            CliError::cli_other_error("finding status epoch validity window is invalid".to_string())
+        })?;
+    let authorization = chio_finding::FindingStatusOperatorAuthorization {
+        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
+        feed_id: epoch.body.feed_id.clone(),
+        operator: chio_finding::FindingAuthorityKeyPolicy {
+            authority_id: epoch.body.operator_id.clone(),
+            key: epoch.body.operator_key.clone(),
+            key_epoch: epoch.body.operator_key_epoch,
+            valid_from: epoch.body.valid_from,
+            valid_until: epoch.body.valid_until,
+            rotation_policy_ref: "status-response-operator".to_string(),
+            revocation_status_ref: "status-response-operator".to_string(),
+        },
+        revoked_from: None,
+    };
+    let verified_epoch = chio_finding::verify_status_proof_input(
+        &proof,
+        &authorization,
+        chio_finding::FindingStatusFreshnessPolicy {
+            now,
+            max_epoch_age_secs,
+        },
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "finding status signature, freshness, or sparse path is invalid: {error}"
+        ))
+    })?;
+    if verified_epoch != epoch {
+        return Err(CliError::cli_other_error(
+            "finding status proof resolved a different signed epoch".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn cmd_finding_status(
+    finding_id: &str,
+    feed_id: &str,
+    json_output: bool,
+    control_url: Option<&str>,
+) -> Result<(), CliError> {
+    let url = require_control_url(control_url)?;
+    let finding_id = require_finding_id(finding_id)?;
+    let feed_id = require_feed_id(feed_id)?;
+    let encoded_feed = utf8_percent_encode(feed_id, NON_ALPHANUMERIC);
+    let endpoint = finding_endpoint(
+        url,
+        &format!("/v1/findings/status/{encoded_feed}/proof/{finding_id}"),
+    );
+    let response = match ureq::get(&endpoint).call() {
+        Ok(response) => response,
+        Err(ureq::Error::Status(status, response)) => {
+            return Err(http_status_error(status, response))
+        }
+        Err(ureq::Error::Transport(error)) => {
+            return Err(CliError::transport_error(format!(
+                "transport request failed: {error}"
+            )))
+        }
+    };
+    let status: FindingStatusProofResponse = serde_json::from_reader(response.into_reader())?;
+    verify_status_projection(&status, feed_id, finding_id)?;
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&status)?);
+    } else {
+        let finding_status = if status.proof_kind == "non_inclusion" {
+            "live"
+        } else {
+            "retracted"
+        };
+        println!("finding_id:      {}", status.finding_id);
+        println!("feed_id:         {}", status.feed_id);
+        println!("status:          {finding_status}");
+        println!("map_epoch:       {}", status.map_epoch);
+        println!("root_hash:       {}", status.root_hash);
+        println!("checked_at:      {}", status.checked_at);
+        println!("valid_until:     {}", status.valid_until);
+        println!("proof_sha256:    {}", status.proof_sha256);
     }
     Ok(())
 }
