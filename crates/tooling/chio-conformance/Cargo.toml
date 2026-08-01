@@ -77,6 +77,7 @@ thiserror = { workspace = true }
 toml = "0.8"
 reqwest = { workspace = true, features = ["blocking", "form", "query", "rustls"] }
 tiny_http = "0.12"
+tempfile = { workspace = true }
 chio-selective-disclosure = { path = "../../trust/chio-selective-disclosure", default-features = false, optional = true }
 chio-workflow = { workspace = true, optional = true }
 
@@ -193,7 +194,6 @@ rand = { workspace = true }
 proptest = { workspace = true }
 chio-store-sqlite = { workspace = true }
 rusqlite = { workspace = true }
-tempfile = { workspace = true }
 # Registry-consumed smoke test pulls in the six edges plus
 # chio-wasm-guards so it can drive each emission boundary directly.
 chio-mcp-edge = { workspace = true }

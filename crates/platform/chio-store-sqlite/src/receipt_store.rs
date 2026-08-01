@@ -19,7 +19,7 @@ use chio_core::receipt::{
 use chio_core::session::{
     OperationTerminalState, RequestLineageMode, RequestLineageRecord, SessionAnchorReference,
 };
-use chio_kernel::checkpoint::{KernelCheckpoint, KernelCheckpointBody};
+use chio_kernel::checkpoint::{CheckpointChainFrontier, KernelCheckpoint, KernelCheckpointBody};
 use chio_kernel::cost_attribution::{
     CostAttributionChainHop, CostAttributionQuery, CostAttributionReceiptRow,
     CostAttributionReport, CostAttributionSummary, LeafCostAttributionRow, RootCostAttributionRow,
@@ -1939,27 +1939,19 @@ fn build_due_checkpoints_and_record(
     let signer = checkpoint_signer.as_ref()?;
     // Panic isolation: a panic mid-build
     // (Merkle build, Ed25519 sign, serde) must not kill the writer thread.
-    // `head.latest_checkpoint` is only ever assigned AFTER the per-checkpoint
-    // transaction commits (see `maybe_build_checkpoint`), so a panic
-    // anywhere before that leaves `head` exactly as it was; a caught panic
-    // is therefore handled identically to a non-panicking `Err`: record
-    // `last_error`, leave the head untouched, keep the thread alive.
+    // A committed or peer-adopted checkpoint can advance the verified head
+    // before a later panic drops its frontier. Record `last_error` and rebuild.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         build_due_checkpoints(pool, head, signer)
     }))
     .unwrap_or_else(|payload| Err(receipt_writer_job_panic_error(&payload)));
     match result {
-        Ok(built) => {
+        Ok(advanced) => {
             health.store_head_snapshot(head);
-            // Recovery signal: a prior background
-            // checkpoint build may have set `last_error`. A later SUCCESSFUL
-            // build is reached here through a writer-routed op (a `Write` job
-            // crossing the threshold), which does NOT run the append batch's
-            // `last_error` reset, so without this the store keeps reporting
-            // unhealthy after it has recovered. Clear the stale error only on an
-            // ACTUAL build (`built`), never on a no-op due-check, so a genuinely
-            // current error is not masked by an idle refresh.
-            if built {
+            // Clear a stale background error only after this attempt advances
+            // the verified head, whether through our commit or peer-winner
+            // adoption. An idle refresh must not mask a current error.
+            if advanced {
                 if let Ok(mut last_error) = health.last_error.lock() {
                     *last_error = None;
                 }
@@ -1986,6 +1978,7 @@ fn build_due_checkpoints(
     let mut connection = pool
         .get()
         .map_err(|error| ReceiptStoreError::Pool(error.to_string()))?;
+    let checkpoint_seq_before_refresh = head.checkpoint_seq();
     // Shared-file freshness: on a shared receipt DB
     // another writer can commit a checkpoint AFTER this actor's append
     // pre-check but BEFORE its batch tx. `append_receipt_batch` then adopts that
@@ -1999,12 +1992,16 @@ fn build_due_checkpoints(
     // NOT a full chain verify, so the incremental hot path stays flat per
     // append.
     verify_head_against_latest_checkpoint(&connection, head)?;
-    maybe_build_checkpoint(&mut connection, head, signer)
+    let refreshed = head.checkpoint_seq() > checkpoint_seq_before_refresh;
+    maybe_build_checkpoint(&mut connection, head, signer).map(|advanced| refreshed || advanced)
 }
 
 /// Build every checkpoint the head owes: count-based ADR-0008 trigger, range
 /// derived from the cached head (NOT next_checkpoint_range_for_connection,
-/// which runs a full chain verify), O(b) work per checkpoint.
+/// which runs a full chain verify). Cost per checkpoint is O(b) over the batch
+/// plus O(log n) over the cached chain frontier; the frontier is rebuilt from
+/// the database only on a cache miss (first issuance after seed or resync).
+/// Returns true when this builder commits or boundedly adopts a checkpoint.
 fn maybe_build_checkpoint(
     connection: &mut SqliteStoreConnection,
     head: &mut VerifiedHead,
@@ -2013,7 +2010,42 @@ fn maybe_build_checkpoint(
     if signer.max_batch == 0 {
         return Ok(false);
     }
-    let mut built = false;
+    if head
+        .claim_log_max_seq
+        .saturating_sub(head.checkpointed_entry_seq())
+        < signer.max_batch
+    {
+        return Ok(false);
+    }
+    // Chain leaves for every persisted checkpoint, extended in-loop as new
+    // checkpoints commit; the cached head and the persisted chain must agree
+    // on length before any of them are committed to a new chain_root.
+    // O(n) exactly once per head, then extended in place. A cache miss runs the
+    // full semantic chain audit before reusing its returned frontier. The
+    // frontier still reproduces the predecessor's signed chain_root inside the
+    // builder, so caching it does not weaken the check it replaces.
+    let cached = head
+        .chain_frontier
+        .as_ref()
+        .filter(|frontier| frontier.leaf_count() == head.checkpoint_seq())
+        .cloned();
+    let mut advanced = false;
+    let mut chain_frontier = match cached {
+        Some(frontier) => frontier,
+        None => {
+            let (frontier, cache_advanced) =
+                build_checkpoint_after_frontier_cache_miss(connection, head, signer)?;
+            advanced = cache_advanced;
+            frontier
+        }
+    };
+    if chain_frontier.leaf_count() != head.checkpoint_seq() {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "persisted chain covers {} checkpoints but the head is at {}",
+            chain_frontier.leaf_count(),
+            head.checkpoint_seq()
+        )));
+    }
     while head
         .claim_log_max_seq
         .saturating_sub(head.checkpointed_entry_seq())
@@ -2030,14 +2062,16 @@ fn maybe_build_checkpoint(
             .checkpoint_seq()
             .checked_add(1)
             .ok_or_else(|| ReceiptStoreError::Conflict("checkpoint_seq overflow".to_string()))?;
-        // O(b) Merkle build; predecessor digest comes from the cached head.
-        let checkpoint = chio_kernel::build_checkpoint_with_previous(
+        // O(b) Merkle build over the batch, plus O(log n) over the chain
+        // frontier; the predecessor digest comes from the cached head.
+        let checkpoint = chio_kernel::checkpoint::build_checkpoint_with_chain_frontier(
             checkpoint_seq,
             start_seq,
             end_seq,
             &receipt_bytes,
             &signer.keypair,
             head.latest_checkpoint.as_ref(),
+            &chain_frontier,
         )
         .map_err(checkpoint_error_to_receipt_store)?;
         #[cfg(test)]
@@ -2050,20 +2084,23 @@ fn maybe_build_checkpoint(
                 "injected test checkpoint build failure".to_string(),
             ));
         }
-        ensure_checkpoint_transparency_guards(connection)?;
-        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         // The insert returns the checkpoint now persisted at this seq: either
         // the one we just built, or a concurrently committed winner (clock-skew
         // sibling) it validated and adopted. Catch the cached head up to THAT
         // checkpoint so a later verify_head_against_latest_checkpoint does not
         // see our discarded byte-different build diverge from the persisted row.
-        let adopted =
-            insert_checkpoint_incremental_tx(&tx, head.latest_checkpoint.as_ref(), &checkpoint)?;
-        tx.commit()?;
+        let (adopted, adopted_frontier) = insert_background_checkpoint_guarded(
+            connection,
+            head.latest_checkpoint.as_ref(),
+            &chain_frontier,
+            &checkpoint,
+        )?;
+        chain_frontier = adopted_frontier;
         head.latest_checkpoint = Some(adopted);
-        built = true;
+        advanced = true;
     }
-    Ok(built)
+    head.chain_frontier = Some(chain_frontier);
+    Ok(advanced)
 }
 
 /// Head-resync rule: one indexed delta aggregate plus one
@@ -2564,6 +2601,12 @@ pub(crate) struct VerifiedHead {
     /// The newest checkpoint the actor has verified, already parsed and
     /// signature-checked once. `None` before the first checkpoint.
     latest_checkpoint: Option<KernelCheckpoint>,
+    /// Frontier of the checkpoint-chain tree as of `latest_checkpoint`, kept
+    /// so issuing a checkpoint costs O(log n) hashes instead of rehashing the
+    /// whole chain. `None` means "not known here": catch-up or issuance rebuilds
+    /// it from the persisted chain once and caches it again. Every path that
+    /// moves `latest_checkpoint` without extending this must clear it.
+    chain_frontier: Option<CheckpointChainFrontier>,
     /// Row count of `claim_receipt_log_entries` as last verified.
     claim_log_count: u64,
     /// MAX(entry_seq) of `claim_receipt_log_entries` as last verified.
@@ -2604,10 +2647,12 @@ pub(crate) struct WriterHeadSnapshot {
 /// once (the startup path for the O(N) check; also the audit-repair path).
 fn seed_verified_head(connection: &Connection) -> Result<VerifiedHead, ReceiptStoreError> {
     validate_claim_receipt_log_entries(connection)?;
-    let latest_checkpoint = verify_checkpoint_chain_integrity(connection)?;
+    let (latest_checkpoint, chain_frontier) =
+        verify_checkpoint_chain_integrity_with_frontier(connection)?;
     let (claim_log_count, claim_log_max_seq) = claim_log_delta_count_and_max_seq(connection, 0)?;
     Ok(VerifiedHead {
         latest_checkpoint,
+        chain_frontier: Some(chain_frontier),
         claim_log_count,
         claim_log_max_seq,
     })
@@ -2624,6 +2669,7 @@ fn seed_head_snapshot(connection: &Connection) -> Result<VerifiedHead, ReceiptSt
     let (claim_log_count, claim_log_max_seq) = claim_log_delta_count_and_max_seq(connection, 0)?;
     Ok(VerifiedHead {
         latest_checkpoint,
+        chain_frontier: None,
         claim_log_count,
         claim_log_max_seq,
     })
@@ -2816,6 +2862,14 @@ fn catch_up_verified_head_to(
         // this adopted checkpoint's projection rows (O(b) for its batch, not full
         // history), fail closed on any divergence.
         validate_checkpoint_projection_rows(connection, &row, &checkpoint)?;
+        // Check any signed chain root before adopting. Legacy v1 leaves still
+        // extend the frontier so a later v2 root commits the complete history.
+        head.chain_frontier = Some(advance_verified_checkpoint_chain_frontier(
+            connection,
+            head.chain_frontier.as_ref(),
+            head.latest_checkpoint.as_ref(),
+            &checkpoint,
+        )?);
         head.latest_checkpoint = Some(checkpoint);
         cursor = next_seq;
     }

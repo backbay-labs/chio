@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::CliError;
 
@@ -12,7 +11,8 @@ const HELLO_SERVER_TEMPLATE: &str = include_str!("../templates/init/src/bin/hell
 const DEMO_TEMPLATE: &str = include_str!("../templates/init/src/bin/demo.rs.tmpl");
 
 pub(crate) fn cmd_init(path: &Path) -> Result<(), CliError> {
-    ensure_target_dir(path)?;
+    let directory = ensure_target_dir(path)?;
+    let path = directory.path();
 
     let project_name = path
         .file_name()
@@ -30,52 +30,57 @@ pub(crate) fn cmd_init(path: &Path) -> Result<(), CliError> {
     replacements.insert("PROJECT_NAME", project_name.to_string());
     replacements.insert("PACKAGE_NAME", package_name.clone());
 
-    write_template(path.join("Cargo.toml"), CARGO_TEMPLATE, &replacements)?;
-    write_template(path.join("README.md"), README_TEMPLATE, &replacements)?;
-    write_template(path.join("policy.yaml"), POLICY_TEMPLATE, &replacements)?;
-    write_template(path.join(".gitignore"), GITIGNORE_TEMPLATE, &replacements)?;
+    write_template(&directory, Path::new("Cargo.toml"), CARGO_TEMPLATE, &replacements)?;
+    write_template(&directory, Path::new("README.md"), README_TEMPLATE, &replacements)?;
+    write_template(&directory, Path::new("policy.yaml"), POLICY_TEMPLATE, &replacements)?;
+    write_template(&directory, Path::new(".gitignore"), GITIGNORE_TEMPLATE, &replacements)?;
+    directory.create_dir_all(Path::new("src/bin"))?;
     write_template(
-        path.join("src/bin/hello_server.rs"),
+        &directory,
+        Path::new("src/bin/hello_server.rs"),
         HELLO_SERVER_TEMPLATE,
         &replacements,
     )?;
-    write_template(path.join("src/bin/demo.rs"), DEMO_TEMPLATE, &replacements)?;
+    write_template(
+        &directory,
+        Path::new("src/bin/demo.rs"),
+        DEMO_TEMPLATE,
+        &replacements,
+    )?;
 
-    let absolute = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let chio_bin_hint = std::env::current_exe()
         .ok()
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| "/path/to/chio".to_string());
 
-    println!("created Chio scaffold at {}", absolute.display());
+    println!("created Chio scaffold at {}", path.display());
     println!();
     println!("Next steps:");
-    println!("  cd {}", absolute.display());
+    println!("  cd {}", path.display());
     println!("  cargo build");
     println!("  CHIO_BIN={} cargo run --quiet --bin demo", chio_bin_hint);
 
     Ok(())
 }
 
-fn ensure_target_dir(path: &Path) -> Result<(), CliError> {
-    if path.exists() {
-        if !path.is_dir() {
-            return Err(CliError::cli_other_error(format!(
-                "refusing to scaffold into non-directory `{}`",
+fn ensure_target_dir(path: &Path) -> Result<chio_control_plane::PreparedPrivateDirectory, CliError> {
+    let directory = chio_control_plane::prepare_private_directory(path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotADirectory {
+            CliError::cli_other_error(format!(
+                "refusing to scaffold into symbolic link or non-directory `{}`",
                 path.display()
-            )));
+            ))
+        } else {
+            CliError::Io(error)
         }
-        if path.read_dir()?.next().is_some() {
-            return Err(CliError::cli_other_error(format!(
-                "refusing to scaffold into non-empty directory `{}`",
-                path.display()
-            )));
-        }
-        return Ok(());
+    })?;
+    if !directory.is_empty()? {
+        return Err(CliError::cli_other_error(format!(
+            "refusing to scaffold into non-empty directory `{}`",
+            directory.path().display()
+        )));
     }
-
-    fs::create_dir_all(path)?;
-    Ok(())
+    Ok(directory)
 }
 
 fn sanitize_package_name(input: &str) -> String {
@@ -101,14 +106,13 @@ fn sanitize_package_name(input: &str) -> String {
 }
 
 fn write_template(
-    path: PathBuf,
+    directory: &chio_control_plane::PreparedPrivateDirectory,
+    path: &Path,
     template: &str,
     replacements: &BTreeMap<&str, String>,
 ) -> Result<(), CliError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, render_template(template, replacements))?;
+    let rendered = render_template(template, replacements);
+    directory.write_new(path, rendered.as_bytes())?;
     Ok(())
 }
 

@@ -748,8 +748,17 @@ fn catch_up_validates_checkpoint_projections() -> Result<(), Box<dyn std::error:
     // transparency projections.
     connection.execute_batch("DROP TRIGGER IF EXISTS kernel_checkpoints_project_tree_head;")?;
     let range_bytes = canonical_receipt_bytes(&store, 4, 6);
-    let checkpoint_two =
-        build_checkpoint_with_previous(2, 4, 6, &range_bytes, &keypair, Some(&checkpoint_one))?;
+    let checkpoint_two = build_checkpoint_with_previous(
+        2,
+        4,
+        6,
+        &range_bytes,
+        &keypair,
+        Some(&checkpoint_one),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(
+            &checkpoint_one.body,
+        )?],
+    )?;
     insert_checkpoint_row(&store, &checkpoint_two, checkpoint_two.body.batch_end_seq);
 
     let error = verify_head_against_latest_checkpoint(&connection, &mut head)
@@ -790,6 +799,178 @@ fn catch_up_validates_checkpoint_projections() -> Result<(), Box<dyn std::error:
     );
     drop(good_connection);
     let _ = fs::remove_file(good_path);
+    Ok(())
+}
+
+/// A peer checkpoint can be individually valid and correctly signed while its
+/// chain_root commits a different checkpoint history. Catch-up must compare the
+/// candidate root against the verified frontier before changing either cached
+/// field. The same forged row must also fail after a cache miss, when catch-up
+/// first re-verifies and rebuilds the persisted prefix.
+#[test]
+fn catch_up_rejects_divergent_chain_root_before_advancing_head(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-catchup-divergent-chain-root");
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    for i in 0..6 {
+        let receipt = sample_receipt_with_keypair(
+            &format!("rcpt-catchup-root-{i}"),
+            (i + 1) as u64,
+            &keypair,
+        );
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+    store.create_next_receipt_checkpoint(3, &keypair)?;
+    let checkpoint_one = store
+        .load_checkpoint_by_seq(1)?
+        .ok_or("checkpoint 1 missing")?;
+
+    let connection = store.connection()?;
+    let mut head = seed_verified_head(&connection)?;
+    let verified_frontier = head
+        .chain_frontier
+        .clone()
+        .ok_or("seed must retain the verified chain frontier")?;
+    assert_eq!(verified_frontier.leaf_count(), 1);
+    assert_eq!(verified_frontier.root(), checkpoint_one.body.chain_root);
+
+    let range_bytes = canonical_receipt_bytes(&store, 4, 6);
+    let mut forged = build_checkpoint_with_previous(
+        2,
+        4,
+        6,
+        &range_bytes,
+        &keypair,
+        Some(&checkpoint_one),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(
+            &checkpoint_one.body,
+        )?],
+    )?;
+    assert_ne!(
+        forged.body.chain_root,
+        Some(chio_core::hashing::Hash::zero())
+    );
+    forged.body.chain_root = Some(chio_core::hashing::Hash::zero());
+    forged.signature = keypair.sign(&canonical_json_bytes(&forged.body)?);
+    insert_checkpoint_row(&store, &forged, forged.body.batch_end_seq);
+
+    let error = verify_head_against_latest_checkpoint(&connection, &mut head)
+        .err()
+        .ok_or("a divergent peer chain_root must fail closed")?;
+    assert!(
+        error
+            .to_string()
+            .contains("checkpoint 2 chain_root does not match the persisted chain"),
+        "unexpected catch-up error: {error}"
+    );
+    assert_eq!(
+        head.latest_checkpoint.as_ref(),
+        Some(&checkpoint_one),
+        "root rejection must not advance the verified checkpoint"
+    );
+    assert_eq!(
+        head.chain_frontier.as_ref(),
+        Some(&verified_frontier),
+        "root rejection must not mutate the verified frontier"
+    );
+
+    // Exercise the cache-miss path against the same signed forgery. Full
+    // persisted-chain verification must reject it before rebuilding or
+    // advancing the cached head.
+    head.chain_frontier = None;
+    assert!(
+        verify_head_against_latest_checkpoint(&connection, &mut head).is_err(),
+        "cache-miss catch-up must also reject the divergent signed root"
+    );
+    assert_eq!(head.latest_checkpoint.as_ref(), Some(&checkpoint_one));
+    assert!(head.chain_frontier.is_none());
+
+    drop(connection);
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
+/// Legacy v1 checkpoints carry no chain_root, but their leaves remain part of
+/// the checkpoint history. Catch-up must accept that legacy suffix, retain its
+/// frontier after a cache rebuild, and require the first v2 successor to commit
+/// both v1 leaves plus its own.
+#[test]
+fn catch_up_preserves_v1_frontier_for_v2_successor() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-catchup-v1-frontier");
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    for i in 0..6 {
+        let receipt =
+            sample_receipt_with_keypair(&format!("rcpt-catchup-v1-{i}"), (i + 1) as u64, &keypair);
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+
+    let mut checkpoint_one =
+        build_checkpoint(1, 1, 2, &canonical_receipt_bytes(&store, 1, 2), &keypair)?;
+    checkpoint_one.body.schema = chio_kernel::checkpoint::CHECKPOINT_SCHEMA_V1.to_string();
+    checkpoint_one.body.chain_root = None;
+    checkpoint_one.signature = keypair.sign(&canonical_json_bytes(&checkpoint_one.body)?);
+    insert_checkpoint_row(&store, &checkpoint_one, checkpoint_one.body.batch_end_seq);
+
+    let connection = store.connection()?;
+    let mut head = seed_verified_head(&connection)?;
+    assert_eq!(head.checkpoint_seq(), 1);
+    head.chain_frontier = None;
+
+    let checkpoint_one_leaf =
+        chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint_one.body)?;
+    let mut checkpoint_two = build_checkpoint_with_previous(
+        2,
+        3,
+        4,
+        &canonical_receipt_bytes(&store, 3, 4),
+        &keypair,
+        Some(&checkpoint_one),
+        &[checkpoint_one_leaf],
+    )?;
+    checkpoint_two.body.schema = chio_kernel::checkpoint::CHECKPOINT_SCHEMA_V1.to_string();
+    checkpoint_two.body.chain_root = None;
+    checkpoint_two.signature = keypair.sign(&canonical_json_bytes(&checkpoint_two.body)?);
+    insert_checkpoint_row(&store, &checkpoint_two, checkpoint_two.body.batch_end_seq);
+
+    verify_head_against_latest_checkpoint(&connection, &mut head)?;
+    assert_eq!(head.latest_checkpoint.as_ref(), Some(&checkpoint_two));
+    let checkpoint_two_leaf =
+        chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint_two.body)?;
+    let legacy_frontier =
+        CheckpointChainFrontier::from_leaves(&[checkpoint_one_leaf, checkpoint_two_leaf]);
+    assert_eq!(head.chain_frontier.as_ref(), Some(&legacy_frontier));
+
+    let checkpoint_three = build_checkpoint_with_previous(
+        3,
+        5,
+        6,
+        &canonical_receipt_bytes(&store, 5, 6),
+        &keypair,
+        Some(&checkpoint_two),
+        &[checkpoint_one_leaf, checkpoint_two_leaf],
+    )?;
+    insert_checkpoint_row(
+        &store,
+        &checkpoint_three,
+        checkpoint_three.body.batch_end_seq,
+    );
+
+    verify_head_against_latest_checkpoint(&connection, &mut head)?;
+    assert_eq!(head.latest_checkpoint.as_ref(), Some(&checkpoint_three));
+    assert_eq!(
+        head.chain_frontier
+            .as_ref()
+            .and_then(CheckpointChainFrontier::root),
+        checkpoint_three.body.chain_root,
+        "the first v2 root must commit the complete v1 prefix"
+    );
+
+    drop(connection);
+    let _ = fs::remove_file(path);
     Ok(())
 }
 
@@ -887,6 +1068,7 @@ fn stale_head_validates_adopted_delta_before_trusting() -> Result<(), Box<dyn st
     // entry_seq 4 inside the adopted pre_delta. The append must be denied.
     let mut stale_head = VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: 3,
         claim_log_max_seq: 3,
     };
@@ -917,6 +1099,7 @@ fn stale_head_validates_adopted_delta_before_trusting() -> Result<(), Box<dyn st
     // below-floor orphan; appending a brand-new receipt succeeds.
     let mut fresh_head = VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: 4,
         claim_log_max_seq: 4,
     };
@@ -982,6 +1165,7 @@ fn resync_validates_adopted_delta() -> Result<(), Box<dyn std::error::Error>> {
     // absorb it, and must not advance the head.
     let mut stale_head = VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: 3,
         claim_log_max_seq: 3,
     };
@@ -1006,6 +1190,7 @@ fn resync_validates_adopted_delta() -> Result<(), Box<dyn std::error::Error>> {
     // orphan and the resync is a no-op.
     let mut fresh_head = VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: 4,
         claim_log_max_seq: 4,
     };
@@ -1751,6 +1936,7 @@ fn store_wide_append_failure_poisons_the_head() -> Result<(), Box<dyn std::error
     health.set_head_poisoned(false);
     let mut head_state = WriterHeadState::Verified(Box::new(VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: 3,
         claim_log_max_seq: 3,
     }));

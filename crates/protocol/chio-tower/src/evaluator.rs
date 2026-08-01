@@ -605,6 +605,12 @@ mod tests {
         let authority_database = dir.path().join("authority.db");
         let authority_locks = dir.path().join("authority-locks");
         std::fs::create_dir(&authority_locks)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700))?;
+            std::fs::set_permissions(&authority_locks, std::fs::Permissions::from_mode(0o700))?;
+        }
         chio_store_sqlite::SqliteAuthorityStore::provision(&authority_database, &authority_locks)?;
         let authority_store = chio_store_sqlite::SqliteAuthorityStore::open_serving(
             &authority_database,

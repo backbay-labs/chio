@@ -416,6 +416,7 @@ fn append_receipt_fails_closed_when_earlier_checkpoint_row_is_corrupted() {
         &[b"three".to_vec(), b"four".to_vec()],
         &kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     let third = build_checkpoint_with_previous(
@@ -425,6 +426,10 @@ fn append_receipt_fails_closed_when_earlier_checkpoint_row_is_corrupted() {
         &[b"five".to_vec(), b"six".to_vec()],
         &kp,
         Some(&second),
+        &[
+            chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap(),
+            chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&second.body).test_unwrap(),
+        ],
     )
     .test_unwrap();
 
@@ -529,9 +534,10 @@ fn store_checkpoint_rejects_wrong_predecessor_digest() {
         &canonical_receipt_bytes(&store, seqs[2], seqs[3]),
         &kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
-    second.body.previous_checkpoint_sha256 = Some("not-the-real-digest".to_string());
+    second.body.previous_checkpoint_sha256 = Some("00".repeat(32));
     second.signature = kp.sign(&chio_core::canonical_json_bytes(&second.body).test_unwrap());
     let error = ReceiptStore::store_checkpoint(&store, &second).test_unwrap_err();
     assert!(error

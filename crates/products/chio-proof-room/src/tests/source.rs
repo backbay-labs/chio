@@ -660,7 +660,8 @@ fn merge_source_family_reports_rejects_ok_but_unverified_family_report(
         "verified_claims": []
     });
 
-    let merged = merge_source_family_verifier_reports(&context, vec![rejected_family_report])?;
+    let merged =
+        merge_source_family_verifier_reports(&context, vec![rejected_family_report], true)?;
 
     assert_ne!(
         merged.get("verdict").and_then(serde_json::Value::as_str),

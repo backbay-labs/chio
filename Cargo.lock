@@ -2655,6 +2655,7 @@ dependencies = [
  "chio-egress-contract",
  "chio-kernel",
  "chio-metrics-spec",
+ "chio-spec-validate",
  "chio-test-support",
  "chio-web3-bindings",
  "hex",
@@ -3169,6 +3170,8 @@ dependencies = [
  "ciborium",
  "clap 4.6.0",
  "hex",
+ "libc",
+ "nix",
  "p384",
  "percent-encoding",
  "proptest",
@@ -3191,6 +3194,7 @@ dependencies = [
  "ureq 2.12.1",
  "url",
  "uuid",
+ "windows-sys 0.60.2",
  "x509-cert",
 ]
 
@@ -4861,6 +4865,7 @@ dependencies = [
  "alloy-primitives",
  "chio-core-types",
  "chio-credit",
+ "chio-spec-validate",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

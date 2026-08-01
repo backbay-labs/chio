@@ -25,7 +25,19 @@ fn unique_dir(prefix: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system time before unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("{prefix}-{nonce}"))
+    let path = std::env::temp_dir().join(format!("{prefix}-{nonce}"));
+    std::fs::create_dir_all(&path).expect("create private store directory");
+    secure_private_directory(&path);
+    path
+}
+
+fn secure_private_directory(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .expect("secure private store directory");
+    }
 }
 
 struct ServerGuard {
@@ -85,6 +97,7 @@ fn wait_for_trust_service(client: &Client, base_url: &str) {
 #[test]
 fn check_command_persists_receipt_to_sqlite() {
     let dir = tempfile::tempdir().expect("private store directory");
+    secure_private_directory(dir.path());
     let db_path = dir.path().join("receipts.sqlite3");
     let session_db_path = dir.path().join("sessions.sqlite3");
     let output = Command::new(env!("CARGO_BIN_EXE_chio"))

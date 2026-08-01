@@ -930,6 +930,10 @@ mod tests {
             std::slice::from_ref(&second_canonical),
             &checkpoint_keypair,
             Some(&first_checkpoint),
+            &[
+                chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first_checkpoint.body)
+                    .expect("first chain leaf"),
+            ],
         )
         .expect("second checkpoint");
         let first_tree =

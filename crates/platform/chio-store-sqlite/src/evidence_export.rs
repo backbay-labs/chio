@@ -4,7 +4,7 @@ use chio_core::merkle::MerkleTree;
 use chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding;
 use chio_kernel::capability_lineage::CapabilitySnapshot;
 use chio_kernel::checkpoint::{
-    build_inclusion_proof, build_trust_anchored_checkpoint_publication,
+    bind_checkpoint_publication_trust_anchor, build_inclusion_proof,
     validate_checkpoint_transparency, CheckpointPublication, CheckpointTransparencySummary,
     KernelCheckpoint, ReceiptInclusionProof,
 };
@@ -29,12 +29,31 @@ impl SqliteReceiptStore {
         &self,
         query: &EvidenceExportQuery,
     ) -> Result<EvidenceExportBundle, EvidenceExportError> {
+        let (bundle, _) = self.collect_evidence_export_bundle(query)?;
+        Ok(bundle)
+    }
+
+    /// Build a bundle and its transparency summary with one checkpoint
+    /// validation pass.
+    pub fn build_evidence_export_bundle_with_transparency(
+        &self,
+        query: &EvidenceExportQuery,
+    ) -> Result<(EvidenceExportBundle, CheckpointTransparencySummary), EvidenceExportError> {
+        let (bundle, transparency) = self.collect_evidence_export_bundle(query)?;
+        let transparency = self.enrich_evidence_export_transparency_summary(transparency)?;
+        Ok((bundle, transparency))
+    }
+
+    fn collect_evidence_export_bundle(
+        &self,
+        query: &EvidenceExportQuery,
+    ) -> Result<(EvidenceExportBundle, CheckpointTransparencySummary), EvidenceExportError> {
         query.validate_read_boundary()?;
         let query = query.normalized_for_read_boundary();
         let tool_receipts = self.collect_tool_receipts_for_export(&query)?;
         let child_receipt_scope = self.resolve_child_receipt_scope(&query);
         let child_receipts = self.collect_child_receipts_for_export(&query, child_receipt_scope)?;
-        let checkpoints = self.collect_checkpoints_for_export(&tool_receipts)?;
+        let (checkpoints, transparency) = self.collect_checkpoints_for_export(&tool_receipts)?;
         let capability_lineage = self.collect_lineage_for_export(&tool_receipts)?;
         let (inclusion_proofs, uncheckpointed_receipts) =
             self.collect_inclusion_proofs_for_export(&tool_receipts, &checkpoints)?;
@@ -52,43 +71,40 @@ impl SqliteReceiptStore {
             },
         };
 
-        Ok(EvidenceExportBundle {
-            query: query.clone(),
-            tool_receipts,
-            child_receipts,
-            child_receipt_scope,
-            checkpoints,
-            capability_lineage,
-            inclusion_proofs,
-            uncheckpointed_receipts,
-            retention,
-        })
+        Ok((
+            EvidenceExportBundle {
+                query: query.clone(),
+                tool_receipts,
+                child_receipts,
+                child_receipt_scope,
+                checkpoints,
+                capability_lineage,
+                inclusion_proofs,
+                uncheckpointed_receipts,
+                retention,
+            },
+            transparency,
+        ))
     }
 
     pub fn build_evidence_export_transparency_summary(
         &self,
         checkpoints: &[KernelCheckpoint],
     ) -> Result<CheckpointTransparencySummary, EvidenceExportError> {
-        let mut summary = validate_checkpoint_transparency(checkpoints)?;
+        let summary = validate_checkpoint_transparency(checkpoints)?;
+        self.enrich_evidence_export_transparency_summary(summary)
+    }
+
+    fn enrich_evidence_export_transparency_summary(
+        &self,
+        mut summary: CheckpointTransparencySummary,
+    ) -> Result<CheckpointTransparencySummary, EvidenceExportError> {
         if summary.publications.is_empty() {
             return Ok(summary);
         }
 
-        let checkpoint_by_seq = checkpoints
-            .iter()
-            .map(|checkpoint| (checkpoint.body.checkpoint_seq, checkpoint))
-            .collect::<BTreeMap<_, _>>();
         let connection = self.connection()?;
         for publication in &mut summary.publications {
-            let Some(checkpoint) = checkpoint_by_seq.get(&publication.checkpoint_seq).copied()
-            else {
-                return Err(EvidenceExportError::ReceiptStore(
-                    ReceiptStoreError::Conflict(format!(
-                        "checkpoint {} is missing while deriving publication summary",
-                        publication.checkpoint_seq
-                    )),
-                ));
-            };
             let persisted =
                 load_checkpoint_publication_core(&connection, publication.checkpoint_seq)?
                     .ok_or_else(|| {
@@ -109,7 +125,8 @@ impl SqliteReceiptStore {
                 &connection,
                 publication.checkpoint_seq,
             )? {
-                *publication = build_trust_anchored_checkpoint_publication(checkpoint, binding)?;
+                *publication =
+                    bind_checkpoint_publication_trust_anchor(publication.clone(), binding)?;
             }
         }
 
@@ -220,9 +237,9 @@ impl SqliteReceiptStore {
     fn collect_checkpoints_for_export(
         &self,
         tool_receipts: &[EvidenceToolReceiptRecord],
-    ) -> Result<Vec<KernelCheckpoint>, EvidenceExportError> {
+    ) -> Result<(Vec<KernelCheckpoint>, CheckpointTransparencySummary), EvidenceExportError> {
         if tool_receipts.is_empty() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), CheckpointTransparencySummary::default()));
         }
         let min_seq = tool_receipts
             .iter()
@@ -240,8 +257,12 @@ impl SqliteReceiptStore {
             r#"
             SELECT checkpoint_seq
             FROM kernel_checkpoints
-            WHERE batch_end_seq >= ?1
-              AND batch_start_seq <= ?2
+            WHERE checkpoint_seq <= (
+                SELECT MAX(checkpoint_seq)
+                FROM kernel_checkpoints
+                WHERE batch_end_seq >= ?1
+                  AND batch_start_seq <= ?2
+            )
             ORDER BY checkpoint_seq ASC
             "#,
         )?;
@@ -257,9 +278,8 @@ impl SqliteReceiptStore {
             }
         }
 
-        validate_checkpoint_transparency(&checkpoints)?;
-
-        Ok(checkpoints)
+        let transparency = validate_checkpoint_transparency(&checkpoints)?;
+        Ok((checkpoints, transparency))
     }
 
     fn collect_lineage_for_export(
@@ -297,6 +317,18 @@ impl SqliteReceiptStore {
         let mut covered_seqs = BTreeMap::<u64, ()>::new();
 
         for checkpoint in checkpoints {
+            if exported_by_seq
+                .range(checkpoint.body.batch_start_seq..=checkpoint.body.batch_end_seq)
+                .next()
+                .is_none()
+            {
+                // Scoped exports retain the complete checkpoint prefix for
+                // transparency validation. An earlier checkpoint batch may
+                // already have been archived and deleted from the live claim
+                // log, but it does not need to be rebuilt when none of its
+                // receipts are in this export.
+                continue;
+            }
             let canonical_bytes = self.receipts_canonical_bytes_range(
                 checkpoint.body.batch_start_seq,
                 checkpoint.body.batch_end_seq,
@@ -448,6 +480,7 @@ mod tests {
     };
     use chio_core::session::{OperationKind, OperationTerminalState, RequestId, SessionId};
     use chio_kernel::checkpoint::validate_checkpoint_transparency;
+    use chio_kernel::checkpoint::{build_checkpoint_with_previous, checkpoint_chain_leaf_hash};
     use chio_kernel::{build_checkpoint, ReceiptStore};
 
     use super::*;
@@ -648,6 +681,149 @@ mod tests {
         assert!(transparency.equivocations.is_empty());
 
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn scoped_export_includes_checkpoint_prefix_to_genesis() {
+        let path = unique_db_path("evidence-export-checkpoint-prefix");
+        let store = SqliteReceiptStore::open(&path).unwrap();
+        let checkpoint_key = evidence_receipt_keypair();
+
+        let seq1 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-1", "cap-1", 100))
+            .unwrap();
+        let seq2 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-2", "cap-1", 101))
+            .unwrap();
+        let seq3 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-3", "cap-1", 102))
+            .unwrap();
+        let seq4 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-4", "cap-1", 103))
+            .unwrap();
+
+        let first_bytes = store.receipts_canonical_bytes_range(seq1, seq2).unwrap();
+        let first = build_checkpoint(
+            1,
+            seq1,
+            seq2,
+            &first_bytes
+                .into_iter()
+                .map(|(_, bytes)| bytes)
+                .collect::<Vec<_>>(),
+            &checkpoint_key,
+        )
+        .unwrap();
+        store.store_checkpoint(&first).unwrap();
+
+        let second_bytes = store.receipts_canonical_bytes_range(seq3, seq4).unwrap();
+        let second = build_checkpoint_with_previous(
+            2,
+            seq3,
+            seq4,
+            &second_bytes
+                .into_iter()
+                .map(|(_, bytes)| bytes)
+                .collect::<Vec<_>>(),
+            &checkpoint_key,
+            Some(&first),
+            &[checkpoint_chain_leaf_hash(&first.body).unwrap()],
+        )
+        .unwrap();
+        store.store_checkpoint(&second).unwrap();
+
+        let mut query = EvidenceExportQuery::admin_all();
+        query.since = Some(102);
+        let (bundle, transparency) = store
+            .build_evidence_export_bundle_with_transparency(&query)
+            .unwrap();
+
+        assert_eq!(bundle.tool_receipts.len(), 2);
+        assert_eq!(
+            bundle
+                .checkpoints
+                .iter()
+                .map(|checkpoint| checkpoint.body.checkpoint_seq)
+                .collect::<Vec<_>>(),
+            vec![1, 2],
+            "a scoped export must carry the predecessor prefix to checkpoint 1"
+        );
+        assert_eq!(transparency.publications.len(), 2);
+        assert_eq!(transparency.witnesses.len(), 1);
+        assert!(transparency.equivocations.is_empty());
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn scoped_export_skips_archived_checkpoint_batches_without_selected_receipts() {
+        let path = unique_db_path("evidence-export-archived-prefix");
+        let archive = unique_db_path("evidence-export-archived-prefix-archive");
+        let store = SqliteReceiptStore::open(&path).unwrap();
+        let checkpoint_key = evidence_receipt_keypair();
+
+        let seq1 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-1", "cap-1", 100))
+            .unwrap();
+        let seq2 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-2", "cap-1", 101))
+            .unwrap();
+        let seq3 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-3", "cap-1", 102))
+            .unwrap();
+        let seq4 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-4", "cap-1", 103))
+            .unwrap();
+
+        let first_bytes = store.receipts_canonical_bytes_range(seq1, seq2).unwrap();
+        let first = build_checkpoint(
+            1,
+            seq1,
+            seq2,
+            &first_bytes
+                .into_iter()
+                .map(|(_, bytes)| bytes)
+                .collect::<Vec<_>>(),
+            &checkpoint_key,
+        )
+        .unwrap();
+        store.store_checkpoint(&first).unwrap();
+
+        let second_bytes = store.receipts_canonical_bytes_range(seq3, seq4).unwrap();
+        let second = build_checkpoint_with_previous(
+            2,
+            seq3,
+            seq4,
+            &second_bytes
+                .into_iter()
+                .map(|(_, bytes)| bytes)
+                .collect::<Vec<_>>(),
+            &checkpoint_key,
+            Some(&first),
+            &[checkpoint_chain_leaf_hash(&first.body).unwrap()],
+        )
+        .unwrap();
+        store.store_checkpoint(&second).unwrap();
+
+        let archived = store
+            .archive_receipts_before(102, archive.to_str().unwrap())
+            .unwrap();
+        assert_eq!(archived, 2);
+
+        let mut query = EvidenceExportQuery::admin_all();
+        query.since = Some(102);
+        let bundle = store.build_evidence_export_bundle(&query).unwrap();
+
+        assert_eq!(bundle.checkpoints.len(), 2);
+        assert_eq!(bundle.inclusion_proofs.len(), 2);
+        assert!(bundle.uncheckpointed_receipts.is_empty());
+        assert!(bundle
+            .inclusion_proofs
+            .iter()
+            .all(|proof| proof.checkpoint_seq == 2));
+
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(archive);
     }
 
     #[test]

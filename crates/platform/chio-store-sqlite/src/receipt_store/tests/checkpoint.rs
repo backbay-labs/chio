@@ -212,6 +212,62 @@ fn trait_store_checkpoint_installs_immutable_checkpoint_triggers() {
 }
 
 #[test]
+fn frontier_rebuild_rejects_legacy_v1_mirror_divergence_before_v2_migration() {
+    let path = unique_db_path("chio-receipts-legacy-frontier-mirror");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt_seq = store
+        .append_chio_receipt_returning_seq(&sample_receipt_with_id(
+            "legacy-frontier-mirror-receipt",
+        ))
+        .test_unwrap();
+    let checkpoint_keypair = receipt_test_keypair();
+    let mut legacy = build_checkpoint(
+        1,
+        receipt_seq,
+        receipt_seq,
+        &canonical_receipt_bytes(&store, receipt_seq, receipt_seq),
+        &checkpoint_keypair,
+    )
+    .test_unwrap();
+    legacy.body.schema = chio_kernel::checkpoint::CHECKPOINT_SCHEMA_V1.to_string();
+    legacy.body.chain_root = None;
+    legacy.signature = checkpoint_keypair
+        .sign(&canonical_json_bytes(&legacy.body).test_expect("canonical legacy checkpoint body"));
+    ReceiptStore::store_checkpoint(&store, &legacy).test_unwrap();
+
+    let signed_leaf =
+        chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&legacy.body).test_unwrap();
+    assert_eq!(
+        load_checkpoint_chain_leaf_hashes(&store.connection().test_unwrap()).test_unwrap(),
+        vec![signed_leaf],
+        "an intact legacy row must rebuild from its signed body"
+    );
+
+    let divergent_root = chio_core::hashing::Hash::zero();
+    assert_ne!(divergent_root, legacy.body.merkle_root);
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute_batch("DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;")
+        .test_unwrap();
+    let changed = connection
+        .execute(
+            "UPDATE kernel_checkpoints SET merkle_root = ?1 WHERE checkpoint_seq = 1",
+            rusqlite::params![divergent_root.to_hex()],
+        )
+        .test_unwrap();
+    assert_eq!(changed, 1);
+
+    let error = load_checkpoint_chain_leaf_hashes(&connection).test_unwrap_err();
+    assert!(
+        error.to_string().contains("merkle_root column")
+            && error.to_string().contains("does not match signed body"),
+        "frontier rebuild must reject a divergent legacy mirror before signing a v2 root: {error}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn create_next_receipt_checkpoint_respects_max_batch() {
     let path = unique_db_path("chio-receipts-cp-create-next-max-batch");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
@@ -330,6 +386,7 @@ fn store_checkpoint_accepts_contiguous_predecessor() {
         &canonical_receipt_bytes(&store, seqs[2], seqs[3]),
         &kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     ReceiptStore::store_checkpoint(&store, &second).test_unwrap();
@@ -380,6 +437,7 @@ fn store_checkpoint_projects_tree_heads_and_predecessor_witnesses() {
         &canonical_receipt_bytes(&store, seqs[2], seqs[3]),
         &checkpoint_kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     store.store_checkpoint(&second).test_unwrap();
@@ -504,6 +562,7 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
         &[b"legacy-two".to_vec()],
         &checkpoint_kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     insert_checkpoint_row(&store, &first, first.body.batch_end_seq);
@@ -596,6 +655,7 @@ fn record_checkpoint_publication_trust_anchor_binding_is_idempotent_and_visible_
         &canonical_receipt_bytes(&store, second_seq, second_seq),
         &checkpoint_kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
 

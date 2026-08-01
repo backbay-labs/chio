@@ -72,6 +72,7 @@ The official profile consists of these machine-readable artifacts:
 - `chio.web3-contract-package.v1`
 - `chio.web3-chain-configuration.v1`
 - `chio.anchor-inclusion-proof.v1`
+- `chio.anchor-inclusion-proof.v2`
 - `chio.oracle-conversion-evidence.v1`
 - `chio.web3-settlement-dispatch.v2`
 - `chio.web3-settlement-execution-receipt.v2`

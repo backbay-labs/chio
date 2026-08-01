@@ -232,7 +232,6 @@ fn validate_trusted_time(value: u64) -> Result<(), EconomicAdmissionCancellation
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
-    use std::fs;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, MutexGuard};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -773,9 +772,10 @@ mod tests {
     #[test]
     fn paid_cancellation_fails_before_staging_or_external_cas() -> TestResult {
         let temp = tempfile::tempdir()?;
+        crate::create_private_directory(temp.path())?;
         let database = temp.path().join("authority.db");
         let lock_root = temp.path().join("locks");
-        fs::create_dir(&lock_root)?;
+        crate::create_private_directory(&lock_root)?;
         SqliteAuthorityStore::provision(&database, &lock_root)?;
         let authority_store = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
         let fence = authority_store.mutation_fence();
@@ -818,9 +818,10 @@ mod tests {
     #[test]
     fn cancellation_coordinator_commits_the_external_and_local_terminal_lifecycle() -> TestResult {
         let temp = tempfile::tempdir()?;
+        crate::create_private_directory(temp.path())?;
         let database = temp.path().join("authority.db");
         let lock_root = temp.path().join("locks");
-        fs::create_dir(&lock_root)?;
+        crate::create_private_directory(&lock_root)?;
         SqliteAuthorityStore::provision(&database, &lock_root)?;
         let authority_store = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
         let fence = authority_store.mutation_fence();
@@ -884,9 +885,10 @@ mod tests {
     #[test]
     fn recovery_replays_a_staged_cancellation_through_the_typed_cas() -> TestResult {
         let temp = tempfile::tempdir()?;
+        crate::create_private_directory(temp.path())?;
         let database = temp.path().join("authority.db");
         let lock_root = temp.path().join("locks");
-        fs::create_dir(&lock_root)?;
+        crate::create_private_directory(&lock_root)?;
         SqliteAuthorityStore::provision(&database, &lock_root)?;
         let authority_store = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
         let fence = authority_store.mutation_fence();
@@ -937,9 +939,10 @@ mod tests {
     #[test]
     fn recovery_finishes_a_cancellation_committed_before_local_finalization() -> TestResult {
         let temp = tempfile::tempdir()?;
+        crate::create_private_directory(temp.path())?;
         let database = temp.path().join("authority.db");
         let lock_root = temp.path().join("locks");
-        fs::create_dir(&lock_root)?;
+        crate::create_private_directory(&lock_root)?;
         SqliteAuthorityStore::provision(&database, &lock_root)?;
         let authority_store = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
         let fence = authority_store.mutation_fence();
@@ -991,9 +994,10 @@ mod tests {
     #[test]
     fn terminal_replay_rejects_a_sibling_effect_cancellation() -> TestResult {
         let temp = tempfile::tempdir()?;
+        crate::create_private_directory(temp.path())?;
         let database = temp.path().join("authority.db");
         let lock_root = temp.path().join("locks");
-        fs::create_dir(&lock_root)?;
+        crate::create_private_directory(&lock_root)?;
         SqliteAuthorityStore::provision(&database, &lock_root)?;
         let authority_store = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
         let fence = authority_store.mutation_fence();

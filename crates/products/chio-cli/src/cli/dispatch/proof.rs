@@ -19,7 +19,8 @@ use proof_env::{
     enterprise_trusted_receipt_kernel_keys_from_env,
     enterprise_trusted_risk_comptroller_signer_keys_from_env, public_settlement_verifier_trust_from_env,
     runtime_trust_from_env, swarm_trusted_witness_keys_for_bundle,
-    transaction_trusted_root_keys_from_env, trust_market_trusted_authority_keys_from_env,
+    transaction_trusted_checkpoint_keys_from_env, transaction_trusted_root_keys_from_env,
+    trust_market_trusted_authority_keys_from_env,
 };
 
 const REQUIRED_RUNTIME_AUTHORITY_CLAIMS: [&str; 6] = [
@@ -856,6 +857,7 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
     chio_control_plane::transaction_passport::verify_minimal_passport_schema(&passport)
         .map_err(map_proof_error)?;
     let trusted_transaction_root_keys = transaction_trusted_root_keys_from_env()?;
+    let trusted_transaction_checkpoint_keys = transaction_trusted_checkpoint_keys_from_env()?;
     chio_control_plane::transaction_passport::verify_transaction_passport_signature(
         &passport,
         &trusted_transaction_root_keys,
@@ -875,6 +877,8 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         resolve_bundle_artifact_path(bundle_dir, &passport.verifier_policy_path)?;
     let evidence_graph_bytes = fs::read(&evidence_graph_path)?;
     let verifier_policy_bytes = fs::read(&verifier_policy_path)?;
+    let transparency_artifacts =
+        load_standalone_evidence_graph_artifacts(bundle_dir, &evidence_graph_bytes)?;
     let passport_report_path = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -1040,37 +1044,46 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         push_family_report(&mut family_reports, report)?;
     }
     if !family_reports.is_empty() {
-        let root_claim_set_artifacts =
-            load_root_claim_set_artifacts(bundle_dir, &evidence_graph_bytes)?;
+        let trust_anchors =
+            chio_control_plane::transaction_passport::TransactionTrustAnchors {
+                passport_root_signers: &trusted_transaction_root_keys,
+                checkpoint_signers: &trusted_transaction_checkpoint_keys,
+            };
         let externally_verified_claims = verified_claims_from_family_reports(&family_reports);
-        chio_control_plane::transaction_passport::verify_passport_root_and_claim_set_artifacts_with_external_claims(
+        chio_control_plane::transaction_passport::verify_passport_root_and_claim_set_artifacts_with_transparency_anchors(
             &passport,
             passport_report_path.clone(),
             &evidence_graph_bytes,
             &verifier_policy_bytes,
-            &root_claim_set_artifacts,
-            &trusted_transaction_root_keys,
+            &transparency_artifacts,
+            trust_anchors,
             &externally_verified_claims,
         )
         .map_err(map_proof_error)?;
     }
     ensure_integrated_commerce_settlement_order_binding(&family_reports)?;
-    let transparency_state =
-        chio_control_plane::transaction_passport::transaction_evidence_graph_transparency_state(
+    let transparency_state = chio_control_plane::transaction_passport::
+        transaction_evidence_graph_transparency_state_with_anchors(
             &evidence_graph_bytes,
+            &transparency_artifacts,
+            chio_control_plane::transaction_passport::TransactionTrustAnchors {
+                passport_root_signers: &trusted_transaction_root_keys,
+                checkpoint_signers: &trusted_transaction_checkpoint_keys,
+            },
         )
         .map_err(map_proof_error)?;
     let mut report = if family_reports.is_empty() {
-        let artifacts =
-            load_standalone_evidence_graph_artifacts(bundle_dir, &evidence_graph_bytes)?;
-        let report =
-            chio_control_plane::transaction_passport::verify_standalone_minimal_passport_artifacts(
+        let report = chio_control_plane::transaction_passport::
+            verify_standalone_minimal_passport_artifacts_with_transparency_anchors(
                 &passport,
                 passport_report_path,
                 &evidence_graph_bytes,
                 &verifier_policy_bytes,
-                &artifacts,
-                &trusted_transaction_root_keys,
+                &transparency_artifacts,
+                chio_control_plane::transaction_passport::TransactionTrustAnchors {
+                    passport_root_signers: &trusted_transaction_root_keys,
+                    checkpoint_signers: &trusted_transaction_checkpoint_keys,
+                },
             )
             .map_err(map_proof_error)?;
         serde_json::to_value(report).map_err(CliError::from)
@@ -1709,23 +1722,6 @@ fn load_standalone_evidence_graph_artifacts(
         let bytes = fs::read(&artifact_path)?;
         artifacts.insert(node.path.clone(), bytes);
     }
-    Ok(artifacts)
-}
-
-fn load_root_claim_set_artifacts(
-    bundle_dir: &Path,
-    evidence_graph_bytes: &[u8],
-) -> Result<BTreeMap<String, Vec<u8>>, CliError> {
-    let graph = parse_graph_artifact_paths(evidence_graph_bytes)?;
-    let node = select_required_graph_node(&graph.nodes, "claim-set", "claim set")?;
-    let bytes = load_graph_bytes_artifact(
-        bundle_dir,
-        node,
-        "chio.transaction.claim-set.v1",
-        "claim set",
-    )?;
-    let mut artifacts = BTreeMap::new();
-    artifacts.insert(node.path.clone(), bytes);
     Ok(artifacts)
 }
 

@@ -44,8 +44,16 @@ fn unique_test_dir() -> TestDir {
         .duration_since(UNIX_EPOCH)
         .expect("system time before unix epoch")
         .as_nanos();
+    let path = std::env::temp_dir().join(format!("chio-cli-mcp-serve-{nonce}"));
+    fs::create_dir_all(&path).expect("create private MCP test directory");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700))
+            .expect("secure private MCP test directory");
+    }
     TestDir {
-        path: std::env::temp_dir().join(format!("chio-cli-mcp-serve-{nonce}")),
+        path,
         _guard: guard,
     }
 }

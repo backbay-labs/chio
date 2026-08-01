@@ -26,7 +26,7 @@ fn checkpoint(seq: u64) -> KernelCheckpoint {
         build_checkpoint(
             seq,
             seq.saturating_mul(10),
-            seq.saturating_mul(10).saturating_add(1),
+            seq.saturating_mul(10),
             &[format!("receipt-{seq}").into_bytes()],
             &keypair,
         ),

@@ -3,8 +3,9 @@ use crate::anchors::{
     validate_anchor_inclusion_proof, validate_oracle_conversion_evidence,
     verify_anchor_inclusion_proof, AnchorInclusionProof, OracleConversionEvidence,
     Web3ChainAnchorRecord, Web3CheckpointStatement, Web3ReceiptInclusion,
-    CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA, CHIO_CHECKPOINT_STATEMENT_SCHEMA,
-    CHIO_LINK_ORACLE_AUTHORITY, CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA,
+    CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA, CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V1,
+    CHIO_CHECKPOINT_STATEMENT_SCHEMA, CHIO_LINK_ORACLE_AUTHORITY,
+    CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA,
 };
 use crate::canonical::canonical_json_bytes;
 use crate::capability::scope::MonetaryAmount;
@@ -22,6 +23,7 @@ use crate::credit::{
 };
 use crate::crypto::{sha256_hex, Keypair, Signature};
 use crate::error::Web3ContractError;
+use crate::hashing::Hash;
 use crate::identity::{
     validate_web3_identity_binding, verify_web3_identity_binding, SignedWeb3IdentityBinding,
     Web3IdentityBindingCertificate, Web3KeyBindingPurpose, CHIO_KEY_BINDING_CERTIFICATE_SCHEMA,
@@ -63,6 +65,8 @@ use crate::trust_profile::{
 };
 use serde_json::json;
 use std::collections::BTreeSet;
+
+mod anchor_versioning;
 
 const SAMPLE_ROOT_REGISTRY_RUNTIME_CODEHASH: &str =
     "0xfc5d76d87b02096c6ae32ce644a2b98ca0bdf3c56700ad16731fad2062e6bd7f";
@@ -357,11 +361,12 @@ fn sample_anchor_inclusion_proof_for_receipt(receipt: ChioReceipt) -> AnchorIncl
         schema: CHIO_CHECKPOINT_STATEMENT_SCHEMA.to_string(),
         checkpoint_seq: 1_042,
         batch_start_seq: 104_101,
-        batch_end_seq: 104_200,
+        batch_end_seq: 104_101,
         tree_size: 1,
         merkle_root,
         issued_at: 1_743_292_800,
         previous_checkpoint_sha256: None,
+        chain_root: None,
         kernel_key: operator.public_key(),
         signature: Signature::from_hex(
             "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",

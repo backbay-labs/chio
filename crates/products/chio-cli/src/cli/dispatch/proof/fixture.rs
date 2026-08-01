@@ -2207,6 +2207,11 @@ fn add_runtime_swarm_parity_evidence(bundle: &Path) -> Result<(), CliError> {
 
 fn add_runtime_swarm_loopback_evidence(bundle: &Path, temp_root: &Path) -> Result<(), CliError> {
     fs::create_dir_all(temp_root)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(temp_root, fs::Permissions::from_mode(0o700))?;
+    }
     let scenario_path = temp_root.join("scenario.json");
     write_executable_runtime_swarm_scenario(&scenario_path)?;
     let store_dir = temp_root.join("store");

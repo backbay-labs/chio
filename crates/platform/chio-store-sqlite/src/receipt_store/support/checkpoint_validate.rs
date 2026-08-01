@@ -55,8 +55,9 @@ BEGIN
 END;
 "#;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PersistedCheckpointRow {
+    pub(crate) id: u64,
     pub(crate) checkpoint_seq: u64,
     pub(crate) batch_start_seq: u64,
     pub(crate) batch_end_seq: u64,
@@ -81,6 +82,42 @@ pub(crate) fn ensure_checkpoint_transparency_guards(
     Ok(())
 }
 
+/// Run one checkpoint write while preserving restored immutability guards even
+/// when candidate validation fails.
+///
+/// Guard DDL belongs to the outer Immediate transaction. Candidate reads and
+/// writes belong to the inner savepoint. On a domain error or panic the
+/// savepoint rolls back, then the outer transaction commits only the restored
+/// checkpoint and transparency-projection guards. A panic is resumed after
+/// that cleanup so callers retain their existing unwind behavior.
+pub(crate) fn checkpoint_guarded_immediate<T>(
+    connection: &mut Connection,
+    operation: impl FnOnce(&rusqlite::Savepoint<'_>) -> Result<T, ReceiptStoreError>,
+) -> Result<T, ReceiptStoreError> {
+    let mut tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    ensure_checkpoint_transparency_guards(&tx)?;
+    ensure_transparency_projection_guards(&tx)?;
+    let savepoint = tx.savepoint()?;
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| operation(&savepoint))) {
+        Ok(Ok(value)) => {
+            savepoint.commit()?;
+            tx.commit()?;
+            Ok(value)
+        }
+        Ok(Err(error)) => {
+            savepoint.finish()?;
+            tx.commit()?;
+            Err(error)
+        }
+        Err(payload) => {
+            if savepoint.finish().is_ok() {
+                let _guard_commit_result = tx.commit();
+            }
+            std::panic::resume_unwind(payload);
+        }
+    }
+}
+
 pub(crate) fn load_persisted_checkpoint_row(
     connection: &Connection,
     checkpoint_seq: u64,
@@ -88,7 +125,7 @@ pub(crate) fn load_persisted_checkpoint_row(
     connection
         .query_row(
             r#"
-            SELECT checkpoint_seq, batch_start_seq, batch_end_seq, tree_size,
+            SELECT id, checkpoint_seq, batch_start_seq, batch_end_seq, tree_size,
                    merkle_root, issued_at, statement_json, signature, kernel_key
             FROM kernel_checkpoints
             WHERE checkpoint_seq = ?1
@@ -100,17 +137,19 @@ pub(crate) fn load_persisted_checkpoint_row(
                     row.get::<_, i64>(1)?,
                     row.get::<_, i64>(2)?,
                     row.get::<_, i64>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, i64>(5)?,
-                    row.get::<_, String>(6)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, i64>(6)?,
                     row.get::<_, String>(7)?,
                     row.get::<_, String>(8)?,
+                    row.get::<_, String>(9)?,
                 ))
             },
         )
         .optional()?
         .map(
             |(
+                id,
                 checkpoint_seq,
                 batch_start_seq,
                 batch_end_seq,
@@ -122,6 +161,7 @@ pub(crate) fn load_persisted_checkpoint_row(
                 kernel_key_hex,
             )| {
                 Ok(PersistedCheckpointRow {
+                    id: sqlite_u64(id, "checkpoint id")?,
                     checkpoint_seq: sqlite_u64(checkpoint_seq, "checkpoint_seq")?,
                     batch_start_seq: sqlite_u64(batch_start_seq, "batch_start_seq")?,
                     batch_end_seq: sqlite_u64(batch_end_seq, "batch_end_seq")?,
@@ -160,7 +200,7 @@ pub(crate) fn load_all_persisted_checkpoint_rows(
 ) -> Result<Vec<PersistedCheckpointRow>, ReceiptStoreError> {
     let mut statement = connection.prepare(
         r#"
-        SELECT checkpoint_seq, batch_start_seq, batch_end_seq, tree_size,
+        SELECT id, checkpoint_seq, batch_start_seq, batch_end_seq, tree_size,
                merkle_root, issued_at, statement_json, signature, kernel_key
         FROM kernel_checkpoints
         ORDER BY checkpoint_seq ASC
@@ -172,16 +212,18 @@ pub(crate) fn load_all_persisted_checkpoint_rows(
             row.get::<_, i64>(1)?,
             row.get::<_, i64>(2)?,
             row.get::<_, i64>(3)?,
-            row.get::<_, String>(4)?,
-            row.get::<_, i64>(5)?,
-            row.get::<_, String>(6)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, String>(5)?,
+            row.get::<_, i64>(6)?,
             row.get::<_, String>(7)?,
             row.get::<_, String>(8)?,
+            row.get::<_, String>(9)?,
         ))
     })?;
 
     rows.map(|row| {
         let (
+            id,
             checkpoint_seq,
             batch_start_seq,
             batch_end_seq,
@@ -193,6 +235,7 @@ pub(crate) fn load_all_persisted_checkpoint_rows(
             kernel_key_hex,
         ) = row.map_err(ReceiptStoreError::from)?;
         Ok(PersistedCheckpointRow {
+            id: sqlite_u64(id, "checkpoint id")?,
             checkpoint_seq: sqlite_u64(checkpoint_seq, "checkpoint_seq")?,
             batch_start_seq: sqlite_u64(batch_start_seq, "batch_start_seq")?,
             batch_end_seq: sqlite_u64(batch_end_seq, "batch_end_seq")?,
@@ -373,13 +416,14 @@ pub(crate) fn verify_latest_checkpoint_integrity(
 ///    genuine rotation co-archives the deleted rows first. Skipping the rebuild
 ///    trusts that those rows survive in the archive, so opening the archive and
 ///    confirming it covers the prefix ties the exemption to the evidence rather
-///    than to the mere absence of live rows. A missing, unreadable, or short
-///    archive is not proof of archival and withdraws the exemption.
+///    than to the mere absence of live rows. A missing, unreadable, short, or
+///    signer-divergent archive is not proof of archival and withdraws the
+///    exemption.
 ///
 /// Fail-closed: any condition failing yields 0 (full verification, which then
-/// rejects a truly unarchived prefix because its live rows are gone). Bounded to
-/// two indexed existence probes plus one archive open and indexed count, never an
-/// O(log length) scan.
+/// rejects a truly unarchived prefix because its live rows are gone). Archive
+/// trust performs the deep receipt and checkpoint validation that replaces the
+/// unavailable live-prefix validation.
 pub(crate) fn trusted_retention_watermark(
     connection: &Connection,
 ) -> Result<u64, ReceiptStoreError> {
@@ -411,28 +455,23 @@ pub(crate) fn trusted_retention_watermark(
 }
 
 /// True only when the archive named by the current watermark ledger row holds
-/// the co-archived claim-log rows that re-derive the SIGNED checkpoint roots for
-/// every checkpoint covered by `watermark`.
+/// byte-identical checkpoint rows and co-archived claim-log rows that fully
+/// validate every checkpoint covered by `watermark`.
 ///
-/// A count of `entry_seq <= watermark` rows is not proof: an archive that merely
-/// holds `watermark` rows keyed on the right `entry_seq` values but carrying
-/// replaced or corrupted `raw_json` would satisfy a count check while no longer
-/// matching the signed checkpoint roots, so skipping the live Merkle rebuild for
-/// that prefix would accept a store whose only retained evidence has been
-/// tampered. Instead, for each covered checkpoint this re-derives the Merkle
-/// root from the archived receipts in the checkpoint's batch range and compares
-/// it to the checkpoint's signed root (obtained by parsing the live
-/// `kernel_checkpoints` row, which validates the signature and that the stored
-/// root matches the signed body). The kernel signing key is required to produce
-/// a batch of receipts that hash to a signed root, so a forged archive cannot
-/// pass. This is the deep re-verification the watermark exemption promises to
-/// serve from the archive; it is bounded to the archived rows and runs on the
+/// A count or Merkle-root match is not proof: an attacker can sign an authentic
+/// receipt root with a different checkpoint key. For each covered checkpoint,
+/// this requires exact live/archive checkpoint-row identity and then performs
+/// full checkpoint validation against the archived receipts, including receipt
+/// signatures, signer-key binding, range continuity, and Merkle reconstruction.
+/// This is the deep re-verification the watermark exemption promises to serve
+/// from the archive; it is bounded to the archived rows and runs on the
 /// open/health path, never per append.
 ///
 /// Opens the archive read-only on its own connection (never ATTACHing onto the
-/// caller's). Any missing, unreadable, short, non-contiguous, or root-divergent
-/// archive returns false so the caller falls back to full verification, which
-/// then rejects the store because the live prefix was deleted (fail-closed).
+/// caller's). Any missing, unreadable, short, non-contiguous,
+/// identity-divergent, signer-divergent, or root-divergent archive returns false
+/// so the caller falls back to full verification, which then rejects the store
+/// because the live prefix was deleted (fail-closed).
 fn archived_prefix_is_backed(
     connection: &Connection,
     watermark: i64,
@@ -447,9 +486,9 @@ fn archived_prefix_is_backed(
     )
 }
 
-/// True only when the archive at `archive_path` holds co-archived claim-log rows
-/// that re-derive the SIGNED checkpoint roots for every checkpoint covered by
-/// `watermark`.
+/// True only when the archive at `archive_path` holds byte-identical checkpoint
+/// rows and co-archived claim-log rows that fully validate every checkpoint
+/// covered by `watermark`.
 ///
 /// The watermark-trust reader (`archived_prefix_is_backed`) resolves the path
 /// from the ledger, but the rotation and repair paths must vet a SPECIFIC
@@ -457,11 +496,13 @@ fn archived_prefix_is_backed(
 /// rotation must confirm the ledger archive still backs the committed prefix
 /// before extending it, and a repair must confirm the supplied (or ledger)
 /// archive re-derives the covered roots before deleting the orphaned live rows.
-/// A row count is not proof: an archive holding the right `entry_seq` values but
-/// replaced or corrupted `raw_json` would satisfy a count while no longer
-/// matching the signed roots. Opens the archive read-only on its own connection.
-/// Any missing, unreadable, short, non-contiguous, or root-divergent archive
-/// returns false (never an error) so every caller falls back to full
+/// A row count or Merkle-root match is not proof: an attacker can sign the
+/// authentic root with a different key. Each live checkpoint row must match its
+/// archived row exactly, and full claim-log validation against the archive must
+/// verify receipt signatures, signer-key binding, range continuity, and the
+/// Merkle root. Opens the archive read-only on its own connection. Any missing,
+/// unreadable, short, non-contiguous, identity-divergent, signer-divergent, or
+/// root-divergent archive returns false so every caller falls back to full
 /// verification fail-closed.
 pub(crate) fn archive_path_backs_prefix(
     connection: &Connection,
@@ -473,7 +514,7 @@ pub(crate) fn archive_path_backs_prefix(
     }
     let flags =
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
-    let Ok(archive) = rusqlite::Connection::open_with_flags(archive_path, flags) else {
+    let Ok(mut archive) = rusqlite::Connection::open_with_flags(archive_path, flags) else {
         return Ok(false);
     };
     let covered: Vec<PersistedCheckpointRow> = load_all_persisted_checkpoint_rows(connection)?
@@ -485,53 +526,75 @@ pub(crate) fn archive_path_backs_prefix(
     if covered.is_empty() {
         return Ok(false);
     }
-    for row in covered {
-        // Parse validates the signature and that the stored root matches the
-        // signed body, so `body.merkle_root` is the authenticated root.
-        let checkpoint = parse_persisted_checkpoint_row(row)?;
-        if !archive_batch_matches_signed_root(&archive, &checkpoint)? {
+    let Ok(archive_tx) = archive.transaction_with_behavior(rusqlite::TransactionBehavior::Deferred)
+    else {
+        return Ok(false);
+    };
+    for live_row in covered {
+        let archived_row = match load_persisted_checkpoint_row(&archive_tx, live_row.checkpoint_seq)
+        {
+            Ok(Some(row)) => row,
+            Ok(None) | Err(_) => return Ok(false),
+        };
+        if archived_row != live_row {
+            return Ok(false);
+        }
+        // Parsing authenticates the live row's signed body and denormalized
+        // columns. Full validation against the archived claim log additionally
+        // authenticates every receipt and binds its signer to the checkpoint
+        // key before accepting the archived Merkle root.
+        let checkpoint = parse_persisted_checkpoint_row(live_row)?;
+        if validate_checkpoint_against_claim_log(&archive_tx, &checkpoint).is_err() {
             return Ok(false);
         }
     }
+    archive_tx.commit()?;
     Ok(true)
 }
 
-/// Re-derive the Merkle root of `checkpoint`'s batch range from the archived
-/// receipts and compare it to the checkpoint's signed root. False (not an error)
-/// when the archive is missing rows, has the wrong leaf count, or produces a
-/// different root, so the caller withdraws the watermark exemption fail-closed.
-fn archive_batch_matches_signed_root(
-    archive: &Connection,
-    checkpoint: &KernelCheckpoint,
-) -> Result<bool, ReceiptStoreError> {
-    let rows = match load_claim_tree_canonical_bytes_range(
-        archive,
-        checkpoint.body.batch_start_seq,
-        checkpoint.body.batch_end_seq,
-    ) {
-        Ok(rows) => rows,
-        // A short or non-contiguous archived range is not proof of archival.
-        Err(_) => return Ok(false),
-    };
-    let receipt_bytes: Vec<Vec<u8>> = rows.into_iter().map(|(_, bytes)| bytes).collect();
-    if receipt_bytes.len() != checkpoint.body.tree_size {
-        return Ok(false);
+/// Chain leaf hashes for every persisted checkpoint, in sequence order.
+///
+/// Fails closed when the persisted chain is not a gap-free run starting at
+/// sequence 1: a chain commitment over an incomplete leaf set would be
+/// unsound. Every leaf is derived from a signature-validated checkpoint body,
+/// never from the denormalized mirror columns.
+pub(crate) fn load_checkpoint_chain_leaf_hashes(
+    connection: &Connection,
+) -> Result<Vec<chio_core::hashing::Hash>, ReceiptStoreError> {
+    let rows = load_all_persisted_checkpoint_rows(connection)?;
+    let mut chain_leaf_hashes = Vec::with_capacity(rows.len());
+    for row in rows {
+        let checkpoint = parse_persisted_checkpoint_row(row)?;
+        let checkpoint_seq = checkpoint.body.checkpoint_seq;
+        let expected_seq = chain_leaf_hashes.len() as u64 + 1;
+        if checkpoint_seq != expected_seq {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "checkpoint chain has a gap: expected seq {expected_seq}, found {checkpoint_seq}"
+            )));
+        }
+        chain_leaf_hashes.push(
+            chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint.body)
+                .map_err(checkpoint_error_to_receipt_store)?,
+        );
     }
-    let tree = match chio_core::merkle::MerkleTree::from_leaves(&receipt_bytes) {
-        Ok(tree) => tree,
-        Err(_) => return Ok(false),
-    };
-    Ok(tree.root() == checkpoint.body.merkle_root)
+    Ok(chain_leaf_hashes)
 }
 
 pub(crate) fn verify_checkpoint_chain_integrity(
     connection: &Connection,
 ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+    verify_checkpoint_chain_integrity_with_frontier(connection).map(|(latest, _)| latest)
+}
+
+pub(crate) fn verify_checkpoint_chain_integrity_with_frontier(
+    connection: &Connection,
+) -> Result<(Option<KernelCheckpoint>, CheckpointChainFrontier), ReceiptStoreError> {
     let rows = load_all_persisted_checkpoint_rows(connection)?;
     let mut latest = None;
     let mut expected_head_ids = BTreeSet::new();
     let mut expected_witness_ids = BTreeSet::new();
     let mut expected_publication_ids = BTreeSet::new();
+    let mut chain_frontier = chio_kernel::checkpoint::CheckpointChainFrontier::empty();
 
     let watermark = trusted_retention_watermark(connection)?;
     for row in rows {
@@ -560,6 +623,26 @@ pub(crate) fn verify_checkpoint_chain_integrity(
         } else {
             validate_checkpoint_base(&checkpoint)?;
         }
+        // A signed chain commitment must equal the root over the chain leaves
+        // accumulated so far, so a mid-chain rewrite of any earlier batch root
+        // fails here even when every per-row signature still verifies.
+        chain_frontier.append(
+            chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint.body)
+                .map_err(checkpoint_error_to_receipt_store)?,
+        );
+        if let Some(chain_root) = checkpoint.body.chain_root {
+            let expected_chain_root = chain_frontier.root().ok_or_else(|| {
+                ReceiptStoreError::Conflict(
+                    "checkpoint chain frontier is unexpectedly empty".to_string(),
+                )
+            })?;
+            if chain_root != expected_chain_root {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "checkpoint {} chain_root does not match the persisted chain",
+                    checkpoint.body.checkpoint_seq
+                )));
+            }
+        }
         latest = Some(checkpoint);
     }
 
@@ -570,7 +653,235 @@ pub(crate) fn verify_checkpoint_chain_integrity(
         &expected_publication_ids,
     )?;
 
-    Ok(latest)
+    Ok((latest, chain_frontier))
+}
+
+/// Fully verify a cache-miss frontier and reconcile a same-length persisted
+/// chain with the caller's already-verified head. A coherent out-of-band
+/// replacement can pass the full audit on its own, but it must not be combined
+/// with the stale predecessor retained by a long-lived writer.
+#[cfg(test)]
+pub(crate) fn rebuild_checkpoint_frontier(
+    connection: &mut Connection,
+    head_latest: Option<&KernelCheckpoint>,
+) -> Result<CheckpointChainFrontier, ReceiptStoreError> {
+    // Keep checkpoint rows, claim-log evidence, and projection ID sets on one
+    // read snapshot. A peer may commit immediately before or after this audit,
+    // but cannot appear in only the later projection queries.
+    let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Deferred)?;
+    let (persisted_latest, frontier) = verify_checkpoint_chain_integrity_with_frontier(&tx)?;
+    let head_seq = head_latest.map_or(0, |checkpoint| checkpoint.body.checkpoint_seq);
+    if frontier.leaf_count() == head_seq && persisted_latest.as_ref() != head_latest {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "persisted checkpoint at verified sequence {head_seq} diverged from the verified head while rebuilding the chain frontier"
+        )));
+    }
+    tx.commit()?;
+    Ok(frontier)
+}
+
+/// Rebuild a missing frontier and, when one is due, persist its first successor
+/// under the same write lock that protects the full audit.
+///
+/// This is the cache-miss path only. The outer Immediate transaction prevents a
+/// peer from replacing any audited checkpoint row or projection before the
+/// candidate is built and inserted. The common cache-hit path remains
+/// incremental.
+pub(crate) fn build_checkpoint_after_frontier_cache_miss(
+    connection: &mut Connection,
+    head: &mut VerifiedHead,
+    signer: &BackgroundCheckpointSigner,
+) -> Result<(CheckpointChainFrontier, bool), ReceiptStoreError> {
+    build_checkpoint_after_frontier_cache_miss_with_hook(connection, head, signer, |_| Ok(()))
+}
+
+pub(crate) fn build_checkpoint_after_frontier_cache_miss_with_hook(
+    connection: &mut Connection,
+    head: &mut VerifiedHead,
+    signer: &BackgroundCheckpointSigner,
+    after_audit: impl FnOnce(&rusqlite::Savepoint<'_>) -> Result<(), ReceiptStoreError>,
+) -> Result<(CheckpointChainFrontier, bool), ReceiptStoreError> {
+    let mut staged_head = head.clone();
+    let outcome = checkpoint_guarded_immediate(connection, |tx| {
+        let (_persisted_latest, mut frontier) =
+            verify_checkpoint_chain_integrity_with_frontier(tx)?;
+        let head_seq = staged_head.checkpoint_seq();
+        if frontier.leaf_count() < head_seq {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "persisted chain covers {} checkpoints but the verified head is at {head_seq}",
+                frontier.leaf_count()
+            )));
+        }
+        if head_seq > 0 {
+            let persisted_head_row =
+                load_persisted_checkpoint_row(tx, head_seq)?.ok_or_else(|| {
+                    ReceiptStoreError::Conflict(format!(
+                        "persisted checkpoint at verified sequence {head_seq} disappeared while rebuilding the chain frontier"
+                    ))
+                })?;
+            let persisted_head = parse_persisted_checkpoint_row(persisted_head_row.clone())?;
+            validate_checkpoint_projection_rows(tx, &persisted_head_row, &persisted_head)?;
+            if Some(&persisted_head) != staged_head.latest_checkpoint.as_ref() {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "persisted checkpoint at verified sequence {head_seq} diverged from the verified head while rebuilding the chain frontier"
+                )));
+            }
+        }
+
+        let mut advanced = false;
+        if frontier.leaf_count() > head_seq {
+            catch_up_verified_head_to(tx, &mut staged_head, frontier.leaf_count())?;
+            advanced = true;
+        }
+        if frontier.leaf_count() != staged_head.checkpoint_seq() {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "persisted chain covers {} checkpoints but the head is at {}",
+                frontier.leaf_count(),
+                staged_head.checkpoint_seq()
+            )));
+        }
+        after_audit(tx)?;
+        if staged_head
+            .claim_log_max_seq
+            .saturating_sub(staged_head.checkpointed_entry_seq())
+            < signer.max_batch
+        {
+            staged_head.chain_frontier = Some(frontier.clone());
+            return Ok((frontier, advanced));
+        }
+
+        let start_seq = staged_head.checkpointed_entry_seq().saturating_add(1);
+        let end_seq = start_seq.saturating_add(signer.max_batch - 1);
+        ensure_claim_log_range_contiguous(tx, start_seq, end_seq, "checkpoint range")?;
+        let receipt_bytes = load_claim_tree_canonical_bytes_range(tx, start_seq, end_seq)?
+            .into_iter()
+            .map(|(_, bytes)| bytes)
+            .collect::<Vec<_>>();
+        let checkpoint_seq = staged_head
+            .checkpoint_seq()
+            .checked_add(1)
+            .ok_or_else(|| ReceiptStoreError::Conflict("checkpoint_seq overflow".to_string()))?;
+        let checkpoint = chio_kernel::checkpoint::build_checkpoint_with_chain_frontier(
+            checkpoint_seq,
+            start_seq,
+            end_seq,
+            &receipt_bytes,
+            &signer.keypair,
+            staged_head.latest_checkpoint.as_ref(),
+            &frontier,
+        )
+        .map_err(checkpoint_error_to_receipt_store)?;
+        #[cfg(test)]
+        if test_hooks::panic_during_checkpoint_build(signer.max_batch) {
+            panic!("injected test panic during background checkpoint build");
+        }
+        #[cfg(test)]
+        if test_hooks::fail_checkpoint_build(signer.max_batch) {
+            return Err(ReceiptStoreError::Conflict(
+                "injected test checkpoint build failure".to_string(),
+            ));
+        }
+
+        let adopted = insert_checkpoint_incremental_tx(
+            tx,
+            staged_head.latest_checkpoint.as_ref(),
+            &checkpoint,
+        )?;
+        frontier = extend_frontier_with_adopted_checkpoint(&frontier, &adopted)?;
+        staged_head.latest_checkpoint = Some(adopted);
+        staged_head.chain_frontier = Some(frontier.clone());
+        Ok((frontier, true))
+    })?;
+    *head = staged_head;
+    Ok(outcome)
+}
+
+/// Insert or adopt one background checkpoint on the cache-hit path.
+pub(crate) fn insert_background_checkpoint_guarded(
+    connection: &mut Connection,
+    predecessor: Option<&KernelCheckpoint>,
+    prior_frontier: &CheckpointChainFrontier,
+    checkpoint: &KernelCheckpoint,
+) -> Result<(KernelCheckpoint, CheckpointChainFrontier), ReceiptStoreError> {
+    checkpoint_guarded_immediate(connection, |tx| {
+        let adopted = insert_checkpoint_incremental_tx(tx, predecessor, checkpoint)?;
+        let frontier = extend_frontier_with_adopted_checkpoint(prior_frontier, &adopted)?;
+        Ok((adopted, frontier))
+    })
+}
+
+fn extend_frontier_with_adopted_checkpoint(
+    prior_frontier: &CheckpointChainFrontier,
+    adopted: &KernelCheckpoint,
+) -> Result<CheckpointChainFrontier, ReceiptStoreError> {
+    let mut frontier = prior_frontier.clone();
+    frontier.append(
+        chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&adopted.body)
+            .map_err(checkpoint_error_to_receipt_store)?,
+    );
+    if adopted.body.chain_root != frontier.root() {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint {} adopted with a divergent chain commitment",
+            adopted.body.checkpoint_seq
+        )));
+    }
+    Ok(frontier)
+}
+
+/// Extend the verified checkpoint-chain frontier by one peer checkpoint.
+///
+/// A cache miss rebuilds only the prefix represented by `predecessor`; startup
+/// normally retains the frontier returned by full verification. Signed v2
+/// roots must match before the caller advances its verified head. Legacy v1
+/// checkpoints carry no root, but their leaves still extend the frontier so a
+/// later v2 checkpoint commits the complete history.
+pub(crate) fn advance_verified_checkpoint_chain_frontier(
+    connection: &Connection,
+    cached: Option<&CheckpointChainFrontier>,
+    predecessor: Option<&KernelCheckpoint>,
+    checkpoint: &KernelCheckpoint,
+) -> Result<CheckpointChainFrontier, ReceiptStoreError> {
+    let predecessor_seq = predecessor.map_or(0, |item| item.body.checkpoint_seq);
+    let mut frontier = match cached.filter(|item| item.leaf_count() == predecessor_seq) {
+        Some(frontier) => frontier.clone(),
+        None => {
+            // A missing cache has no trusted prefix commitment of its own.
+            // Prove the persisted chain before deriving the predecessor slice.
+            verify_checkpoint_chain_integrity_with_frontier(connection)?;
+            let chain_leaf_hashes = load_checkpoint_chain_leaf_hashes(connection)?;
+            let prefix_len = usize::try_from(predecessor_seq).map_err(|_| {
+                ReceiptStoreError::Conflict(format!(
+                    "verified checkpoint sequence {predecessor_seq} exceeds platform limits"
+                ))
+            })?;
+            if chain_leaf_hashes.len() < prefix_len {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "persisted checkpoint chain ends before verified head {predecessor_seq}"
+                )));
+            }
+            CheckpointChainFrontier::from_leaves(&chain_leaf_hashes[..prefix_len])
+        }
+    };
+    if let Some(chain_root) = predecessor.and_then(|item| item.body.chain_root) {
+        if frontier.root() != Some(chain_root) {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "verified checkpoint {predecessor_seq} chain_root does not match the persisted chain"
+            )));
+        }
+    }
+    frontier.append(
+        chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint.body)
+            .map_err(checkpoint_error_to_receipt_store)?,
+    );
+    if let Some(chain_root) = checkpoint.body.chain_root {
+        if frontier.root() != Some(chain_root) {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "checkpoint {} chain_root does not match the persisted chain",
+                checkpoint.body.checkpoint_seq
+            )));
+        }
+    }
+    Ok(frontier)
 }
 
 pub(crate) fn validate_checkpoint_base(
@@ -694,26 +1005,79 @@ pub(crate) fn validate_checkpoint_against_claim_log(
     Ok(())
 }
 
+/// Validate a persisted checkpoint against the live claim log, falling back to
+/// its trusted archive proof only when live validation fails and the complete
+/// range is covered by the retention watermark.
+///
+/// The normal live path does not open or scan an archive. A straddling or
+/// unwatermarked range returns the original live-validation error. This helper
+/// is only sound for a checkpoint already persisted in `kernel_checkpoints`,
+/// because the trusted-watermark proof re-derives those persisted roots.
+pub(crate) fn validate_persisted_checkpoint_against_live_or_archived_claim_log(
+    connection: &Connection,
+    checkpoint: &KernelCheckpoint,
+) -> Result<(), ReceiptStoreError> {
+    match validate_checkpoint_against_claim_log(connection, checkpoint) {
+        Ok(()) => Ok(()),
+        Err(live_error) => {
+            let watermark = trusted_retention_watermark(connection)?;
+            if checkpoint.body.batch_end_seq <= watermark {
+                Ok(())
+            } else {
+                Err(live_error)
+            }
+        }
+    }
+}
+
 pub(crate) fn store_kernel_checkpoint_atomic(
     connection: &mut Connection,
     checkpoint: &KernelCheckpoint,
 ) -> Result<(), ReceiptStoreError> {
-    ensure_checkpoint_transparency_guards(connection)?;
-    let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-    // Operator / import append re-verification: a
-    // manually stored or externally imported checkpoint is a rare, off-hot-path
-    // surface. `store_kernel_checkpoint_tx` only parses the LATEST checkpoint as
-    // the predecessor, so a mid-chain tamper (an earlier checkpoint or a
-    // projection row whose latest row still parses) would go undetected and this
-    // append would extend an already-corrupt chain. Re-verify the FULL persisted
-    // chain here so the operator path fails closed. This is the operator/import
-    // surface ONLY; the background builder (maybe_build_checkpoint /
-    // insert_checkpoint_incremental_tx) deliberately stays on the O(b)
-    // incremental head and does not run through here.
-    verify_checkpoint_chain_integrity(&tx)?;
-    store_kernel_checkpoint_tx(&tx, checkpoint)?;
-    tx.commit()?;
-    Ok(())
+    checkpoint_guarded_immediate(connection, |tx| {
+        // Operator / import append re-verification: a
+        // manually stored or externally imported checkpoint is a rare, off-hot-path
+        // surface. `store_kernel_checkpoint_tx` only parses the LATEST checkpoint as
+        // the predecessor, so a mid-chain tamper (an earlier checkpoint or a
+        // projection row whose latest row still parses) would go undetected and this
+        // append would extend an already-corrupt chain. Re-verify the FULL persisted
+        // chain here so the operator path fails closed. This is the operator/import
+        // surface ONLY; the background builder (maybe_build_checkpoint /
+        // insert_checkpoint_incremental_tx) deliberately stays on the O(b)
+        // incremental head and does not run through here. Full-chain cost is
+        // accepted here precisely because this is the rare operator path.
+        verify_checkpoint_chain_integrity(tx)?;
+        // An extending checkpoint that carries a chain commitment must commit
+        // exactly the persisted chain plus its own leaf; anything else is caught
+        // here rather than on the next append. Idempotent re-imports of an
+        // already-persisted sequence are byte-compared by
+        // `store_kernel_checkpoint_tx` instead.
+        if let Some(chain_root) = checkpoint.body.chain_root {
+            let chain_leaf_hashes = load_checkpoint_chain_leaf_hashes(tx)?;
+            if checkpoint.body.checkpoint_seq == chain_leaf_hashes.len() as u64 + 1 {
+                let mut chain_frontier =
+                    chio_kernel::checkpoint::CheckpointChainFrontier::from_leaves(
+                        &chain_leaf_hashes,
+                    );
+                chain_frontier.append(
+                    chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint.body)
+                        .map_err(checkpoint_error_to_receipt_store)?,
+                );
+                let expected_chain_root = chain_frontier.root().ok_or_else(|| {
+                    ReceiptStoreError::Conflict(
+                        "extended checkpoint chain frontier is unexpectedly empty".to_string(),
+                    )
+                })?;
+                if chain_root != expected_chain_root {
+                    return Err(ReceiptStoreError::Conflict(format!(
+                        "checkpoint {} chain_root does not extend the persisted chain",
+                        checkpoint.body.checkpoint_seq
+                    )));
+                }
+            }
+        }
+        store_kernel_checkpoint_tx(tx, checkpoint)
+    })
 }
 
 pub(crate) fn create_next_receipt_checkpoint_atomic(
@@ -721,60 +1085,60 @@ pub(crate) fn create_next_receipt_checkpoint_atomic(
     max_batch: u64,
     keypair: &Keypair,
 ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
-    ensure_checkpoint_transparency_guards(connection)?;
-    let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-    let previous_checkpoint = verify_checkpoint_chain_integrity(&tx)?;
-    let latest_committed_entry_seq = super::latest_claim_log_entry_seq(&tx)?;
-    let Some(range) = super::next_checkpoint_range_for_connection(&tx, max_batch)? else {
-        let latest_checkpointed_entry_seq = previous_checkpoint
-            .as_ref()
-            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
-        tx.commit()?;
-        return Ok(ReceiptCheckpointCreateReport {
-            created: false,
-            checkpoint_seq: None,
-            batch_start_seq: None,
-            batch_end_seq: None,
-            latest_committed_entry_seq,
-            latest_checkpointed_entry_seq,
-        });
-    };
+    checkpoint_guarded_immediate(connection, |tx| {
+        let previous_checkpoint = verify_checkpoint_chain_integrity(tx)?;
+        let latest_committed_entry_seq = super::latest_claim_log_entry_seq(tx)?;
+        let Some(range) = super::next_checkpoint_range_for_connection(tx, max_batch)? else {
+            let latest_checkpointed_entry_seq = previous_checkpoint
+                .as_ref()
+                .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+            return Ok(ReceiptCheckpointCreateReport {
+                created: false,
+                checkpoint_seq: None,
+                batch_start_seq: None,
+                batch_end_seq: None,
+                latest_committed_entry_seq,
+                latest_checkpointed_entry_seq,
+            });
+        };
 
-    let receipt_bytes = load_claim_tree_canonical_bytes_range(&tx, range.start_seq, range.end_seq)?
-        .into_iter()
-        .map(|(_, bytes)| bytes)
-        .collect::<Vec<_>>();
-    let checkpoint_seq = previous_checkpoint.as_ref().map_or(Ok(1), |checkpoint| {
-        checkpoint
-            .body
-            .checkpoint_seq
-            .checked_add(1)
-            .ok_or_else(|| {
-                ReceiptStoreError::Conflict(
-                    "checkpoint_seq overflow while creating receipt checkpoint".to_string(),
-                )
-            })
-    })?;
-    let checkpoint = chio_kernel::build_checkpoint_with_previous(
-        checkpoint_seq,
-        range.start_seq,
-        range.end_seq,
-        &receipt_bytes,
-        keypair,
-        previous_checkpoint.as_ref(),
-    )
-    .map_err(checkpoint_error_to_receipt_store)?;
-    store_kernel_checkpoint_tx(&tx, &checkpoint)?;
-    let report = ReceiptCheckpointCreateReport {
-        created: true,
-        checkpoint_seq: Some(checkpoint.body.checkpoint_seq),
-        batch_start_seq: Some(checkpoint.body.batch_start_seq),
-        batch_end_seq: Some(checkpoint.body.batch_end_seq),
-        latest_committed_entry_seq,
-        latest_checkpointed_entry_seq: checkpoint.body.batch_end_seq,
-    };
-    tx.commit()?;
-    Ok(report)
+        let receipt_bytes =
+            load_claim_tree_canonical_bytes_range(tx, range.start_seq, range.end_seq)?
+                .into_iter()
+                .map(|(_, bytes)| bytes)
+                .collect::<Vec<_>>();
+        let checkpoint_seq = previous_checkpoint.as_ref().map_or(Ok(1), |checkpoint| {
+            checkpoint
+                .body
+                .checkpoint_seq
+                .checked_add(1)
+                .ok_or_else(|| {
+                    ReceiptStoreError::Conflict(
+                        "checkpoint_seq overflow while creating receipt checkpoint".to_string(),
+                    )
+                })
+        })?;
+        let chain_leaf_hashes = load_checkpoint_chain_leaf_hashes(tx)?;
+        let checkpoint = chio_kernel::build_checkpoint_with_previous(
+            checkpoint_seq,
+            range.start_seq,
+            range.end_seq,
+            &receipt_bytes,
+            keypair,
+            previous_checkpoint.as_ref(),
+            &chain_leaf_hashes,
+        )
+        .map_err(checkpoint_error_to_receipt_store)?;
+        store_kernel_checkpoint_tx(tx, &checkpoint)?;
+        Ok(ReceiptCheckpointCreateReport {
+            created: true,
+            checkpoint_seq: Some(checkpoint.body.checkpoint_seq),
+            batch_start_seq: Some(checkpoint.body.batch_start_seq),
+            batch_end_seq: Some(checkpoint.body.batch_end_seq),
+            latest_committed_entry_seq,
+            latest_checkpointed_entry_seq: checkpoint.body.batch_end_seq,
+        })
+    })
 }
 
 /// Insert one checkpoint with single-shot validation against a KNOWN
@@ -786,7 +1150,7 @@ pub(crate) fn create_next_receipt_checkpoint_atomic(
 /// concurrently committed winner that was adopted) so the caller can catch
 /// its cached head up to it.
 pub(crate) fn insert_checkpoint_incremental_tx(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &rusqlite::Savepoint<'_>,
     predecessor: Option<&KernelCheckpoint>,
     checkpoint: &KernelCheckpoint,
 ) -> Result<KernelCheckpoint, ReceiptStoreError> {
@@ -803,7 +1167,37 @@ pub(crate) fn insert_checkpoint_incremental_tx(
         }
         None => validate_checkpoint_base(checkpoint)?,
     }
-    validate_checkpoint_against_claim_log(tx, checkpoint)?;
+    // The frontier audit and candidate construction happen before the caller
+    // opens this Immediate transaction. A peer can coherently replace the
+    // persisted prefix in that gap, leaving `predecessor` and the candidate
+    // internally consistent with each other but disconnected from the prefix
+    // now on disk. Re-read seq - 1 after the write lock is held and require it
+    // to be byte-identical to the predecessor used to build the candidate.
+    // This still permits a peer winner at the candidate's own sequence: that
+    // row is handled and adopted below after its shared predecessor is pinned.
+    if let Some(predecessor) = predecessor {
+        let predecessor_seq = predecessor.body.checkpoint_seq;
+        let persisted_predecessor_row =
+            load_persisted_checkpoint_row(tx, predecessor_seq)?.ok_or_else(|| {
+                ReceiptStoreError::Conflict(format!(
+                    "checkpoint {} cached predecessor {predecessor_seq} disappeared before persistence",
+                    checkpoint.body.checkpoint_seq
+                ))
+            })?;
+        let persisted_predecessor =
+            parse_persisted_checkpoint_row(persisted_predecessor_row.clone())?;
+        validate_checkpoint_projection_rows(
+            tx,
+            &persisted_predecessor_row,
+            &persisted_predecessor,
+        )?;
+        if persisted_predecessor != *predecessor {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "checkpoint {} cached predecessor {predecessor_seq} changed before persistence",
+                checkpoint.body.checkpoint_seq
+            )));
+        }
+    }
     // Idempotent and concurrent-winner background-checkpoint convergence
     // (the byte-identical case and the clock-skew case).
     // Two kernels or store instances sharing one receipt DB can each build the
@@ -816,9 +1210,9 @@ pub(crate) fn insert_checkpoint_incremental_tx(
     // the store UNHEALTHY though the persisted chain is valid) we VALIDATE the
     // winner BOUNDED and ADOPT it: its signature (via parse_persisted_
     // checkpoint_row), its predecessor linkage against our cached predecessor,
-    // its own claim-log range (validate_checkpoint_against_claim_log for THAT
-    // one checkpoint's batch range only), and its projection rows. That is one
-    // checkpoint plus its bounded batch range, NOT a full chain rebuild.
+    // its own claim-log range (live, or fully covered by a trusted archival
+    // watermark), and its projection rows. That is one checkpoint plus its
+    // bounded batch range, NOT a full chain rebuild.
     // Only a genuinely invalid or divergent-predecessor winner stays
     // fail-closed.
     if let Some(existing) = load_persisted_checkpoint_row(tx, checkpoint.body.checkpoint_seq)? {
@@ -839,11 +1233,12 @@ pub(crate) fn insert_checkpoint_incremental_tx(
                 }
                 None => validate_checkpoint_base(&existing_checkpoint)?,
             }
-            validate_checkpoint_against_claim_log(tx, &existing_checkpoint)?;
         }
+        validate_persisted_checkpoint_against_live_or_archived_claim_log(tx, &existing_checkpoint)?;
         validate_checkpoint_projection_rows(tx, &existing, &existing_checkpoint)?;
         return Ok(existing_checkpoint);
     }
+    validate_checkpoint_against_claim_log(tx, checkpoint)?;
     let statement_json = serde_json::to_string(&checkpoint.body)?;
     tx.execute(
         r#"
@@ -884,7 +1279,7 @@ pub(crate) fn insert_checkpoint_incremental_tx(
 }
 
 fn store_kernel_checkpoint_tx(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &rusqlite::Savepoint<'_>,
     checkpoint: &KernelCheckpoint,
 ) -> Result<(), ReceiptStoreError> {
     chio_kernel::checkpoint::validate_checkpoint(checkpoint)
