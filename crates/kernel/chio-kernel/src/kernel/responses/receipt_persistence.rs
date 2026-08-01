@@ -155,10 +155,14 @@ impl ChioKernel {
         );
         let thread_admission = current_scoped_receipt_federation_admission();
         let thread_admission = thread_admission.as_ref();
+        let trace_transition = self.lock_runtime_trace_transition()?;
         if receipt.is_allowed() {
             self.check_revocation(&request.capability)?;
         }
-        self.record_chio_receipt(receipt)?;
+        let (trace_event, settlement_visible_at_ms) =
+            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition)?;
+        drop(trace_transition);
+        self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)?;
         self.apply_federation_cosign_for_admitted_request_with_snapshot(
             request,
             receipt,
@@ -225,6 +229,17 @@ impl ChioKernel {
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
         let trace_transition = self.lock_runtime_trace_transition()?;
+        let (trace_event, settlement_visible_at_ms) =
+            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition)?;
+        drop(trace_transition);
+        self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)
+    }
+
+    fn record_chio_receipt_during_trace_transition(
+        &self,
+        receipt: &ChioReceipt,
+        _trace_transition: &std::sync::MutexGuard<'_, ()>,
+    ) -> Result<(Option<RuntimeTraceEvent>, Option<u64>), KernelError> {
         let settlement_visible_at_ms = self
             .settlement_observer
             .as_ref()
@@ -270,7 +285,15 @@ impl ChioKernel {
         } else {
             None
         };
-        drop(trace_transition);
+        Ok((trace_event, settlement_visible_at_ms))
+    }
+
+    fn finish_record_chio_receipt(
+        &self,
+        receipt: &ChioReceipt,
+        trace_event: Option<RuntimeTraceEvent>,
+        settlement_visible_at_ms: Option<u64>,
+    ) -> Result<(), KernelError> {
         if let Some(event) = trace_event {
             self.observe_runtime_trace(event);
         }

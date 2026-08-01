@@ -31,6 +31,8 @@ fn selected_context_package() -> MercuryProofPackage {
         &checkpoint_keypair,
     )
     .expect("context checkpoint");
+    let context_chain_leaf = checkpoint_chain_leaf_hash(&context_checkpoint.body)
+        .expect("context checkpoint chain leaf");
     let selected_checkpoint = build_checkpoint_with_previous(
         2,
         2,
@@ -38,6 +40,7 @@ fn selected_context_package() -> MercuryProofPackage {
         std::slice::from_ref(&selected_canonical),
         &checkpoint_keypair,
         Some(&context_checkpoint),
+        &[context_chain_leaf],
     )
     .expect("selected checkpoint");
     let selected_tree =

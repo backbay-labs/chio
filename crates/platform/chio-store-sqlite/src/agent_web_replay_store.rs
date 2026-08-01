@@ -15,6 +15,31 @@ use chio_core::sha256_hex;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 const LEGACY_UNSCOPED_REPLAY_SCOPE: &str = "__chio_legacy_unscoped_replay_scope__";
+const PRUNE_EXPIRED_REPLAYS_SQL: &str = r#"
+    DELETE FROM chio_agent_web_replays
+    WHERE expires_at < ?1
+      AND NOT EXISTS (
+        SELECT 1
+        FROM chio_agent_web_replay_reservation_entries AS member
+        JOIN chio_agent_web_replay_reservations AS reservation
+          ON reservation.reservation_id = member.reservation_id
+        WHERE reservation.state IN ('pending', 'filesystem_finalized')
+          AND member.replay_scope = chio_agent_web_replays.replay_scope
+          AND member.webhook_id = chio_agent_web_replays.webhook_id
+          AND member.expires_at = chio_agent_web_replays.expires_at
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM chio_agent_web_replay_reservations AS reservation
+        WHERE reservation.state IN ('pending', 'filesystem_finalized')
+          AND NOT EXISTS (
+            SELECT 1
+            FROM chio_agent_web_replay_reservation_entries AS member
+            WHERE member.reservation_id = reservation.reservation_id
+          )
+          AND reservation.expires_at <= chio_agent_web_replays.expires_at
+      )
+"#;
 
 #[derive(Debug, thiserror::Error)]
 #[error("sqlite Agent-Web replay store error: {0}")]
@@ -182,6 +207,21 @@ impl SqliteAgentWebReplayStore {
             CREATE INDEX IF NOT EXISTS idx_chio_agent_web_replay_reservations_expires_at
                 ON chio_agent_web_replay_reservations(expires_at);
 
+            CREATE TABLE IF NOT EXISTS chio_agent_web_replay_reservation_entries (
+                reservation_id TEXT NOT NULL,
+                replay_scope   TEXT NOT NULL,
+                webhook_id     TEXT NOT NULL,
+                expires_at     INTEGER NOT NULL,
+                PRIMARY KEY (reservation_id, replay_scope, webhook_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_chio_agent_web_replay_reservation_entries_marker
+                ON chio_agent_web_replay_reservation_entries(
+                    replay_scope,
+                    webhook_id,
+                    expires_at
+                );
+
             CREATE TABLE IF NOT EXISTS chio_agent_web_replay_clock (
                 singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
                 wall_clock_high_water INTEGER NOT NULL
@@ -258,10 +298,7 @@ impl SqliteAgentWebReplayStore {
             )
             .optional()?;
         if let Some(high_water) = high_water {
-            transaction.execute(
-                "DELETE FROM chio_agent_web_replays WHERE expires_at < ?1",
-                params![high_water],
-            )?;
+            transaction.execute(PRUNE_EXPIRED_REPLAYS_SQL, params![high_water])?;
         }
         let retained_rows =
             transaction.query_row("SELECT COUNT(*) FROM chio_agent_web_replays", [], |row| {
@@ -485,15 +522,6 @@ impl SqliteAgentWebReplayStore {
                     )));
                 }
             };
-            if expires_at < now {
-                transaction
-                    .commit()
-                    .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
-                return Err(AgentWebReplayStoreError::Unavailable(format!(
-                    "replay expiry for {} is before verifier time",
-                    entry.webhook_id()
-                )));
-            }
             expires_at_values.push(expires_at);
         }
         let reservation = reservation_id
@@ -552,9 +580,7 @@ impl SqliteAgentWebReplayStore {
                 }
                 let state = SqliteAgentWebReplayReservationState::parse(&state)
                     .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
-                if state == SqliteAgentWebReplayReservationState::Complete
-                    || reservation.expires_at < now
-                {
+                if state == SqliteAgentWebReplayReservationState::Complete {
                     return Err(AgentWebReplayStoreError::Replayed(
                         entries.first().map_or_else(
                             || reservation.id.clone(),
@@ -583,11 +609,50 @@ impl SqliteAgentWebReplayStore {
                             reservation.id
                         )));
                     }
+                    transaction
+                        .execute(
+                            r#"
+                            INSERT INTO chio_agent_web_replay_reservation_entries (
+                                reservation_id,
+                                replay_scope,
+                                webhook_id,
+                                expires_at
+                            )
+                            VALUES (?1, ?2, ?3, ?4)
+                            ON CONFLICT(reservation_id, replay_scope, webhook_id)
+                            DO UPDATE SET expires_at = excluded.expires_at
+                            "#,
+                            params![
+                                reservation.id,
+                                entry.replay_scope().as_str(),
+                                entry.webhook_id(),
+                                expected_expiry
+                            ],
+                        )
+                        .map_err(|error| {
+                            AgentWebReplayStoreError::Unavailable(error.to_string())
+                        })?;
                 }
                 transaction
                     .commit()
                     .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
                 return Ok(());
+            }
+        }
+
+        // An exact unfinished reservation is a recovery record, not a fresh
+        // webhook admission. It remains resumable after webhook expiry so a
+        // transient filesystem or bundle-finalization failure cannot strand
+        // the reserved batch. Fresh admissions still reject expired entries.
+        for (entry, expires_at) in entries.iter().zip(&expires_at_values) {
+            if *expires_at < now {
+                transaction
+                    .commit()
+                    .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+                return Err(AgentWebReplayStoreError::Unavailable(format!(
+                    "replay expiry for {} is before verifier time",
+                    entry.webhook_id()
+                )));
             }
         }
 
@@ -679,19 +744,29 @@ impl SqliteAgentWebReplayStore {
         }
 
         transaction
+            .execute(PRUNE_EXPIRED_REPLAYS_SQL, params![now])
+            .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+        transaction
             .execute(
-                "DELETE FROM chio_agent_web_replays WHERE expires_at < ?1",
+                "DELETE FROM chio_agent_web_replay_reservations WHERE expires_at < ?1 AND state = 'complete'",
                 params![now],
             )
             .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
         transaction
             .execute(
-                "DELETE FROM chio_agent_web_replay_reservations WHERE expires_at < ?1",
-                params![now],
+                r#"
+                DELETE FROM chio_agent_web_replay_reservation_entries
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM chio_agent_web_replay_reservations AS reservation
+                    WHERE reservation.reservation_id = chio_agent_web_replay_reservation_entries.reservation_id
+                )
+                "#,
+                [],
             )
             .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
 
-        for (entry, expires_at) in entries.iter().zip(expires_at_values) {
+        for (entry, expires_at) in entries.iter().zip(&expires_at_values) {
             transaction
                 .execute(
                     r#"
@@ -712,7 +787,7 @@ impl SqliteAgentWebReplayStore {
                 )
                 .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
         }
-        if let Some(reservation) = reservation {
+        if let Some(reservation) = reservation.as_ref() {
             transaction
                 .execute(
                     r#"
@@ -733,6 +808,27 @@ impl SqliteAgentWebReplayStore {
                     ],
                 )
                 .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+            for (entry, expires_at) in entries.iter().zip(&expires_at_values) {
+                transaction
+                    .execute(
+                        r#"
+                        INSERT INTO chio_agent_web_replay_reservation_entries (
+                            reservation_id,
+                            replay_scope,
+                            webhook_id,
+                            expires_at
+                        )
+                        VALUES (?1, ?2, ?3, ?4)
+                        "#,
+                        params![
+                            reservation.id,
+                            entry.replay_scope().as_str(),
+                            entry.webhook_id(),
+                            expires_at
+                        ],
+                    )
+                    .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+            }
         }
         transaction
             .commit()
@@ -1547,10 +1643,28 @@ mod tests {
         );
 
         drop(store);
+        let legacy_connection = Connection::open(&path).test_expect("open legacy reservation db");
+        legacy_connection
+            .execute(
+                "DELETE FROM chio_agent_web_replay_reservation_entries WHERE reservation_id = ?1",
+                params![reservation_id],
+            )
+            .test_expect("simulate a reservation created before entry mapping");
+        drop(legacy_connection);
         let reopened = SqliteAgentWebReplayStore::open(&path).test_expect("replay store reopens");
         reopened
             .check_and_insert_for_reservation(now, &entries, &reservation_id)
             .test_expect("exact pending reservation resumes after reopen");
+        let mapped_entries = reopened
+            .connection()
+            .test_expect("open reservation mapping reader")
+            .query_row(
+                "SELECT COUNT(*) FROM chio_agent_web_replay_reservation_entries WHERE reservation_id = ?1",
+                params![reservation_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .test_expect("count backfilled reservation entries");
+        assert_eq!(mapped_entries, 1);
         let mismatched = reopened
             .check_and_insert_for_reservation(
                 now,
@@ -1587,5 +1701,68 @@ mod tests {
             replayed,
             AgentWebReplayStoreError::Replayed("reserved".to_string())
         );
+    }
+
+    #[test]
+    fn unfinished_replay_reservation_survives_webhook_expiry_and_pruning() {
+        let tempdir = tempfile::tempdir().test_expect("tempdir creates");
+        let path = tempdir.path().join("expired-replay-reservation.sqlite");
+        let store = SqliteAgentWebReplayStore::open(&path).test_expect("replay store opens");
+        let now = unix_now();
+        let entries = [replay_entry_in_scope(1, "reserved-expired", now + 1)];
+        let reservation_id = "c".repeat(64);
+        store
+            .check_and_insert(
+                now,
+                &[replay_entry_in_scope(1, "unrelated-expired", now + 1)],
+            )
+            .test_expect("unrelated replay marker commits");
+        store
+            .check_and_insert_for_reservation(now, &entries, &reservation_id)
+            .test_expect("initial reservation commits atomically");
+
+        store
+            .check_and_insert(
+                now + 2,
+                &[replay_entry_in_scope(1, "prune-trigger", now + 3_600)],
+            )
+            .test_expect("an unrelated batch advances replay pruning");
+        store
+            .check_and_insert(
+                now + 2,
+                &[replay_entry_in_scope(1, "unrelated-expired", now + 3_600)],
+            )
+            .test_expect("unfinished reservation retains only its own replay markers");
+        drop(store);
+
+        let reopened = SqliteAgentWebReplayStore::open(&path).test_expect("replay store reopens");
+        reopened
+            .check_and_insert_for_reservation(now + 2, &entries, &reservation_id)
+            .test_expect("expired pending reservation resumes after reopen");
+        reopened
+            .mark_replay_reservation_filesystem_finalized(&reservation_id)
+            .test_expect("filesystem finalization records after expiry");
+        reopened
+            .check_and_insert(
+                now + 3,
+                &[replay_entry_in_scope(
+                    1,
+                    "second-prune-trigger",
+                    now + 3_600,
+                )],
+            )
+            .test_expect("a second unrelated batch advances replay pruning");
+        reopened
+            .check_and_insert_for_reservation(now + 3, &entries, &reservation_id)
+            .test_expect("expired filesystem-finalized reservation remains resumable");
+        reopened
+            .complete_replay_reservation(&reservation_id)
+            .test_expect("expired recovery reservation completes");
+        reopened
+            .check_and_insert(
+                now + 4,
+                &[replay_entry_in_scope(1, "reserved-expired", now + 3_600)],
+            )
+            .test_expect("completed reservation releases its expired replay marker");
     }
 }

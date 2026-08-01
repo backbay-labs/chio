@@ -7,6 +7,44 @@ struct RevocationWindowServer {
     invocations: std::sync::Arc<AtomicU64>,
 }
 
+struct PausingRevocationReadStore {
+    revoked: AtomicBool,
+    pause_next_read: AtomicBool,
+    read_observed: mpsc::SyncSender<()>,
+    release_read: Mutex<mpsc::Receiver<()>>,
+}
+
+impl RevocationStore for PausingRevocationReadStore {
+    fn is_revoked(&self, _capability_id: &str) -> Result<bool, RevocationStoreError> {
+        let observed = self.revoked.load(Ordering::SeqCst);
+        if self.pause_next_read.swap(false, Ordering::SeqCst) {
+            self.read_observed.send(()).map_err(|error| {
+                RevocationStoreError::Sync(format!(
+                    "publish paused revocation read observation: {error}"
+                ))
+            })?;
+            self.release_read
+                .lock()
+                .map_err(|_| {
+                    RevocationStoreError::Sync(
+                        "paused revocation read release lock poisoned".to_string(),
+                    )
+                })?
+                .recv()
+                .map_err(|error| {
+                    RevocationStoreError::Sync(format!(
+                        "receive paused revocation read release: {error}"
+                    ))
+                })?;
+        }
+        Ok(observed)
+    }
+
+    fn revoke(&self, _capability_id: &str) -> Result<bool, RevocationStoreError> {
+        Ok(!self.revoked.swap(true, Ordering::SeqCst))
+    }
+}
+
 struct PanickingDispatchExecutionNonceStore {
     panic_during_reserve: bool,
     panic_during_rollback: bool,
@@ -1113,6 +1151,95 @@ fn terminal_allow_persistence_rechecks_revocation_at_append_boundary(
             if capability_id == &capability.id
     ));
     assert!(kernel.receipt_log().is_empty());
+    Ok(())
+}
+
+#[test]
+fn allow_receipt_append_linearizes_with_concurrent_revocation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let agent = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent,
+        make_scope(vec![make_grant(
+            "revocation-linearization-server",
+            "write",
+        )]),
+        300,
+    );
+    let request = make_request(
+        "revocation-linearization",
+        &capability,
+        "write",
+        "revocation-linearization-server",
+    );
+    let output = ToolCallOutput::Value(serde_json::json!({"status": "completed"}));
+    let receipt_content = receipt_content_for_output(Some(&output), None)?;
+    let receipt = kernel.build_and_sign_receipt(ReceiptParams {
+        request_id: Some(&request.request_id),
+        capability_id: &capability.id,
+        tool_name: &request.tool_name,
+        server_id: &request.server_id,
+        decision: Decision::Allow,
+        action: ToolCallAction::from_parameters(request.arguments.clone())?,
+        content_hash: receipt_content.content_hash,
+        canonical_content: receipt_content.canonical_content,
+        metadata: receipt_content.metadata,
+        timestamp: current_unix_timestamp(),
+        trust_level: chio_core::receipt::kinds::TrustLevel::default(),
+        tenant_id: None,
+    })?;
+
+    let (read_observed_sender, read_observed_receiver) = mpsc::sync_channel(1);
+    let (release_read_sender, release_read_receiver) = mpsc::sync_channel(1);
+    let revocation_store = std::sync::Arc::new(PausingRevocationReadStore {
+        revoked: AtomicBool::new(false),
+        pause_next_read: AtomicBool::new(true),
+        read_observed: read_observed_sender,
+        release_read: Mutex::new(release_read_receiver),
+    });
+    kernel.set_revocation_store_handle(revocation_store);
+    let kernel = std::sync::Arc::new(kernel);
+
+    let record_kernel = std::sync::Arc::clone(&kernel);
+    let record_request = request.clone();
+    let record_receipt = receipt.clone();
+    let record = thread::spawn(move || {
+        record_kernel.record_chio_receipt_with_federation(&record_request, &record_receipt)
+    });
+    read_observed_receiver.recv_timeout(Duration::from_secs(1))?;
+
+    let revoke_kernel = std::sync::Arc::clone(&kernel);
+    let capability_id = capability.id.clone();
+    let (revoke_done_sender, revoke_done_receiver) = mpsc::sync_channel(1);
+    let revoke = thread::spawn(move || {
+        let result = revoke_kernel.revoke_capability(&capability_id);
+        let _ = revoke_done_sender.send(());
+        result
+    });
+    let revocation_committed_before_release = revoke_done_receiver
+        .recv_timeout(Duration::from_millis(250))
+        .is_ok();
+    release_read_sender.send(())?;
+
+    let record_result = record
+        .join()
+        .map_err(|_| "allow receipt record thread panicked")?;
+    revoke
+        .join()
+        .map_err(|_| "concurrent revocation thread panicked")??;
+    if revocation_committed_before_release {
+        assert!(matches!(
+            record_result,
+            Err(KernelError::CapabilityRevoked(ref capability_id))
+                if capability_id == &capability.id
+        ));
+        assert!(kernel.receipt_log().is_empty());
+    } else {
+        record_result?;
+        assert_eq!(kernel.receipt_log().len(), 1);
+    }
     Ok(())
 }
 
