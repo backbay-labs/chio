@@ -248,6 +248,48 @@ enum ExistingPrivateDirectory {
     Preserve,
 }
 
+/// Access mode for the ancestors of a private directory.
+///
+/// Walking a directory needs execute permission, not read: an ancestor with
+/// mode `0711` is traversable by ordinary path resolution, so the
+/// descriptor-relative walk must traverse it too. Platforms with neither a
+/// traversal-only mode nor a search-only mode fall back to read access, which
+/// refuses such an ancestor rather than admitting an unchecked one.
+#[cfg(all(unix, any(target_os = "linux", target_os = "android")))]
+const ANCESTOR_ACCESS_MODE: nix::fcntl::OFlag = nix::fcntl::OFlag::O_PATH;
+
+#[cfg(all(
+    unix,
+    any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "illumos",
+        target_os = "solaris",
+    )
+))]
+const ANCESTOR_ACCESS_MODE: nix::fcntl::OFlag = nix::fcntl::OFlag::O_SEARCH;
+
+#[cfg(all(
+    unix,
+    not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "illumos",
+        target_os = "solaris",
+    ))
+))]
+const ANCESTOR_ACCESS_MODE: nix::fcntl::OFlag = nix::fcntl::OFlag::O_RDONLY;
+
 #[cfg(unix)]
 fn prepare_private_directory_unix(
     path: &Path,
@@ -264,17 +306,25 @@ fn prepare_private_directory_unix(
     } else {
         std::env::current_dir()?.join(path)
     };
-    let components = absolute
-        .components()
-        .filter_map(|component| match component {
-            Component::RootDir | Component::CurDir => None,
-            Component::Normal(name) => Some(Ok(name)),
-            Component::ParentDir | Component::Prefix(_) => Some(Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "private directory path must not contain parent or platform-prefix components",
-            ))),
-        })
-        .collect::<Result<Vec<&OsStr>, std::io::Error>>()?;
+    // `.` and `..` are resolved lexically against the absolute path. Every
+    // component below is opened with `O_NOFOLLOW`, so a lexical resolution can
+    // never cross a symlink the walk itself would have refused.
+    let mut components: Vec<&OsStr> = Vec::new();
+    for component in absolute.components() {
+        match component {
+            Component::RootDir | Component::CurDir => {}
+            Component::Normal(name) => components.push(name),
+            Component::ParentDir => {
+                components.pop();
+            }
+            Component::Prefix(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "private directory path must not contain a platform-prefix component",
+                ))
+            }
+        }
+    }
     if components.is_empty() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -282,11 +332,20 @@ fn prepare_private_directory_unix(
         ));
     }
 
-    let flags = OFlag::O_RDONLY | OFlag::O_CLOEXEC | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW;
-    let mut directory = File::from(open(Path::new("/"), flags, Mode::empty())?);
+    let common_flags = OFlag::O_CLOEXEC | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW;
+    let ancestor_flags = ANCESTOR_ACCESS_MODE | common_flags;
+    // The target is opened for read so its mode can be inspected and hardened.
+    let target_flags = OFlag::O_RDONLY | common_flags;
+    let mut directory = File::from(open(Path::new("/"), ancestor_flags, Mode::empty())?);
     let effective_uid = nix::unistd::geteuid().as_raw();
 
     for (index, component) in components.iter().enumerate() {
+        let is_target = index + 1 == components.len();
+        let flags = if is_target {
+            target_flags
+        } else {
+            ancestor_flags
+        };
         let parent_metadata = directory.metadata()?;
         let (child, created) = match openat(&directory, *component, flags, Mode::empty()) {
             Ok(file) => (File::from(file), false),
@@ -298,7 +357,11 @@ fn prepare_private_directory_unix(
                     Err(Errno::EEXIST) => false,
                     Err(error) => return Err(error.into()),
                 };
-                let child = File::from(openat(&directory, *component, flags, Mode::empty())?);
+                // A directory this walk just created is owned here and
+                // readable, so it is opened for read to defeat the umask.
+                let reopen_flags = if created { target_flags } else { flags };
+                let child =
+                    File::from(openat(&directory, *component, reopen_flags, Mode::empty())?);
                 if created {
                     child.set_permissions(fs::Permissions::from_mode(0o700))?;
                 }
@@ -843,6 +906,69 @@ mod tests {
 
         assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
         assert_eq!(fs::metadata(&target)?.permissions().mode() & 0o777, 0o755);
+        Ok(())
+    }
+
+    #[test]
+    fn ensured_private_directory_resolves_parent_components() -> Result<(), CliError> {
+        use std::os::unix::fs::PermissionsExt;
+
+        // The lock root derived from a relative database path such as
+        // `../state/session.sqlite3` keeps its parent component once joined
+        // with the working directory.
+        let directory = private_directory_test_root()?;
+        let state = directory.path().join("state");
+        fs::create_dir(directory.path().join("bin"))?;
+        fs::create_dir(&state)?;
+        let traversed = durable_admission_lock_root(
+            &directory
+                .path()
+                .join("bin")
+                .join("..")
+                .join("state")
+                .join("session.sqlite3"),
+        )?;
+
+        ensure_private_directory(&traversed)?;
+
+        let created = state.join("session.sqlite3.locks");
+        assert!(created.is_dir(), "{} is not a directory", created.display());
+        assert_eq!(fs::metadata(&created)?.permissions().mode() & 0o777, 0o700);
+        Ok(())
+    }
+
+    /// Requires a platform with a traversal-only or search-only open mode; see
+    /// `ANCESTOR_ACCESS_MODE`.
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "illumos",
+        target_os = "solaris",
+    ))]
+    #[test]
+    fn ensured_private_directory_traverses_execute_only_ancestors() -> Result<(), CliError> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = private_directory_test_root()?;
+        let ancestor = directory.path().join("execute-only");
+        let target = ancestor.join("project");
+        fs::create_dir(&ancestor)?;
+        fs::create_dir(&target)?;
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o700))?;
+        // Traversable but not readable: ordinary path resolution walks it.
+        fs::set_permissions(&ancestor, fs::Permissions::from_mode(0o311))?;
+
+        let walked = ensure_private_directory(&target);
+        fs::set_permissions(&ancestor, fs::Permissions::from_mode(0o700))?;
+        walked?;
+
+        assert_eq!(fs::metadata(&target)?.permissions().mode() & 0o777, 0o700);
         Ok(())
     }
 
