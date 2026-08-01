@@ -236,6 +236,9 @@ pub struct FindingPurchaseDeliveryInput<'a> {
     pub record_json: &'a [u8],
     pub record_sha256: &'a str,
     pub delivery_receipt_id: &'a str,
+    /// Buyer payout destination admitted against the reservation's
+    /// durable collateral allocation as part of the close transaction.
+    pub payout_destination: &'a str,
     /// Trusted time through which the retained exposure stays encumbered
     /// and keeps counting against the allocation's cap.
     pub retention_expires_at: u64,
@@ -359,7 +362,8 @@ impl SqliteFindingPurchaseStore {
     /// transaction this inserts the reservation `open` and opens the
     /// seller exposure encumbrance that backs it, after asserting the
     /// named collateral allocation is consumed, backs this finding on this
-    /// listing, and that the new exposure plus every exposure still
+    /// listing, the reservation binds the finding's current active
+    /// admission, and the new exposure plus every exposure still
     /// outstanding against that allocation at `created_at` stays within
     /// `maximum_sale_exposure_units`.
     ///
@@ -377,6 +381,8 @@ impl SqliteFindingPurchaseStore {
         validate_reservation_input(input)?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
+        assert_allocation_backs_sale(&transaction, input)?;
+        assert_active_admission(&transaction, input)?;
         if let Some(existing) = load_reservation_tx(&transaction, input.reservation_id)? {
             let encumbrance = load_encumbrance_tx(&transaction, input.reservation_id)?
                 .ok_or_else(|| invariant("reservation lost its exposure encumbrance"))?;
@@ -408,7 +414,6 @@ impl SqliteFindingPurchaseStore {
             input.encumbrance_id,
             "encumbrance id",
         )?;
-        assert_allocation_backs_sale(&transaction, input)?;
         let outstanding =
             outstanding_exposure_total_tx(&transaction, input.allocation_id, input.created_at)?;
         let committed = outstanding
@@ -601,9 +606,11 @@ impl SqliteFindingPurchaseStore {
     }
 
     /// Settle one purchase. In one immediate transaction this closes the
-    /// slot against the record, moves the reservation `slot_reserved` to
-    /// `consumed`, retains the exposure encumbrance through
-    /// `retention_expires_at`, and inserts the retained purchase record.
+    /// slot against the record, admits the payout destination against the
+    /// reservation's durable allocation, moves the reservation
+    /// `slot_reserved` to `consumed`, retains the exposure encumbrance
+    /// through `retention_expires_at`, and inserts the retained purchase
+    /// record.
     /// Idempotent: a replay of the same settled record succeeds as a
     /// no-op, and a different record against an already-settled purchase
     /// rejects. The pinned retention horizon is durable and is never
@@ -616,6 +623,7 @@ impl SqliteFindingPurchaseStore {
         require_hex64(input.record_sha256, "record_sha256")?;
         require_identifier(input.reservation_id, "reservation_id")?;
         require_identifier(input.delivery_receipt_id, "delivery_receipt_id")?;
+        require_rail_destination(input.payout_destination)?;
         require_terminal_record(input.record_json, input.record_sha256)?;
         require_trusted_time(input.now, "now")?;
         require_trusted_time(input.retention_expires_at, "retention_expires_at")?;
@@ -623,37 +631,55 @@ impl SqliteFindingPurchaseStore {
         let transaction = self.begin_write(&mut connection)?;
         let reservation = load_reservation_tx(&transaction, input.reservation_id)?
             .ok_or(FindingPurchaseStoreError::NotFound)?;
+        let encumbrance = load_encumbrance_tx(&transaction, input.reservation_id)?
+            .ok_or_else(|| invariant("reservation lost its exposure encumbrance"))?;
         match reservation.state {
             FindingPurchaseReservationState::Consumed => {
+                if encumbrance.state != FindingPurchaseEncumbranceState::Retained {
+                    return Err(invariant(
+                        "consumed reservation does not retain its exposure encumbrance",
+                    ));
+                }
                 let stored =
                     load_purchase_record_by_reservation_tx(&transaction, input.reservation_id)?
                         .ok_or_else(|| {
                             invariant("consumed reservation holds no purchase record")
                         })?;
-                if load_encumbrance_tx(&transaction, input.reservation_id)?.is_none() {
-                    return Err(invariant("reservation lost its exposure encumbrance"));
-                }
-                // `retention_expires_at` is deliberately absent from this
-                // comparison. A caller derives it from its clock, so an
-                // honest retry of one settlement carries a later horizon
-                // than the durable row; comparing them would reject the
-                // retry and leave the settlement unresolved. The retained
-                // encumbrance is terminal and is never rewritten, so the
-                // horizon the first settlement pinned is the one the
-                // exposure cap keeps counting against, whatever a replay
-                // asks for.
                 if stored.purchase_key == input.purchase_key
                     && stored.record_json == input.record_json
                     && stored.record_sha256 == input.record_sha256
                     && stored.delivery_receipt_id == input.delivery_receipt_id
+                    && encumbrance.retention_expires_at == Some(input.retention_expires_at)
                 {
+                    if load_destination_tx(
+                        &transaction,
+                        &encumbrance.allocation_id,
+                        input.payout_destination,
+                    )?
+                    .is_none()
+                    {
+                        return Err(FindingPurchaseStoreError::Conflict(
+                            "settled reservation names a different payout destination".to_owned(),
+                        ));
+                    }
                     return Ok(FindingPurchaseWriteOutcome::ExistingSame);
                 }
                 return Err(FindingPurchaseStoreError::Conflict(
                     "reservation is already settled under different delivery parameters".to_owned(),
                 ));
             }
-            FindingPurchaseReservationState::SlotReserved => {}
+            FindingPurchaseReservationState::SlotReserved => {
+                if encumbrance.state != FindingPurchaseEncumbranceState::Open {
+                    return Err(invariant(
+                        "slot-reserved reservation does not hold open exposure",
+                    ));
+                }
+                let slot = load_slot_tx(&transaction, input.reservation_id)?
+                    .ok_or_else(|| invariant("slot-reserved reservation holds no slot"))?;
+                if slot.state != FindingPurchaseSlotState::Reserved {
+                    return Err(invariant("slot-reserved reservation holds a closed slot"));
+                }
+            }
             other => {
                 return Err(FindingPurchaseStoreError::Conflict(format!(
                     "reservation cannot settle from state {}",
@@ -666,6 +692,12 @@ impl SqliteFindingPurchaseStore {
             "SELECT reservation_id FROM purchase_records WHERE purchase_key = ?1",
             input.purchase_key,
             "purchase key",
+        )?;
+        admit_payout_destination_tx(
+            &transaction,
+            &encumbrance.allocation_id,
+            input.payout_destination,
+            input.now,
         )?;
         close_reserved_slot_tx(
             &transaction,
@@ -1004,50 +1036,14 @@ impl SqliteFindingPurchaseStore {
         require_trusted_time(admitted_at, "admitted_at")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
-        if let Some(existing) = load_destination_tx(&transaction, allocation_id, destination)? {
-            return Ok(FindingPayoutDestinationAdmission {
-                outcome: FindingPurchaseWriteOutcome::ExistingSame,
-                ..existing
-            });
+        let admission =
+            admit_payout_destination_tx(&transaction, allocation_id, destination, admitted_at)?;
+        if admission.outcome == FindingPurchaseWriteOutcome::ExistingSame {
+            return Ok(admission);
         }
-        let mut taken = [false; PAYOUT_DESTINATION_SLOTS as usize];
-        {
-            let mut statement = transaction
-                .prepare("SELECT slot_index FROM payout_destinations WHERE allocation_id = ?1")
-                .map_err(sqlite_error)?;
-            let slots = statement
-                .query_map([allocation_id], |row| row.get::<_, i64>(0))
-                .map_err(sqlite_error)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(sqlite_error)?;
-            for slot in slots {
-                let index = usize::try_from(slot)
-                    .map_err(|_| invariant("stored payout slot index is out of range"))?;
-                let occupied = taken
-                    .get_mut(index)
-                    .ok_or_else(|| invariant("stored payout slot index is out of range"))?;
-                *occupied = true;
-            }
-        }
-        let slot_index = (1..PAYOUT_DESTINATION_SLOTS)
-            .find(|index| !taken[usize::from(*index)])
-            .ok_or_else(|| {
-                FindingPurchaseStoreError::DestinationSlotsExhausted(allocation_id.to_owned())
-            })?;
-        insert_destination_tx(
-            &transaction,
-            allocation_id,
-            destination,
-            slot_index,
-            admitted_at,
-        )?;
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
-        Ok(FindingPayoutDestinationAdmission {
-            slot_index,
-            admitted_at,
-            outcome: FindingPurchaseWriteOutcome::Inserted,
-        })
+        Ok(admission)
     }
 
     /// Every payout destination admitted for one allocation, ordered by
@@ -1417,6 +1413,56 @@ fn load_destination_tx(
     }))
 }
 
+fn admit_payout_destination_tx(
+    transaction: &Transaction<'_>,
+    allocation_id: &str,
+    destination: &str,
+    admitted_at: u64,
+) -> Result<FindingPayoutDestinationAdmission, FindingPurchaseStoreError> {
+    if let Some(existing) = load_destination_tx(transaction, allocation_id, destination)? {
+        return Ok(FindingPayoutDestinationAdmission {
+            outcome: FindingPurchaseWriteOutcome::ExistingSame,
+            ..existing
+        });
+    }
+    let mut taken = [false; PAYOUT_DESTINATION_SLOTS as usize];
+    {
+        let mut statement = transaction
+            .prepare("SELECT slot_index FROM payout_destinations WHERE allocation_id = ?1")
+            .map_err(sqlite_error)?;
+        let slots = statement
+            .query_map([allocation_id], |row| row.get::<_, i64>(0))
+            .map_err(sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sqlite_error)?;
+        for slot in slots {
+            let index = usize::try_from(slot)
+                .map_err(|_| invariant("stored payout slot index is out of range"))?;
+            let occupied = taken
+                .get_mut(index)
+                .ok_or_else(|| invariant("stored payout slot index is out of range"))?;
+            *occupied = true;
+        }
+    }
+    let slot_index = (1..PAYOUT_DESTINATION_SLOTS)
+        .find(|index| !taken[usize::from(*index)])
+        .ok_or_else(|| {
+            FindingPurchaseStoreError::DestinationSlotsExhausted(allocation_id.to_owned())
+        })?;
+    insert_destination_tx(
+        transaction,
+        allocation_id,
+        destination,
+        slot_index,
+        admitted_at,
+    )?;
+    Ok(FindingPayoutDestinationAdmission {
+        slot_index,
+        admitted_at,
+        outcome: FindingPurchaseWriteOutcome::Inserted,
+    })
+}
+
 fn insert_destination_tx(
     transaction: &Transaction<'_>,
     allocation_id: &str,
@@ -1562,6 +1608,36 @@ fn assert_allocation_backs_sale(
     {
         return Err(FindingPurchaseStoreError::Conflict(
             "supplied exposure cap exceeds the cap the allocation registered".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// The admission digest a reservation binds must still be the active
+/// admission for its finding at the instant the reservation opens. This
+/// check shares the reservation's immediate transaction, so activation
+/// cannot supersede the admission between validation and insertion.
+fn assert_active_admission(
+    transaction: &Transaction<'_>,
+    input: &FindingPurchaseReservationInput<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let active: Option<i64> = transaction
+        .query_row(
+            r#"
+            SELECT 1 FROM admissions
+            WHERE finding_id = ?1
+              AND admission_envelope_sha256 = ?2
+              AND state = 'active'
+            LIMIT 1
+            "#,
+            params![input.finding_id, input.admission_envelope_sha256],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    if active.is_none() {
+        return Err(FindingPurchaseStoreError::Conflict(
+            "reservation does not bind the finding's current active admission".to_owned(),
         ));
     }
     Ok(())

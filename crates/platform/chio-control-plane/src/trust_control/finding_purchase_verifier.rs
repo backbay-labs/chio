@@ -26,6 +26,8 @@ pub struct ReservationExpectation<'a> {
     pub payer_key_hex: &'a str,
     pub finding_id: &'a str,
     pub listing_id: &'a str,
+    pub bid_request_envelope_sha256: &'a str,
+    pub admission_envelope_sha256: &'a str,
     pub amount_units: u64,
     pub currency: &'a str,
 }
@@ -136,6 +138,8 @@ impl FindingPurchaseVerifier for MarketFindingPurchaseVerifier {
                 payer_key_hex: &verified.payer_key_hex,
                 finding_id: &verified.finding_id,
                 listing_id: &verified.listing_id,
+                bid_request_envelope_sha256: &outcome.bid_request_envelope_sha256,
+                admission_envelope_sha256: &outcome.venue_admission_envelope_sha256,
                 amount_units: verified.accepted_price.units,
                 currency: &verified.accepted_price.currency,
             },

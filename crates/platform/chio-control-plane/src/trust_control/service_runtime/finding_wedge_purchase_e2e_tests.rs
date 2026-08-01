@@ -24,7 +24,9 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use chio_core::canonical_json_bytes;
 use chio_core::capability::governance::{GovernedTransactionIntent, GovernedTransactionIntentBody};
-use chio_core::capability::scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant};
+use chio_core::capability::scope::{
+    ChioScope, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant,
+};
 use chio_core::capability::token::CapabilityToken;
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_core::merkle::MerkleTree;
@@ -68,6 +70,7 @@ use chio_finding_verifier::{
 use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
 use chio_kernel::checkpoint::{
     build_checkpoint, build_inclusion_proof, checkpoint_log_id, KernelCheckpoint,
+    ReceiptInclusionProof,
 };
 use chio_kernel::finding_purchase::FINDING_PURCHASE_CONTEXT_KEY;
 use chio_kernel::{
@@ -111,7 +114,6 @@ use chio_open_market::recovery::{
 use chio_store_sqlite::finding_market_store::FindingAllocationState;
 use chio_store_sqlite::{
     FindingPurchaseEncumbranceState, FindingPurchaseReservationState, FindingPurchaseSlotState,
-    SqliteFindingPurchaseStore,
 };
 use tower::ServiceExt;
 
@@ -149,7 +151,7 @@ const LOCKED_UNITS: u64 = 500;
 const REQUIREMENT_UNITS: u64 = 5_000;
 const PRICE_UNITS: u64 = 300;
 const RESERVATION_TTL_SECS: u64 = 3_600;
-const RETENTION_SECS: u64 = 2_592_000;
+const LIABILITY_RETENTION_SECS: u64 = 604_800 + 2_592_000 + 259_200 + 86_400;
 const TOKEN_ID: &str = "finding-purchase-token-0001";
 const REVEAL_MEDIA_TYPE: &str = "application/json";
 const SEALED_PAYLOAD: &[u8] = br#"{"repro":"baseline fails, candidate passes"}"#;
@@ -885,11 +887,13 @@ struct MarketWeb {
     raw_finding: String,
     recipe_bytes: Vec<u8>,
     recipe_sha256: String,
+    profile: SignedFindingChallengeVerifierProfile,
     profile_raw: String,
+    receipts: Vec<ResolvedReceiptEvidence>,
+    checkpoint: KernelCheckpoint,
     schedule: SignedOpenMarketFeeSchedule,
     terms: SignedFindingMarketTerms,
     backing: SignedFindingBondBacking,
-    backing_sha256: String,
     allocation_id: String,
     listing: SignedGenericListing,
     pricing_hint: SignedListingPricingHint,
@@ -1075,11 +1079,13 @@ impl MarketWeb {
             raw_finding,
             recipe_bytes,
             recipe_sha256,
+            profile,
             profile_raw,
+            receipts,
+            checkpoint,
             schedule,
             terms,
             backing,
-            backing_sha256,
             allocation_id,
             listing,
             pricing_hint,
@@ -1563,15 +1569,21 @@ fn build_reveal_kernel(inputs: &RevealKernelInputs<'_>) -> Result<ChioKernel, An
     if inputs.install_verifier {
         kernel.set_finding_purchase_verifier(Arc::new(MarketFindingPurchaseVerifier::new(
             purchase_authorities(inputs.web),
-            CoordinatorReservationReader::shared(inputs.authority.finding_purchase_store()),
+            CoordinatorReservationReader::shared(
+                inputs.authority.finding_purchase_store(),
+                inputs.authority.finding_market_store(),
+            ),
         )));
     }
     Ok(kernel)
 }
 
-fn coordinator(store: SqliteFindingPurchaseStore) -> Result<FindingPurchaseCoordinator, AnyError> {
+fn coordinator(authority: &SqliteAuthorityStore) -> Result<FindingPurchaseCoordinator, AnyError> {
     Ok(FindingPurchaseCoordinator::new(
-        store,
+        authority.finding_purchase_store(),
+        authority.finding_market_store(),
+        authority.admission_operation_store(),
+        authority.tool_outcome_store(),
         keypair(16),
         &keypair(16).public_key(),
         keypair(17),
@@ -1783,6 +1795,16 @@ fn finding_delivery_block(response: &ToolCallResponse) -> Result<FindingDelivery
     Ok(block)
 }
 
+fn denial_checkpoint(
+    receipt: &ChioReceipt,
+) -> Result<(KernelCheckpoint, ReceiptInclusionProof), AnyError> {
+    let receipt_bytes = canonical_json_bytes(receipt)?;
+    let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_bytes))?;
+    let checkpoint = build_checkpoint(1, 1, 1, std::slice::from_ref(&receipt_bytes), &keypair(40))?;
+    let proof = build_inclusion_proof(&tree, 0, checkpoint.body.checkpoint_seq, 1)?;
+    Ok((checkpoint, proof))
+}
+
 /// The delivered value, once the response is known to carry a value rather
 /// than a stream.
 fn delivered_value(response: &ToolCallResponse) -> Result<serde_json::Value, AnyError> {
@@ -1833,6 +1855,7 @@ fn reserve_and_accept(
 ) -> Result<ReadyPurchase, AnyError> {
     let now = unix_timestamp_now();
     let reservation_receipt = coordinator.reserve(
+        &handshake.bid,
         &handshake.ask,
         &handshake.buyer_signature_hex,
         &web.admission,
@@ -1922,7 +1945,7 @@ async fn open_lane(options: LaneOptions) -> Result<Lane, AnyError> {
     })?;
 
     let buyer = keypair(31);
-    let coordinator = coordinator(authority.finding_purchase_store())?;
+    let coordinator = coordinator(&authority)?;
     let exchange = handshake(&deployment.web, &witness, &buyer, "buyer-agent-7", TOKEN_ID)?;
     let purchase = reserve_and_accept(&deployment.web, &witness, &coordinator, &buyer, exchange)?;
     Ok(Lane {
@@ -2026,7 +2049,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
         )));
 
         let purchase_store = authority.finding_purchase_store();
-        let coordinator = coordinator(purchase_store.clone())?;
+        let coordinator = coordinator(&authority)?;
         let purchase =
             reserve_and_accept(&deployment.web, &witness, &coordinator, &buyer, exchange)?;
 
@@ -2193,12 +2216,9 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
     )?;
     let record = lane.coordinator.finalize_delivery(
         &lane.purchase.handshake.reservation_id,
-        &response.receipt.id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        PRICE_UNITS,
-        PAYOUT_DESTINATION,
-        &lane.deployment.web.backing_sha256,
-        now.saturating_add(RETENTION_SECS),
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &lane.deployment.web.backing,
         now,
     )?;
     verify_signed_purchase_record(&record, &keypair(16).public_key())?;
@@ -2223,6 +2243,11 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
         .get_reservation(&lane.purchase.handshake.reservation_id)?
         .ok_or_else(|| missing("settled reservation"))?;
     assert_eq!(reservation.state, FindingPurchaseReservationState::Consumed);
+    assert_eq!(record.body.recorded_at, reservation.created_at);
+    assert!(lane.deployment.web.admission.body.purchase_authority.valid_from
+        <= record.body.recorded_at);
+    assert!(record.body.recorded_at
+        <= lane.deployment.web.admission.body.purchase_authority.valid_until);
     let slot = purchase_store
         .get_slot(&lane.purchase.handshake.reservation_id)?
         .ok_or_else(|| missing("settled slot"))?;
@@ -2231,6 +2256,10 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
         .get_encumbrance(&lane.purchase.handshake.reservation_id)?
         .ok_or_else(|| missing("retained encumbrance"))?;
     assert_eq!(encumbrance.state, FindingPurchaseEncumbranceState::Retained);
+    assert_eq!(
+        encumbrance.retention_expires_at,
+        Some(reservation.created_at + LIABILITY_RETENTION_SECS)
+    );
     assert_eq!(
         purchase_store.list_payout_destinations(&lane.deployment.web.allocation_id)?,
         vec![
@@ -2406,15 +2435,40 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);
     assert_eq!(lane.calls.releases.load(Ordering::SeqCst), 1);
 
-    // The coordinator closes the purchase to its denial terminal.
+    // A durable Deny cannot be selected into a paid terminal.
     let now = unix_timestamp_now();
+    assert!(matches!(
+        lane.coordinator.finalize_delivery(
+            &lane.purchase.handshake.reservation_id,
+            &response.receipt,
+            &lane.deployment.web.admission,
+            &lane.deployment.web.backing,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::TerminalEvidence(_))
+    ));
+
+    // The coordinator closes the purchase to its checkpointed denial terminal.
+    let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
+    let mut wrong_proof = inclusion_proof.clone();
+    wrong_proof.receipt_seq = wrong_proof.receipt_seq.saturating_add(1);
+    assert!(matches!(
+        lane.coordinator.finalize_denial(
+            &lane.purchase.handshake.reservation_id,
+            &response.receipt,
+            &lane.deployment.web.admission,
+            &checkpoint,
+            &wrong_proof,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::CheckpointEvidence(_))
+    ));
     let failed = lane.coordinator.finalize_denial(
         &lane.purchase.handshake.reservation_id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        &response.receipt.id,
-        &digest_of(&response.receipt)?,
-        "checkpoint/venue-wedge#1",
-        HEX64,
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &checkpoint,
+        &inclusion_proof,
         now,
     )?;
     verify_signed_failed_delivery(&failed, &keypair(17).public_key())?;
@@ -2431,6 +2485,23 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
             .get_reservation(&lane.purchase.handshake.reservation_id)?
             .ok_or_else(|| missing("denied reservation"))?;
         assert_eq!(reservation.state, FindingPurchaseReservationState::Released);
+        assert_eq!(failed.body.recorded_at, reservation.created_at);
+        assert!(lane
+            .deployment
+            .web
+            .admission
+            .body
+            .failed_delivery_authority
+            .valid_from
+            <= failed.body.recorded_at);
+        assert!(failed.body.recorded_at
+            <= lane
+                .deployment
+                .web
+                .admission
+                .body
+                .failed_delivery_authority
+                .valid_until);
         let slot = purchase_store
             .get_slot(&lane.purchase.handshake.reservation_id)?
             .ok_or_else(|| missing("denied slot"))?;
@@ -2752,12 +2823,13 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
     let accepted_at = allocation_accepted_at(&authority, &deployment.web)?;
     let witness = admission_witness(&deployment.web, accepted_at)?;
     let buyer = keypair(31);
-    let coordinator = coordinator(authority.finding_purchase_store())?;
+    let coordinator = coordinator(&authority)?;
     let exchange = handshake(&deployment.web, &witness, &buyer, "buyer-agent-7", TOKEN_ID)?;
 
     // A signature by a key that is not the token subject never reserves.
     let interloper = keypair(9).sign(exchange.ask_digest.as_bytes()).to_hex();
     let rejected = coordinator.reserve(
+        &exchange.bid,
         &exchange.ask,
         &interloper,
         &deployment.web.admission,
@@ -2778,6 +2850,7 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
     // Reserving the same ask for the same payer twice is idempotent.
     let now = unix_timestamp_now();
     let first = coordinator.reserve(
+        &exchange.bid,
         &exchange.ask,
         &exchange.buyer_signature_hex,
         &deployment.web.admission,
@@ -2787,6 +2860,7 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         now,
     )?;
     let second = coordinator.reserve(
+        &exchange.bid,
         &exchange.ask,
         &exchange.buyer_signature_hex,
         &deployment.web.admission,
@@ -2812,7 +2886,7 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
     let accepted_at = allocation_accepted_at(&authority, &deployment.web)?;
     let witness = admission_witness(&deployment.web, accepted_at)?;
     let purchase_store = authority.finding_purchase_store();
-    let coordinator = coordinator(purchase_store.clone())?;
+    let coordinator = coordinator(&authority)?;
 
     let first_buyer = keypair(31);
     let first = handshake(
@@ -2823,6 +2897,7 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         TOKEN_ID,
     )?;
     coordinator.reserve(
+        &first.bid,
         &first.ask,
         &first.buyer_signature_hex,
         &deployment.web.admission,
@@ -2842,6 +2917,7 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         "finding-purchase-token-0003",
     )?;
     let overcommitted = coordinator.reserve(
+        &second.bid,
         &second.ask,
         &second.buyer_signature_hex,
         &deployment.web.admission,
@@ -2885,7 +2961,7 @@ async fn open_reserve_fixture() -> Result<ReserveFixture, AnyError> {
     deployment.seed_and_activate(&state).await?;
     let accepted_at = allocation_accepted_at(&authority, &deployment.web)?;
     let witness = admission_witness(&deployment.web, accepted_at)?;
-    let coordinator = coordinator(authority.finding_purchase_store())?;
+    let coordinator = coordinator(&authority)?;
     let exchange = handshake(
         &deployment.web,
         &witness,
@@ -2908,6 +2984,7 @@ impl ReserveFixture {
         now: u64,
     ) -> Result<SignedReservationReceipt, PurchaseCoordinatorError> {
         self.coordinator.reserve(
+            &self.exchange.bid,
             &self.exchange.ask,
             &self.exchange.buyer_signature_hex,
             admission,
@@ -2992,6 +3069,9 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
     // A coordinator holding a purchase key the admission never declared.
     let drifted_purchase = FindingPurchaseCoordinator::new(
         purchase_store.clone(),
+        fixture.authority.finding_market_store(),
+        fixture.authority.admission_operation_store(),
+        fixture.authority.tool_outcome_store(),
         keypair(18),
         &keypair(18).public_key(),
         keypair(17),
@@ -3001,6 +3081,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
     )?;
     assert!(matches!(
         drifted_purchase.reserve(
+            &fixture.exchange.bid,
             &fixture.exchange.ask,
             &fixture.exchange.buyer_signature_hex,
             &fixture.deployment.web.admission,
@@ -3018,6 +3099,9 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
     // declared.
     let drifted_failed_delivery = FindingPurchaseCoordinator::new(
         purchase_store.clone(),
+        fixture.authority.finding_market_store(),
+        fixture.authority.admission_operation_store(),
+        fixture.authority.tool_outcome_store(),
         keypair(16),
         &keypair(16).public_key(),
         keypair(19),
@@ -3027,6 +3111,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
     )?;
     assert!(matches!(
         drifted_failed_delivery.reserve(
+            &fixture.exchange.bid,
             &fixture.exchange.ask,
             &fixture.exchange.buyer_signature_hex,
             &fixture.deployment.web.admission,
@@ -3049,7 +3134,31 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         SignedExportEnvelope::sign(lapsed_body, &fixture.deployment.web.venue)?;
     assert!(matches!(
         fixture.reserve_with(&lapsed, now),
-        Err(PurchaseCoordinatorError::DeclaredAuthorityWindow("purchase"))
+        Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+            "purchase"
+        ))
+    ));
+    let mut future_body = fixture.deployment.web.admission.body.clone();
+    future_body.purchase_authority.valid_from = now.saturating_add(1);
+    future_body.admission_id = compute_admission_id(&future_body)?;
+    let future: SignedFindingAdmission =
+        SignedExportEnvelope::sign(future_body, &fixture.deployment.web.venue)?;
+    assert!(matches!(
+        fixture.reserve_with(&future, now),
+        Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+            "purchase"
+        ))
+    ));
+    let mut failed_lapsed_body = fixture.deployment.web.admission.body.clone();
+    failed_lapsed_body.failed_delivery_authority.valid_until = ISSUED_AT.saturating_add(1);
+    failed_lapsed_body.admission_id = compute_admission_id(&failed_lapsed_body)?;
+    let failed_lapsed: SignedFindingAdmission =
+        SignedExportEnvelope::sign(failed_lapsed_body, &fixture.deployment.web.venue)?;
+    assert!(matches!(
+        fixture.reserve_with(&failed_lapsed, now),
+        Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+            "failed-delivery"
+        ))
     ));
 
     // No refusal opened durable state; the declared coordinator still
@@ -3122,14 +3231,16 @@ async fn wedge_purchase_reserve_refuses_a_self_minted_ask() -> TestResult {
         grant.max_cost_per_invocation = Some(usd(1));
         grant.max_total_cost = Some(usd(1));
     }
-    forged_body.token_offer = token;
+    forged_body.token_offer = CapabilityToken::sign(token.body(), &interloper)?;
     forged_body.quoted_price = usd(1);
     let forged: SignedAskResponse = SignedExportEnvelope::sign(forged_body, &interloper)?;
+    let forged_bid = SignedBidRequest::sign(fixture.exchange.bid.body.clone(), &interloper)?;
     let forged_digest = digest_of(&forged.body)?;
     let forged_signature = interloper.sign(forged_digest.as_bytes()).to_hex();
 
     assert!(matches!(
         fixture.coordinator.reserve(
+            &forged_bid,
             &forged,
             &forged_signature,
             &fixture.deployment.web.admission,
@@ -3161,6 +3272,7 @@ async fn wedge_purchase_reserve_refuses_a_self_minted_ask() -> TestResult {
     )?;
     assert!(matches!(
         fixture.coordinator.reserve(
+            &fixture.exchange.bid,
             &fixture.exchange.ask,
             &fixture.exchange.buyer_signature_hex,
             &fixture.deployment.web.admission,
@@ -3199,36 +3311,65 @@ async fn wedge_purchase_reserve_refuses_a_malformed_purchase_grant() -> TestResu
             .first_mut()
             .ok_or_else(|| missing("minted grant"))?;
         mutate(grant);
-        body.token_offer = token;
+        body.token_offer = CapabilityToken::sign(token.body(), &operator)?;
         let signed: SignedAskResponse = SignedExportEnvelope::sign(body, &operator)?;
         let digest = digest_of(&signed.body)?;
         let signature = buyer.sign(digest.as_bytes()).to_hex();
         Ok((signed, signature))
     };
 
-    let cases: [(&str, fn(&mut ToolGrant)); 4] = [
-        ("max_invocations", |grant| {
+    let cases: [(&str, &str, fn(&mut ToolGrant)); 8] = [
+        ("max_invocations", "max_invocations", |grant| {
             grant.max_invocations = Some(2);
         }),
-        ("dpop_required", |grant| {
+        ("extra_operation", "operations", |grant| {
+            grant.operations.push(Operation::Delegate);
+        }),
+        ("dpop_required", "dpop_required", |grant| {
             grant.dpop_required = None;
         }),
-        ("output_digest", |grant| {
+        ("missing_output_digest", "output_digest", |grant| {
             grant
                 .constraints
                 .retain(|constraint| !matches!(constraint, Constraint::OutputDigestSha256(_)));
         }),
-        ("purchase_marker", |grant| {
+        ("wrong_output_digest", "output_digest", |grant| {
+            for constraint in &mut grant.constraints {
+                if let Constraint::OutputDigestSha256(digest) = constraint {
+                    *digest = HEX64.to_owned();
+                }
+            }
+        }),
+        ("duplicate_output_digest", "output_digest", |grant| {
+            grant
+                .constraints
+                .push(Constraint::OutputDigestSha256(HEX64.to_owned()));
+        }),
+        ("missing_purchase_marker", "purchase_marker", |grant| {
             grant
                 .constraints
                 .retain(|constraint| !matches!(constraint, Constraint::RequireFindingPurchase(_)));
         }),
+        ("duplicate_purchase_marker", "purchase_marker", |grant| {
+            if let Some(marker) = grant.constraints.iter().find_map(|constraint| {
+                if let Constraint::RequireFindingPurchase(marker) = constraint {
+                    Some(marker.clone())
+                } else {
+                    None
+                }
+            }) {
+                grant
+                    .constraints
+                    .push(Constraint::RequireFindingPurchase(marker));
+            }
+        }),
     ];
-    for (label, mutate) in cases {
+    for (label, expected_shape, mutate) in cases {
         let (ask, signature) = reissue(mutate)?;
         assert!(
             matches!(
                 fixture.coordinator.reserve(
+                    &fixture.exchange.bid,
                     &ask,
                     &signature,
                     &fixture.deployment.web.admission,
@@ -3237,11 +3378,85 @@ async fn wedge_purchase_reserve_refuses_a_malformed_purchase_grant() -> TestResu
                     RESERVATION_TTL_SECS,
                     now,
                 ),
-                Err(PurchaseCoordinatorError::AskGrantShape(shape)) if shape == label
+                Err(PurchaseCoordinatorError::AskGrantShape(shape)) if shape == expected_shape
             ),
             "grant mutation {label} must refuse"
         );
     }
+    let sign_ask_with_token =
+        |token: CapabilityToken| -> Result<(SignedAskResponse, String), AnyError> {
+            let mut body = fixture.exchange.ask.body.clone();
+            body.token_offer = token;
+            let ask: SignedAskResponse = SignedExportEnvelope::sign(body, &operator)?;
+            let signature = buyer.sign(digest_of(&ask.body)?.as_bytes()).to_hex();
+            Ok((ask, signature))
+        };
+    let mut resource_token = fixture.exchange.ask.body.token_offer.clone();
+    resource_token.scope.resource_grants.push(ResourceGrant {
+        uri_pattern: "resource://extra".to_owned(),
+        operations: vec![Operation::Read],
+    });
+    let resource_token = CapabilityToken::sign(resource_token.body(), &operator)?;
+    let mut prompt_token = fixture.exchange.ask.body.token_offer.clone();
+    prompt_token.scope.prompt_grants.push(PromptGrant {
+        prompt_name: "extra".to_owned(),
+        operations: vec![Operation::Get],
+    });
+    let prompt_token = CapabilityToken::sign(prompt_token.body(), &operator)?;
+    for (label, token) in [("resource", resource_token), ("prompt", prompt_token)] {
+        let (ask, signature) = sign_ask_with_token(token)?;
+        assert!(
+            matches!(
+                fixture.coordinator.reserve(
+                    &fixture.exchange.bid,
+                    &ask,
+                    &signature,
+                    &fixture.deployment.web.admission,
+                    &fixture.deployment.web.authorization,
+                    EXPOSURE_UNITS,
+                    RESERVATION_TTL_SECS,
+                    now,
+                ),
+                Err(PurchaseCoordinatorError::AskGrantShape("grant_families"))
+            ),
+            "extra {label} grant must refuse"
+        );
+    }
+
+    let mut stale_signature_token = fixture.exchange.ask.body.token_offer.clone();
+    stale_signature_token.scope.grants[0].max_invocations = Some(2);
+    let (stale_signature_ask, stale_signature) = sign_ask_with_token(stale_signature_token)?;
+    assert!(matches!(
+        fixture.coordinator.reserve(
+            &fixture.exchange.bid,
+            &stale_signature_ask,
+            &stale_signature,
+            &fixture.deployment.web.admission,
+            &fixture.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::TokenOffer)
+    ));
+
+    let mut window_body = fixture.exchange.ask.body.token_offer.body();
+    window_body.issued_at = fixture.exchange.ask.body.issued_at.saturating_add(1);
+    let window_token = CapabilityToken::sign(window_body, &operator)?;
+    let (window_ask, window_signature) = sign_ask_with_token(window_token)?;
+    assert!(matches!(
+        fixture.coordinator.reserve(
+            &fixture.exchange.bid,
+            &window_ask,
+            &window_signature,
+            &fixture.deployment.web.admission,
+            &fixture.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::TokenOffer)
+    ));
     assert!(fixture
         .authority
         .finding_purchase_store()
@@ -3250,11 +3465,212 @@ async fn wedge_purchase_reserve_refuses_a_malformed_purchase_grant() -> TestResu
     Ok(())
 }
 
-/// A capture above the accepted price is not a settlement this venue can
-/// record. It refuses before anything durable happens, and a partial
-/// capture at or below the accepted price still settles.
+/// The reservation freezes the exact buyer-signed bid envelope, not only
+/// its body digest. Re-signing the same body under another key must fail at
+/// the admission-time reservation gate before payment or dispatch.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn wedge_purchase_realized_spend_above_the_accepted_price_refuses() -> TestResult {
+async fn wedge_purchase_rejects_a_resigned_bid_envelope() -> TestResult {
+    let lane = open_lane(LaneOptions::standard()).await?;
+    let resigned = SignedBidRequest::sign(lane.purchase.handshake.bid.body.clone(), &keypair(33))?;
+    let context_bytes = STANDARD.decode(&lane.purchase.context_b64)?;
+    let mut context: FindingPurchaseContext = serde_json::from_slice(&context_bytes)?;
+    context.bid_request_envelope_json = canonical_string(&resigned)?;
+    context.validate()?;
+    let substituted_context = STANDARD.encode(canonical_json_bytes(&context)?);
+    let request = reveal_request(&RevealRequestInputs {
+        request_id: "wedge-resigned-bid-1",
+        capability: &lane.purchase.capability,
+        buyer: &lane.buyer,
+        finding_id: &lane.deployment.web.finding_id,
+        context_b64: Some(&substituted_context),
+        nonce: "nonce-resigned-bid-1",
+    })?;
+    let response = lane.kernel.evaluate_tool_call_blocking(&request)?;
+    assert_denied_with(&response, "reservation does not bind this purchase");
+    assert_eq!(lane.invocations.load(Ordering::SeqCst), 0);
+    assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 0);
+    assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);
+    Ok(())
+}
+
+/// Activating a newer admission supersedes the one a purchase was
+/// reserved under. A superseded admission carries retired terms, fees,
+/// collateral bindings, and authority pins, so it must stop transacting
+/// everywhere money could still move: a reveal reserved under it denies
+/// before dispatch, and a new reserve presenting the retired envelope
+/// refuses while the current one still reserves.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
+    let lane = open_lane(LaneOptions::standard()).await?;
+    let web = &lane.deployment.web;
+
+    // The seller re-collateralizes: a fresh allocation backs a newer
+    // admission for the same finding and listing.
+    let mut backing_body = web.backing.body.clone();
+    backing_body.issued_at = backing_body.issued_at.saturating_add(1);
+    backing_body.allocation_id = String::new();
+    backing_body.allocation_id = compute_allocation_id(&backing_body)?;
+    let second_backing: SignedFindingBondBacking =
+        SignedExportEnvelope::sign(backing_body, &keypair(4))?;
+    let (status, body) = send(
+        &lane.state,
+        authed_post(
+            "/v1/findings/collateral",
+            serde_json::to_string(&second_backing)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+
+    let second_report = make_signed_report(
+        &ReportInputs {
+            governance: &keypair(1),
+            kernel: &keypair(21),
+            profile: &web.profile,
+            raw_finding: &web.raw_finding,
+            receipts: &web.receipts,
+            checkpoint: &web.checkpoint,
+            recipe_bytes: &web.recipe_bytes,
+            backing: &second_backing,
+            collateral: &keypair(4),
+        },
+        unix_timestamp_now().saturating_add(3_600),
+    )?;
+    let mut admission_body = web.admission.body.clone();
+    admission_body.backing_allocation_id = second_backing.body.allocation_id.clone();
+    admission_body.backing_envelope_sha256 = digest_of(&second_backing)?;
+    admission_body.verifier_report_id = second_report.body.report_id.clone();
+    admission_body.verifier_report_envelope_sha256 = digest_of(&second_report)?;
+    admission_body.admission_id = String::new();
+    admission_body.admission_id = compute_admission_id(&admission_body)?;
+    let second_admission: SignedFindingAdmission =
+        SignedExportEnvelope::sign(admission_body, &web.venue)?;
+    let activate = serde_json::json!({
+        "admission": serde_json::to_value(&second_admission)?,
+        "sellerAuthorization": serde_json::to_value(&web.authorization)?,
+        "terms": serde_json::to_value(&web.terms)?,
+        "backing": serde_json::to_value(&second_backing)?,
+        "feeSchedule": serde_json::to_value(&web.schedule)?,
+        "verifierReport": serde_json::to_value(&second_report)?,
+        "listing": serde_json::to_value(&web.listing)?,
+        "pricingHint": serde_json::to_value(&web.pricing_hint)?,
+    })
+    .to_string();
+    let (status, body) = send(
+        &lane.state,
+        authed_post(
+            &format!("/v1/findings/{}/activate", web.finding_id),
+            activate,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+
+    // The reveal reserved under the first admission denies before
+    // dispatch: no invocation and no payment authorization.
+    let response = lane.reveal("wedge-superseded-1", "nonce-superseded-1")?;
+    assert_denied_with(&response, "superseded");
+    assert_eq!(lane.invocations.load(Ordering::SeqCst), 0);
+    assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 0);
+    assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);
+    let released_at = unix_timestamp_now();
+    lane.coordinator
+        .release(&lane.purchase.handshake.reservation_id, released_at)?;
+    let purchase_store = lane.authority.finding_purchase_store();
+    assert_eq!(
+        purchase_store
+            .get_reservation(&lane.purchase.handshake.reservation_id)?
+            .ok_or_else(|| missing("released superseded reservation"))?
+            .state,
+        FindingPurchaseReservationState::Released
+    );
+    assert_eq!(
+        purchase_store
+            .get_slot(&lane.purchase.handshake.reservation_id)?
+            .ok_or_else(|| missing("closed superseded slot"))?
+            .state,
+        FindingPurchaseSlotState::ClosedDeny
+    );
+    assert_eq!(
+        purchase_store
+            .get_encumbrance(&lane.purchase.handshake.reservation_id)?
+            .ok_or_else(|| missing("released superseded encumbrance"))?
+            .state,
+        FindingPurchaseEncumbranceState::Released
+    );
+
+    // A new reservation presenting the retired envelope refuses; the same
+    // handshake reserves under the current admission.
+    let second_buyer = keypair(32);
+    let exchange = handshake(
+        web,
+        &lane.witness,
+        &second_buyer,
+        "buyer-agent-8",
+        "finding-purchase-token-0004",
+    )?;
+    let now = unix_timestamp_now();
+    assert!(matches!(
+        lane.coordinator.reserve(
+            &exchange.bid,
+            &exchange.ask,
+            &exchange.buyer_signature_hex,
+            &web.admission,
+            &web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AdmissionNotCurrent)
+    ));
+    let reservation_receipt = lane.coordinator.reserve(
+        &exchange.bid,
+        &exchange.ask,
+        &exchange.buyer_signature_hex,
+        &second_admission,
+        &web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    let verified =
+        VerifiedReservationReceipt::from_signed(&reservation_receipt, &keypair(16).public_key())?;
+    let accepted = accept_finding_purchase(
+        &exchange.ask,
+        &verified,
+        &second_buyer,
+        now,
+        &lane.witness,
+        &web.finding,
+    )?;
+    lane.coordinator
+        .reserve_slot(&exchange.reservation_id, now)?;
+    let stale_carrier = purchase_context_b64(&CarrierInputs {
+        web,
+        handshake: &exchange,
+        accepted: &accepted,
+        reservation_receipt: &reservation_receipt,
+    })?;
+    let request = reveal_request(&RevealRequestInputs {
+        request_id: "wedge-superseded-substitution-1",
+        capability: &exchange.ask.body.token_offer,
+        buyer: &second_buyer,
+        finding_id: &web.finding_id,
+        context_b64: Some(&stale_carrier),
+        nonce: "nonce-superseded-substitution-1",
+    })?;
+    let substituted = lane.kernel.evaluate_tool_call_blocking(&request)?;
+    assert_denied_with(&substituted, "reservation does not bind this purchase");
+    assert_eq!(lane.invocations.load(Ordering::SeqCst), 0);
+    assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 0);
+    assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);
+    Ok(())
+}
+
+/// Terminal selection and realized spend come from the durable kernel
+/// verdict and outcome, never from coordinator-call parameters.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> TestResult {
     let lane = open_lane(LaneOptions::standard()).await?;
     let response = lane.reveal("wedge-overspend-1", "nonce-overspend-1")?;
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
@@ -3269,19 +3685,18 @@ async fn wedge_purchase_realized_spend_above_the_accepted_price_refuses() -> Tes
         now,
     )?;
 
-    let refused = lane.coordinator.finalize_delivery(
+    let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
+    let refused = lane.coordinator.finalize_denial(
         &reservation_id,
-        &response.receipt.id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        PRICE_UNITS.saturating_add(1),
-        PAYOUT_DESTINATION,
-        &lane.deployment.web.backing_sha256,
-        now.saturating_add(RETENTION_SECS),
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &checkpoint,
+        &inclusion_proof,
         now,
     );
     assert!(matches!(
         refused,
-        Err(PurchaseCoordinatorError::RealizedSpendAboveAcceptedPrice)
+        Err(PurchaseCoordinatorError::TerminalEvidence(_))
     ));
 
     // The refusal preceded every durable step: no destination took a slot,
@@ -3300,24 +3715,18 @@ async fn wedge_purchase_realized_spend_above_the_accepted_price_refuses() -> Tes
     );
     assert!(purchase_store.get_purchase_record(&purchase_key)?.is_none());
 
-    let partial = lane.coordinator.finalize_delivery(
+    let record = lane.coordinator.finalize_delivery(
         &reservation_id,
-        &response.receipt.id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        PRICE_UNITS.saturating_sub(1),
-        PAYOUT_DESTINATION,
-        &lane.deployment.web.backing_sha256,
-        now.saturating_add(RETENTION_SECS),
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &lane.deployment.web.backing,
         now,
     )?;
-    verify_signed_purchase_record(&partial, &keypair(16).public_key())?;
-    assert_eq!(partial.body.accepted_price, usd(PRICE_UNITS));
-    assert_eq!(
-        partial.body.realized_spend,
-        usd(PRICE_UNITS.saturating_sub(1))
-    );
+    verify_signed_purchase_record(&record, &keypair(16).public_key())?;
+    assert_eq!(record.body.accepted_price, usd(PRICE_UNITS));
+    assert_eq!(record.body.realized_spend, usd(PRICE_UNITS));
     assert!(purchase_store
-        .get_purchase_record(&partial.body.purchase_key)?
+        .get_purchase_record(&record.body.purchase_key)?
         .is_some());
     Ok(())
 }
@@ -3343,28 +3752,19 @@ async fn wedge_purchase_settlement_replays_byte_identically_across_clocks() -> T
     )?;
     let first = lane.coordinator.finalize_delivery(
         &reservation_id,
-        &response.receipt.id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        PRICE_UNITS,
-        PAYOUT_DESTINATION,
-        &lane.deployment.web.backing_sha256,
-        now.saturating_add(RETENTION_SECS),
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &lane.deployment.web.backing,
         now,
     )?;
     let retry = lane.coordinator.finalize_delivery(
         &reservation_id,
-        &response.receipt.id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        PRICE_UNITS,
-        PAYOUT_DESTINATION,
-        &lane.deployment.web.backing_sha256,
-        now.saturating_add(RETENTION_SECS).saturating_add(41),
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &lane.deployment.web.backing,
         now.saturating_add(41),
     )?;
-    assert_eq!(
-        canonical_json_bytes(&first)?,
-        canonical_json_bytes(&retry)?
-    );
+    assert_eq!(canonical_json_bytes(&first)?, canonical_json_bytes(&retry)?);
     Ok(())
 }
 
@@ -3383,38 +3783,30 @@ async fn wedge_purchase_denial_replays_byte_identically_across_clocks() -> TestR
 
     let reservation_id = lane.purchase.handshake.reservation_id.clone();
     let now = unix_timestamp_now();
+    let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
     let first = lane.coordinator.finalize_denial(
         &reservation_id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        &response.receipt.id,
-        &digest_of(&response.receipt)?,
-        "checkpoint/venue-wedge#1",
-        HEX64,
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &checkpoint,
+        &inclusion_proof,
         now,
     )?;
     let retry = lane.coordinator.finalize_denial(
         &reservation_id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        &response.receipt.id,
-        &digest_of(&response.receipt)?,
-        "checkpoint/venue-wedge#1",
-        HEX64,
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &checkpoint,
+        &inclusion_proof,
         now.saturating_add(41),
     )?;
-    assert_eq!(
-        first.body.failed_delivery_id,
-        retry.body.failed_delivery_id
-    );
-    assert_eq!(
-        canonical_json_bytes(&first)?,
-        canonical_json_bytes(&retry)?
-    );
+    assert_eq!(first.body.failed_delivery_id, retry.body.failed_delivery_id);
+    assert_eq!(canonical_json_bytes(&first)?, canonical_json_bytes(&retry)?);
     Ok(())
 }
 
-/// Both closes are one-shot and the store keeps the bytes forever, so an
-/// artifact that fails its own validator is never signed and never
-/// reaches the store, on either the settled or the denied path.
+/// Invalid admission-bound backing and a terminal-selection mismatch are
+/// refused before either immutable payout admission or slot close.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestResult {
     let lane = open_lane(LaneOptions::standard()).await?;
@@ -3431,36 +3823,36 @@ async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestRe
         now,
     )?;
 
-    // The seller backing reference is not a digest, so the purchase record
-    // body cannot validate.
+    let mut tampered_backing = lane.deployment.web.backing.clone();
+    tampered_backing.body.maximum_sale_exposure.units = tampered_backing
+        .body
+        .maximum_sale_exposure
+        .units
+        .saturating_sub(1);
     let refused = lane.coordinator.finalize_delivery(
         &reservation_id,
-        &response.receipt.id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        PRICE_UNITS,
-        PAYOUT_DESTINATION,
-        "backing-reference-that-is-not-a-digest",
-        now.saturating_add(RETENTION_SECS),
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &tampered_backing,
         now,
     );
     assert!(matches!(
         refused,
-        Err(PurchaseCoordinatorError::ArtifactValidation(_))
+        Err(PurchaseCoordinatorError::SellerBacking(_))
     ));
 
-    // The denial terminal refuses the same way.
+    let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
     let refused_denial = lane.coordinator.finalize_denial(
         &reservation_id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        &response.receipt.id,
-        &digest_of(&response.receipt)?,
-        "checkpoint/venue-wedge#1",
-        "checkpoint-digest-that-is-not-a-digest",
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &checkpoint,
+        &inclusion_proof,
         now,
     );
     assert!(matches!(
         refused_denial,
-        Err(PurchaseCoordinatorError::ArtifactValidation(_))
+        Err(PurchaseCoordinatorError::TerminalEvidence(_))
     ));
 
     // Neither refusal moved the purchase or admitted a destination.
@@ -3488,12 +3880,9 @@ async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestRe
     // The purchase is still settleable under a valid record.
     let record = lane.coordinator.finalize_delivery(
         &reservation_id,
-        &response.receipt.id,
-        &lane.purchase.accepted_bid_envelope_sha256,
-        PRICE_UNITS,
-        PAYOUT_DESTINATION,
-        &lane.deployment.web.backing_sha256,
-        now.saturating_add(RETENTION_SECS),
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &lane.deployment.web.backing,
         now,
     )?;
     verify_signed_purchase_record(&record, &keypair(16).public_key())?;

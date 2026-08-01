@@ -121,6 +121,7 @@ pub struct PurchaseVerificationOutcome {
     pub finding: Finding,
     pub admission: SignedFindingAdmission,
     pub seller_authorization: SignedFindingSellerAuthorization,
+    pub bid_request_envelope_sha256: String,
     pub accepted_bid_envelope_sha256: String,
     pub venue_admission_envelope_sha256: String,
     pub reservation_id: String,
@@ -296,13 +297,12 @@ pub fn verify_purchase_context_pure(
     if !matches!(bid.verify_signature(), Ok(true)) {
         return Err(PurchaseVerificationError::EnvelopeSignature("bid_request"));
     }
-    let bid_digest = canonical_digest_of(&context.bid_request_envelope_json, "bid_request")
-        .and_then(|_| {
-            canonical_json_bytes(&bid.body)
-                .map(|bytes| sha256_hex(&bytes))
-                .map_err(|_| PurchaseVerificationError::Member("bid_request"))
-        })?;
-    if bid_digest != ask.body.bid_digest
+    let bid_request_envelope_sha256 =
+        canonical_digest_of(&context.bid_request_envelope_json, "bid_request")?;
+    let bid_body_digest = canonical_json_bytes(&bid.body)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|_| PurchaseVerificationError::Member("bid_request"))?;
+    if bid_body_digest != ask.body.bid_digest
         || bid.body.listing_id != inputs.marker_listing_id
         || bid.body.requested_scope.max_invocations != Some(1)
         || bid.body.requested_scope.server_id != inputs.server_id
@@ -381,6 +381,7 @@ pub fn verify_purchase_context_pure(
         payer_key_hex: ask.body.token_offer.subject.to_hex(),
         accepted_price: ask.body.quoted_price.clone(),
         reservation_store_key: context.reservation_store_key.clone(),
+        bid_request_envelope_sha256,
         accepted_bid_envelope_sha256,
         venue_admission_envelope_sha256,
         reservation_id,

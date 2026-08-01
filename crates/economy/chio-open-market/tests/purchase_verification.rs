@@ -756,6 +756,12 @@ fn a_genuine_purchase_context_verifies_and_reports_its_bindings() {
     assert_eq!(outcome.reservation_store_key, RESERVATION_STORE_KEY);
     assert_eq!(outcome.accepted_price, usd(PRICE_UNITS));
     assert_eq!(outcome.payer_key_hex, web.agent.public_key().to_hex());
+    assert_eq!(web.ask.body.bid_digest, digest_of(&web.bid_request.body));
+    assert_eq!(
+        outcome.bid_request_envelope_sha256,
+        digest_of(&web.bid_request)
+    );
+    assert_ne!(outcome.bid_request_envelope_sha256, web.ask.body.bid_digest);
     assert_eq!(
         outcome.accepted_bid_envelope_sha256,
         digest_of(&web.accepted)
