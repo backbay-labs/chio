@@ -19,6 +19,8 @@
 //!   revocation.
 //! - [`execution_nonce_store`] / [`dead_letters`] / [`iou_store`] -- nonce
 //!   replay guard, settlement dead letters, and IOU envelopes.
+//! - `finding_status_store` -- durable cognition-market status floors,
+//!   retraction intents, sparse leaves, and portable proof bytes.
 //! - [`encrypted_blob`] / [`memory_provenance_store`] / [`evidence_export`] --
 //!   encrypted payloads, memory provenance, and evidence export.
 
@@ -49,6 +51,8 @@ pub mod finding_market_store;
 pub mod finding_purchase_store;
 #[cfg(feature = "cognition-market-experimental")]
 pub mod finding_recovery_store;
+#[cfg(feature = "cognition-market-experimental")]
+pub mod finding_status_store;
 pub mod fiscal_store;
 pub mod frost_store;
 mod governed_approval_replay_store;
@@ -278,6 +282,18 @@ pub use finding_recovery_store::{
     FindingRecoveryIssuanceInput, FindingRecoveryIssuanceRecord,
     FindingRecoveryReceiptLineageInput, FindingRecoveryReceiptLineageRecord,
     FindingRecoveryStoreError, FindingRecoveryWriteOutcome, SqliteFindingRecoveryStore,
+};
+#[cfg(feature = "cognition-market-experimental")]
+pub use finding_status_store::{
+    FindingRetractionIntentInput, FindingRetractionIntentRecord, FindingRetractionIntentSource,
+    FindingRetractionIntentState, FindingStatusDecision, FindingStatusEpochAdvance,
+    FindingStatusEpochRecord, FindingStatusFeedFloor, FindingStatusLeafRecord,
+    FindingStatusProofKind, FindingStatusProofRecord, FindingStatusRecord, FindingStatusStoreError,
+    FindingStatusWriteOutcome, FindingStickyStatus, SqliteFindingStatusStore,
+    VerifiedFindingStatusEpochInput, VerifiedFindingStatusLeafInput,
+    VerifiedFindingStatusProofInput, FINDING_STATUS_KEY_DOMAIN_NONCE,
+    MAX_FINDING_RETRACTION_EVIDENCE_BYTES, MAX_FINDING_STATUS_EPOCH_BYTES,
+    MAX_FINDING_STATUS_PROOF_BYTES, MAX_FINDING_STATUS_VALUE_BYTES,
 };
 pub use frost_store::{
     FrostActiveRosterRecord, FrostCeremonyRecord, FrostCeremonyRound1Record,

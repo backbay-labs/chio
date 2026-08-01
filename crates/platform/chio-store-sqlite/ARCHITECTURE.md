@@ -82,6 +82,7 @@ flowchart TD
 | `src/evidence_export.rs` | `impl SqliteReceiptStore` extension: builds `EvidenceExportBundle`s (receipts, lineage, checkpoints, Merkle inclusion proofs). |
 | `src/encrypted_blob.rs` | `SqliteEncryptedBlobStore`: tenant-scoped ChaCha20-Poly1305 blob storage. |
 | `src/memory_provenance_store.rs` | `SqliteMemoryProvenanceStore`: hash-chained audit trail of agent-memory writes. |
+| `src/finding_status_store.rs` + `src/finding_status_store.sql` | `SqliteFindingStatusStore`: exact signed status epochs, monotonic feed floors, sticky pending/retracted findings, retraction intents, sparse leaves, and portable proof bytes. |
 | `src/iou_store.rs` | `SqliteIouEnvelopeStore`: persists `chio_credit::IouEnvelope`s; can share a receipt store's pool. |
 | `src/dead_letters.rs` | `SqliteDeadLetterStore`: permanently failed settlement receipts (`chio_settle::DeadLetterRecord`); always opened alongside another store's pool. |
 | `src/lineage_cte.rs` (`lineage` feature) | Recursive-CTE forward/reverse walks over `receipt_lineage_statements`. |
@@ -178,6 +179,11 @@ imports and adds methods to the same struct.
   wrong scope.
 - `SqliteExecutionNonceStore` and `SqliteRevocationStore` are monotonic: a
   reserved nonce or a revoked capability has no store-level "undo" path.
+- `SqliteFindingStatusStore` keeps one stable operator identity and the fixed
+  finding-status nonce per feed. Signed epoch bytes advance a monotonic
+  `(map_epoch, epoch_id, root_hash)` floor; lower epochs and same-epoch
+  equivocation reject. Pending and retracted finding rows are sticky, and a
+  non-inclusion proof cannot clear either state.
 - `SqliteBudgetStore` evaluates and writes each limit check
   (`try_charge_cost_with_ids_and_authority`) inside one `Immediate`
   transaction, so no interleaved write can land between check and commit;
