@@ -52,6 +52,20 @@ jobs:
           cache-key: windows-secure-scaffold
           protoc: "false"
 
+      - name: Locate the OpenSSL SDK
+        shell: pwsh
+        run: |
+          $opensslRoot = Join-Path $env:ProgramFiles "OpenSSL"
+          $includeDirectory = Join-Path $opensslRoot "include"
+          $sslLibrary = Get-ChildItem (Join-Path $opensslRoot "lib") -Recurse -File -Filter "libssl.lib" |
+            Where-Object { Test-Path (Join-Path $_.DirectoryName "libcrypto.lib") } |
+            Select-Object -First 1
+          if (-not (Test-Path $includeDirectory) -or $null -eq $sslLibrary) {
+            throw "GitHub runner OpenSSL SDK is incomplete"
+          }
+          "OPENSSL_INCLUDE_DIR=$includeDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENSSL_LIB_DIR=$($sslLibrary.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Test Windows authority platform guard
         run: "cargo test --locked -p chio-store-sqlite --lib windows_platform_tests:: -- --nocapture"
 
