@@ -1925,7 +1925,6 @@ fn epoch_record_matches_input(
         && record.operator_authorization_sha256 == input.operator_authorization_sha256
         && record.generated_at == input.generated_at
         && record.valid_until == input.valid_until
-        && record.recorded_at == input.recorded_at
 }
 
 #[derive(Debug)]
@@ -2596,7 +2595,6 @@ fn proof_record_matches_input(
         && record.retraction_intent_sha256.as_deref() == input.retraction_intent_sha256
         && record.checked_at == input.checked_at
         && record.valid_until == input.valid_until
-        && record.recorded_at == input.recorded_at
 }
 
 fn verify_proof_record_at_floor(

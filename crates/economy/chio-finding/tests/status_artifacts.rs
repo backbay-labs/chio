@@ -175,6 +175,20 @@ fn signed_epoch_and_both_portable_branches_verify() -> TestResult {
 }
 
 #[test]
+fn status_epoch_numeric_identifiers_are_nonzero_i_json_integers() -> TestResult {
+    let (_, _, signed) = inclusion_fixture()?;
+
+    let mut zero_epoch = signed.body.clone();
+    zero_epoch.map_epoch = 0;
+    assert!(zero_epoch.validate().is_err());
+
+    let mut oversized_key_epoch = signed.body;
+    oversized_key_epoch.operator_key_epoch = 1_u64 << 53;
+    assert!(oversized_key_epoch.validate().is_err());
+    Ok(())
+}
+
+#[test]
 fn exact_canonical_proof_bytes_round_trip() -> TestResult {
     let (proof, _, _) = inclusion_fixture()?;
     let canonical = chio_core_types::canonical_json_bytes(&proof)?;

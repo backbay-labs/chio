@@ -18,8 +18,8 @@ use chio_kernel::finding_purchase::{
 };
 use chio_store_sqlite::{
     FindingStatusDecision, FindingStatusEpochAdvance, FindingStatusEpochRecord,
-    FindingStatusProofKind, FindingStatusProofRecord, SqliteFindingStatusStore,
-    VerifiedFindingStatusEpochInput, VerifiedFindingStatusProofInput,
+    FindingStatusProofKind, FindingStatusProofRecord, FindingStatusStoreError, FindingStickyStatus,
+    SqliteFindingStatusStore, VerifiedFindingStatusEpochInput, VerifiedFindingStatusProofInput,
 };
 
 use super::{FindingStatusOperatorPin, FindingStatusServiceBond};
@@ -271,6 +271,16 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
         }
         let fields = proof_fields(&material.proof);
         let epoch = &material.signed_epoch.body;
+        match self
+            .store
+            .get_finding_status(fields.feed_id, fields.finding_id)
+        {
+            Ok(Some(status)) if status.state == FindingStickyStatus::Pending => {
+                return Err("finding retraction publication is pending".to_owned());
+            }
+            Ok(_) | Err(FindingStatusStoreError::MissingFloor { .. }) => {}
+            Err(error) => return Err(error.to_string()),
+        }
         self.store
             .advance_epoch(&FindingStatusEpochAdvance {
                 epoch: VerifiedFindingStatusEpochInput {

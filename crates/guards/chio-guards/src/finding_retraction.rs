@@ -259,9 +259,10 @@ impl FindingRetractionResolver for VerifiedFindingRetractionResolver {
             .ok_or(FindingRetractionResolveError::MissingStatus)?;
         if status.finding_id != lineage.finding_id
             || status.feed_id != self.feed_id
+            || status.map_epoch == 0
             || !is_hex64(&status.epoch_id)
             || !is_hex64(&status.root_hash)
-            || status.checked_at > status.valid_until
+            || status.checked_at >= status.valid_until
         {
             return Err(FindingRetractionResolveError::InvalidStatus(
                 "finding, feed, epoch, root, or validity binding differs".to_owned(),
@@ -271,7 +272,7 @@ impl FindingRetractionResolver for VerifiedFindingRetractionResolver {
             .clock
             .now_unix_secs()
             .map_err(|error| FindingRetractionResolveError::ClockUnavailable(error.to_string()))?;
-        if status.checked_at > now || now > status.valid_until {
+        if status.checked_at > now || now >= status.valid_until {
             return Err(FindingRetractionResolveError::StaleStatus);
         }
         Ok(FindingRetractionResolution {

@@ -326,6 +326,9 @@ pub mod finding_purchase_verifier;
 #[path = "trust_control/finding_recovery_verifier.rs"]
 pub mod finding_recovery_verifier;
 #[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_retraction_resolver.rs"]
+pub mod finding_retraction_resolver;
+#[cfg(feature = "cognition-market-experimental")]
 #[path = "trust_control/finding_reveal_server.rs"]
 pub mod finding_reveal_server;
 #[cfg(feature = "cognition-market-experimental")]

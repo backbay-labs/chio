@@ -73,8 +73,10 @@ use chio_kernel::checkpoint::{
     build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_log_id,
     KernelCheckpoint, ReceiptInclusionProof,
 };
-use chio_kernel::finding_purchase::FINDING_PURCHASE_CONTEXT_KEY;
 use chio_kernel::finding_recovery::FINDING_RECOVERY_CONTEXT_ARGUMENT;
+use chio_kernel::finding_purchase::{
+    FINDING_PURCHASE_CONTEXT_KEY, FINDING_STATUS_PROOF_CONTEXT_KEY,
+};
 use chio_kernel::{
     ChioKernel, DpopConfig, DpopNonceStore, DpopProof, DpopProofBody, KernelConfig, KernelError,
     NestedFlowBridge, PaymentAdapter, PaymentAuthorization, PaymentAuthorizationState,
@@ -135,6 +137,7 @@ use crate::trust_control::finding_recovery_verifier::MarketFindingRecoveryVerifi
 use crate::trust_control::finding_reveal_server::{
     FindingRevealServer, SealedFindingPayload, READ_FINDING_TOOL,
 };
+use crate::trust_control::finding_status_verifier::MarketFindingStatusVerifier;
 
 type AnyError = Box<dyn std::error::Error>;
 type TestResult = Result<(), AnyError>;
@@ -1264,6 +1267,7 @@ struct Deployment {
     database: PathBuf,
     lock_root: PathBuf,
     receipt_db: PathBuf,
+    memory_provenance_db: PathBuf,
     web: MarketWeb,
 }
 
@@ -1276,12 +1280,14 @@ fn provision(case: RevealCase) -> Result<Deployment, AnyError> {
     secure_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     let receipt_db = temp.path().join("buyer-receipts.db");
+    let memory_provenance_db = temp.path().join("buyer-memory-provenance.db");
     let web = MarketWeb::build(case)?;
     Ok(Deployment {
         _temp: temp,
         database,
         lock_root,
         receipt_db,
+        memory_provenance_db,
         web,
     })
 }
@@ -1607,7 +1613,7 @@ impl ToolServerConnection for BuyerMemoryServer {
     }
 
     fn tool_names(&self) -> Vec<String> {
-        vec!["memory_write".to_owned()]
+        vec!["memory_read".to_owned(), "memory_write".to_owned()]
     }
 
     async fn invoke(
@@ -1659,6 +1665,7 @@ struct RevealKernelInputs<'a> {
     calls: &'a Arc<PaymentCalls>,
     invocations: &'a Arc<AtomicU64>,
     install_verifier: bool,
+    install_status_verifier: bool,
 }
 
 fn purchase_authorities(web: &MarketWeb) -> PurchaseVerificationAuthorities {
@@ -1724,6 +1731,15 @@ fn build_reveal_kernel(inputs: &RevealKernelInputs<'_>) -> Result<ChioKernel, An
             recovery_authorities(inputs.web, inputs.kernel_keypair),
             inputs.authority.finding_recovery_store(),
         )));
+    }
+    if inputs.install_status_verifier {
+        let config = market_config();
+        kernel.set_finding_status_proof_verifier(Arc::new(MarketFindingStatusVerifier::new(
+            config.status_feed_operator,
+            config.status_feed_service_bond,
+            config.status_max_epoch_age_secs,
+            inputs.authority.finding_status_store(),
+        )?));
     }
     Ok(kernel)
 }
@@ -1901,7 +1917,17 @@ fn dpop_proof_at(
     )?)
 }
 
-fn governed_reveal_intent(request_id: &str, context_b64: &str) -> GovernedTransactionIntent {
+fn governed_reveal_intent(
+    request_id: &str,
+    context_b64: &str,
+    status_proof_b64: Option<&str>,
+) -> GovernedTransactionIntent {
+    let mut context = serde_json::json!({
+        FINDING_PURCHASE_CONTEXT_KEY: context_b64,
+    });
+    if let Some(proof) = status_proof_b64 {
+        context[FINDING_STATUS_PROOF_CONTEXT_KEY] = serde_json::Value::String(proof.to_owned());
+    }
     GovernedTransactionIntent {
         id: format!("intent-{request_id}"),
         server_id: SERVER_ID.to_string(),
@@ -1913,9 +1939,7 @@ fn governed_reveal_intent(request_id: &str, context_b64: &str) -> GovernedTransa
         runtime_attestation: None,
         call_chain: None,
         autonomy: None,
-        context: Some(serde_json::json!({
-            FINDING_PURCHASE_CONTEXT_KEY: context_b64,
-        })),
+        context: Some(context),
         body: GovernedTransactionIntentBody::ToolInvocation,
     }
 }
@@ -1926,6 +1950,7 @@ struct RevealRequestInputs<'a> {
     buyer: &'a Keypair,
     finding_id: &'a str,
     context_b64: Option<&'a str>,
+    status_proof_b64: Option<&'a str>,
     nonce: &'a str,
 }
 
@@ -1955,9 +1980,9 @@ fn reveal_request_at(
         arguments,
         dpop_proof: Some(proof),
         execution_nonce: None,
-        governed_intent: inputs
-            .context_b64
-            .map(|context| governed_reveal_intent(inputs.request_id, context)),
+        governed_intent: inputs.context_b64.map(|context| {
+            governed_reveal_intent(inputs.request_id, context, inputs.status_proof_b64)
+        }),
         approval_token: None,
         approval_tokens: Vec::new(),
         threshold_approval_proposal: None,
@@ -2106,6 +2131,7 @@ struct LaneOptions {
     case: RevealCase,
     rail: Rail,
     install_verifier: bool,
+    install_status_verifier: bool,
 }
 
 impl LaneOptions {
@@ -2114,6 +2140,7 @@ impl LaneOptions {
             case: RevealCase::honest(),
             rail: Rail::ReversibleHold,
             install_verifier: true,
+            install_status_verifier: false,
         }
     }
 }
@@ -2142,6 +2169,7 @@ async fn open_lane(options: LaneOptions) -> Result<Lane, AnyError> {
         calls: &calls,
         invocations: &invocations,
         install_verifier: options.install_verifier,
+        install_status_verifier: options.install_status_verifier,
     })?;
 
     let buyer = keypair(31);
@@ -2170,6 +2198,26 @@ impl Lane {
             buyer: &self.buyer,
             finding_id: &self.deployment.web.finding_id,
             context_b64: Some(&self.purchase.context_b64),
+            status_proof_b64: None,
+            nonce,
+        })?;
+        Ok(self.kernel.evaluate_tool_call_blocking(&request)?)
+    }
+
+    fn reveal_with_status(
+        &self,
+        purchase: &ReadyPurchase,
+        status_proof_b64: &str,
+        request_id: &str,
+        nonce: &str,
+    ) -> Result<ToolCallResponse, AnyError> {
+        let request = reveal_request(&RevealRequestInputs {
+            request_id,
+            capability: &purchase.capability,
+            buyer: &self.buyer,
+            finding_id: &self.deployment.web.finding_id,
+            context_b64: Some(&purchase.context_b64),
+            status_proof_b64: Some(status_proof_b64),
             nonce,
         })?;
         Ok(self.kernel.evaluate_tool_call_blocking(&request)?)
@@ -2691,6 +2739,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
             calls: &calls,
             invocations: &invocations,
             install_verifier: true,
+            install_status_verifier: false,
         })?;
         let request = reveal_request(&RevealRequestInputs {
             request_id: "wedge-reveal-1",
@@ -2698,6 +2747,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
             buyer: &buyer,
             finding_id: &deployment.web.finding_id,
             context_b64: Some(&purchase.context_b64),
+            status_proof_b64: None,
             nonce: "wedge-reveal-nonce-1",
         })?;
         let response = kernel.evaluate_tool_call_blocking(&request)?;
@@ -2776,6 +2826,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
         calls: &calls,
         invocations: &invocations,
         install_verifier: true,
+        install_status_verifier: false,
     })?;
     let request = reveal_request(&RevealRequestInputs {
         request_id: "wedge-reveal-1",
@@ -2783,6 +2834,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
         buyer: &buyer,
         finding_id: &deployment.web.finding_id,
         context_b64: Some(&purchase.context_b64),
+        status_proof_b64: None,
         nonce: "wedge-reveal-nonce-2",
     })?;
     let replay = recovered.evaluate_tool_call_blocking(&request)?;
@@ -2803,6 +2855,219 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
             .state,
         FindingPurchaseReservationState::SlotReserved
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn finding_status_retraction() -> TestResult {
+    let lane = open_lane(LaneOptions {
+        install_status_verifier: true,
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let config = market_config();
+    let status_store = lane.authority.finding_status_store();
+    let publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            status_store.clone(),
+            config.status_feed_operator.clone(),
+            config.status_feed_service_bond.clone(),
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    let now = unix_timestamp_now();
+    let live = publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    let live_b64 = STANDARD.encode(&live.proof_bytes);
+    let delivered = lane.reveal_with_status(
+        &lane.purchase,
+        &live_b64,
+        "m6-live-reveal-1",
+        "m6-live-nonce-1",
+    )?;
+    assert_eq!(delivered.verdict, Verdict::Allow, "{:?}", delivered.reason);
+    let delivery = finding_delivery_block(&delivered)?;
+    assert!(delivery.status_proof.is_some());
+    buyer_memory_write(&lane.deployment, &delivered.receipt, &lane.buyer)?;
+
+    let provenance: Arc<dyn chio_kernel::MemoryProvenanceStore> =
+        Arc::new(chio_store_sqlite::SqliteMemoryProvenanceStore::open(
+            &lane.deployment.memory_provenance_db,
+        )?);
+    let receipts: Arc<dyn ReceiptStore> = Arc::new(chio_store_sqlite::SqliteReceiptStore::open(
+        &lane.deployment.receipt_db,
+    )?);
+    let resolver =
+        crate::trust_control::finding_retraction_resolver::sqlite_finding_retraction_resolver(
+            "resolver/venue-wedge",
+            &config,
+            provenance,
+            receipts,
+            status_store.clone(),
+        )?;
+    let live_resolution =
+        resolver.resolve(chio_guards::finding_retraction::FindingRetractionQuery {
+            store: "purchased-findings",
+            key: &lane.deployment.web.finding_id,
+        })?;
+    assert_eq!(
+        live_resolution.value,
+        chio_guards::finding_retraction::FindingStatusValue::Live
+    );
+    let guard = chio_guards::MemoryGovernanceGuard::with_config_and_retraction_resolver(
+        chio_guards::MemoryGovernanceConfig {
+            finding_retraction: Some(chio_guards::FindingRetractionGuardConfig {
+                resolver_id: "resolver/venue-wedge".to_owned(),
+                feed_id: config.status_feed_operator_ref.clone(),
+            }),
+            ..chio_guards::MemoryGovernanceConfig::default()
+        },
+        Arc::clone(&resolver),
+    )?;
+    let mut holder_kernel = ChioKernel::new(kernel_config(keypair(42), Vec::new()));
+    holder_kernel.add_guard(Box::new(guard));
+    holder_kernel.register_tool_server(Box::new(BuyerMemoryServer));
+    let read_capability = holder_kernel.issue_capability(
+        &lane.buyer.public_key(),
+        ChioScope {
+            grants: vec![ToolGrant {
+                server_id: "buyer-memory".to_owned(),
+                tool_name: "memory_read".to_owned(),
+                operations: vec![Operation::Invoke],
+                constraints: Vec::new(),
+                max_invocations: None,
+                max_cost_per_invocation: None,
+                max_total_cost: None,
+                dpop_required: None,
+            }],
+            ..ChioScope::default()
+        },
+        300,
+    )?;
+    let memory_read_request = |request_id: &str| ToolCallRequest {
+        request_id: request_id.to_owned(),
+        capability: read_capability.clone(),
+        tool_name: "memory_read".to_owned(),
+        server_id: "buyer-memory".to_owned(),
+        agent_id: read_capability.subject.to_hex(),
+        arguments: serde_json::json!({
+            "collection": "purchased-findings",
+            "id": lane.deployment.web.finding_id,
+        }),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    let live_read =
+        holder_kernel.evaluate_tool_call_blocking(&memory_read_request("m6-holder-live-read"))?;
+    assert_eq!(live_read.verdict, Verdict::Allow, "{:?}", live_read.reason);
+
+    let purchase_store = lane.authority.finding_purchase_store();
+    purchase_store.register_community_fund_destination(
+        &lane.deployment.web.allocation_id,
+        COMMUNITY_FUND_DESTINATION,
+        now,
+    )?;
+    // End this fixture's exposure retention at settlement so the second
+    // attempted purchase reaches the status gate. Retention behavior has
+    // dedicated coverage below.
+    lane.coordinator.finalize_delivery(
+        &lane.purchase.handshake.reservation_id,
+        &delivered.receipt.id,
+        &lane.purchase.accepted_bid_envelope_sha256,
+        PRICE_UNITS,
+        PAYOUT_DESTINATION,
+        &lane.deployment.web.backing_sha256,
+        now,
+        now,
+    )?;
+
+    let intent_id = sha256_hex(b"m6-voluntary-retraction-intent");
+    let intent_bytes = canonical_json_bytes(&serde_json::json!({
+        "finding_id": lane.deployment.web.finding_id,
+        "reason": "seller_voluntary_retraction",
+        "schema": "chio.finding.voluntary-retraction.v1",
+    }))?;
+    let intent = chio_store_sqlite::FindingRetractionIntentInput {
+        intent_id: &intent_id,
+        feed_id: &config.status_feed_operator_ref,
+        operator_id: &config.status_feed_operator.authority.authority_id,
+        finding_id: &lane.deployment.web.finding_id,
+        source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
+        intent_bytes: &intent_bytes,
+        issued_at: now,
+        inclusion_deadline: now + config.status_feed_service_bond.inclusion_sla_secs,
+        created_at: now,
+    };
+    assert_eq!(
+        status_store.issue_retraction_intent(&intent)?,
+        chio_store_sqlite::FindingStatusWriteOutcome::Inserted
+    );
+    assert_eq!(
+        status_store.issue_retraction_intent(&intent)?,
+        chio_store_sqlite::FindingStatusWriteOutcome::ExactReplay
+    );
+    assert!(publisher
+        .publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)
+        .is_err());
+
+    let second_handshake = handshake(
+        &lane.deployment.web,
+        &lane.witness,
+        &lane.buyer,
+        "buyer-agent-m6-second",
+        "finding-purchase-token-m6-second",
+    )?;
+    let second = reserve_and_accept(
+        &lane.deployment.web,
+        &lane.witness,
+        &lane.coordinator,
+        &lane.buyer,
+        second_handshake,
+    )?;
+    let pending = lane.reveal_with_status(
+        &second,
+        &live_b64,
+        "m6-pending-reveal-2",
+        "m6-pending-nonce-2",
+    )?;
+    assert_denied_with(&pending, "pending");
+
+    let included = publisher.publish_retraction(&intent_id, &[], now)?;
+    let included_b64 = STANDARD.encode(&included.proof_bytes);
+    let duplicate = publisher.publish_retraction(&intent_id, &[], now)?;
+    assert_eq!(duplicate.proof_sha256, included.proof_sha256);
+    let retracted = lane.reveal_with_status(
+        &second,
+        &included_b64,
+        "m6-retracted-reveal-2",
+        "m6-retracted-nonce-2",
+    )?;
+    assert_denied_with(&retracted, "retracted");
+    let rollback = lane.reveal_with_status(
+        &second,
+        &live_b64,
+        "m6-rollback-reveal-2",
+        "m6-rollback-nonce-2",
+    )?;
+    assert_denied_with(&rollback, "rollback");
+
+    let resolved = resolver.resolve(chio_guards::finding_retraction::FindingRetractionQuery {
+        store: "purchased-findings",
+        key: &lane.deployment.web.finding_id,
+    })?;
+    assert_eq!(
+        resolved.value,
+        chio_guards::finding_retraction::FindingStatusValue::Retracted
+    );
+    let guarded = holder_kernel
+        .evaluate_tool_call_blocking(&memory_read_request("m6-holder-retracted-read"))?;
+    assert_eq!(guarded.verdict, Verdict::Deny);
     Ok(())
 }
 
@@ -2909,11 +3174,16 @@ fn buyer_memory_write(
     let receipts = Arc::new(chio_store_sqlite::SqliteReceiptStore::open(
         &deployment.receipt_db,
     )?);
+    receipts.append_chio_receipt(delivery_receipt)?;
     let buyer_kernel_keypair = keypair(41);
     let mut config = kernel_config(buyer_kernel_keypair.clone(), Vec::new());
     config.checkpoint_batch_size = 0;
     let mut kernel = ChioKernel::new(config);
     kernel.set_receipt_store_handle(receipts.clone())?;
+    let provenance = Arc::new(chio_store_sqlite::SqliteMemoryProvenanceStore::open(
+        &deployment.memory_provenance_db,
+    )?);
+    kernel.set_memory_provenance_store(provenance);
     kernel.register_tool_server(Box::new(BuyerMemoryServer));
     let capability = kernel.issue_capability(
         &buyer.public_key(),
@@ -2987,7 +3257,7 @@ fn buyer_memory_write(
                 SessionAnchorReference::new("anchor-reveal", HEX64),
                 SessionAnchorReference::new("anchor-memory", HEX64),
             ),
-            ReceiptLineageRelationKind::LocalChild,
+            ReceiptLineageRelationKind::FindingMemoryWriteToDelivery,
             unix_timestamp_now(),
             buyer_kernel_keypair.public_key(),
         ),
@@ -3029,7 +3299,7 @@ fn buyer_memory_write(
     assert_eq!(link.statement_id.as_deref(), Some(statement.id.as_str()));
     assert_eq!(
         statement.relation_kind,
-        ReceiptLineageRelationKind::LocalChild
+        ReceiptLineageRelationKind::FindingMemoryWriteToDelivery
     );
     Ok(())
 }
@@ -3172,6 +3442,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         calls: &calls,
         invocations: &invocations,
         install_verifier: true,
+        install_status_verifier: false,
     })?;
     let request = reveal_request(&RevealRequestInputs {
         request_id: "wedge-digest-mismatch-1",
@@ -3179,6 +3450,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         buyer: &buyer,
         finding_id: &deployment.web.finding_id,
         context_b64: Some(&purchase.context_b64),
+        status_proof_b64: None,
         nonce: "nonce-digest-2",
     })?;
     let replay = recovered.evaluate_tool_call_blocking(&request)?;
@@ -3357,6 +3629,7 @@ async fn wedge_purchase_without_governed_context_denies_before_dispatch() -> Tes
         buyer: &lane.buyer,
         finding_id: &lane.deployment.web.finding_id,
         context_b64: None,
+        status_proof_b64: None,
         nonce: "nonce-no-context-1",
     })?;
     let response = lane.kernel.evaluate_tool_call_blocking(&request)?;
@@ -3376,6 +3649,7 @@ async fn wedge_purchase_wrong_finding_argument_is_out_of_scope() -> TestResult {
         buyer: &lane.buyer,
         finding_id: &"f".repeat(64),
         context_b64: Some(&lane.purchase.context_b64),
+        status_proof_b64: None,
         nonce: "nonce-wrong-argument-1",
     })?;
     let response = lane.kernel.evaluate_tool_call_blocking(&request)?;
@@ -3408,6 +3682,7 @@ async fn wedge_purchase_alternate_token_denies() -> TestResult {
         buyer: &lane.buyer,
         finding_id: &lane.deployment.web.finding_id,
         context_b64: Some(&lane.purchase.context_b64),
+        status_proof_b64: None,
         nonce: "nonce-alternate-token-1",
     })?;
     let response = lane.kernel.evaluate_tool_call_blocking(&request)?;
@@ -3544,6 +3819,7 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
                 buyer: &lane.buyer,
                 finding_id: &"f".repeat(64),
                 context_b64: Some(&lane.purchase.context_b64),
+                status_proof_b64: None,
                 nonce: "nonce-recovery-denied-1",
             })?)?;
     assert_eq!(denied.verdict, Verdict::Deny, "{:?}", denied.reason);

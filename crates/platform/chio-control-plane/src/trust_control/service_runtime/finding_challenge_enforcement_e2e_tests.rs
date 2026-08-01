@@ -8386,7 +8386,7 @@ fn finding_challenge_quarantined_reconciliation_leaves_purchases_blocked() -> Te
 }
 
 #[test]
-fn finding_challenge_an_unmined_broadcast_stays_dispatchable_and_settles_when_it_lands(
+fn finding_status_retraction_enforced_challenge_stays_pending_until_the_broadcast_lands(
 ) -> TestResult {
     let case = finalizing_liability()?;
     let publisher = MiningPublisher::new();

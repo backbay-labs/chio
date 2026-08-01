@@ -195,8 +195,10 @@ impl FindingStatusEpoch {
             return Err(FindingError::InvalidField("key_domain_nonce"));
         }
         require_i_json_u64(self.map_epoch, "map_epoch")?;
+        require_nonzero(self.map_epoch, "map_epoch")?;
         require_bounded_id(&self.operator_id, "operator_id")?;
         require_ed25519(&self.operator_key, "operator_key")?;
+        require_i_json_u64(self.operator_key_epoch, "operator_key_epoch")?;
         require_nonzero(self.operator_key_epoch, "operator_key_epoch")?;
         require_hex64(&self.root_hash, "root_hash")?;
         if usize::from(self.tree_depth) != FINDING_STATUS_SPARSE_DEPTH {
@@ -543,6 +545,7 @@ fn validate_common(common: &ProofCommon<'_>) -> Result<(), FindingError> {
         return Err(FindingError::InvalidField("status_proof.key_domain_nonce"));
     }
     require_i_json_u64(common.map_epoch, "status_proof.map_epoch")?;
+    require_nonzero(common.map_epoch, "status_proof.map_epoch")?;
     require_hex64(common.finding_id, "status_proof.finding_id")?;
     require_hex64(common.status_epoch_id, "status_proof.status_epoch_id")?;
     require_hex64(

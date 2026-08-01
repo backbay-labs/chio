@@ -182,6 +182,46 @@ fn floor_epoch_and_non_inclusion_survive_restart_with_exact_bytes() {
 }
 
 #[test]
+fn exact_status_artifacts_replay_at_a_later_observation_time() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('1');
+    let epoch_id = hex64('2');
+    let root_hash = hex64('3');
+    let epoch_bytes = br#"{"schema":"chio.finding.status-epoch.v1","map_epoch":1}"#;
+    let proof_bytes = br#"{"kind":"non_inclusion","map_epoch":1}"#;
+    let epoch = epoch(1, &epoch_id, &root_hash, epoch_bytes, 1);
+    let proof = non_inclusion(1, &epoch_id, &root_hash, &finding_id, proof_bytes);
+
+    assert_eq!(
+        store
+            .advance_epoch(&FindingStatusEpochAdvance {
+                epoch,
+                leaves: &[],
+                proofs: &[proof],
+            })
+            .expect("persist artifacts"),
+        FindingStatusWriteOutcome::Inserted
+    );
+
+    let mut later_epoch = epoch;
+    later_epoch.recorded_at += 10;
+    let mut later_proof = proof;
+    later_proof.recorded_at += 10;
+    assert_eq!(
+        store
+            .advance_epoch(&FindingStatusEpochAdvance {
+                epoch: later_epoch,
+                leaves: &[],
+                proofs: &[later_proof],
+            })
+            .expect("replay exact artifacts"),
+        FindingStatusWriteOutcome::ExactReplay
+    );
+}
+
+#[test]
 fn rollback_and_same_epoch_equivocation_reject_without_moving_floor() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();
