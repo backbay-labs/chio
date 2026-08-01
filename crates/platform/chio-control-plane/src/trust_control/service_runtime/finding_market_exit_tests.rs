@@ -343,9 +343,9 @@ fn resource_caps() -> FindingResourceCaps {
     }
 }
 
-fn recipe_environment() -> FindingRecipeEnvironment {
+fn recipe_environment(runtime_image_sha256: &str) -> FindingRecipeEnvironment {
     FindingRecipeEnvironment {
-        runtime_image_sha256: HEX64.to_string(),
+        runtime_image_sha256: runtime_image_sha256.to_string(),
         platform: "linux/amd64".to_string(),
         network_policy: "deny_all".to_string(),
         clock_policy: "fixed:1700000000".to_string(),
@@ -361,6 +361,8 @@ struct RecipeDependencies {
     candidate_input_sha256: String,
     parameters_sha256: String,
     pre_run_template_sha256: String,
+    runner_manifest_sha256: String,
+    runtime_image_sha256: String,
 }
 
 fn recipe_dependencies() -> RecipeDependencies {
@@ -369,12 +371,16 @@ fn recipe_dependencies() -> RecipeDependencies {
         b"candidate input bundle".to_vec(),
         b"canonical parameter bundle".to_vec(),
         b"cycle-free pre-run template".to_vec(),
+        b"pinned runner manifest".to_vec(),
+        b"immutable runtime image".to_vec(),
     ];
     RecipeDependencies {
         baseline_input_sha256: sha256_hex(&blobs[0]),
         candidate_input_sha256: sha256_hex(&blobs[1]),
         parameters_sha256: sha256_hex(&blobs[2]),
         pre_run_template_sha256: sha256_hex(&blobs[3]),
+        runner_manifest_sha256: sha256_hex(&blobs[4]),
+        runtime_image_sha256: sha256_hex(&blobs[5]),
         blobs,
     }
 }
@@ -391,7 +397,7 @@ fn build_recipe(
         payload_sha256: HEX64.to_string(),
         runner_server: SERVER_ID.to_string(),
         runner_tool: "finding.replay".to_string(),
-        runner_manifest_sha256: HEX64.to_string(),
+        runner_manifest_sha256: dependencies.runner_manifest_sha256.clone(),
         phases: vec![
             FindingRecipePhase {
                 phase: FindingRecipePhaseKind::Baseline,
@@ -405,7 +411,7 @@ fn build_recipe(
             },
         ],
         parameters_sha256: dependencies.parameters_sha256.clone(),
-        environment: recipe_environment(),
+        environment: recipe_environment(&dependencies.runtime_image_sha256),
         resource_bounds: resource_caps(),
         predicate: FindingPredicate::BaselineFailsCandidatePassesV1,
         pre_run_template_sha256: dependencies.pre_run_template_sha256.clone(),
@@ -2130,6 +2136,8 @@ async fn deterministic_publish_requires_every_retained_recipe_dependency_class()
         (0_usize, "phase input bundle 0"),
         (2_usize, "parameter bundle"),
         (3_usize, "pre-run template"),
+        (4_usize, "runner manifest"),
+        (5_usize, "runtime image"),
     ] {
         let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
         let web = &stack.web;

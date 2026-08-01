@@ -253,7 +253,11 @@ fn verify_retained_recipe_closure(
         .validate()
         .map_err(|error| plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()))?;
 
-    let mut dependencies = Vec::with_capacity(recipe.phases.len() + 2);
+    let mut dependencies = Vec::with_capacity(recipe.phases.len() + 4);
+    dependencies.push((
+        "runner manifest".to_string(),
+        recipe.runner_manifest_sha256.as_str(),
+    ));
     for (index, phase) in recipe.phases.iter().enumerate() {
         dependencies.push((
             format!("phase input bundle {index}"),
@@ -263,6 +267,10 @@ fn verify_retained_recipe_closure(
     dependencies.push((
         "parameter bundle".to_string(),
         recipe.parameters_sha256.as_str(),
+    ));
+    dependencies.push((
+        "runtime image".to_string(),
+        recipe.environment.runtime_image_sha256.as_str(),
     ));
     dependencies.push((
         "pre-run template".to_string(),

@@ -93,9 +93,11 @@ cite them as D1..D15.
   typed deserialize, typed-canonical equality), verifies the embedded
   pre-run template digest is present and cycle-free, and persists the exact
   raw bytes content-addressed by their canonical digest, idempotently.
-  Dependencies referenced by digest inside the recipe (input bundles,
-  template) upload through the same endpoint and are retained. There is no
-  GC: retention through the claim/audit/appeal horizon is achieved by never deleting, recorded as an operational note.
+  Dependencies referenced by digest inside the recipe (runner manifest,
+  input bundles, parameter bundle, runtime image, and template) upload
+  through the same endpoint and are retained. There is no GC: retention
+  through the claim/audit/appeal horizon is achieved by never deleting,
+  recorded as an operational note.
 - D5 Admission distribution: `GET /v1/findings/{finding_id}/admission`
   serves the current venue-signed admission envelope; finding-index search
   rows carry `{admission_id, admission_envelope_sha256, admission_expires_at}`
