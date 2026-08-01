@@ -47,12 +47,12 @@ run_cargo_test_filter() {
   local package="$1"
   local filter="$2"
   shift 2
-  local profile_args=()
+  local release_profile=false
   case "${CHIO_TEST_PROFILE:-debug}" in
     "debug")
       ;;
     "release")
-      profile_args+=(--release)
+      release_profile=true
       ;;
     *)
       echo "CHIO_TEST_PROFILE must be 'debug' or 'release'" >&2
@@ -60,7 +60,12 @@ run_cargo_test_filter() {
       ;;
   esac
   local output
-  if ! output="$(cargo test "${profile_args[@]}" -p "$package" "$filter" "$@" 2>&1)"; then
+  if [[ "$release_profile" == true ]]; then
+    output="$(cargo test --release -p "$package" "$filter" "$@" 2>&1)" || {
+      printf '%s\n' "$output"
+      return 1
+    }
+  elif ! output="$(cargo test -p "$package" "$filter" "$@" 2>&1)"; then
     printf '%s\n' "$output"
     return 1
   fi
