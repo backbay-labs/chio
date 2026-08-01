@@ -10,8 +10,8 @@ use chio_core::receipt::{
 use chio_core::session::{OperationKind, OperationTerminalState, RequestId, SessionId};
 use chio_kernel::checkpoint::{
     build_checkpoint, build_checkpoint_with_previous, build_inclusion_proof,
-    build_trust_anchored_checkpoint_publication, validate_checkpoint_transparency,
-    CheckpointTransparencySummary,
+    build_trust_anchored_checkpoint_publication, checkpoint_chain_leaf_hash,
+    validate_checkpoint_transparency, CheckpointTransparencySummary,
 };
 use chio_kernel::evidence_export::{
     EvidenceChildReceiptRecord, EvidenceChildReceiptScope, EvidenceExportQuery,
@@ -427,6 +427,8 @@ fn sample_bundle_with_publication_records() -> (EvidenceExportBundle, Checkpoint
         &checkpoint_keypair,
     )
     .expect("first checkpoint");
+    let first_chain_leaf =
+        checkpoint_chain_leaf_hash(&first_checkpoint.body).expect("first checkpoint chain leaf");
     let second_checkpoint = build_checkpoint_with_previous(
         2,
         2,
@@ -434,6 +436,7 @@ fn sample_bundle_with_publication_records() -> (EvidenceExportBundle, Checkpoint
         std::slice::from_ref(&second_canonical),
         &checkpoint_keypair,
         Some(&first_checkpoint),
+        &[first_chain_leaf],
     )
     .expect("second checkpoint");
     let first_tree =
@@ -507,6 +510,7 @@ fn proof_package_build_and_verify_passes() {
         vec![sample_mercury_bundle_manifest()],
     )
     .expect("proof package");
+    assert_eq!(package.schema, "chio.mercury.proof_package.v2");
     let claim_boundary = package
         .publication_claim_boundary
         .as_ref()
@@ -676,6 +680,39 @@ fn proof_package_rejects_package_id_tampering() {
             .contains("does not match the deterministic proof-package identity"),
         "unexpected error: {error}"
     );
+}
+
+#[test]
+fn legacy_v1_package_identity_still_verifies_and_builds_an_inquiry() {
+    let mut package = build_sample_proof_package(sample_bundle()).expect("proof package");
+    package.schema = "chio.mercury.proof_package.v1".to_string();
+    package.package_id = build_hash_id(
+        "proof",
+        &serde_json::json!({
+            "createdAt": package.created_at,
+            "evidenceExportManifestHash": package.evidence_export_manifest_hash,
+            "workflowId": package.workflow_id,
+            "receiptIds": ordered_receipt_ids(&package),
+        }),
+    )
+    .expect("legacy package identity");
+    let encoded = serde_json::to_vec(&package).expect("serialize legacy package");
+    let restored: MercuryProofPackage =
+        serde_json::from_slice(&encoded).expect("deserialize legacy package");
+
+    restored
+        .verify(1_775_137_901)
+        .expect("legacy package remains verifiable");
+    MercuryInquiryPackage::build(
+        restored,
+        MercuryInquiryPackageArgs {
+            created_at: 1_775_137_902,
+            audience: "legacy-reviewer".to_string(),
+            redaction_profile: None,
+            verifier_equivalent: false,
+        },
+    )
+    .expect("legacy package can still seed an inquiry");
 }
 
 #[test]

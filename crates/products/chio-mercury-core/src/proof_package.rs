@@ -26,7 +26,8 @@ use crate::receipt_metadata::{
 use crate::validation::ensure_non_empty;
 
 pub const MERCURY_PUBLICATION_PROFILE_SCHEMA: &str = "chio.mercury.publication_profile.v1";
-pub const MERCURY_PROOF_PACKAGE_SCHEMA: &str = "chio.mercury.proof_package.v1";
+pub const MERCURY_PROOF_PACKAGE_SCHEMA_V1: &str = "chio.mercury.proof_package.v1";
+pub const MERCURY_PROOF_PACKAGE_SCHEMA: &str = "chio.mercury.proof_package.v2";
 pub const MERCURY_INQUIRY_PACKAGE_SCHEMA: &str = "chio.mercury.inquiry_package.v1";
 const CHECKPOINT_CONTINUITY_AUDIT_ONLY: &str = "audit_only";
 const CHECKPOINT_CONTINUITY_TRANSPARENCY_PREVIEW: &str = "transparency_preview";
@@ -268,12 +269,15 @@ impl MercuryProofPackage {
     }
 
     pub fn refresh_package_id(&mut self) -> Result<(), MercuryContractError> {
-        self.package_id = derive_proof_package_id(self)?;
+        self.package_id = derive_proof_package_id_for_schema(self)?;
         Ok(())
     }
 
     pub fn validate(&self) -> Result<(), MercuryContractError> {
-        if self.schema != MERCURY_PROOF_PACKAGE_SCHEMA {
+        if !matches!(
+            self.schema.as_str(),
+            MERCURY_PROOF_PACKAGE_SCHEMA_V1 | MERCURY_PROOF_PACKAGE_SCHEMA
+        ) {
             return Err(MercuryContractError::InvalidSchema {
                 expected: MERCURY_PROOF_PACKAGE_SCHEMA,
                 actual: self.schema.clone(),
@@ -411,7 +415,7 @@ impl MercuryProofPackage {
                 "strategy_id does not match the signed receipt metadata summary".to_string(),
             ));
         }
-        let expected_package_id = derive_proof_package_id(self)?;
+        let expected_package_id = derive_proof_package_id_for_schema(self)?;
         if self.package_id != expected_package_id {
             return Err(MercuryContractError::Validation(
                 "package_id does not match the deterministic proof-package identity".to_string(),
@@ -443,7 +447,7 @@ impl MercuryProofPackage {
             steps: vec![
                 MercuryVerificationStep {
                     name: "package_contract".to_string(),
-                    detail: "proof package identity content-addresses the export descriptor annotations (not independently attested provenance), workflow scope, receipt action bindings, and manifest structure".to_string(),
+                    detail: "proof package identity validates under its declared schema version; signed workflow scope, receipt action bindings, and manifest structure were validated independently".to_string(),
                 },
                 MercuryVerificationStep {
                     name: "chio_bundle_integrity".to_string(),
@@ -483,7 +487,7 @@ impl MercuryProofPackage {
             steps: vec![
                 MercuryVerificationStep {
                     name: "package_contract".to_string(),
-                    detail: "proof package identity content-addresses the unsigned export descriptor (not independently attested source-population provenance), signed workflow scope, receipt action bindings, and signed bundle-reference coverage".to_string(),
+                    detail: "proof package identity validates under its declared schema version; the unsigned export descriptor, signed workflow scope, receipt action bindings, and signed bundle-reference coverage were validated independently".to_string(),
                 },
                 MercuryVerificationStep {
                     name: "chio_bundle_integrity".to_string(),
@@ -768,6 +772,33 @@ fn derive_proof_package_id(
             "chioBundleSha256": chio_bundle_sha256,
         }),
     )
+}
+
+fn derive_legacy_v1_proof_package_id(
+    proof_package: &MercuryProofPackage,
+) -> Result<String, MercuryContractError> {
+    build_hash_id(
+        "proof",
+        &serde_json::json!({
+            "createdAt": proof_package.created_at,
+            "evidenceExportManifestHash": proof_package.evidence_export_manifest_hash,
+            "workflowId": proof_package.workflow_id,
+            "receiptIds": ordered_receipt_ids(proof_package),
+        }),
+    )
+}
+
+fn derive_proof_package_id_for_schema(
+    proof_package: &MercuryProofPackage,
+) -> Result<String, MercuryContractError> {
+    match proof_package.schema.as_str() {
+        MERCURY_PROOF_PACKAGE_SCHEMA_V1 => derive_legacy_v1_proof_package_id(proof_package),
+        MERCURY_PROOF_PACKAGE_SCHEMA => derive_proof_package_id(proof_package),
+        _ => Err(MercuryContractError::InvalidSchema {
+            expected: MERCURY_PROOF_PACKAGE_SCHEMA,
+            actual: proof_package.schema.clone(),
+        }),
+    }
 }
 
 struct InquiryProjection<'a> {
