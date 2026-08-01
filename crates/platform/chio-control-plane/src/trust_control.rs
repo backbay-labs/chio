@@ -328,6 +328,9 @@ pub mod finding_recovery_verifier;
 #[cfg(feature = "cognition-market-experimental")]
 #[path = "trust_control/finding_reveal_server.rs"]
 pub mod finding_reveal_server;
+#[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_status_handlers.rs"]
+mod finding_status_handlers;
 #[path = "trust_control/passport_handlers.rs"]
 mod passport_handlers;
 #[path = "trust_control/receipt_handlers.rs"]
@@ -375,6 +378,8 @@ pub(crate) use self::finding_handlers::*;
 pub(crate) use self::finding_purchase_routes::{
     handle_purchase_finding, FINDING_PURCHASE_MAX_BODY_BYTES,
 };
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) use self::finding_status_handlers::*;
 // The evidenced-rail seam is part of the finding lane's deployment
 // surface: the dispute-fee charge takes it by injection exactly as the
 // admission and participation charges do.

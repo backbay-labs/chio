@@ -71,6 +71,12 @@ pub(crate) const FINDING_PURCHASE_PATH: &str = "/v1/findings/{finding_id}/purcha
 #[cfg(feature = "cognition-market-experimental")]
 /// Authenticated canonical challenge-envelope submission.
 pub(crate) const FINDING_CHALLENGES_PATH: &str = "/v1/findings/{finding_id}/challenges";
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) const FINDING_STATUS_ROOT_PATH: &str = "/v1/findings/status/{feed}/root";
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) const FINDING_STATUS_PROOF_PATH: &str = "/v1/findings/status/{feed}/proof/{finding_id}";
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) const FINDING_STATUS_INTENTS_PATH: &str = "/v1/findings/status/{feed}/intents";
 pub(crate) const OPEN_MARKET_FEE_SCHEDULE_ISSUE_PATH: &str = "/v1/registry/market/fees/issue";
 pub(crate) const OPEN_MARKET_PENALTY_ISSUE_PATH: &str = "/v1/registry/market/penalties/issue";
 pub(crate) const OPEN_MARKET_PENALTY_EVALUATE_PATH: &str = "/v1/registry/market/penalties/evaluate";

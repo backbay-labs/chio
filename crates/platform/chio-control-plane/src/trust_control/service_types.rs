@@ -49,7 +49,10 @@ pub use self::cluster_budget::{
 pub(crate) use self::config::validate_control_secret;
 pub use self::config::{TrustFiscalRuntimeConfig, TrustServiceConfig};
 #[cfg(feature = "cognition-market-experimental")]
-pub use self::finding_market_config::{FindingAuthorityPin, FindingMarketConfig, FindingPoolPin};
+pub use self::finding_market_config::{
+    FindingAuthorityPin, FindingMarketConfig, FindingPoolPin, FindingStatusOperatorPin,
+    FindingStatusServiceBond, FINDING_STATUS_KEY_DOMAIN_NONCE, FINDING_STATUS_OPERATOR_ROLE,
+};
 pub use self::paths::FEDERATED_DELEGATION_POLICY_SCHEMA;
 pub(crate) use self::paths::{
     AGENT_RECEIPTS_PATH, AUTHORITY_CACHE_TTL, AUTHORITY_PATH, AUTHORIZATION_CONTEXT_REPORT_PATH,
@@ -131,6 +134,7 @@ pub(crate) use self::paths::{
     FINDINGS_COLLATERAL_PATH, FINDINGS_PROFILES_PATH, FINDINGS_PUBLISH_PATH, FINDINGS_RECIPES_PATH,
     FINDINGS_SEARCH_PATH, FINDING_ACTIVATE_PATH, FINDING_ADMISSION_PATH, FINDING_CHALLENGES_PATH,
     FINDING_PARTICIPATION_PATH, FINDING_PATH, FINDING_PURCHASE_PATH,
+    FINDING_STATUS_INTENTS_PATH, FINDING_STATUS_PROOF_PATH, FINDING_STATUS_ROOT_PATH,
 };
 pub(crate) use self::requests::{
     build_capability_snapshot, build_federated_delegation_anchor_snapshot,

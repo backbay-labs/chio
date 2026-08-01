@@ -751,6 +751,19 @@ fn finding_market_routes() -> Router<TrustServiceState> {
                 super::super::finding_challenge_handlers::FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES,
             )),
         )
+        .route(
+            FINDING_STATUS_ROOT_PATH,
+            get(handle_get_finding_status_root),
+        )
+        .route(
+            FINDING_STATUS_PROOF_PATH,
+            get(handle_get_finding_status_proof),
+        )
+        .route(
+            FINDING_STATUS_INTENTS_PATH,
+            post(handle_submit_finding_status_intent)
+                .layer(DefaultBodyLimit::max(FINDING_STATUS_INTENT_MAX_BODY_BYTES)),
+        )
 }
 
 #[cfg(not(feature = "cognition-market-experimental"))]

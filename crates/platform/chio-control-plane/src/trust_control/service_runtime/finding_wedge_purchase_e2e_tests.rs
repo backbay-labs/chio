@@ -267,6 +267,27 @@ fn market_config() -> FindingMarketConfig {
         },
         community_fund_destination: COMMUNITY_FUND_DESTINATION.to_string(),
         status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
+        status_feed_operator: FindingStatusOperatorPin {
+            feed_id: "status-feed/venue-wedge".to_string(),
+            role: FINDING_STATUS_OPERATOR_ROLE.to_string(),
+            authority: authority_pin(36, "status-operator"),
+            rotation_policy_ref: "rotation-policy/status-feed-v1".to_string(),
+            authorization_sha256: sha256_hex(b"status-operator-authorization"),
+            revoked_from: None,
+        },
+        status_feed_service_bond: FindingStatusServiceBond {
+            bond_id: "status-bond-venue-wedge".to_string(),
+            feed_id: "status-feed/venue-wedge".to_string(),
+            operator_id: "authority-status-operator".to_string(),
+            locked_units: 1_000,
+            currency: "USD".to_string(),
+            valid_from: ISSUED_AT,
+            valid_until: WINDOW_EXPIRES_AT,
+            inclusion_sla_secs: 3_600,
+            missed_inclusion_slash_units: 100,
+            equivocation_slash_units: 1_000,
+            evidence_sha256: sha256_hex(b"status-bond-venue-wedge"),
+        },
         fee_schedule_operator_keys: vec![keypair(24).public_key().to_hex()],
     }
 }

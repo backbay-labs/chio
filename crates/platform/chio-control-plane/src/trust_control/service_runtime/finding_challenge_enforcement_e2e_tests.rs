@@ -162,7 +162,8 @@ use crate::trust_control::{
     FederationAdmissionRateLimiter, FindingAuthorityPin, FindingChallengeSubmissionExecutor,
     FindingChallengeSubmissionRequest, FindingChallengeSubmissionResponse,
     FindingChallengeSubmissionRuntime, FindingChallengeSubmissionWrite, FindingMarketConfig,
-    FindingPoolPin, TrustServiceConfig, TrustServiceState,
+    FindingPoolPin, FindingStatusOperatorPin, FindingStatusServiceBond, TrustServiceConfig,
+    TrustServiceState, FINDING_STATUS_OPERATOR_ROLE,
 };
 use crate::trust_control::{FindingRailInstruction, FindingRailObservation, FindingRailObserver};
 use chio_test_support::plain::TestResultOk;
@@ -419,6 +420,27 @@ fn market_config() -> FindingMarketConfig {
         },
         community_fund_destination: COMMUNITY_FUND_DESTINATION.to_string(),
         status_feed_operator_ref: "status-feed/venue-challenge".to_string(),
+        status_feed_operator: FindingStatusOperatorPin {
+            feed_id: "status-feed/venue-challenge".to_string(),
+            role: FINDING_STATUS_OPERATOR_ROLE.to_string(),
+            authority: authority_pin(36, "status-operator"),
+            rotation_policy_ref: "rotation-policy/status-feed-v1".to_string(),
+            authorization_sha256: digest("status-operator-authorization"),
+            revoked_from: None,
+        },
+        status_feed_service_bond: FindingStatusServiceBond {
+            bond_id: "status-bond-venue-challenge".to_string(),
+            feed_id: "status-feed/venue-challenge".to_string(),
+            operator_id: "status-operator".to_string(),
+            locked_units: 1_000,
+            currency: "USD".to_string(),
+            valid_from: 1,
+            valid_until: u64::MAX,
+            inclusion_sla_secs: 3_600,
+            missed_inclusion_slash_units: 100,
+            equivocation_slash_units: 1_000,
+            evidence_sha256: digest("status-bond-venue-challenge"),
+        },
         fee_schedule_operator_keys: vec![fee_schedule_keypair().public_key().to_hex()],
     }
 }

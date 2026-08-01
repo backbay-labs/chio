@@ -16,6 +16,18 @@ use crate::CliError;
 
 const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
 
+/// Fixed numeric key domain for `chio.finding.status.v1`.
+///
+/// This is the first 53 bits of SHA-256 over the protocol domain. It is a
+/// selected wire constant, not a value deployments or callers may derive or
+/// replace. Keeping it below 2^53 preserves the same integer in every strict
+/// I-JSON implementation.
+pub const FINDING_STATUS_KEY_DOMAIN_NONCE: u64 = 3_318_287_169_837_494;
+
+/// Exact role carried by the governance-pinned status operator
+/// authorization.
+pub const FINDING_STATUS_OPERATOR_ROLE: &str = "finding_status_operator";
+
 /// One pinned authority key with its lifecycle policy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -121,6 +133,196 @@ impl FindingPoolPin {
     }
 }
 
+/// Governance-pinned authorization for one finding-status feed operator.
+///
+/// Rotation replaces `authority` with a higher key epoch under the same
+/// `feed_id` and `rotation_policy_ref`. The durable feed floor is keyed by the
+/// stable feed identity and therefore cannot reset when the authorized key
+/// rotates.
+#[derive(Debug, Clone)]
+pub struct FindingStatusOperatorPin {
+    pub feed_id: String,
+    pub role: String,
+    pub authority: FindingAuthorityPin,
+    pub rotation_policy_ref: String,
+    /// Digest of the governance-signed authorization envelope that binds the
+    /// role, feed, key epoch, validity, rotation, and revocation policy.
+    pub authorization_sha256: String,
+    /// First venue-clock instant at which this authorization is revoked. The
+    /// authorization remains audit-visible, but cannot sign or serve at or
+    /// after this instant.
+    pub revoked_from: Option<u64>,
+}
+
+impl FindingStatusOperatorPin {
+    fn validate(&self) -> Result<PublicKey, CliError> {
+        if self.feed_id.trim().is_empty() || self.feed_id.trim() != self.feed_id {
+            return Err(CliError::cli_other_error(
+                "finding-market status feed id must be canonical and non-empty".to_string(),
+            ));
+        }
+        if self.role != FINDING_STATUS_OPERATOR_ROLE {
+            return Err(CliError::cli_other_error(
+                "finding-market status operator role is invalid".to_string(),
+            ));
+        }
+        if self.rotation_policy_ref.trim().is_empty()
+            || self.rotation_policy_ref.trim() != self.rotation_policy_ref
+        {
+            return Err(CliError::cli_other_error(
+                "finding-market status operator rotation policy ref is invalid".to_string(),
+            ));
+        }
+        if self.authorization_sha256.len() != 64
+            || !self
+                .authorization_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            return Err(CliError::cli_other_error(
+                "finding-market status operator authorization digest is invalid".to_string(),
+            ));
+        }
+        if self.revoked_from.is_some_and(|revoked_from| {
+            revoked_from == 0 || revoked_from > self.authority.valid_until
+        }) {
+            return Err(CliError::cli_other_error(
+                "finding-market status operator revocation time is invalid".to_string(),
+            ));
+        }
+        self.authority.validate("status operator")
+    }
+
+    /// Require this exact feed and a live, non-revoked authorized operator at
+    /// the venue clock. An operator rotation retains `feed_id` but changes the
+    /// pinned key epoch and key through a validated configuration update.
+    pub fn require_live(&self, feed_id: &str, now: u64) -> Result<PublicKey, CliError> {
+        if feed_id != self.feed_id {
+            return Err(CliError::cli_other_error(
+                "finding-market status feed does not match the configured feed".to_string(),
+            ));
+        }
+        let key = self.validate()?;
+        if !self.authority.covers(now)
+            || self
+                .revoked_from
+                .is_some_and(|revoked_from| now >= revoked_from)
+        {
+            return Err(CliError::cli_other_error(
+                "finding-market status operator authorization is outside its validity window"
+                    .to_string(),
+            ));
+        }
+        Ok(key)
+    }
+}
+
+/// Live service bond that makes missed inclusion and equivocation objective
+/// slash conditions for a status-feed operator.
+#[derive(Debug, Clone)]
+pub struct FindingStatusServiceBond {
+    pub bond_id: String,
+    pub feed_id: String,
+    pub operator_id: String,
+    pub locked_units: u64,
+    pub currency: String,
+    pub valid_from: u64,
+    pub valid_until: u64,
+    pub inclusion_sla_secs: u64,
+    pub missed_inclusion_slash_units: u64,
+    pub equivocation_slash_units: u64,
+    /// Digest of the external live-bond observation or allocation envelope.
+    pub evidence_sha256: String,
+}
+
+impl FindingStatusServiceBond {
+    fn validate(&self, operator: &FindingStatusOperatorPin) -> Result<(), CliError> {
+        if self.bond_id.trim().is_empty() || self.bond_id.trim() != self.bond_id {
+            return Err(CliError::cli_other_error(
+                "finding-market status service bond id is invalid".to_string(),
+            ));
+        }
+        if self.feed_id != operator.feed_id || self.operator_id != operator.authority.authority_id {
+            return Err(CliError::cli_other_error(
+                "finding-market status service bond is bound to another feed or operator"
+                    .to_string(),
+            ));
+        }
+        if self.currency.len() != 3 || !self.currency.bytes().all(|byte| byte.is_ascii_uppercase())
+        {
+            return Err(CliError::cli_other_error(
+                "finding-market status service bond currency is invalid".to_string(),
+            ));
+        }
+        if self.locked_units == 0
+            || self.inclusion_sla_secs == 0
+            || self.missed_inclusion_slash_units == 0
+            || self.equivocation_slash_units == 0
+            || self.missed_inclusion_slash_units > self.locked_units
+            || self.equivocation_slash_units > self.locked_units
+        {
+            return Err(CliError::cli_other_error(
+                "finding-market status service bond has invalid objective slash conditions"
+                    .to_string(),
+            ));
+        }
+        if self.valid_until <= self.valid_from {
+            return Err(CliError::cli_other_error(
+                "finding-market status service bond validity window is inverted".to_string(),
+            ));
+        }
+        if self.evidence_sha256.len() != 64
+            || !self
+                .evidence_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            return Err(CliError::cli_other_error(
+                "finding-market status service bond evidence digest is invalid".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Whether the externally evidenced service bond is live at `now`.
+    #[must_use]
+    pub const fn covers(&self, now: u64) -> bool {
+        now >= self.valid_from && now < self.valid_until
+    }
+
+    /// Objective missed-inclusion slash amount, if a promised inclusion was
+    /// absent at its signed deadline. An inclusion after the deadline still
+    /// proves the SLA miss and cannot erase it.
+    #[must_use]
+    pub fn assess_missed_inclusion(
+        &self,
+        inclusion_deadline: u64,
+        included_at: Option<u64>,
+        observed_at: u64,
+    ) -> Option<u64> {
+        (observed_at >= inclusion_deadline
+            && included_at.is_none_or(|included| included > inclusion_deadline))
+        .then_some(self.missed_inclusion_slash_units)
+    }
+
+    /// Objective equivocation slash amount when two signed roots claim one
+    /// numeric map epoch but disagree on either signed epoch identity or root.
+    #[must_use]
+    pub fn assess_equivocation(
+        &self,
+        left_map_epoch: u64,
+        left_epoch_id: &str,
+        left_root_hash: &str,
+        right_map_epoch: u64,
+        right_epoch_id: &str,
+        right_root_hash: &str,
+    ) -> Option<u64> {
+        (left_map_epoch == right_map_epoch
+            && (left_epoch_id != right_epoch_id || left_root_hash != right_root_hash))
+            .then_some(self.equivocation_slash_units)
+    }
+}
+
 /// The finding-market deployment configuration. `None` on
 /// `TrustServiceConfig` keeps every finding surface at 409, matching the
 /// fiscal-runtime gating convention.
@@ -174,6 +376,8 @@ pub struct FindingMarketConfig {
     pub challenge_administration_pool: FindingPoolPin,
     pub community_fund_destination: String,
     pub status_feed_operator_ref: String,
+    pub status_feed_operator: FindingStatusOperatorPin,
+    pub status_feed_service_bond: FindingStatusServiceBond,
     /// Trusted open-market fee-schedule signer keys (canonical bare
     /// lowercase Ed25519 hex). A schedule verifies only against this
     /// pinned set; the envelope's own embedded signer never
@@ -225,6 +429,15 @@ impl FindingMarketConfig {
                 "finding-market status feed operator ref must be non-empty".to_string(),
             ));
         }
+        if self.status_feed_operator_ref != self.status_feed_operator.feed_id {
+            return Err(CliError::cli_other_error(
+                "finding-market status feed reference does not match its operator authorization"
+                    .to_string(),
+            ));
+        }
+        self.status_feed_operator.validate()?;
+        self.status_feed_service_bond
+            .validate(&self.status_feed_operator)?;
         if self.fee_schedule_operator_keys.is_empty() {
             return Err(CliError::cli_other_error(
                 "finding-market fee schedule operator keys must be non-empty".to_string(),
@@ -275,6 +488,7 @@ impl FindingMarketConfig {
             ("anchor publisher", &self.anchor_publisher),
             ("audit authority", &self.audit_authority),
             ("audit randomness witness", &self.audit_randomness_witness),
+            ("status operator", &self.status_feed_operator.authority),
         ];
         let mut parsed = Vec::with_capacity(roster.len());
         for (label, pin) in roster {
@@ -306,5 +520,136 @@ impl FindingMarketConfig {
                 })
             })
             .collect()
+    }
+
+    /// Require the configured status operator authorization and its service
+    /// bond to be live for an exact feed at the venue clock.
+    pub fn require_live_status_feed(&self, feed_id: &str, now: u64) -> Result<PublicKey, CliError> {
+        let key = self.status_feed_operator.require_live(feed_id, now)?;
+        if !self.status_feed_service_bond.covers(now) {
+            return Err(CliError::cli_other_error(
+                "finding-market status operator service bond is missing or expired".to_string(),
+            ));
+        }
+        Ok(key)
+    }
+}
+
+#[cfg(test)]
+mod status_feed_config_tests {
+    use super::*;
+    use chio_core::crypto::Keypair;
+    use chio_test_support::prelude::*;
+
+    const FEED_ID: &str = "status-feed/test-venue";
+
+    fn operator() -> FindingStatusOperatorPin {
+        FindingStatusOperatorPin {
+            feed_id: FEED_ID.to_string(),
+            role: FINDING_STATUS_OPERATOR_ROLE.to_string(),
+            authority: FindingAuthorityPin {
+                authority_id: "status-operator".to_string(),
+                key_hex: Keypair::from_seed(&[91; 32]).public_key().to_hex(),
+                key_epoch: 7,
+                valid_from: 100,
+                valid_until: 500,
+                revocation_status_ref: "revocations/status-operator".to_string(),
+            },
+            rotation_policy_ref: "rotation/status-feed-v1".to_string(),
+            authorization_sha256: chio_core::sha256_hex(b"status-operator-authorization"),
+            revoked_from: None,
+        }
+    }
+
+    fn bond() -> FindingStatusServiceBond {
+        FindingStatusServiceBond {
+            bond_id: "bond-status-test".to_string(),
+            feed_id: FEED_ID.to_string(),
+            operator_id: "status-operator".to_string(),
+            locked_units: 1_000,
+            currency: "USD".to_string(),
+            valid_from: 100,
+            valid_until: 400,
+            inclusion_sla_secs: 60,
+            missed_inclusion_slash_units: 100,
+            equivocation_slash_units: 1_000,
+            evidence_sha256: chio_core::sha256_hex(b"status-bond"),
+        }
+    }
+
+    #[test]
+    fn status_operator_requires_exact_role_and_live_key_window() {
+        let mut pin = operator();
+        pin.role = "venue".to_string();
+        assert!(pin.validate().is_err());
+
+        let pin = operator();
+        assert!(pin.require_live(FEED_ID, 100).is_ok());
+        assert!(pin.require_live(FEED_ID, 499).is_ok());
+        assert!(pin.require_live(FEED_ID, 500).is_err());
+        assert!(pin.require_live("status-feed/other", 200).is_err());
+    }
+
+    #[test]
+    fn revoked_operator_and_mismatched_bond_fail_closed() {
+        let mut pin = operator();
+        pin.revoked_from = Some(200);
+        assert!(pin.require_live(FEED_ID, 200).is_err());
+
+        let pin = operator();
+        let mut service_bond = bond();
+        service_bond.operator_id = "substitute-operator".to_string();
+        assert!(service_bond.validate(&pin).is_err());
+    }
+
+    #[test]
+    fn service_bond_has_objective_live_slash_conditions() {
+        let pin = operator();
+        let service_bond = bond();
+        service_bond
+            .validate(&pin)
+            .test_expect("valid status service bond");
+        assert!(service_bond.covers(100));
+        assert!(service_bond.covers(399));
+        assert!(!service_bond.covers(400));
+
+        let mut missing_sla = service_bond.clone();
+        missing_sla.inclusion_sla_secs = 0;
+        assert!(missing_sla.validate(&pin).is_err());
+
+        let mut unbacked_equivocation = service_bond;
+        unbacked_equivocation.equivocation_slash_units = 1_001;
+        assert!(unbacked_equivocation.validate(&pin).is_err());
+    }
+
+    #[test]
+    fn status_service_bond_faults_are_mechanically_assessable() {
+        let service_bond = bond();
+        assert_eq!(
+            service_bond.assess_missed_inclusion(250, None, 250),
+            Some(100)
+        );
+        assert_eq!(
+            service_bond.assess_missed_inclusion(250, Some(251), 300),
+            Some(100)
+        );
+        assert_eq!(
+            service_bond.assess_missed_inclusion(250, Some(250), 300),
+            None
+        );
+        assert_eq!(
+            service_bond.assess_equivocation(9, "epoch-a", "root-a", 9, "epoch-b", "root-a"),
+            Some(1_000)
+        );
+        assert_eq!(
+            service_bond.assess_equivocation(9, "epoch-a", "root-a", 10, "epoch-b", "root-b"),
+            None
+        );
+    }
+
+    #[test]
+    fn selected_status_nonce_is_i_json_safe_and_fixed() {
+        assert_eq!(FINDING_STATUS_KEY_DOMAIN_NONCE, 3_318_287_169_837_494);
+        assert!(FINDING_STATUS_KEY_DOMAIN_NONCE < (1_u64 << 53));
     }
 }
