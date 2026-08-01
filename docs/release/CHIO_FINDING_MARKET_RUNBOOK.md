@@ -2,7 +2,7 @@
 
 This runbook covers the M6 venue-operated Finding status feed. It assumes the
 single-operator cognition-market profile and the governance decision in
-[ADR-0019](../adr/ADR-0019-finding-status-feed-governance.md).
+[ADR-0020](../adr/ADR-0020-finding-status-feed-governance.md).
 
 The status feed is a consistency service with a bonded inclusion SLA. A fresh
 signed root proves the keys that are in the sparse map and the absence paths it

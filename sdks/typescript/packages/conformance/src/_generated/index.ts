@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: 38bbab8443b9dce6f9d6d665e6f288580efae27c49609d0ec10bda7ded157a29
+// Schema SHA: 6792ebebdd0e9ef44b32a6418d2e5595ae3592b8cc5b8624919ab5219112f7f5
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -2345,6 +2345,8 @@ export namespace Receipt_DeliveryContract {
 export namespace Receipt_FindingDelivery {
   export type Identifier = string;
   export type Digest = string;
+  export type HierarchicalIdentifier = string;
+  export type IJsonU64NonZero = number;
 
   export interface ChioFindingDeliveryReceiptMetadata {
     schema: "chio.finding.delivery.v1";
@@ -2359,6 +2361,16 @@ export namespace Receipt_FindingDelivery {
     reservation_id: Identifier;
     purchase_intent_id: Identifier;
     authoritative_payment_operation_id: Identifier;
+    status_proof?: StatusProof;
+  }
+  export interface StatusProof {
+    feed_id: HierarchicalIdentifier;
+    key_domain_nonce: 3318287169837494;
+    map_epoch: IJsonU64NonZero;
+    status_epoch_artifact_sha256: Digest;
+    proof_sha256: Digest;
+    root_hash: Digest;
+    non_inclusion_checked_at: IJsonU64NonZero;
   }
 }
 
@@ -2399,7 +2411,7 @@ export namespace Receipt_LineageStatement {
     childRequestId: string;
     parentSessionAnchor: SessionAnchorReference;
     childSessionAnchor: SessionAnchorReference;
-    relationKind: "local_child" | "continued";
+    relationKind: "local_child" | "continued" | "finding_memory_write_to_delivery";
     evidenceClass: "asserted" | "observed" | "verified";
     continuationTokenId?: string;
     issuedAt: number;

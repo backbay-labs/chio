@@ -1,0 +1,153 @@
+impl FindingChallengeCoordinator {
+    fn retraction_effect_key<'a>(
+        &self,
+        enforcement: &'a SignedFindingChallengeEnforcement,
+    ) -> Result<&'a str, ChallengeCoordinatorError> {
+        let mut keys = enforcement
+            .body
+            .effect_intents
+            .iter()
+            .filter_map(|binding| {
+                (binding.kind == chio_finding::FindingEffectIntentKind::Retraction)
+                    .then_some(binding.intent_id.as_str())
+            });
+        let Some(key) = keys.next() else {
+            return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
+        };
+        if keys.next().is_some() {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "enforcement carries more than one retraction effect".to_owned(),
+            ));
+        }
+        Ok(key)
+    }
+
+    fn mark_retraction_dispatch_eligible(
+        &self,
+        enforcement: &SignedFindingChallengeEnforcement,
+        tx_hash: &str,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let intent_id = self.retraction_effect_key(enforcement)?;
+        let evidence = chio_core::canonical_json_bytes(&serde_json::json!({
+            "schema": "chio.finding.impairment-finality.v1",
+            "enforcement_id": enforcement.body.enforcement_id,
+            "finding_id": enforcement.body.finding_id,
+            "liability_key": enforcement.body.liability_key,
+            "tx_hash": tx_hash,
+        }))
+        .map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        let record = self
+            .status
+            .get_retraction_intent(intent_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        match record.state {
+            FindingRetractionIntentState::WaitingFinality => {
+                self.status
+                    .mark_retraction_dispatch_eligible(intent_id, &evidence, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+            }
+            FindingRetractionIntentState::DispatchEligible
+            | FindingRetractionIntentState::Published => {
+                let evidence_sha256 = sha256_hex(&evidence);
+                if record.finality_evidence_sha256.as_deref() != Some(evidence_sha256.as_str())
+                    || record.finality_evidence_bytes.as_deref() != Some(evidence.as_slice())
+                {
+                    return Err(ChallengeCoordinatorError::Settlement(
+                        "status outbox finality evidence conflicts with the confirmed impairment"
+                            .to_owned(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn confirm_effect_intent(
+        &self,
+        intent_key: &str,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let intent = self
+            .challenges
+            .get_effect_intent(intent_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        match intent.state {
+            FindingEffectIntentState::Pending | FindingEffectIntentState::Failed => {
+                self.challenges
+                    .advance_effect_intent(intent_key, FindingEffectIntentState::Dispatched, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+                self.challenges
+                    .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+            }
+            FindingEffectIntentState::Dispatched => {
+                self.challenges
+                    .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+            }
+            FindingEffectIntentState::Confirmed => {}
+            FindingEffectIntentState::Quarantined => {
+                return Err(ChallengeCoordinatorError::Settlement(
+                    "a quarantined effect cannot be confirmed by status publication".to_owned(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn reconcile_status_publication_and_settle(
+        &self,
+        liability_key: &str,
+        enforcement: &SignedFindingChallengeEnforcement,
+        now: u64,
+    ) -> Result<bool, ChallengeCoordinatorError> {
+        let retraction_key = self.retraction_effect_key(enforcement)?;
+        let status = self
+            .status
+            .get_retraction_intent(retraction_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if status.state != FindingRetractionIntentState::Published {
+            return Ok(false);
+        }
+        self.confirm_effect_intent(retraction_key, now)?;
+        let effects = self
+            .challenges
+            .list_effect_intents(liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        if effects.is_empty()
+            || effects
+                .iter()
+                .any(|effect| effect.state != FindingEffectIntentState::Confirmed)
+        {
+            return Ok(false);
+        }
+        self.challenges
+            .settle_liability(liability_key, FindingLiabilityState::Finalizing, now)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        Ok(true)
+    }
+
+    /// The sealed claim snapshot for one liability, when one exists.
+    pub fn sealed_claim(
+        &self,
+        liability_key: &str,
+    ) -> Result<Option<(String, String)>, ChallengeCoordinatorError> {
+        Ok(self
+            .challenges
+            .get_claim_snapshot(liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .map(|record| (record.snapshot_digest, record.allocation_digest)))
+    }
+}

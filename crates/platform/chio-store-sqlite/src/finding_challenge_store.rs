@@ -3892,7 +3892,7 @@ fn load_case_tx(
 /// Resolve the unique unsuperseded case inside a caller-owned transaction.
 /// A write path uses this to serialize its lifecycle decision against case
 /// insertion; the public read path uses the same ambiguity semantics.
-fn resolve_case_head_tx(
+pub(crate) fn resolve_case_head_tx(
     transaction: &Transaction<'_>,
     liability_key: &str,
 ) -> Result<Option<FindingGovernanceCaseRecord>, FindingChallengeStoreError> {

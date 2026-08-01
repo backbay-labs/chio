@@ -672,6 +672,7 @@ mod tests {
         FindingMarketConfig {
             venue_id: "status-test-venue".to_string(),
             venue: authority_pin(1, "venue", now),
+            listing: authority_pin(12, "listing", now),
             governance_root: authority_pin(2, "governance", now),
             verifier_report: authority_pin(3, "verifier", now),
             collateral: authority_pin(4, "collateral", now),
@@ -681,6 +682,8 @@ mod tests {
             venue_finalization: authority_pin(8, "venue-finalization", now),
             market_penalty: authority_pin(9, "market-penalty", now),
             settlement_observer: authority_pin(10, "settlement-observer", now),
+            settlement_finality_requirement:
+                chio_settle::FindingFinalityRequirement::Confirmations { min_depth: 64 },
             audit_authority: authority_pin(11, "audit-authority", now),
             audit_pool: FindingPoolPin {
                 principal_id: "pool:audit".to_string(),
@@ -763,6 +766,8 @@ mod tests {
             cluster: None,
             cluster_progress: None,
             finding_rail: None,
+            finding_purchase_executor: None,
+            finding_challenge_executor: None,
         }
     }
 

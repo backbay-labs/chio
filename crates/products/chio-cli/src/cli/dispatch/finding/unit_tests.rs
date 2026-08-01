@@ -5,7 +5,6 @@ use super::finding_challenge::{
 };
 use super::finding_verify::{strict_finding_ingress, AcceptedFinding};
 use crate::cli_entrypoint_support::parse_cli;
-use base64::Engine as _;
 use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::body::{ChioReceipt, ChioReceiptBody};

@@ -413,9 +413,9 @@ abf05075e87278fbb8af826fb3d6f0482b9d1c53dd4efdb0b7e04c772f756b08  spec/schemas/c
 1b2a570c1a6a8b912c185e770bab0f80cdb3244126ce427467743c34dc0ff1da  spec/schemas/chio-wire/v1/provenance/verdict-link.schema.json
 6615ba7d26e38805f053ca58b6d6f26c8edca19bb881c06241ccc41b9938fb73  spec/schemas/chio-wire/v1/receipt/admission-metadata.schema.json
 67b0438db826be04102d2c8000702d64f5e07fbddafa526d02f919bd05857a83  spec/schemas/chio-wire/v1/receipt/delivery-contract.schema.json
-be404b52f7af86732d0c504f0a1f1cf116019b7471002f4a1f38f598e1f3d919  spec/schemas/chio-wire/v1/receipt/finding-delivery.schema.json
+9c7edaa6d56e3e19d44f856b993d1087c47e705aff94d995edfd43d6f0bf2416  spec/schemas/chio-wire/v1/receipt/finding-delivery.schema.json
 e16d43cbb9fbf8bc0f8ee66d7f71a7804efc7f5769f033b1bf827606eb7975e3  spec/schemas/chio-wire/v1/receipt/inclusion-proof.schema.json
-2f0d41fae5f94eb26ca70f294e8487a4ae958eebf0507c5033a5c0ec3b651780  spec/schemas/chio-wire/v1/receipt/lineage_statement.schema.json
+5132dbee6b3ebb00bd2177841645f2a9674937c174361816f526a1f3d41ffa74  spec/schemas/chio-wire/v1/receipt/lineage_statement.schema.json
 1417d9f38e8d6a9ea27d67735ad817861d075d8a55e0476b1ba5634d0ecb449c  spec/schemas/chio-wire/v1/receipt/record.schema.json
 0eaea45890210fa248067a0142ebe511e9d124b4bf29300de85e3fb0cbf3c010  spec/schemas/chio-wire/v1/result/cancelled.schema.json
 ff4f655a0f0c7afda5c0674f3afde1e3961f1d58292584ed39f8bb5b96e30c8b  spec/schemas/chio-wire/v1/result/err.schema.json

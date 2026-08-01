@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: a1b2793b479da17c2087a99f8b4ab4db073877eca9aacd688a9ac31ee6840e44
+// Schema content SHA-256: 5a3ab3398e7601fe616aecfd864031942ece8e8ac2fcf18721c6dcc6a33d0457
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -564,6 +564,11 @@ const (
 	ReceiptFindingDeliveryTransformProfileIdentity ReceiptFindingDeliveryTransformProfile = "identity"
 )
 
+// Defines values for ReceiptFindingDeliveryStatusProofKeyDomainNonce.
+const (
+	ReceiptFindingDeliveryStatusProofKeyDomainNonceN3318287169837494e15 ReceiptFindingDeliveryStatusProofKeyDomainNonce = 3.318287169837494e+15
+)
+
 // Defines values for ReceiptLineageStatementEvidenceClass.
 const (
 	ReceiptLineageStatementEvidenceClassAsserted ReceiptLineageStatementEvidenceClass = "asserted"
@@ -573,8 +578,9 @@ const (
 
 // Defines values for ReceiptLineageStatementRelationKind.
 const (
-	ReceiptLineageStatementRelationKindContinued  ReceiptLineageStatementRelationKind = "continued"
-	ReceiptLineageStatementRelationKindLocalChild ReceiptLineageStatementRelationKind = "local_child"
+	ReceiptLineageStatementRelationKindContinued                    ReceiptLineageStatementRelationKind = "continued"
+	ReceiptLineageStatementRelationKindFindingMemoryWriteToDelivery ReceiptLineageStatementRelationKind = "finding_memory_write_to_delivery"
+	ReceiptLineageStatementRelationKindLocalChild                   ReceiptLineageStatementRelationKind = "local_child"
 )
 
 // Defines values for ReceiptLineageStatementSchema.
@@ -2155,6 +2161,7 @@ type ReceiptFindingDelivery struct {
 	ReservationId                   ReceiptFindingDeliveryIdentifier       `json:"reservation_id"`
 	Schema                          ReceiptFindingDeliverySchema           `json:"schema"`
 	SettlementMode                  ReceiptFindingDeliverySettlementMode   `json:"settlement_mode"`
+	StatusProof                     *ReceiptFindingDeliveryStatusProof     `json:"status_proof,omitempty"`
 	TransformProfile                ReceiptFindingDeliveryTransformProfile `json:"transform_profile"`
 	VenueAdmissionEnvelopeSha256    ReceiptFindingDeliveryDigest           `json:"venue_admission_envelope_sha256"`
 }
@@ -2177,8 +2184,28 @@ type ReceiptFindingDeliveryTransformProfile string
 // ReceiptFindingDeliveryDigest defines model for ReceiptFindingDeliveryDigest.
 type ReceiptFindingDeliveryDigest = string
 
+// ReceiptFindingDeliveryHierarchicalIdentifier defines model for ReceiptFindingDeliveryHierarchicalIdentifier.
+type ReceiptFindingDeliveryHierarchicalIdentifier = string
+
+// ReceiptFindingDeliveryIJsonU64NonZero defines model for ReceiptFindingDeliveryIJsonU64NonZero.
+type ReceiptFindingDeliveryIJsonU64NonZero = int64
+
 // ReceiptFindingDeliveryIdentifier defines model for ReceiptFindingDeliveryIdentifier.
 type ReceiptFindingDeliveryIdentifier = string
+
+// ReceiptFindingDeliveryStatusProof defines model for ReceiptFindingDeliveryStatusProof.
+type ReceiptFindingDeliveryStatusProof struct {
+	FeedId                    ReceiptFindingDeliveryHierarchicalIdentifier    `json:"feed_id"`
+	KeyDomainNonce            ReceiptFindingDeliveryStatusProofKeyDomainNonce `json:"key_domain_nonce"`
+	MapEpoch                  ReceiptFindingDeliveryIJsonU64NonZero           `json:"map_epoch"`
+	NonInclusionCheckedAt     ReceiptFindingDeliveryIJsonU64NonZero           `json:"non_inclusion_checked_at"`
+	ProofSha256               ReceiptFindingDeliveryDigest                    `json:"proof_sha256"`
+	RootHash                  ReceiptFindingDeliveryDigest                    `json:"root_hash"`
+	StatusEpochArtifactSha256 ReceiptFindingDeliveryDigest                    `json:"status_epoch_artifact_sha256"`
+}
+
+// ReceiptFindingDeliveryStatusProofKeyDomainNonce defines model for ReceiptFindingDeliveryStatusProof.KeyDomainNonce.
+type ReceiptFindingDeliveryStatusProofKeyDomainNonce int64
 
 // ReceiptInclusionProof Merkle inclusion proof for a single receipt leaf in a receipt-log Merkle tree. Mirrors the serde shape of `MerkleProof` in `crates/core/chio-core-types/src/merkle.rs`. The proof allows an auditor, holding only the published Merkle root and the original leaf bytes, to verify that the leaf was included in a tree of the given size at the given position. The audit path is the ordered list of sibling hashes encountered when walking from the leaf up to the root; siblings whose subtree was carried upward without pairing (the right-edge of an unbalanced level) are omitted. Deterministic-replay consumes this schema as the contract for golden-bundle inclusion artifacts under `tests/replay/goldens/<family>/<name>/`.
 type ReceiptInclusionProof struct {
