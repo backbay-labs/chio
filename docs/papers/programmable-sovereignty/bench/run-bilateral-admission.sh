@@ -118,6 +118,26 @@ run_criterion_bench chio-attest-buyer-core buyer_verify
 
 printf 'path,sample,elapsed_ns,proof_package_bytes\n' > "$RAW_CSV"
 
+file_size_bytes() {
+  local path="$1"
+  local size
+  if size="$(stat -c %s -- "$path" 2>/dev/null)"; then
+    :
+  elif size="$(stat -f %z "$path" 2>/dev/null)"; then
+    :
+  else
+    echo "cannot determine file size: $path" >&2
+    return 1
+  fi
+  case "$size" in
+    ''|*[!0-9]*)
+      echo "stat returned a nonnumeric file size for $path: $size" >&2
+      return 1
+      ;;
+  esac
+  printf '%s\n' "$size"
+}
+
 run_hero_sample() {
   local mode="$1"
   local label="$2"
@@ -139,7 +159,7 @@ run_hero_sample() {
   fi
   end_ns="$(date +%s%N)"
   local proof_bytes
-  proof_bytes="$(stat -c %s "$out_dir/proof-package.json")"
+  proof_bytes="$(file_size_bytes "$out_dir/proof-package.json")"
   printf '%s,%s,%s,%s\n' \
     "$label" "$sample" "$((end_ns - start_ns))" "$proof_bytes" >> "$RAW_CSV"
 }
