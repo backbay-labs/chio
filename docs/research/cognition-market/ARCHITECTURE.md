@@ -124,7 +124,8 @@ Schema ids in the program (registration path in section 7):
 | `chio.finding.mediator-backing.v1` | bond-authority-signed non-reusable M7 mediator allocation and liability horizon | new at M7 |
 | `chio.finding.escrow-witness.v1` | settlement-authority attestation of exact funded/final escrow state | new at M7 |
 | `chio.finding.settlement-release.v1` | settlement-authority receipt binding delivery inclusion to one escrow release | new at M7 |
-| `chio.finding.rederivation-quote.v1` | optional signed producer estimate for an exact context/recipe and currency | new at M8 if authenticated quotes ship |
+| `chio.finding.pool-allocation.v1` | authority-signed M8 companion binding one exact unsigned pool digest, purchaser, currency, amount, nonce, and validity window | new at M8 |
+| `chio.finding.rederivation-quote.v1` | optional signed producer estimate for an exact context/recipe and currency | not shipped at M8; future only if authenticated quotes ship |
 | `chio.marketplace.bid-request.v1` etc. | purchase handshake | reuse unchanged (`crates/economy/chio-open-market/src/bidding.rs:33-42`) |
 
 ### 4.1 `chio.finding.v1`
@@ -1073,6 +1074,19 @@ Finding-scoped profile would recreate a hash cycle and is invalid in v1.
    severity, confidence, decay, nonce, subject-class policy, and cost must
    verify, and a buyer always re-resolves the current admission before buying.
 
+The M8 convention fixes subject `finding_listing_hint`, namespace
+`dev.chio.cognition-market`, severity `medium`, confidence `0.75`, a 3,600
+second half-life, evaporation floor `0.01`, one configured treaty, and a
+non-empty nonce. Its strict indicator binds the Finding id, listing id,
+current signed listing-envelope digest, current M2 admission-envelope digest,
+and `finding:<finding_id>` capability scope. Receiver policy requires the
+exact non-destructive `SubjectClassPolicy`, a signed passport/deposit, real
+scarcity and replay admission, and an observation-cost commitment in the
+protocol unit below the configured cap. A positive deposit remains a
+discovery hint: the buyer re-verifies the current namespace-owned listing,
+pricing signature, and full M2 admission bundle, and the hint grants no
+purchase authority.
+
 ### F2. Discover and verify (buyer, pre-purchase, no payment yet)
 
 1. Buyer hits the same failing context; computes `context_sha256`; searches
@@ -1115,18 +1129,22 @@ Finding-scoped profile would recreate a hash cycle and is invalid in v1.
    posted price is above it, walk away. The shipped `MeteredBillingQuote` is
    caller-supplied and does not authenticate how a re-derivation estimate was
    produced, so neither kernel nor venue may report the bid basis as true.
-   M8 may add a signed quote producer bound to context, recipe, currency, and
-   provenance; until then the estimate is private buyer policy.
-5. If M8 adopts `chio.finding.rederivation-quote.v1`, it binds producer and
-   trust profile, context and replay-recipe digests, input provenance,
-   currency, issued/expiry times, and the estimated units. All amount and
-   basis-point arithmetic uses checked non-negative integers with a canonical
-   decimal-string wire encoding; basis points outside `0..=10000`, negative
-   or fractional values, NaN, currency mismatch, and overflow reject.
-   TypeScript and Python conformance includes values above `2^53` and the
-   `u64` boundary. A `SignedBid` still reveals only a ceiling. Unless the
-   buyer elects to attach this basis artifact, the venue cannot reconstruct
-   or attest the buyer's private estimate.
+   M8 does not add a signed quote producer. The estimate remains private buyer
+   policy.
+5. The M8 Rust, TypeScript, and Python helpers bind the caller-carried
+   estimate to the expected source, context, replay-recipe digest, exact
+   currency, and validity window. Amount and basis-point arithmetic uses
+   canonical decimal strings, `u64` bounds, checked wide intermediates, and
+   one floor after the combined product. Basis points outside `0..=10000`,
+   unsafe JavaScript numbers, negative or fractional values, NaN encodings,
+   substitution, currency mismatch, staleness, and overflow reject. A
+   `SignedBid` still reveals only the resulting ceiling.
+6. When a buyer uses a shared pool, the kernel verifies the signed
+   `chio.finding.pool-allocation.v1` companion against the exact canonical
+   `SwarmBudgetPool` digest and pinned authority before handing a debit to a
+   qualifying backend. The shipped SQLite backend serializes debits, persists
+   exact replay, and uniquely binds one purchaser allocation to the pool id.
+   Advisory remote budget views cannot make this hard-ceiling claim.
 
 ### F3. Purchase and reveal (single-operator / wedge path)
 

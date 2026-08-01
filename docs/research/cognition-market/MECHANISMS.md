@@ -72,9 +72,9 @@ this is stated plainly rather than engineered away.
 
 ## 2. Buyer-side elicitation (deterministic policy)
 
-The proposed ceiling function (spike memo 6.6) is exercised as test-local
-arithmetic in
-`crates/economy/chio-open-market/tests/cognition_market_flow.rs`:
+The M8 ceiling function is implemented by the Rust reference helper in
+`crates/economy/chio-open-market/src/finding_bid_policy.rs` and mirrored by
+the TypeScript and Python SDKs:
 
 ```
 ceiling = min(budget_remaining,
@@ -84,27 +84,26 @@ ceiling = min(budget_remaining,
                 x guarantee_class_bps / 10^4)
 ```
 
-At M1 this proves only the arithmetic shape and that the real `bid()` path
-rejects a posted price above the submitted ceiling. It does not add a
-production quote source, SDK helper, or authenticated bid-basis artifact.
-The existing signed `BidRequest` carries only `max_price_per_call`; it does
-not carry the estimate or the three multipliers. Consequently an operator
-can audit enforcement of the submitted ceiling but cannot reconstruct why
-the buyer chose it. The estimate, `would_have_run_bps`, and
-`sibling_redundancy_bps` remain private planner policy.
+The helper accepts only canonical non-negative decimal integers bounded by
+Rust `u64`, restricts each basis-point value to `0..=10_000`, checks exact
+estimate-to-budget currency equality plus source/context/recipe provenance,
+uses checked `u128` intermediates, and rounds down once after the combined
+three-factor product. TypeScript rejects unsafe numeric `Number` inputs while
+accepting decimal strings above `2^53`; Python and Rust accept the same full
+decimal-string `u64` domain. Shared golden vectors and negative vectors fix
+the cross-language behavior. The real marketplace fixture separately proves
+that an at-ceiling bid clears and an above-ceiling bid rejects.
 
-M8 may standardize a buyer SDK helper. Its normative arithmetic must use
-non-negative checked integers, reject each basis-point input outside
-`0..=10_000` rather than clamp it, require exact currency equality between
-the estimate, listing, budget, and bid, define the order of integer
-operations and rounding, and reject overflow. TypeScript and Python vectors
-must cover values above JavaScript's exact-integer range, `u64` boundaries,
-negative and fractional values, NaN-like inputs, currency mismatch, and
-intermediate overflow. The M1 Rust helper is not that cross-language
-specification.
+This M8 profile intentionally does not add a production quote source or an
+authenticated bid-basis artifact. The existing signed `BidRequest` carries
+only `max_price_per_call`; it does not carry the estimate or the three
+multipliers. Consequently an operator can audit enforcement of the submitted
+ceiling but cannot reconstruct why the buyer chose it. The estimate,
+`would_have_run_bps`, and `sibling_redundancy_bps` remain private planner
+policy. The shipped `MeteredBillingQuote` remains caller-carried and unsigned.
 
-If M8 needs a quote an operator can authenticate, it must first define a
-separate signed quote-producer artifact. That artifact must bind the
+Any future quote an operator can authenticate requires a separate signed
+quote-producer artifact. That artifact must bind the
 producer key, finding context digest, replay-recipe digest, billing unit,
 currency, amount, validity window, and source provenance. A bare
 `MeteredBillingQuote` remains caller-carried context and earns no such
@@ -420,16 +419,28 @@ policies must not treat a metered-cost facet as burned-work or truth proof.
 
 ## 7. Pool purchasing and redundancy
 
-M8 proposes one purchasing principal per swarm budget pool
-(`SwarmBudgetPool` fan-out,
-`crates/kernel/chio-swarm-authority/src/types.rs:247`). This is an SDK and
-planner convention, not a current kernel invariant:
+M8 retains `SwarmBudgetPool` as an unsigned planning object and adds
+`chio.finding.pool-allocation.v1`, an authority-signed companion that binds
+its canonical digest, graph and pool ids, one purchaser id and key, currency,
+hard amount, nonce, authority, and validity window. The kernel verifies that
+artifact before constructing a private authorized debit for a
+`QualifiedFindingPoolLedger`.
+
+The shipped qualifying backend is durable SQLite. It uses `BEGIN IMMEDIATE`,
+canonical decimal-text `u64` amounts, a unique pool binding, checked
+accumulation, and durable exact purchase-id replay. That path makes
+one-purchaser-per-pool and never-exceed-signed-amount hard invariants. An
+in-memory backend and an advisory or eventually consistent remote budget view
+do not implement the qualifying marker and therefore cannot make the hard
+ceiling claim.
 
 - Intra-pool: the planner should deduplicate an artifact request, buy once
   with retry-safe purchase identity, and distribute internally via governed
   memory writes. Its private `sibling_redundancy_bps` policy may then assign
-  less redundancy discount than an uncoordinated buyer. No current protocol
-  proves the prior or prevents sibling principals from buying twice.
+  less redundancy discount than an uncoordinated buyer. The qualified ledger
+  prevents overspend through its exact signed allocation, but it does not
+  prove the planner's private redundancy prior or prevent purchases made
+  outside that allocation.
 - Inter-pool: pools are independent buyers; a seller's expected revenue is
   approximately the number of purchasing pools that independently clear
   times price. Sybils, wash purchases, and cross-pool coordination can

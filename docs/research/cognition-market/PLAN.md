@@ -1417,6 +1417,8 @@ normative scope statement.
 
 ### M8 Pool purchasing and SDK
 
+- Implementation and named qualification record:
+  [2026-07-31-M8-pool-purchasing-sdk.md](plans/2026-07-31-M8-pool-purchasing-sdk.md).
 - Elicitation ceiling (`finding_bid_ceiling`) in TypeScript/Python SDK buyer
   helpers is buyer-local policy. The shipped `MeteredBillingQuote` is an
   unsigned caller-carried input and is not an authenticated re-derivation
