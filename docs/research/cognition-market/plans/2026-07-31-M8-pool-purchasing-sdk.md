@@ -69,7 +69,7 @@ The M8 worktree recorded these results on 2026-07-31:
 
 | Exit | Command | Result |
 |---|---|---|
-| Rust ceiling, real marketplace, and pheromone convention | `cargo test -p chio-open-market --features cognition-market-experimental --test finding_bid_policy --test cognition_market_flow --test finding_admission -j1` | 30 passed |
+| Rust ceiling, real marketplace, and pheromone convention | `cargo test -p chio-open-market --features cognition-market-experimental --test finding_bid_policy --test cognition_market_flow --test finding_admission -j1` | 38 passed on the final cumulative base |
 | Authenticated pool concurrency and restart | `cargo test -p chio-store-sqlite --features cognition-market-experimental --test finding_pool_ledger -j1` | 4 passed |
 | TypeScript SDK suite and parity vectors | `node --experimental-strip-types --test ./test/*.test.ts` in `sdks/typescript/chio-ts` | 88 passed |
 | TypeScript strict type check | `tsc --noEmit -p chio-ts/tsconfig.json` | passed |

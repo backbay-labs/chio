@@ -1429,9 +1429,10 @@ normative scope statement.
 - Specify the arithmetic over canonical decimal-string integers with checked
   wide intermediates, currency equality, explicit rounding, and basis points
   restricted to `0..=10_000`. Reject overflow, negative/fractional/NaN
-  encodings, currency mismatch, stale or substituted sources, values beyond
-  JavaScript's safe-integer range, and inputs above the Rust `u64` boundary
-  rather than rounding them.
+  encodings, currency mismatch, stale or substituted sources, unsafe
+  JavaScript numeric values beyond the safe-integer range, and inputs above
+  the Rust `u64` boundary rather than rounding them. Canonical decimal strings
+  remain exact and accepted through the full `u64` domain.
 - One-purchaser-per-pool is only a convention until the pool is authoritative:
   current `SwarmBudgetPool` amounts are unsigned and substitutable under the
   same string id, and remote budget mode is advisory. Add a signed/digested
