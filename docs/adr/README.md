@@ -31,3 +31,4 @@ Current ADR set:
 17. [ADR-0017 Cognition-Market Finding Artifacts And Reveal-As-Governed-Call](ADR-0017-cognition-market-finding-artifacts.md)
 18. [ADR-0018 Radicle Is A Carrier, Never An Authority (Adoption Deferred)](ADR-0018-radicle-carrier-not-authority.md)
 19. [ADR-0019 Kernel Delivery Contract](ADR-0019-kernel-delivery-contract.md)
+20. [ADR-0020 Finding Status Feed Governance](ADR-0020-finding-status-feed-governance.md)
