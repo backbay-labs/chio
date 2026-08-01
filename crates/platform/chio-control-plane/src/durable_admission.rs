@@ -196,18 +196,19 @@ pub(crate) fn durable_admission_lock_root(path: &Path) -> Result<PathBuf, CliErr
 }
 
 pub(crate) fn create_private_directory(path: &Path) -> Result<(), std::io::Error> {
-    let absolute = normalize_private_directory_path(path)?;
     #[cfg(unix)]
     {
+        let absolute = absolute_private_directory_path_unix(path)?;
         prepare_private_directory_unix(&absolute, ExistingPrivateDirectory::Harden)?;
     }
     #[cfg(windows)]
     {
+        let absolute = normalize_private_directory_path(path)?;
         windows::prepare_private_directory(&absolute)?;
     }
     #[cfg(not(any(unix, windows)))]
     {
-        let _ = absolute;
+        let _ = path;
         return Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "secure private-directory creation is unavailable on this platform",
@@ -229,9 +230,9 @@ pub struct PreparedPrivateDirectory {
 }
 
 impl PreparedPrivateDirectory {
-    /// Returns the lexically normalized absolute path used to prepare this
-    /// directory. Security-sensitive operations use the retained handle, not
-    /// this pathname.
+    /// Returns the resolved absolute path used to prepare this directory.
+    /// Security-sensitive operations use the retained handle, not this
+    /// pathname.
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
@@ -313,18 +314,19 @@ pub fn ensure_private_directory(path: &Path) -> Result<(), std::io::Error> {
 /// Creates or validates a private directory and retains a secure handle for
 /// subsequent relative operations.
 pub fn prepare_private_directory(path: &Path) -> Result<PreparedPrivateDirectory, std::io::Error> {
-    let absolute = normalize_private_directory_path(path)?;
     #[cfg(unix)]
     {
-        let directory =
+        let absolute = absolute_private_directory_path_unix(path)?;
+        let (directory, resolved) =
             prepare_private_directory_unix(&absolute, ExistingPrivateDirectory::Preserve)?;
         Ok(PreparedPrivateDirectory {
-            path: absolute,
+            path: resolved,
             directory,
         })
     }
     #[cfg(windows)]
     {
+        let absolute = normalize_private_directory_path(path)?;
         let directory = windows::prepare_private_directory(&absolute)?;
         Ok(PreparedPrivateDirectory {
             path: absolute,
@@ -333,7 +335,7 @@ pub fn prepare_private_directory(path: &Path) -> Result<PreparedPrivateDirectory
     }
     #[cfg(not(any(unix, windows)))]
     {
-        let _ = absolute;
+        let _ = path;
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "secure private-directory creation is unavailable on this platform",
@@ -341,6 +343,51 @@ pub fn prepare_private_directory(path: &Path) -> Result<PreparedPrivateDirectory
     }
 }
 
+#[cfg(unix)]
+fn absolute_private_directory_path_unix(path: &Path) -> Result<PathBuf, std::io::Error> {
+    use std::os::unix::fs::MetadataExt;
+
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+
+    let mut components = absolute.components();
+    if !matches!(components.next(), Some(Component::RootDir)) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Unix private directory path must be absolute",
+        ));
+    }
+    let Some(Component::Normal(first)) = components.next() else {
+        return Ok(absolute);
+    };
+    let root_child = Path::new("/").join(first);
+    let metadata = match fs::symlink_metadata(&root_child) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(absolute),
+        Err(error) => return Err(error),
+    };
+    if !metadata.file_type().is_symlink() {
+        return Ok(absolute);
+    }
+
+    let root_metadata = fs::metadata(Path::new("/"))?;
+    if root_metadata.uid() != 0 || root_metadata.mode() & 0o022 != 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "refusing to resolve a root alias from untrusted root ancestry",
+        ));
+    }
+    let mut resolved = fs::canonicalize(root_child)?;
+    for component in components {
+        resolved.push(component.as_os_str());
+    }
+    Ok(resolved)
+}
+
+#[cfg(windows)]
 fn normalize_private_directory_path(path: &Path) -> Result<PathBuf, std::io::Error> {
     if path.is_absolute() {
         if path
@@ -446,133 +493,166 @@ const ANCESTOR_ACCESS_MODE: nix::fcntl::OFlag = nix::fcntl::OFlag::O_RDONLY;
 fn prepare_private_directory_unix(
     path: &Path,
     existing_target: ExistingPrivateDirectory,
-) -> Result<File, std::io::Error> {
+) -> Result<(File, PathBuf), std::io::Error> {
     use nix::errno::Errno;
     use nix::fcntl::{open, openat};
     use nix::sys::stat::{mkdirat, Mode};
-    use std::ffi::OsStr;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-    let components = path
-        .components()
-        .filter_map(|component| match component {
-            Component::RootDir | Component::CurDir => None,
-            Component::Normal(name) => Some(Ok(name)),
-            Component::ParentDir | Component::Prefix(_) => Some(Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "private directory path must not contain parent or platform-prefix components",
-            ))),
-        })
-        .collect::<Result<Vec<&OsStr>, std::io::Error>>()?;
-    if components.is_empty() {
+    let components = path.components().collect::<Vec<_>>();
+    let mut resolved_positions = Vec::new();
+    for (index, component) in components.iter().enumerate() {
+        match component {
+            Component::RootDir | Component::CurDir => {}
+            Component::Normal(_) => resolved_positions.push(index),
+            Component::ParentDir => {
+                if resolved_positions.pop().is_none() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "private directory path must name a directory below the filesystem root",
+                    ));
+                }
+            }
+            Component::Prefix(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Unix private directory path must not contain a platform prefix",
+                ));
+            }
+        }
+    }
+    let final_position = resolved_positions.last().copied().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "private directory path must name a directory below the filesystem root",
+        )
+    })?;
+
+    let root = File::from(open(
+        Path::new("/"),
+        private_directory_traversal_flags_unix(),
+        Mode::empty(),
+    )?);
+    let mut directories = vec![(root, false)];
+    let mut resolved = PathBuf::from("/");
+    let effective_uid = nix::unistd::geteuid().as_raw();
+
+    for (index, component) in components.into_iter().enumerate() {
+        match component {
+            Component::RootDir | Component::CurDir => {}
+            Component::Prefix(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Unix private directory path must not contain a platform prefix",
+                ));
+            }
+            Component::ParentDir => {
+                if directories.len() == 1 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "private directory path must name a directory below the filesystem root",
+                    ));
+                }
+                directories.pop();
+                resolved.pop();
+            }
+            Component::Normal(name) => {
+                let (parent, _) = directories.last().ok_or_else(|| {
+                    std::io::Error::other("private directory descriptor stack is empty")
+                })?;
+                let parent_metadata = parent.metadata()?;
+                let flags = if index == final_position {
+                    private_directory_read_flags_unix()
+                } else {
+                    private_directory_traversal_flags_unix()
+                };
+                let (child, created) = match openat(parent, name, flags, Mode::empty()) {
+                    Ok(file) => (File::from(file), false),
+                    Err(Errno::ENOENT) => {
+                        validate_private_directory_parent(&parent_metadata, None, effective_uid)?;
+                        let created = match mkdirat(parent, name, Mode::from_bits_truncate(0o700)) {
+                            Ok(()) => true,
+                            Err(Errno::EEXIST) => false,
+                            Err(error) => return Err(error.into()),
+                        };
+                        let child = File::from(
+                            openat(parent, name, flags, Mode::empty()).map_err(|error| {
+                                let io_error: std::io::Error = error.into();
+                                std::io::Error::new(
+                                    io_error.kind(),
+                                    format!(
+                                        "failed to reopen private directory component {}: {io_error}",
+                                        resolved.join(name).display(),
+                                    ),
+                                )
+                            })?,
+                        );
+                        if created {
+                            set_private_directory_permissions_unix(parent, name).map_err(
+                                |error| {
+                                    std::io::Error::new(
+                                        error.kind(),
+                                        format!(
+                                        "failed to secure private directory component {}: {error}",
+                                        resolved.join(name).display()
+                                    ),
+                                    )
+                                },
+                            )?;
+                        }
+                        (child, created)
+                    }
+                    Err(error) => {
+                        let io_error: std::io::Error = error.into();
+                        return Err(std::io::Error::new(
+                            io_error.kind(),
+                            format!(
+                                "failed to open private directory component {}: {io_error}",
+                                resolved.join(name).display(),
+                            ),
+                        ));
+                    }
+                };
+                let child_metadata = child.metadata()?;
+                validate_private_directory_parent(
+                    &parent_metadata,
+                    Some(child_metadata.uid()),
+                    effective_uid,
+                )?;
+                directories.push((child, created));
+                resolved.push(name);
+            }
+        }
+    }
+
+    if directories.len() == 1 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "private directory path must name a directory below the filesystem root",
         ));
     }
-
-    let mut directory = File::from(open(
-        Path::new("/"),
-        private_directory_traversal_flags_unix(),
-        Mode::empty(),
-    )?);
-    let effective_uid = nix::unistd::geteuid().as_raw();
-
-    for (index, component) in components.iter().enumerate() {
-        let final_component = index + 1 == components.len();
-        let flags = if final_component {
-            private_directory_read_flags_unix()
-        } else {
-            private_directory_traversal_flags_unix()
-        };
-        let parent_metadata = directory.metadata()?;
-        let (child, created) = match openat(&directory, *component, flags, Mode::empty()) {
-            Ok(file) => (File::from(file), false),
-            Err(Errno::ENOENT) => {
-                validate_private_directory_parent(&parent_metadata, None, effective_uid)?;
-                let created = match mkdirat(&directory, *component, Mode::from_bits_truncate(0o700))
-                {
-                    Ok(()) => true,
-                    Err(Errno::EEXIST) => false,
-                    Err(error) => return Err(error.into()),
-                };
-                // A directory this walk just created is owned here and
-                // readable, so it is opened for read to defeat the umask.
-                let reopen_flags = if created { target_flags } else { flags };
-                let child =
-                    File::from(openat(&directory, *component, reopen_flags, Mode::empty())?);
-                if created {
-                    if final_component {
-                        child.set_permissions(fs::Permissions::from_mode(0o700))?;
-                    } else {
-                        set_private_directory_permissions_unix(&directory, component)?;
-                    }
-                }
-                (child, created)
-            }
-            Err(error) => return Err(error.into()),
-        };
-        let child_metadata = child.metadata()?;
-        validate_private_directory_parent(
-            &parent_metadata,
-            Some(child_metadata.uid()),
-            effective_uid,
-        )?;
-
-        if final_component {
-            validate_private_directory_owner(child_metadata.uid(), effective_uid)?;
-            match existing_target {
-                ExistingPrivateDirectory::Harden => {
-                    child.set_permissions(fs::Permissions::from_mode(0o700))?;
-                }
-                ExistingPrivateDirectory::Preserve if created => {}
-                ExistingPrivateDirectory::Preserve => {
-                    validate_private_directory_mode(child_metadata.mode())?;
-                }
-            }
+    let (target, created) = directories
+        .pop()
+        .ok_or_else(|| std::io::Error::other("private directory descriptor stack is empty"))?;
+    let target_metadata = target.metadata()?;
+    validate_private_directory_owner(target_metadata.uid(), effective_uid)?;
+    match existing_target {
+        ExistingPrivateDirectory::Harden => {
+            target.set_permissions(fs::Permissions::from_mode(0o700))?;
         }
-        directory = child;
+        ExistingPrivateDirectory::Preserve if created => {}
+        ExistingPrivateDirectory::Preserve => {
+            validate_private_directory_mode(target_metadata.mode())?;
+        }
     }
-    Ok(directory)
+    Ok((target, resolved))
 }
 
 #[cfg(unix)]
 fn private_directory_traversal_flags_unix() -> nix::fcntl::OFlag {
     use nix::fcntl::OFlag;
 
-    let common = OFlag::O_CLOEXEC | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW;
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    {
-        common | OFlag::O_PATH
-    }
-    #[cfg(any(
-        target_vendor = "apple",
-        target_os = "aix",
-        target_os = "emscripten",
-        target_os = "freebsd",
-        target_os = "fuchsia",
-        target_os = "illumos",
-        target_os = "netbsd",
-        target_os = "solaris",
-    ))]
-    {
-        common | OFlag::O_SEARCH
-    }
-    #[cfg(not(any(
-        target_os = "linux",
-        target_os = "android",
-        target_vendor = "apple",
-        target_os = "aix",
-        target_os = "emscripten",
-        target_os = "freebsd",
-        target_os = "fuchsia",
-        target_os = "illumos",
-        target_os = "netbsd",
-        target_os = "solaris",
-    )))]
-    {
-        common | OFlag::O_RDONLY
-    }
+    OFlag::O_CLOEXEC | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW | ANCESTOR_ACCESS_MODE
 }
 
 #[cfg(unix)]
@@ -1369,8 +1449,7 @@ mod tests {
     }
 
     #[test]
-    fn prepared_directory_rejects_parent_after_named_component_before_opening_paths(
-    ) -> Result<(), CliError> {
+    fn prepared_directory_rejects_symlink_before_parent_component() -> Result<(), CliError> {
         use std::os::unix::fs::symlink;
 
         let directory = private_directory_test_root()?;
@@ -1385,15 +1464,10 @@ mod tests {
         let error = prepare_private_directory(&working.join("link").join("..").join("project"))
             .err()
             .ok_or_else(|| {
-                CliError::cli_other_error(
-                    "private directory accepted a parent after a named component",
-                )
+                CliError::cli_other_error("private directory walk followed a symlink before ..")
             })?;
 
-        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
-        assert!(error
-            .to_string()
-            .contains("parent components after a named component"));
+        assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
         assert!(!lexical_target.exists());
         assert!(!redirected_target.exists());
         assert!(!outside.join("proof.txt").exists());
@@ -1401,20 +1475,21 @@ mod tests {
     }
 
     #[test]
-    fn private_directory_normalization_accepts_only_leading_parent_components(
-    ) -> Result<(), CliError> {
-        let mut expected = std::env::current_dir()?;
-        expected.pop();
-        expected.push("state");
+    fn prepared_directory_resolves_nested_parent_components() -> Result<(), CliError> {
+        use std::os::unix::fs::PermissionsExt;
 
-        assert_eq!(
-            normalize_private_directory_path(Path::new("../state"))?,
-            expected
-        );
-        assert!(
-            normalize_private_directory_path(Path::new("named/../state")).is_err(),
-            "parent after named component was accepted"
-        );
+        let directory = private_directory_test_root()?;
+        let first = directory.path().join("first");
+        let second = first.join("second");
+        let target = fs::canonicalize(directory.path())?.join("state");
+        fs::create_dir(&first)?;
+        fs::create_dir(&second)?;
+
+        let prepared = prepare_private_directory(&second.join("..").join("..").join("state"))?;
+
+        assert_eq!(prepared.path(), target);
+        assert!(target.is_dir());
+        assert_eq!(fs::metadata(&target)?.permissions().mode() & 0o777, 0o700);
         Ok(())
     }
 

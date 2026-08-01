@@ -167,6 +167,21 @@ fn v2_proof_bundle_requires_evm_anchor_evidence_for_the_primary_lane() {
 
     let mut anchored = bundle.primary_proof.clone();
     bundle.primary_proof.chain_anchor = None;
+    let mut schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    schema_path.push("../../../spec/schemas/chio-web3/v2/anchor-proof-bundle.schema.json");
+    let schema_path = std::fs::canonicalize(&schema_path).test_unwrap();
+    let schema = chio_spec_validate::load_json(&schema_path).test_unwrap();
+    let serialized = serde_json::to_value(&bundle).test_unwrap();
+    assert!(
+        chio_spec_validate::validate_value(
+            &schema_path,
+            &schema,
+            std::path::Path::new("<unanchored-v2-proof-bundle>"),
+            &serialized,
+        )
+        .is_err(),
+        "published v2 bundle schema accepted a missing primary chain anchor"
+    );
     let error = verify_proof_bundle(&bundle).test_unwrap_err();
     assert!(
         error.to_string().contains(

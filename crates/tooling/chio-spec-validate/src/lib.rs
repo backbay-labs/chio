@@ -593,16 +593,17 @@ mod tests {
         ];
 
         for (kernel_key, signature) in algorithm_values {
+            let log_id = format!("local-log-{}", "a".repeat(64));
             let document = json!({
                 "schema": "chio.transparency.inclusion-proof.v2",
                 "proof_id": "proof-1",
-                "log_id": "log-1",
+                "log_id": log_id,
                 "artifact_ref": "1".repeat(64),
                 "root_hash": "2".repeat(64),
                 "leaf_hash": "2".repeat(64),
                 "tree_size": 1,
                 "leaf_index": 0,
-                "checkpoint": "log-1:1",
+                "checkpoint": format!("{log_id}:1"),
                 "inclusion_path": [],
                 "verified_at": 1,
                 "checkpoint_statement": {
@@ -657,16 +658,17 @@ mod tests {
         ];
 
         for (kernel_key, signature) in invalid_pairs {
+            let log_id = format!("local-log-{}", "a".repeat(64));
             let document = json!({
                 "schema": "chio.transparency.inclusion-proof.v2",
                 "proof_id": "proof-1",
-                "log_id": "log-1",
+                "log_id": log_id,
                 "artifact_ref": "1".repeat(64),
                 "root_hash": "2".repeat(64),
                 "leaf_hash": "2".repeat(64),
                 "tree_size": 1,
                 "leaf_index": 0,
-                "checkpoint": "log-1:1",
+                "checkpoint": format!("{log_id}:1"),
                 "inclusion_path": [],
                 "verified_at": 1,
                 "checkpoint_statement": {
@@ -770,6 +772,29 @@ mod tests {
     }
 
     #[test]
+    fn transparency_v2_schema_requires_the_signer_derived_log_id_shape() {
+        let schema_path = workspace_schema_path("chio-transparency/v2/inclusion-proof.schema.json");
+        let schema = load_json(&schema_path)
+            .unwrap_or_else(|error| panic!("load v2 transparency schema: {error}"));
+        let mut document = transparency_document(
+            "chio.checkpoint_statement.v2",
+            1,
+            Some(json!(format!("0x{}", "3".repeat(64)))),
+        );
+        document["log_id"] = json!("log-1");
+
+        assert!(matches!(
+            validate_value(
+                &schema_path,
+                &schema,
+                Path::new("<noncanonical-transparency-log-id>"),
+                &document,
+            ),
+            Err(ValidateError::SchemaViolation(_, _, _))
+        ));
+    }
+
+    #[test]
     fn web3_v2_anchor_bundle_excludes_the_primary_lane_from_secondary_lanes() {
         let schema_path = workspace_schema_path("chio-web3/v2/anchor-proof-bundle.schema.json");
         let schema = load_json(&schema_path)
@@ -777,6 +802,10 @@ mod tests {
         assert_eq!(
             schema.pointer("/properties/secondary_lanes/items/enum"),
             Some(&json!(["bitcoin_ots", "solana_memo"]))
+        );
+        assert_eq!(
+            schema.pointer("/properties/primary_proof/allOf/1/required/0"),
+            Some(&json!("chain_anchor"))
         );
     }
 
@@ -807,16 +836,17 @@ mod tests {
         if let Some(chain_root) = chain_root {
             body["chain_root"] = chain_root;
         }
+        let log_id = format!("local-log-{}", "a".repeat(64));
         json!({
             "schema": "chio.transparency.inclusion-proof.v2",
             "proof_id": "proof-1",
-            "log_id": "log-1",
+            "log_id": log_id,
             "artifact_ref": "1".repeat(64),
             "root_hash": "2".repeat(64),
             "leaf_hash": "2".repeat(64),
             "tree_size": 1,
             "leaf_index": 0,
-            "checkpoint": format!("log-1:{checkpoint_seq}"),
+            "checkpoint": format!("{log_id}:{checkpoint_seq}"),
             "inclusion_path": [],
             "verified_at": 1,
             "checkpoint_statement": {

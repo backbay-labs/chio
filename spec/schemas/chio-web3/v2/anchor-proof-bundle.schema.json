@@ -7,7 +7,12 @@
   "required": ["schema", "primary_proof", "secondary_lanes"],
   "properties": {
     "schema": { "const": "chio.anchor-proof-bundle.v2" },
-    "primary_proof": { "$ref": "anchor-inclusion-proof.schema.json" },
+    "primary_proof": {
+      "allOf": [
+        { "$ref": "anchor-inclusion-proof.schema.json" },
+        { "required": ["chain_anchor"] }
+      ]
+    },
     "secondary_lanes": {
       "type": "array",
       "minItems": 1,
