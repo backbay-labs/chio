@@ -79,7 +79,6 @@ dependency for governed-transaction workflows.
 | `pq` | Enables the hybrid signing path: constructs a PQ (ML-DSA-65) `HybridBackend` from an operator-supplied seed, gated by the boot-time self-quote check in `boot.rs`. Enables `chio-core-types/pq` and `chio-core/pq`. |
 | `otel` | Pulls in `opentelemetry-semantic-conventions` for the GenAI tool-call span attribute contract in `otel.rs`. |
 | `dhat-heap` | Enables heap-profiling instrumentation for the `dispatch_allow_dhat` bench. |
-| `sustained-p99-nightly` | Enables the long-running `sustained_p99_30min` bench. |
 | `tokio-console-smoke` | Enables `tokio/tracing` for the `tokio_console_smoke` integration test. |
 
 ## Testing
@@ -92,8 +91,7 @@ dependency for governed-transaction workflows.
 - `tokio_console_smoke` requires `--features tokio-console-smoke`.
 - `cargo bench -p chio-kernel` runs the criterion benchmark suite (capability
   verification, guard pipeline, dispatch, receipt signing/append);
-  `dispatch_allow_dhat` and `sustained_p99_30min` require their respective
-  features.
+  `dispatch_allow_dhat` requires the `dhat-heap` feature.
 - Dev-dependencies also cover a property-based replay-invariance suite
   (`tests/replay_proptest.rs`) and loom-based concurrency checks.
 

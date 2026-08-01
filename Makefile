@@ -31,7 +31,7 @@ KB_DIR ?= tools/knowledge-base
 	vet deny supply-chain \
 	qualify-release qualify-trust qualify-portable-browser qualify-mobile-kernel \
 	qualify-cross-protocol qualify-bounded \
-	coverage fuzz fuzz-budget kani kani-smoke mutants mutants-fuzz-cocoverage \
+	coverage fuzz fuzz-budget kani kani-smoke loom mutants mutants-fuzz-cocoverage \
 	docker-demo-up docker-demo-down docker-demo-smoke \
 	setup-merge-drivers streaming-test streaming-integration \
 	kb-lock-check kb-up kb-down kb-reset kb-reseed kb-update kb-live kb-status \
@@ -65,7 +65,7 @@ help:
 	@echo "Tier 5 - heavy (slow):"
 	@echo "  qualify-release qualify-trust qualify-portable-browser qualify-mobile-kernel"
 	@echo "  qualify-cross-protocol qualify-bounded"
-	@echo "  coverage fuzz fuzz-budget kani kani-smoke mutants mutants-fuzz-cocoverage"
+	@echo "  coverage fuzz fuzz-budget kani kani-smoke loom mutants mutants-fuzz-cocoverage"
 	@echo ""
 	@echo "Tier 6 - local infra:"
 	@echo "  docker-demo-up docker-demo-down docker-demo-smoke"
@@ -254,6 +254,16 @@ kani:
 
 kani-smoke:
 	./scripts/check-kani-smoke.sh
+
+# Loom interleaving models. Each TCB model target runs under `--cfg loom`
+# with the model checker bounded to 3 preemptions. Slow and memory-heavy:
+# one crate per invocation, never package-wide. Keep this target list in
+# sync with the matrix in .github/workflows/loom-nightly.yml.
+loom:
+	RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=3 $(CARGO) test --release -p chio-kernel --test loom_concurrency
+	RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=3 $(CARGO) test --release -p chio-otel-receipt-exporter --test loom_ring_sender_vs_shutdown
+	RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=3 $(CARGO) test --release -p chio-wasm-guards --test loom_instance_pre_reload_vs_checkout
+	RUSTFLAGS="--cfg chio_store_sqlite_loom" LOOM_MAX_PREEMPTIONS=3 $(CARGO) test --release -p chio-store-sqlite --test loom_receipt_writer
 
 mutants:
 	./scripts/mutants-gate.sh

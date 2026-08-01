@@ -1,0 +1,52 @@
+name: loom-nightly
+
+on:
+  schedule:
+    - cron: "43 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: loom-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  loom:
+    name: loom (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep this list in sync with the `loom` target in the Makefile.
+        # chio-store-sqlite uses its own cfg: under the global `--cfg loom`
+        # its chio-kernel dependency gates out the modules the store lib
+        # imports, so the store models enable via `chio_store_sqlite_loom`
+        # while the dependency tree builds normally.
+        include:
+          - crate: chio-kernel
+            test: loom_concurrency
+            rustflags: "--cfg loom"
+          - crate: chio-otel-receipt-exporter
+            test: loom_ring_sender_vs_shutdown
+            rustflags: "--cfg loom"
+          - crate: chio-wasm-guards
+            test: loom_instance_pre_reload_vs_checkout
+            rustflags: "--cfg loom"
+          - crate: chio-store-sqlite
+            test: loom_receipt_writer
+            rustflags: "--cfg chio_store_sqlite_loom"
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
+      LOOM_MAX_PREEMPTIONS: "3"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: stable
+
+      - name: Run loom target
+        run: cargo test --release -p ${{ matrix.crate }} --test ${{ matrix.test }}
