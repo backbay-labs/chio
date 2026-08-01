@@ -158,6 +158,7 @@ fn check_command_persists_receipt_via_control_service() {
 
     let dir = unique_dir("chio-cli-check-control");
     std::fs::create_dir_all(&dir).expect("create temp dir");
+    secure_private_directory(&dir);
     let receipt_db_path = dir.join("receipts.sqlite3");
     let authority_db_path = dir.join("authority.sqlite3");
     let joint_authority_db_path = dir.join("joint-authority.sqlite3");

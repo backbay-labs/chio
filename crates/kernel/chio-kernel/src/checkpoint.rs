@@ -165,6 +165,9 @@ impl ReceiptInclusionProof {
     /// Verify that `receipt_canonical_bytes` is included in the batch.
     #[must_use]
     pub fn verify(&self, receipt_canonical_bytes: &[u8], expected_root: &Hash) -> bool {
+        if self.leaf_index != self.proof.leaf_index {
+            return false;
+        }
         self.proof.verify(receipt_canonical_bytes, expected_root)
     }
 }

@@ -1,46 +1,31 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{The meaning of programmable sovereignty.}
-The system grants no sovereignty in public or international law. It gives a
-receiver final technical authority over one narrow object: whether a foreign
-agent call crosses its tool-dispatch boundary and enters its receipt history.
-Within that boundary, the receiver selects the trust stores, resolves the
-evidence, applies the predicates, and records the outcome. We call this
-\emph{receipt-bounded sovereignty}. The modifier is essential because another
-organization remains free to reject the same evidence under its own policy.
-
 \paragraph{Why the receiver owns resolution.}
 A signature authenticates bytes, not the authority used to interpret them. If
-the sender can supply the peer keys, revocation state, treaty manifest, or
-policy bundle, a perfectly valid signature can authenticate a self-appointed
-trust domain. Receiver-owned resolution makes those references capabilities
-to local state rather than serialized policy arguments. The resulting
-asymmetry is desirable: bilateral signing establishes agreement on one
-statement, while each side retains unilateral control of admission.
+the sender can also supply the peer keys, revocation state, treaty manifest, or
+policy bundle, a valid signature can authenticate a self-appointed trust
+domain. Receiver-owned resolution turns those references into lookups against
+local state. Bilateral signing establishes agreement on one statement, while
+each participant keeps control of its own admission decision.
 
-\paragraph{Two keys and two organizations.}
-The protocol proves possession of two distinct authorized private keys over
-identical bytes. It cannot prove that independent organizations controlled the
-keys or evaluated policy independently. Deployments that require that stronger
-claim need identity governance, separated key custody, or attested execution.
-The paper keeps this distinction visible because collapsing it would turn an
-operational assumption into a cryptographic theorem.
+\paragraph{Two keys and two operators.}
+The protocol establishes possession of two distinct authorized private keys
+over identical bytes. It cannot tell whether separate organizations controlled
+those keys or evaluated policy independently. A deployment that needs that
+stronger property must add identity governance, separated key custody, or
+attested execution.
 
-\paragraph{Amendment as a bounded extension.}
-Finite-domain no-widening illustrates how a polity could require a checkable
-predicate relation before accepting a new constitution. The theorem is useful
-for configuration sets whose admissible receipt domain is enumerated. It is
-not a production amendment protocol and it does not preserve old allows. A
-real amendment mechanism would need domain versioning, witness transport,
-enactment and rollback state, and an explicit procedure for discontinuous
-changes. Those requirements are deliberately outside the demonstrated
-bilateral admission path.
+\paragraph{Enforcement before evidence review.}
+The buyer package is useful because it preserves the same bindings enforced at
+dispatch. It is evidence of what the configured kernels and keys accepted, not
+a substitute for pre-dispatch checks. Offline verification can detect an
+internally inconsistent package, but it cannot recover a compromised receiver
+or prove how a remote process behaved.
 
-\paragraph{Evidence after enforcement.}
-The same bindings that make a decision enforceable also make it reviewable.
-The buyer package is therefore a consequence of the admission design, not a
-substitute for it. Offline verification can show that the package is internally
-consistent and authorized by its keys; it cannot recover a compromised
-receiver kernel, prove remote process integrity, or compel a third party to
-recognize the result.
+\paragraph{Local technical authority.}
+Receiver-owned admission gives an organization final technical control over
+whether a foreign agent call crosses its own tool boundary. When this property
+is described as programmable sovereignty, the term refers only to that local
+control. It carries no legal, territorial, or institutional status, and every
+counterparty remains free to apply a different policy.

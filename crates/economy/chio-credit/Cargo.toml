@@ -11,6 +11,10 @@ publish = false
 [lib]
 name = "chio_credit"
 
+[features]
+default = []
+kani = []
+
 [dependencies]
 chio-appraisal = { workspace = true }
 chio-core-types = { workspace = true }
@@ -30,5 +34,9 @@ proptest = { workspace = true }
 rand_chacha = { workspace = true }
 rand_core = { workspace = true }
 
-[lints]
-workspace = true
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

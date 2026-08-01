@@ -167,9 +167,13 @@ let request = ToolCallRequest {
 };
 ```
 
-The Kernel's `DpopNonceStore` has a default capacity of 8192 entries and a
-TTL of 300 seconds. Nonces must be unique per `(nonce, capability_id)` pair
-within the TTL window. Use a random string of at least 16 bytes for the nonce.
+The Kernel's `DpopNonceStore` has a default capacity of 8192 entries, and the
+default proof validity window is 300 seconds. Nonces must be unique per
+`(nonce, capability_id)` through the inclusive signed proof horizon. Expired
+markers are reclaimed, but live markers are never evicted; a full store denies
+new proofs fail-closed. Size it for peak proof volume over the full validity
+window, including tolerated future clock skew. Use a random string of at least
+16 bytes for the nonce.
 
 ---
 

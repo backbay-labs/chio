@@ -5,6 +5,7 @@ on:
     branches:
       - project/roadmap-04-25-2026
       - main
+      - chio/autonomous-commerce-brainstorm
     paths:
       - Cargo.toml
       - Cargo.lock

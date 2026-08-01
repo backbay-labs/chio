@@ -1,0 +1,3 @@
+-------------- MODULE DistributedRevocationFreshnessBroken --------------
+EXTENDS DistributedRevocation
+=============================================================================

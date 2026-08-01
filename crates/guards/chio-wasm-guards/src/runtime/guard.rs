@@ -19,8 +19,9 @@ use super::module::LoadedModule;
 /// A single WASM guard module loaded into the runtime.
 ///
 /// Wraps a swappable `LoadedModule` and adapts it to the kernel's `Guard`
-/// trait. On any error (fuel exhaustion, traps, serialization failures) the
-/// guard fails closed and returns `Verdict::Deny`.
+/// trait. On any error (fuel exhaustion, traps, serialization failures) a
+/// blocking guard returns `Verdict::Deny`. An explicitly advisory guard is
+/// non-blocking and returns `Verdict::Allow` after recording the error.
 ///
 /// Carries optional receipt metadata: `manifest_sha256` (set at construction
 /// from the guard manifest) plus the module epoch used by the most recent
@@ -164,6 +165,10 @@ impl WasmGuard {
     }
 
     /// Replace the loaded module and return the previous module snapshot.
+    ///
+    /// Evidence from the last completed evaluation remains available until a
+    /// later evaluation replaces it. This keeps receipt evidence attributed to
+    /// the module that produced the verdict when collection crosses a reload.
     pub fn replace_loaded_module_with_previous(
         &self,
         backend: Box<dyn WasmGuardAbi>,
@@ -181,16 +186,14 @@ impl WasmGuard {
             manifest_sha256,
         )));
         previous.clear_instance_pre_cache();
-        if let Ok(mut evidence_lock) = self.last_evaluation_evidence.lock() {
-            *evidence_lock = None;
-        }
         Some((previous, epoch_id))
     }
 
     /// Restore a previously loaded module snapshot.
     ///
     /// Used by the hot-reload watchdog to roll back a published epoch without
-    /// recompiling the prior module.
+    /// recompiling the prior module. Rollback also preserves evidence from the
+    /// last completed evaluation.
     pub fn restore_loaded_module(&self, module: Arc<LoadedModule>) {
         let _reload_guard = match self.reload_lock.lock() {
             Ok(guard) => guard,
@@ -199,9 +202,6 @@ impl WasmGuard {
         let previous = self.loaded.load_full();
         self.loaded.store(module);
         previous.clear_instance_pre_cache();
-        if let Ok(mut evidence_lock) = self.last_evaluation_evidence.lock() {
-            *evidence_lock = None;
-        }
     }
 
     /// Returns the fuel consumed during the most recent `evaluate()` call,
@@ -441,7 +441,8 @@ impl Guard for WasmGuard {
                 }
             }
             Err(e) => {
-                // Fail closed: any error during WASM execution denies.
+                // Blocking guards deny execution errors. Advisory guards take
+                // the explicit non-blocking branch below.
                 span.record("verdict", VERDICT_ERROR);
                 emit_guard_eval_metrics(
                     &self.name,
@@ -453,7 +454,7 @@ impl Guard for WasmGuard {
                     guard = %self.name,
                     epoch_id = loaded.epoch_id().get(),
                     error = %e,
-                    "WASM guard error, failing closed"
+                    "WASM guard execution error"
                 );
                 if self.advisory {
                     Ok(GuardDecision::allow())
@@ -462,5 +463,12 @@ impl Guard for WasmGuard {
                 }
             }
         }
+    }
+
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        // WASM evaluation may mutate guest state and consumes fuel. Preserve
+        // the admission verdict and its evidence instead of executing the guest
+        // a second time at dispatch.
+        Ok(())
     }
 }

@@ -11,6 +11,10 @@ publish = false
 [lib]
 name = "chio_web3"
 
+[features]
+default = []
+kani = []
+
 [dependencies]
 alloy-primitives = { version = "1.5.7", default-features = false, features = ["std"] }
 chio-core-types = { workspace = true }
@@ -22,5 +26,9 @@ thiserror = { workspace = true }
 [dev-dependencies]
 chio-spec-validate = { workspace = true }
 
-[lints]
-workspace = true
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

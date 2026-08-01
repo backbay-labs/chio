@@ -23,12 +23,16 @@ pub use chio_underwriting as underwriting;
 pub mod clearing;
 pub mod factor;
 pub mod financial_credentials;
+pub mod formal_economy;
 pub mod hook;
 pub mod iou_v2;
 pub mod local_account;
 pub mod obligation;
 pub mod risk_reports;
 pub mod store_binding;
+
+#[cfg(kani)]
+mod kani_public_harnesses;
 
 pub use hook::{
     CreditEvaluatorError, CreditEvaluatorHook, IouEnvelope, IouEnvelopeBody, IOU_ENVELOPE_SCHEMA,

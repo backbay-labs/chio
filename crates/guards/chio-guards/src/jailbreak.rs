@@ -205,6 +205,14 @@ impl Guard for JailbreakGuard {
         }
         Ok(GuardDecision::allow())
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        crate::revalidate_non_consuming_guard(self, ctx)
+    }
 }
 
 /// Extract text-shaped fragments worth scanning.  Mirrors the prompt-injection

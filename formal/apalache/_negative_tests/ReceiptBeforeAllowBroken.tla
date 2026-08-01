@@ -2,34 +2,45 @@
 (***************************************************************************)
 (* DELIBERATELY BROKEN variant of ReceiptBeforeAllow used to demonstrate    *)
 (* that the ReceiptBeforeAllow invariant is NOT tautologically satisfied.   *)
-(* PublishAllow here omits the HasAllowReceipt(a, c) precondition, so an    *)
-(* allow can be published without an allow receipt persisting first.        *)
+(* PublishAllow here omits the HasAllowReceipt(a, c, r) precondition, so a  *)
+(* call can be published without its allow receipt persisting first.         *)
 (*                                                                          *)
-(* Apalache MUST find a counterexample to SafetyInv on this spec. If it     *)
+(* Apalache MUST find a counterexample to ReceiptBeforeAllow. If it         *)
 (* reports NoError, the property is unsound.                                *)
 (***************************************************************************)
 
 EXTENDS Naturals, Sequences, FiniteSets, Common
 
+CONSTANT
+    \* @type: Set(Int);
+    CallSet
+
+ASSUME CallSet = 1..2
+
 VARIABLES
-    \* @type: Int -> Seq({ cap: Int, verdict: Str, t: Int, seen_epoch: Int });
+    \* @type: Int -> Seq({ call: Int, cap: Int, verdict: Str, t: Int, seen_epoch: Int });
     receipt_log,
-    \* @type: Int -> Set(Int);
+    \* @type: Int -> Set({ call: Int, cap: Int });
     allowed,
-    \* @type: Int -> Set(Int);
+    \* @type: Int -> Set({ call: Int, cap: Int });
     budget_checked,
     \* @type: Int;
     clock
 
 vars == << receipt_log, allowed, budget_checked, clock >>
 
+CallDecision(r, c) == [call |-> r, cap |-> c]
+
+CallDecisions ==
+    { CallDecision(r, c) : r \in CallSet, c \in CapSet }
+
 DomainsOK ==
     /\ DOMAIN receipt_log = Authorities
     /\ DOMAIN allowed = Authorities
     /\ DOMAIN budget_checked = Authorities
     /\ \A a \in Authorities :
-        /\ allowed[a] \subseteq CapSet
-        /\ budget_checked[a] \subseteq CapSet
+        /\ allowed[a] \subseteq CallDecisions
+        /\ budget_checked[a] \subseteq CallDecisions
     /\ clock \in Ticks
 
 Init ==
@@ -38,24 +49,37 @@ Init ==
     /\ budget_checked = [a \in Authorities |-> {}]
     /\ clock = 1
 
-CheckBudget(a, c) ==
-    /\ a \in Authorities
-    /\ c \in CapSet
-    /\ budget_checked' = [budget_checked EXCEPT ![a] = @ \cup {c}]
-    /\ UNCHANGED << receipt_log, allowed, clock >>
-
-HasAllowReceipt(a, c) ==
+HasReceiptForCall(a, r) ==
     \E i \in 1..EpochMax :
         /\ i <= Len(receipt_log[a])
+        /\ receipt_log[a][i].call = r
+
+CheckBudget(a, c, r) ==
+    /\ a \in Authorities
+    /\ c \in CapSet
+    /\ r \in CallSet
+    /\ ~HasReceiptForCall(a, r)
+    /\ \A decision \in budget_checked[a] \cup allowed[a] :
+        decision.call /= r
+    /\ budget_checked' = [budget_checked EXCEPT ![a] =
+          @ \cup {CallDecision(r, c)}]
+    /\ UNCHANGED << receipt_log, allowed, clock >>
+
+HasAllowReceipt(a, c, r) ==
+    \E i \in 1..EpochMax :
+        /\ i <= Len(receipt_log[a])
+        /\ receipt_log[a][i].call = r
         /\ receipt_log[a][i].cap = c
         /\ receipt_log[a][i].verdict = "allow"
 
-PersistAllowReceipt(a, c) ==
+PersistAllowReceipt(a, c, r) ==
     /\ a \in Authorities
-    /\ c \in budget_checked[a]
+    /\ CallDecision(r, c) \in budget_checked[a]
+    /\ ~HasReceiptForCall(a, r)
     /\ clock < EpochMax
     /\ receipt_log' = [receipt_log EXCEPT ![a] =
-          Append(@, [cap |-> c,
+          Append(@, [call |-> r,
+                     cap |-> c,
                      verdict |-> "allow",
                      t |-> clock,
                      seen_epoch |-> 0])]
@@ -63,18 +87,23 @@ PersistAllowReceipt(a, c) ==
     /\ UNCHANGED << allowed, budget_checked >>
 
 \* BROKEN: HasAllowReceipt precondition removed.
-PublishAllowBroken(a, c) ==
+PublishAllowBroken(a, c, r) ==
     /\ a \in Authorities
-    /\ c \in budget_checked[a]
-    /\ allowed' = [allowed EXCEPT ![a] = @ \cup {c}]
+    /\ CallDecision(r, c) \in budget_checked[a]
+    /\ CallDecision(r, c) \notin allowed[a]
+    /\ allowed' = [allowed EXCEPT ![a] =
+          @ \cup {CallDecision(r, c)}]
     /\ UNCHANGED << receipt_log, budget_checked, clock >>
 
-Deny(a, c) ==
+Deny(a, c, r) ==
     /\ a \in Authorities
     /\ c \in CapSet
+    /\ r \in CallSet
+    /\ ~HasReceiptForCall(a, r)
     /\ clock < EpochMax
     /\ receipt_log' = [receipt_log EXCEPT ![a] =
-          Append(@, [cap |-> c,
+          Append(@, [call |-> r,
+                     cap |-> c,
                      verdict |-> "deny",
                      t |-> clock,
                      seen_epoch |-> 0])]
@@ -85,10 +114,10 @@ Stutter ==
     UNCHANGED vars
 
 Next ==
-    \/ \E a \in Authorities, c \in CapSet : CheckBudget(a, c)
-    \/ \E a \in Authorities, c \in CapSet : PersistAllowReceipt(a, c)
-    \/ \E a \in Authorities, c \in CapSet : PublishAllowBroken(a, c)
-    \/ \E a \in Authorities, c \in CapSet : Deny(a, c)
+    \/ \E a \in Authorities, c \in CapSet, r \in CallSet : CheckBudget(a, c, r)
+    \/ \E a \in Authorities, c \in CapSet, r \in CallSet : PersistAllowReceipt(a, c, r)
+    \/ \E a \in Authorities, c \in CapSet, r \in CallSet : PublishAllowBroken(a, c, r)
+    \/ \E a \in Authorities, c \in CapSet, r \in CallSet : Deny(a, c, r)
     \/ Stutter
 
 Spec ==
@@ -97,8 +126,8 @@ Spec ==
 
 ReceiptBeforeAllow ==
     \A a \in Authorities :
-        \A c \in CapSet :
-            c \in allowed[a] => HasAllowReceipt(a, c)
+        \A decision \in allowed[a] :
+            HasAllowReceipt(a, decision.cap, decision.call)
 
 SafetyInv ==
     /\ DomainsOK

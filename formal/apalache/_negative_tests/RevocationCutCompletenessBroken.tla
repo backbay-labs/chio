@@ -6,7 +6,7 @@
 (* The broken Revoke action below only flips can_allow for the root cap,   *)
 (* not for transitive descendants. This mirrors the "shallow revoke" bug   *)
 (* RevocationCutCompleteness is meant to catch. Apalache MUST find a        *)
-(* counterexample if the property is sound.                                *)
+(* counterexample to that named invariant if it is sound.                   *)
 (***************************************************************************)
 
 EXTENDS Naturals, FiniteSets, Common

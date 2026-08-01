@@ -38,6 +38,32 @@ pub enum PaymentRailMode {
     PrepaidFinal,
 }
 
+/// Single-use credential disposition after payment authorization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaymentCredentialDisposition {
+    NonePresent,
+    RetainedAfterAuthorization,
+    RetentionOutcomeUnknown,
+}
+
+/// Exact terminal rail action used to unwind a pre-dispatch authorization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreDispatchPaymentUnwindStatus {
+    Released,
+    Refunded,
+}
+
+/// Typed evidence embedded in a signed terminal receipt after a clean unwind.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreDispatchPaymentUnwindEvidence {
+    pub authorization_id: String,
+    pub transaction_id: String,
+    pub settlement_status: PreDispatchPaymentUnwindStatus,
+    pub credential_disposition: PaymentCredentialDisposition,
+}
+
 impl PaymentRailMode {
     #[must_use]
     pub const fn accepts(self, state: PaymentAuthorizationState) -> bool {

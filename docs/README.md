@@ -70,6 +70,7 @@ The primary live release documents. Auditors and operators start here.
 - [Receipt Query API](reference/RECEIPT_QUERY_API.md) - HTTP and CLI surface for querying the signed tool receipt log
 - [Receipt Dashboard Guide](reference/RECEIPT_DASHBOARD_GUIDE.md) - React SPA served by trust-control for receipt visualization
 - [Claim Registry](reference/CLAIM_REGISTRY.md) - which formal claims Chio may make and the evidence boundary behind each
+- [Policy Analysis](reference/POLICY_ANALYSIS.md) - static rule findings and policy refinement witnesses
 
 ### Identity and trust
 

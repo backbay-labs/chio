@@ -401,30 +401,79 @@ impl ChioKernel {
         Ok(())
     }
 
-    fn reserve_legacy_governed_approval(
+    pub(crate) fn validate_governed_approval_for_dispatch_non_consuming(
         &self,
-        approval_token: &GovernedApprovalToken,
-        intent_hash: &str,
+        request: &ToolCallRequest,
+        cap: &CapabilityToken,
+        now: u64,
+    ) -> Result<Option<String>, KernelError> {
+        let Some(approval_token) = request.approval_token.as_ref() else {
+            return Ok(None);
+        };
+        let intent = request.governed_intent.as_ref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "approval token requires a governed transaction intent".to_string(),
+            )
+        })?;
+        let intent_hash = intent.binding_hash().map_err(|error| {
+            KernelError::GovernedTransactionDenied(format!(
+                "failed to hash governed transaction intent: {error}"
+            ))
+        })?;
+        self.validate_governed_approval_token_pure(
+            request,
+            cap,
+            &intent_hash,
+            approval_token,
+            now,
+        )?;
+        Ok(Some(intent_hash))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn consume_governed_approval_for_dispatch(
+        &self,
+        request: &ToolCallRequest,
     ) -> Result<(), KernelError> {
-        if let Some(ref replay_store) = self.approval_replay_store {
-            let is_fresh = replay_store
-                .check_and_insert(&approval_token.request_id, intent_hash)
-                .map_err(|_| {
-                    KernelError::GovernedTransactionDenied(
-                        "approval replay store unavailable; denying as fail-closed".to_string(),
-                    )
-                })?;
-            if !is_fresh {
-                return Err(KernelError::GovernedTransactionDenied(
-                    "approval token has already been consumed (replay detected)".to_string(),
-                ));
-            }
-        } else {
-            return Err(KernelError::GovernedTransactionDenied(
+        let intent_hash = self
+            .validate_governed_approval_for_dispatch_non_consuming(
+                request,
+                &request.capability,
+                current_unix_timestamp(),
+            )?
+            .ok_or_else(|| {
+                KernelError::GovernedTransactionDenied(
+                    "governed approval token is required".to_string(),
+                )
+            })?;
+        let approval_token = request.approval_token.as_ref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "governed approval token is required".to_string(),
+            )
+        })?;
+        let store = self.approval_replay_store.as_deref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
                 "approval replay store not configured; denying as fail-closed".to_string(),
+            )
+        })?;
+        let subject_id = approval_token.subject.to_hex();
+        let reservation_id = uuid::Uuid::now_v7().as_hyphenated().to_string();
+        if !store.reserve_for_dispatch(
+            &subject_id,
+            &approval_token.request_id,
+            &intent_hash,
+            approval_token.expires_at,
+            &reservation_id,
+        )? || !store.commit_dispatch_reservation(
+            &subject_id,
+            &approval_token.request_id,
+            &intent_hash,
+            &reservation_id,
+        )? {
+            return Err(KernelError::GovernedTransactionDenied(
+                "approval token has already been consumed (replay detected)".to_string(),
             ));
         }
-
         Ok(())
     }
 
@@ -1568,14 +1617,13 @@ impl ChioKernel {
             call_chain_proof: validated_upstream_call_chain_proof,
             verified_runtime_attestation,
             verified_payee_binding,
-            approval_intent_hash: intent_hash,
             approval_reservation,
         }))
     }
 
     pub(crate) fn reserve_validated_governed_approval(
         &self,
-        request: &ToolCallRequest,
+        _request: &ToolCallRequest,
         validated: Option<&ValidatedGovernedAdmission>,
         durable_admission: Option<&mut DurableToolAdmission>,
         trusted_now_unix_ms: u64,
@@ -1583,9 +1631,6 @@ impl ChioKernel {
         let Some(validated) = validated else {
             return Ok(());
         };
-        if let Some(approval_token) = request.approval_token.as_ref() {
-            self.reserve_legacy_governed_approval(approval_token, &validated.approval_intent_hash)?;
-        }
         let Some(reservation) = validated.approval_reservation.as_ref() else {
             return Ok(());
         };
@@ -1597,7 +1642,8 @@ impl ChioKernel {
                 "threshold approval requires a durable admission operation".to_string(),
             )
         })?;
-        self.reserve_durable_approval_set(admission, reservation, trusted_now_unix_ms)
+        self.reserve_durable_approval_set(admission, reservation, trusted_now_unix_ms)?;
+        Ok(())
     }
 
     pub(crate) fn governed_call_chain_receipt_evidence(

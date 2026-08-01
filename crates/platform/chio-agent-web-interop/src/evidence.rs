@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde::Deserialize;
 
 use chio_transaction_passport::{TransactionPassportError, TRANSACTION_EVIDENCE_GRAPH_SCHEMA_ID};
@@ -24,7 +26,7 @@ pub(super) struct AgentWebEvidenceNode {
     pub(super) role: AgentWebEvidenceRole,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum AgentWebEvidenceRole {
     ClaimSet,
     AgentWebProofEnvelope,
@@ -45,6 +47,29 @@ pub(super) enum AgentWebEvidenceRole {
     DisclosureLeakageLedger,
     SignedLineageSubgraph,
     DisclosureCryptoContextReport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct AgentWebReceiptRef(String);
+
+impl AgentWebReceiptRef {
+    pub(super) fn parse(reference: &str) -> Result<Self, TransactionPassportError> {
+        if !reference.starts_with("receipt-agent-web-")
+            || reference.len() == "receipt-agent-web-".len()
+            || !reference
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        {
+            return Err(super::claim_failed(format!(
+                "invalid canonical Agent Web receipt ref: {reference}"
+            )));
+        }
+        Ok(Self(reference.to_string()))
+    }
+
+    pub(super) fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl<'de> Deserialize<'de> for AgentWebEvidenceRole {
@@ -151,25 +176,36 @@ pub(super) fn find_node_by_path<'a>(
         .find(|node| node.role == role && node.path == path)
 }
 
-pub(super) fn find_node_by_id<'a>(
+pub(super) fn find_receipt_node<'a>(
     graph: &'a AgentWebEvidenceGraph,
-    role: AgentWebEvidenceRole,
-    id: &str,
+    receipt_ref: &AgentWebReceiptRef,
 ) -> Option<&'a AgentWebEvidenceNode> {
-    graph
-        .nodes
-        .iter()
-        .find(|node| node.role == role && graph_node_ref_matches(node, id))
+    graph.nodes.iter().find(|node| {
+        node.role == AgentWebEvidenceRole::Receipt
+            && graph_node_file_stem(node) == Some(receipt_ref.as_str())
+    })
 }
 
-fn graph_node_ref_matches(node: &AgentWebEvidenceNode, reference: &str) -> bool {
+pub(super) fn find_legacy_receipt_node<'a>(
+    graph: &'a AgentWebEvidenceGraph,
+    reference: &str,
+) -> Option<&'a AgentWebEvidenceNode> {
+    graph.nodes.iter().find(|node| {
+        node.role == AgentWebEvidenceRole::Receipt && receipt_node_ref_matches(node, reference)
+    })
+}
+
+pub(super) fn receipt_node_ref_matches(node: &AgentWebEvidenceNode, reference: &str) -> bool {
     node.id == reference
         || node.sha256 == reference
         || node.path == reference
-        || std::path::Path::new(&node.path)
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            == Some(reference)
+        || graph_node_file_stem(node) == Some(reference)
+}
+
+fn graph_node_file_stem(node: &AgentWebEvidenceNode) -> Option<&str> {
+    std::path::Path::new(&node.path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
 }
 
 pub(super) fn graph_has_edge(
@@ -245,12 +281,30 @@ pub(super) fn raw_artifact_bytes<'a>(
 fn validate_graph_references(
     graph: &AgentWebEvidenceGraph,
 ) -> Result<(), TransactionPassportError> {
-    let mut node_ids = std::collections::BTreeSet::new();
+    let mut node_ids = BTreeSet::new();
+    let mut role_aliases = BTreeMap::new();
     for node in &graph.nodes {
         if !node_ids.insert(node.id.as_str()) {
             return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
                 format!("duplicate evidence graph node id: {}", node.id),
             ));
+        }
+        let mut node_aliases =
+            BTreeSet::from([node.id.as_str(), node.sha256.as_str(), node.path.as_str()]);
+        if let Some(stem) = graph_node_file_stem(node) {
+            node_aliases.insert(stem);
+        }
+        for alias in node_aliases {
+            if let Some(previous_node_id) =
+                role_aliases.insert((node.role, alias), node.id.as_str())
+            {
+                return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                    format!(
+                        "ambiguous evidence graph alias for role {:?}: {alias} ({previous_node_id}, {})",
+                        node.role, node.id
+                    ),
+                ));
+            }
         }
     }
     for edge in &graph.edges {

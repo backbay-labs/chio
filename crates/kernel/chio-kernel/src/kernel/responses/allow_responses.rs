@@ -39,6 +39,18 @@ impl ChioKernel {
         nonce: AllowResponseNonce,
     ) -> Result<ToolCallResponse, KernelError> {
         let cap = &request.capability;
+        if let Err(error) = self.check_revocation(cap) {
+            let reason =
+                format!("capability authorization changed before allow finalization: {error}");
+            return self.build_deny_response_with_metadata_and_payee_binding(
+                request,
+                &reason,
+                timestamp,
+                matched_grant_index,
+                extra_metadata,
+                verified_payee_binding,
+            );
+        }
         let expected_chunks = match &output {
             ToolCallOutput::Stream(stream) => Some(stream.chunk_count()),
             ToolCallOutput::Value(_) => None,

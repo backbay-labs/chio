@@ -9,22 +9,28 @@ use crate::*;
 
 #[path = "admission_coordinator.rs"]
 mod admission_coordinator;
+mod credential_reservation;
 mod error;
 mod kernel_drop_guard;
 mod kernel_scopes;
 mod kernel_struct;
+mod verified_treaty;
 
 pub use construction::KernelBuildError;
 pub use error::{
-    HotPathStage, KernelError, OverloadResource, SettlementRuntimeConfigError,
-    StructuredErrorReport,
+    HotPathStage, KernelError, OverloadResource, ReplayClockDirection,
+    SettlementRuntimeConfigError, StructuredErrorReport,
 };
 pub use kernel_struct::{
     ChioKernel, HotPathDeadlineConfig, HybridSigningConfig, KernelConfig, MemoryBudgetConfig,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS,
     DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RECEIPT_APPEND_BUDGET_MS,
     DEFAULT_RECEIPT_WRITER_POLL_MS, DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS,
-    MIN_RECEIPT_APPEND_BUDGET_MS,
+    DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS, MIN_RECEIPT_APPEND_BUDGET_MS,
+};
+pub use verified_treaty::{
+    FederationTreatyAdmissionBinding, FederationTreatyVerification,
+    VerifiedFederationTreatyMaterial,
 };
 
 pub(crate) use admission_coordinator::{
@@ -32,10 +38,11 @@ pub(crate) use admission_coordinator::{
 };
 pub(crate) use kernel_drop_guard::{PostAdmissionDropGuard, PostAdmissionReceiptContext};
 pub(crate) use kernel_scopes::{
-    current_scoped_receipt_federation_admission, current_scoped_receipt_tenant_id,
-    extract_tenant_id_from_auth_context, scope_receipt_federation_admission,
-    scope_receipt_tenant_id, ReceiptFederationAdmission, ScopedKernelReceiptFederationAdmission,
-    ScopedKernelReceiptTenantId,
+    current_receipt_evaluation_scope_key, current_scoped_receipt_federation_admission,
+    current_scoped_receipt_tenant_id, extract_tenant_id_from_auth_context,
+    scope_receipt_federation_admission, scope_receipt_tenant_id, ReceiptFederationAdmission,
+    ScopedKernelReceiptFederationAdmission, ScopedKernelReceiptTenantId,
+    RECEIPT_EVALUATION_SCOPE_KEY,
 };
 pub(crate) use kernel_struct::{
     capability_crypto_floor, receipt_crypto_floor, ReservedSiblingShare, RestartReservedHoldGate,
@@ -66,21 +73,65 @@ pub struct RuntimeAdmissionContext<'a> {
     pub local_kernel_id: String,
 }
 
+/// Non-consuming context for the final runtime-admission check immediately
+/// before payment authorization, nonce consumption, and tool dispatch.
+pub struct RuntimeAdmissionRevalidationContext<'a> {
+    pub request: &'a ToolCallRequest,
+    pub admission_metadata: Option<&'a serde_json::Value>,
+    pub now_unix_secs: u64,
+    pub now_unix_ms: u64,
+    pub matched_grant_index: Option<usize>,
+    pub local_kernel_id: String,
+}
+
+/// Opaque identifier for one in-flight runtime-admission readiness poll.
+/// Concurrent evaluations receive distinct tokens even when request IDs are
+/// equal, so unregistering one wait cannot remove another wait's state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RuntimeAdmissionReadinessToken(u64);
+
+impl RuntimeAdmissionReadinessToken {
+    #[must_use]
+    pub fn as_u64(self) -> u64 {
+        self.0
+    }
+}
+
 /// Decision returned by a runtime admission hook.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeAdmissionDecision {
     pub allowed: bool,
     pub reason: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    pub(crate) verified_treaty_material: Option<VerifiedFederationTreatyMaterial>,
 }
 
 impl RuntimeAdmissionDecision {
+    #[must_use]
+    pub fn has_verified_treaty_material(&self) -> bool {
+        self.verified_treaty_material.is_some()
+    }
+
     #[must_use]
     pub fn allow(metadata: Option<serde_json::Value>) -> Self {
         Self {
             allowed: true,
             reason: None,
             metadata,
+            verified_treaty_material: None,
+        }
+    }
+
+    #[must_use]
+    pub fn allow_with_verified_treaty_material(
+        metadata: Option<serde_json::Value>,
+        verified_treaty_material: VerifiedFederationTreatyMaterial,
+    ) -> Self {
+        Self {
+            allowed: true,
+            reason: None,
+            metadata,
+            verified_treaty_material: Some(verified_treaty_material),
         }
     }
 
@@ -90,6 +141,7 @@ impl RuntimeAdmissionDecision {
             allowed: false,
             reason: Some(reason.into()),
             metadata,
+            verified_treaty_material: None,
         }
     }
 }
@@ -103,25 +155,54 @@ pub trait RuntimeAdmissionHook: Send + Sync {
         context: &RuntimeAdmissionContext<'_>,
     ) -> Result<RuntimeAdmissionDecision, KernelError>;
 
+    /// Poll readiness after admission state has been reserved but before tool
+    /// dispatch is marked as started. The default is immediately ready.
+    fn poll_ready_before_dispatch(
+        &self,
+        _request: &ToolCallRequest,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<()> {
+        std::task::Poll::Ready(())
+    }
+
+    /// Token-aware readiness poll. Hooks retaining per-wait state should
+    /// override this method; the default preserves the original readiness API.
+    fn poll_ready_before_dispatch_with_token(
+        &self,
+        request: &ToolCallRequest,
+        _token: RuntimeAdmissionReadinessToken,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<()> {
+        self.poll_ready_before_dispatch(request, cx)
+    }
+
+    /// Return true when mutable admission state must be checked even if the
+    /// readiness poll completes immediately.
+    fn requires_dispatch_revalidation(&self) -> bool {
+        false
+    }
+
+    /// Revalidate mutable admission state without acquiring another
+    /// reservation. Mutable hooks opt in through
+    /// [`Self::requires_dispatch_revalidation`].
+    fn revalidate_before_dispatch(
+        &self,
+        _context: &RuntimeAdmissionRevalidationContext<'_>,
+    ) -> Result<(), KernelError> {
+        Ok(())
+    }
+
+    /// Remove request-scoped readiness state, including any retained waker.
+    fn unregister_ready_before_dispatch(
+        &self,
+        _request: &ToolCallRequest,
+        _token: RuntimeAdmissionReadinessToken,
+    ) {
+    }
+
     fn release_reserved(&self, _metadata: &serde_json::Value) -> Result<(), KernelError> {
         Ok(())
     }
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct KernelFederationTreatyDsseMetadata {
-    capability_lease_ref: chio_federation::bilateral_dsse::CapabilityLeaseRef,
-    policy_evaluation_summary: chio_federation::bilateral_dsse::PolicyEvaluationSummary,
-    #[serde(default)]
-    governance_receipt_ref: Option<chio_federation::bilateral_dsse::GovernanceReceiptRef>,
-    #[serde(default)]
-    consistency_anchor: Option<String>,
-    #[serde(default)]
-    consistency_model: Option<String>,
-    #[serde(default)]
-    cross_org_visibility: Option<String>,
-    treaty_binding_ref: chio_federation::bilateral_dsse::TreatyBindingRef,
 }
 
 #[derive(Debug)]
@@ -148,7 +229,6 @@ pub(crate) struct ValidatedGovernedAdmission {
     call_chain_proof: Option<ValidatedGovernedCallChainProof>,
     verified_runtime_attestation: Option<VerifiedRuntimeAttestationRecord>,
     verified_payee_binding: Option<VerifiedGovernedPayeeBinding>,
-    approval_intent_hash: String,
     approval_reservation: Option<VerifiedApprovalReservation>,
 }
 
@@ -164,6 +244,30 @@ pub(crate) struct VerifiedThresholdApprovalSet {
     pub(crate) requirement: chio_core::capability::threshold_approval::ThresholdApprovalRequirement,
     pub(crate) body: chio_core::capability::governance::VerifiedApprovalSetBody,
     pub(crate) replay: ThresholdApprovalReplayReservationV1,
+}
+
+pub(crate) fn run_payment_adapter_operation<T>(
+    operation_name: &'static str,
+    operation: impl FnOnce() -> Result<T, PaymentError>,
+) -> Result<T, PaymentError> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)) {
+        Ok(result) => result,
+        Err(_) => Err(PaymentError::RailError(format!(
+            "payment adapter {operation_name} panicked; outcome unknown"
+        ))),
+    }
+}
+
+pub(crate) fn validate_payment_adapter_identifier(
+    identifier: &str,
+    field_name: &'static str,
+) -> Result<(), PaymentError> {
+    if identifier.is_empty() || identifier.trim() != identifier {
+        return Err(PaymentError::RailError(format!(
+            "payment adapter returned an invalid {field_name}; outcome unknown"
+        )));
+    }
+    Ok(())
 }
 
 pub(crate) enum BudgetAdmissionOutcome {
@@ -474,6 +578,28 @@ pub trait Guard: Send + Sync {
     /// Returns an allow or deny decision with optional evidence, or `Err` on
     /// internal failure (which the kernel treats as deny).
     fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError>;
+
+    /// Return true when mutable guard state must be checked immediately before
+    /// dispatch even if runtime readiness never suspended.
+    fn requires_dispatch_revalidation(&self) -> bool {
+        false
+    }
+
+    /// Run the opt-in immediate dispatch check. Composite guards should
+    /// override this method and apply it recursively to their children.
+    fn revalidate_required_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        if self.requires_dispatch_revalidation() {
+            self.revalidate_before_dispatch(ctx)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Revalidate mutable guard state without consuming a second quota,
+    /// approval, or rate-limit token.
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        Ok(())
+    }
 }
 
 /// Context passed to guards during evaluation.
@@ -757,6 +883,7 @@ impl PreExecutionBudgetMutation {
 struct SessionNestedFlowBridge<'a, C> {
     sessions: &'a DashMap<SessionId, Arc<Session>>,
     child_receipts: &'a mut Vec<ChildRequestReceipt>,
+    nested_interaction_observed: &'a std::sync::atomic::AtomicBool,
     parent_context: &'a OperationContext,
     allow_sampling: bool,
     allow_sampling_tool_use: bool,
@@ -767,6 +894,49 @@ struct SessionNestedFlowBridge<'a, C> {
 }
 
 impl<C> SessionNestedFlowBridge<'_, C> {
+    fn mark_nested_interaction_observed(&self) {
+        self.nested_interaction_observed
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    fn ensure_parent_not_cancelled(&self) -> Result<(), KernelError> {
+        let session = session_from_map(self.sessions, &self.parent_context.session_id)?;
+        let request_id = &self.parent_context.request_id;
+        let Some(parent) = session.inflight().get(request_id) else {
+            return Err(KernelError::RequestCancelled {
+                request_id: request_id.clone(),
+                reason: "parent session request completed during nested dispatch".to_string(),
+            });
+        };
+        if parent.cancellation_requested {
+            return Err(KernelError::RequestCancelled {
+                request_id: request_id.clone(),
+                reason: parent.cancellation_reason.unwrap_or_else(|| {
+                    "parent session request cancelled during nested dispatch".to_string()
+                }),
+            });
+        }
+        Ok(())
+    }
+
+    fn latch_matching_cancellation<T>(
+        &mut self,
+        result: &Result<T, KernelError>,
+        child_request_id: Option<&RequestId>,
+    ) -> Result<(), KernelError> {
+        let Err(KernelError::RequestCancelled { request_id, reason }) = result else {
+            return Ok(());
+        };
+        if request_id != &self.parent_context.request_id
+            && child_request_id.is_none_or(|child_request_id| request_id != child_request_id)
+        {
+            return Ok(());
+        }
+        session_from_map(self.sessions, &self.parent_context.session_id)?
+            .request_cancellation_with_reason(request_id, reason)?;
+        Ok(())
+    }
+
     fn complete_child_request_with_receipt<T: serde::Serialize>(
         &mut self,
         child_context: &OperationContext,
@@ -794,16 +964,29 @@ impl<C> SessionNestedFlowBridge<'_, C> {
     }
 }
 
+impl<C> Drop for SessionNestedFlowBridge<'_, C> {
+    fn drop(&mut self) {
+        if let Some(session) = self.sessions.get(&self.parent_context.session_id) {
+            session.mark_request_dispatch_finished(&self.parent_context.request_id);
+        }
+    }
+}
+
 impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
     fn parent_request_id(&self) -> &RequestId {
         &self.parent_context.request_id
     }
 
     fn poll_parent_cancellation(&mut self) -> Result<(), KernelError> {
-        self.client.poll_parent_cancellation(self.parent_context)
+        self.ensure_parent_not_cancelled()?;
+        let result = self.client.poll_parent_cancellation(self.parent_context);
+        self.latch_matching_cancellation(&result, None)?;
+        result
     }
 
     fn list_roots(&mut self) -> Result<Vec<RootDefinition>, KernelError> {
+        self.ensure_parent_not_cancelled()?;
+        self.mark_nested_interaction_observed();
         let (child_context, _start) = begin_child_request_in_sessions(
             self.sessions,
             self.parent_context,
@@ -849,6 +1032,8 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
         &mut self,
         operation: CreateMessageOperation,
     ) -> Result<CreateMessageResult, KernelError> {
+        self.ensure_parent_not_cancelled()?;
+        self.mark_nested_interaction_observed();
         let (child_context, _start) = begin_child_request_in_sessions(
             self.sessions,
             self.parent_context,
@@ -890,6 +1075,8 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
         &mut self,
         operation: CreateElicitationOperation,
     ) -> Result<CreateElicitationResult, KernelError> {
+        self.ensure_parent_not_cancelled()?;
+        self.mark_nested_interaction_observed();
         let (child_context, _start) = begin_child_request_in_sessions(
             self.sessions,
             self.parent_context,
@@ -927,15 +1114,21 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
     }
 
     fn notify_elicitation_completed(&mut self, elicitation_id: &str) -> Result<(), KernelError> {
+        self.ensure_parent_not_cancelled()?;
         let session = session_from_map(self.sessions, &self.parent_context.session_id)?;
         session.validate_context(self.parent_context)?;
         session.ensure_operation_allowed(OperationKind::ToolCall)?;
 
-        self.client
-            .notify_elicitation_completed(self.parent_context, elicitation_id)
+        self.mark_nested_interaction_observed();
+        let result = self
+            .client
+            .notify_elicitation_completed(self.parent_context, elicitation_id);
+        self.latch_matching_cancellation(&result, None)?;
+        result
     }
 
     fn notify_resource_updated(&mut self, uri: &str) -> Result<(), KernelError> {
+        self.ensure_parent_not_cancelled()?;
         let session = session_from_map(self.sessions, &self.parent_context.session_id)?;
         session.validate_context(self.parent_context)?;
         session.ensure_operation_allowed(OperationKind::ToolCall)?;
@@ -944,17 +1137,26 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             return Ok(());
         }
 
-        self.client
-            .notify_resource_updated(self.parent_context, uri)
+        self.mark_nested_interaction_observed();
+        let result = self
+            .client
+            .notify_resource_updated(self.parent_context, uri);
+        self.latch_matching_cancellation(&result, None)?;
+        result
     }
 
     fn notify_resources_list_changed(&mut self) -> Result<(), KernelError> {
+        self.ensure_parent_not_cancelled()?;
         let session = session_from_map(self.sessions, &self.parent_context.session_id)?;
         session.validate_context(self.parent_context)?;
         session.ensure_operation_allowed(OperationKind::ToolCall)?;
 
-        self.client
-            .notify_resources_list_changed(self.parent_context)
+        self.mark_nested_interaction_observed();
+        let result = self
+            .client
+            .notify_resources_list_changed(self.parent_context);
+        self.latch_matching_cancellation(&result, None)?;
+        result
     }
 }
 

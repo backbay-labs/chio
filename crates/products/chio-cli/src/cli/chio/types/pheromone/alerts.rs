@@ -1,6 +1,4 @@
-use super::{
-    ChioPheromoneRelayAlertAssuranceCommands, ChioPheromoneRelayAlertDeliveryCommands,
-};
+use super::{ChioPheromoneRelayAlertAssuranceCommands, ChioPheromoneRelayAlertDeliveryCommands};
 use clap::Subcommand;
 use std::path::PathBuf;
 

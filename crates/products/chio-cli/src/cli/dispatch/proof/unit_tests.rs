@@ -1,5 +1,100 @@
 use super::*;
 
+static AGENT_WEB_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+struct TestEnvGuard(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+impl TestEnvGuard {
+    fn set(values: &[(&'static str, &std::ffi::OsStr)]) -> Self {
+        let mut previous = Vec::with_capacity(values.len());
+        for (name, value) in values {
+            previous.push((*name, std::env::var_os(name)));
+            std::env::set_var(name, value);
+        }
+        Self(previous)
+    }
+}
+
+impl Drop for TestEnvGuard {
+    fn drop(&mut self) {
+        for (name, previous) in self.0.drain(..).rev() {
+            match previous {
+                Some(value) => std::env::set_var(name, value),
+                None => std::env::remove_var(name),
+            }
+        }
+    }
+}
+
+fn proof_test_ok<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(error) => panic!("{context}: {error}"),
+    }
+}
+
+fn agent_web_replay_test_env(replay_store_path: &std::path::Path) -> TestEnvGuard {
+    let host_now = proof_test_ok(
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH),
+        "read host clock",
+    )
+    .as_secs();
+    let verifier_now = host_now.saturating_add(60);
+    let replay_max_age = verifier_now
+        .saturating_sub(1_770_508_800)
+        .saturating_add(300);
+    let verifier_now = verifier_now.to_string();
+    let replay_max_age = replay_max_age.to_string();
+    let env_values = [
+        (
+            "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
+            std::ffi::OsStr::new("chio-agent-web-standard-webhooks-fixture-secret-v1"),
+        ),
+        (
+            "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
+            std::ffi::OsStr::new(verifier_now.as_str()),
+        ),
+        (
+            "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
+            std::ffi::OsStr::new(replay_max_age.as_str()),
+        ),
+        (
+            "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
+            std::ffi::OsStr::new(concat!(
+                "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de,",
+                "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff,",
+                "bed7d2ab668da3efad613998f06f7abf7875f3a6b7677a9f3ce947d77d7760a6,",
+                "204040e364c10f2bec9c1fe500a1cd4c247c89d650a01ed7e82caba867877c21,",
+                "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
+            )),
+        ),
+        (
+            "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS",
+            std::ffi::OsStr::new(
+                "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            ),
+        ),
+        (
+            "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS",
+            std::ffi::OsStr::new(concat!(
+                "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
+                "68f4b6017d0f876a55c80a82b8388a54aad264d367269e2de8be079c935b5f96"
+            )),
+        ),
+        (
+            "CHIO_AGENT_WEB_REPLAY_STORE_PATH",
+            replay_store_path.as_os_str(),
+        ),
+        (
+            collect::PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV,
+            std::ffi::OsStr::new(
+                "1111111111111111111111111111111111111111111111111111111111111111",
+            ),
+        ),
+    ];
+    TestEnvGuard::set(&env_values)
+}
+
 #[test]
 fn agent_web_receipt_scope_uses_schema_not_fixture_filename() {
     assert!(is_agent_web_evidence_graph_node_parts(
@@ -28,6 +123,176 @@ fn trust_market_artifact_loader_includes_retained_receipts() {
 #[test]
 fn runtime_artifact_loader_includes_policy_activation_receipt() {
     assert!(is_runtime_artifact_role("policy-activation-receipt"));
+}
+
+#[test]
+fn later_root_claim_failure_does_not_reserve_agent_web_replay_ids() {
+    let _env_lock = match AGENT_WEB_ENV_LOCK.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let tempdir = proof_test_ok(tempfile::tempdir(), "create tempdir");
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join("fixtures/proof-room/agent-web/valid-webhook-cloudevents");
+    let bundle = tempdir.path().join("bundle");
+    proof_test_ok(
+        fixture::copy_dir_contents(&source, &bundle),
+        "copy Agent Web fixture",
+    );
+    let replay_store_path = tempdir.path().join("agent-web-replay.sqlite");
+    let _env = agent_web_replay_test_env(&replay_store_path);
+    let passport_path = bundle.join("transaction-passport.json");
+    let expected_report = proof_test_ok(
+        verify_transaction_passport_file(&passport_path),
+        "read-only Agent Web verification",
+    );
+    let claim_set_path = bundle.join("claim-set.json");
+    let original_claim_set = proof_test_ok(std::fs::read(&claim_set_path), "read claim set");
+    proof_test_ok(std::fs::write(&claim_set_path, b"{}"), "corrupt claim set");
+
+    let error = match verify_transaction_passport_file_and_consume_agent_web_replays(
+        &passport_path,
+        &expected_report,
+    ) {
+        Ok(_) => panic!("later root claim failure must reject consuming verification"),
+        Err(error) => error,
+    };
+    assert!(
+        error.to_string().contains("claim set"),
+        "unexpected later verification error: {error}"
+    );
+    assert!(
+        replay_store_path.is_file(),
+        "consuming verification must reach the Agent Web branch before the root claim failure"
+    );
+
+    proof_test_ok(
+        std::fs::write(&claim_set_path, original_claim_set),
+        "restore claim set",
+    );
+    proof_test_ok(
+        verify_transaction_passport_file_and_consume_agent_web_replays(
+            &passport_path,
+            &expected_report,
+        ),
+        "retry after later failure must still reserve replay ids",
+    );
+}
+
+#[test]
+fn proof_collect_consumes_replays_only_after_sealing_succeeds() {
+    let _env_lock = match AGENT_WEB_ENV_LOCK.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let tempdir = proof_test_ok(tempfile::tempdir(), "create tempdir");
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join("fixtures/proof-room/agent-web/valid-webhook-cloudevents");
+    let bundle = tempdir.path().join("bundle");
+    proof_test_ok(
+        fixture::copy_dir_contents(&source, &bundle),
+        "copy Agent Web fixture",
+    );
+    let replay_store_path = tempdir.path().join("agent-web-replay.sqlite");
+    let _env = agent_web_replay_test_env(&replay_store_path);
+
+    let verifier_path = bundle.join("verifier");
+    proof_test_ok(
+        std::fs::remove_dir_all(&verifier_path),
+        "remove fixture verifier directory",
+    );
+    proof_test_ok(
+        std::fs::write(&verifier_path, b"not a directory"),
+        "block verifier report directory",
+    );
+    let sealing_error = collect::seal_collected_proof_bundle(
+        ProofCollectKind::AgentWebEnvelope,
+        &bundle,
+    );
+    assert!(
+        sealing_error.is_err(),
+        "unwritable verifier output must fail sealing"
+    );
+
+    proof_test_ok(
+        std::fs::remove_file(&verifier_path),
+        "remove verifier path blocker",
+    );
+    collect::fail_after_replay_reservation_once();
+    let interrupted = collect::seal_collected_proof_bundle(
+        ProofCollectKind::AgentWebEnvelope,
+        &bundle,
+    );
+    assert!(interrupted.is_err_and(|error| error
+        .to_string()
+        .contains("injected failure after Agent-Web replay reservation")));
+    let pending_signature_path = bundle.join(".bundle-signature.dsse.json.pending");
+    assert!(pending_signature_path.is_file());
+    assert!(!bundle.join("bundle-signature.dsse.json").exists());
+    let replay_reservation_id = chio_core::sha256_hex(&proof_test_ok(
+        std::fs::read(&pending_signature_path),
+        "read pending bundle signature",
+    ));
+    let replay_store = proof_test_ok(
+        chio_store_sqlite::SqliteAgentWebReplayStore::open(&replay_store_path),
+        "open replay reservation store",
+    );
+    assert_eq!(
+        proof_test_ok(
+            replay_store.replay_reservation_state(&replay_reservation_id),
+            "read pending replay reservation state",
+        ),
+        Some(chio_store_sqlite::SqliteAgentWebReplayReservationState::Pending)
+    );
+    collect::fail_after_final_signature_link_once();
+    let link_interrupted = collect::seal_collected_proof_bundle(
+        ProofCollectKind::AgentWebEnvelope,
+        &bundle,
+    );
+    assert!(link_interrupted.is_err_and(|error| error
+        .to_string()
+        .contains("injected failure after final bundle signature link")));
+    assert!(pending_signature_path.is_file());
+    assert!(bundle.join("bundle-signature.dsse.json").is_file());
+    assert_eq!(
+        proof_test_ok(
+            replay_store.replay_reservation_state(&replay_reservation_id),
+            "read replay reservation after final link failure",
+        ),
+        Some(chio_store_sqlite::SqliteAgentWebReplayReservationState::Pending)
+    );
+    proof_test_ok(
+        collect::seal_collected_proof_bundle(ProofCollectKind::AgentWebEnvelope, &bundle),
+        "retry after post-reservation failure",
+    );
+    assert_eq!(
+        proof_test_ok(
+            replay_store.replay_reservation_state(&replay_reservation_id),
+            "read completed replay reservation state",
+        ),
+        Some(chio_store_sqlite::SqliteAgentWebReplayReservationState::Complete)
+    );
+
+    let replay_error = collect::seal_collected_proof_bundle(
+        ProofCollectKind::AgentWebEnvelope,
+        &bundle,
+    );
+    assert!(replay_error.is_err_and(|error| error
+        .to_string()
+        .contains("replayed Standard Webhooks id")));
+    for relative_path in [
+        "bundle-signature.dsse.json",
+        ".bundle-signature.dsse.json.pending",
+        "manifest.json",
+        "verifier/report.json",
+    ] {
+        assert!(
+            !bundle.join(relative_path).exists(),
+            "replay failure must remove uncommitted output {relative_path}"
+        );
+    }
 }
 
 #[test]

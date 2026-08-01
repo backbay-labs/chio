@@ -8,7 +8,9 @@
 
 import { describe, it, expect } from "vitest";
 import type { HttpReceipt, Verdict } from "@chio-protocol/node-http";
+import type { Receipt_Record } from "../src/_generated/index.js";
 import {
+  validateChioReceiptRecordStructure,
   validateReceiptStructure,
   verifyContentHash,
   assertVerdictMatch,
@@ -16,19 +18,51 @@ import {
 
 function makeValidReceipt(overrides: Partial<HttpReceipt> = {}): HttpReceipt {
   return {
-    id: "receipt-001",
+    id: "a".repeat(64),
     request_id: "req-001",
     route_pattern: "/pets/{petId}",
     method: "GET",
     caller_identity_hash: "a".repeat(64),
     verdict: { verdict: "allow" },
+    receipt_kind: "mediated_decision",
+    boundary_class: "prevent",
+    tool_origin: "host_executed_provider_reported",
+    redaction_mode: "none",
     evidence: [],
     response_status: 200,
     timestamp: 1700000000,
     content_hash: "b".repeat(64),
     policy_hash: "cafebabe",
+    trust_level: "mediated",
     kernel_key: "ed25519-pubkey-hex",
     signature: "ed25519-sig-hex",
+    ...overrides,
+  };
+}
+
+function makeValidChioReceiptRecord(
+  overrides: Partial<Receipt_Record.ChioReceiptRecord> = {},
+): Receipt_Record.ChioReceiptRecord {
+  return {
+    id: "a".repeat(64),
+    timestamp: 1700000000,
+    capability_id: "capability-001",
+    tool_server: "tools",
+    tool_name: "read",
+    action: {
+      parameters: {},
+      parameter_hash: "b".repeat(64),
+    },
+    decision: { verdict: "allow" },
+    receipt_kind: "mediated_decision",
+    boundary_class: "prevent",
+    tool_origin: "host_executed_provider_reported",
+    redaction_mode: "none",
+    content_hash: "c".repeat(64),
+    policy_hash: "policy-v1",
+    trust_level: "mediated",
+    kernel_key: "kernel-key",
+    signature: "signature",
     ...overrides,
   };
 }
@@ -112,6 +146,24 @@ describe("validateReceiptStructure", () => {
     });
     const errors = validateReceiptStructure(receipt);
     expect(errors).toEqual([]);
+  });
+});
+
+describe("validateChioReceiptRecordStructure", () => {
+  it("accepts a semantically valid mediated receipt", () => {
+    expect(validateChioReceiptRecordStructure(makeValidChioReceiptRecord())).toEqual([]);
+  });
+
+  it("rejects incoherent trace receipt semantics", () => {
+    const receipt = makeValidChioReceiptRecord({
+      receipt_kind: "trace_observation",
+    });
+    const errors = validateChioReceiptRecordStructure(receipt);
+
+    expect(errors).toContain("trace_observation receipts must omit decision");
+    expect(errors).toContain("trace_observation receipts must use boundary_class detect_only");
+    expect(errors).toContain("trace_observation receipts must use trust_level verified");
+    expect(errors).toContain("trace_observation receipts must include observation_outcome");
   });
 });
 

@@ -1,6 +1,9 @@
 /-
   Revocation store model and delegation chain validation.
-  Mirrors: chio-kernel/src/lib.rs (check_revocation, validate_delegation_chain)
+  Mirrors: crates/kernel/chio-kernel/src/kernel/validation.rs,
+  crates/core/chio-core-types/src/capability/attenuation.rs, and
+  crates/kernel/chio-kernel-core/src/evaluate.rs.
+  Enforced by the matching [[mirror]] entries in formal/proof-manifest.toml.
 -/
 
 import Chio.Core.Capability
@@ -18,7 +21,7 @@ def RevocationStore.isRevoked (store : RevocationStore) (capId : CapabilityId) :
 def RevocationStore.revoke (store : RevocationStore) (capId : CapabilityId) : RevocationStore :=
   if store.isRevoked capId then store else capId :: store
 
-/-- Mirrors: Verdict in chio-kernel. -/
+/-- Mirrors: Verdict handling in crates/kernel/chio-kernel-core/src/evaluate.rs. -/
 inductive Decision where
   | allow
   | deny (reason : String)
@@ -42,7 +45,8 @@ def checkTimeBounds (cap : CapabilityToken) (now : Timestamp) : Except String Un
     .ok ()
 
 /-- Check revocation of the token and its entire delegation chain.
-    Mirrors: ChioKernel::check_revocation in lib.rs. -/
+    Mirrors: ChioKernel::check_revocation in
+    crates/kernel/chio-kernel/src/kernel/validation.rs. -/
 def checkRevocation (store : RevocationStore) (cap : CapabilityToken) : Except String Unit :=
   if store.isRevoked cap.id then
     .error s!"capability {cap.id} is revoked"
@@ -76,7 +80,8 @@ def chainWithinDepth (chain : List DelegationLink) (maxDepth : Nat) : Bool :=
   chain.length ≤ maxDepth
 
 /-- Full delegation chain validation.
-    Mirrors: validate_delegation_chain in capability.rs. -/
+    Mirrors: validate_delegation_chain in
+    crates/core/chio-core-types/src/capability/attenuation.rs. -/
 def validateDelegationChain (chain : List DelegationLink) (maxDepth : Option Nat)
     : Except String Unit :=
   match maxDepth with
@@ -99,7 +104,7 @@ def validateDelegationChain (chain : List DelegationLink) (maxDepth : Option Nat
 
 /-- Simplified kernel evaluation pipeline.
     Every path returns a Decision. Errors map to deny.
-    Mirrors: ChioKernel::evaluate_tool_call in lib.rs. -/
+    Mirrors: evaluate in crates/kernel/chio-kernel-core/src/evaluate.rs. -/
 noncomputable def evalToolCall
     (trustedKeys : List PublicKeyHex)
     (store : RevocationStore)

@@ -6,8 +6,8 @@
 # each.
 #
 # Opt-in PR label `fuzz: full` switches the run to a full-corpus sweep at
-# 120 seconds per target. The label is honored only if the trailing-30d
-# budget check passes; the budget script is the hard halt.
+# 120 seconds per target. The trailing-30d budget check reports shared usage
+# without blocking changed-target sampling on an unrelated pull request.
 #
 # Required check name: cflite_pr / changed-target-sampling
 
@@ -64,6 +64,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
           GH_FUZZ_BUDGET_CAP_MODE: warn
+          GH_FUZZ_BUDGET_WORKFLOWS: cflite_pr.yml,cflite_batch.yml,fuzz.yml
         run: |
           set -euo pipefail
           # PR-time CFLite is an advisory release qualification signal. Report

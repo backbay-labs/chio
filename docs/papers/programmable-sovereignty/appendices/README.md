@@ -1,1 +1,0 @@
-Appendices are staged here but not included in the first review PDF to keep the draft at the requested page count. Candidate appendix material: full Lean theorem statements, canonical treaty-scope JSON, and the three-vendor transcript.

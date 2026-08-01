@@ -40,20 +40,35 @@ struct StoreFixture {
     lock_root: PathBuf,
 }
 
+fn secure_directory(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .unwrap_or_else(|error| panic!("secure private directory: {error}"));
+    }
+}
+
+fn create_private_directory(path: &Path) {
+    let mut builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder
+        .create(path)
+        .unwrap_or_else(|error| panic!("create private directory: {error}"));
+    secure_directory(path);
+}
+
 impl StoreFixture {
     fn new() -> Self {
         let temp = tempfile::tempdir().unwrap_or_else(|error| panic!("tempdir: {error}"));
+        secure_directory(temp.path());
         let database = temp.path().join("authority.db");
         let lock_root = temp.path().join("locks");
-        fs::create_dir(&lock_root).unwrap_or_else(|error| panic!("create lock root: {error}"));
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o700))
-                .unwrap_or_else(|error| panic!("secure database parent: {error}"));
-            fs::set_permissions(&lock_root, fs::Permissions::from_mode(0o700))
-                .unwrap_or_else(|error| panic!("secure lock root: {error}"));
-        }
+        create_private_directory(&lock_root);
         SqliteAuthorityStore::provision(&database, &lock_root)
             .unwrap_or_else(|error| panic!("provision authority: {error}"));
         Self {

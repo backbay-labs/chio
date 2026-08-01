@@ -140,7 +140,8 @@ func marshalJSONString(input string) string {
 	encoder := json.NewEncoder(&buffer)
 	encoder.SetEscapeHTML(false)
 	_ = encoder.Encode(input)
-	return strings.TrimSuffix(buffer.String(), "\n")
+	encoded := strings.TrimSuffix(buffer.String(), "\n")
+	return encoded
 }
 
 func sortUTF16(values []string) {

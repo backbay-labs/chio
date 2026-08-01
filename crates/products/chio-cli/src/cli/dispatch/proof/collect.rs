@@ -4,6 +4,9 @@ use std::{collections::BTreeSet, fs, io::Write, path::Path};
 const PROOF_ROOM_BUNDLE_SCHEMA: &str = "chio.proof-room.bundle.v1";
 const PROOF_ROOM_VERIFIER_REPORT_SCHEMA: &str = "chio.proof-room.verifier-report.v1";
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
+const PROOF_ROOM_BUNDLE_SIGNATURE_PATH: &str = "bundle-signature.dsse.json";
+const PROOF_ROOM_PENDING_BUNDLE_SIGNATURE_PATH: &str =
+    ".bundle-signature.dsse.json.pending";
 const PROOF_ROOM_TRUST_ROOTS_PATH: &str = "artifacts/authority/trust-roots.json";
 const PROOF_ROOM_TRUST_ROOTS_SCHEMA: &str = "chio.proof.first-run.trust-roots.v1";
 pub(super) const PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV: &str =
@@ -18,6 +21,43 @@ const TERMINAL_RECEIPT_CATEGORIES: [&str; 3] = [
     "runtime_terminal_denial",
     "runtime_terminal_failure",
 ];
+
+#[cfg(test)]
+static FAIL_AFTER_REPLAY_RESERVATION_ONCE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(test)]
+static FAIL_AFTER_FINAL_SIGNATURE_LINK_ONCE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(test)]
+pub(super) fn fail_after_replay_reservation_once() {
+    FAIL_AFTER_REPLAY_RESERVATION_ONCE.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(test)]
+pub(super) fn fail_after_final_signature_link_once() {
+    FAIL_AFTER_FINAL_SIGNATURE_LINK_ONCE.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn enforce_post_reservation_test_hook() -> Result<(), CliError> {
+    #[cfg(test)]
+    if FAIL_AFTER_REPLAY_RESERVATION_ONCE.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return Err(CliError::cli_other_error(
+            "injected failure after Agent-Web replay reservation",
+        ));
+    }
+    Ok(())
+}
+
+fn enforce_post_signature_link_test_hook() -> Result<(), CliError> {
+    #[cfg(test)]
+    if FAIL_AFTER_FINAL_SIGNATURE_LINK_ONCE.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return Err(CliError::cli_other_error(
+            "injected failure after final bundle signature link",
+        ));
+    }
+    Ok(())
+}
 
 #[derive(serde::Serialize)]
 struct ProofCollectReport {
@@ -91,7 +131,24 @@ pub(super) fn seal_collected_proof_bundle(
     kind: ProofCollectKind,
     bundle: &Path,
 ) -> Result<serde_json::Value, CliError> {
-    seal_collected_proof_bundle_with_fixture_id(kind, bundle, None)
+    seal_collected_proof_bundle_with_fixture_id(
+        kind,
+        bundle,
+        None,
+        SealVerificationMode::ConsumeReplays,
+    )
+}
+
+pub(super) fn seal_generated_fixture_bundle(
+    kind: ProofCollectKind,
+    bundle: &Path,
+) -> Result<serde_json::Value, CliError> {
+    seal_collected_proof_bundle_with_fixture_id(
+        kind,
+        bundle,
+        None,
+        SealVerificationMode::IsolatedFixture,
+    )
 }
 
 pub(super) fn seal_collected_public_fixture_bundle(
@@ -99,25 +156,144 @@ pub(super) fn seal_collected_public_fixture_bundle(
     bundle: &Path,
     fixture_id: &str,
 ) -> Result<serde_json::Value, CliError> {
-    seal_collected_proof_bundle_with_fixture_id(kind, bundle, Some(fixture_id))
+    seal_collected_proof_bundle_with_fixture_id(
+        kind,
+        bundle,
+        Some(fixture_id),
+        SealVerificationMode::IsolatedFixture,
+    )
+}
+
+#[derive(Clone, Copy)]
+enum SealVerificationMode {
+    ConsumeReplays,
+    IsolatedFixture,
 }
 
 fn seal_collected_proof_bundle_with_fixture_id(
     kind: ProofCollectKind,
     bundle: &Path,
     public_fixture_id: Option<&str>,
+    verification_mode: SealVerificationMode,
 ) -> Result<serde_json::Value, CliError> {
     let passport_path = bundle.join("transaction-passport.json");
-    let report = verify_transaction_passport_file(&passport_path)?;
-    enforce_collect_kind_requirements(kind, &report)?;
-    let report = collected_verifier_report(bundle, report)?;
+    let (verification_report, replay_snapshot) = match verification_mode {
+        SealVerificationMode::ConsumeReplays => {
+            let read_only_report = verify_transaction_passport_file(&passport_path)?;
+            enforce_collect_kind_requirements(kind, &read_only_report)?;
+            (read_only_report.clone(), Some(read_only_report))
+        }
+        SealVerificationMode::IsolatedFixture => {
+            (
+                fixture::verify_fixture_transaction_passport_file(&passport_path)?,
+                None,
+            )
+        }
+    };
+    enforce_collect_kind_requirements(kind, &verification_report)?;
+    let signature_path = match verification_mode {
+        SealVerificationMode::ConsumeReplays => {
+            invalidate_collected_proof_room_bundle(bundle)?;
+            bundle.join(PROOF_ROOM_PENDING_BUNDLE_SIGNATURE_PATH)
+        }
+        SealVerificationMode::IsolatedFixture => {
+            bundle.join(PROOF_ROOM_BUNDLE_SIGNATURE_PATH)
+        }
+    };
+    let report = collected_verifier_report(bundle, verification_report)?;
     let verifier_report_path = bundle.join("verifier/report.json");
     if let Some(parent) = verifier_report_path.parent() {
         fs::create_dir_all(parent)?;
     }
     write_json_line_file(&verifier_report_path, &report)?;
-    write_collected_proof_room_bundle(bundle, &report, kind, public_fixture_id)?;
+    write_collected_proof_room_bundle(
+        bundle,
+        &report,
+        kind,
+        public_fixture_id,
+        &signature_path,
+    )?;
+    sync_collected_proof_room_bundle(bundle)?;
+    if let Some(read_only_report) = replay_snapshot {
+        let pending_signature_path = bundle.join(PROOF_ROOM_PENDING_BUNDLE_SIGNATURE_PATH);
+        let final_signature_path = bundle.join(PROOF_ROOM_BUNDLE_SIGNATURE_PATH);
+        let replay_reservation_id = chio_core::sha256_hex(&fs::read(&pending_signature_path)?);
+        let consume_result = super::verify_transaction_passport_file_and_reserve_agent_web_replays(
+            &passport_path,
+            &read_only_report,
+            &replay_reservation_id,
+        )
+        .and_then(|consumed_report| enforce_collect_kind_requirements(kind, &consumed_report));
+        if let Err(error) = consume_result {
+            return match invalidate_collected_proof_room_bundle(bundle) {
+                Ok(()) => Err(error),
+                Err(invalidation_error) => Err(CliError::cli_other_error(format!(
+                    "{error}; failed to invalidate the uncommitted proof bundle: {invalidation_error}"
+                ))),
+            };
+        }
+        enforce_post_reservation_test_hook()?;
+        let replay_store = agent_web_replay_store_from_env_if_configured()?;
+        let reservation_state = replay_store
+            .as_ref()
+            .map(|store| store.replay_reservation_state(&replay_reservation_id))
+            .transpose()
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?
+            .flatten();
+        fs::hard_link(&pending_signature_path, &final_signature_path)?;
+        enforce_post_signature_link_test_hook()?;
+        sync_collected_proof_room_bundle(bundle)?;
+        if reservation_state.is_some() {
+            let store = replay_store.as_ref().ok_or_else(|| {
+                CliError::cli_other_error("Agent-Web replay reservation store disappeared")
+            })?;
+            store
+                .mark_replay_reservation_filesystem_finalized(&replay_reservation_id)
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        }
+        fs::remove_file(&pending_signature_path)?;
+        sync_collected_proof_room_bundle(bundle)?;
+        if reservation_state.is_some() {
+            let store = replay_store.as_ref().ok_or_else(|| {
+                CliError::cli_other_error("Agent-Web replay reservation store disappeared")
+            })?;
+            store
+                .complete_replay_reservation(&replay_reservation_id)
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        }
+    }
     Ok(report)
+}
+
+fn invalidate_collected_proof_room_bundle(bundle: &Path) -> Result<(), CliError> {
+    for relative_path in [
+        PROOF_ROOM_BUNDLE_SIGNATURE_PATH,
+        PROOF_ROOM_PENDING_BUNDLE_SIGNATURE_PATH,
+        "manifest.json",
+        "verifier/report.json",
+    ] {
+        match fs::remove_file(bundle.join(relative_path)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(CliError::from(error)),
+        }
+    }
+    Ok(())
+}
+
+fn sync_collected_proof_room_bundle(path: &Path) -> Result<(), CliError> {
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            sync_collected_proof_room_bundle(&entry.path())?;
+        } else if file_type.is_file() {
+            fs::File::open(entry.path())?.sync_all()?;
+        }
+    }
+    #[cfg(unix)]
+    fs::File::open(path)?.sync_all()?;
+    Ok(())
 }
 
 fn enforce_collect_kind_requirements(
@@ -173,6 +349,7 @@ fn write_collected_proof_room_bundle(
     verifier_report: &serde_json::Value,
     kind: ProofCollectKind,
     public_fixture_id: Option<&str>,
+    signature_path: &Path,
 ) -> Result<(), CliError> {
     let keypair = proof_collect_bundle_signer_from_env()?;
     fs::create_dir_all(bundle.join("roots"))?;
@@ -268,11 +445,11 @@ fn write_collected_proof_room_bundle(
         "excluded_artifacts": [],
         "signature": {
             "kind": "detached-dsse",
-            "signature_ref": "bundle-signature.dsse.json"
+            "signature_ref": PROOF_ROOM_BUNDLE_SIGNATURE_PATH
         }
     });
     write_json_line_file(&bundle.join("manifest.json"), &manifest)?;
-    write_bundle_signature(bundle, &keypair)
+    write_bundle_signature_to_path(bundle, &keypair, signature_path)
 }
 
 fn write_collected_bundle_readme(
@@ -508,7 +685,7 @@ fn write_catalog_negative_cases(
         let expected_failure = fixture::proof_fixture_negative_expected_failure(&descriptor)?;
         let observed_failure =
             fixture::with_proof_fixture_negative_verifier_context(&descriptor, || {
-                match verify_transaction_passport_file(&passport_path) {
+                match fixture::verify_fixture_transaction_passport_file(&passport_path) {
                     Ok(_) => Err(CliError::cli_other_error(format!(
                         "catalog negative proof fixture unexpectedly verified: {}",
                         descriptor.id
@@ -1082,6 +1259,18 @@ pub(super) fn write_bundle_signature(
     bundle: &Path,
     keypair: &chio_core::Keypair,
 ) -> Result<(), CliError> {
+    write_bundle_signature_to_path(
+        bundle,
+        keypair,
+        &bundle.join(PROOF_ROOM_BUNDLE_SIGNATURE_PATH),
+    )
+}
+
+fn write_bundle_signature_to_path(
+    bundle: &Path,
+    keypair: &chio_core::Keypair,
+    signature_path: &Path,
+) -> Result<(), CliError> {
     let manifest_bytes = fs::read(bundle.join("manifest.json"))?;
     let signed_payload = dsse_pre_auth_encoding(PROOF_ROOM_DSSE_PAYLOAD_TYPE, &manifest_bytes);
     let signature = serde_json::json!({
@@ -1098,7 +1287,7 @@ pub(super) fn write_bundle_signature(
             }
         ]
     });
-    write_json_line_file(&bundle.join("bundle-signature.dsse.json"), &signature)
+    write_json_line_file(signature_path, &signature)
 }
 
 pub(super) fn proof_collect_bundle_signer_from_env() -> Result<chio_core::Keypair, CliError> {

@@ -35,7 +35,7 @@ fn metrics_test_guard() -> std::sync::MutexGuard<'static, ()> {
 
 struct EchoServer;
 struct StreamingEchoServer;
-struct UrlRequiredServer;
+struct PreEffectUrlElicitationServer;
 struct CancelledServer;
 struct RouteSelectionAdmissionHook;
 #[derive(Default)]
@@ -136,7 +136,7 @@ impl ToolServerConnection for StreamingEchoServer {
 }
 
 #[async_trait::async_trait]
-impl ToolServerConnection for UrlRequiredServer {
+impl ToolServerConnection for PreEffectUrlElicitationServer {
     fn server_id(&self) -> &str {
         "url-srv"
     }
@@ -1267,8 +1267,8 @@ fn tools_call_jsonrpc_path_records_receipt_write_deny() {
 }
 
 #[test]
-fn tools_call_jsonrpc_path_returns_url_elicitation_error() {
-    let mut edge = make_url_required_edge();
+fn tools_call_jsonrpc_path_surfaces_url_elicitation_without_terminal_receipt() {
+    let mut edge = make_pre_effect_url_elicitation_edge();
     let _ = edge.handle_jsonrpc(json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -1286,6 +1286,7 @@ fn tools_call_jsonrpc_path_returns_url_elicitation_error() {
         "method": "notifications/initialized",
         "params": {}
     }));
+    let before_receipts = edge.kernel.receipt_log().receipts().len();
     let response = edge
         .handle_jsonrpc(json!({
             "jsonrpc": "2.0",
@@ -1299,6 +1300,19 @@ fn tools_call_jsonrpc_path_returns_url_elicitation_error() {
         .unwrap();
 
     assert_eq!(response["error"]["code"], JSONRPC_URL_ELICITATION_REQUIRED);
+    assert_eq!(
+        response["error"]["message"],
+        "URL elicitation is required for this operation"
+    );
+    assert_eq!(
+        response["error"]["data"]["elicitations"][0]["elicitationId"],
+        "elicit-auth"
+    );
+    assert_eq!(
+        edge.kernel.receipt_log().receipts().len(),
+        before_receipts,
+        "a retryable URL elicitation must not create a terminal receipt"
+    );
 }
 
 #[test]
@@ -1378,7 +1392,7 @@ fn kernel_error_records_receipt_write_error_outcome() {
 }
 
 #[test]
-fn execute_bridge_mcp_tool_call_blocking_preserves_request_cancelled_state() {
+fn execute_bridge_mcp_tool_call_blocking_preserves_request_cancelled_terminal_state() {
     let (kernel, request) = make_kernel_error_bridge_fixture(
         Box::new(CancelledServer),
         "cancel-srv",
@@ -1405,30 +1419,40 @@ fn execute_bridge_mcp_tool_call_blocking_preserves_request_cancelled_state() {
 }
 
 #[test]
-fn execute_bridge_mcp_tool_call_blocking_returns_url_elicitation_error() {
+fn execute_bridge_mcp_tool_call_blocking_propagates_pre_effect_url_error() {
     let (kernel, request) = make_kernel_error_bridge_fixture(
-        Box::new(UrlRequiredServer),
+        Box::new(PreEffectUrlElicitationServer),
         "url-srv",
         "authorize",
         "mcp-url-required-blocking",
     );
+    let before_receipts = kernel.receipt_log().receipts().len();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()
         .unwrap();
 
-    let error =
-        runtime.block_on(async { execute_bridge_mcp_tool_call(&kernel, request).unwrap_err() });
+    let error = runtime.block_on(async { execute_bridge_mcp_tool_call(&kernel, request) });
 
     assert!(matches!(
         error,
-        AdapterError::KernelRuntime(message) if message.contains("URL elicitation")
+        Err(AdapterError::McpError {
+            code: JSONRPC_URL_ELICITATION_REQUIRED,
+            message,
+            data: Some(data),
+        }) if message == "URL elicitation is required for this operation"
+            && data["elicitations"][0]["elicitationId"] == "elicit-auth"
     ));
+    assert_eq!(
+        kernel.receipt_log().receipts().len(),
+        before_receipts,
+        "a retryable URL elicitation must not create a terminal receipt"
+    );
 }
 
 #[test]
-fn execute_bridge_mcp_tool_call_async_preserves_request_cancelled_state() {
+fn execute_bridge_mcp_tool_call_async_preserves_request_cancelled_terminal_state() {
     let (kernel, request) = make_kernel_error_bridge_fixture(
         Box::new(CancelledServer),
         "cancel-srv",
@@ -1452,26 +1476,35 @@ fn execute_bridge_mcp_tool_call_async_preserves_request_cancelled_state() {
 }
 
 #[test]
-fn execute_bridge_mcp_tool_call_async_returns_url_elicitation_error() {
+fn execute_bridge_mcp_tool_call_async_propagates_pre_effect_url_error() {
     let (kernel, request) = make_kernel_error_bridge_fixture(
-        Box::new(UrlRequiredServer),
+        Box::new(PreEffectUrlElicitationServer),
         "url-srv",
         "authorize",
         "mcp-url-required-async",
     );
+    let before_receipts = kernel.receipt_log().receipts().len();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
 
-    let error = runtime
-        .block_on(execute_bridge_mcp_tool_call_async(&kernel, request))
-        .unwrap_err();
+    let error = runtime.block_on(execute_bridge_mcp_tool_call_async(&kernel, request));
 
     assert!(matches!(
         error,
-        AdapterError::KernelRuntime(message) if message.contains("URL elicitation")
+        Err(AdapterError::McpError {
+            code: JSONRPC_URL_ELICITATION_REQUIRED,
+            message,
+            data: Some(data),
+        }) if message == "URL elicitation is required for this operation"
+            && data["elicitations"][0]["elicitationId"] == "elicit-auth"
     ));
+    assert_eq!(
+        kernel.receipt_log().receipts().len(),
+        before_receipts,
+        "a retryable URL elicitation must not create a terminal receipt"
+    );
 }
 
 #[tokio::test]
@@ -1592,7 +1625,7 @@ fn make_streaming_edge(page_size: usize) -> ChioMcpEdge {
     .unwrap()
 }
 
-fn make_url_required_edge() -> ChioMcpEdge {
+fn make_pre_effect_url_elicitation_edge() -> ChioMcpEdge {
     let keypair = Keypair::generate();
     let config = KernelConfig {
         keypair: keypair.clone(),
@@ -1613,7 +1646,7 @@ fn make_url_required_edge() -> ChioMcpEdge {
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
     };
     let mut kernel = ChioKernel::new(config);
-    kernel.register_tool_server(Box::new(UrlRequiredServer));
+    kernel.register_tool_server(Box::new(PreEffectUrlElicitationServer));
     let agent = Keypair::generate();
     let capabilities = vec![kernel
         .issue_capability(
@@ -2152,8 +2185,8 @@ fn wrapped_elicitation_completion_notifications_only_emit_for_known_ids() {
 }
 
 #[test]
-fn direct_tool_server_url_required_errors_are_brokered_as_jsonrpc_errors() {
-    let mut edge = make_url_required_edge();
+fn direct_tool_server_url_error_is_brokered_and_registered() {
+    let mut edge = make_pre_effect_url_elicitation_edge();
     let _ = edge.handle_jsonrpc(json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -2185,12 +2218,10 @@ fn direct_tool_server_url_required_errors_are_brokered_as_jsonrpc_errors() {
         .unwrap();
 
     assert_eq!(response["error"]["code"], JSONRPC_URL_ELICITATION_REQUIRED);
-    assert_eq!(response["error"]["data"]["elicitations"][0]["mode"], "url");
     assert_eq!(
-        response["error"]["data"]["elicitations"][0]["elicitationId"],
-        "elicit-auth"
+        response["error"]["data"]["elicitations"][0]["url"],
+        "https://example.com/authorize"
     );
-
     edge.notify_elicitation_completed("elicit-auth");
     let notifications = edge.take_pending_notifications();
     assert_eq!(notifications.len(), 1);

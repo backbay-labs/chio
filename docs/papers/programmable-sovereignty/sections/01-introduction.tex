@@ -1,24 +1,68 @@
 \section{Introduction}
 
-Consider a buyer agent that asks a vendor agent to stage a refund. The vendor returns a correctly signed receipt. The buyer must nevertheless reject it if the receipt belongs to another treaty, binds different arguments, descends from an expired continuation, omits required lineage, or records a policy verdict that the buyer does not recognize. Signature validity answers who possessed a key; it does not answer whether this receiver should admit this action. If the check occurs only in an audit pipeline, rejection arrives after the tool may have changed the vendor ledger.
+Consider a buyer agent that asks a vendor agent to stage a refund. The vendor
+returns a correctly signed receipt. The buyer still has to reject it if the
+receipt belongs to another treaty, binds different arguments, follows an
+expired continuation, omits required lineage, or records a policy result the
+buyer does not accept. A signature identifies a key; it does not decide whether
+the receiver should admit the action. An audit performed after execution is too
+late if the tool has already changed the vendor ledger.
 
-This paper studies a narrower property: \emph{receiver-owned admission}. For a request classified as cross-organizational, the receiving kernel must resolve treaty and trust material from receiver-controlled stores, verify that all evidence describes one invocation, and decide before tool dispatch. Missing or inconsistent context denies. Request metadata cannot install a trust root. A continuation is consumed once, and replay denies. The result is an authorization boundary rather than an after-the-fact explanation.
+Receiver-owned admission moves that decision into the receiving kernel. For a
+cross-organization request, the kernel resolves treaty records, authorized
+keys, continuations, and prior receipts from receiver-controlled stores. It
+checks that the evidence describes one invocation and returns a decision before
+tool dispatch. Missing or inconsistent context denies, request metadata cannot
+install a trust root, and each continuation can be consumed only once.
 
-Five terms carry the construction. A \emph{receipt} is a kernel-signed record of a mediated tool decision over canonical bytes. A \emph{treaty} fixes participants, keys, action classes, ladder manifests, and a validity interval. A \emph{bilateral predicate} is a canonical DSSE statement that binds two signatures to one request, outcome, treaty, continuation, lineage, and pair of receipt digests \cite{dsse,rfc8785}. A \emph{receiver-owned trust store} supplies expected peer keys and the referenced artifacts independently of the request. \emph{Pre-dispatch admission} is the receiver's final check before any tool invocation.
+The protocol combines three familiar objects in a stricter order. A receipt is
+a kernel-signed record of a mediated tool decision over canonical bytes. A
+treaty fixes the participants, keys, permitted action classes, and validity
+period. A bilateral predicate is a canonical DSSE statement signed by two
+configured keys and bound to the request, outcome, treaty, continuation,
+lineage, and both receipt digests \cite{dsse,rfc8785}. The receiver checks that
+predicate only after loading the referenced state from its own stores.
 
-The hard case is not creating more signatures. It is making the evidence graph non-substitutable. A sender should not be able to replace the treaty while retaining a valid receipt signature, exchange the requested arguments for another payload, replay a live-looking continuation, or present two signatures over adjacent but unequal statements. Conversely, a verifier must not infer organizational independence from two keys. The strict profile proves possession of two distinct configured keys over the same bytes. Whether those keys are controlled by distinct organizations is a key-provisioning and attestation assumption.
+The difficult part is preventing substitution. A sender must not be able to
+replace the treaty while retaining a valid receipt signature, exchange one set
+of request arguments for another, replay a continuation, or combine signatures
+over different statements. Chio therefore verifies the complete evidence graph
+at the dispatch boundary. Two distinct keys over the same bytes are necessary,
+but they do not by themselves prove independent organizational control. Key
+custody remains a deployment assumption.
 
-We implement the admission path in Chio, a capability-mediated runtime for agent tool calls. The existing kernel authorization and hard-coded treaty checks remain authoritative. Alongside them, we define a versioned bounded predicate syntax and a verified-artifact constructor for the receipt view used by the formal model. Unknown predicate versions and tags, oversized serialized inputs and atom strings, excess depth, and excess node count deny. We compare this evaluator with an independent reference implementation rather than claiming that Lean code was extracted into Rust.
-
-For interpretation, let a receipt-bounded polity be $P=(T,K)$, where $T$ is the closed scope of receipts under consideration and $K$ is its admission rule. ``Programmable sovereignty'' names the receiver's local authority to decide membership in that receipt history. It does not denote legal statehood, territorial jurisdiction, or authority over another organization's systems.
+We implement this path in Chio, a capability-mediated runtime for agent tool
+calls. The kernel performs its usual capability checks, then runs explicit
+treaty, evidence, continuation, and DSSE validation for cross-organization
+requests. Accepted treaty material is carried into receipt
+construction as a validated type, which prevents the signed receipt
+from being assembled from a different request or participant snapshot. A
+separate bounded predicate library supports executable modeling and
+differential testing; it is not an alternate authorization path.
 
 This paper makes four contributions:
 
 \begin{itemize}[noitemsep,topsep=2pt,leftmargin=1.2em]
-  \item \textbf{A strict bilateral predicate.} It binds request and outcome hashes, treaty scope, ladder intersection, continuation, lineage, receipt hashes, leases, governance references, and exactly two configured signer keys in one canonical DSSE envelope.
-  \item \textbf{A production pre-dispatch hook.} The receiving kernel resolves evidence from its own stores, rejects request-supplied trust, consumes continuations once, and denies malformed, stale, replayed, or disagreeing evidence before dispatch.
-  \item \textbf{Bounded semantics with executable alignment.} Lean~4 defines a finite predicate language over an explicit \emph{ReceiptView}, proves structural treaty results and finite-domain no-widening, and connects syntax pointwise to the legacy closure model. An independent Rust oracle differentially checks the production evaluator.
-  \item \textbf{An end-to-end loopback evaluation.} A three-vendor SQLite scenario exercises runtime admission, strict DSSE, lineage, proof regeneration, and buyer review; \PSThreatCaseCount{} named negative cases and \PSGenericReplayCases{} separate generic replay fixtures provide adversarial and reproducibility evidence.
+  \item \textbf{A bilateral admission protocol.} One canonical DSSE predicate
+  binds the request, outcome, treaty, continuation, lineage, leases,
+  governance references, and both receipt digests to two distinct configured
+  signer keys.
+  \item \textbf{A receiver-owned pre-dispatch implementation.} The kernel
+  resolves trust material from local stores, rejects request-supplied trust,
+  consumes continuations once, and denies stale, replayed, malformed, or
+  inconsistent evidence before invoking the tool.
+  \item \textbf{A small executable model.} Lean~4 defines the bounded receipt
+  predicate language and proves the exact condition checked by finite-domain
+  refinement. An independently written Rust model is tested against the
+  runtime evaluator on every atom and on generated compound cases.
+  \item \textbf{An adversarial and performance evaluation.} A dispatch-capable
+  benchmark measures the complete treaty-denial path and asserts zero tool
+  invocations. A three-vendor SQLite workflow produces and verifies a buyer
+  package, while \PSThreatCaseCount{} named negative cases exercise binding,
+  freshness, trust, syntax, and policy failures.
 \end{itemize}
 
-The central claim is deliberately asymmetric. Chio demonstrates that a receiver can refuse a mismatched cross-organization action at its own boundary and can retain evidence for that decision. It does not demonstrate that both endpoints are honest, separately administered, or legally bound by the same rule.
+The receiver can prevent a foreign agent action from crossing its tool boundary
+when the supplied evidence does not match receiver-controlled state. The
+protocol makes no claim that either signer is honest or that two configured
+keys imply two independent operators.

@@ -91,6 +91,23 @@ impl std::fmt::Display for HotPathStage {
     }
 }
 
+/// Direction of a wall-clock anomaly detected by a replay store.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplayClockDirection {
+    Rollback,
+    ForwardJump,
+}
+
+impl std::fmt::Display for ReplayClockDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rollback => f.write_str("rollback"),
+            Self::ForwardJump => f.write_str("forward_jump"),
+        }
+    }
+}
+
 /// Errors that can occur during kernel operations.
 #[derive(Debug, thiserror::Error)]
 pub enum KernelError {
@@ -257,6 +274,20 @@ pub enum KernelError {
 
     #[error("DPoP proof verification failed: {0}")]
     DpopVerificationFailed(String),
+
+    #[error("runtime admission readiness timed out after {timeout_ms}ms")]
+    RuntimeAdmissionReadinessTimeout { timeout_ms: u64 },
+
+    #[error(
+        "replay clock {direction} detected in {store}: observed {observed_unix_secs}, high-water {high_water_unix_secs}, maximum tolerated skew {max_tolerated_skew_secs}s"
+    )]
+    ReplayClockAnomaly {
+        store: &'static str,
+        direction: ReplayClockDirection,
+        observed_unix_secs: i64,
+        high_water_unix_secs: i64,
+        max_tolerated_skew_secs: u64,
+    },
 
     /// A human-in-the-loop approval token failed to satisfy
     /// the pending approval contract (bad binding, bad signature,
@@ -593,6 +624,28 @@ impl KernelError {
                 "CHIO-KERNEL-DPOP-VERIFICATION-FAILED",
                 serde_json::json!({ "reason": reason }),
                 "Attach a valid DPoP proof bound to the current capability, request, server, and tool before retrying.",
+            ),
+            Self::RuntimeAdmissionReadinessTimeout { timeout_ms } => self.report_with_context(
+                "CHIO-KERNEL-RUNTIME-ADMISSION-READINESS-TIMEOUT",
+                serde_json::json!({ "timeout_ms": timeout_ms }),
+                "Restore the runtime admission dependency or increase the bounded readiness timeout before retrying.",
+            ),
+            Self::ReplayClockAnomaly {
+                store,
+                direction,
+                observed_unix_secs,
+                high_water_unix_secs,
+                max_tolerated_skew_secs,
+            } => self.report_with_context(
+                "CHIO-KERNEL-REPLAY-CLOCK-ANOMALY",
+                serde_json::json!({
+                    "store": store,
+                    "direction": direction,
+                    "observed_unix_secs": observed_unix_secs,
+                    "high_water_unix_secs": high_water_unix_secs,
+                    "max_tolerated_skew_secs": max_tolerated_skew_secs,
+                }),
+                "Correct the host clock or perform the store's audited replay-state recovery procedure before retrying.",
             ),
             Self::ApprovalRejected(reason) => self.report_with_context(
                 "CHIO-KERNEL-APPROVAL-REJECTED",

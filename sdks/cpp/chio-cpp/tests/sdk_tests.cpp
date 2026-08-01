@@ -174,6 +174,21 @@ void test_invariants_from_shared_vectors() {
   require(canonical.ok(), canonical.error().message);
   require_eq(canonical.value(), "{\"a\":2,\"m\":3,\"z\":1}", "canonical json");
 
+  const auto canonical_controls =
+      chio::invariants::canonicalize_json("\"\\u007f\\u009f\"");
+  require(canonical_controls.ok(), canonical_controls.error().message);
+  const std::string controls = "\x7f\xc2\x9f";
+  require_eq(canonical_controls.value(),
+             "\"" + controls + "\"",
+             "canonical control string");
+
+  const auto canonical_control_key = chio::invariants::canonicalize_json(
+      "{\"\\u007f\\u009f\":\"\\u007f\\u009f\"}");
+  require(canonical_control_key.ok(), canonical_control_key.error().message);
+  require_eq(canonical_control_key.value(),
+             "{\"" + controls + "\":\"" + controls + "\"}",
+             "canonical control object key");
+
   const auto hashing_vectors = read_file("tests/bindings/vectors/hashing/v1.json");
   require_contains(hashing_vectors, "hello_utf8", "hashing vectors");
   const auto hash = chio::invariants::sha256_hex_utf8("hello");

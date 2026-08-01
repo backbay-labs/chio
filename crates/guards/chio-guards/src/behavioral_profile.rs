@@ -363,6 +363,14 @@ impl Guard for BehavioralProfileGuard {
         let _ = self.observe_sample(agent_id, BehavioralMetric::CallRate, sample, window_start)?;
         Ok(GuardDecision::allow())
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -6,5 +6,10 @@
 //! independent differential evidence. It does not establish a Lean extraction
 //! or whole-runtime refinement proof.
 
+pub mod counterexample;
+
 pub mod generators;
+#[cfg(not(target_arch = "wasm32"))]
+#[path = "../../itf/receipt_before_allow.rs"]
+mod receipt_before_allow_trace;
 pub mod spec;

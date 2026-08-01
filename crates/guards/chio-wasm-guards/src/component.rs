@@ -105,6 +105,7 @@ impl WasmGuardAbi for ComponentBackend {
         &mut self,
         request: &crate::abi::GuardRequest,
     ) -> Result<GuardVerdict, WasmGuardError> {
+        self.last_fuel_consumed = None;
         let component = self
             .component
             .as_ref()
@@ -131,12 +132,13 @@ impl WasmGuardAbi for ComponentBackend {
         let wit_request = to_wit_request(request);
 
         // Call the exported evaluate function
-        let wit_verdict = pollster::block_on(bindings.call_evaluate(&mut store, &wit_request))
-            .map_err(|e: wasmtime::Error| WasmGuardError::Trap(e.to_string()))?;
+        let call_result = pollster::block_on(bindings.call_evaluate(&mut store, &wit_request));
 
-        // Track fuel consumed
+        // A completed guest call always records fuel, including trap results.
         let remaining = store.get_fuel().unwrap_or(0);
         self.last_fuel_consumed = Some(self.fuel_limit.saturating_sub(remaining));
+        let wit_verdict =
+            call_result.map_err(|e: wasmtime::Error| WasmGuardError::Trap(e.to_string()))?;
 
         Ok(from_wit_verdict(wit_verdict))
     }
@@ -179,5 +181,22 @@ fn from_wit_verdict(v: Verdict) -> GuardVerdict {
         Verdict::Deny(reason) => GuardVerdict::Deny {
             reason: Some(reason),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{from_wit_verdict, GuardVerdict, Verdict};
+
+    #[test]
+    fn wit_verdict_mapping_preserves_allow_and_deny() {
+        assert!(matches!(
+            from_wit_verdict(Verdict::Allow),
+            GuardVerdict::Allow
+        ));
+        assert!(matches!(
+            from_wit_verdict(Verdict::Deny("blocked".to_string())),
+            GuardVerdict::Deny { reason: Some(reason) } if reason == "blocked"
+        ));
     }
 }

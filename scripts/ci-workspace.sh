@@ -10,18 +10,22 @@ python3 scripts/check-rust-public-surface.py
 bash scripts/tests/check-rust-public-surface.test.sh
 python3 scripts/check-architecture-docs.py
 ./scripts/check-formal-proofs.sh
+bash scripts/tests/lean-mutants.test.sh
+bash scripts/tests/spec-mutants.test.sh
 ./scripts/check-aeneas-pilot.sh
 ./scripts/check-aeneas-production.sh
 ./scripts/check-aeneas-equivalence.sh
 ./scripts/check-rust-verification-gates.sh
+bash scripts/tests/check-creusot-contract-sync.test.sh
+bash scripts/tests/check-rust-verification-gates.test.sh
+bash scripts/tests/check-receipt-trace-bindings.test.sh
 ./scripts/check-adapter-no-bypass.sh
 ./scripts/check-portable-kernel.sh
-if [[ "${CHIO_RUST_VERIFICATION_METADATA_ONLY:-0}" == "1" ]]; then
-  echo "Skipping proof report generation because Rust verification is in metadata-only mode"
-else
-  ./scripts/generate-proof-report.sh
-  ./scripts/check-proof-report.sh
-fi
+./scripts/generate-proof-report.sh
+./scripts/check-proof-report.sh --require-strict
+bash scripts/tests/check-proof-report.test.sh
+bash scripts/tests/lane-gate.test.sh
+bash scripts/tests/formal-workflow-wiring.test.sh
 cargo fmt --all -- --check
 python3 scripts/check-rust-file-hygiene.py
 bash scripts/tests/check-rust-file-hygiene.test.sh
@@ -40,6 +44,7 @@ bash scripts/tests/provider-fixture-claims.test.sh
 # exercised by `cargo test`.
 cargo clippy --workspace --lib --bins --examples -- -D warnings
 cargo build --workspace
+./scripts/check-policy-analysis.sh target/debug/chio
 # `chio-wasm-guards` pulls in large wasmtime-backed integration binaries when
 # features unify across the workspace, which has been tripping the Linux CI
 # linker. Keep the default lane on the full workspace minus that package and

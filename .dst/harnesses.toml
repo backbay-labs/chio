@@ -1,0 +1,25 @@
+schema = "chio.dst.v1"
+
+[[harness]]
+crate = "chio-kernel"
+test = "dst_drop_injection::dst_fixed_seed_corpus"
+
+[[harness]]
+crate = "chio-kernel"
+test = "dst_drop_injection::dst_sqlite_crash_reopen_boundaries"
+
+[[harness]]
+crate = "chio-kernel"
+test = "dst_drop_injection::dst_child_receipt_flush_regression_is_killed"
+
+[[harness]]
+crate = "chio-kernel"
+test = "dst_drop_injection::dst_budget_wrapper_preserves_replay_outcome"
+
+[[harness]]
+crate = "chio-kernel"
+test = "dst_drop_injection::dst_wide_sweep"
+
+[[harness]]
+crate = "chio-kernel"
+test = "dst_drop_injection::dst_replay_seed"

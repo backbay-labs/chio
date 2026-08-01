@@ -27,39 +27,12 @@ pub(crate) fn build_inquiry_package(
     redaction_profile: Option<&str>,
     verifier_equivalent: bool,
 ) -> Result<MercuryInquiryPackage, CliError> {
-    let latest = proof_package
-        .receipt_records
-        .last()
-        .ok_or_else(|| CliError::Other("proof package is missing receipt_records".to_string()))?
-        .metadata
-        .clone();
-    let workflow_id = proof_package.workflow_id.clone();
-    let proof_package_id = proof_package.package_id.clone();
-    let disclosure_policy = latest.disclosure.policy.clone();
-    let approval_state = latest.approval_state.state.as_str().to_string();
-    let rendered_export = serde_json::json!({
-        "workflowId": workflow_id,
-        "proofPackageId": proof_package_id,
-        "audience": audience,
-        "redactionProfile": redaction_profile,
-        "verifierEquivalent": verifier_equivalent,
-        "receiptIds": proof_package
-            .receipt_records
-            .iter()
-            .map(|record| record.receipt_id.clone())
-            .collect::<Vec<_>>(),
-        "disclosurePolicy": disclosure_policy,
-        "approvalState": approval_state,
-    });
     MercuryInquiryPackage::build(
         proof_package,
         MercuryInquiryPackageArgs {
             created_at: unix_now(),
             audience: audience.to_string(),
             redaction_profile: redaction_profile.map(ToOwned::to_owned),
-            rendered_export,
-            disclosure: latest.disclosure,
-            approval_state: latest.approval_state,
             verifier_equivalent,
         },
     )
@@ -116,6 +89,7 @@ pub(crate) fn pilot_receipt(
         "eventId": step.metadata.chronology.event_id,
         "decisionType": step.metadata.decision_context.decision_type.as_str(),
         "stage": serde_json::to_value(step.metadata.chronology.stage)?,
+        "toolName": step.tool_name,
     }))?;
     let metadata = step
         .metadata

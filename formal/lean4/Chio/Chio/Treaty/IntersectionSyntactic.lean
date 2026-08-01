@@ -1,213 +1,286 @@
-/-
-  Decidable bounded treaty and amendment model.
-
-  Unlike the legacy closure model, this module represents scope and
-  constitutional rules with `PredicateLang.Predicate`. Admission is executable
-  on an explicit `ReceiptView`. Amendment refinement is decidable on the
-  declared finite receipt domain carried by the delta.
-
-  The finite-domain boundary is part of every amendment statement. Nothing in
-  this module claims that checking one finite domain proves refinement for all
-  possible receipts.
--/
-
 import Chio.Treaty.PredicateLang
 
 set_option autoImplicit false
 
-namespace Chio.Treaty.IntersectionSyntactic
+namespace Chio.Treaty.PredicateLang
 
-open Chio.Treaty.PredicateLang
-
-/-- Submission polity: receipt scope plus constitutional predicates. -/
-structure Polity where
+/-- A polity with a syntactic scope and constitution. -/
+structure SyntacticPolity where
   scope : Predicate
   constitution : SyntacticConstitution
   deriving Repr, BEq, DecidableEq, Inhabited
 
-/-- Bilateral treaty over two independently declared polity predicates. -/
-structure BilateralTreaty where
+/-- The treaty admission surface consumed by the public intersection model. -/
+structure SyntacticBilateralTreaty where
   scope : Predicate
   constitution : SyntacticConstitution
-  left : Polity
-  right : Polity
+  left : SyntacticPolity
+  right : SyntacticPolity
   modeFloor : Chio.Treaty.TrustMode
-  deriving Repr, BEq, DecidableEq
+  deriving Repr, BEq, DecidableEq, Inhabited
 
-/-- One polity admits when its scope and constitution both accept. -/
-def polityAdmits (polity : Polity) (receipt : ReceiptView) : Bool :=
-  denote polity.scope receipt && admits polity.constitution receipt
+def synPolityAdmits
+    (polity : SyntacticPolity) (view : AdmissionView) : Bool :=
+  denote polity.scope view && admits polity.constitution view
 
-/-- Fully expanded conjunction used as the treaty-intersection specification. -/
-def treatyPredicateIntersection
-    (treaty : BilateralTreaty) (receipt : ReceiptView) : Bool :=
-  denote treaty.scope receipt &&
-    admits treaty.constitution receipt &&
-    denote treaty.left.scope receipt &&
-    admits treaty.left.constitution receipt &&
-    denote treaty.right.scope receipt &&
-    admits treaty.right.constitution receipt
+def synTreatyPredicateIntersection
+    (treaty : SyntacticBilateralTreaty) (view : AdmissionView) : Bool :=
+  denote treaty.scope view &&
+    admits treaty.constitution view &&
+    denote treaty.left.scope view &&
+    admits treaty.left.constitution view &&
+    denote treaty.right.scope view &&
+    admits treaty.right.constitution view
 
-/-- Treaty admission grouped through each participant's local admission. -/
-def treatyAdmits
-    (treaty : BilateralTreaty) (receipt : ReceiptView) : Bool :=
-  denote treaty.scope receipt &&
-    admits treaty.constitution receipt &&
-    polityAdmits treaty.left receipt &&
-    polityAdmits treaty.right receipt
+def synTreatyAdmits
+    (treaty : SyntacticBilateralTreaty) (view : AdmissionView) : Bool :=
+  denote treaty.scope view &&
+    admits treaty.constitution view &&
+    synPolityAdmits treaty.left view &&
+    synPolityAdmits treaty.right view
 
-/-- Ladder floor composed with treaty admission. -/
-def treatyAdmitsUnderMode
-    (treaty : BilateralTreaty)
+def synTreatyAdmitsUnderMode
+    (treaty : SyntacticBilateralTreaty)
     (mode : Chio.Treaty.TrustMode)
-    (receipt : ReceiptView) : Bool :=
-  mode.atLeast treaty.modeFloor && treatyAdmits treaty receipt
+    (view : AdmissionView) : Bool :=
+  mode.atLeast treaty.modeFloor && synTreatyAdmits treaty view
 
-/-- Bounded amendment delta carrying its checked receipt domain. -/
-structure ConstitutionalDelta where
+/-- A successful finite decision carries its exact domain refinement proof. -/
+structure ConstitutionalDeltaSyn where
   old : SyntacticConstitution
   new : SyntacticConstitution
-  domain : List ReceiptView
-  proofTerm : refinesOnConstitution new old domain = true
+  domain : List AdmissionView
+  proofTerm : SynBackwardRefines new old domain
 
-namespace ConstitutionalDelta
+namespace ConstitutionalDeltaSyn
 
-/-- Smart constructor for a decision-procedure-produced refinement witness. -/
+/-- Run the finite decision and return a witness only on success. -/
 def ofDecide
     (old new : SyntacticConstitution)
-    (domain : List ReceiptView)
-    (proofTerm : refinesOnConstitution new old domain = true) :
-    ConstitutionalDelta :=
-  { old, new, domain, proofTerm }
+    (domain : List AdmissionView) : Option ConstitutionalDeltaSyn :=
+  if hCheck : refinesOnConstitution new old domain = true then
+    some {
+      old := old
+      new := new
+      domain := domain
+      proofTerm :=
+        (refinesOnConstitution_complete_on_fragment new old domain).mp hCheck
+    }
+  else
+    none
 
-end ConstitutionalDelta
+theorem ofDecide_isSome_iff
+    (old new : SyntacticConstitution) (domain : List AdmissionView) :
+    (ofDecide old new domain).isSome = true ↔
+      SynBackwardRefines new old domain := by
+  unfold ofDecide
+  by_cases hCheck : refinesOnConstitution new old domain = true
+  · simp [hCheck,
+      (refinesOnConstitution_complete_on_fragment new old domain).mp hCheck]
+  · have hNotRefines : ¬ SynBackwardRefines new old domain := by
+      intro hRefines
+      exact hCheck
+        ((refinesOnConstitution_complete_on_fragment new old domain).mpr
+          hRefines)
+    simp [hCheck, hNotRefines]
 
-/-- Candidate form used to make rejection without a witness explicit. -/
-structure AmendmentCandidate where
+end ConstitutionalDeltaSyn
+
+/-- Amendment input. The evaluator computes proof availability itself. -/
+structure AmendmentCandidateSyn where
   old : SyntacticConstitution
   new : SyntacticConstitution
-  domain : List ReceiptView
-  proofPresent : Bool
-  proofTerm :
-    proofPresent = true ->
-      refinesOnConstitution new old domain = true
-
-inductive AmendmentVerdict where
-  | enacted
-  | rejected
+  domain : List AdmissionView
   deriving Repr, BEq, DecidableEq, Inhabited
 
-/-- Enactment is constructable only from a bounded refinement delta. -/
-def enactAmendment (_delta : ConstitutionalDelta) : AmendmentVerdict :=
+def amendmentAdmissibleSyn (candidate : AmendmentCandidateSyn) : Prop :=
+  SynBackwardRefines candidate.new candidate.old candidate.domain
+
+def enactAmendmentSyn
+    (_delta : ConstitutionalDeltaSyn) : Chio.Treaty.AmendmentVerdict :=
   .enacted
 
-/-- A candidate without its bounded witness follows the rejection path. -/
-def evaluateAmendment (candidate : AmendmentCandidate) : AmendmentVerdict :=
-  if candidate.proofPresent then .enacted else .rejected
+def evaluateAmendmentSyn
+    (candidate : AmendmentCandidateSyn) : Chio.Treaty.AmendmentVerdict :=
+  match ConstitutionalDeltaSyn.ofDecide
+      candidate.old candidate.new candidate.domain with
+  | some delta => enactAmendmentSyn delta
+  | none => .rejected
 
-def amendmentAdmissible (candidate : AmendmentCandidate) : Prop :=
-  candidate.proofPresent = true
-
-/-- Treaty admission equals the explicit six-conjunct intersection. -/
-theorem treaty_admission_iff_predicate_intersection
-    (treaty : BilateralTreaty)
-    (receipt : ReceiptView) :
-    treatyAdmits treaty receipt = true ↔
-      treatyPredicateIntersection treaty receipt = true := by
+theorem synTreaty_admission_iff_predicate_intersection
+    (treaty : SyntacticBilateralTreaty) (view : AdmissionView) :
+    synTreatyAdmits treaty view = true ↔
+      synTreatyPredicateIntersection treaty view = true := by
   cases treaty with
   | mk scope constitution left right modeFloor =>
       cases left with
       | mk leftScope leftConstitution =>
           cases right with
           | mk rightScope rightConstitution =>
-              unfold treatyAdmits treatyPredicateIntersection polityAdmits
-              simp [Bool.and_assoc]
+              simp [synTreatyAdmits, synTreatyPredicateIntersection,
+                synPolityAdmits, Bool.and_assoc]
 
-/-- A satisfied ladder floor reduces admission to the treaty predicate. -/
+theorem synTreaty_admission_stable_under_ladder_floor
+    (treaty : SyntacticBilateralTreaty)
+    (mode : Chio.Treaty.TrustMode)
+    (view : AdmissionView)
+    (hMode : mode.atLeast treaty.modeFloor = true) :
+    synTreatyAdmitsUnderMode treaty mode view =
+      synTreatyAdmits treaty view := by
+  simp [synTreatyAdmitsUnderMode, hMode]
+
+theorem synAmendment_admissible_iff_backward_refinement
+    (candidate : AmendmentCandidateSyn) :
+    amendmentAdmissibleSyn candidate ↔
+      SynBackwardRefines candidate.new candidate.old candidate.domain := by
+  rfl
+
+theorem synAmendment_without_refinement_rejected
+    (candidate : AmendmentCandidateSyn)
+    (hCheck : refinesOnConstitution
+      candidate.new candidate.old candidate.domain = false) :
+    evaluateAmendmentSyn candidate = Chio.Treaty.AmendmentVerdict.rejected := by
+  simp [evaluateAmendmentSyn, ConstitutionalDeltaSyn.ofDecide, hCheck]
+
+/-- A production-shaped accepted admission fixture. -/
+def acceptedAdmission : AdmissionView :=
+  {
+    scope := {
+      schema := treatyScopeSchema
+      treatyId := "treaty-1"
+      participantKernelIds := ["kernel-a", "kernel-b"]
+      ladderManifestSha256s := ["manifest-a", "manifest-b"]
+      allowedActionClasses := ["file-read", "file-write"]
+      issuedAtUnixMs := 1
+      expiresAtUnixMs := 100
+    }
+    intersection := {
+      schema := ladderIntersectionSchema
+      treatyId := "treaty-1"
+      participantKernelIds := ["kernel-a", "kernel-b"]
+      ladderManifestSha256s := ["manifest-a", "manifest-b"]
+      actionClassIds := ["file-read", "file-write"]
+      generatedAtUnixMs := 2
+      expiresAtUnixMs := 90
+    }
+    invocation := {
+      schema := bilateralInvocationSchema
+      treatyId := "treaty-1"
+      ladderIntersectionSha256 := "ladder-hash"
+      continuationSha256 := "continuation-hash"
+      actionClassId := "file-read"
+      signerKernelIds := ["kernel-a", "kernel-b"]
+    }
+    nowUnixMs := 10
+    computedLadderIntersectionSha256 := "ladder-hash"
+    expectedLadderIntersectionSha256 := some "ladder-hash"
+    expectedContinuationSha256 := some "continuation-hash"
+    resolvedMode := some .receiptBacked
+    requiredEvidence := ["bilateral-invocation"]
+    presentEvidence := ["bilateral-invocation"]
+    verifiedEvidence := [{
+      evidenceClass := "bilateral-invocation"
+      verified := true
+    }]
+    jointPolicyAllows := true
+  }
+
+/-- Same runtime fields with a verifier-owned deny verdict. -/
+def policyDeniedAdmission : AdmissionView :=
+  { acceptedAdmission with jointPolicyAllows := false }
+
+/-- The original constitution admits every scope-allowed action. -/
+def broadConstitution : SyntacticConstitution :=
+  { predicates := [.atom .actionClassAllowed] }
+
+/-- The amendment additionally requires the bilateral policy verdict. -/
+def narrowedConstitution : SyntacticConstitution :=
+  { predicates := [
+      .atom .actionClassAllowed,
+      .atom .jointPolicyAllows
+    ] }
+
+def exampleDomain : List AdmissionView :=
+  [acceptedAdmission, policyDeniedAdmission]
+
+def narrowingCandidate : AmendmentCandidateSyn :=
+  {
+    old := broadConstitution
+    new := narrowedConstitution
+    domain := exampleDomain
+  }
+
+def wideningCandidate : AmendmentCandidateSyn :=
+  {
+    old := narrowedConstitution
+    new := broadConstitution
+    domain := exampleDomain
+  }
+
+example : admits broadConstitution policyDeniedAdmission = true := by decide
+
+example : admits narrowedConstitution policyDeniedAdmission = false := by decide
+
+example :
+    (ConstitutionalDeltaSyn.ofDecide
+      broadConstitution narrowedConstitution exampleDomain).isSome = true := by
+  decide
+
+example : evaluateAmendmentSyn narrowingCandidate =
+    Chio.Treaty.AmendmentVerdict.enacted := by
+  decide
+
+example : evaluateAmendmentSyn wideningCandidate =
+    Chio.Treaty.AmendmentVerdict.rejected := by
+  decide
+
+#eval (ConstitutionalDeltaSyn.ofDecide
+  broadConstitution narrowedConstitution exampleDomain).isSome
+#eval evaluateAmendmentSyn narrowingCandidate
+#eval evaluateAmendmentSyn wideningCandidate
+
+end Chio.Treaty.PredicateLang
+
+namespace Chio.Treaty.IntersectionSyntactic
+
+open Chio.Treaty.PredicateLang
+
+abbrev Polity := SyntacticPolity
+abbrev BilateralTreaty := SyntacticBilateralTreaty
+abbrev ConstitutionalDelta := ConstitutionalDeltaSyn
+abbrev AmendmentCandidate := AmendmentCandidateSyn
+
+/-- Production-shaped treaty intersection theorem. -/
+theorem treaty_admission_iff_predicate_intersection
+    (treaty : BilateralTreaty) (view : AdmissionView) :
+    synTreatyAdmits treaty view = true ↔
+      synTreatyPredicateIntersection treaty view = true :=
+  synTreaty_admission_iff_predicate_intersection treaty view
+
+/-- Stability above the declared governance-mode floor. -/
 theorem treaty_admission_stable_under_ladder_floor
     (treaty : BilateralTreaty)
     (mode : Chio.Treaty.TrustMode)
-    (receipt : ReceiptView)
+    (view : AdmissionView)
     (hMode : mode.atLeast treaty.modeFloor = true) :
-    treatyAdmitsUnderMode treaty mode receipt =
-      treatyAdmits treaty receipt := by
-  simp [treatyAdmitsUnderMode, hMode]
+    synTreatyAdmitsUnderMode treaty mode view =
+      synTreatyAdmits treaty view :=
+  synTreaty_admission_stable_under_ladder_floor treaty mode view hMode
 
-/--
-  Candidate admissibility supplies semantic no-widening on every receipt in
-  the candidate's declared finite domain.
--/
+/-- Exact refinement on the supplied finite domain. -/
 theorem amendment_admissible_iff_bounded_refinement
     (candidate : AmendmentCandidate) :
-    amendmentAdmissible candidate ↔
-      candidate.proofPresent = true ∧
-      SynBackwardRefinesOn candidate.new candidate.old candidate.domain := by
-  constructor
-  · intro hPresent
-    exact ⟨hPresent, bridge_decidable_soundness
-      candidate.new candidate.old candidate.domain
-      (candidate.proofTerm hPresent)⟩
-  · intro h
-    exact h.1
+    amendmentAdmissibleSyn candidate ↔
+      SynBackwardRefines candidate.new candidate.old candidate.domain :=
+  synAmendment_admissible_iff_backward_refinement candidate
 
-/-- Missing proof presence is rejected by construction. -/
+/-- Fail-closed rejection after a failed decision. -/
 theorem amendment_without_refinement_rejected
-    (old new : SyntacticConstitution)
-    (domain : List ReceiptView) :
-    evaluateAmendment {
-      old := old,
-      new := new,
-      domain := domain,
-      proofPresent := false,
-      proofTerm := by
-        intro h
-        cases h
-    } = AmendmentVerdict.rejected := by
-  rfl
-
-private def exampleReceipt : ReceiptView :=
-  {
-    receiptId := "receipt-example"
-    receiptHash := "hash-example"
-    actionClass := "destructive"
-    participantKernelIds := ["kernel-a", "kernel-b"]
-    ladderModeRank := 4
-    liveContinuationIds := ["continuation-example"]
-    decision := .allow
-    failureCode := none
-    evidenceDigests := [
-      { evidenceClass := "bilateral_dsse", digest := "digest-example" }
-    ]
-  }
-
-private def exampleOld : SyntacticConstitution :=
-  { predicates := [.top] }
-
-private def exampleNarrower : SyntacticConstitution :=
-  {
-    predicates := [
-      .atom (.actionClassIn "destructive"),
-      .atom (.ladderModeAtLeastRank 2)
-    ]
-  }
-
-/-- Executable documentation: a nontrivial bounded narrowing is constructable. -/
-example : AmendmentVerdict :=
-  enactAmendment <| ConstitutionalDelta.ofDecide
-    exampleOld
-    exampleNarrower
-    [exampleReceipt]
-    (by decide)
-
-/-- Executable documentation: widening beyond the old rule fails on-domain. -/
-example :
-    refinesOnConstitution
-      exampleOld
-      exampleNarrower
-      [{
-        exampleReceipt with
-        actionClass := "read_only"
-      }] = false := by
-  decide
+    (candidate : AmendmentCandidate)
+    (hCheck : refinesOnConstitution
+      candidate.new candidate.old candidate.domain = false) :
+    evaluateAmendmentSyn candidate =
+      Chio.Treaty.AmendmentVerdict.rejected :=
+  synAmendment_without_refinement_rejected candidate hCheck
 
 end Chio.Treaty.IntersectionSyntactic

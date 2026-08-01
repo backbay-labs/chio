@@ -627,6 +627,20 @@ impl ChioKernel {
         })
     }
 
+    #[cfg(test)]
+    pub(crate) fn request_session_cancellation_with_reason(
+        &self,
+        session_id: &SessionId,
+        request_id: &RequestId,
+        reason: &str,
+    ) -> Result<(), KernelError> {
+        self.with_session_mut(session_id, |session| {
+            session
+                .request_cancellation_with_reason(request_id, reason)
+                .map_err(KernelError::from)
+        })
+    }
+
     /// Validate whether a sampling child request is allowed for this session.
     pub fn validate_sampling_request(
         &self,

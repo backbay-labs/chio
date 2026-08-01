@@ -1,68 +1,28 @@
 [manifest]
 schema = "chio.programmable-sovereignty.proof-manifest.v1"
-generated_at = "2026-07-25"
-paper = "Proof-Carrying Bilateral Admission for Cross-Organization Agent Tool Calls"
+generated_at = "2026-07-26"
+paper = "Receiver-Owned Bilateral Admission for Cross-Organization Agent Tool Calls"
 target_venue = "USENIX Security 2027 Cycle 1"
-lean_toolchain = "leanprover/lean4:v4.28.0-rc1"
-model_boundary = "bounded ReceiptView and explicit finite domains"
-implementation_relation = "differential alignment, not extraction or refinement"
+lean_toolchain = "leanprover/lean4:v4.28.0"
+model_boundary = "bounded receipt predicates and supplied finite domains"
+implementation_relation = "independent Rust differential testing, not extraction or refinement"
 
 [[theorems]]
 id = "PS-F01"
-name = "treaty_admission_iff_predicate_intersection"
-lean_module = "Chio.Treaty.IntersectionSyntactic"
-lean_declaration = "Chio.Treaty.IntersectionSyntactic.treaty_admission_iff_predicate_intersection"
-path = "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean"
+name = "finite_refinement_sound"
+lean_module = "Chio.Treaty.ReceiptPredicate"
+lean_declaration = "Chio.Treaty.ReceiptPredicate.finite_refinement_sound"
+path = "formal/lean4/Chio/Chio/Treaty/ReceiptPredicate.lean"
 claim_class = "bounded_theorem"
-axioms = ["propext"]
-scope = "Structural six-conjunct treaty intersection over ReceiptView."
+axioms = ["propext", "Quot.sound"]
+scope = "A successful check preserves the current admission result for every receipt in the supplied finite domain."
 
 [[theorems]]
 id = "PS-F02"
-name = "treaty_admission_stable_under_ladder_floor"
-lean_module = "Chio.Treaty.IntersectionSyntactic"
-lean_declaration = "Chio.Treaty.IntersectionSyntactic.treaty_admission_stable_under_ladder_floor"
-path = "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean"
-claim_class = "bounded_theorem"
-axioms = ["propext"]
-scope = "Satisfied finite ladder floor reduces to treaty admission."
-
-[[theorems]]
-id = "PS-F03"
-name = "refinesOnConstitution_iff"
-lean_module = "Chio.Treaty.PredicateLang"
-lean_declaration = "Chio.Treaty.PredicateLang.refinesOnConstitution_iff"
-path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+name = "finite_refinement_exact"
+lean_module = "Chio.Treaty.ReceiptPredicate"
+lean_declaration = "Chio.Treaty.ReceiptPredicate.finite_refinement_exact"
+path = "formal/lean4/Chio/Chio/Treaty/ReceiptPredicate.lean"
 claim_class = "bounded_theorem"
 axioms = ["propext", "Quot.sound"]
-scope = "Boolean no-widening is exact on the declared finite domain."
-
-[[theorems]]
-id = "PS-F04"
-name = "bridge_decidable_soundness"
-lean_module = "Chio.Treaty.PredicateLang"
-lean_declaration = "Chio.Treaty.PredicateLang.bridge_decidable_soundness"
-path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
-claim_class = "bounded_theorem"
-axioms = ["propext", "Quot.sound"]
-scope = "A positive finite check implies semantic no-widening on-domain."
-
-[[theorems]]
-id = "PS-F05"
-name = "treaty_admission_agrees"
-lean_module = "Chio.Treaty.BridgeEquivalence"
-lean_declaration = "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_agrees"
-path = "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean"
-claim_class = "bounded_theorem"
-axioms = ["propext"]
-scope = "Syntactic and legacy treaty admission agree pointwise."
-
-[[theorems]]
-id = "PS-F06"
-name = "bounded_amendment_sound"
-lean_module = "Chio.Treaty.BridgeEquivalence"
-lean_declaration = "Chio.Treaty.BridgeEquivalence.Legacy.bounded_amendment_sound"
-path = "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean"
-claim_class = "bounded_theorem"
-axioms = ["propext", "Quot.sound"]
-scope = "A ConstitutionalDelta is sound only on its carried domain."
+scope = "The Boolean checker is equivalent to the finite-domain admission implication."

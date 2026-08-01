@@ -1,14 +1,14 @@
-//! Canonical JSON serialization (RFC 8785 / JCS).
+//! Chio canonical JSON serialization.
 //!
 //! Produces byte-for-byte identical output for the same logical JSON value,
 //! regardless of key insertion order or floating-point formatting quirks.
 //! This is required for deterministic signing: the same value serialized in
 //! Rust, TypeScript, Python, or Go must yield identical bytes.
 //!
-//! Implementation follows RFC 8785 (JSON Canonicalization Scheme):
+//! The format follows RFC 8785 (JSON Canonicalization Scheme).
 //! - Object keys sorted by UTF-16 code unit comparison
 //! - Numbers: shortest representation matching ECMAScript `JSON.stringify()`
-//! - Strings: minimal escaping (only required characters)
+//! - Strings: minimal JSON escaping for C0 controls, quotes, and reverse solidus
 //! - No whitespace between tokens
 
 use alloc::collections::BTreeMap;
@@ -504,11 +504,9 @@ fn trim_decimal(mut s: String) -> String {
 
 /// Escape a string per RFC 8785 / JSON rules.
 ///
-/// Only the characters that JSON requires to be escaped are escaped.
-/// Control characters U+0000..U+001F use `\uXXXX` form except for the
-/// six shorthand escapes (\", \\, \b, \f, \n, \r, \t). Characters above
-/// U+001F (including U+2028 and U+2029) are passed through unescaped --
-/// RFC 8785 requires minimal escaping.
+/// Quotes and reverse solidus use their mandatory JSON escapes. Control
+/// characters in the C0 range use the standard short forms when available and
+/// lowercase `\uXXXX` otherwise. DEL and C1 controls pass through as UTF-8.
 fn escape_json_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     for c in s.chars() {
@@ -520,8 +518,8 @@ fn escape_json_string(s: &str) -> String {
             '\n' => result.push_str("\\n"),
             '\r' => result.push_str("\\r"),
             '\t' => result.push_str("\\t"),
-            c if c.is_control() => {
-                // U+0000..U+001F (excluding the six above) use \uXXXX.
+            c if c <= '\u{001f}' => {
+                // C0 controls without a short form use \uXXXX.
                 result.push_str(&format!("\\u{:04x}", c as u32));
             }
             c => result.push(c),
@@ -903,6 +901,20 @@ mod tests {
         assert_eq!(
             canonical,
             r#"{"b":"\b","backslash":"\\","ctl":"\u000f","f":"\f","quote":"\""}"#
+        );
+    }
+
+    #[test]
+    fn del_and_c1_controls_pass_through_per_rfc8785() {
+        let value = serde_json::json!({
+            "\u{007f}\u{009f}": "\u{007f}\u{009f}",
+        });
+        assert_eq!(
+            canonicalize(&value).unwrap(),
+            format!(
+                "{{\"{}{}\":\"{}{}\"}}",
+                '\u{007f}', '\u{009f}', '\u{007f}', '\u{009f}'
+            )
         );
     }
 

@@ -1,11 +1,8 @@
 /-
-  Equivalence facts for the Aeneas production extraction lane.
-
-  Aeneas emits Lean that depends on its support library and generated `Std.U*`
-  wrappers under target/formal. This tracked module mirrors the extracted pure
-  helper semantics in ordinary Lean values and proves equivalence against the
-  handwritten Chio model. The extraction gate verifies that Aeneas still emits
-  the expected generated symbols before this module is built.
+  Ordinary-value semantics used to connect generated machine-integer code to
+  the handwritten protocol model. This mirror is an internal proof step. The
+  generated-equivalence module proves every decision helper agrees with it
+  before composing these facts with the model theorems below.
 -/
 
 import Chio.Core.Capability
@@ -18,6 +15,9 @@ namespace Chio.Proofs
 open Chio.Core
 
 namespace AeneasMirror
+
+def classifyTimeWindowCode (now issuedAt expiresAt : Nat) : Nat :=
+  if now < issuedAt then 1 else if now >= expiresAt then 2 else 0
 
 def timeWindowValid (now issuedAt expiresAt : Nat) : Bool :=
   issuedAt <= now && now < expiresAt
@@ -60,6 +60,14 @@ def budgetCommit (state : BudgetState) (request : BudgetRequest) : Option Budget
     }
   else
     none
+
+def saturatingAdd (maximum left right : Nat) : Nat :=
+  min maximum (left + right)
+
+def dpopFreshnessValid
+    (maximum now issuedAt ttlSecs maxSkewSecs : Nat) : Bool :=
+  issuedAt <= saturatingAdd maximum now maxSkewSecs
+    && saturatingAdd maximum issuedAt ttlSecs >= now
 
 def dpopAdmits
     (dpopRequired proofPresent proofValid nonceFresh : Bool) : Bool :=

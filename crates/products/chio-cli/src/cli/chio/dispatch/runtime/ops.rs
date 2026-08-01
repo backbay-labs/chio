@@ -17,10 +17,8 @@ pub(crate) fn cmd_chio_runtime_ops_tick(
 ) -> Result<(), CliError> {
     let profile = load_runtime_supervisor_profile(supervisor_profile)?;
     ensure_runtime_evidence_dir(evidence_root)?;
-    let store =
-        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime ops store: {error}"))
-        })?;
+    let store = chio_runtime::SqliteRuntimeOrchestrationStore::open(store)
+        .map_err(|error| CliError::cli_other_error(format!("Chio runtime ops store: {error}")))?;
     let tick = store
         .scheduler_tick_report(&profile, owner_id, now_unix_ms, max_runs)
         .map_err(|error| {
@@ -38,10 +36,8 @@ pub(crate) fn cmd_chio_runtime_ops_status(
     report: &Path,
 ) -> Result<(), CliError> {
     let profile = load_runtime_supervisor_profile(supervisor_profile)?;
-    let store =
-        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime ops store: {error}"))
-        })?;
+    let store = chio_runtime::SqliteRuntimeOrchestrationStore::open(store)
+        .map_err(|error| CliError::cli_other_error(format!("Chio runtime ops store: {error}")))?;
     let generated_at = now_unix_ms.unwrap_or_else(unix_now_ms);
     let provider_healthy = provider_bindings
         .map(|path| {
@@ -74,9 +70,7 @@ pub(crate) fn cmd_chio_runtime_ops_status(
             evidence_sink_healthy,
             provider_healthy,
         )
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime ops status: {error}"))
-        })?;
+        .map_err(|error| CliError::cli_other_error(format!("Chio runtime ops status: {error}")))?;
     write_pretty_json(report, &status, "Chio runtime ops status report")
 }
 
@@ -148,10 +142,8 @@ pub(crate) fn cmd_chio_runtime_ops_recovery_drill(
 ) -> Result<(), CliError> {
     let profile = load_runtime_supervisor_profile(supervisor_profile)?;
     ensure_runtime_evidence_dir(evidence_root)?;
-    let store =
-        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime ops store: {error}"))
-        })?;
+    let store = chio_runtime::SqliteRuntimeOrchestrationStore::open(store)
+        .map_err(|error| CliError::cli_other_error(format!("Chio runtime ops store: {error}")))?;
     let drill = store
         .recovery_drill_report_for_profile(&profile, run_id, now_unix_ms)
         .map_err(|error| {
@@ -169,10 +161,8 @@ pub(crate) fn cmd_chio_runtime_ops_evidence_health(
     report: &Path,
 ) -> Result<(), CliError> {
     let profile = load_runtime_supervisor_profile(supervisor_profile)?;
-    let _store =
-        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime ops store: {error}"))
-        })?;
+    let _store = chio_runtime::SqliteRuntimeOrchestrationStore::open(store)
+        .map_err(|error| CliError::cli_other_error(format!("Chio runtime ops store: {error}")))?;
     let evidence_dir = evidence_root.join(run_id);
     if !evidence_dir.is_dir() {
         return Err(CliError::cli_other_error(format!(
@@ -184,8 +174,8 @@ pub(crate) fn cmd_chio_runtime_ops_evidence_health(
         &evidence_dir.join("runtime-evidence-manifest.json"),
         "Chio runtime evidence manifest",
     )?;
-    let manifest: chio_runtime::RuntimeEvidenceManifest =
-        serde_json::from_str(&manifest_json).map_err(|error| {
+    let manifest: chio_runtime::RuntimeEvidenceManifest = serde_json::from_str(&manifest_json)
+        .map_err(|error| {
             CliError::cli_other_error(format!("Chio runtime evidence manifest: {error}"))
         })?;
     let health = chio_runtime::generate_runtime_evidence_sink_health_report(
@@ -196,9 +186,7 @@ pub(crate) fn cmd_chio_runtime_ops_evidence_health(
         now_unix_ms,
         true,
     )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio runtime evidence health: {error}"))
-    })?;
+    .map_err(|error| CliError::cli_other_error(format!("Chio runtime evidence health: {error}")))?;
     write_pretty_json(report, &health, "Chio runtime evidence health report")
 }
 
@@ -210,14 +198,11 @@ pub(crate) fn cmd_chio_runtime_ops_provider_health(
 ) -> Result<(), CliError> {
     let profile = load_runtime_supervisor_profile(supervisor_profile)?;
     let bindings = load_runtime_provider_bindings(provider_bindings)?;
-    let health = chio_runtime::generate_runtime_provider_health_report(
-        &profile,
-        &bindings,
-        now_unix_ms,
-    )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio runtime provider health: {error}"))
-    })?;
+    let health =
+        chio_runtime::generate_runtime_provider_health_report(&profile, &bindings, now_unix_ms)
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chio runtime provider health: {error}"))
+            })?;
     write_pretty_json(report, &health, "Chio runtime provider health report")
 }
 
@@ -228,9 +213,7 @@ pub(crate) fn load_runtime_provider_bindings(
         provider_bindings,
         "Chio runtime provider bindings",
     )?)
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio runtime provider bindings: {error}"))
-    })
+    .map_err(|error| CliError::cli_other_error(format!("Chio runtime provider bindings: {error}")))
 }
 
 pub(crate) fn cmd_chio_runtime_ops_retention_plan(
@@ -240,20 +223,15 @@ pub(crate) fn cmd_chio_runtime_ops_retention_plan(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
-    let profile =
-        chio_runtime::runtime_artifact_retention_profile_from_json(&read_utf8_json_file(
-            retention_profile,
-            "Chio runtime artifact retention profile",
-        )?)
-        .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chio runtime artifact retention profile: {error}"
-            ))
-        })?;
-    let _store =
-        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime ops store: {error}"))
-        })?;
+    let profile = chio_runtime::runtime_artifact_retention_profile_from_json(&read_utf8_json_file(
+        retention_profile,
+        "Chio runtime artifact retention profile",
+    )?)
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chio runtime artifact retention profile: {error}"))
+    })?;
+    let _store = chio_runtime::SqliteRuntimeOrchestrationStore::open(store)
+        .map_err(|error| CliError::cli_other_error(format!("Chio runtime ops store: {error}")))?;
     if !evidence_root.is_dir() {
         return Err(CliError::cli_other_error(format!(
             "Chio runtime retention plan requires existing evidence root {}",
@@ -267,14 +245,11 @@ pub(crate) fn cmd_chio_runtime_ops_retention_plan(
                 .map(|name| name.to_string_lossy().to_string())
         })
         .collect::<Vec<_>>();
-    let plan = chio_runtime::generate_runtime_artifact_retention_plan(
-        &profile,
-        &run_ids,
-        now_unix_ms,
-    )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio runtime retention plan: {error}"))
-    })?;
+    let plan =
+        chio_runtime::generate_runtime_artifact_retention_plan(&profile, &run_ids, now_unix_ms)
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chio runtime retention plan: {error}"))
+            })?;
     write_pretty_json(report, &plan, "Chio runtime retention plan")
 }
 

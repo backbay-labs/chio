@@ -156,7 +156,7 @@ pub(super) fn verify_treaty_dsse_evidence(
     Ok(())
 }
 
-fn treaty_participant_public_key<'a>(
+pub(super) fn treaty_participant_public_key<'a>(
     treaty_scope: &'a TreatyScope,
     kernel_id: &str,
 ) -> Result<&'a PublicKey, ChioRuntimeError> {

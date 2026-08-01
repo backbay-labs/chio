@@ -123,7 +123,7 @@ fn fiscal_marketplace_credit_limit_rejects_client_trust_claims() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn standalone_legacy_holds_use_exact_versioned_rich_lifecycle(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let temp = tempfile::tempdir()?;
+    let temp = crate::durable_admission::private_tempdir()?;
     let sqlite = Arc::new(SqliteBudgetStore::open(
         temp.path().join("legacy-budget.sqlite3"),
     )?);
@@ -261,7 +261,7 @@ async fn standalone_legacy_holds_use_exact_versioned_rich_lifecycle(
 #[tokio::test]
 async fn versioned_rich_lifecycle_does_not_mutate_legacy_cluster_follower(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let temp = tempfile::tempdir()?;
+    let temp = crate::durable_admission::private_tempdir()?;
     let sqlite = Arc::new(SqliteBudgetStore::open(
         temp.path().join("cluster-budget.sqlite3"),
     )?);

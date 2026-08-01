@@ -91,12 +91,10 @@ pub(crate) fn load_tools_fixture(
                 "tools fixture {path:?} must be a tools array or object with a 'tools' field"
             ))
         })?;
-    let tools: Vec<chio_mcp_adapter::edge::McpToolInfo> = serde_json::from_value(serde_json::Value::Array(
-        array,
-    ))
-    .map_err(|e| {
-        CliError::cli_other_error(format!("failed to decode tools fixture {path:?}: {e}"))
-    })?;
+    let tools: Vec<chio_mcp_adapter::edge::McpToolInfo> =
+        serde_json::from_value(serde_json::Value::Array(array)).map_err(|e| {
+            CliError::cli_other_error(format!("failed to decode tools fixture {path:?}: {e}"))
+        })?;
     Ok(tools)
 }
 
@@ -106,27 +104,25 @@ pub(crate) fn load_tools_fixture(
 // crate-internal items are re-exported here so the parent (`mcp_cli` in
 // `main.rs`) keeps exposing the same surface (e.g. `McpWrapArgs`,
 // `cmd_mcp_wrap`).
-#[path = "mcp/ide.rs"]
-mod ide;
-#[path = "mcp/scope.rs"]
-mod scope;
 #[path = "mcp/attestation.rs"]
 mod attestation;
-#[path = "mcp/manifest.rs"]
-mod manifest;
 #[path = "mcp/emit_config.rs"]
 mod emit_config;
-#[path = "mcp/payment_config.rs"]
-pub mod payment_config;
-#[path = "mcp/wrap.rs"]
-mod wrap;
 #[path = "mcp/governed_sim.rs"]
 mod governed_sim;
+#[path = "mcp/ide.rs"]
+mod ide;
+#[path = "mcp/manifest.rs"]
+mod manifest;
+#[path = "mcp/payment_config.rs"]
+pub mod payment_config;
+#[path = "mcp/scope.rs"]
+mod scope;
+#[path = "mcp/wrap.rs"]
+mod wrap;
 
 pub(crate) use attestation::{attach_chio_verified_header, build_chio_verified_header};
 pub(crate) use emit_config::cmd_mcp_emit_config;
-pub(crate) use manifest::cmd_mcp_print_scopes;
-pub(crate) use wrap::{
-    cmd_mcp_wrap_e2e_fixture, cmd_mcp_wrap_run, McpWrapArgs,
-};
 pub(crate) use governed_sim::{cmd_mcp_governed_sim, GovernedSimArgs};
+pub(crate) use manifest::cmd_mcp_print_scopes;
+pub(crate) use wrap::{cmd_mcp_wrap_e2e_fixture, cmd_mcp_wrap_run, McpWrapArgs};

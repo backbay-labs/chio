@@ -1,9 +1,9 @@
 use super::*;
 
 pub(crate) fn backfill_claim_receipt_log_entries(
-    connection: &mut Connection,
+    transaction: &rusqlite::Transaction<'_>,
 ) -> Result<(), ReceiptStoreError> {
-    validate_or_backfill_claim_receipt_log_entries(connection, true)
+    validate_or_backfill_claim_receipt_log_entries_in_transaction(transaction, true)
 }
 
 pub(crate) fn validate_claim_receipt_log_entries(
@@ -25,9 +25,17 @@ pub(crate) fn validate_or_backfill_claim_receipt_log_entries(
     // validator a reader (no write lock) unless the backfill branch below
     // actually inserts rows.
     let tx = connection.unchecked_transaction()?;
+    validate_or_backfill_claim_receipt_log_entries_in_transaction(&tx, repair_empty_projection)?;
+    tx.commit()?;
+    Ok(())
+}
 
-    let mut expected = load_tool_claim_receipt_projection_rows(&tx)?;
-    expected.extend(load_child_claim_receipt_projection_rows(&tx)?);
+fn validate_or_backfill_claim_receipt_log_entries_in_transaction(
+    tx: &rusqlite::Transaction<'_>,
+    repair_empty_projection: bool,
+) -> Result<(), ReceiptStoreError> {
+    let mut expected = load_tool_claim_receipt_projection_rows(tx)?;
+    expected.extend(load_child_claim_receipt_projection_rows(tx)?);
     expected.sort_by(|left, right| {
         (
             left.timestamp,
@@ -81,21 +89,20 @@ pub(crate) fn validate_or_backfill_claim_receipt_log_entries(
         // source rows in (timestamp, kind_rank, source_seq, receipt_id) order
         // can assign fresh sequence numbers that no longer line up with the
         // checkpoint boundaries. Refuse instead of guessing.
-        let watermark = retention_watermark(&tx)?;
-        if kernel_checkpoints_exist(&tx)? || watermark.is_some() {
+        let watermark = retention_watermark(tx)?;
+        if kernel_checkpoints_exist(tx)? || watermark.is_some() {
             return Err(ReceiptStoreError::ArchivedRangeProjection {
                 watermark: watermark.unwrap_or(0),
             });
         }
         for row in &expected {
-            insert_claim_receipt_log_projection_row(&tx, row)?;
+            insert_claim_receipt_log_projection_row(tx, row)?;
         }
-        tx.commit()?;
         return Ok(());
     }
 
     for row in &expected {
-        let Some(existing) = load_claim_receipt_log_projection_row(&tx, &row.receipt_id)? else {
+        let Some(existing) = load_claim_receipt_log_projection_row(tx, &row.receipt_id)? else {
             return Err(ReceiptStoreError::Conflict(format!(
                 "claim receipt log entry `{}` is missing for persisted {} source row",
                 row.receipt_id, row.receipt_kind
@@ -109,7 +116,7 @@ pub(crate) fn validate_or_backfill_claim_receipt_log_entries(
         }
     }
 
-    let existing_receipt_ids = load_claim_receipt_log_receipt_ids(&tx)?;
+    let existing_receipt_ids = load_claim_receipt_log_receipt_ids(tx)?;
     if existing_receipt_ids != expected_receipt_ids {
         let missing = expected_receipt_ids
             .difference(&existing_receipt_ids)
@@ -126,6 +133,5 @@ pub(crate) fn validate_or_backfill_claim_receipt_log_entries(
         )));
     }
 
-    tx.commit()?;
     Ok(())
 }

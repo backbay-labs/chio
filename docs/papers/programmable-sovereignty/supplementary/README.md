@@ -1,18 +1,17 @@
 # Supplementary Artifact
 
-Paper: "Proof-Carrying Bilateral Admission for Cross-Organization Agent Tool
+Paper: "Receiver-Owned Bilateral Admission for Cross-Organization Agent Tool
 Calls"
 
 Target: USENIX Security 2027, Cycle 1
 
-Snapshot date: 2026-07-25
+Snapshot date: 2026-07-26
 
 This package records the exact boundary of the paper's formal, implementation,
 and experimental claims. The artifact manifest pins the source snapshot,
-production symbols, behavioral tests, theorem declarations and axiom lists,
+implementation symbols, behavioral tests, theorem declarations and axiom lists,
 positive and negative corpora, benchmark scripts and outputs, and the
-submission page limit. It also records every surface that the paper withholds
-or treats as an assumption.
+submission page limit. It also records excluded claims and assumptions.
 
 ## Contents
 
@@ -22,11 +21,11 @@ or treats as an assumption.
   artifact was assembled. Verification uses the manifest's per-path hashes
   and aggregate content digest, so it remains self-contained after a squash
   merge or in a source archive that does not carry the original commit object.
-- `proof-manifest.toml` lists the six bounded theorem declarations used by the
-  paper, their modules, model scopes, claim classes, and Lean axiom reports.
+- `proof-manifest.toml` lists the two finite-domain theorem declarations used
+  by the paper, their module, scope, and Lean axiom reports.
 - `theorem-inventory.json` supplies the same theorem inventory for automated
   review.
-- `lean-source.tar.gz` is a deterministic archive of the current Lean project.
+- `lean-source.tar.gz` is a deterministic archive of the Lean project.
   It contains no build cache, symbolic links, extended attributes, or
   machine-local files.
 
@@ -57,7 +56,7 @@ The full command additionally rebuilds the proof root, differential tests,
 runtime and federation tests, live buyer closure, bilateral and replay
 experiments, and the submission PDF. Fresh measurement outputs are written to
 a private temporary directory so reproduction does not silently replace the
-retained paper results.
+recorded paper results.
 
 The evaluated benchmark is machine-local. A new run should be expected to
 produce different latency samples while preserving schemas, case counts,
@@ -65,10 +64,11 @@ non-dispatch assertions, and proof-package structure.
 
 ## Formal Boundary
 
-The Lean archive models a strict predicate syntax over `ReceiptView` and
-explicit finite domains. It proves structural treaty intersection, ladder
-reduction, finite-domain no-widening, and pointwise agreement with the legacy
-closure representation. It does not model cryptography, canonical JSON,
-clocks, storage, organizational key control, or the production Rust runtime.
-The independent Rust differential suite is alignment evidence, not extraction
-or an implementation-refinement proof.
+The Lean archive models the bounded receipt predicate syntax and its
+finite-domain refinement checker. It proves that a successful check is
+equivalent to the stated implication for every receipt in the supplied domain.
+Cryptography, canonical JSON, clocks, storage, domain completeness,
+organizational key control, complexity-limit enforcement, and the Rust runtime are outside the
+theorem. The independent Rust suite compares a separate reference interpreter
+with the runtime evaluator on inputs within those limits. This is differential
+evidence, not extraction or an implementation-refinement proof.

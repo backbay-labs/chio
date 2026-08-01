@@ -1,4 +1,4 @@
-use super::{RelaySigningKeyDocument, read_utf8_json_file};
+use super::{read_utf8_json_file, RelaySigningKeyDocument};
 use crate::CliError;
 use chio_core::crypto::Keypair;
 use serde::de::DeserializeOwned;
@@ -54,17 +54,15 @@ pub(crate) fn read_json_file<T: DeserializeOwned>(path: &Path, label: &str) -> R
 
 pub(crate) fn load_relay_signing_key(path: &Path) -> Result<(String, Keypair), CliError> {
     let json = read_utf8_json_file(path, "Chio relay signing key")?;
-    let document: RelaySigningKeyDocument = serde_json::from_str(&json).map_err(|error| {
-        CliError::cli_other_error(format!("Chio relay signing key: {error}"))
-    })?;
+    let document: RelaySigningKeyDocument = serde_json::from_str(&json)
+        .map_err(|error| CliError::cli_other_error(format!("Chio relay signing key: {error}")))?;
     if document.kernel_id.trim().is_empty() {
         return Err(CliError::cli_other_error(
             "Chio relay signing key: kernel id is empty",
         ));
     }
-    let keypair = Keypair::from_seed_hex(document.seed_hex.trim()).map_err(|error| {
-        CliError::cli_other_error(format!("Chio relay signing key: {error}"))
-    })?;
+    let keypair = Keypair::from_seed_hex(document.seed_hex.trim())
+        .map_err(|error| CliError::cli_other_error(format!("Chio relay signing key: {error}")))?;
     Ok((document.kernel_id, keypair))
 }
 

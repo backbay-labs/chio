@@ -70,7 +70,22 @@ impl ChioKernel {
     /// revocation store).
     pub fn revoke_capability(&self, capability_id: &CapabilityId) -> Result<(), KernelError> {
         info!(capability_id = %capability_id, "revoking capability");
-        let _ = self.with_revocation_store(|store| Ok(store.revoke(capability_id)?))?;
+        let trace_transition = self.lock_runtime_trace_transition()?;
+        let newly_revoked = self.with_revocation_store(|store| Ok(store.revoke(capability_id)?))?;
+        let trace_event = if self.runtime_trace_observer.is_some() {
+            Some(RuntimeTraceEvent::RevocationCommitted {
+                source_sequence: self.allocate_runtime_trace_source_sequence()?,
+                capability_id: capability_id.clone(),
+                newly_revoked,
+                delegation_depth_limit: self.config.max_delegation_depth,
+            })
+        } else {
+            None
+        };
+        drop(trace_transition);
+        if let Some(event) = trace_event {
+            self.observe_runtime_trace(event);
+        }
         Ok(())
     }
 
@@ -738,6 +753,61 @@ impl ChioKernel {
         Ok(())
     }
 
+    pub(crate) fn check_tool_call_revocation_admission(
+        &self,
+        request: &ToolCallRequest,
+    ) -> Result<(), KernelError> {
+        let trace_transition = self.lock_runtime_trace_transition()?;
+        let result = self.check_revocation(&request.capability);
+        let revoked_capability_id = match &result {
+            Err(KernelError::CapabilityRevoked(capability_id))
+            | Err(KernelError::DelegationChainRevoked(capability_id)) => {
+                Some(capability_id.clone())
+            }
+            _ => None,
+        };
+        let trace_event = if self.runtime_trace_observer.is_some() {
+            let revocation_subject_ids = std::iter::once(request.capability.id.clone())
+                .chain(
+                    request
+                        .capability
+                        .delegation_chain
+                        .iter()
+                        .map(|link| link.capability_id.clone()),
+                )
+                .collect();
+            Some(RuntimeTraceEvent::RevocationAdmission {
+                source_sequence: self.allocate_runtime_trace_source_sequence()?,
+                request_id: request.request_id.clone(),
+                capability_id: request.capability.id.clone(),
+                revocation_subject_ids,
+                revoked_capability_id,
+                delegation_depth: u32::try_from(request.capability.delegation_chain.len())
+                    .unwrap_or(u32::MAX),
+                delegation_depth_limit: self.config.max_delegation_depth,
+                admitted: result.is_ok(),
+            })
+        } else {
+            None
+        };
+        drop(trace_transition);
+        if let Some(event) = trace_event {
+            self.observe_runtime_trace(event);
+        }
+        result
+    }
+
+    pub(crate) fn observe_runtime_trace(&self, event: RuntimeTraceEvent) {
+        if let Some(observer) = &self.runtime_trace_observer {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                observer.observe(event);
+            }));
+            if result.is_err() {
+                warn!("runtime trace observer panicked");
+            }
+        }
+    }
+
     pub(crate) fn validate_delegation_admission(
         &self,
         cap: &CapabilityToken,
@@ -911,7 +981,7 @@ impl ChioKernel {
         BudgetEventAuthority {
             authority_id: format!("kernel:{}", self.config.keypair.public_key().to_hex()),
             lease_id: "single-node".to_string(),
-            lease_epoch: 0,
+            lease_epoch: 1,
         }
     }
 
@@ -2653,7 +2723,7 @@ impl ChioKernel {
             |binding| binding.beneficiary_id().to_owned(),
         );
 
-        let authorization = adapter.authorize(&PaymentAuthorizeRequest {
+        let authorization_request = PaymentAuthorizeRequest {
             amount_units,
             currency,
             payer: request.agent_id.clone(),
@@ -2664,7 +2734,11 @@ impl ChioKernel {
             ),
             governed,
             commerce,
+        };
+        let authorization = run_payment_adapter_operation("authorize", || {
+            adapter.authorize(&authorization_request)
         })?;
+        validate_payment_adapter_identifier(&authorization.authorization_id, "authorization_id")?;
         if let (Some(admission), Some(journal)) = (durable_admission, durable_journal.as_ref()) {
             if !journal.rail_mode.accepts(authorization.state) {
                 return Err(PaymentError::RailError(

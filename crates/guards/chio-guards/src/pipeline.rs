@@ -104,6 +104,26 @@ impl Guard for GuardPipeline {
             evidence,
         })
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        self.guards
+            .iter()
+            .any(|guard| guard.requires_dispatch_revalidation())
+    }
+
+    fn revalidate_required_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        for guard in &self.guards {
+            guard.revalidate_required_before_dispatch(ctx)?;
+        }
+        Ok(())
+    }
+
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        for guard in &self.guards {
+            guard.revalidate_before_dispatch(ctx)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -137,6 +157,29 @@ mod tests {
         }
         fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
             Err(KernelError::Internal("boom".to_string()))
+        }
+    }
+
+    struct RequiredRevalidationGuard {
+        calls: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    }
+
+    impl Guard for RequiredRevalidationGuard {
+        fn name(&self) -> &str {
+            "required-revalidation"
+        }
+
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::allow())
+        }
+
+        fn requires_dispatch_revalidation(&self) -> bool {
+            true
+        }
+
+        fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
         }
     }
 
@@ -274,5 +317,31 @@ mod tests {
             result,
             Ok(decision) if decision.verdict == Verdict::Allow
         ));
+    }
+
+    #[test]
+    fn mixed_pipeline_revalidation_preserves_legacy_child_compatibility() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let mut pipeline = GuardPipeline::new();
+        pipeline.add(Box::new(RequiredRevalidationGuard {
+            calls: std::sync::Arc::clone(&calls),
+        }));
+        pipeline.add(Box::new(AllowGuard));
+
+        let (request, scope, agent_id, server_id) = make_ctx();
+        let ctx = GuardContext {
+            request: &request,
+            scope: &scope,
+            agent_id: &agent_id,
+            server_id: &server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+
+        assert!(pipeline.requires_dispatch_revalidation());
+        assert!(pipeline.revalidate_required_before_dispatch(&ctx).is_ok());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(pipeline.revalidate_before_dispatch(&ctx).is_ok());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 }

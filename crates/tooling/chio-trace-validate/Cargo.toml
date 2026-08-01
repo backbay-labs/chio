@@ -1,0 +1,32 @@
+[package]
+name = "chio-trace-validate"
+description = "Offline validation of signed Chio observation traces"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+autobins = false
+
+[lib]
+name = "chio_trace_validate"
+
+[[bin]]
+name = "chio-trace-validate"
+path = "src/main.rs"
+
+[dependencies]
+chio-core-types = { workspace = true }
+chio-kernel = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[lints]
+workspace = true

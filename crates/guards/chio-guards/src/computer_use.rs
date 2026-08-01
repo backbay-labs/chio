@@ -310,6 +310,14 @@ impl Guard for ComputerUseGuard {
         // 3. Non-CUA actions pass through.
         Ok(GuardDecision::allow())
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        Ok(())
+    }
 }
 
 /// Match a domain host against a pattern.  Supports exact match and

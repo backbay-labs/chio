@@ -259,6 +259,12 @@ pub(crate) async fn handle_try_charge_cost(
         .event_id
         .clone()
         .unwrap_or_else(generated_budget_event_id);
+    let replayed_event = match store.mutation_event_for_event_id(&effective_event_id) {
+        Ok(event) => event.is_some(),
+        Err(error) => {
+            return budget_internal_error(&error, "budget authorization replay lookup failed")
+        }
+    };
     let (already_captured, admission, denied) = if payload.hold_id.is_none() {
         let allowed = match store.try_charge_cost_with_ids_and_authority(
             &payload.capability_id,
@@ -452,10 +458,10 @@ pub(crate) async fn handle_try_charge_cost(
         let budget_commit = match wait_for_budget_write_quorum_commit(&state, write).await {
             Ok(budget_commit) => budget_commit,
             Err(_) => {
-                if already_captured {
+                if already_captured || replayed_event {
                     return plain_http_error(
                         StatusCode::SERVICE_UNAVAILABLE,
-                        "captured budget authorization replay could not confirm quorum commit; admission retained",
+                        "budget authorization replay could not confirm quorum commit; admission retained",
                     );
                 }
                 let rollback_result = rollback_budget_authorize_exposure(

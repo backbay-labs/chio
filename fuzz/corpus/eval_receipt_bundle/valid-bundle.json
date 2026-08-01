@@ -1,0 +1,70 @@
+{
+  "schema": "chio.eval-report.bundle.v1",
+  "bundle_id": "urn:chio:eval-bundle:metr:golden-v1",
+  "created_at": "2026-05-02T00:00:00Z",
+  "producer": {
+    "name": "Chio",
+    "repository": "https://github.com/backbay-labs/chio",
+    "commit": "golden-v1",
+    "workflow_run_url": "local-eval-receipt-regen"
+  },
+  "eval_run": {
+    "run_id": "metr-golden-v1",
+    "partner": "METR",
+    "partner_slug": "metr",
+    "pipeline": "vivaria-trace-postprocess",
+    "pipeline_language": "python",
+    "model_under_eval": "partner-model",
+    "scorer_name": "tool-use-rubric",
+    "scorer_version": "v1"
+  },
+  "corpus": {
+    "name": "chio-verdict-matrix",
+    "scenario_count": 48,
+    "corpus_sha256": "47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f",
+    "manifest_path": "crates/tooling/chio-conformance/verdict_matrix/manifest.toml"
+  },
+  "receipts": [
+    {
+      "scenario_id": "capability-subset-001-read-exact",
+      "category": "capability_subset",
+      "verdict": "allow",
+      "receipt_payload": "{\n  \"receipt_id\": \"receipt-capability-subset-001-read-exact\",\n  \"scenario_id\": \"capability-subset-001-read-exact\",\n  \"category\": \"capability_subset\",\n  \"verdict\": \"allow\",\n  \"reason_code\": \"urn:chio:error:none\",\n  \"kernel_key\": \"p2-fixture-kernel\",\n  \"signature\": \"p2-fixture-signature\"\n}\n",
+      "receipt_sha256": "2667e32d83f8f7db47b316f7f188e4dcd0a7d0414767122c54a043d076acb704",
+      "evidence": {
+        "trace_id": "trace-capability-001",
+        "sample_id": "sample-capability-001"
+      }
+    },
+    {
+      "scenario_id": "revocation-propagation-001-active-read",
+      "category": "revocation_propagation",
+      "verdict": "allow",
+      "receipt_payload": "{\n  \"receipt_id\": \"receipt-revocation-propagation-001-active-read\",\n  \"scenario_id\": \"revocation-propagation-001-active-read\",\n  \"category\": \"revocation_propagation\",\n  \"verdict\": \"allow\",\n  \"reason_code\": \"urn:chio:error:none\",\n  \"kernel_key\": \"p2-fixture-kernel\",\n  \"signature\": \"p2-fixture-signature\"\n}\n",
+      "receipt_sha256": "f6db0dec41eb7b9873a4d0a14d26f7cb42c13dcfd22e04384bf1b20da67294c2",
+      "evidence": {
+        "trace_id": "trace-revocation-001",
+        "sample_id": "sample-revocation-001"
+      }
+    },
+    {
+      "scenario_id": "replay-verdict-001-fresh-read",
+      "category": "replay_verdict",
+      "verdict": "allow",
+      "receipt_payload": "{\n  \"receipt_id\": \"receipt-replay-verdict-001-fresh-read\",\n  \"scenario_id\": \"replay-verdict-001-fresh-read\",\n  \"category\": \"replay_verdict\",\n  \"verdict\": \"allow\",\n  \"reason_code\": \"urn:chio:error:none\",\n  \"kernel_key\": \"p2-fixture-kernel\",\n  \"signature\": \"p2-fixture-signature\"\n}\n",
+      "receipt_sha256": "6e52db09a03b762233c5bf01e440bd0b9009f2c38527c43654a5090e852509f2",
+      "evidence": {
+        "trace_id": "trace-replay-001",
+        "sample_id": "sample-replay-001"
+      }
+    }
+  ],
+  "signatures": [
+    {
+      "kind": "test-sha256",
+      "key_id": "local-test",
+      "signature": "5e30d00c4dba2bacb1b22dd10f725797603338a511571980a706f496c1711f03",
+      "signed_payload": "bundle_without_signatures:rfc8785"
+    }
+  ]
+}

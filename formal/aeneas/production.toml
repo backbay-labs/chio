@@ -1,13 +1,71 @@
 schema = "chio.aeneas-production.v1"
-status = "production_extraction"
+status = "generated_equivalence"
 owner = "formal-verification"
 source = "crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
 command = "./scripts/check-aeneas-production.sh"
 equivalence_command = "./scripts/check-aeneas-equivalence.sh"
-equivalence_module = "formal/lean4/Chio/Chio/Proofs/AeneasEquivalence.lean"
+equivalence_module = "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean"
 artifact_report = "target/formal/aeneas-production/equivalence-artifacts.json"
+negative_registry = "formal/aeneas/negative-tests.toml"
+vendor_manifest = "formal/lean4/vendor/aeneas/VENDOR.toml"
+vendor_release_tag = "build-2026.04.22.215158-38d10a22642d75d051e14006cc6e45055381f10e"
+snapshot_layout = "emitted_module_path"
+snapshot_normalization = "identity"
+generated_snapshot = [
+  "formal/lean4/Chio/FormalAeneas/Funs.lean",
+  "formal/lean4/Chio/FormalAeneas/Types.lean",
+]
 
-extracted_symbols = [
+[[sources]]
+id = "kernel_core"
+path = "crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
+namespace = "Chio.AeneasProduction"
+work_dir = "target/formal/aeneas-production"
+generated_module = "FormalAeneas"
+snapshot_dir = "formal/lean4/Chio/FormalAeneas"
+
+[[sources]]
+id = "economy_conversion"
+path = "crates/economy/chio-credit/src/formal_economy.rs"
+namespace = "Chio.AeneasEconomy"
+work_dir = "target/formal/aeneas-production/economy"
+generated_module = "FormalEconomy"
+snapshot_dir = "formal/lean4/Chio/FormalEconomy"
+
+[[toolchains]]
+architecture = "x86_64"
+archive_asset = "aeneas-linux-x86_64.tar.gz"
+archive_sha256 = "11b4e88776655c9fd5e391bfd2824e8b52916590962fbcb392768c57b7b32ca7"
+aeneas_official_sha256 = "b8dd32a889254365f610b22bed2cb3a155a9f1347c46079972790d334db197e5"
+charon_official_sha256 = "13137a7649d47f7fd5d257e50becbee0f58c7d6f366324eff699005fe89d6c1e"
+charon_driver_official_sha256 = "09c74891793c1ca32af3105f45c05a70d9467bb80f0a232f11c9186d0d7e7422"
+aeneas_runtime_sha256 = "b8dd32a889254365f610b22bed2cb3a155a9f1347c46079972790d334db197e5"
+charon_runtime_sha256 = "13137a7649d47f7fd5d257e50becbee0f58c7d6f366324eff699005fe89d6c1e"
+charon_driver_runtime_sha256 = "09c74891793c1ca32af3105f45c05a70d9467bb80f0a232f11c9186d0d7e7422"
+interpreter_repair = "none"
+
+[[toolchains]]
+architecture = "aarch64"
+archive_asset = "aeneas-linux-aarch64.tar.gz"
+archive_sha256 = "54938d8a89b2618e803638891f6d1ee0aa500ce2df3f04049633ca698a1fe23a"
+aeneas_official_sha256 = "60b7541bd59b53cbfb4225d500ac142c8bb6c20b6a1ce3152ac247dc3c779015"
+charon_official_sha256 = "2f57f6835e983a1fd0aa3d06d3b2024bc40f07f1788b5dd62732b59aa2164be2"
+charon_driver_official_sha256 = "45efcbd09e6dc3527458d05d5b949122045fce753c35d829f1c6a40a732eb9d2"
+aeneas_runtime_sha256 = "60b7541bd59b53cbfb4225d500ac142c8bb6c20b6a1ce3152ac247dc3c779015"
+charon_runtime_sha256 = "8963e72f89ea64c436b47b47ea1d5caeed688d80afa2bdef45ea40b82b3bbaa7"
+charon_driver_runtime_sha256 = "8b30c02e0db7fb5fea4cdecbc88b172328bc700f90e3c1d1e3129845cc42c03f"
+interpreter_repair = "replace_exact_bytes_v1"
+interpreter_before = "/lib64/ld-linux-x86-64.so.2"
+interpreter_after = "/lib/ld-linux-aarch64.so.1"
+
+[[targets]]
+name = "decision_core"
+source = "kernel_core"
+status = "generated_equivalence"
+types = [
+  "BudgetCommitResult",
+]
+functions = [
   "classify_time_window_code",
   "time_window_valid",
   "exact_or_wildcard_covers_by_flags",
@@ -23,4 +81,65 @@ extracted_symbols = [
   "guard_step_allows",
   "revocation_snapshot_denies",
   "receipt_fields_coupled",
+]
+equivalence_theorems = [
+  "classify_time_window_code|Chio.Proofs.generated_classify_time_window_code_eq_mirror",
+  "time_window_valid|Chio.Proofs.generated_time_window_valid_eq_mirror",
+  "exact_or_wildcard_covers_by_flags|Chio.Proofs.generated_exact_or_wildcard_covers_by_flags_eq_mirror",
+  "prefix_wildcard_or_exact_covers_by_flags|Chio.Proofs.generated_prefix_wildcard_or_exact_covers_by_flags_eq_mirror",
+  "optional_u32_cap_is_subset|Chio.Proofs.generated_optional_u32_cap_is_subset_eq_mirror",
+  "required_true_is_preserved|Chio.Proofs.generated_required_true_is_preserved_eq_mirror",
+  "monetary_cap_is_subset_by_parts|Chio.Proofs.generated_monetary_cap_is_subset_by_parts_eq_mirror",
+  "budget_precheck|Chio.Proofs.generated_budget_precheck_eq_mirror",
+  "budget_commit|Chio.Proofs.generated_budget_commit_eq_mirror",
+  "dpop_freshness_valid|Chio.Proofs.generated_dpop_freshness_valid_eq_mirror",
+  "dpop_admits|Chio.Proofs.generated_dpop_admits_eq_mirror",
+  "nonce_admits|Chio.Proofs.generated_nonce_admits_eq_mirror",
+  "guard_step_allows|Chio.Proofs.generated_guard_step_allows_eq_mirror",
+  "revocation_snapshot_denies|Chio.Proofs.generated_revocation_snapshot_denies_eq_mirror",
+  "receipt_fields_coupled|Chio.Proofs.generated_receipt_fields_coupled_eq_mirror",
+]
+
+[[targets]]
+name = "reservation_ledger"
+source = "kernel_core"
+status = "generated_equivalence"
+types = [
+  "ReservationLedger",
+]
+functions = [
+  "ledger_is_terminal",
+  "ledger_apply",
+]
+equivalence_theorems = [
+  "ledger_is_terminal|Chio.Proofs.generated_ledger_is_terminal_eq_model",
+  "ledger_apply|Chio.Proofs.generated_ledger_apply_eq_model",
+]
+
+[[targets]]
+name = "merkle_walk"
+source = "kernel_core"
+status = "generated_equivalence"
+types = [
+  "InclusionStep",
+]
+functions = [
+  "inclusion_step",
+]
+equivalence_theorems = [
+  "inclusion_step|Chio.Proofs.generated_inclusion_step_eq_model",
+]
+
+[[targets]]
+name = "economy_conversion"
+source = "economy_conversion"
+status = "generated_equivalence"
+types = []
+functions = [
+  "convert_ceil_scalar",
+  "convert_floor_scalar",
+]
+equivalence_theorems = [
+  "convert_ceil_scalar|Chio.Proofs.generated_convert_ceil_scalar_eq_model",
+  "convert_floor_scalar|Chio.Proofs.generated_convert_floor_scalar_eq_model",
 ]

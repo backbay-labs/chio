@@ -262,128 +262,128 @@ sha256    = "474f04f19a306102aaed033802c43cdf679222af4c0f252eb35d429e0c3a0071"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_canonical_json"
-path      = "fuzz/corpus/fuzz_canonical_json/binding-canonical-v1.json"
+target    = "canonical_json"
+path      = "fuzz/corpus/canonical_json/binding-canonical-v1.json"
 sha256    = "1c7803c839b5c37a7728dc6ec44dc90c57179d9de6c119cf514b48cd36bac520"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_canonical_json"
-path      = "fuzz/corpus/fuzz_canonical_json/minimal-object.json"
+target    = "canonical_json"
+path      = "fuzz/corpus/canonical_json/minimal-object.json"
 sha256    = "919809ce6665005aff71ea60015ee5583dca716ec7da709859da9060cef22f7b"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/binding-allow_receipt.json"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/binding-allow_receipt.json"
 sha256    = "77c03f68f2872b4b4ada3982a6023d44a2eafb3f1f538405d6d479b830a13d76"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/binding-broken_delegation_chain_signature.json"
-sha256    = "6ca1c8bda1345218e9c327f18da504926e23dfd047dd54e9fb309930e6445ed6"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/binding-broken_delegation_chain_signature.json"
+sha256    = "803c4e461776a3b8b8d1c0ccf80b6e3bf144a66c494cbe172349ed2dc914dca1"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/binding-deny_receipt.json"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/binding-deny_receipt.json"
 sha256    = "f1cf71c7bf412230322fb4ca63a6e38f1ea0f9234eda2bdc7914c72ccc75233f"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/binding-expired_capability.json"
-sha256    = "f1ea29f67aa3f9a611ed331b9ab6239806dc60f54f8f99900d9d868380900f1b"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/binding-expired_capability.json"
+sha256    = "22ee59ccfb519efd184eb69de9276b787a2fab4d6e7221507d9f9337c297ea32"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/binding-not_yet_valid_capability.json"
-sha256    = "f6befe1352e09c79d45a92dd0533608ccb5f8777bb527adbf27289e01091c699"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/binding-not_yet_valid_capability.json"
+sha256    = "fff4eb53b8b22a417e5c2b9329175a698d93ee130af8b55ab79e4c2c17c08c78"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/binding-signed_receipt_with_invalid_parameter_hash.json"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/binding-signed_receipt_with_invalid_parameter_hash.json"
 sha256    = "aab8f069da84d48f84a9f796cdff36a9163126d0a97c5057e97c8e6c394bdb3b"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/binding-tampered_capability_signature.json"
-sha256    = "bf4c0cc17851940c3aeb5c41fe4bed9c188dfa81cb493fd4c4f0abb25d936128"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/binding-tampered_capability_signature.json"
+sha256    = "9210f3cfcdcb188aee703ce3811d62e44a373a8b64a4c17cdbe704d0c7fa1b2f"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/binding-tampered_receipt_signature.json"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/binding-tampered_receipt_signature.json"
 sha256    = "de96118446912fdf27d19ed32a2d6816a3e9a9735227175bbda9c1fd06889250"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/binding-valid_delegated_capability.json"
-sha256    = "2ea4e2a0ee9357858897e5ee94b9691d97a4d13e3d7fd79060829ad078612e51"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/binding-valid_delegated_capability.json"
+sha256    = "d50650ccf2ebfcb8753d44a1a0b643939afcbda04324a8b353b9d1e572d0b9c1"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/capability-lineage.ndjson"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/capability-lineage.ndjson"
 sha256    = "789ca683a814f51088f5a4384ce22d3ecd04626620cd51c7909c11320686d928"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/child-request-receipt.json"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/child-request-receipt.json"
 sha256    = "42a4f4bfb83ea2105c7fc9083c2df92971f9a1796e0e7284a1d5ae8c21754460"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/minimal-receipts.ndjson"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/minimal-receipts.ndjson"
 sha256    = "a8f224542a0605779f503c46276295a7d334a9a0b21f989e5a4bd98d4431dd87"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_capability_receipt"
-path      = "fuzz/corpus/fuzz_capability_receipt/tenant-receipt.json"
+target    = "capability_receipt"
+path      = "fuzz/corpus/capability_receipt/tenant-receipt.json"
 sha256    = "8a91cc9495e24651a1774ef86aca9e3d97bf046aee78d1dee2b26dbe3c81c554"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_manifest_roundtrip"
-path      = "fuzz/corpus/fuzz_manifest_roundtrip/binding-duplicate_tool_name_manifest.json"
+target    = "manifest_roundtrip"
+path      = "fuzz/corpus/manifest_roundtrip/binding-duplicate_tool_name_manifest.json"
 sha256    = "45e502ec8a7cd90703c4cb22b692d23190c22205e0c7fa48f391c7d310305498"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_manifest_roundtrip"
-path      = "fuzz/corpus/fuzz_manifest_roundtrip/binding-invalid_embedded_public_key.json"
+target    = "manifest_roundtrip"
+path      = "fuzz/corpus/manifest_roundtrip/binding-invalid_embedded_public_key.json"
 sha256    = "293b49c57c52faf228e920a8726d0db2c321af5aec68e06f18ba3623f8127d10"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_manifest_roundtrip"
-path      = "fuzz/corpus/fuzz_manifest_roundtrip/binding-mismatched_embedded_public_key.json"
+target    = "manifest_roundtrip"
+path      = "fuzz/corpus/manifest_roundtrip/binding-mismatched_embedded_public_key.json"
 sha256    = "913025cc736da0e9e7cda19ece0e37e94385fb82de4a9cc7c29528bef7cb4bed"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_manifest_roundtrip"
-path      = "fuzz/corpus/fuzz_manifest_roundtrip/binding-tampered_manifest_signature.json"
+target    = "manifest_roundtrip"
+path      = "fuzz/corpus/manifest_roundtrip/binding-tampered_manifest_signature.json"
 sha256    = "47e411ff4e24d3e8936de7021790e02fb81cd056aad100270414e597eb6b420c"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_manifest_roundtrip"
-path      = "fuzz/corpus/fuzz_manifest_roundtrip/binding-valid_signed_manifest.json"
+target    = "manifest_roundtrip"
+path      = "fuzz/corpus/manifest_roundtrip/binding-valid_signed_manifest.json"
 sha256    = "7f15478505943b38ce557539f9f453cf06d6deeea98d2dfce86aeb81060cc74a"
 source    = "hand_curated_coverage"
 
 [[seed]]
-target    = "fuzz_manifest_roundtrip"
-path      = "fuzz/corpus/fuzz_manifest_roundtrip/malformed-signed-manifest-unknown-fields.json"
+target    = "manifest_roundtrip"
+path      = "fuzz/corpus/manifest_roundtrip/malformed-signed-manifest-unknown-fields.json"
 sha256    = "b1223a1b99742a380d4a1860278ce911856fa08d7f390d0237896de132b7e72f"
 source    = "hand_curated_coverage"
 
@@ -427,6 +427,24 @@ source    = "hand_curated_coverage"
 target    = "fuzz_policy_parse_compile"
 path      = "fuzz/corpus/fuzz_policy_parse_compile/hushspec-tool-allow.yaml"
 sha256    = "6d5729b428f9b9de637b07ecc3cb8899b9fe5e85efe3530de5d5e722bb009d4f"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "policy_analyze"
+path      = "fuzz/corpus/policy_analyze/contradiction.pair"
+sha256    = "b965adbea5b1a8ec24b0d7323368c928b57d8b6ecd3fae48ca37a7ecc9702347"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "policy_analyze"
+path      = "fuzz/corpus/policy_analyze/narrowing.pair"
+sha256    = "fb8663e5eaeb2dce6c676003e84f971a2a904cfe93ecf70e8e946f3e6ffe86d7"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "policy_analyze"
+path      = "fuzz/corpus/policy_analyze/widening.pair"
+sha256    = "52c91d12ed4dc7d677ae717b79ba5a112822465502c5c7322cba478f0a3def49"
 source    = "hand_curated_coverage"
 
 [[seed]]
@@ -902,3 +920,140 @@ path      = "fuzz/corpus/wasm_guard_escape/undeclared_imports.wasm"
 sha256    = "77a8a8a00e263052e3f473060a7ab9e5f6658b73fd0e535b57282cb9dba155f0"
 source    = "hand_curated_coverage"
 
+[[seed]]
+target    = "attest_verify"
+path      = "fuzz/corpus/attest_verify/malformed-bundle.bin"
+sha256    = "158e57e44879404969ca5d731a51ec3dd43ab5c9049b7582071d26acaa833f5c"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "attest_verify"
+path      = "fuzz/corpus/attest_verify/truncated-bundle.bin"
+sha256    = "ee5154f3e4bb01bdea99b16927edbe265ea6967408c9bc45ee70d4b778981e20"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "eval_receipt_bundle"
+path      = "fuzz/corpus/eval_receipt_bundle/missing-fields.json"
+sha256    = "e8f6861b4fc15546f51e6ace9cac9ef5c6c14872ff48f985568d396723686ed1"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "eval_receipt_bundle"
+path      = "fuzz/corpus/eval_receipt_bundle/truncated.json"
+sha256    = "0a9b34966f65523f5a6cf6f343ce1c1ff524d31db6ec7a73b22693893e6dd7ba"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "eval_receipt_bundle"
+path      = "fuzz/corpus/eval_receipt_bundle/valid-bundle.json"
+sha256    = "27331e1d7d7f94f0e6292d78a4dbf8e1ff0320d5e82cb0b782cc55357bfb1a97"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "federation_trust_establishment"
+path      = "fuzz/corpus/federation_trust_establishment/handshake-challenge.json"
+sha256    = "eec3ab97e2b551cd87a090d3e0f25dc5e285e01007f02ecb4982d02cb8965e59"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "federation_trust_establishment"
+path      = "fuzz/corpus/federation_trust_establishment/invalid-signature-envelope.json"
+sha256    = "7281b8e8972c7234c4b10193736b8c50483eef71f1a41154a4f9ccd801a943d2"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "federation_trust_establishment"
+path      = "fuzz/corpus/federation_trust_establishment/stale-peer.json"
+sha256    = "1fb3285823fc65c7955acc8bf3432904333d5afde276bf3a708b3b66275b460c"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "fuzz_merkle_checkpoint"
+path      = "fuzz/corpus/fuzz_merkle_checkpoint/single-leaf.ndjson"
+sha256    = "76c0f0c6873ba644deb41b08a24e1aeec7833897608f87450c20c57331fc27fe"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "fuzz_merkle_checkpoint"
+path      = "fuzz/corpus/fuzz_merkle_checkpoint/two-leaves.ndjson"
+sha256    = "4f9dcb334ad37a98fa903b928e6750548426eb0b6217e848042495cf8faff7b8"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "revocation_oracle_merkle"
+path      = "fuzz/corpus/revocation_oracle_merkle/empty-ops.bin"
+sha256    = "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "revocation_oracle_merkle"
+path      = "fuzz/corpus/revocation_oracle_merkle/inclusion-op.bin"
+sha256    = "ce2056eb5f0142d65d739f8a4195405372ff8fcbc5c8469b3cbca24c964956af"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "revocation_oracle_merkle"
+path      = "fuzz/corpus/revocation_oracle_merkle/insert-op.bin"
+sha256    = "d44a458b270a8674410a6c63e4f3933856da63dd26c578eee2ad1e03f90b2749"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "underwriting_policy_input"
+path      = "fuzz/corpus/underwriting_policy_input/marketplace-limit-revoked.json"
+sha256    = "bd6341e8ec72601c7f19711492c1f41e9b0cc80d593e2f85c9e7f9112355cce7"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "underwriting_policy_input"
+path      = "fuzz/corpus/underwriting_policy_input/policy-input-query.json"
+sha256    = "7326d163ce72df0c24a3f29c473108b2257f4199032bc2da8b8011fac1f08095"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "underwriting_policy_input"
+path      = "fuzz/corpus/underwriting_policy_input/policy-invalid-thresholds.json"
+sha256    = "ffd4fb81c2ca39a97d46a043fc29915fa991e0bf2f5a6fdf92e62521cb29906f"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "underwriting_policy_input"
+path      = "fuzz/corpus/underwriting_policy_input/premium-inputs.json"
+sha256    = "8e65d1c66359f5bbba26fd05e682c421bfb589e81b31bc985eaa92e10bd0933d"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "underwriting_policy_input"
+path      = "fuzz/corpus/underwriting_policy_input/simulation-request.json"
+sha256    = "f368c970f16892fec08924eb397e6d38f1bd248aa552e370beb91fbc6592dc6d"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_smith"
+path      = "fuzz/corpus/wasm_guard_smith/component.seed"
+sha256    = "69cf4a8eee84d114f4b61f67a6ffed008de6edb13747d13cdfbc2132eee8132d"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_smith"
+path      = "fuzz/corpus/wasm_guard_smith/component_deny.seed"
+sha256    = "c2bbe369e0ea82a25887cf54f18e9f8abe14ab54c5d03e07be33d65784d8a4dc"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_smith"
+path      = "fuzz/corpus/wasm_guard_smith/core_allow.seed"
+sha256    = "81f154e36343fbeb05947370330ce3d2b1a752d8588be2f7d8c7aaa8070f03e8"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_smith"
+path      = "fuzz/corpus/wasm_guard_smith/core_deny.seed"
+sha256    = "1bf83516133ab6681559ffc8e6aaa5d9a39fc3e1cf4c783f6214d02fbb6233d8"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_smith"
+path      = "fuzz/corpus/wasm_guard_smith/core_unknown.seed"
+sha256    = "063830fb1a50a30705ee2b118bbbb08de363e8dc4a3a38762394b85eac9fbe41"
+source    = "hand_curated_coverage"

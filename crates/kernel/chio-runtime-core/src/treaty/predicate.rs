@@ -166,7 +166,7 @@ pub fn evaluate_bounded_treaty_predicate_document(
         && evaluate_bounded_treaty_predicate(&document.predicate, receipt)
 }
 
-/// Executable mirror of `PredicateLang.denote` on the bounded Rust domain.
+/// Executable counterpart to `ReceiptPredicate.evaluate` on the bounded Rust domain.
 #[must_use]
 pub fn evaluate_bounded_treaty_predicate(
     predicate: &BoundedTreatyPredicate,
@@ -176,7 +176,7 @@ pub fn evaluate_bounded_treaty_predicate(
     evaluate_predicate_checked(predicate, receipt, 0, &mut nodes).unwrap_or(false)
 }
 
-/// Executable mirror of `PredicateLang.admits`.
+/// Executable counterpart to `ReceiptPredicate.admits`.
 #[must_use]
 pub fn evaluate_bounded_treaty_constitution(
     constitution: &BoundedTreatyConstitution,
@@ -185,7 +185,7 @@ pub fn evaluate_bounded_treaty_constitution(
     evaluate_constitution_checked(constitution, receipt).unwrap_or(false)
 }
 
-/// Executable mirror of `PredicateLang.refinesOnConstitution`.
+/// Executable counterpart to `ReceiptPredicate.refinesOn`.
 ///
 /// The result is restricted to `domain`. An empty domain returns true, as in
 /// Lean. A constitution outside the evaluator's complexity bound returns

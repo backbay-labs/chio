@@ -1,18 +1,19 @@
 use chio_test_support::prelude::*;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
 const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
-const STANDARD_WEBHOOKS_VERIFIER_NOW: &str = "1770508860";
-const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: &str = "300";
+const STANDARD_WEBHOOKS_FIXTURE_TIMESTAMP: u64 = 1_770_508_800;
 const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de,",
     "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff,",
     "bed7d2ab668da3efad613998f06f7abf7875f3a6b7677a9f3ce947d77d7760a6,",
-    "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737,",
+    "204040e364c10f2bec9c1fe500a1cd4c247c89d650a01ed7e82caba867877c21,",
     "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
 );
 const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: &str =
@@ -82,6 +83,15 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn unique_agent_web_replay_store_path() -> PathBuf {
+    static NEXT_REPLAY_STORE: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "chio-agent-web-proof-doctor-replay-{}-{}.sqlite",
+        std::process::id(),
+        NEXT_REPLAY_STORE.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
 fn run_proof_doctor_scenario(root: &Path, scenario: &str) -> std::process::Output {
     proof_doctor_command()
         .arg("proof")
@@ -112,17 +122,22 @@ fn run_proof_doctor_default_scenario(root: &Path) -> std::process::Output {
 
 fn proof_doctor_command() -> std::process::Command {
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
+    let (verifier_now, max_age_seconds) = standard_webhooks_clock_env();
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
         STANDARD_WEBHOOKS_VERIFIER_SECRET,
     );
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
-        STANDARD_WEBHOOKS_VERIFIER_NOW,
+        verifier_now,
     );
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
-        STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
+        max_age_seconds,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_REPLAY_STORE_PATH",
+        unique_agent_web_replay_store_path(),
     );
     command.env(
         "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
@@ -248,6 +263,18 @@ fn proof_doctor_command() -> std::process::Command {
     command
 }
 
+fn standard_webhooks_clock_env() -> (String, String) {
+    let host_now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .test_expect("host clock is after Unix epoch")
+        .as_secs();
+    let verifier_now = host_now.saturating_add(60);
+    let max_age_seconds = verifier_now
+        .saturating_sub(STANDARD_WEBHOOKS_FIXTURE_TIMESTAMP)
+        .saturating_add(300);
+    (verifier_now.to_string(), max_age_seconds.to_string())
+}
+
 fn proof_room_fixture_trusted_bundle_signer_keys() -> String {
     let test_bundle_signer = chio_core::Keypair::from_seed(&TEST_SIGNATURE_SEED)
         .public_key()
@@ -357,7 +384,12 @@ fn proof_doctor_report_carries_stable_diagnostic_codes() {
 fn proof_doctor_accepts_agent_web_interop_evidence() {
     let output = run_proof_doctor_scenario(&workspace_root(), "agent-web-interop");
 
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
     let report: serde_json::Value =
         serde_json::from_str(&stdout).test_expect("doctor report parses");
@@ -576,7 +608,12 @@ fn proof_doctor_accepts_enterprise_export_evidence() {
 fn proof_doctor_accepts_proof_package_evidence() {
     let output = run_proof_doctor_scenario(&workspace_root(), "proof-package");
 
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
     let report: serde_json::Value =
         serde_json::from_str(&stdout).test_expect("doctor report parses");

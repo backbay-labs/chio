@@ -1,5 +1,24 @@
 use super::*;
 
+fn private_remote_admission_directory(label: &str) -> std::path::PathBuf {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time before unix epoch")
+        .as_nanos();
+    let directory = std::env::temp_dir().join(format!(
+        "chio-remote-admission-{label}-{}-{nonce}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&directory).expect("create remote admission directory");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .expect("secure remote admission directory");
+    }
+    directory
+}
+
 #[test]
 fn mcp_rate_limiter_caps_session_window() {
     let limiter = McpRateLimiter::new();
@@ -30,21 +49,7 @@ fn mcp_rate_limiter_caps_tracked_keys() {
 
 #[test]
 fn remote_session_factory_holds_one_durable_admission_sidecar() {
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system time before unix epoch")
-        .as_nanos();
-    let directory = std::env::temp_dir().join(format!(
-        "chio-remote-admission-owner-{}-{nonce}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&directory).expect("create remote admission directory");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
-            .expect("secure remote admission directory");
-    }
+    let directory = private_remote_admission_directory("owner");
     let policy_path = directory.join("policy.yaml");
     std::fs::write(
         &policy_path,
@@ -73,21 +78,7 @@ fn remote_session_factory_holds_one_durable_admission_sidecar() {
 
 #[test]
 fn remote_session_factory_rejects_admission_sidecar_aliases() {
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system time before unix epoch")
-        .as_nanos();
-    let directory = std::env::temp_dir().join(format!(
-        "chio-remote-admission-alias-{}-{nonce}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&directory).expect("create remote admission directory");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
-            .expect("secure remote admission directory");
-    }
+    let directory = private_remote_admission_directory("alias");
     let policy_path = directory.join("policy.yaml");
     std::fs::write(
         &policy_path,

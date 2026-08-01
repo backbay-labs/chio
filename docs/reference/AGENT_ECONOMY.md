@@ -30,6 +30,13 @@ and assess ERC-4337/paymaster compatibility. Those surfaces remain
 interoperability adapters over canonical Chio approval, receipt, and settlement
 truth; they do not become a second ledger.
 
+The current formal boundary is equally explicit. Checked scalar ceiling and
+floor conversion helpers are production-called and bound through Aeneas, Lean,
+and Kani. Collection-level multi-currency netting, recomputation, isolation,
+and idempotence are not claimed on this branch because the required netting
+surface has not merged. No economy-conservation property is registered from
+the scalar groundwork alone.
+
 ---
 
 ## 2. Current Architecture (What Exists)
@@ -702,7 +709,13 @@ receipt-side settlement mapping helper.
 Also implemented on 2026-03-23: `chio-kernel` now ships a concrete
 `X402PaymentAdapter` reference bridge. It performs a thin prepaid HTTP
 authorization hop before execution, records receipt-linked payment references
-on successful calls, and denies truthfully when authorization fails.
+on successful calls, and denies truthfully when authorization fails. The
+built-in adapter does not synthesize capture, release, or refund
+acknowledgements. Without a configured endpoint, those operations remain
+pending with a reconciliation reason. Deployments can install authoritative
+HTTP acknowledgement paths with `with_capture_path`, `with_release_path`, and
+`with_refund_path`; each response must provide a transaction identifier and
+settlement status.
 
 Extended on 2026-03-26: the x402 authorize payload now carries governed
 transaction context when present, including the intent id/hash, target
@@ -713,44 +726,60 @@ Extended on 2026-03-26: `chio-kernel` now also ships `AcpPaymentAdapter`, a
 seller-scoped shared-payment-token reference bridge. Governed intents can now
 carry typed commerce approval context (`seller`, `shared_payment_token_id`),
 grants can require an exact seller scope, and receipts preserve the commerce
-approval evidence alongside the financial payment block.
+approval evidence alongside the financial payment block. The built-in ACP-Commerce
+adapter requires the same explicit acknowledgement paths for capture, release,
+and refund.
 
 Also implemented on 2026-03-23: pre-execution monetary denials now release any
 provisional internal budget debit before the kernel signs the deny receipt, so
 guard-side denials do not leak budget state.
 
-Also implemented on 2026-03-23: aborted monetary invocations now unwind
-provisional budget debits before returning deny/cancel/incomplete outcomes, and
-successful invocations reconcile the internal debit down to actual reported
+Also implemented on 2026-03-23: monetary cleanup unwinds provisional budget
+debits only when the kernel proves that dispatch did not occur. Once dispatch
+begins, an aborted invocation with an unknown outcome retains budget and payment
+exposure pending reconciliation and produces a signed `Decision::Incomplete`.
+Successful invocations reconcile the internal debit down to actual reported
 cost when the configured payment rail is not prepaid.
 
 #### 3.6.2 Implemented and Planned Adapters
 
 | Adapter | Rail | Settlement | Notes |
 |---------|------|-----------|-------|
-| `AcpPaymentAdapter` | ACP-Commerce / Shared Payment Token | Hold + capture | Seller-scoped commerce approvals with explicit `max_amount` bounds and receipt-linked shared payment token evidence. |
-| `X402PaymentAdapter` | x402 HTTP payment protocol | Prepaid per-request | HTTP 402 negotiation. The adapter settles before retry, so denial can still happen before execution. |
+| `AcpPaymentAdapter` | ACP-Commerce / Shared Payment Token | Authorize plus configured HTTP settlement | Seller-scoped commerce approvals with explicit `max_amount` bounds. Missing acknowledgement paths remain pending for reconciliation. |
+| `X402PaymentAdapter` | x402 HTTP payment protocol | Authorize plus configured HTTP settlement | Settlement paths are explicit; the adapter never fabricates capture, release, or refund evidence. |
 | `StablecoinPaymentAdapter` | USDC/USDT on EVM chains | Async (block confirmation) | On-chain transfer or hold model. Receipts may carry `pending` settlement state until confirmations land. |
 
 #### 3.6.3 Integration Point
 
-The `PaymentAdapter` is an optional dependency of `ChioKernel`.
-`X402PaymentAdapter` uses the prepaid branch below, while `AcpPaymentAdapter`
-uses the hold/capture branch for seller-scoped commerce approvals.
+The `PaymentAdapter` is an optional dependency of `ChioKernel`. External rail
+authorization requires a freshly reserved execution nonce or governed
+approval. DPoP alone does not satisfy this requirement because the built-in
+DPoP replay store is process-scoped. Production hosts that need restart-safe
+payment replay prevention must install the durable execution-nonce or governed
+approval store used by their authorization path.
 
 When configured, the kernel follows this rule set:
 
 1. If the rail requires or supports pre-authorization, the kernel calls
-   `authorize(...)` before invoking the tool. Authorization failure produces a
-   truthful `Decision::Deny` receipt because the tool never executed.
+   `authorize(...)` before invoking the tool, but only after reserving an
+   execution nonce or governed approval. A known-clean authorization failure
+   produces `Decision::Deny` and rolls the credential reservation back. An
+   unavailable rail, rail error, panic, or invalid authorization identifier is
+   outcome-unknown, so the kernel retains the credential marker and budget
+   exposure to prevent a second authorization.
 2. The tool executes and reports the actual cost.
 3. For prepaid rails, the receipt records the prepaid payment reference and
    preserves the prepaid amount as the charged cost. For non-prepaid rails, the
    kernel captures the actual amount and reconciles any provisional debit down
    to the actual reported cost.
-4. If execution aborts before a result is produced, the kernel unwinds the
-   provisional internal budget debit and releases or refunds the external rail
-   authorization before returning the non-success outcome.
+4. If execution aborts and the kernel proves that dispatch did not occur, it
+   unwinds the provisional internal budget debit and releases or refunds the
+   external rail authorization only when the adapter returns the exact expected
+   settlement state and a valid, nonempty, unpadded transaction identifier.
+   Otherwise the signed receipt records an unknown unwind outcome and retains
+   the exposure. After dispatch begins, an abort with an unknown outcome retains
+   budget and payment exposure pending reconciliation and produces a signed
+   `Decision::Incomplete`.
 5. If settlement work fails after the tool already ran, the kernel still signs
    `Decision::Allow` and records the failed settlement state plus a recovery
    reference in `FinancialReceiptMetadata`. Reconciliation happens out-of-band.
@@ -1194,8 +1223,8 @@ operator-managed sidecar data keyed by `receipt_id`.*
 5. **[current]** If needed, kernel obtains budget and payment pre-authorization using `max_cost_per_invocation` or a quoted amount.
 6. Kernel forwards request to tool server. *(current, unchanged)*
 7. **[current]** Tool server returns result + `ToolInvocationCost`.
-8. **[current]** Kernel verifies reported cost against the per-invocation cap, unwinds aborted invocations, and finalizes the budget charge.
-9. **[current]** If `PaymentAdapter` is configured, the kernel either records prepaid settlement metadata or captures/releases the post-execution amount depending on rail mode.
+8. **[current]** Kernel verifies reported cost against the per-invocation cap and finalizes the budget charge. Cleanup unwinds admitted state only when non-dispatch is proven; an outcome-unknown post-dispatch path retains state and exposure pending reconciliation and produces a signed `Decision::Incomplete`.
+9. **[current]** If `PaymentAdapter` is configured, the kernel either records prepaid settlement metadata or captures/releases the post-execution amount depending on rail mode and known outcome.
 10. **[current]** Kernel signs `ChioReceipt` with `FinancialReceiptMetadata`, including settlement status and payment reference.
 11. Receipt is appended to `SqliteReceiptStore` and replicated. *(current)*
 12. **[current]** Failed or pending settlement follow-up is handled through

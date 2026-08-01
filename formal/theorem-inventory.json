@@ -3,15 +3,15 @@
   "rootModule": "formal/lean4/Chio/Chio.lean",
   "assumptions": [
     {
-      "id": "theorem.receipt.id_input_set_pinned",
-      "leanName": "Chio.Proofs.receipt_id_collision_resistant",
-      "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
+      "id": "assume.hash.collision_resistant",
+      "leanName": "Chio.Json.hash_collision_resistant",
+      "file": "formal/lean4/Chio/Chio/Json/Hash.lean",
       "kind": "axiom",
       "rootImported": true,
       "claimClass": "symbolic_crypto",
       "status": "assumed",
-      "mapsTo": ["P4"],
-      "notes": "ASSUMED, not proven in Lean. Receipt content-addressing: the kernel mints ChioReceipt whose id field equals H(canonical_jcs(ChioReceiptIdInput)) and the replay store keys exclusively on id; the load-bearing property is injectivity (distinct canonical id inputs never collide). Declared as a Lean axiom rather than a theorem because the bounded ReceiptBody model treats id as an opaque String with no modeled canonicalizer or hash, so there is nothing in this development to prove injectivity against. Mechanizing it requires a Lean model of the JCS serializer, a model of H, and a collision-resistance assumption on H (ASSUME-SHA256 in formal/assumptions.toml)."
+      "mapsTo": ["P4", "P7"],
+      "notes": "Symbolic hash collision resistance over the image of the mechanized canonical UTF-8 renderer. This is the sole explicit root-imported Lean axiom and is registered one-to-one as ASSUME-SHA256; concrete SHA-256 remains outside Lean."
     }
   ],
   "theorems": [
@@ -256,6 +256,72 @@
       "notes": "The bounded evaluator allows when signature, time, revocation, and scope checks all pass."
     },
     {
+      "id": "proof.escape_string_inj",
+      "leanName": "Chio.Proofs.escape_string_inj",
+      "file": "formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "A checked decoder proves that Chio's C0, DEL, and C1 escaping, short escapes, quotes, reverse solidus, and literal Unicode scalar rendering are injective."
+    },
+    {
+      "id": "proof.render_int_inj",
+      "leanName": "Chio.Proofs.render_int_inj",
+      "file": "formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Canonical sign and decimal-digit rendering is injective across the signed i64 and unsigned u64 modeled range."
+    },
+    {
+      "id": "proof.sorted_assoc_ext",
+      "leanName": "Chio.Proofs.sorted_assoc_ext",
+      "file": "formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Strictly UTF-16-sorted unique object entries are determined by their canonical rendering."
+    },
+    {
+      "id": "proof.canonical_inj",
+      "leanName": "Chio.Proofs.canonical_inj",
+      "file": "formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "A proved injective Unicode-scalar-to-UTF-8 boundary plus deterministic lexical recovery and structural parsing establish canonical byte injectivity for normalized integers, scalar strings, and arbitrary finite arrays and objects."
+    },
+    {
+      "id": "proof.receipt_id_input_collision_resistant",
+      "leanName": "Chio.Proofs.receipt_id_input_collision_resistant",
+      "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "symbolic_crypto",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Equal symbolic identifiers bind an injective named-object projection of all 20 ChioReceiptIdInput fields. The projection follows UTF-16 field-key order and Rust serde omission rules. Compound action, decision, actor-chain, evidence, metadata, and key values must inhabit bounded JValue; production serde correspondence remains ASSUME-CANONICAL-JSON."
+    },
+    {
+      "id": "proof.receipt_id_collision_resistant",
+      "leanName": "Chio.Proofs.receipt_id_collision_resistant",
+      "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "symbolic_crypto",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Equal symbolic receipt identifiers imply equal modeled content and policy hashes as a corollary of full 20-field projection binding plus the audited hash collision-resistance idealization."
+    },
+    {
       "id": "proof.applyProof_append",
       "leanName": "Chio.Proofs.applyProof_append",
       "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
@@ -284,6 +350,72 @@
       "claimClass": "symbolic_crypto",
       "mapsTo": ["P4"],
       "notes": "Executable verification theorem for symbolic membership proofs."
+    },
+    {
+      "id": "proof.stepFoldLoop_eq_directedProofLoop_map",
+      "leanName": "Chio.Proofs.stepFoldLoop_eq_directedProofLoop_map",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Inductive equivalence between the executable hash fold and the direction-tagged proof decoder at the same bounded fuel."
+    },
+    {
+      "id": "proof.stepFold_eq_directedProof_map",
+      "leanName": "Chio.Proofs.stepFold_eq_directedProof_map",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "The checked inclusion walk and direction-tagged proof decoder agree on invalid geometry, carry levels, path consumption, and trailing-path rejection."
+    },
+    {
+      "id": "proof.stepFold_eq_applyProof",
+      "leanName": "Chio.Proofs.stepFold_eq_applyProof",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "A successfully decoded index-directed audit path produces exactly the existing Receipt.applyProof result."
+    },
+    {
+      "id": "proof.stepFold_membership_sound_if_geometry_agrees",
+      "leanName": "Chio.Proofs.stepFold_membership_sound_if_geometry_agrees",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "symbolic_crypto",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Conditional composition of the index-directed fold with membership_proof_sound. The separate bounded geometry theorem discharges traversal shape for the supported domain."
+    },
+    {
+      "id": "proof.boundedWalkGeometry_decodes",
+      "leanName": "Chio.Proofs.boundedWalkGeometry_decodes",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "All 36 carry-last-node geometries through eight leaves decode to a direction-tagged proof whose application reaches the declared symbolic root."
+    },
+    {
+      "id": "proof.bounded_stepFold_sound",
+      "leanName": "Chio.Proofs.bounded_stepFold_sound",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "symbolic_crypto",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "The checked fold reaches the declared symbolic root for every leaf index at every tree size from one through eight. Hashing remains under ASSUME-SHA256."
     },
     {
       "id": "proof.checkpoint_consistency",
@@ -476,6 +608,50 @@
       "notes": "The bounded guard pipeline can allow only if core authorization already passed."
     },
     {
+      "id": "proof.wasm_guest_output_confinement",
+      "leanName": "Chio.Guards.WasmBoundary.guest_output_confinement",
+      "file": "formal/lean4/Chio/Chio/Guards/WasmBoundary.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "For Chio's bounded core-module dispatch model, executions with the same typed guest output make the same pipeline decision. This is not a proof of wasmtime internals or full engine information-flow non-interference."
+    },
+    {
+      "id": "proof.wasm_no_allow_amplification",
+      "leanName": "Chio.Guards.WasmBoundary.no_allow_amplification",
+      "file": "formal/lean4/Chio/Chio/Guards/WasmBoundary.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "No typed wasm guest output can turn coreAuthorized=false into an allowed bounded pipeline result, including when the guard is advisory."
+    },
+    {
+      "id": "proof.wasm_resource_exhaustion_fail_closed",
+      "leanName": "Chio.Guards.WasmBoundary.resource_exhaustion_fail_closed",
+      "file": "formal/lean4/Chio/Chio/Guards/WasmBoundary.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Fuel exhaustion, memory exhaustion, and traps map to deny for blocking guards in the bounded dispatch model, subject to ASSUME-WASM-ENGINE."
+    },
+    {
+      "id": "proof.wasm_advisory_mode_nonblocking",
+      "leanName": "Chio.Guards.WasmBoundary.advisory_mode_is_nonblocking_by_design",
+      "file": "formal/lean4/Chio/Chio/Guards/WasmBoundary.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Advisory wasm guards are non-blocking by design: denies, malformed verdicts, traps, and resource exhaustion all contribute allow at this guard layer. Core authorization still dominates the final pipeline."
+    },
+    {
       "id": "proof.receiptFieldsCoupled_preserves_all_fields",
       "leanName": "Chio.Proofs.receiptFieldsCoupled_preserves_all_fields",
       "file": "formal/lean4/Chio/Chio/Proofs/Protocol.lean",
@@ -583,7 +759,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P3"],
-      "notes": "Tracked Lean mirror of the Aeneas time-window helper is equivalent to CapabilityToken.isValidAt."
+      "notes": "Derived ordinary-value bridge to CapabilityToken.isValidAt; proof.generated_time_window_valid_eq_model is the generated-code successor."
     },
     {
       "id": "proof.aeneas_optionalCapIsSubset_preserves_parent_cap",
@@ -593,7 +769,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P1"],
-      "notes": "Aeneas-extracted optional-cap semantics cannot widen a parent cap."
+      "notes": "Derived ordinary-value attenuation bridge; proof.generated_optional_u32_cap_is_subset_preserves_parent_cap is the generated-code successor."
     },
     {
       "id": "proof.aeneas_budgetCommit_equiv_model",
@@ -603,7 +779,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P3"],
-      "notes": "Aeneas-extracted budget commit mirror is equivalent to the handwritten budgetCommit model."
+      "notes": "Derived ordinary-value budget bridge; proof.generated_budget_commit_eq_model is the generated-code successor. Store mutation and reservation-ledger transitions remain outside this theorem."
     },
     {
       "id": "proof.aeneas_dpopAdmits_equiv_model",
@@ -613,7 +789,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P8"],
-      "notes": "Aeneas-extracted DPoP admission mirror is equivalent to the handwritten DPoP nonce model."
+      "notes": "Derived ordinary-value DPoP bridge; proof.generated_dpop_admits_eq_model is the generated-code successor. Cryptographic verification and nonce-store mutation remain outside this theorem."
     },
     {
       "id": "proof.aeneas_revocationSnapshot_equiv_model",
@@ -623,7 +799,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P2"],
-      "notes": "Aeneas-extracted revocation snapshot mirror is equivalent to the handwritten snapshot denial model."
+      "notes": "Derived ordinary-value revocation bridge; proof.generated_revocation_snapshot_denies_eq_model is the generated-code successor. Storage and snapshot freshness remain outside this theorem."
     },
     {
       "id": "proof.aeneas_guardStep_equiv_model",
@@ -633,7 +809,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P3"],
-      "notes": "Aeneas-extracted guard-step mirror is equivalent to one-step handwritten guard composition."
+      "notes": "Derived ordinary-value guard bridge; proof.generated_guard_step_allows_eq_model is the generated-code successor. Runtime error attribution remains outside this theorem."
     },
     {
       "id": "proof.aeneas_receiptCoupling_equiv_model",
@@ -643,7 +819,257 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P4"],
-      "notes": "Aeneas-extracted receipt coupling mirror is equivalent to the handwritten receiptFieldsCoupled model."
+      "notes": "Derived ordinary-value receipt bridge; proof.generated_receipt_fields_coupled_eq_model is the generated-code successor. Body construction, canonicalization, and cryptography remain runtime-owned."
+    },
+    {
+      "id": "proof.generated_inclusion_step_eq_model",
+      "leanName": "Chio.Proofs.generated_inclusion_step_eq_model",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P4", "P7"],
+      "notes": "The authenticated generated machine-integer inclusion step projects exactly to the checked Lean Merkle-walk model for every U64 input. Hashing remains outside this scalar theorem."
+    },
+    {
+      "id": "proof.generated_ledger_is_terminal_eq_model",
+      "leanName": "Chio.Proofs.generated_ledger_is_terminal_eq_model",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P1"],
+      "notes": "The generated terminal-state predicate agrees with the bounded reservation ledger model under the exact U64 projection. Runtime store linkage remains outside this theorem."
+    },
+    {
+      "id": "proof.generated_ledger_apply_eq_model",
+      "leanName": "Chio.Proofs.generated_ledger_apply_eq_model",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P1"],
+      "notes": "The generated checked-arithmetic transition projects to the bounded reservation ledger model for every operation and U64 input. Runtime store linkage remains outside this theorem."
+    },
+    {
+      "id": "proof.generated_classify_time_window_code_eq_mirror",
+      "leanName": "Chio.Proofs.generated_classify_time_window_code_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P3"],
+      "notes": "The generated machine-integer time-window classifier projects to the ordinary-value classifier."
+    },
+    {
+      "id": "proof.generated_time_window_valid_eq_mirror",
+      "leanName": "Chio.Proofs.generated_time_window_valid_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P3"],
+      "notes": "The generated machine-integer validity predicate agrees with its ordinary-value semantics."
+    },
+    {
+      "id": "proof.generated_exact_or_wildcard_covers_by_flags_eq_mirror",
+      "leanName": "Chio.Proofs.generated_exact_or_wildcard_covers_by_flags_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P1"],
+      "notes": "The generated exact-or-wildcard decision agrees with its ordinary-value semantics."
+    },
+    {
+      "id": "proof.generated_prefix_wildcard_or_exact_covers_by_flags_eq_mirror",
+      "leanName": "Chio.Proofs.generated_prefix_wildcard_or_exact_covers_by_flags_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P1"],
+      "notes": "The generated prefix-wildcard decision agrees with its ordinary-value semantics."
+    },
+    {
+      "id": "proof.generated_optional_u32_cap_is_subset_eq_mirror",
+      "leanName": "Chio.Proofs.generated_optional_u32_cap_is_subset_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P1"],
+      "notes": "The generated bounded optional-cap comparison agrees with the Nat projection."
+    },
+    {
+      "id": "proof.generated_required_true_is_preserved_eq_mirror",
+      "leanName": "Chio.Proofs.generated_required_true_is_preserved_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P1"],
+      "notes": "The generated required-flag decision agrees with its ordinary-value semantics."
+    },
+    {
+      "id": "proof.generated_monetary_cap_is_subset_by_parts_eq_mirror",
+      "leanName": "Chio.Proofs.generated_monetary_cap_is_subset_by_parts_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P1"],
+      "notes": "The generated bounded monetary-cap comparison agrees with the Nat projection."
+    },
+    {
+      "id": "proof.generated_budget_precheck_eq_mirror",
+      "leanName": "Chio.Proofs.generated_budget_precheck_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P3"],
+      "notes": "The generated budget precheck agrees with the ordinary-value budget decision."
+    },
+    {
+      "id": "proof.generated_budget_commit_eq_mirror",
+      "leanName": "Chio.Proofs.generated_budget_commit_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P3"],
+      "notes": "The generated checked subtraction result projects to the ordinary-value budget commit."
+    },
+    {
+      "id": "proof.generated_dpop_freshness_valid_eq_mirror",
+      "leanName": "Chio.Proofs.generated_dpop_freshness_valid_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P8"],
+      "notes": "The generated saturating timestamp checks agree with their bounded Nat projection."
+    },
+    {
+      "id": "proof.generated_dpop_admits_eq_mirror",
+      "leanName": "Chio.Proofs.generated_dpop_admits_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P8"],
+      "notes": "The generated DPoP admission decision agrees with its ordinary-value semantics."
+    },
+    {
+      "id": "proof.generated_nonce_admits_eq_mirror",
+      "leanName": "Chio.Proofs.generated_nonce_admits_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P8"],
+      "notes": "The generated nonce admission decision agrees with its ordinary-value semantics."
+    },
+    {
+      "id": "proof.generated_guard_step_allows_eq_mirror",
+      "leanName": "Chio.Proofs.generated_guard_step_allows_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P3"],
+      "notes": "The generated one-step guard conjunction agrees with its ordinary-value semantics."
+    },
+    {
+      "id": "proof.generated_revocation_snapshot_denies_eq_mirror",
+      "leanName": "Chio.Proofs.generated_revocation_snapshot_denies_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P2"],
+      "notes": "The generated revocation snapshot decision agrees with its ordinary-value semantics."
+    },
+    {
+      "id": "proof.generated_receipt_fields_coupled_eq_mirror",
+      "leanName": "Chio.Proofs.generated_receipt_fields_coupled_eq_mirror",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P4"],
+      "notes": "The generated receipt-field conjunction agrees with its ordinary-value semantics."
+    },
+    {
+      "id": "proof.generated_time_window_valid_eq_model",
+      "leanName": "Chio.Proofs.generated_time_window_valid_eq_model",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P3"],
+      "notes": "The generated bounded validity predicate composes with the CapabilityToken model under explicit scalar projections."
+    },
+    {
+      "id": "proof.generated_optional_u32_cap_is_subset_preserves_parent_cap",
+      "leanName": "Chio.Proofs.generated_optional_u32_cap_is_subset_preserves_parent_cap",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P1"],
+      "notes": "A successful generated optional-cap check preserves the present parent cap and cannot widen its value."
+    },
+    {
+      "id": "proof.generated_budget_commit_eq_model",
+      "leanName": "Chio.Proofs.generated_budget_commit_eq_model",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P3"],
+      "notes": "The generated checked budget commit projects to the handwritten budgetCommit model."
+    },
+    {
+      "id": "proof.generated_dpop_admits_eq_model",
+      "leanName": "Chio.Proofs.generated_dpop_admits_eq_model",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P8"],
+      "notes": "The generated DPoP admission decision composes with the handwritten session-admission model."
+    },
+    {
+      "id": "proof.generated_guard_step_allows_eq_model",
+      "leanName": "Chio.Proofs.generated_guard_step_allows_eq_model",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P3"],
+      "notes": "The generated one-step guard decision composes with the handwritten guard-pipeline model."
+    },
+    {
+      "id": "proof.generated_revocation_snapshot_denies_eq_model",
+      "leanName": "Chio.Proofs.generated_revocation_snapshot_denies_eq_model",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P2"],
+      "notes": "The generated revocation snapshot decision composes with the handwritten denial model."
+    },
+    {
+      "id": "proof.generated_receipt_fields_coupled_eq_model",
+      "leanName": "Chio.Proofs.generated_receipt_fields_coupled_eq_model",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P4"],
+      "notes": "The generated receipt-field conjunction composes with the handwritten receipt integrity model."
     },
     {
       "id": "proof.delegation_step_allow_requires_attenuation",
@@ -732,10 +1158,10 @@
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
-      "status": "assumed",
+      "status": "proved",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean",
       "mapsTo": ["P1"],
-      "notes": "Chain-binding soundness: a v2 capability token is admitted by the verifier iff its attenuation_proof.parent_scope_hash matches the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain). Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs and the protocol-side check is implemented in chio_core_types::capability::CapabilityToken::validate_chain_binding."
+      "notes": "Chain-binding soundness: a v2 capability token is admitted by the verifier iff its attenuation_proof.parent_scope_hash matches the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain). The root-imported, sorry-free theorem is exercised by the nightly Lean gate; the Rust shell is exercised by crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs and the protocol-side check is implemented in chio_core_types::capability::CapabilityToken::validate_chain_binding."
     },
     {
       "id": "theorem.handshake.negotiation_safety",
@@ -756,10 +1182,34 @@
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
-      "status": "assumed",
+      "status": "proved",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean",
       "mapsTo": ["P1"],
-      "notes": "Sibling-sum budget enforcement: when the BudgetRegistry admits a child, the running sum after admission is bounded by the parent's share. This rejects cross-hop amplification where two siblings jointly oversubscribe their parent's budget. Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs and the cross-hop case by crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs. The protocol-side check is implemented in chio_kernel_core::budget_split::BudgetSplit::try_admit_child."
+      "notes": "Sibling-sum budget enforcement: when the BudgetRegistry admits a child, the running sum after admission is bounded by the parent's share. This rejects cross-hop amplification where two siblings jointly oversubscribe their parent's budget. The root-imported, sorry-free theorem is exercised by the nightly Lean gate; the Rust shell is exercised by crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs and the cross-hop case by crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs. The protocol-side check is implemented in chio_kernel_core::budget_split::BudgetSplit::try_admit_child."
+    },
+    {
+      "id": "theorem.budget.reservation_conservation",
+      "leanName": "Chio.Proofs.ReservationLedger.ledger_conservation",
+      "file": "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "proof_path": "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
+      "mapsTo": ["P1"],
+      "notes": "Pure reservation folds preserve reserved = outstanding + committed + released + retained, with admitted child reserves bounded by sibling_sum_soundness. Apalache interleavings, the Kani and Creusot transition witnesses, the debug journal replay, and the stateful real-store test provide independent evidence for the defect family a6d26dbc4, c201afbd0, 84e98b9d0, and 58abf33d2. Scalar admission is linked; production ledger linkage is not established."
+    },
+    {
+      "id": "theorem.budget.reservation_terminal_unique",
+      "leanName": "Chio.Proofs.ReservationLedger.ledger_terminal_unique",
+      "file": "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "proof_path": "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
+      "mapsTo": ["P1"],
+      "notes": "A finalized pure ledger is absorbing: it cannot reserve again or receive a second positive terminal disposition. Committed and released amount buckets may both be non-zero after partial realization, while the trace still has one terminal hold classification. The theorem is model-level; concrete hold terminality is checked by the debug journal replay and stateful real-store test, not by a production refinement proof."
     },
     {
       "id": "proof.treaty_admission_iff_predicate_intersection",
@@ -769,8 +1219,8 @@
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "Legacy closure model showing bilateral treaty admission is equivalent to the intersection of treaty, left-polity, and right-polity predicates. This row does not establish decidability of implication between opaque closures."
+      "mapsTo": ["P3"],
+      "notes": "Public bounded treaty model showing bilateral admission is equivalent to the conjunction of syntactic treaty, left-polity, and right-polity predicates over the production-shaped admission projection."
     },
     {
       "id": "proof.treaty_admission_stable_under_ladder_floor",
@@ -780,8 +1230,8 @@
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "Bounded treaty model showing a satisfied quorum-required trust-ladder floor leaves treaty predicate intersection admission unchanged."
+      "mapsTo": ["P3"],
+      "notes": "Public bounded treaty model showing a satisfied governance-mode floor leaves the fail-closed syntactic admission decision unchanged."
     },
     {
       "id": "proof.amendment_admissible_iff_backward_refinement",
@@ -792,7 +1242,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Legacy closure model tying enactable constitutional amendments to an explicit backward-refinement proof witness. The universal witness is not claimed decidable or production-linked."
+      "notes": "Public bounded amendment model equating admissibility with semantic backward refinement on the candidate's explicit admission domain."
     },
     {
       "id": "proof.amendment_without_refinement_rejected",
@@ -803,7 +1253,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Legacy closure model showing a candidate with no backward-refinement proof witness is rejected. The production Rust runtime does not enact amendments through this type."
+      "notes": "Public bounded amendment model showing a failed finite refinement check produces a rejected verdict."
     },
     {
       "id": "proof.freestanding_accept_set_theorem",
@@ -813,8 +1263,8 @@
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "Bounded bilateral DSSE model showing verifier acceptance is exactly issuer-key trust, kernel-key trust, and scope-predicate satisfaction."
+      "mapsTo": ["P3"],
+      "notes": "Bounded bilateral DSSE accept-set model showing acceptance is exactly issuer-key trust, kernel-key trust, and fail-closed predicate satisfaction over the admission projection. Signature verification remains abstracted."
     },
     {
       "id": "proof.essential_preserved_chain",
@@ -861,40 +1311,260 @@
       "notes": "Bounded lane-quorum model showing a witness with undeclared contributing lanes fails closed before quorum counting."
     },
     {
-      "id": "treaty.bridge.pointwise",
-      "leanName": "Chio.Treaty.PredicateLang.bridge_pointwise",
-      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
-      "kind": "theorem",
-      "rootImported": true,
-      "claimClass": "bounded_model",
-      "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "A syntactic constitution lifted through an explicit receipt resolver agrees pointwise with the legacy closure interpreter."
-    },
-    {
-      "id": "treaty.bridge.soundness",
-      "leanName": "Chio.Treaty.PredicateLang.bridge_soundness",
-      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
-      "kind": "theorem",
-      "rootImported": true,
-      "claimClass": "bounded_model",
-      "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "Global semantic refinement over explicit receipt views soundly lifts into the legacy closure relation. This theorem does not claim that global refinement is decidable."
-    },
-    {
-      "id": "treaty.bridge.decidable_soundness",
-      "leanName": "Chio.Treaty.PredicateLang.bridge_decidable_soundness",
+      "id": "treaty.predicate.unsupported_denies",
+      "leanName": "Chio.Treaty.PredicateLang.unsupported_predicate_denies",
       "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "A successful Boolean refinement check implies semantic no-widening for every receipt in the declared finite domain, with no claim outside that domain."
+      "notes": "Any predicate containing unsupported syntax denies before Boolean evaluation, including under unrestricted negation."
     },
     {
-      "id": "treaty.bridge.bounded_complete",
+      "id": "treaty.predicate.undefined_denies",
+      "leanName": "Chio.Treaty.PredicateLang.undefined_predicate_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A supported predicate whose projected runtime field is unavailable denies before Boolean evaluation."
+    },
+    {
+      "id": "treaty.predicate.negated_unknown_atom_denies",
+      "leanName": "Chio.Treaty.PredicateLang.negated_unknown_atom_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A direct negative regression theorem prevents an unknown atom from becoming true through negation."
+    },
+    {
+      "id": "treaty.predicate.negated_unknown_mode_denies",
+      "leanName": "Chio.Treaty.PredicateLang.negated_unknown_mode_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "An unavailable governance mode remains denied when a mode predicate is negated."
+    },
+    {
+      "id": "treaty.predicate.runtime_policy_exact",
+      "leanName": "Chio.Treaty.PredicateLang.runtime_admission_policy_exact",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "The bounded runtime admission constitution accepts exactly when every registered production-shaped gate is supported, defined, and true. Parsing, hashing, signatures, and store lookup are outside this theorem."
+    },
+    {
+      "id": "treaty.predicate.action_missing_denies",
+      "leanName": "Chio.Treaty.PredicateLang.action_class_missing_from_intersection_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "An invocation action absent from the ladder intersection fails the modeled action-class gate."
+    },
+    {
+      "id": "treaty.predicate.signer_count_denies",
+      "leanName": "Chio.Treaty.PredicateLang.signer_count_mismatch_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A bilateral invocation without exactly two signer ids fails the modeled signer gate."
+    },
+    {
+      "id": "treaty.predicate.signer_reuse_denies",
+      "leanName": "Chio.Treaty.PredicateLang.signer_alias_reuse_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A bilateral invocation whose deduplicated signer list is not a pair fails the modeled signer gate."
+    },
+    {
+      "id": "treaty.predicate.signer_scope_denies",
+      "leanName": "Chio.Treaty.PredicateLang.signer_outside_scope_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A signer outside the treaty participant list fails the modeled signer gate."
+    },
+    {
+      "id": "treaty.bridge.fragment_completeness",
+      "leanName": "Chio.Treaty.PredicateLang.refinesOn_complete_on_fragment",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Finite predicate checking is equivalent to semantic refinement on the exact verifier-owned admission domain. It makes no completeness claim outside that domain."
+    },
+    {
+      "id": "treaty.bridge.constitution_domain_completeness",
+      "leanName": "Chio.Treaty.PredicateLang.refinesOnConstitution_complete_on_fragment",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "The finite constitution checker is a complete decision procedure for refinement on its explicit admission domain."
+    },
+    {
+      "id": "treaty.syntactic.decision_exact",
+      "leanName": "Chio.Treaty.PredicateLang.ConstitutionalDeltaSyn.ofDecide_isSome_iff",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "The amendment constructor returns a checked delta exactly when finite-domain refinement holds; callers do not supply its proof result."
+    },
+    {
+      "id": "treaty.syntactic.admission_iff_intersection",
+      "leanName": "Chio.Treaty.PredicateLang.synTreaty_admission_iff_predicate_intersection",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Syntactic bilateral admission is equivalent to the fail-closed conjunction of treaty, left-polity, and right-polity predicates."
+    },
+    {
+      "id": "treaty.syntactic.ladder_floor_stable",
+      "leanName": "Chio.Treaty.PredicateLang.synTreaty_admission_stable_under_ladder_floor",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A satisfied governance-mode floor leaves syntactic treaty admission unchanged."
+    },
+    {
+      "id": "treaty.syntactic.amendment_iff_refinement",
+      "leanName": "Chio.Treaty.PredicateLang.synAmendment_admissible_iff_backward_refinement",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Amendment admissibility is equivalent to semantic backward refinement on the candidate's explicit admission domain."
+    },
+    {
+      "id": "treaty.syntactic.failed_check_rejected",
+      "leanName": "Chio.Treaty.PredicateLang.synAmendment_without_refinement_rejected",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A failed finite refinement decision produces a rejected amendment verdict."
+    },
+    {
+      "id": "treaty.bridge.pointwise",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_pointwise",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Syntactic constitution admission agrees pointwise with admission after lifting to the comparison-only closure representation."
+    },
+    {
+      "id": "treaty.bridge.refinement_on_iff",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_refinement_on_iff",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Domain-scoped backward refinement is equivalent in the syntactic and lifted closure representations."
+    },
+    {
+      "id": "treaty.bridge.global_iff",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_global_iff",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Global backward refinement is equivalent in the syntactic and lifted closure representations."
+    },
+    {
+      "id": "treaty.bridge.soundness",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_soundness",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Global syntactic refinement transports to the lifted closure representation."
+    },
+    {
+      "id": "treaty.bridge.decidable_soundness",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_decidable_soundness",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A successful finite constitution decision transports to closure refinement on exactly the checked admission domain."
+    },
+    {
+      "id": "treaty.bridge.equivalence_admits",
+      "leanName": "Chio.Treaty.PredicateLang.toClosure_treatyAdmits_agrees",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Lifting a syntactic bilateral treaty to closures preserves admission for every production-shaped input projection."
+    },
+    {
+      "id": "treaty.bridge.equivalence_verdict",
+      "leanName": "Chio.Treaty.PredicateLang.toClosure_amendmentVerdict_agrees",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "The syntactic finite decision and the lifted closure candidate produce the same amendment verdict."
+    },
+    {
+      "id": "treaty.predicate.constitution_domain_exact",
       "leanName": "Chio.Treaty.PredicateLang.refinesOnConstitution_iff",
       "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
       "kind": "theorem",
@@ -902,32 +1572,32 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "The Boolean constitution-refinement check is equivalent to semantic no-widening on its declared finite receipt domain."
+      "notes": "Exact constitution refinement on the explicit production-shaped admission domain."
     },
     {
-      "id": "treaty.syntactic.admission_iff_intersection",
+      "id": "treaty.paper.admission_iff_intersection",
       "leanName": "Chio.Treaty.IntersectionSyntactic.treaty_admission_iff_predicate_intersection",
       "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "Treaty admission over the explicit bounded receipt view equals the conjunction of treaty scope, treaty constitution, and both participant polity predicates."
+      "mapsTo": ["P3"],
+      "notes": "Preserves the six-conjunct treaty intersection over the production-shaped admission projection."
     },
     {
-      "id": "treaty.syntactic.ladder_floor_stable",
+      "id": "treaty.paper.ladder_floor_stable",
       "leanName": "Chio.Treaty.IntersectionSyntactic.treaty_admission_stable_under_ladder_floor",
       "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "A satisfied floor in the bounded five-mode ladder reduces admission to the syntactic treaty predicate."
+      "mapsTo": ["P3"],
+      "notes": "A satisfied governance-mode floor reduces to the bounded treaty decision."
     },
     {
-      "id": "treaty.syntactic.amendment_iff_refinement",
+      "id": "treaty.paper.amendment_iff_refinement",
       "leanName": "Chio.Treaty.IntersectionSyntactic.amendment_admissible_iff_bounded_refinement",
       "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
       "kind": "theorem",
@@ -935,10 +1605,10 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Candidate admissibility supplies semantic no-widening for every receipt in the candidate's declared finite domain."
+      "notes": "Amendment admissibility is equivalent to exact no-widening on the supplied finite domain."
     },
     {
-      "id": "treaty.syntactic.no_witness_rejected",
+      "id": "treaty.paper.failed_amendment_rejected",
       "leanName": "Chio.Treaty.IntersectionSyntactic.amendment_without_refinement_rejected",
       "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
       "kind": "theorem",
@@ -946,43 +1616,43 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "A bounded amendment candidate with proof presence set to false evaluates to rejection."
+      "notes": "Preserves fail-closed amendment rejection after a failed finite refinement decision."
     },
     {
-      "id": "treaty.bridge.equivalence_polity_admits",
+      "id": "treaty.paper.polity_admission_agrees",
       "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.polity_admission_agrees",
       "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "Lifting a syntactic polity through an explicit resolver preserves its pointwise admission decision."
+      "mapsTo": ["P3"],
+      "notes": "Pointwise equivalence between syntactic polity admission and the comparison-only closure model."
     },
     {
-      "id": "treaty.bridge.equivalence_treaty_admits",
+      "id": "treaty.paper.treaty_admission_agrees",
       "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_agrees",
       "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "Lifting a syntactic bilateral treaty through an explicit resolver preserves its pointwise admission decision."
+      "mapsTo": ["P3"],
+      "notes": "Pointwise equivalence between syntactic treaty admission and the comparison-only closure model."
     },
     {
-      "id": "treaty.bridge.equivalence_mode_admits",
+      "id": "treaty.paper.mode_admission_agrees",
       "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_under_mode_agrees",
       "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "The syntactic and lifted legacy treaty models agree pointwise when composed with the same ladder mode."
+      "mapsTo": ["P3"],
+      "notes": "Pointwise equivalence after composing both treaty models with the same governance-mode floor."
     },
     {
-      "id": "treaty.bridge.bounded_amendment_sound",
+      "id": "treaty.paper.bounded_amendment_sound",
       "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.bounded_amendment_sound",
       "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
       "kind": "theorem",
@@ -990,7 +1660,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "A syntactic constitutional delta establishes semantic no-widening exactly on the finite receipt domain it carries."
+      "notes": "A checked syntactic delta establishes closure refinement only on the exact supplied domain."
     }
   ]
 }

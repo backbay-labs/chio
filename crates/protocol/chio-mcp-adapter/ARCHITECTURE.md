@@ -48,7 +48,7 @@ deadlock on cached reads.
   `readOnlyHint=true`.
 - Result normalization inserts `isError: false` only when an MCP-shaped success
   omits it, matching `chio-mcp-edge`'s `value_to_tool_result`. Explicit upstream
-  `isError` values and content bytes are preserved.
+  `isError` values and both `content` and `structuredContent` bytes are preserved.
 - `url_elicitation.rs` maps upstream `-32042` errors to
   `KernelError::UrlElicitationsRequired`, validates each operation's `message`,
   `url`, and `elicitationId`, and rejects empty or padded identifiers and

@@ -54,17 +54,13 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_package(
             "Chio relay alert acknowledgement report",
         )?)
         .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chio relay alert acknowledgement report: {error}"
-            ))
+            CliError::cli_other_error(format!("Chio relay alert acknowledgement report: {error}"))
         })?;
     let drift_report: chio_pheromone_relay::RelayAlertDeliveryDriftReport = serde_json::from_str(
         &read_utf8_json_file(drift_report, "Chio relay alert delivery drift report")?,
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!(
-            "Chio relay alert delivery drift report: {error}"
-        ))
+        CliError::cli_other_error(format!("Chio relay alert delivery drift report: {error}"))
     })?;
     let review_packet: chio_pheromone_relay::RelayAlertRouteReviewPacket = serde_json::from_str(
         &read_utf8_json_file(review_packet, "Chio relay alert route review packet")?,

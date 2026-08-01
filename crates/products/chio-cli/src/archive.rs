@@ -162,9 +162,9 @@ fn read_tar_archive_entries<R: Read>(
                 "{label} member {path} exceeds byte limit"
             )));
         }
-        total_bytes = total_bytes.checked_add(size).ok_or_else(|| {
-            CliError::cli_other_error(format!("{label} byte count overflow"))
-        })?;
+        total_bytes = total_bytes
+            .checked_add(size)
+            .ok_or_else(|| CliError::cli_other_error(format!("{label} byte count overflow")))?;
         if total_bytes > limits.max_total_bytes {
             return Err(CliError::cli_other_error(format!(
                 "{label} exceeds decompressed byte limit"
@@ -174,9 +174,8 @@ fn read_tar_archive_entries<R: Read>(
         entry.read_to_end(&mut bytes).map_err(|error| {
             CliError::cli_io_error(format!("failed to read {label} member {path}: {error}"))
         })?;
-        let actual_size = u64::try_from(bytes.len()).map_err(|_| {
-            CliError::cli_other_error(format!("{label} member size overflow"))
-        })?;
+        let actual_size = u64::try_from(bytes.len())
+            .map_err(|_| CliError::cli_other_error(format!("{label} member size overflow")))?;
         if actual_size != size {
             return Err(CliError::cli_other_error(format!(
                 "{label} member {path} size changed while reading"
@@ -190,7 +189,12 @@ fn read_tar_archive_entries<R: Read>(
         entries_out.push(SafeArchiveEntry { path, bytes, mode });
     }
 
-    enforce_decompression_ratio(total_bytes, compressed_len, limits.max_decompression_ratio, label)?;
+    enforce_decompression_ratio(
+        total_bytes,
+        compressed_len,
+        limits.max_decompression_ratio,
+        label,
+    )?;
     Ok(entries_out)
 }
 
@@ -229,17 +233,16 @@ pub(crate) fn write_tar_gz_file(
                 "{label} member has a casefold collision"
             )));
         }
-        let len = u64::try_from(entry.bytes.len()).map_err(|_| {
-            CliError::cli_other_error(format!("{label} member size overflow"))
-        })?;
+        let len = u64::try_from(entry.bytes.len())
+            .map_err(|_| CliError::cli_other_error(format!("{label} member size overflow")))?;
         if len > limits.max_member_bytes {
             return Err(CliError::cli_other_error(format!(
                 "{label} member {path} exceeds byte limit"
             )));
         }
-        total_bytes = total_bytes.checked_add(len).ok_or_else(|| {
-            CliError::cli_other_error(format!("{label} byte count overflow"))
-        })?;
+        total_bytes = total_bytes
+            .checked_add(len)
+            .ok_or_else(|| CliError::cli_other_error(format!("{label} byte count overflow")))?;
         if total_bytes > limits.max_total_bytes {
             return Err(CliError::cli_other_error(format!(
                 "{label} exceeds decompressed byte limit"
@@ -261,7 +264,10 @@ pub(crate) fn write_tar_gz_file(
         .create_new(true)
         .open(out)
         .map_err(|error| {
-            CliError::cli_io_error(format!("failed to create {label} {}: {error}", out.display()))
+            CliError::cli_io_error(format!(
+                "failed to create {label} {}: {error}",
+                out.display()
+            ))
         })?;
     let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
     let mut builder = tar::Builder::new(encoder);
@@ -269,7 +275,10 @@ pub(crate) fn write_tar_gz_file(
         append_regular_file(&mut builder, entry.path, entry.bytes, label)?;
     }
     builder.finish().map_err(|error| {
-        CliError::cli_io_error(format!("failed to finish {label} {}: {error}", out.display()))
+        CliError::cli_io_error(format!(
+            "failed to finish {label} {}: {error}",
+            out.display()
+        ))
     })?;
     let encoder = builder.into_inner().map_err(|error| {
         CliError::cli_io_error(format!(
@@ -352,7 +361,10 @@ pub(crate) fn write_entries_to_existing_dir(
     entries: &[SafeArchiveEntry],
 ) -> Result<(), CliError> {
     fs::create_dir_all(root).map_err(|error| {
-        CliError::cli_io_error(format!("failed to create {label} root {}: {error}", root.display()))
+        CliError::cli_io_error(format!(
+            "failed to create {label} root {}: {error}",
+            root.display()
+        ))
     })?;
     ensure_safe_archive_root(root, label)?;
     for entry in entries {
@@ -367,7 +379,10 @@ pub(crate) fn replace_entries_in_existing_dir(
     entries: &[SafeArchiveEntry],
 ) -> Result<(), CliError> {
     fs::create_dir_all(root).map_err(|error| {
-        CliError::cli_io_error(format!("failed to create {label} root {}: {error}", root.display()))
+        CliError::cli_io_error(format!(
+            "failed to create {label} root {}: {error}",
+            root.display()
+        ))
     })?;
     ensure_safe_archive_root(root, label)?;
     for entry in entries {
@@ -419,7 +434,9 @@ fn append_regular_file<W: Write>(
     header.set_cksum();
     builder
         .append_data(&mut header, safe_path, std::io::Cursor::new(bytes))
-        .map_err(|error| CliError::cli_io_error(format!("failed to append {label} member: {error}")))
+        .map_err(|error| {
+            CliError::cli_io_error(format!("failed to append {label} member: {error}"))
+        })
 }
 
 fn write_entry(
@@ -449,7 +466,10 @@ fn write_entry(
         ))
     })?;
     file.write_all(&entry.bytes).map_err(|error| {
-        CliError::cli_io_error(format!("failed to write {label} file {}: {error}", path.display()))
+        CliError::cli_io_error(format!(
+            "failed to write {label} file {}: {error}",
+            path.display()
+        ))
     })?;
     apply_safe_archive_file_mode(&path, entry.mode, label)?;
     let written = fs::read(&path).map_err(|error| {
@@ -560,14 +580,16 @@ fn safe_archive_file_mode(mode: u32) -> u32 {
 fn apply_safe_archive_file_mode(path: &Path, mode: u32, label: &str) -> Result<(), CliError> {
     use std::os::unix::fs::PermissionsExt;
 
-    fs::set_permissions(path, fs::Permissions::from_mode(safe_archive_file_mode(mode))).map_err(
-        |error| {
-            CliError::cli_io_error(format!(
-                "failed to set {label} file mode {}: {error}",
-                path.display()
-            ))
-        },
+    fs::set_permissions(
+        path,
+        fs::Permissions::from_mode(safe_archive_file_mode(mode)),
     )
+    .map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to set {label} file mode {}: {error}",
+            path.display()
+        ))
+    })
 }
 
 #[cfg(not(unix))]

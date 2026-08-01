@@ -232,6 +232,87 @@ def test_reject_shell_argv_escape_rejects_embedded_windows_absolute_path(
     assert excinfo.value.reason == "outside_workspace"
 
 
+@pytest.mark.parametrize(
+    ("command", "outside_path"),
+    [
+        (
+            r"tool --files='C:\repo\ok,D:\outside\bad'",
+            r"D:\outside\bad",
+        ),
+        (
+            r"tool --files=C:\repo\ok,D:\outside\bad",
+            r"D:\outside\bad",
+        ),
+        (
+            r"tool --files='C:\repo\ok;\\outside\share\bad'",
+            r"\\outside\share\bad",
+        ),
+        (
+            r"tool '--files=C:\repo\ok; \\outside\share\bad'",
+            r"\\outside\share\bad",
+        ),
+        (
+            r'tool "--files=C:\repo\ok, //outside/share/bad"',
+            "//outside/share/bad",
+        ),
+        (
+            r"""tool '--files=["C:\repo\ok","\\outside\share\bad"]'""",
+            r"\\outside\share\bad",
+        ),
+        (
+            r"""tool '--files=["C:\repo\ok","//outside/share/bad"]'""",
+            "//outside/share/bad",
+        ),
+    ],
+)
+def test_reject_shell_argv_escape_checks_every_windows_absolute_path(
+    command: str,
+    outside_path: str,
+) -> None:
+    with pytest.raises(ChioPathEscapeError) as excinfo:
+        reject_shell_argv_escape(command, root=r"C:\repo")
+    assert excinfo.value.reason == "outside_workspace"
+    assert excinfo.value.token.startswith(outside_path)
+
+
+def test_reject_shell_argv_escape_allows_multiple_windows_workspace_paths() -> None:
+    reject_shell_argv_escape(
+        r"tool --files='C:\repo,C:\repo\two'",
+        root=r"C:\repo",
+    )
+    reject_shell_argv_escape(
+        r"tool --files='\\server\share\repo;\\server\share\repo\two'",
+        root=r"\\server\share\repo",
+    )
+    reject_shell_argv_escape(
+        r"""tool '--files=["C:\repo","C:\repo\two"]'""",
+        root=r"C:\repo",
+    )
+    reject_shell_argv_escape(
+        r"""tool '--files=["\\server\share\repo","\\server\share\repo\two"]'""",
+        root=r"\\server\share\repo",
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        r"C:\repo\\sub\file",
+        r"C:\repo\name)\\sub\file",
+        r"C:\repo\name]\\sub\file",
+        "C:/repo//sub/file",
+        "C:/repo/name)//sub/file",
+    ],
+)
+def test_reject_shell_argv_escape_allows_repeated_windows_path_separators(
+    path: str,
+) -> None:
+    reject_shell_argv_escape(
+        f'type "{path}"',
+        root=r"C:\repo",
+    )
+
+
 def test_reject_shell_argv_escape_allows_windows_absolute_inside_workspace() -> None:
     reject_shell_argv_escape(
         r"type C:\repo\README.md",

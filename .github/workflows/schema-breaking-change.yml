@@ -1,15 +1,13 @@
 # schema-breaking-change.yml - Advisory PR bot for spec/schemas drift.
 #
-# When a PR touches `spec/schemas/**/*.json`, runs `json-schema-diff` for
+# When a PR touches `spec/schemas/**/*.json`, runs a schema compatibility diff for
 # each changed schema (PR merge-base vs. PR head) and posts a sticky comment
 # summarising any breaking changes detected. Advisory only: does NOT block
 # merge.
 #
-# Tooling: `json-schema-diff` is the language-agnostic CLI/library
-# published on npm (https://www.npmjs.com/package/json-schema-diff). It
-# emits a JSON report distinguishing additions (non-breaking) from
-# removals/type-narrows (breaking). We pin to a major version with a caret
-# range so security patches flow in without shape drift.
+# Tooling: `json-schema-diff-validator` compares JSON document structure
+# without rejecting Chio's draft-2020-12 dialect declaration. The repository
+# classifier gives breaking changes and tool failures distinct exit codes.
 #
 # Comment shape: a single sticky comment with marker
 # `<!-- chio:schema-breaking-change -->` is created/updated on each push,
@@ -22,10 +20,13 @@ name: schema-breaking-change
 on:
   pull_request:
     paths:
+      - '.github/workflows/schema-breaking-change.yml'
+      - 'scripts/classify-schema-compatibility.sh'
+      - 'scripts/tests/schema-breaking-change-workflow.test.sh'
       - 'spec/schemas/**/*.json'
       # The registry is an index of artifact records, not a constraint schema.
-      # Feeding it to json-schema-diff produces a tool error that reads as a
-      # breaking change on every PR that registers a new artifact.
+      # Feeding it to the compatibility classifier produces a tool error on
+      # every PR that registers a new artifact.
       - '!spec/schemas/registry.json'
 
 permissions:
@@ -38,7 +39,7 @@ concurrency:
 
 jobs:
   schema-breaking-change-advisory:
-    name: schema-breaking-change-advisory (json-schema-diff vs merge-base)
+    name: schema-breaking-change-advisory (compatibility vs merge-base)
     # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -54,14 +55,14 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install json-schema-diff CLI
-        # `json-schema-diff` is the language-agnostic CLI from npm; the
-        # package's bin is invoked as `json-schema-diff <source> <destination>`
-        # and exits with a non-zero status when a breaking change is
-        # detected (additions of required props, removals, narrowed type
-        # unions, etc.). Pinned exactly so schema gating bytes do not
-        # drift between reruns without a repository diff.
-        run: npm install -g json-schema-diff@1.0.0
+      - name: Test schema compatibility workflow contract
+        run: bash scripts/tests/schema-breaking-change-workflow.test.sh
+
+      - name: Install schema compatibility CLI
+        # This structural diff accepts draft-2020-12 schema documents. The
+        # repository classifier distinguishes an incompatibility from a parser,
+        # invocation, or package failure. Pin exactly to prevent behavior drift.
+        run: npm install -g json-schema-diff-validator@0.4.2
 
       - name: Compute merge-base for PR diff scope
         id: mergebase
@@ -116,14 +117,14 @@ jobs:
             echo "has_changes=0" >> "${GITHUB_OUTPUT}"
           fi
 
-      - name: Run json-schema-diff over each changed schema
+      - name: Run compatibility diff over each changed schema
         id: diff
         if: steps.changed.outputs.has_changes == '1'
         env:
           MERGE_BASE: ${{ steps.mergebase.outputs.merge_base }}
           STATUS_RECORDS: ${{ steps.changed.outputs.status }}
         run: |
-          set -uo pipefail
+          set -euo pipefail
           tmpdir=$(mktemp -d)
           summary_file="${tmpdir}/summary.md"
           : > "${summary_file}"
@@ -143,7 +144,8 @@ jobs:
                 head_path="${old}"
                 ;;
               *)
-                echo "skip ${status} ${old:-?}: unhandled status"
+                tool_error_count=$((tool_error_count + 1))
+                echo "schema compatibility input error: unhandled status ${status} ${old:-?}" >&2
                 continue
                 ;;
             esac
@@ -158,50 +160,30 @@ jobs:
               continue
             fi
             # `A` (added) records have no base blob to diff against;
-            # additions alone are not breaking under json-schema-diff
+            # additions alone are not breaking under compatibility-diff
             # semantics, so skip them.
             if [ "${status}" = "A" ]; then
               echo "skip ${head_path}: added (non-breaking)"
               continue
             fi
             if ! git show "${MERGE_BASE}:${base_path}" > "${base_blob}" 2>/dev/null; then
-              echo "skip ${head_path}: base blob ${base_path} unreadable"
+              tool_error_count=$((tool_error_count + 1))
+              echo "schema compatibility input error for ${head_path}: base blob ${base_path} unreadable" >&2
               continue
             fi
-            report="${tmpdir}/report-${safe}.json"
-            # `json-schema-diff <source> <destination>` exits 0 when
-            # destination is backwards-compatible with source, and 1
-            # when destination removes capabilities source allowed.
-            # Any higher status means the tool itself failed on the input,
-            # which is not a compatibility verdict and must not be counted
-            # as one. We capture the JSON report regardless of exit status.
-            # The runner invokes this step as `bash -e`, so the call must not
-            # be left bare: a non-zero status would abort the step before it
-            # could be classified.
-            diff_status=0
-            json-schema-diff "${base_blob}" "${head_path}" \
-              > "${report}" 2> "${report}.stderr" || diff_status=$?
+            report="${tmpdir}/report-${safe}.txt"
+            if scripts/classify-schema-compatibility.sh \
+              "${base_blob}" "${head_path}" "${report}"; then
+              diff_status=0
+            else
+              diff_status=$?
+            fi
             if [ "${diff_status}" -eq 0 ]; then
               echo "ok ${head_path}: no breaking change"
-            elif [ "${diff_status}" -ne 1 ]; then
-              tool_error_count=$((tool_error_count + 1))
-              echo "::warning::json-schema-diff failed on ${head_path} (exit ${diff_status})"
-              # Surface stderr here; the stdout report is empty on a tool
-              # fault, which is what made these indistinguishable from breaks.
-              stderr_snippet=$(head -c 1000 "${report}.stderr" || true)
-              # shellcheck disable=SC2016
-              {
-                printf -- '- `%s`: TOOL ERROR (exit %s), not a compatibility verdict:\n' \
-                  "${head_path}" "${diff_status}"
-                printf -- '```\n'
-                printf '%s\n' "${stderr_snippet}"
-                printf -- '```\n'
-                printf '\n'
-              } >> "${summary_file}"
-            else
+            elif [ "${diff_status}" -eq 10 ]; then
               breaking_count=$((breaking_count + 1))
-              # Trim the JSON report so we can embed in PR comments
-              # without blowing past the 65535-byte body cap.
+              # Trim the compatibility report so we can embed it in PR comments
+              # without exceeding the 65535-byte body cap.
               snippet=$(head -c 2000 "${report}" || true)
               # Append directly with explicit newlines so closing code
               # fences are not glued to the next list item by command-
@@ -209,23 +191,27 @@ jobs:
               # shellcheck disable=SC2016
               {
                 if [ "${status:0:1}" = "R" ]; then
-                  printf -- '- `%s` (renamed from `%s`): BREAKING. json-schema-diff report excerpt:\n' \
+                  printf -- '- `%s` (renamed from `%s`): BREAKING. Compatibility report excerpt:\n' \
                     "${head_path}" "${base_path}"
                 else
-                  printf -- '- `%s`: BREAKING. json-schema-diff report excerpt:\n' "${head_path}"
+                  printf -- '- `%s`: BREAKING. Compatibility report excerpt:\n' "${head_path}"
                 fi
-                printf -- '```json\n'
+                printf -- '```text\n'
                 printf '%s\n' "${snippet}"
                 printf -- '```\n'
                 printf '\n'
               } >> "${summary_file}"
+            else
+              tool_error_count=$((tool_error_count + 1))
+              echo "schema compatibility tool error for ${head_path}:" >&2
+              cat "${report}" >&2
             fi
           done < <(printf '%s\n' "${STATUS_RECORDS}")
 
           echo "breaking_count=${breaking_count}" >> "${GITHUB_OUTPUT}"
           echo "tool_error_count=${tool_error_count}" >> "${GITHUB_OUTPUT}"
           # Emit the markdown summary with a randomized heredoc delimiter so
-          # any literal delimiter string inside JSON report excerpts cannot
+          # any literal delimiter string inside report excerpts cannot
           # terminate the multiline value early and leak subsequent content
           # as new output keys.
           delim="CHIO_$(openssl rand -hex 8)"
@@ -234,67 +220,129 @@ jobs:
             cat "${summary_file}"
             echo "${delim}"
           } >> "${GITHUB_OUTPUT}"
+          if [ "${tool_error_count}" -ne 0 ]; then
+            echo "schema compatibility analysis failed for ${tool_error_count} schema(s)" >&2
+            exit 1
+          fi
 
       - name: Post or update sticky advisory PR comment
         # Always run when the diff step ran (regardless of breaking_count)
         # so a clean push rewrites a stale sticky to an all-clear message
         # rather than leaving the previous warning in place.
-        if: always() && steps.diff.outcome == 'success'
+        if: always() && (steps.diff.outcome == 'success' || steps.diff.outcome == 'failure')
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         env:
           SUMMARY_MD: ${{ steps.diff.outputs.summary }}
           BREAKING_COUNT: ${{ steps.diff.outputs.breaking_count }}
           TOOL_ERROR_COUNT: ${{ steps.diff.outputs.tool_error_count }}
+          DIFF_OUTCOME: ${{ steps.diff.outcome }}
         with:
           script: |
             const marker = '<!-- chio:schema-breaking-change -->';
             const summary = process.env.SUMMARY_MD || '';
-            const count = parseInt(process.env.BREAKING_COUNT || '0', 10);
-            const toolErrors = parseInt(process.env.TOOL_ERROR_COUNT || '0', 10);
+            const parseCount = value => {
+              if (!/^(0|[1-9][0-9]*)$/.test(value || '')) {
+                return null;
+              }
+              const parsed = Number(value);
+              return Number.isSafeInteger(parsed) ? parsed : null;
+            };
+            const count = parseCount(process.env.BREAKING_COUNT);
+            const toolErrors = parseCount(process.env.TOOL_ERROR_COUNT);
+            const diffOutcome = process.env.DIFF_OUTCOME || 'unknown';
+            const hasBreakingDetails = count === 0 || summary.trim().length > 0;
+            const outputsComplete =
+              count !== null && toolErrors !== null && hasBreakingDetails;
+            const analysisComplete =
+              diffOutcome === 'success' && outputsComplete && toolErrors === 0;
+            const hasBreakingChanges = count !== null && count > 0;
             const baseRef = context.payload.pull_request.base.ref;
             const lines = [marker, '## Schema-breaking-change advisory', ''];
-            if (count > 0) {
+            if (hasBreakingChanges) {
               lines.push(
-                `\`json-schema-diff\` flagged ${count} schema(s) under \`spec/schemas/\` as backwards-incompatible against \`${baseRef}\`:`,
+                `The compatibility diff flagged ${count} schema(s) under \`spec/schemas/\` as backwards-incompatible against \`${baseRef}\`:`,
                 '',
                 summary,
-                'This check is **advisory only** and does not block merge. Tag the PR title with `BREAKING:` to acknowledge an intentional wire-break; the gate flips to blocking once that convention lands in CONTRIBUTING.md.',
               );
-            } else if (toolErrors > 0) {
+            }
+            if (!analysisComplete) {
+              if (toolErrors !== null && toolErrors > 0) {
+                lines.push(
+                  '',
+                  `Compatibility analysis failed for ${toolErrors} schema(s).`,
+                );
+              } else if (!outputsComplete) {
+                lines.push(
+                  'Compatibility analysis did not emit a complete set of result outputs.',
+                );
+              } else {
+                lines.push(
+                  `Compatibility analysis ended with workflow outcome \`${diffOutcome}\`.`,
+                );
+              }
               lines.push(
-                `\`json-schema-diff\` reports no breaking changes under \`spec/schemas/\` against \`${baseRef}\`, but failed to run on ${toolErrors} file(s):`,
                 '',
-                summary,
-                'A tool error is not a compatibility verdict. Those files were not checked.',
+                '**Unchecked result:** this run is not an all-clear. A tool or workflow error is not a compatibility verdict, and affected schemas must be checked again.',
               );
-            } else {
+            } else if (!hasBreakingChanges) {
               lines.push(
-                `\`json-schema-diff\` reports no breaking changes under \`spec/schemas/\` against \`${baseRef}\`.`,
-                '',
-                'This check is **advisory only**.',
+                `The compatibility diff reports no breaking changes under \`spec/schemas/\` against \`${baseRef}\`.`,
+              );
+            }
+            lines.push('', 'This check is **advisory only** and does not block merge.');
+            if (hasBreakingChanges) {
+              lines.push(
+                'Tag the PR title with `BREAKING:` to acknowledge an intentional wire-break; the gate flips to blocking once that convention lands in CONTRIBUTING.md.',
               );
             }
             lines.push('', `_Posted by \`${context.workflow}\` workflow run #${context.runId}._`);
             const body = lines.join('\n');
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
-            const existing = await github.paginate(
-              github.rest.issues.listComments,
-              { owner, repo, issue_number, per_page: 100 },
+            const transientStatuses = new Set([502, 503, 504]);
+            const withRetry = async (label, operation) => {
+              const maxAttempts = 4;
+              for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                try {
+                  return await operation();
+                } catch (error) {
+                  const status = Number(error.status || error.response?.status || 0);
+                  if (!transientStatuses.has(status) || attempt === maxAttempts) {
+                    throw error;
+                  }
+                  const delayMs = 1000 * (2 ** (attempt - 1));
+                  core.warning(
+                    `${label} returned HTTP ${status}; retrying in ${delayMs}ms ` +
+                    `(attempt ${attempt + 1}/${maxAttempts})`,
+                  );
+                  await new Promise(resolve => setTimeout(resolve, delayMs));
+                }
+              }
+              throw new Error(`${label} exhausted its retry loop`);
+            };
+            const existing = await withRetry('list PR comments', () =>
+              github.paginate(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number, per_page: 100 },
+              ),
             );
             const prior = existing.find(c => c.body && c.body.includes(marker));
             // On a clean run with no prior sticky, do nothing: there is
             // nothing to update and we do not want to spam green PRs.
-            if (!prior && count === 0 && toolErrors === 0) {
+            if (!prior && analysisComplete && count === 0) {
               core.info('No breaking changes and no prior sticky comment; nothing to post.');
               return;
             }
             if (prior) {
-              await github.rest.issues.updateComment({
-                owner, repo, comment_id: prior.id, body,
-              });
+              await withRetry('update sticky PR comment', () =>
+                github.rest.issues.updateComment({
+                  owner, repo, comment_id: prior.id, body,
+                }),
+              );
             } else {
-              await github.rest.issues.createComment({
-                owner, repo, issue_number, body,
-              });
+              await withRetry('create sticky PR comment', () =>
+                github.rest.issues.createComment({
+                  owner, repo, issue_number, body,
+                }),
+              );
             }

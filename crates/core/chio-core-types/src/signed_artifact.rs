@@ -206,6 +206,7 @@ pub const CHIO_ENTERPRISE_APPROVAL_CASE_V1_SCHEMA: &str = "chio.enterprise.appro
 pub const CHIO_ENTERPRISE_CONTROL_EVIDENCE_MAP_V1_SCHEMA: &str =
     "chio.enterprise.control-evidence-map.v1";
 pub const CHIO_AGENT_WEB_PROOF_ENVELOPE_V1_SCHEMA: &str = "chio.agent-web-proof-envelope.v1";
+pub const CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA: &str = "chio.agent-web-proof-envelope.v2";
 pub const CHIO_AGENT_WEB_EXTERNAL_PROJECTION_MANIFEST_V1_SCHEMA: &str =
     "chio.agent-web.external-projection-manifest.v1";
 pub const CHIO_AGENT_WEB_INTEROP_VERIFIER_REPORT_V1_SCHEMA: &str =
@@ -894,6 +895,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_AGENT_WEB_PROOF_ENVELOPE_V1_SCHEMA,
         Some(("agent_web_proof_envelope", "agent-web-interop-v1")),
+    ),
+    (
+        CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA,
+        Some(("agent_web_proof_envelope", "agent-web-interop-v2")),
     ),
     (
         CHIO_AGENT_WEB_EXTERNAL_PROJECTION_MANIFEST_V1_SCHEMA,

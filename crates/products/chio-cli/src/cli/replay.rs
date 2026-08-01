@@ -8,38 +8,38 @@
 
 use super::*;
 
-#[path = "replay/reader.rs"]
-mod reader;
-#[path = "replay/verify.rs"]
-mod verify;
-#[path = "replay/merkle.rs"]
-mod merkle;
-#[path = "replay/verdict.rs"]
-mod verdict;
-#[path = "replay/report.rs"]
-mod report;
-#[path = "replay/ndjson.rs"]
-mod ndjson;
-#[path = "replay/validate.rs"]
-mod validate;
-#[path = "replay/schema_gate.rs"]
-mod schema_gate;
-#[path = "replay/policy_ref.rs"]
-mod policy_ref;
-#[path = "replay/receipt_partition.rs"]
-mod receipt_partition;
-#[path = "replay/execute.rs"]
-mod execute;
-#[path = "replay/diff.rs"]
-mod diff;
-#[path = "replay/traffic.rs"]
-mod traffic;
-#[path = "replay/bless/strip.rs"]
-mod bless_strip;
-#[path = "replay/bless/fixture_layout.rs"]
-mod bless_fixture_layout;
 #[path = "replay/bless.rs"]
 mod bless;
+#[path = "replay/bless/fixture_layout.rs"]
+mod bless_fixture_layout;
+#[path = "replay/bless/strip.rs"]
+mod bless_strip;
+#[path = "replay/diff.rs"]
+mod diff;
+#[path = "replay/execute.rs"]
+mod execute;
+#[path = "replay/merkle.rs"]
+mod merkle;
+#[path = "replay/ndjson.rs"]
+mod ndjson;
+#[path = "replay/policy_ref.rs"]
+mod policy_ref;
+#[path = "replay/reader.rs"]
+mod reader;
+#[path = "replay/receipt_partition.rs"]
+mod receipt_partition;
+#[path = "replay/report.rs"]
+mod report;
+#[path = "replay/schema_gate.rs"]
+mod schema_gate;
+#[path = "replay/traffic.rs"]
+mod traffic;
+#[path = "replay/validate.rs"]
+mod validate;
+#[path = "replay/verdict.rs"]
+mod verdict;
+#[path = "replay/verify.rs"]
+mod verify;
 
 // Re-export every submodule's crate-internal surface so cross-file
 // references (and the `cmd_replay`/`load_trusted_kernel_pubkey` symbols
@@ -303,29 +303,30 @@ fn run_log_replay(
             ));
         }
 
-        let receipt: chio_core::receipt::body::ChioReceipt = match serde_json::from_value(value.clone()) {
-            Ok(r) => r,
-            Err(error) => {
-                let divergence = Divergence {
-                    kind: DivergenceKind::ParseError,
-                    receipt_index: index,
-                    receipt_id: receipt_id_from_value(&value),
-                    json_pointer: None,
-                    byte_offset: None,
-                    expected: None,
-                    observed: None,
-                    detail: Some(format!("malformed receipt JSON: {error}")),
-                };
-                return Ok(ReplayReport::diverged(
-                    log_path,
-                    receipts_checked,
-                    acc.finalize_hex(),
-                    expected_root,
-                    divergence,
-                    exit_code_for(DivergenceKind::ParseError),
-                ));
-            }
-        };
+        let receipt: chio_core::receipt::body::ChioReceipt =
+            match serde_json::from_value(value.clone()) {
+                Ok(r) => r,
+                Err(error) => {
+                    let divergence = Divergence {
+                        kind: DivergenceKind::ParseError,
+                        receipt_index: index,
+                        receipt_id: receipt_id_from_value(&value),
+                        json_pointer: None,
+                        byte_offset: None,
+                        expected: None,
+                        observed: None,
+                        detail: Some(format!("malformed receipt JSON: {error}")),
+                    };
+                    return Ok(ReplayReport::diverged(
+                        log_path,
+                        receipts_checked,
+                        acc.finalize_hex(),
+                        expected_root,
+                        divergence,
+                        exit_code_for(DivergenceKind::ParseError),
+                    ));
+                }
+            };
 
         let outcome = verify_receipt(&value, trusted_kernel_key);
         if !outcome.ok {
@@ -684,8 +685,7 @@ mod replay_parser_tests {
 
     #[test]
     fn replay_parses_from_tee_and_json_flags() {
-        let cli = parse_cli(["chio", "replay", "capture.ndjson", "--from-tee", "--json"])
-            .unwrap();
+        let cli = parse_cli(["chio", "replay", "capture.ndjson", "--from-tee", "--json"]).unwrap();
         match cli.command {
             Commands::Replay(args) => {
                 assert!(args.from_tee);
@@ -731,8 +731,7 @@ mod replay_parser_tests {
 
     #[test]
     fn replay_parses_traffic_subcommand() {
-        let cli =
-            parse_cli(["chio", "replay", "traffic", "--from", "capture.ndjson"]).unwrap();
+        let cli = parse_cli(["chio", "replay", "traffic", "--from", "capture.ndjson"]).unwrap();
         match cli.command {
             Commands::Replay(args) => {
                 assert!(args.log.is_none(), "positional <log> absent under traffic");

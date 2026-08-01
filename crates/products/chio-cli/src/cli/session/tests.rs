@@ -803,8 +803,10 @@ capabilities:
         kernel.register_tool_server(Box::new(StubToolServer {
             id: "srv-a".to_string(),
         }));
-        let mut nonce_config = chio_kernel::ExecutionNonceConfig::default();
-        nonce_config.require_nonce = true;
+        let nonce_config = chio_kernel::ExecutionNonceConfig {
+            require_nonce: true,
+            ..chio_kernel::ExecutionNonceConfig::default()
+        };
         kernel.set_execution_nonce_store(
             nonce_config.clone(),
             Box::new(chio_kernel::InMemoryExecutionNonceStore::from_config(

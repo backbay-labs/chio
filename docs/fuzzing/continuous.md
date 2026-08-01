@@ -33,9 +33,9 @@ runs (200 min/month headroom for everything else). Enforcement:
 
 - `scripts/check-fuzz-budget.sh` queries the trailing-30d billed-second
   total for `cflite_pr.yml`, `cflite_batch.yml`, `fuzz.yml`,
-  `mutants.yml`, and `mutants-fuzz-cocoverage.yml`, sums them, and exits
-  non-zero when the sum crosses the cap unless a lane explicitly opts into
-  `GH_FUZZ_BUDGET_CAP_MODE=warn`.
+  `mutants.yml`, `mutants-fuzz-cocoverage.yml`, and `proof-mutants.yml`, sums
+  them, and exits non-zero when the sum crosses the cap unless a lane
+  explicitly opts into `GH_FUZZ_BUDGET_CAP_MODE=warn`.
 - PR-time CFLite budget checks are advisory when the shared trailing window is
   already over cap. The PR still runs changed-target sampling, but shared
   budget exhaustion does not block unrelated merge readiness.
@@ -48,7 +48,7 @@ runs (200 min/month headroom for everything else). Enforcement:
   lower value) in the workflow env. Do not raise the cap above 1,800
   without re-opening the locked decision.
 
-Sizing intent (steady state, 18-target inventory):
+Sizing intent (steady state, 27-target inventory):
 
 | Lane              | Cadence             | Per-run cost         | 30-day cost (est.) |
 |-------------------|---------------------|----------------------|--------------------|
@@ -60,20 +60,23 @@ Sizing intent (steady state, 18-target inventory):
 The in-tree `fuzz.yml` matrix runs on the GitHub-hosted pool but bills
 against the same free tier; nightly wall-clock is bounded by the longest
 single target rather than the sum because the matrix runs jobs in parallel.
-The cap-check script counts only `cflite_*` minutes today; if
-`fuzz.yml` minutes start crowding the cap, extend the script's workflow
-filter rather than raising the cap.
+The cap-check script includes the two ClusterFuzzLite workflows, the in-tree
+fuzz matrix, mutation testing, mutants-fuzz co-coverage, and formal proof
+mutation testing. Keep that six-workflow filter aligned with the workflow
+inventory rather than raising the cap when a lane consumes more than expected.
 
 ## Workflow inventory
 
 Current inventory.
 
-| Workflow                                     | Owner | Trigger                                  | Per-run wall-time          |
-|----------------------------------------------|-------|------------------------------------------|----------------------------|
-| `.github/workflows/cflite_pr.yml`            | core  | PR (changed-target sampling)             | 60-120s per selected target|
-| `.github/workflows/cflite_batch.yml`         | core  | nightly cron `17 2 * * *` UTC            | 1 target x 1,800s          |
-| `.github/workflows/fuzz.yml`                 | core  | nightly cron `23 3 * * *` UTC + dispatch | matrix, 1,800s/target ASan |
-| `.github/workflows/mutants.yml`              | core  | nightly + PR diff (advisory)             | 4-hour budget per crate    |
+| Workflow                                     | Owner  | Trigger                                  | Per-run wall-time             |
+|----------------------------------------------|--------|------------------------------------------|-------------------------------|
+| `.github/workflows/cflite_pr.yml`            | core   | PR (changed-target sampling)             | 60-120s per selected target   |
+| `.github/workflows/cflite_batch.yml`         | core   | nightly cron `17 2 * * *` UTC            | 1 target x 1,800s             |
+| `.github/workflows/fuzz.yml`                 | core   | nightly cron `23 3 * * *` UTC + dispatch | matrix, 1,800s/target ASan    |
+| `.github/workflows/mutants.yml`              | core   | nightly + PR diff                        | 45m PR or 4h nightly per crate|
+| `.github/workflows/mutants-fuzz-cocoverage.yml` | core | nightly + dispatch                       | 5-hour matrix                 |
+| `.github/workflows/proof-mutants.yml`        | formal | nightly + dispatch + PR controls         | 20m controls, 2-3h mutation   |
 
 Notes:
 
@@ -83,59 +86,33 @@ Notes:
   edits). The workflow listens to the `labeled` activity type, so adding the
   label to an already-open PR triggers a fresh run rather than waiting for
   the next commit.
-- `cflite_batch.yml` rotates one target per night across an 18-day full sweep.
-- `fuzz.yml` is the in-tree `cargo +nightly fuzz` matrix authored in
-  It complements rather than replaces ClusterFuzzLite by running
-  every target every night with ASan.
-- `mutants.yml` is advisory for one release cycle per
-  decision 12; see `docs/fuzzing/mutants.md` when it
-  exists.
+- `cflite_batch.yml` rotates one target per night across the full inventory.
+- `fuzz.yml` complements rather than replaces ClusterFuzzLite by running every
+  target every night with ASan.
+- `mutants.yml` uses the release-owned posture described in
+  `docs/fuzzing/mutants.md`.
 
 ## Target inventory
 
-The in-tree matrix in `fuzz.yml` enumerates
-every target below; ClusterFuzzLite picks per-PR or per-night rotations
-from `fuzz/target-map.toml`.
+The standalone fuzz workspace defines 27 binaries. `fuzz/Cargo.toml` is the
+binary inventory, `fuzz/target-map.toml` owns source and corpus routing, and
+`fuzz/owners.toml` maps every target to its regression-test owner. The smoke
+inventory tests require those names to match the scheduled matrix in
+`.github/workflows/fuzz.yml`.
 
-PR #13 baseline (seven targets):
+Every target ships at least three deterministic seed files under
+`fuzz/corpus/<target>/`. Every file is hash-pinned in
+`fuzz/corpus_metadata.toml`; `scripts/check-corpus-metadata.sh` rejects
+missing, dangling, duplicated, or modified entries. The fuzz workspace's
+checked-in `Cargo.lock` is authoritative for corpus smoke, and CI invokes
+`cargo test --locked` so dependency resolution cannot drift during replay.
 
-| Target                     | Source                                                |
-|----------------------------|-------------------------------------------------------|
-| `canonical_json_roundtrip` | canonical-JSON serializer round-trip                  |
-| `manifest_decode`          | tool-manifest decode                                  |
-| `receipt_decode`           | signed-receipt decode                                 |
-| `capability_decode`        | capability-token decode                               |
-| `scope_decode`             | scope-string decode                                   |
-| `policy_decision_decode`   | policy-decision decode                                |
-| `signing_envelope_decode`  | signing-envelope decode                               |
-
-Supply-chain (one target):
-
-| Target          | Source                                          |
-|-----------------|-------------------------------------------------|
-| `attest_verify` | supply-chain attestation parser      |
-
-Target expansion (twelve targets, T8 included):
-
-| Target                          | Source                                                                |
-|---------------------------------|-----------------------------------------------------------------------|
-| `jwt_vc_verify`                 | JWT VC verifier                                          |
-| `oid4vp_presentation`           | OID4VP holder response                                   |
-| `did_resolve`                   | chio-did parser plus resolver                            |
-| `anchor_bundle_verify`          | anchor proof bundle plus checkpoint records                |
-| `mcp_envelope_decode`           | MCP NDJSON decode plus edge dispatch                     |
-| `a2a_envelope_decode`           | A2A SSE parse plus per-event fan-out                     |
-| `acp_envelope_decode`           | ACP-Client NDJSON plus handle_jsonrpc dispatch                  |
-| `wasm_preinstantiate_validate`  | ComponentBackend, WasmtimeBackend, format detect         |
-| `wit_host_call_boundary`        | GuardRequest/Verdict serde deserialization               |
-| `chio_yaml_parse`               | chio-config YAML loader                                  |
-| `openapi_ingest`                | OpenApiMcpBridge::from_spec                              |
-| `receipt_log_replay`            | pre-included slot in fuzz.yml; binary lands in T8          |
-
-Total: 7 (PR #13) + 1 + 12 = 20 targets.
-The success-criteria floor is 11 new targets (7 baseline + 11 new =
-18 in the matrix exit-test count); T8 lifts the count from 11 to 12 and the
-total to 20.
+The eval-receipt, federation trust-establishment, and underwriting targets
+expose shared in-process entries from `chio_fuzz::entries`. Their libFuzzer
+binaries are thin adapters over the same functions replayed by
+`fuzz/tests/smoke.rs`. Typed `arbitrary` targets retain their binary adapters;
+the inventory and seed-floor tests still enforce corpus and ownership coverage
+for them.
 
 ## ClusterFuzzLite bridge
 
@@ -146,11 +123,11 @@ window and remains the documented permanent fallback after acceptance lands:
 - `.github/workflows/cflite_pr.yml` -- changed-target sampling per
   `fuzz/target-map.toml`. Default per-target wall budget is 60s (1-6 targets
   per PR after the glob match). Opt-in `fuzz: full` PR label promotes the
-  run to a full-corpus sweep across all sixteen targets at 120s each
+  run to a full-corpus sweep across all 27 targets at 120s each
   (release-cut PRs and trust-boundary edits).
 - `.github/workflows/cflite_batch.yml` -- sampled nightly cron at
-  `17 2 * * *` UTC. Rotates one target per night across the sixteen-target
-  inventory (`day-of-epoch mod 16`), 30 minutes per run. The `cflite_cron`
+  `17 2 * * *` UTC. Rotates one target per night across the 27-target
+  inventory, 30 minutes per run. The `cflite_cron`
   workflow that the source-doc earlier described is intentionally absent;
   the weekly-soak Tier-A plan was dropped along with Tier A, and OSS-Fuzz
   is the post-acceptance soak path.
@@ -169,7 +146,7 @@ The CFLite builder image lives under `.clusterfuzzlite/`:
   with the rustls/openssl build deps plus `zip`. Mirrors the OSS-Fuzz
   scaffold under `fuzz/oss-fuzz/` so the in-tree CFLite image and the
   OSS-Fuzz image stay behaviourally identical.
-- `.clusterfuzzlite/build.sh` -- enumerates all sixteen fuzz targets and
+- `.clusterfuzzlite/build.sh` -- enumerates all 27 fuzz targets and
   runs `cargo +nightly fuzz build <target> --release --sanitizer
   "$SANITIZER"` per target. The OSS-Fuzz copy at `fuzz/oss-fuzz/build.sh`
   is the source-of-truth; any new fuzz target lands in both files in the
@@ -222,13 +199,7 @@ files live under `fuzz/oss-fuzz/` and are mirrored into the upstream
   `gcr.io/oss-fuzz-base/base-builder-rust`, installs the rustls/openssl
   build deps plus `zip` for seed-corpus packing, and clones the repo at
   `/src/chio`.
-- `fuzz/oss-fuzz/build.sh` enumerates all sixteen fuzz targets
-  (`attest_verify`, `jwt_vc_verify`, `oid4vp_presentation`,
-  `did_resolve`, `anchor_bundle_verify`, `mcp_envelope_decode`,
-  `a2a_envelope_decode`, `acp_envelope_decode`,
-  `wasm_preinstantiate_validate`, `wit_host_call_boundary`,
-  `chio_yaml_parse`, `openapi_ingest`, `receipt_log_replay`,
-  `canonical_json`, `capability_receipt`, `manifest_roundtrip`),
+- `fuzz/oss-fuzz/build.sh` enumerates all 27 fuzz targets,
   invokes `cargo +nightly fuzz build <target> --release --sanitizer
   "$SANITIZER"` for each, copies the resulting binary into `$OUT/`,
   and packs `fuzz/corpus/<target>/` into
@@ -263,7 +234,14 @@ running this from the repo root will not find the `smoke` test target:
 
 ```bash
 cd fuzz
-cargo test --test smoke <target>_smoke
+cargo test --locked --test smoke <target>_smoke
+```
+
+Replay every smoke-enabled corpus and validate the inventory joins:
+
+```bash
+cd fuzz
+cargo test --locked
 ```
 
 Reproduce a known crash from a minimized input:

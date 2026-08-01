@@ -6,12 +6,24 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+fixture_root="${TMP_DIR}/repo"
+mkdir -p "${fixture_root}/scripts"
+cp "${REPO_ROOT}/scripts/mutants-gate.sh" "${fixture_root}/scripts/mutants-gate.sh"
+cat >"${fixture_root}/releases.toml" <<'EOF'
+[mutants]
+target_catch_ratio_percent = 80
+activation_threshold_percent_per_crate = 65
+required_consecutive_nightly_successes = 2
+observed_consecutive_nightly_successes = 2
+cycle_end_tag = "v-test-blocking"
+EOF
+
 status=0
 env \
   MUTANTS_PACKAGE=chio-kernel-core \
   MUTANTS_OUTPUT_DIR="${TMP_DIR}/mutants-out" \
   MUTANTS_EXIT=0 \
-  bash "${REPO_ROOT}/scripts/mutants-gate.sh" \
+  bash "${fixture_root}/scripts/mutants-gate.sh" \
   >"${TMP_DIR}/stdout" 2>"${TMP_DIR}/stderr" || status=$?
 
 if [[ "${status}" -eq 0 ]]; then

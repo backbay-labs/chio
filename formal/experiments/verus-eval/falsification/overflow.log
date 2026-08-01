@@ -1,0 +1,24 @@
+warning: unused doc comment
+   --> /home/connor/backbay/arc-fv-execution/formal/experiments/verus-eval/ledger/src/mutations.rs:115:1
+    |
+115 | / /// Overflow mutation: `authorize` drops the checked-add guard, the exact
+116 | | /// mutation FV-B3 calls "skips a checked-add guard". The u64 bound
+117 | | /// invariant must become unprovable.
+    | |_------------------------------------^
+    |   |
+    |   rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+error: could not show invariant `inv_u64_bound` on the `post` state
+   --> /home/connor/backbay/arc-fv-execution/formal/experiments/verus-eval/ledger/src/mutations.rs:204:9
+    |
+204 | /         #[inductive(authorize)]
+205 | |         fn authorize_inductive(pre: Self, post: Self, id: nat, amount: nat) {
+206 | |             lemma_holds_sum_insert_fresh(pre.holds, id, HoldState { amount });
+207 | |         }
+    | |_________^
+
+verification results:: 22 verified, 1 errors
+error: aborting due to 1 previous error; 1 warning emitted

@@ -65,6 +65,7 @@ pub mod federation_artifact_store;
 #[cfg(not(loom))]
 pub mod governed_active_response;
 #[cfg(not(loom))]
+pub mod governed_approval_replay;
 pub mod memory_provenance;
 #[cfg(not(loom))]
 pub mod observability;
@@ -88,6 +89,8 @@ pub mod receipt_store;
 #[cfg(not(loom))]
 mod receipt_support;
 #[cfg(not(loom))]
+mod replay_retention;
+#[cfg(not(loom))]
 mod request_matching;
 #[cfg(not(loom))]
 pub mod revocation_runtime;
@@ -95,6 +98,8 @@ pub mod revocation_runtime;
 pub mod revocation_store;
 #[cfg(not(loom))]
 pub mod runtime;
+#[cfg(not(loom))]
+mod runtime_trace;
 pub mod session;
 #[cfg(not(loom))]
 mod settlement_routing;
@@ -165,9 +170,9 @@ pub(crate) use receipt_support::*;
 #[cfg(not(loom))]
 pub use receipt_support::{
     fixed_runtime_unix_secs_for_current_thread, kernel_signing_backend,
-    scope_fixed_runtime_for_current_thread, sign_receipt_body_hybrid_canonical,
-    sign_receipt_body_with_backend, FixedRuntimeScope, KernelCryptoFloor,
-    KernelSigningBackendError, SignedHybridReceipt,
+    receipt_body_fields_coupled, scope_fixed_runtime_for_current_thread,
+    sign_receipt_body_hybrid_canonical, sign_receipt_body_with_backend, FixedRuntimeScope,
+    KernelCryptoFloor, KernelSigningBackendError, ReceiptCouplingExpectation, SignedHybridReceipt,
 };
 #[cfg(not(loom))]
 pub(crate) use request_matching::{
@@ -443,6 +448,11 @@ pub use execution_nonce::{
     EXECUTION_NONCE_SCHEMA,
 };
 #[cfg(not(loom))]
+pub use governed_approval_replay::{
+    GovernedApprovalReplayStore, InMemoryGovernedApprovalReplayStore,
+    DEFAULT_GOVERNED_APPROVAL_REPLAY_CAPACITY,
+};
+#[cfg(not(loom))]
 pub use memory_provenance::{
     classify_memory_action, next_entry_id as next_memory_provenance_entry_id,
     recompute_entry_hash as recompute_memory_provenance_entry_hash, InMemoryMemoryProvenanceStore,
@@ -501,11 +511,12 @@ pub use operator_report::{
 #[cfg(not(loom))]
 pub use payment::{
     AcpPaymentAdapter, CommercePaymentContext, GovernedPaymentContext, PaymentAdapter,
-    PaymentAuthorization, PaymentAuthorizationState, PaymentAuthorizeRequest, PaymentError,
-    PaymentJournalError, PaymentJournalRecord, PaymentJournalState, PaymentJournalTransition,
-    PaymentRailMode, PaymentReleaseAuthorityBinding, PaymentReleaseAuthorityKind, PaymentResult,
-    PaymentSettleAction, RailSettlementState, RailSettlementStatus, ReceiptSettlement,
-    X402PaymentAdapter,
+    PaymentAuthorization, PaymentAuthorizationState, PaymentAuthorizeRequest,
+    PaymentCredentialDisposition, PaymentError, PaymentJournalError, PaymentJournalRecord,
+    PaymentJournalState, PaymentJournalTransition, PaymentRailMode, PaymentReleaseAuthorityBinding,
+    PaymentReleaseAuthorityKind, PaymentResult, PaymentSettleAction,
+    PreDispatchPaymentUnwindEvidence, PreDispatchPaymentUnwindStatus, RailSettlementState,
+    RailSettlementStatus, ReceiptSettlement, X402PaymentAdapter,
 };
 #[cfg(not(loom))]
 pub use post_invocation::{
@@ -550,6 +561,8 @@ pub use runtime::{
     ToolServerOutput, ToolServerStreamResult, Verdict,
 };
 #[cfg(not(loom))]
+pub use runtime_trace::{RuntimeTraceEvent, RuntimeTraceObserver};
+#[cfg(not(loom))]
 pub use session::{
     InflightRegistry, InflightRequest, LateSessionEvent, PeerCapabilities, Session, SessionError,
     SessionOperationResponse, SessionPersistError, SessionState, SubscriptionRegistry,
@@ -579,15 +592,17 @@ pub(crate) use kernel::{current_unix_timestamp, MatchingGrant, ReceiptContent};
 
 #[cfg(not(loom))]
 pub use kernel::{
-    AgentId, CapabilityId, ChildReceiptLog, ChioKernel, Guard, GuardContext, GuardDecision,
-    HotPathDeadlineConfig, HotPathStage, HybridSigningConfig, KernelBuildError, KernelConfig,
-    KernelError, MemoryBudgetConfig, OverloadResource, PromptProvider, ReceiptLog,
+    AgentId, CapabilityId, ChildReceiptLog, ChioKernel, FederationTreatyAdmissionBinding,
+    FederationTreatyVerification, Guard, GuardContext, GuardDecision, HotPathDeadlineConfig,
+    HotPathStage, HybridSigningConfig, KernelBuildError, KernelConfig, KernelError,
+    MemoryBudgetConfig, OverloadResource, PromptProvider, ReceiptLog, ReplayClockDirection,
     ResourceProvider, RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook,
-    ServerId, SettlementRuntimeConfigError, StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE,
-    DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
-    DEFAULT_RECEIPT_APPEND_BUDGET_MS, DEFAULT_RECEIPT_WRITER_POLL_MS,
-    DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS, EMERGENCY_STOP_DENY_REASON,
-    MIN_RECEIPT_APPEND_BUDGET_MS,
+    RuntimeAdmissionReadinessToken, RuntimeAdmissionRevalidationContext, ServerId,
+    SettlementRuntimeConfigError, StructuredErrorReport, VerifiedFederationTreatyMaterial,
+    DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS,
+    DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RECEIPT_APPEND_BUDGET_MS,
+    DEFAULT_RECEIPT_WRITER_POLL_MS, DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS,
+    EMERGENCY_STOP_DENY_REASON, MIN_RECEIPT_APPEND_BUDGET_MS,
 };
 
 #[cfg(not(loom))]

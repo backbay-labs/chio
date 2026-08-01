@@ -319,13 +319,15 @@ fn concurrent_create_next_receipt_checkpoint_produces_one_checkpoint() {
     }
     drop(store);
 
-    let barrier = Arc::new(Barrier::new(2));
+    const CONCURRENT_WRITERS: usize = 8;
+    let stores = (0..CONCURRENT_WRITERS)
+        .map(|_| SqliteReceiptStore::open(&path).test_unwrap())
+        .collect::<Vec<_>>();
+    let barrier = Arc::new(Barrier::new(CONCURRENT_WRITERS));
     let mut handles = Vec::new();
-    for _ in 0..2 {
-        let path = path.clone();
+    for store in stores {
         let barrier = Arc::clone(&barrier);
         handles.push(thread::spawn(move || {
-            let store = SqliteReceiptStore::open(&path).test_unwrap();
             barrier.wait();
             store
                 .create_next_receipt_checkpoint(10, &receipt_test_keypair())
@@ -621,6 +623,56 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
                 second_publication.previous_checkpoint_sha256,
             ),
         ]
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn failed_checkpoint_projection_backfill_rolls_back_lineage_backfill() {
+    let path = unique_db_path("chio-receipts-projection-backfill-rollback");
+    let child_receipt = sample_child_receipt_with_id_and_timestamp("rollback-child-1", 21);
+
+    // Establish the claim-log projection first. Bootstrap intentionally refuses
+    // to recreate an empty claim log after checkpoints exist, so this mirrors a
+    // legacy store whose claim log is intact but whose newer projections need
+    // repair.
+    seed_pre_projection_store(&path, &[], std::slice::from_ref(&child_receipt), &[]);
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute("DELETE FROM request_lineage", [])
+        .test_unwrap();
+    let remaining_lineage: i64 = connection
+        .query_row("SELECT COUNT(*) FROM request_lineage", [], |row| row.get(0))
+        .test_unwrap();
+    assert_eq!(remaining_lineage, 0, "lineage repair precondition");
+    drop(connection);
+
+    let checkpoint_kp = receipt_test_keypair();
+    let checkpoint =
+        build_checkpoint(1, 1, 1, &[b"rollback".to_vec()], &checkpoint_kp).test_unwrap();
+    insert_checkpoint_row_with_statement_json(
+        &store,
+        &checkpoint,
+        checkpoint.body.batch_end_seq,
+        "{}",
+    );
+    drop(store);
+
+    let error = SqliteReceiptStore::open(&path).test_unwrap_err();
+    assert!(
+        error.to_string().contains("missing field `schema`"),
+        "unexpected error: {error}"
+    );
+
+    let connection = rusqlite::Connection::open(&path).test_unwrap();
+    let lineage_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM request_lineage", [], |row| row.get(0))
+        .test_unwrap();
+    assert_eq!(
+        lineage_count, 0,
+        "lineage writes must roll back when checkpoint projection repair fails"
     );
 
     let _ = fs::remove_file(path);

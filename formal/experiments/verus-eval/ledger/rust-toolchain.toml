@@ -1,0 +1,6 @@
+# Build-time rustc pin of the pinned Verus release
+# (release/0.2026.07.18.3a4d30b). Verification runs through the
+# self-contained verus binary; this file documents the requirement for
+# hosts that rebuild the toolchain from source.
+[toolchain]
+channel = "1.96.0"

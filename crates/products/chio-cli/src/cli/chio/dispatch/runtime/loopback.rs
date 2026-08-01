@@ -13,8 +13,10 @@ pub(crate) fn cmd_chio_runtime_run_loopback(
 ) -> Result<(), CliError> {
     match (static_package, static_report) {
         (Some(static_package), Some(static_report)) => {
-            let static_package_json = read_runtime_loopback_baseline(static_package, "static proof package")?;
-            let static_report_json = read_runtime_loopback_baseline(static_report, "static verifier report")?;
+            let static_package_json =
+                read_runtime_loopback_baseline(static_package, "static proof package")?;
+            let static_report_json =
+                read_runtime_loopback_baseline(static_report, "static verifier report")?;
             chio_runtime_harness::run_runtime_loopback_scenario_with_static_artifacts(
                 scenario,
                 store_dir,
@@ -24,9 +26,12 @@ pub(crate) fn cmd_chio_runtime_run_loopback(
                 &static_report_json,
             )
         }
-        (None, None) => {
-            chio_runtime_harness::run_runtime_loopback_scenario(scenario, store_dir, now_unix_ms, out_dir)
-        }
+        (None, None) => chio_runtime_harness::run_runtime_loopback_scenario(
+            scenario,
+            store_dir,
+            now_unix_ms,
+            out_dir,
+        ),
         _ => {
             return Err(CliError::cli_other_error(
                 "Chio runtime loopback requires --static-package and --static-report together",

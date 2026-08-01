@@ -48,7 +48,7 @@ pub fn cmd_mercury_inquiry_export(
         redaction_profile,
         verifier_equivalent,
     )?;
-    package
+    let report = package
         .verify(unix_now())
         .map_err(|error| CliError::Other(error.to_string()))?;
     write_json_file(output, &package)?;
@@ -61,7 +61,7 @@ pub fn cmd_mercury_inquiry_export(
         println!("inquiry_id:          {}", package.inquiry_id);
         println!("workflow_id:         {}", package.proof_package.workflow_id);
         println!("audience:            {}", package.audience);
-        println!("verifier_equivalent: {}", package.verifier_equivalent);
+        println!("verifier_equivalent: {}", report.verifier_equivalent);
     }
 
     Ok(())

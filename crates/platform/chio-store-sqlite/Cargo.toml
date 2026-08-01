@@ -27,12 +27,14 @@ chaos-test-hooks = []
 
 [dependencies]
 chacha20poly1305 = { workspace = true }
+chio-agent-web-interop = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-credit = { workspace = true }
 chio-federation = { workspace = true }
 chio-federation-authority = { workspace = true }
 chio-fiscal = { workspace = true }
 chio-kernel = { workspace = true }
+chio-kernel-core = { workspace = true }
 chio-settle = { workspace = true }
 chio-supervisor = { workspace = true }
 hex = { workspace = true }
@@ -53,6 +55,7 @@ uuid = { workspace = true, features = ["v7"] }
 zeroize = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+async-trait = { workspace = true }
 chio-kernel = { workspace = true, features = ["admission-test-support"] }
 chio-test-support = { workspace = true }
 criterion = { workspace = true }

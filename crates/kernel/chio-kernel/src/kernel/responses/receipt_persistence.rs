@@ -1,5 +1,18 @@
 use super::*;
 
+fn require_receipt_body_fields_coupled(
+    body: &ChioReceiptBody,
+    expected: &ReceiptCouplingExpectation<'_>,
+) -> Result<(), KernelError> {
+    if receipt_body_fields_coupled(body, expected) {
+        Ok(())
+    } else {
+        Err(KernelError::ReceiptSigningFailed(
+            "receipt fields diverged from the admitted decision inputs".to_string(),
+        ))
+    }
+}
+
 fn receipts_match(left: &ChioReceipt, right: &ChioReceipt) -> Result<bool, KernelError> {
     let left = chio_core::canonical::canonical_json_bytes(left)
         .map_err(|error| KernelError::DurableAdmission(error.to_string()))?;
@@ -14,6 +27,9 @@ impl ChioKernel {
         &self,
         params: ReceiptParams<'_>,
     ) -> Result<ChioReceipt, KernelError> {
+        let expected_action = params.action.clone();
+        let expected_decision = params.decision.clone();
+        let expected_content_hash = params.content_hash.clone();
         // Multi-tenant receipt isolation: resolve tenant_id for this receipt.
         // Precedence:
         //   1. An explicit override on `ReceiptParams` (currently unused).
@@ -65,6 +81,17 @@ impl ChioKernel {
             kernel_key: self.config.keypair.public_key(),
             bbs_projection_version: None,
         };
+        let expected = ReceiptCouplingExpectation {
+            capability_id: params.capability_id,
+            server_id: params.server_id,
+            tool_name: params.tool_name,
+            action: &expected_action,
+            decision: &expected_decision,
+            content_hash: &expected_content_hash,
+            policy_hash: &self.config.policy_hash,
+            trust_level: params.trust_level,
+        };
+        require_receipt_body_fields_coupled(&body, &expected)?;
 
         // WYSIWYS: bind the signature to the exact content this receipt's
         // `content_hash` was derived from. The handle recomputes
@@ -127,9 +154,10 @@ impl ChioKernel {
             request.federated_origin_kernel_id.as_deref(),
         );
         let thread_admission = current_scoped_receipt_federation_admission();
-        let thread_admission = thread_admission.as_ref().filter(|admission| {
-            admission.remote_kernel_id.as_deref() == request.federated_origin_kernel_id.as_deref()
-        });
+        let thread_admission = thread_admission.as_ref();
+        if receipt.is_allowed() {
+            self.check_revocation(&request.capability)?;
+        }
         self.record_chio_receipt(receipt)?;
         self.apply_federation_cosign_for_admitted_request_with_snapshot(
             request,
@@ -149,9 +177,7 @@ impl ChioKernel {
             request.federated_origin_kernel_id.as_deref(),
         );
         let thread_admission = current_scoped_receipt_federation_admission();
-        let thread_admission = thread_admission.as_ref().filter(|admission| {
-            admission.remote_kernel_id.as_deref() == request.federated_origin_kernel_id.as_deref()
-        });
+        let thread_admission = thread_admission.as_ref();
         self.apply_federation_cosign_for_admitted_request_with_snapshot(
             request,
             receipt,
@@ -165,11 +191,7 @@ impl ChioKernel {
         receipt: &ChioReceipt,
         admission: Option<&ReceiptFederationAdmission>,
     ) -> Result<(), KernelError> {
-        self.apply_federation_cosign(
-            request,
-            receipt,
-            admission.and_then(|admission| admission.peer.as_ref()),
-        )
+        self.apply_federation_cosign(request, receipt, admission)
     }
 
     pub(super) fn record_chio_receipt_with_mode(
@@ -202,6 +224,7 @@ impl ChioKernel {
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
+        let trace_transition = self.lock_runtime_trace_transition()?;
         let settlement_visible_at_ms = self
             .settlement_observer
             .as_ref()
@@ -238,6 +261,18 @@ impl ChioKernel {
                 })?;
             }
             self.append_chio_receipt_to_local_log(receipt.clone());
+        }
+        let trace_event = if self.runtime_trace_observer.is_some() {
+            Some(RuntimeTraceEvent::ReceiptAppended {
+                source_sequence: self.allocate_runtime_trace_source_sequence()?,
+                receipt: Box::new(receipt.clone()),
+            })
+        } else {
+            None
+        };
+        drop(trace_transition);
+        if let Some(event) = trace_event {
+            self.observe_runtime_trace(event);
         }
 
         let Some(runtime) = self.settlement_observer.as_ref() else {

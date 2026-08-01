@@ -24,18 +24,13 @@ impl Drop for ChioEdge {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let demo_name = env::args().nth(1).unwrap_or_else(|| "Chio".to_string());
-    let receipt_db = project_root.join(".chio").join("receipts.db");
-    let session_db = project_root.join(".chio").join("session.db");
+    let state_dir = project_root.join(".chio");
+    let receipt_db = state_dir.join("receipts.db");
+    let session_db = state_dir.join("session.db");
     let target_dir = env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| project_root.join(".chio").join("target"));
-    let state_dir = receipt_db.parent().expect("receipt db parent");
-    fs::create_dir_all(state_dir)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(state_dir, fs::Permissions::from_mode(0o700))?;
-    }
+    create_private_directory(&state_dir)?;
     fs::create_dir_all(&target_dir)?;
 
     let chio_bin = env::var("CHIO_BIN").unwrap_or_else(|_| "chio".to_string());
@@ -141,6 +136,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", String::from_utf8_lossy(&receipts.stdout).trim());
 
     Ok(())
+}
+
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path)
 }
 
 fn spawn_chio_edge(

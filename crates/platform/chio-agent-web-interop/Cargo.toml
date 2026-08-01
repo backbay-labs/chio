@@ -17,6 +17,7 @@ base64 = { workspace = true }
 chio-commerce-order = { workspace = true }
 chio-core-types = { workspace = true }
 chio-transaction-passport = { workspace = true }
+hex = { workspace = true }
 hmac = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

@@ -18,23 +18,23 @@ pub(super) fn record_receipt_write_kernel_error(error: &chio_kernel::KernelError
 
 #[cfg(test)]
 mod tests {
-    use super::is_receipt_write_error;
-    use chio_kernel::KernelError;
+    use super::*;
 
     #[test]
-    fn receipt_write_error_classifier_excludes_control_flow_errors() {
-        let cancelled = KernelError::RequestCancelled {
-            request_id: chio_core::session::RequestId::new("cancelled-request"),
-            reason: "cancelled by client".to_string(),
-        };
-        let url_elicitation = KernelError::UrlElicitationsRequired {
+    fn cancellation_and_retryable_url_elicitation_are_not_receipt_write_errors() {
+        let url_error = chio_kernel::KernelError::UrlElicitationsRequired {
             message: "URL elicitation required".to_string(),
             elicitations: Vec::new(),
         };
-        let internal = KernelError::Internal("receipt sink unavailable".to_string());
+        let cancellation = chio_kernel::KernelError::RequestCancelled {
+            request_id: chio_core::session::RequestId::new("cancelled-request"),
+            reason: "cancelled by caller".to_string(),
+        };
 
-        assert!(!is_receipt_write_error(&cancelled));
-        assert!(!is_receipt_write_error(&url_elicitation));
-        assert!(is_receipt_write_error(&internal));
+        assert!(!is_receipt_write_error(&url_error));
+        assert!(!is_receipt_write_error(&cancellation));
+        assert!(is_receipt_write_error(&chio_kernel::KernelError::Internal(
+            "receipt sink unavailable".to_string()
+        )));
     }
 }

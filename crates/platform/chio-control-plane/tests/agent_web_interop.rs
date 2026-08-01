@@ -2,18 +2,19 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use chio_control_plane::{
     agent_web::{
         verify_agent_web_interop_with_trust, AgentWebInteropBundle, AgentWebInteropReport,
-        AgentWebVerifierTrust,
+        AgentWebVerifierTrust, InMemoryAgentWebReplayStore,
     },
     transaction_passport::TransactionPassport,
 };
 use chio_core::{
     receipt::{body::ChioReceipt, decision::ToolCallAction},
-    Keypair, PublicKey,
+    Keypair,
 };
 use chio_test_support::prelude::*;
 use serde_json::Value;
@@ -23,18 +24,9 @@ const STANDARD_WEBHOOKS_VERIFIER_SECRET: &[u8] =
     b"chio-agent-web-standard-webhooks-fixture-secret-v1";
 const STANDARD_WEBHOOKS_VERIFIER_NOW: u64 = 1_770_508_860;
 const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: u64 = 300;
-const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: [&str; 5] = [
-    "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de",
-    "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff",
-    "bed7d2ab668da3efad613998f06f7abf7875f3a6b7677a9f3ce947d77d7760a6",
-    "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-    "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565",
-];
-const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: [&str; 1] =
-    ["d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"];
-const AGENT_WEB_FIXTURE_TRUSTED_PASSPORT_KEYS: [&str; 1] =
-    ["ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"];
 const TRANSACTION_PASSPORT_SIGNATURE_SEED: [u8; 32] = [7; 32];
+const AGENT_WEB_RECEIPT_KERNEL_SIGNATURE_SEED: [u8; 32] = [18; 32];
+const AGENT_WEB_SIDECAR_SIGNATURE_SEED: [u8; 32] = [17; 32];
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -81,15 +73,8 @@ fn agent_web_fixture_bundle() -> AgentWebInteropBundle {
 }
 
 fn agent_web_fixture_trust() -> AgentWebVerifierTrust {
-    let trusted_kernel_keys = AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS
-        .map(|key| PublicKey::from_hex(key).test_expect("Agent Web fixture kernel key parses"));
-    let trusted_sidecar_keys = AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS
-        .map(|key| PublicKey::from_hex(key).test_expect("Agent Web fixture sidecar key parses"));
-    let trusted_passport_keys = AGENT_WEB_FIXTURE_TRUSTED_PASSPORT_KEYS
-        .map(|key| PublicKey::from_hex(key).test_expect("Agent Web fixture passport key parses"));
-
     AgentWebVerifierTrust::new()
-        .with_trusted_passport_signer_keys(trusted_passport_keys)
+        .with_trusted_passport_signer_keys([transaction_passport_keypair().public_key()])
         .with_standard_webhooks_secret_for(
             STANDARD_WEBHOOKS_WEBHOOK_ID,
             STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
@@ -98,8 +83,14 @@ fn agent_web_fixture_trust() -> AgentWebVerifierTrust {
             STANDARD_WEBHOOKS_VERIFIER_NOW,
             STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
         )
-        .with_trusted_receipt_kernel_keys(trusted_kernel_keys)
-        .with_trusted_envelope_sidecar_keys(trusted_sidecar_keys)
+        .with_standard_webhooks_replay_store(Arc::new(InMemoryAgentWebReplayStore::new()))
+        .with_trusted_receipt_kernel_keys([Keypair::from_seed(
+            &AGENT_WEB_RECEIPT_KERNEL_SIGNATURE_SEED,
+        )
+        .public_key()])
+        .with_trusted_envelope_sidecar_keys([
+            Keypair::from_seed(&AGENT_WEB_SIDECAR_SIGNATURE_SEED).public_key()
+        ])
 }
 
 fn transaction_passport_keypair() -> Keypair {
@@ -195,12 +186,65 @@ fn resign_agent_web_receipt_for_subject_digest(
         .test_expect("agent web receipt exists");
     let receipt: ChioReceipt =
         serde_json::from_slice(receipt_bytes).test_expect("agent web receipt parses");
-    let keypair = Keypair::from_seed(&[17u8; 32]);
+    let keypair = Keypair::from_seed(&AGENT_WEB_RECEIPT_KERNEL_SIGNATURE_SEED);
     let mut body = receipt.body();
     body.content_hash = subject_digest.to_string();
     body.kernel_key = keypair.public_key();
     let mut parameters = body.action.parameters;
     parameters["content_hash"] = Value::String(subject_digest.to_string());
+    let receipt_ref = parameters
+        .get("agent_web_receipt_ref")
+        .and_then(Value::as_str)
+        .test_expect("agent web receipt action has receipt ref");
+    let envelope = bundle
+        .artifacts
+        .values()
+        .filter_map(|bytes| serde_json::from_slice::<Value>(bytes).ok())
+        .find(|envelope| {
+            envelope.get("schema").and_then(Value::as_str)
+                == Some("chio.agent-web-proof-envelope.v2")
+                && envelope
+                    .get("receipt_refs")
+                    .and_then(Value::as_array)
+                    .is_some_and(|refs| {
+                        refs.iter()
+                            .any(|candidate| candidate.as_str() == Some(receipt_ref))
+                    })
+        })
+        .test_expect("agent web receipt resolves to one envelope");
+    for (parameter, value) in [
+        ("transaction_passport_id", bundle.passport.id.as_str()),
+        (
+            "transaction_passport_issuer",
+            bundle.passport.issuer.as_str(),
+        ),
+        (
+            "agent_web_envelope_id",
+            envelope["envelope_id"]
+                .as_str()
+                .test_expect("agent web envelope has id"),
+        ),
+        (
+            "projection_manifest_sha256",
+            envelope["projection_manifest_sha256"]
+                .as_str()
+                .test_expect("agent web envelope has projection manifest digest"),
+        ),
+        (
+            "source_protocol",
+            envelope["source_protocol"]
+                .as_str()
+                .test_expect("agent web envelope has source protocol"),
+        ),
+        (
+            "source_protocol_version",
+            envelope["source_protocol_version"]
+                .as_str()
+                .test_expect("agent web envelope has source protocol version"),
+        ),
+    ] {
+        parameters[parameter] = Value::String(value.to_string());
+    }
     body.action =
         ToolCallAction::from_parameters(parameters).test_expect("agent web receipt action hashes");
     let signed_receipt = ChioReceipt::sign(body, &keypair).test_expect("agent web receipt signs");
@@ -216,7 +260,7 @@ fn resign_agent_web_envelope(bundle: &mut AgentWebInteropBundle, envelope_path: 
         .test_expect("agent web envelope exists");
     let mut envelope: Value =
         serde_json::from_slice(envelope_bytes).test_expect("agent web envelope parses");
-    let keypair = Keypair::from_seed(&[17u8; 32]);
+    let keypair = Keypair::from_seed(&AGENT_WEB_SIDECAR_SIGNATURE_SEED);
     let public_key = keypair.public_key().to_hex();
     envelope["envelope_id"] = Value::String(agent_web_envelope_id(&envelope));
     let payload = agent_web_envelope_signature_payload(&envelope);
@@ -231,6 +275,37 @@ fn resign_agent_web_envelope(bundle: &mut AgentWebInteropBundle, envelope_path: 
         envelope_path,
         serde_json::to_vec(&envelope).test_expect("agent web envelope serializes"),
     );
+    let receipt_refs = envelope["receipt_refs"]
+        .as_array()
+        .test_expect("agent web envelope has receipt refs")
+        .iter()
+        .map(|receipt_ref| {
+            receipt_ref
+                .as_str()
+                .test_expect("agent web envelope receipt ref is a string")
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    for receipt_ref in receipt_refs {
+        let receipt_path = bundle
+            .artifacts
+            .iter()
+            .find_map(|(path, bytes)| {
+                let receipt: ChioReceipt = serde_json::from_slice(bytes).ok()?;
+                (receipt
+                    .action
+                    .parameters
+                    .get("agent_web_receipt_ref")
+                    .and_then(Value::as_str)
+                    == Some(receipt_ref.as_str()))
+                .then(|| path.clone())
+            })
+            .test_expect("agent web envelope receipt artifact exists");
+        let subject_digest = envelope["external_subject_digest"]
+            .as_str()
+            .test_expect("agent web envelope has subject digest");
+        resign_agent_web_receipt_for_subject_digest(bundle, &receipt_path, subject_digest);
+    }
 }
 
 fn rebind_agent_web_manifest_digest(bundle: &mut AgentWebInteropBundle, manifest_path: &str) {
@@ -280,6 +355,7 @@ fn agent_web_envelope_signature_payload(envelope: &Value) -> Value {
             "schema",
             "envelope_id",
             "transaction_passport_ref",
+            "agent_web_passport_scope_sha256",
             "source_protocol",
             "source_protocol_version",
             "external_subject",
@@ -304,6 +380,7 @@ fn agent_web_envelope_id(envelope: &Value) -> String {
         &[
             "schema",
             "transaction_passport_ref",
+            "agent_web_passport_scope_sha256",
             "source_protocol",
             "source_protocol_version",
             "external_subject",

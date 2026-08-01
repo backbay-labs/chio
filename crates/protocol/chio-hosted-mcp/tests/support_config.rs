@@ -2,7 +2,6 @@
 
 mod support;
 
-use std::fs;
 use std::net::TcpListener;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -15,7 +14,7 @@ fn test_dir() -> std::path::PathBuf {
         "chio-hosted-mcp-support-config-{}-{nonce}",
         std::process::id()
     ));
-    fs::create_dir_all(&path).expect("create test dir");
+    support::create_private_test_directory(&path);
     path
 }
 

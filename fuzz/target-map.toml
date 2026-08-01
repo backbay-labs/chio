@@ -203,6 +203,16 @@ triggers = [
 seeds    = "fuzz/corpus/wasm_guard_escape"
 notes    = "Runtime-execution surface; 8 escape classes via evaluate."
 
+[targets.wasm_guard_smith]
+crate    = "chio-wasm-guards"
+path     = "fuzz/fuzz_targets/wasm_guard_smith.rs"
+triggers = [
+    "crates/guards/chio-wasm-guards/**",
+    "spec/schemas/wasm-guard/**",
+]
+seeds    = "fuzz/corpus/wasm_guard_smith"
+notes    = "wasm-smith modules and components through bounded load and evaluate paths."
+
 [targets.chio_yaml_parse]
 crate    = "chio-config"
 path     = "fuzz/fuzz_targets/chio_yaml_parse.rs"
@@ -256,6 +266,23 @@ triggers = [
 ]
 seeds    = "fuzz/corpus/fuzz_policy_parse_compile"
 notes    = "HushSpec parser, validator, compiler, and YAML round-trip."
+
+[targets.policy_analyze]
+crate    = "chio-policy"
+path     = "fuzz/fuzz_targets/policy_analyze.rs"
+triggers = [
+    "crates/guards/chio-policy/src/analyze/**",
+    "crates/guards/chio-policy/src/evaluate/**",
+    "crates/guards/chio-policy/src/evaluate.rs",
+    "crates/guards/chio-policy/src/glob_pattern.rs",
+    "crates/guards/chio-policy/src/models/**",
+    "crates/guards/chio-policy/src/models.rs",
+    "fuzz/fuzz_targets/policy_analyze.rs",
+    "fuzz/corpus/policy_analyze/**",
+    "spec/schemas/policy/**",
+]
+seeds    = "fuzz/corpus/policy_analyze"
+notes    = "Bounded policy relations, analyzer totality, and evaluator-confirmed refinement witnesses."
 
 [targets.fuzz_sql_parser]
 crate    = "chio-data-guards"

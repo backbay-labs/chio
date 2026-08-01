@@ -1,11 +1,14 @@
 schema = "chio.kani-public-harnesses.v1"
 crate = "chio-kernel-core"
 script = "scripts/check-kani-public-core.sh"
+# Named harnesses omit the legacy `--no-unwinding-checks` runner flag.
+unwinding_checks = ["verify_oracle_inclusion_walk_parity"]
 
 # `harness_groups` is the flat-array catalog (one entry per logical edge or
 # algebraic property the harnesses exercise). Entries cover scope intersection
 # associativity, revocation idempotence, single-step delegation attenuation,
-# receipt sign/verify roundtrip, and the budget-checked-add overflow guard.
+# receipt sign/verify roundtrip, the budget-checked-add overflow guard, and the
+# reservation-ledger terminal classifier.
 harness_groups = [
   "public verify_capability fail-closed edges",
   "public NormalizedScope subset edges",
@@ -15,6 +18,7 @@ harness_groups = [
   "public sign_receipt WYSIWYS content-hash recompute-and-refuse edge",
   "verify scope intersection associativity (cap-subset transitivity)",
   "verify revocation predicate idempotence",
+  "verify revocation admission projection",
   "verify single-step delegation attenuation",
   "verify receipt sign/verify roundtrip algebra",
   "verify budget checked-add no partial commit on overflow",
@@ -25,7 +29,8 @@ harness_groups = [
   "verify recursive delegation no widening",
   "verify delegation receipt canonical-bytes determinism",
   "verify revocation view freshness fail-closed gate",
-  "verify oracle inclusion proof soundness",
+  "verify inclusion step production-extraction equivalence",
+  "verify relying-party inclusion walk soundness under ASSUME-SHA256",
 ]
 
 # Public Rust symbols witnessed by the harnesses above.
@@ -37,6 +42,7 @@ covered_symbols = [
   "chio_kernel_core::sign_receipt",
   "chio_kernel_core::formal_core::optional_u32_cap_is_subset",
   "chio_kernel_core::formal_core::revocation_snapshot_denies",
+  "chio_kernel_core::formal_core::revocation_lookup_denies",
   "chio_kernel_core::formal_core::monetary_cap_is_subset_by_parts",
   "chio_kernel_core::formal_core::budget_commit",
   "chio_kernel_core::formal_core::composite_quota_authorize",
@@ -47,7 +53,8 @@ covered_symbols = [
   "chio_core_types::capability::delegate",
   "chio_core_types::delegation_receipt::DelegationReceipt::canonical_bytes",
   "chio_kernel_core::revocation_view::RevocationView::install_if_newer",
-  "chio_revocation_oracle::api::InclusionProof::verify",
+  "chio_core_types::merkle::MerkleProof::compute_root_from_hash",
+  "chio_core_types::merkle_steps::inclusion_step",
 ]
 
 # Lane assignment.
@@ -56,16 +63,15 @@ covered_symbols = [
 # `public_verify_capability` and `public_evaluate` exercise the full
 # canonical-JSON serialise plus Ed25519/P-384 verify path, while the
 # algebraic harnesses model signatures with `model_sign`/`model_verify`
-# and finish in 1-3 seconds. The full sweep is ~2.2 min locally, within
-# the 6-minute PR budget, so every harness lands in `lanes.pr` (including the
-# two WYSIWYS `sign_receipt` content-hash recompute harnesses added for
-# , which sign over concrete fixtures and finish in seconds).
+# and finish in 1-3 seconds. The full sweep is ~2.2 min locally, within the
+# 10-minute warm PR target, so every harness lands in `lanes.pr`, including
+# the two WYSIWYS `sign_receipt` content-hash recompute harnesses, which sign
+# concrete fixtures and finish in seconds.
 #
 # The nightly Kani job runs the union of `lanes.pr` and
-# `lanes.nightly_only`, so moving a harness to `nightly_only` strictly
-# reduces PR coverage, never nightly coverage.
+# `lanes.nightly_only`; the pull-request workflow runs only `lanes.pr`.
 [lanes.pr]
-description = "Fast Kani harnesses run on every pull request (full sweep)"
+description = "Kani harnesses run on pull requests touching the scoped paths (full sweep)"
 harnesses = [
   "public_verify_capability_rejects_untrusted_issuer_before_signature",
   "public_normalized_scope_subset_rejects_widened_child",
@@ -80,9 +86,13 @@ harnesses = [
   "public_sign_receipt_accepts_matching_content_hash",
   "verify_scope_intersection_associative",
   "verify_revocation_predicate_idempotent",
+  "verify_revocation_admission_projection",
   "verify_delegation_chain_step",
   "verify_receipt_roundtrip",
   "verify_budget_checked_add_no_overflow",
+  "verify_budget_admission_projection",
+  "verify_reservation_ledger_terminal_classification",
+  "verify_reservation_ledger_conservation",
   "verify_composite_quota_all_or_nothing",
   "verify_quota_maximum_immutable",
   "verify_family_binding_preservation",
@@ -90,7 +100,8 @@ harnesses = [
   "verify_delegate_no_widen",
   "verify_delegation_receipt_canonical",
   "verify_revocation_view_freshness",
-  "verify_oracle_inclusion_soundness",
+  "verify_inclusion_step_equivalence",
+  "verify_oracle_inclusion_walk_parity",
 ]
 
 [lanes.nightly_only]

@@ -28,6 +28,96 @@ console smoke" check is *not* a separate required context: it is a step inside
 the "Build, lint, test" job (see the test-lane section below), so it surfaces
 under that job's context rather than as its own check.
 
+The regression-test deletion guard and its scratch-repository self-test also
+run inside "Build, lint, test". On pull requests, a deletion or rename from a
+guarded regression path fails that required context unless a separate same-line
+issue reference names each affected file.
+
+## Formal PR smoke checks are present but not required
+
+[`formal-pr-smoke.yml`](./formal-pr-smoke.yml) provides path-scoped feedback
+without changing the four required contexts above. A lightweight scope job
+classifies the PR diff before any proof toolchain is installed. The reported
+verification check names are:
+
+- "lean-build (lake + sorry scan + manifest cross-ref)"
+- "kani-public-pr (lanes.pr sweep)"
+- "kani-manifest-pr (non-core lanes.pr sweep)"
+- "rust-verification-metadata (schema only, no proofs)"
+
+The core Kani job reads all 24 PR harnesses from
+`formal/rust-verification/kani-public-harnesses.toml`. The non-core job reads
+the 12 matching entries for chio-attest-verify, chio-anchor, and chio-weights
+from `.kani/harnesses.toml`. The metadata job validates registry structure only;
+strict Creusot checks remain in `nightly.yml` and release qualification. These
+checks are frozen in `releases.toml` and must not enter a ruleset until a
+run-always aggregator exists. Real proof work must upload the configured
+per-attempt execution marker; a successful no-op must not upload that marker.
+
+The separate [`mutants.yml`](./mutants.yml) workflow also has a path-scoped PR
+lane for six trust-boundary crates. It remains advisory until the evidence
+ratchet in `releases.toml` activates blocking posture.
+
+[`apalache-safety.yml`](./apalache-safety.yml) checks the distributed
+revocation model at the PR bound, expands it on scheduled runs, reproduces the
+registered negative witnesses, and runs the production ITF projection gate.
+[`apalache-temporal.yml`](./apalache-temporal.yml) keeps both revocation
+liveness properties scheduled and non-required, with a bounded selected-pair
+refinement and an explicit fair-observation witness for the distributed
+property. That property is conditional on weak-fair connected catch-up
+opportunities and partition heal; its post-change flake rate is unmeasured, so
+the lane remains frozen.
+
+## Evidence-gated lane postures
+
+`releases.toml` is the authoritative posture registry for pass/fail proof and
+corpus lanes. Each entry records the workflow filename, exact job display name,
+triggering event, evidence reset, freshness limit, required streak, and current
+advisory or required posture. `scripts/lane-gate.sh` counts matching job results
+from bounded GitHub Actions history. Whole-workflow conclusions and manual
+dispatch runs do not count. Pull-request evidence must target the configured
+base branch and include the exact per-attempt real-execution marker.
+
+Strict proof artifacts are named with both `github.run_id` and
+`github.run_attempt`. Streak evaluation reads the latest job attempt and rejects
+a strict artifact left by any earlier attempt of the same run.
+
+Scored lanes also upload a dedicated report-only artifact using the configured
+prefix followed by `github.run_id` and `github.run_attempt`. The lane gate
+requires one unexpired artifact and one JSON report with the configured schema,
+checks the artifact digest, complete artifact listing, workflow commit and run
+identity, rotation epoch, expected sample and inventory sizes, and exact
+canonical inventory digest, normalized tool versions, registered sources,
+files, and seeds. It recomputes global and source-scoped mutation counts and
+activation ratios. Specification reports must include exact passing positive
+baseline evidence for every registered model. Proof reports must also meet the
+configured global and per-file viability floor. A missing, duplicate, stale,
+weaker, replayed, or
+internally inconsistent report cannot contribute to the promotion streak.
+
+Strict report generation requires a clean worktree and executes the manifest
+gate set. The report checker validates schema, hashes, source bindings, commit
+identity, and the recorded evidence boundary. It does not replay proof commands;
+the protected generator process attests those gate statuses.
+
+The registry covers seven scheduled formal lanes, all four formal PR checks
+listed above, and both locked-corpus smoke checks. The scored specification and
+proof mutation lanes remain advisory until their configured evidence streaks
+qualify them for promotion.
+
+- "fuzz-corpus-smoke-pr (locked replay)"
+- "fuzz corpus smoke"
+
+All thirteen entries are advisory, and no hosted qualifying streak is claimed by
+the registry. Required promotion follows the runbook in
+`docs/formal/ROADMAP.md` and adds structured `promotion_evidence` to the same
+protected registry edit. Pull-request checks remain frozen until they use a
+run-always aggregator and real-execution marker. Scheduled-only required lanes
+gate release qualification via
+`scripts/lane-gate.sh --fleet`; they are never added as pull-request contexts.
+The separately judged cargo-mutants catch-ratio gate remains under
+`scripts/mutants-gate.sh`.
+
 ### Why the build step MUST stay `--workspace`, not per-crate (`-p`)
 
 A downstream-exhaustiveness break is a class of break a per-crate scoped gate misses: a new enum
@@ -56,6 +146,8 @@ The tests run in two steps, not one, and they do *not* uniformly cover
 integration-test targets:
 
 - "Workspace tests" runs `cargo test --workspace --exclude chio-wasm-guards`.
+  The job installs Bun 1.3.3 first because the anchored-root tamper tests run
+  required Rust-TypeScript differentials and fail when Bun is unavailable.
   Across every other workspace member this compiles and runs `#[cfg(test)]`
   unit tests *and* the `tests/` integration targets, extending the
   build-breakage guarantee above to test code. Note this lane does not pass

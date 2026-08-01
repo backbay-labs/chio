@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/policy/analysis-report.schema.json",
+  "title": "Chio Policy Analysis Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "policy_sha256",
+    "findings",
+    "not_analyzed",
+    "summary"
+  ],
+  "properties": {
+    "schema": { "const": "chio.policy-analysis.v1" },
+    "policy_sha256": { "$ref": "#/$defs/sha256" },
+    "against_sha256": { "$ref": "#/$defs/sha256" },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "not_analyzed": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/notAnalyzed" }
+    },
+    "refinement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": ["refines", "does_not_refine", "inconclusive"]
+        }
+      }
+    },
+    "summary": { "$ref": "#/$defs/summary" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ruleRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "index", "pattern"],
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "index": { "type": "integer", "minimum": 0 },
+        "pattern": { "type": "string" }
+      }
+    },
+    "witness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_type", "target"],
+      "properties": {
+        "action_type": { "type": "string", "minLength": 1 },
+        "target": { "type": "string" },
+        "args_size": { "type": "integer", "minimum": 0 },
+        "content": { "type": "string" }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "severity",
+        "block",
+        "rule_ref",
+        "message"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z]+-[0-9]{4,}$" },
+        "kind": {
+          "enum": [
+            "shadowed_rule",
+            "unreachable_rule",
+            "contradiction",
+            "ambiguous_overlap",
+            "refinement_failure",
+            "analysis_incomplete"
+          ]
+        },
+        "severity": { "enum": ["notice", "warning", "error"] },
+        "block": { "type": "string", "minLength": 1 },
+        "rule_ref": { "$ref": "#/$defs/ruleRef" },
+        "message": { "type": "string", "minLength": 1 },
+        "witness": { "$ref": "#/$defs/witness" }
+      }
+    },
+    "notAnalyzed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block", "field", "reason"],
+      "properties": {
+        "block": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errors", "warnings", "notices"],
+      "properties": {
+        "errors": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 },
+        "notices": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

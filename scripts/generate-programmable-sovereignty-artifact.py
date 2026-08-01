@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate and validate the programmable-sovereignty paper artifact."""
+"""Generate and validate the bilateral-admission paper artifact."""
 
 from __future__ import annotations
 
@@ -21,109 +21,57 @@ REPO = Path(__file__).resolve().parents[1]
 PAPER = REPO / "docs/papers/programmable-sovereignty"
 SUPPLEMENTARY = PAPER / "supplementary"
 SOURCE_COMMIT_FILE = SUPPLEMENTARY / "source-commit.txt"
-TITLE = "Proof-Carrying Bilateral Admission for Cross-Organization Agent Tool Calls"
-GENERATED_AT = "2026-07-25"
+TITLE = "Receiver-Owned Bilateral Admission for Cross-Organization Agent Tool Calls"
+GENERATED_AT = "2026-07-26"
 TARGET = "USENIX Security 2027 Cycle 1"
 
 THEOREMS = [
     {
         "id": "PS-F01",
-        "name": "treaty_admission_iff_predicate_intersection",
-        "module": "Chio.Treaty.IntersectionSyntactic",
+        "name": "finite_refinement_sound",
+        "module": "Chio.Treaty.ReceiptPredicate",
         "declaration": (
-            "Chio.Treaty.IntersectionSyntactic."
-            "treaty_admission_iff_predicate_intersection"
+            "Chio.Treaty.ReceiptPredicate.finite_refinement_sound"
         ),
-        "path": (
-            "formal/lean4/Chio/Chio/Treaty/"
-            "IntersectionSyntactic.lean"
-        ),
-        "axioms": ["propext"],
+        "path": "formal/lean4/Chio/Chio/Treaty/ReceiptPredicate.lean",
+        "axioms": ["propext", "Quot.sound"],
         "claimClass": "bounded_theorem",
-        "scope": "Structural six-conjunct treaty intersection over ReceiptView.",
+        "scope": (
+            "A successful check preserves the current admission result for "
+            "every receipt in the supplied finite domain."
+        ),
     },
     {
         "id": "PS-F02",
-        "name": "treaty_admission_stable_under_ladder_floor",
-        "module": "Chio.Treaty.IntersectionSyntactic",
+        "name": "finite_refinement_exact",
+        "module": "Chio.Treaty.ReceiptPredicate",
         "declaration": (
-            "Chio.Treaty.IntersectionSyntactic."
-            "treaty_admission_stable_under_ladder_floor"
+            "Chio.Treaty.ReceiptPredicate.finite_refinement_exact"
         ),
-        "path": (
-            "formal/lean4/Chio/Chio/Treaty/"
-            "IntersectionSyntactic.lean"
-        ),
-        "axioms": ["propext"],
-        "claimClass": "bounded_theorem",
-        "scope": "Satisfied finite ladder floor reduces to treaty admission.",
-    },
-    {
-        "id": "PS-F03",
-        "name": "refinesOnConstitution_iff",
-        "module": "Chio.Treaty.PredicateLang",
-        "declaration": (
-            "Chio.Treaty.PredicateLang.refinesOnConstitution_iff"
-        ),
-        "path": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+        "path": "formal/lean4/Chio/Chio/Treaty/ReceiptPredicate.lean",
         "axioms": ["propext", "Quot.sound"],
         "claimClass": "bounded_theorem",
-        "scope": "Boolean no-widening is exact on the declared finite domain.",
-    },
-    {
-        "id": "PS-F04",
-        "name": "bridge_decidable_soundness",
-        "module": "Chio.Treaty.PredicateLang",
-        "declaration": (
-            "Chio.Treaty.PredicateLang.bridge_decidable_soundness"
+        "scope": (
+            "The Boolean checker is equivalent to the finite-domain "
+            "admission implication."
         ),
-        "path": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
-        "axioms": ["propext", "Quot.sound"],
-        "claimClass": "bounded_theorem",
-        "scope": "A positive finite check implies semantic no-widening on-domain.",
-    },
-    {
-        "id": "PS-F05",
-        "name": "treaty_admission_agrees",
-        "module": "Chio.Treaty.BridgeEquivalence",
-        "declaration": (
-            "Chio.Treaty.BridgeEquivalence.Legacy."
-            "treaty_admission_agrees"
-        ),
-        "path": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
-        "axioms": ["propext"],
-        "claimClass": "bounded_theorem",
-        "scope": "Syntactic and legacy treaty admission agree pointwise.",
-    },
-    {
-        "id": "PS-F06",
-        "name": "bounded_amendment_sound",
-        "module": "Chio.Treaty.BridgeEquivalence",
-        "declaration": (
-            "Chio.Treaty.BridgeEquivalence.Legacy."
-            "bounded_amendment_sound"
-        ),
-        "path": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
-        "axioms": ["propext", "Quot.sound"],
-        "claimClass": "bounded_theorem",
-        "scope": "A ConstitutionalDelta is sound only on its carried domain.",
     },
 ]
 
-PRODUCTION_SYMBOLS = [
+IMPLEMENTATION_SYMBOLS = [
     {
         "id": "PS-I01",
         "name": "ChioRuntimeAdmissionHook",
         "path": "crates/kernel/chio-runtime-core/src/admission_hook.rs",
         "pattern": "pub struct ChioRuntimeAdmissionHook",
-        "claimClass": "production_enforced",
+        "claimClass": "runtime_enforced",
     },
     {
         "id": "PS-I02",
         "name": "RuntimeAdmissionHook::evaluate",
         "path": "crates/kernel/chio-runtime-core/src/admission_hook.rs",
         "pattern": "fn evaluate(",
-        "claimClass": "production_enforced",
+        "claimClass": "runtime_enforced",
     },
     {
         "id": "PS-I03",
@@ -133,14 +81,14 @@ PRODUCTION_SYMBOLS = [
             "bilateral_verifier/cosign.rs"
         ),
         "pattern": "pub fn verify_chio_bilateral_invocation(",
-        "claimClass": "production_enforced",
+        "claimClass": "runtime_enforced",
     },
     {
         "id": "PS-I04",
         "name": "CrossKernelContinuation",
         "path": "crates/kernel/chio-runtime-core/src/types.rs",
         "pattern": "pub struct CrossKernelContinuation",
-        "claimClass": "production_enforced",
+        "claimClass": "runtime_enforced",
     },
     {
         "id": "PS-I05",
@@ -163,14 +111,21 @@ PRODUCTION_SYMBOLS = [
         "name": "verify_package",
         "path": "crates/trust/chio-attest-buyer-core/src/report.rs",
         "pattern": "pub fn verify_package(",
-        "claimClass": "production_enforced",
+        "claimClass": "runtime_enforced",
     },
     {
         "id": "PS-I08",
         "name": "BilateralCoSigningError::code",
         "path": "crates/trust/chio-federation/src/bilateral.rs",
         "pattern": "pub fn code(&self)",
-        "claimClass": "production_enforced",
+        "claimClass": "runtime_enforced",
+    },
+    {
+        "id": "PS-I09",
+        "name": "VerifiedFederationTreatyMaterial",
+        "path": "crates/kernel/chio-kernel/src/kernel/verified_treaty.rs",
+        "pattern": "pub struct VerifiedFederationTreatyMaterial",
+        "claimClass": "runtime_enforced",
     },
 ]
 
@@ -183,17 +138,17 @@ BEHAVIORAL_TESTS = [
     {
         "id": "PS-T02",
         "command": "cargo test -p chio-runtime-core --test runtime_treaty",
-        "claimClass": "production_enforced",
+        "claimClass": "runtime_enforced",
     },
     {
         "id": "PS-T03",
         "command": "cargo test -p chio-runtime-core --test runtime_admission",
-        "claimClass": "production_enforced",
+        "claimClass": "runtime_enforced",
     },
     {
         "id": "PS-T04",
         "command": "cargo test -p chio-runtime-core --test runtime_buyer_review",
-        "claimClass": "production_enforced",
+        "claimClass": "runtime_enforced",
     },
     {
         "id": "PS-T05",
@@ -203,7 +158,7 @@ BEHAVIORAL_TESTS = [
     {
         "id": "PS-T06",
         "command": "cargo test -p chio-federation --lib",
-        "claimClass": "production_enforced",
+        "claimClass": "runtime_enforced",
     },
     {
         "id": "PS-T07",
@@ -272,6 +227,12 @@ BENCHMARK_INPUT_ROOTS = [
     "spec",
 ]
 
+BENCHMARK_INPUT_EXCLUDES = [
+    "formal/lean4",
+    "formal/theorem-inventory.json",
+    "scripts/generate-programmable-sovereignty-artifact.py",
+]
+
 CORPORA = {
     "positive": [
         "examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json",
@@ -310,10 +271,7 @@ SOURCE_FILES = [
     ],
     "docs/papers/programmable-sovereignty/figures/admission-hook.tex",
     "docs/papers/programmable-sovereignty/figures/treaty-handshake.tex",
-    "formal/lean4/Chio/Chio.lean",
-    "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
-    "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
-    "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+    "formal/lean4/Chio/Chio/Treaty/ReceiptPredicate.lean",
     "formal/diff-tests/src/spec.rs",
     "formal/diff-tests/src/generators.rs",
     "formal/diff-tests/Cargo.toml",
@@ -340,17 +298,7 @@ SOURCE_FILES = [
 
 EXCLUDED = [
     {
-        "surface": "public anchor inclusion",
-        "status": "withheld",
-        "reason": "No live transparency-service measurement supports the core claim.",
-    },
-    {
-        "surface": "production constitutional amendment",
-        "status": "model_only",
-        "reason": "Rust does not enact ConstitutionalDelta witnesses.",
-    },
-    {
-        "surface": "Lean verification of production Rust",
+        "surface": "Lean verification of the Rust runtime",
         "status": "not_claimed",
         "reason": "The evidence is generated differential alignment, not refinement.",
     },
@@ -363,11 +311,6 @@ EXCLUDED = [
         "surface": "wide-area performance and failure recovery",
         "status": "not_evaluated",
         "reason": "The evaluated path is a deterministic single-host loopback.",
-    },
-    {
-        "surface": "legal or territorial sovereignty",
-        "status": "not_claimed",
-        "reason": "Authority is local to the receiver's receipt-admission boundary.",
     },
 ]
 
@@ -442,6 +385,19 @@ def benchmark_input_tree_sha256(benchmark_id: str, commit: str) -> str:
         ).stdout
     except subprocess.CalledProcessError:
         fail(f"benchmark input commit is unavailable: {commit}")
+    included_entries = []
+    for entry in tree.splitlines(keepends=True):
+        _, separator, path_bytes = entry.partition(b"\t")
+        if not separator:
+            fail(f"malformed benchmark input tree entry for {benchmark_id}")
+        path = path_bytes.rstrip(b"\n").decode("utf-8")
+        excluded = any(
+            path == prefix or path.startswith(f"{prefix}/")
+            for prefix in BENCHMARK_INPUT_EXCLUDES
+        )
+        if not excluded:
+            included_entries.append(entry)
+    tree = b"".join(included_entries)
     if not tree:
         fail(f"benchmark input tree is empty for {benchmark_id}")
     return sha256_bytes(tree)
@@ -616,7 +572,7 @@ def validate_inputs(
                 f"theorem {theorem['declaration']} missing from "
                 f"{theorem['path']}"
             )
-    for symbol in PRODUCTION_SYMBOLS:
+    for symbol in IMPLEMENTATION_SYMBOLS:
         text = file_bytes(symbol["path"]).decode("utf-8")
         if symbol["pattern"] not in text:
             fail(
@@ -670,9 +626,9 @@ def proof_manifest_bytes() -> bytes:
         f'generated_at = "{GENERATED_AT}"',
         f"paper = {json.dumps(TITLE)}",
         f"target_venue = {json.dumps(TARGET)}",
-        'lean_toolchain = "leanprover/lean4:v4.28.0-rc1"',
-        'model_boundary = "bounded ReceiptView and explicit finite domains"',
-        'implementation_relation = "differential alignment, not extraction or refinement"',
+        'lean_toolchain = "leanprover/lean4:v4.28.0"',
+        'model_boundary = "bounded receipt predicates and supplied finite domains"',
+        'implementation_relation = "independent Rust differential testing, not extraction or refinement"',
         "",
     ]
     for theorem in THEOREMS:
@@ -699,10 +655,10 @@ def theorem_inventory_bytes() -> bytes:
         "generatedAt": GENERATED_AT,
         "paper": TITLE,
         "targetVenue": TARGET,
-        "leanToolchain": "leanprover/lean4:v4.28.0-rc1",
-        "modelBoundary": "bounded ReceiptView and explicit finite domains",
+        "leanToolchain": "leanprover/lean4:v4.28.0",
+        "modelBoundary": "bounded receipt predicates and supplied finite domains",
         "implementationRelation": (
-            "differential alignment, not extraction or refinement"
+            "independent Rust differential testing, not extraction or refinement"
         ),
         "theorems": THEOREMS,
     }
@@ -725,12 +681,12 @@ lake build
 ```
 
 The paper claims only bounded model theorems. It does not claim that this
-project verifies the production Rust implementation.
+project verifies the Rust runtime.
 
 To reproduce the recorded axiom lists:
 
 ```lean
-import Chio.Treaty.BridgeEquivalence
+import Chio.Treaty.ReceiptPredicate
 {theorem_lines}
 ```
 """
@@ -739,14 +695,32 @@ import Chio.Treaty.BridgeEquivalence
 
 def lean_archive_bytes() -> bytes:
     project = REPO / "formal/lean4/Chio"
-    files = [
-        project / "lean-toolchain",
-        project / "lakefile.lean",
-        project / "lake-manifest.json",
+    generated_project_files = {
         project / "Chio.lean",
-        *sorted((project / "Chio").rglob("*.lean")),
+        project / "lakefile.lean",
+    }
+    project_files = [
+        project / "lean-toolchain",
+        project / "lake-manifest.json",
+        *sorted(
+            path
+            for path in project.rglob("*.lean")
+            if ".lake" not in path.relative_to(project).parts
+            and path not in generated_project_files
+        ),
     ]
-    for path in files:
+    vendor = REPO / "formal/lean4/vendor/aeneas"
+    vendor_files = [
+        vendor / "lean-toolchain",
+        vendor / "lakefile.lean",
+        vendor / "LICENSE.md",
+        vendor / "VENDOR.toml",
+        vendor / "Aeneas.lean",
+        vendor / "AeneasMeta.lean",
+        *sorted((vendor / "Aeneas").rglob("*.lean")),
+        *sorted((vendor / "AeneasMeta").rglob("*.lean")),
+    ]
+    for path in [*project_files, *vendor_files]:
         if not path.is_file():
             fail(f"Lean archive input missing: {path.relative_to(REPO)}")
 
@@ -768,14 +742,42 @@ def lean_archive_bytes() -> bytes:
 
             entries = [
                 ("chio-lean/README.md", archive_readme()),
+                (
+                    "chio-lean/lakefile.lean",
+                    (
+                        "import Lake\n"
+                        "open Lake DSL\n\n"
+                        "package chioPaper where\n"
+                        "  leanOptions := #[\n"
+                        "    ⟨`autoImplicit, false⟩\n"
+                        "  ]\n\n"
+                        "@[default_target]\n"
+                        "lean_lib Chio where\n"
+                        '  srcDir := "."\n'
+                    ).encode(),
+                ),
+                (
+                    "chio-lean/Chio.lean",
+                    b"import Chio.Treaty.ReceiptPredicate\n",
+                ),
                 *[
                     (
                         "chio-lean/" + path.relative_to(project).as_posix(),
                         path.read_bytes(),
                     )
-                    for path in files
+                    for path in project_files
+                ],
+                *[
+                    (
+                        "vendor/aeneas/" + path.relative_to(vendor).as_posix(),
+                        path.read_bytes(),
+                    )
+                    for path in vendor_files
                 ],
             ]
+            entry_names = [name for name, _ in entries]
+            if len(entry_names) != len(set(entry_names)):
+                fail("Lean archive contains duplicate member paths")
             for name, data in sorted(entries):
                 info = tarfile.TarInfo(name)
                 info.size = len(data)
@@ -895,29 +897,28 @@ def manifest_bytes(
             "tex": "TeX Live 2023 or compatible pdflatex and BibTeX",
         },
         "claimClasses": [
-            "production_enforced",
+            "runtime_enforced",
             "bounded_theorem",
             "differentially_aligned",
             "experimentally_measured",
             "executable_demonstration",
             "operational_assumption",
-            "future_work",
         ],
         "theorems": THEOREMS,
-        "productionSymbols": [
+        "implementationSymbols": [
             {
                 key: value
                 for key, value in symbol.items()
                 if key != "pattern"
             }
-            for symbol in PRODUCTION_SYMBOLS
+            for symbol in IMPLEMENTATION_SYMBOLS
         ],
         "behavioralTests": BEHAVIORAL_TESTS,
         "benchmarks": benchmark_entries,
         "corpora": corpus_entries,
         "sourceFiles": source_hashes,
         "supplementaryFiles": supplementary_entries,
-        "excludedOrWithheld": EXCLUDED,
+        "excludedClaims": EXCLUDED,
         "rebuildCommand": (
             "bash scripts/check-programmable-sovereignty-artifact.sh --full"
         ),

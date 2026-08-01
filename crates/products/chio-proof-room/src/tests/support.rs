@@ -1,4 +1,11 @@
-use std::{collections::BTreeMap, error::Error, fs, path::Path};
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    fs,
+    path::Path,
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use chio_core_types::Keypair;
 
@@ -12,13 +19,12 @@ pub(crate) const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 pub(crate) const TEST_RECEIPT_SEED: [u8; 32] = [23; 32];
 pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
-pub(crate) const STANDARD_WEBHOOKS_VERIFIER_NOW: &str = "1770508860";
-pub(crate) const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: &str = "300";
+const STANDARD_WEBHOOKS_FIXTURE_TIMESTAMP: u64 = 1_770_508_800;
 pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de,",
     "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff,",
     "bed7d2ab668da3efad613998f06f7abf7875f3a6b7677a9f3ce947d77d7760a6,",
-    "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737,",
+    "204040e364c10f2bec9c1fe500a1cd4c247c89d650a01ed7e82caba867877c21,",
     "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
 );
 pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: &str =
@@ -81,17 +87,27 @@ pub(crate) const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
     "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa";
 
 pub(crate) fn configure_agent_web_fixture_secret() {
+    static NEXT_REPLAY_STORE: AtomicU64 = AtomicU64::new(0);
+    let (verifier_now, max_age_seconds) = standard_webhooks_clock_env();
     std::env::set_var(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
         STANDARD_WEBHOOKS_VERIFIER_SECRET,
     );
     std::env::set_var(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
-        STANDARD_WEBHOOKS_VERIFIER_NOW,
+        verifier_now,
     );
     std::env::set_var(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
-        STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
+        max_age_seconds,
+    );
+    std::env::set_var(
+        "CHIO_AGENT_WEB_REPLAY_STORE_PATH",
+        std::env::temp_dir().join(format!(
+            "chio-agent-web-proof-room-replay-{}-{}.sqlite",
+            std::process::id(),
+            NEXT_REPLAY_STORE.fetch_add(1, Ordering::Relaxed)
+        )),
     );
     std::env::set_var(
         "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
@@ -102,6 +118,18 @@ pub(crate) fn configure_agent_web_fixture_secret() {
         AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS,
     );
     configure_proof_room_fixture_trust();
+}
+
+fn standard_webhooks_clock_env() -> (String, String) {
+    let Ok(host_elapsed) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        panic!("host clock is before Unix epoch");
+    };
+    let host_now = host_elapsed.as_secs();
+    let verifier_now = host_now.saturating_add(60);
+    let max_age_seconds = verifier_now
+        .saturating_sub(STANDARD_WEBHOOKS_FIXTURE_TIMESTAMP)
+        .saturating_add(300);
+    (verifier_now.to_string(), max_age_seconds.to_string())
 }
 
 pub(crate) fn configure_proof_room_fixture_trust() {

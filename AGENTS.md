@@ -14,7 +14,7 @@ Chio is a protocol for secure, attested tool access in AI agent systems. It repl
 
 ## Crate Map
 
-The workspace ships 107 crates, organized into 11 functional subfolders under `crates/`. Every crate lives at `crates/<group>/chio-<name>`; see `Cargo.toml` for the full member list. The table below names each folder, its representative crates, and its purpose.
+The workspace ships 108 crates, organized into 11 functional subfolders under `crates/`. Every crate lives at `crates/<group>/chio-<name>`; see `Cargo.toml` for the full member list. The table below names each folder, its representative crates, and its purpose.
 
 | Folder (`crates/<group>`) | Representative crates | Purpose |
 |---------------------------|-----------------------|---------|
@@ -28,7 +28,7 @@ The workspace ships 107 crates, organized into 11 functional subfolders under `c
 | `platform` | `chio-control-plane`, `chio-store-sqlite`, `chio-manifest`, `chio-config`, `chio-workflow`, `chio-http-core`, `chio-http-session` | Runtime wiring, persistent stores, signed tool manifests, config, workflow, and shared HTTP/session primitives. |
 | `products` | `chio-cli`, `chio-wall`, `chio-wall-core`, `chio-mercury`, `chio-mercury-core`, `chio-api-protect` | End-user binaries and product surfaces built on the protocol. |
 | `sdk` | `chio-guard-sdk`, `chio-guard-sdk-macros`, `chio-binding-helpers`, `chio-bindings-ffi`, `chio-cpp-kernel-ffi`, `chio-eval-receipt` | Guard authoring SDK, FFI bindings, and receipt evaluation helpers. |
-| `tooling` | `chio-conformance`, `chio-spec-codegen`, `chio-spec-validate`, `chio-lsp`, `chio-test-support` | Conformance suite, spec codegen/validation, LSP, and shared test support. |
+| `tooling` | `chio-conformance`, `chio-spec-codegen`, `chio-spec-validate`, `chio-trace-validate`, `chio-lsp`, `chio-test-support` | Conformance suite, spec codegen/validation, trace validation, LSP, and shared test support. |
 
 ## Build and Test
 

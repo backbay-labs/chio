@@ -1,0 +1,40 @@
+schema = "chio.statemachine.v1"
+machine = "anchor_witness_state"
+title = "Anchor witness metadata"
+scope = "Producer-carried AnchorBatch WitnessState metadata changes only. This relation does not encode verifier routing, witness admission policy, or a transport protocol."
+owner = "crates/economy/chio-anchor"
+doc_refs = ["spec/PROTOCOL.md#anchor-batch-public-witness-lane-w23"]
+emit = ["conformance", "docs"]
+states = ["Pending", "Witnessed", "Stale"]
+initial = "Pending"
+terminal = []
+
+[[transitions]]
+from = "Pending"
+to = "Witnessed"
+message = "record_verified_receipt"
+guards = ["receipt_matches_batch"]
+
+[[transitions]]
+from = "Witnessed"
+to = "Witnessed"
+message = "record_verified_receipt"
+guards = ["receipt_matches_batch"]
+
+[[transitions]]
+from = "Witnessed"
+to = "Stale"
+message = "record_verification_failure"
+guards = ["prior_verification_exists"]
+
+[[transitions]]
+from = "Stale"
+to = "Witnessed"
+message = "record_verified_receipt"
+guards = ["receipt_matches_batch"]
+
+[[transitions]]
+from = "Stale"
+to = "Stale"
+message = "record_verification_failure"
+guards = ["prior_verification_exists"]

@@ -1,17 +1,18 @@
 \section{Conclusion}
 
-A cross-organization agent call should not run merely because a vendor signed
-a receipt. The receiving organization must decide which keys, treaty,
-continuation, policy, and prior receipts give that signature meaning. Chio
-implements this decision as a receiver-owned, fail-closed hook before tool
-dispatch and binds the result into a replayable bilateral package.
+A vendor signature is not enough to authorize a cross-organization agent call.
+The receiver must decide which treaty, keys, request, continuation, policy
+result, and prior receipts give that signature meaning. Chio performs this
+check inside the receiving kernel before tool dispatch and carries the accepted
+bindings into the signed receipt.
 
-The evidence supports a deliberately bounded result. \PSThreatCaseCount{} named attacks
-deny, the pre-dispatch denial path leaves the tool uninvoked, a deterministic
-three-party receiver path completes with persistent stores, and an independent
-Rust evaluator agrees with a Lean model over the tested bounded domain. The
-Lean theorems establish intersection, ladder reduction, and finite-domain
-no-widening for that model; they do not verify the Rust runtime. Within these
-limits, programmable sovereignty denotes a concrete systems property: local,
-auditable authority over whether a foreign agent action crosses a receiver's
-own execution boundary.
+In the evaluated configuration, all \PSThreatCaseCount{} named attacks denied.
+The complete treaty-denial path measured
+\PSPredispatchDenyPFiftyMs~ms p50 and left the tool invocation counter at zero.
+The separate local buyer workflow generated, stored, and verified the complete
+three-vendor package in \PSBuyerWorkflowPFiftySec~s p50. Lean proves the exact
+finite-domain condition for its checker, and the independent Rust interpreter
+matched the runtime evaluator throughout the
+generated corpus. Together, these results show that receiver-owned bilateral
+admission is practical as an enforcement step, while keeping its trust and
+formal boundaries explicit.

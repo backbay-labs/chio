@@ -149,15 +149,17 @@ impl KernelCapabilityChecker {
     }
 
     fn parse_token(&self, token_json: &str) -> Result<CapabilityToken, CapabilityCheckError> {
-        serde_json::from_str(token_json)
-            .map_err(|error| CapabilityCheckError::InvalidToken(format!("failed to parse token: {error}")))
+        serde_json::from_str(token_json).map_err(|error| {
+            CapabilityCheckError::InvalidToken(format!("failed to parse token: {error}"))
+        })
     }
 
     fn map_request(
         &self,
         request: &AcpCapabilityRequest,
+        tool_call_id: &str,
     ) -> Result<(&'static str, Value), CapabilityCheckError> {
-        match request.operation.as_str() {
+        let (tool_name, mut arguments) = match request.operation.as_str() {
             "fs_read" => Ok((
                 ACP_GUARD_READ_TOOL,
                 json!({
@@ -201,7 +203,24 @@ impl KernelCapabilityChecker {
             other => Err(CapabilityCheckError::Internal(format!(
                 "unsupported ACP operation for authoritative enforcement: {other}"
             ))),
+        }?;
+        {
+            let Some(arguments) = arguments.as_object_mut() else {
+                return Err(CapabilityCheckError::Internal(
+                    "ACP authorization parameters must be a JSON object".to_string(),
+                ));
+            };
+            arguments.insert("session_id".to_string(), json!(request.session_id));
+            arguments.insert("tool_call_id".to_string(), json!(tool_call_id));
+            arguments.insert(
+                "authorization_correlation_id".to_string(),
+                json!(request.authorization_correlation_id),
+            );
+            arguments.insert("operation".to_string(), json!(request.operation));
+            arguments.insert("resource".to_string(), json!(request.resource));
         }
+
+        Ok((tool_name, arguments))
     }
 
     fn build_source_envelope(
@@ -269,8 +288,10 @@ impl CapabilityChecker for KernelCapabilityChecker {
         // require the binding at the live authorization step; for the file
         // and terminal-create operations the matching toolCallId arrives on
         // the later session/update notification.
-        let tool_call_id_required =
-            matches!(request.operation.as_str(), "terminal_kill" | "terminal_release");
+        let tool_call_id_required = matches!(
+            request.operation.as_str(),
+            "terminal_kill" | "terminal_release"
+        );
         let tool_call_id = match request
             .tool_call_id
             .as_deref()
@@ -289,7 +310,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
             }
             None => "",
         };
-        let (tool_name, arguments) = match self.map_request(request) {
+        let (tool_name, arguments) = match self.map_request(request, tool_call_id) {
             Ok(mapped) => mapped,
             Err(error) => {
                 return Ok(AcpVerdict {
@@ -306,6 +327,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
             &chio_core::canonical::canonical_json_bytes(&json!({
                 "sessionId": request.session_id,
                 "toolCallId": tool_call_id,
+                "authorizationCorrelationId": request.authorization_correlation_id,
                 "operation": request.operation,
                 "resource": request.resource,
                 "authorization_parameter_hash": request.authorization_parameter_hash,

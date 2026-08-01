@@ -6,6 +6,14 @@
 - Depends on: none
 - Closes findings: F02 (critical), F08 (medium) (see ./README.md and the readiness review)
 
+> **Security correction (2026-07-14):** This draft is retained as design
+> history. The implemented contract does not reverse monetary state after
+> dispatch. Every error returned after polling `invoke_stream`, `invoke`, or
+> `invoke_with_cost` is outcome-unknown, including URL elicitation. The kernel
+> preserves credentials, runtime admission, child budget, budget exposure, and
+> payment authorization, then signs their identifiers into a terminal receipt.
+> Only kernel-owned failures before polling are reversible.
+
 ## Summary
 
 `PostAdmissionDropGuard` is the kernel's last-resort unwind for a tool-call

@@ -7,7 +7,7 @@ use serde_json::Value;
 
 const CANONICAL_VECTOR_CORPUS: &str =
     include_str!("../../../../tests/bindings/vectors/canonical/v1.json");
-const EXPECTED_CASE_COUNT: usize = 20;
+const EXPECTED_CASE_COUNT: usize = 23;
 
 #[derive(Debug, Deserialize)]
 struct Corpus {

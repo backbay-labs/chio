@@ -3262,7 +3262,7 @@ fn rotation_records_absolute_archive_path() -> Result<(), Box<dyn std::error::Er
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
-            .expect("secure directory");
+            .unwrap_or_else(|error| panic!("secure directory: {error}"));
     }
     let real_archive = dir.join("archive.sqlite3");
     let link = dir.join("dirlink");

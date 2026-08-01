@@ -54,6 +54,8 @@ chio-wasm-guards = { path = "../crates/guards/chio-wasm-guards", features = ["fu
 libfuzzer-sys = "0.4"
 # `derive` feature lets per-target structs use `#[derive(Arbitrary)]`.
 arbitrary = { version = "1", features = ["derive"] }
+wasm-encoder = { version = "=0.221.3", default-features = false, features = ["wasmparser"] }
+wasm-smith = { version = "=0.221.3", features = ["component-model"] }
 # Pinned to the same 1.x line consumed by chio-core-types / chio-manifest.
 serde_json = "1"
 # ClusterFuzzLite's base builder can expose an older system OpenSSL than
@@ -167,6 +169,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "wasm_guard_smith"
+path = "fuzz_targets/wasm_guard_smith.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "wit_host_call_boundary"
 path = "fuzz_targets/wit_host_call_boundary.rs"
 test = false
@@ -213,6 +222,13 @@ bench = false
 [[bin]]
 name = "fuzz_policy_parse_compile"
 path = "fuzz_targets/policy_parse_compile.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "policy_analyze"
+path = "fuzz_targets/policy_analyze.rs"
 test = false
 doc = false
 bench = false

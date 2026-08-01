@@ -39,6 +39,7 @@ body:
         - a2a_envelope_decode
         - acp_envelope_decode
         - wasm_preinstantiate_validate
+        - wasm_guard_smith
         - wit_host_call_boundary
         - chio_yaml_parse
         - openapi_ingest
@@ -47,6 +48,7 @@ body:
         - capability_receipt
         - manifest_roundtrip
         - fuzz_policy_parse_compile
+        - policy_analyze
         - fuzz_sql_parser
         - fuzz_merkle_checkpoint
         - fuzz_tool_action

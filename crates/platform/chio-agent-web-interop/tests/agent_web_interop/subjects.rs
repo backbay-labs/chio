@@ -178,7 +178,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "request_digest": "7979797979797979797979797979797979797979797979797979797979797979",
         "response_digest": "8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a",
         "status_code": openapi_status_code,
-        "x_chio_proof_envelope_profile": "chio.agent-web-proof-envelope.v1",
+        "x_chio_proof_envelope_profile": "chio.agent-web-proof-envelope.v2",
         "x_chio_receipt_binding_digest": "a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9",
         "x_chio_evidence_profile_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "egress_contract_digest": "abababababababababababababababababababababababababababababababab",

@@ -32,13 +32,14 @@ fn unique_test_dir() -> PathBuf {
         "chio-cli-mcp-http-{}-{nonce}-{counter}",
         std::process::id()
     ));
-    fs::create_dir_all(&path).expect("create private MCP HTTP test directory");
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o700))
-            .expect("secure private MCP HTTP test directory");
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
     }
+    builder.create(&path).expect("create private test dir");
     path
 }
 

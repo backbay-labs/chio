@@ -18,9 +18,9 @@ pub(crate) fn render_ide_config(
     display_name: Option<&str>,
     command: &[String],
 ) -> Result<String, CliError> {
-    let (program, child_args) = command
-        .split_first()
-        .ok_or_else(|| CliError::cli_other_error("emit-config requires a wrapped command".to_string()))?;
+    let (program, child_args) = command.split_first().ok_or_else(|| {
+        CliError::cli_other_error("emit-config requires a wrapped command".to_string())
+    })?;
     let child_args_vec: Vec<String> = child_args.to_vec();
 
     let mut chio_argv: Vec<String> = vec![

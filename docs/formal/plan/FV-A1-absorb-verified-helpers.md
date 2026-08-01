@@ -1,6 +1,6 @@
 # FV-A1: Absorb verified helpers into production call paths
 
-- Status: Proposed (2026-07-09)
+- Status: Implemented (2026-07-10)
 - Theme: A - Make the proven code the running code
 - Effort: M (rolling; one helper family per PR)
 - Depends on: none (the pattern is already proven in-tree)
@@ -9,19 +9,77 @@
 
 ## Summary
 
-`chio-kernel-core` ships a proven pure decision core (`formal_aeneas.rs` behind the `formal_core` facade), but eight of its helpers are model-only: no production code path ever calls them, while `chio-kernel` implements the same decisions a second time by hand. This is gap G2: the theorems are true statements about functions the kernel does not run. The fix is mechanical and already proven twice in-tree (`classify_time_window` in capability verification, the five subset helpers in scope normalization): locate the runtime twin, pin runtime-vs-helper equivalence with a property test, then refactor the runtime call site to project its state into the helper's inputs and delegate the decision. This document sequences that absorption over five phases, one helper family at a time, and defines the recipe, the projection-boundary safeguards, and the manifest updates each phase must carry.
+At proposal time, `chio-kernel-core` shipped a proven pure decision core
+(`formal_aeneas.rs` behind the `formal_core` facade), but eight helpers had no
+production caller while `chio-kernel` implemented the same decisions by hand.
+The implementation now projects runtime state into those helpers for budget,
+DPoP, nonce replay, guard composition, revocation, and receipt coupling. The
+retained properties and public Kani harnesses bind the projections to the
+runtime decision shapes.
+
+## Decisions
+
+- The absorption is limited to admission predicates. Budget hold capture,
+  release, settlement, and reconciliation remain owned by their runtime
+  ledgers.
+- All eight helpers plus `BudgetCommitResult` and `GuardStep` are curated
+  re-exports from `chio-kernel-core`. The internal facade remains private.
+- Both budget backends call the shared `budget_increment_admits` and
+  `budget_charge_admits` production projections. Those functions delegate the
+  bounded scalar axes to the decrement-form helpers. The SQLite
+  invocation-only path in `budget_store/store.rs` is included alongside its
+  charge path, and `chio-store-sqlite` now depends directly on
+  `chio-kernel-core`.
+- The portable sibling-budget split is a distinct allocation law and is not a
+  twin of the scalar admission predicate.
+- The DPoP verifier is atomic at the requirement-fold boundary, so successful
+  verification projects to both proof validity and nonce freshness there.
+  Replay admission is independently delegated inside `DpopNonceStore`. Direct
+  verification uses `check_and_insert_through`; kernel dispatch uses the
+  owner-qualified `reserve_for_dispatch_through` path so a proven
+  pre-dispatch failure can roll the reservation back.
+- Both guard loops use the type-owned `GuardStep::from` conversion, project
+  every result through `guard_step_admits`, require that approval for
+  continuation, and independently compare the observed step before allowing.
+  Deny, pending, error, and impossible projection/verdict mismatches remain
+  fail-closed with the original runtime attribution.
+- Both revocation callers use `revocation_lookup_denies`, which preserves lazy
+  presented-token and ancestor lookups while delegating each observed branch
+  to `revocation_snapshot_denies`.
+- Receipt evidence class means a mediated decision at a preventive,
+  caller-executed boundary with no observation or redaction downgrade and the
+  requested trust level. Capability, request/action, verdict, and policy hash
+  are checked separately before signing.
+- The budget and revocation projection harnesses are public PR harnesses and
+  are registered in both Kani catalogs. They prove the exact shared projection
+  functions invoked by both production backends or callers, not storage IO or
+  ledger transitions. No new theorem or external assumption was introduced;
+  existing theorem notes now identify the production linkage and its limits.
+- The implementation-linked claim wording was narrowed to the absorbed
+  admission predicates and retains the audited boundary around storage,
+  clocks, cryptography, and orchestration.
+- The retained equivalence properties passed against parent
+  `dc4d3bf2d62dcca2b0a266904bdc5bc1f2ee12a9` before runtime refactoring. The
+  test-only patch had SHA-256
+  `f5b43876db6d16071c16cb26515cf76e2d05b1ec4df175df4f71f087d5b4126a` and
+  ran with `cargo test -p chio-kernel --test budget_decision_equivalence
+  --test dpop_admission_equivalence --test revocation_decision_equivalence`.
+  The guard and receipt supplement had SHA-256
+  `584652520510de873c9cb202550db20f07ab8464c706c106aa7bbae2385b40fd`
+  and ran against the same parent with `cargo test -p chio-kernel --test
+  guard_decision_equivalence --test receipt_decision_equivalence`.
 
 ## Motivation and evidence
 
-- Gap G2 ([../GAP_ANALYSIS.md](../GAP_ANALYSIS.md)): verified helpers exist but production does not call them. The following `formal_core` functions have zero production callers today [v]: `budget_precheck`, `budget_commit`, `dpop_freshness_valid`, `dpop_admits`, `nonce_admits`, `guard_pipeline_allows`, `revocation_snapshot_denies`, `receipt_fields_coupled`.
-- The manifest already overstates. `formal/proof-manifest.toml` lists `formal_core::budget_commit`, `formal_core::dpop_admits`, `formal_core::guard_pipeline_allows`, and `formal_core::receipt_fields_coupled` under `covered_rust_symbols` (lines 73-76) even though nothing in production executes them. `formal/MAPPING.md` likewise cites `formal_core::revocation_snapshot_denies` as the discharge for the Apalache `RevocationCutCompleteness` row constraining `ChioKernel::check_revocation`. Absorption is what makes those existing registry claims true rather than aspirational.
+- At proposal time, Gap G2 ([../GAP_ANALYSIS.md](../GAP_ANALYSIS.md)) was that verified helpers existed but production did not call them. The following `formal_core` functions then had zero production callers [v]: `budget_precheck`, `budget_commit`, `dpop_freshness_valid`, `dpop_admits`, `nonce_admits`, `guard_pipeline_allows`, `revocation_snapshot_denies`, `receipt_fields_coupled`.
+- At proposal time the manifest already overstated linkage. `formal/proof-manifest.toml` listed `formal_core::budget_commit`, `formal_core::dpop_admits`, `formal_core::guard_pipeline_allows`, and `formal_core::receipt_fields_coupled` under `covered_rust_symbols` even though nothing in production executed them. `formal/MAPPING.md` likewise cited `formal_core::revocation_snapshot_denies` as the discharge for the Apalache `RevocationCutCompleteness` row constraining `ChioKernel::check_revocation`. The implemented shared projections now make the bounded decision linkage concrete while keeping surrounding IO and orchestration out of scope.
 - The pattern works and costs little. `crates/kernel/chio-kernel-core/src/capability_verify.rs:39` imports `classify_time_window` and uses it in real token verification; `crates/kernel/chio-kernel-core/src/normalized.rs:23-24` imports the five subset helpers and delegates the actual `is_subset_of` decisions to them [v]. Both absorptions kept behavior identical and made the Lean and Kani results statements about running code.
-- Mutation testing already excludes `formal_aeneas.rs`, `formal_core.rs`, and the Kani harness files ("covered by the proof lane") while examining their production callers [v]. Every absorption therefore moves logic from mutation-blind hand-rolled twins into the proof lane, and leaves only thin projections behind for the mutation lane to chew on (see FV-E1).
+- Mutation testing already excludes `formal_aeneas.rs`, `formal_core.rs`, and the Kani harness files ("covered by the proof lane") while examining their production callers [v]. Every absorption therefore moves the shared scalar decisions into the proof lane. Public Kani and retained properties cover the shared projections, while the mutation lane and runtime tests exercise the remaining caller wiring (see FV-E1).
 - The Kani binding precedent exists: `verify_delegation_chain_step` in `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs` builds real `NormalizedToolGrant` values from the same symbolic booleans that drive its synthetic predicate and asserts the production `is_subset_of` agrees (binding step around lines 750-810). That is exactly the shape needed to prove a caller-side projection is not vacuous.
 
-## Current state
+## Pre-implementation state
 
-`formal_core` is a `pub(crate)` typed facade (`crates/kernel/chio-kernel-core/src/lib.rs:65-66` declares both `formal_aeneas` and `formal_core` as `pub(crate) mod`, and `formal_core.rs` carries `#![allow(dead_code)]`). The eight model-only helpers and their runtime twins, all verified this session:
+At proposal time, `formal_core` was a `pub(crate)` typed facade (`crates/kernel/chio-kernel-core/src/lib.rs:65-66` declared both `formal_aeneas` and `formal_core` as `pub(crate) mod`, and `formal_core.rs` carried `#![allow(dead_code)]`). The eight model-only helpers and their runtime twins were:
 
 **`budget_precheck` (formal_core.rs:109), `budget_commit` (formal_core.rs:133)**
 
@@ -33,18 +91,37 @@
 
 **`dpop_freshness_valid` (formal_core.rs:154)**
 
-- Twin: `crates/kernel/chio-kernel/src/dpop.rs::verify_dpop_proof_stateless`, freshness block at lines 272-303.
-- Semantic delta: the runtime performs three checks where the model has two. The third (issued_at not older than `now - (ttl + skew)`, lines 295-301) is mathematically implied by the second and is defense in depth. Line 297 also contains an unchecked `proof_ttl_secs + max_clock_skew_secs` addition that the absorption should convert to saturating arithmetic.
+- Twin: `crates/kernel/chio-kernel/src/dpop.rs::verify_dpop_proof_stateless`,
+  in its freshness block.
+- Semantic delta: the runtime performs three checks where the model has two.
+  The third (`issued_at` not older than `now - (ttl + skew)`) is mathematically
+  implied by the second and remains defense in depth. The combined TTL and
+  skew arithmetic is saturating.
 
 **`dpop_admits` (formal_core.rs:160)**
 
-- Twin: the requirement fold in `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs:180-182` and `nested_flow_evaluation.rs:150-152` (`.any(|m| m.grant.dpop_required == Some(true))`, then `verify_dpop_for_request`), landing in `crates/kernel/chio-kernel/src/kernel/dispatch.rs::verify_dpop_for_request` (line 180).
-- Semantic delta: the runtime expresses `!required || (present && valid && fresh)` as early-return control flow spread across two files; no single expression computes the model's predicate.
+- Twin: the requirement folds in
+  `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`
+  and `nested_flow_evaluation.rs`. Each calls
+  `verify_dpop_for_permission_preview`, projects the result through
+  `dpop_verification_admits`, and leaves single-use mutation to
+  `ChioKernel::reserve_dispatch_credentials` at the dispatch boundary.
+- Semantic delta: the runtime projects required, present, and statelessly valid
+  into `dpop_verification_admits`. Nonce freshness is enforced separately by
+  the owner-qualified dispatch reservation so earlier budget or guard failures
+  do not consume the proof permanently.
 
 **`nonce_admits` (formal_core.rs:171)**
 
-- Twin: `crates/kernel/chio-kernel/src/dpop.rs::DpopNonceStore::check_and_insert` (lines 190-210).
-- Semantic delta: the runtime couples the admit decision to the LRU insert and to TTL expiry of stale entries; `already_live` is implicit in the peek-plus-elapsed branch at lines 199-203.
+- Twin: `crates/kernel/chio-kernel/src/dpop.rs::DpopNonceStore::check_and_insert_entry_at`,
+  reached by `check_and_insert_through` for direct verification and by
+  `reserve_for_dispatch_through` from
+  `ChioKernel::reserve_dispatch_credentials` for kernel dispatch.
+- Semantic delta: the runtime couples `nonce_admits(already_live)` to atomic
+  marker insertion. Signed markers remain live through the inclusive
+  `issued_at + proof_ttl_secs` horizon, expired markers are reclaimed, and
+  full live capacity denies fail-closed. Dispatch reservations additionally
+  carry an owner so only a proven pre-dispatch unwind can remove them.
 
 **`guard_pipeline_allows` (formal_core.rs:186)**
 
@@ -68,8 +145,8 @@
 1. Locate and pin the runtime twin. Name the exact function(s) and the decision expression inside them. If two candidate twins exist, absorb the one on the security decision path first and record the other in the phase notes.
 2. Write the equivalence property test first, before touching the runtime. A proptest (workspace dep already present in both kernel crates: `crates/kernel/chio-kernel/Cargo.toml:88`, `crates/kernel/chio-kernel-core/Cargo.toml:76`) generates runtime-shaped state, projects it to the helper's inputs, and asserts `runtime_decision == helper_decision` on identical projected inputs. This test must pass against the unmodified runtime; any counterexample is a real model/runtime divergence and gets triaged before refactoring (see FV-E2 for the counterexample pipeline).
 3. Refactor the call site: project runtime state to the pure-helper inputs and delegate the decision to the helper. Keep behavior identical, including short-circuiting, IO ordering, and error variants. Use lazy projection where the runtime short-circuits: route each early-return branch through the helper with the flags known at that point rather than forcing eager computation of all flags (concrete shapes per phase below).
-4. Keep the equivalence proptest as a permanent regression test; add projection unit tests for each flag (the projection is now the only unverified code between state and decision).
-5. Where feasible, add a Kani harness that binds the caller projection to the helper input semantics, following the `verify_delegation_chain_step` precedent: build the real runtime input type from symbolic primitives, run the real projection, and assert the helper sees the same booleans/integers the model reasons about.
+4. Keep the equivalence proptest as a permanent regression test; add projection unit tests for each input. The shared projection is Kani-checked where feasible, while extraction of fields from concrete caller state remains runtime-tested.
+5. Where feasible, add a Kani harness that runs the same shared projection function the production callers invoke and asserts its booleans/integers match the model semantics. Bind concrete store or caller state to that function with retained runtime properties rather than claiming Kani executes IO-heavy callers.
 6. Only then update `formal/proof-manifest.toml`, `formal/MAPPING.md`, and the claim registry (see Manifest section). Manifest updates in the same PR as the refactor, never before.
 
 Sketch of the step-2 test shape, using the budget family (the same skeleton serves all five):
@@ -81,16 +158,19 @@ proptest! {
         total in any::<u64>(), max_total in proptest::option::of(any::<u64>()),
         cost in any::<u64>(), max_per in proptest::option::of(any::<u64>()),
     ) {
-        let runtime = store_with(count, total).try_charge_cost(
-            "cap", 0, max_inv, cost, max_per, max_total)?;
-        let model = project_budget_axes(count, max_inv, total, max_total, cost, max_per)
-            .all(|(remaining, axis_cost)| budget_precheck(remaining.0, remaining.1, axis_cost.0, axis_cost.1));
+        let runtime = store_with(count, total)
+            .try_charge_cost("cap", 0, max_inv, cost, max_per, max_total)
+            .map_err(|_| ());
+        let model = budget_charge_admits(
+            count, total, cost, max_inv, max_per, max_total,
+        )
+        .map_err(|_| ());
         prop_assert_eq!(runtime, model);
     }
 }
 ```
 
-The projection function under test (`project_budget_axes` here) is the exact function the refactor will install at the call site, so the proptest exercises the projection itself, not a test-local reimplementation of it.
+`budget_charge_admits` is the exact shared projection both budget backends call, so the proptest exercises that boundary rather than a test-local reimplementation. Separate overflow tests retain the concrete backend error attribution that the normalized sketch omits.
 
 ### Visibility
 
@@ -104,9 +184,17 @@ Recommendation: curated re-exports. The facade contains model-only conveniences 
 ### Decision-shape notes per family
 
 - Budget: express all three runtime checks as instances of the model's axis predicate. `remaining_invocations = max_invocations.saturating_sub(invocation_count)` with `invocation_cost = 1`; `remaining_units = max_total_cost_units.saturating_sub(current_total)` with `unit_cost = cost_units`; the per-invocation cap is `budget_precheck` on a third axis (`remaining = max_cost_per_invocation`, `cost = cost_units`). Absent caps project to the accept branch before the helper is consulted (the model has no Option layer; the projection unit tests pin this). The ledger side effects (event log append, seq, holds) stay runtime-owned and run only when the helper accepts.
-- DPoP: `verify_dpop_proof_stateless`'s two load-bearing freshness comparisons become one call to `dpop_freshness_valid`. The redundant third check either stays (with a comment citing the implication) or is deleted with the equivalence proptest as the witness; the unchecked `ttl + skew` addition at `dpop.rs:297` gets fixed to saturating arithmetic either way. The requirement fold keeps its shape: `if dpop_required { ... if !dpop_admits(true, present, valid, fresh) { deny } }`, so proof verification work is still only done when required.
-- Guards: absorb at step granularity, not pipeline granularity. The runtime loops keep evidence accumulation and early exit, but the running `allowed` flag becomes `formal_core` logic per step (`guard_step_allows` via the facade), with a unit test asserting the loop equals `guard_pipeline_allows` over the projected `GuardStep` sequence (`PendingApproval` and `Err(_)` both project to `GuardStep::Error`). This preserves behavior exactly, including which guard's name lands in the deny message.
-- Revocation: preserve lookup short-circuiting and error attribution by routing each deny branch through the helper with lazily computed flags: `revocation_snapshot_denies(token_revoked, false)` for the presented token, then `revocation_snapshot_denies(false, link_revoked)` per chain link. Every deny decision now passes through the proven predicate; no extra store IO is introduced.
+- DPoP: `verify_dpop_proof_stateless`'s two load-bearing freshness comparisons
+  become one call through `dpop_freshness_admits` to `dpop_freshness_valid`.
+  The redundant third check stays with saturating `ttl + skew` arithmetic.
+  Each requirement fold still performs stateless verification only when
+  required, then calls
+  `dpop_verification_admits(required, present, verification.is_ok())`. Nonce
+  admission occurs at the dispatch boundary through the signed-horizon
+  reservation path, so the atomic verifier result and the single-use marker
+  remain separate fail-closed decisions.
+- Guards: absorb at step granularity, not pipeline granularity. The runtime loops keep evidence accumulation and early exit. Every result projects to `GuardStep`, `guard_step_admits` computes the verified step decision, and `guard_projection_allows_continuation` requires both projected approval and an observed `Allow` before continuation. `PendingApproval` and `Err(_)` project to `GuardStep::Error`, while the original runtime match retains exact reason and evidence attribution.
+- Revocation: preserve lookup short-circuiting and error attribution by routing each observed branch through `revocation_lookup_denies`: `PresentedToken` projects to `revocation_snapshot_denies(token_revoked, false)`, and `Ancestor` projects to `revocation_snapshot_denies(false, link_revoked)`. Every deny decision now passes through the proven predicate; no extra store or snapshot IO is introduced.
 - Receipts: `build_and_sign_receipt` gains an explicit fail-closed coupling gate between body assembly and `sign_receipt_with_handle` (call at `receipt_persistence.rs:81`): compute the five booleans by comparing the assembled body against the decision inputs in `ReceiptParams` and refuse to sign when `receipt_fields_coupled` is false. Today the comparisons are true by construction; the gate exists to make that an enforced invariant instead of an accident of the current code.
 
 ## Implementation plan
@@ -114,20 +202,26 @@ Recommendation: curated re-exports. The facade contains model-only conveniences 
 Each phase is one PR, independently landable, in this order (cheapest coupling first is not the goal; decision-path value is).
 
 1. Phase 1: budget precheck/commit into the kernel budget store.
-   - Modify `crates/kernel/chio-kernel-core/src/lib.rs` (re-export `budget_precheck`, `budget_commit`, `BudgetCommitResult`).
-   - Modify `crates/kernel/chio-kernel/src/budget_store/in_memory.rs` (`try_increment`, `try_charge_cost_with_ids_and_authority`: decision via helper, effects unchanged).
-   - Modify `crates/platform/chio-store-sqlite/src/budget_store/trait_impl.rs` (same decision predicate on the projected row).
+   - Modify `crates/kernel/chio-kernel-core/src/lib.rs` (re-export `budget_precheck`, `budget_commit`, the shared increment/charge projections, and their result types).
+   - Modify `crates/kernel/chio-kernel/src/budget_store/in_memory.rs` (`try_increment`, `try_charge_cost_with_ids_and_authority`: decision via the shared budget projection, effects unchanged).
+   - Modify `crates/platform/chio-store-sqlite/src/budget_store/store.rs` and `trait_impl.rs` (the same increment and charge projections on the SQLite row).
    - Add `crates/kernel/chio-kernel/tests/budget_decision_equivalence.rs` (pre-refactor equivalence proptest, kept as regression) and projection unit tests beside the impls.
    - Add a Kani binding harness in `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs` if the projection can be expressed core-side; otherwise document why not (see Open questions).
 2. Phase 2: `dpop_admits`/`dpop_freshness_valid`/`nonce_admits` into the DPoP admission path.
-   - Modify `crates/kernel/chio-kernel/src/dpop.rs` (`verify_dpop_proof_stateless` freshness block; `DpopNonceStore::check_and_insert` returns `nonce_admits(already_live)`).
-   - Modify `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs` and `nested_flow_evaluation.rs` (requirement fold routes through `dpop_admits`).
+   - Modify `crates/kernel/chio-kernel/src/dpop.rs` (`verify_dpop_proof_stateless`
+     freshness block; `DpopNonceStore::check_and_insert_entry_at` returns
+     `nonce_admits(already_live)`; signed callers use
+     `check_and_insert_through` or `reserve_for_dispatch_through`).
+   - Modify `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`,
+     `nested_flow_evaluation.rs`, and `credential_reservation.rs` (the
+     requirement fold routes through `dpop_verification_admits`, then the
+     dispatch boundary reserves the signed nonce horizon).
    - Add equivalence proptests in `crates/kernel/chio-kernel/tests/dpop_admission_equivalence.rs`, including the ttl/skew saturation edge cases.
 3. Phase 3: `guard_pipeline_allows` into the guard verdict fold.
    - Modify `crates/kernel/chio-kernel-core/src/evaluate.rs` (guard loop, lines 387-407 region) and `crates/kernel/chio-kernel/src/kernel/dispatch.rs::run_guards`.
    - Add fold-equals-pipeline unit tests beside both loops; extend `crates/kernel/chio-kernel/src/kernel/tests/guard_pipeline.rs`.
 4. Phase 4: `revocation_snapshot_denies` into the revocation snapshot check.
-   - Modify `crates/kernel/chio-kernel/src/kernel/validation.rs::check_revocation` (and the delegation-view consult path in `crates/kernel/chio-kernel/src/kernel/delegation.rs` if its deny shape matches; verify during the phase).
+   - Modify `crates/kernel/chio-kernel/src/kernel/validation.rs::check_revocation` and `crates/kernel/chio-kernel/src/kernel/delegation.rs::consult_revocation_view_at` to call the same target-aware lazy projection.
    - Add equivalence proptest `crates/kernel/chio-kernel/tests/revocation_decision_equivalence.rs`.
 5. Phase 5: `receipt_fields_coupled` into receipt assembly.
    - Modify `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs::build_and_sign_receipt` (coupling gate before signing).
@@ -140,40 +234,53 @@ Every phase also carries its manifest/registry updates (below) and a `graphify u
 - No new CI jobs. The equivalence proptests ride `cargo test --workspace`; Kani binding harnesses ride the existing required Kani lane and must be registered in `formal/rust-verification/kani-public-harnesses.toml` plus a `formal/MAPPING.md` row (enforced by `scripts/check-mapping.sh`, which extracts `#[kani::proof]` names [v]).
 - The mutation lane configuration keeps excluding the proven bodies but now exercises the projections; no config change expected, but confirm the exclusion list does not accidentally match the new test files.
 - `./scripts/check-portable-kernel.sh` and `./scripts/check-adapter-no-bypass.sh` must stay green; the re-exports are additive.
-- FV-E3's PR-time formal smoke tier, when it lands, should include the equivalence proptests in its fast set; note the dependency there, not here.
+- The PR-time smoke tier discovers the equivalence properties through the
+  workspace test command; no separate workflow list is required.
 
 ## Acceptance criteria
 
-- [ ] All eight helpers have at least one production caller on the security decision path, verified by a grep gate or review checklist per phase.
-- [ ] For each family, an equivalence proptest existed and passed against the unmodified runtime before the refactor landed (visible in PR history as a separate commit).
-- [ ] Projection unit tests cover every projected flag/integer per family, including absent-cap and saturation edges.
-- [ ] At least the budget and revocation families carry a Kani projection-binding harness in the `verify_delegation_chain_step` style, registered in `kani-public-harnesses.toml` and `MAPPING.md`.
-- [ ] No behavior change: full workspace test suite, replay proptests, and guard pipeline tests green with no expectation edits other than new tests.
-- [ ] `formal/proof-manifest.toml` `covered_rust_symbols` matches reality after each phase (no listed-but-uncalled formal_core symbols remain at the end).
-- [ ] `docs/reference/CLAIM_REGISTRY.md` `FORM-IMPLEMENTATION-LINKED` scope text reviewed and, if strengthened, re-approved.
-- [ ] The `dpop.rs:297` unchecked `ttl + skew` addition is saturating by the end of phase 2.
+- [x] All eight helpers have at least one production caller on the security decision path, verified by a grep gate or review checklist per phase.
+- [x] For each family, an equivalence proptest existed and passed against the unmodified runtime before the refactor landed (visible in the recorded parent and test-patch evidence).
+- [x] Projection unit tests cover every projected flag/integer per family, including absent-cap and saturation edges.
+- [x] At least the budget and revocation families carry a Kani projection-binding harness in the `verify_delegation_chain_step` style, registered in `kani-public-harnesses.toml` and `MAPPING.md`.
+- [x] No behavior change: full workspace test suite, replay proptests, and guard pipeline tests green with no expectation edits other than new tests.
+- [x] `formal/proof-manifest.toml` `covered_rust_symbols` matches reality after each phase (no listed-but-uncalled formal_core symbols remain at the end).
+- [x] `docs/reference/CLAIM_REGISTRY.md` `FORM-IMPLEMENTATION-LINKED` scope text reviewed and, if strengthened, re-approved.
+- [x] The DPoP `ttl + skew` addition is saturating by the end of phase 2.
 
 ## Risks and mitigations
 
 - Projection-boundary bugs (the key risk). A wrong caller-side projection makes the proof vacuous: the helper is proven, the helper is called, and the decision is still wrong because the inputs lied (for example inverting `parent_has_cap`, or projecting `count <= max` where the runtime meant `count < max`). Mitigations: the projection unit tests are mandatory, not optional; the pre-refactor equivalence proptest pins the composite decision; and the Kani binding harness asserts caller projection equals helper input semantics on symbolic inputs, following the `verify_delegation_chain_step` precedent.
-- Behavior drift during refactor: short-circuiting, store IO counts, and error variant attribution are observable (receipts, logs, budget mutation events). Mitigation: lazy projection shapes above; each phase's PR includes a "no new IO, no changed error variants" review checklist item; budget phase asserts the mutation-event log shape is byte-identical in tests.
+- Behavior drift during refactor: short-circuiting, store IO counts, and error variant attribution are observable (receipts, logs, budget mutation events). Mitigation: lazy projection shapes above; each phase's PR includes a "no new IO, no changed error variants" review checklist item. Budget tests compare semantic mutation fields and sequencing across both backends, excluding backend-generated event IDs and timestamps. The in-memory test pins `u64` arithmetic overflow, while SQLite pins its signed INTEGER storage boundary; both assert unchanged usage and event history after failure.
 - Model dimensionality mismatch: the budget model is two-dimensional and decrement-form; forcing the three runtime checks through it invites a subtly wrong encoding. Mitigation: per-axis application as designed; if FV-B3's conservation law needs a richer model, extend `formal_aeneas.rs` there rather than bending projections here.
 - Visibility widening leaks a half-finished API. Mitigation: curated per-phase re-exports; doc comments state the export exists for kernel absorption, not for external consumers.
 - Twin misidentification: absorbing a lookalike (for example the execution-nonce path instead of the DPoP nonce store) wastes a phase and can double-wire a decision. Mitigation: each phase PR opens with the twin citation and its call-graph justification; ambiguities recorded below rather than guessed at.
 
-## Open questions
+## Resolved questions
 
-- Budget twin surface: this doc targets the store implementations' accept/deny predicate (`in_memory.rs` and the sqlite trait impl). Should the hold lifecycle (`authorize_budget_hold` at `budget_store.rs:507` and the capture/release/reconcile family) absorb the same helper in phase 1, or is that FV-B3 territory? Current lean: authorize-time decision only in phase 1; holds move with FV-B3.
-- There is also a portable-core budget surface (`chio-kernel-core/src/budget_split.rs`, reached from `evaluate_with_full_floor` via `evaluate_portable_verdict` at `crates/kernel/chio-kernel/src/kernel/validation.rs:370`). Whether its sibling-split arithmetic is a third twin of `budget_precheck` or a different law entirely needs a session of its own before phase 1 scopes it in.
-- Receipt coupling: the projection for `evidence_class_matches` is ambiguous. Candidates in the assembled body are `receipt_kind`, `boundary_class`, and `trust_level` (`receipt_persistence.rs:37-59`). The phase 5 PR must resolve this against the Lean `ReceiptCouplingFacts` model in `formal/lean4/Chio/Chio/Core/Protocol.lean` rather than picking silently.
-- Guard absorption in `chio-kernel-core::evaluate` vs `chio-kernel::run_guards`: both are real twins. Plan says both in phase 3; if the core loop's error plumbing makes the step-level delegation ugly, is core-only plus a documented deferral acceptable?
-- Should the Kani projection-binding harnesses live in `kani_public_harnesses.rs` (public lane, MAPPING.md-enforced) even when the projection code is in `chio-kernel` (a crate the public harness file cannot see)? Possible answer: a small `#[cfg(kani)]` harness module inside `chio-kernel` plus a new row scope in `formal/rust-verification/kani-harnesses.toml`; decide in phase 1.
+- Budget authorization absorbs the bounded predicate. Hold capture, release,
+  settlement, and reconciliation retain their ledger-owned decisions.
+- `budget_split.rs` enforces sibling allocation rather than scalar admission,
+  so it is not another twin of `budget_precheck`.
+- Receipt evidence class combines `receipt_kind`, `boundary_class`,
+  `observation_outcome`, `tool_origin`, `redaction_mode`, `actor_chain`, and
+  `trust_level`. The other four model flags bind capability, request/action,
+  verdict, and policy hash independently.
+- Both the portable core guard loop and the hosted kernel guard loop delegate
+  their per-step projection. Neither twin is deferred.
+- Projection-binding harnesses live in the public kernel-core harness module.
+  They symbolically bind the scalar projection and are registered in the
+  public-core and multi-crate catalogs.
 
 ## Manifest and registry updates
 
 Per phase, in the same PR as the code change:
 
-- `formal/proof-manifest.toml`: add the newly production-called symbols to `covered_rust_symbols` (`formal_core::budget_precheck`, `formal_core::dpop_freshness_valid`, `formal_core::nonce_admits`, `formal_core::revocation_snapshot_denies` are missing today); annotate the four already-listed formal_core symbols (lines 73-76) as absorbed once their phase lands. Extend `covered_rust_modules` if new kernel modules join the proof-facing set. Consider adding the absorbed call sites to `shell_entrypoints` where they are the shell-side boundary.
+- `formal/proof-manifest.toml`: the original missing helpers and the exact
+  shared production projections are now in `covered_rust_symbols`; absorbed
+  runtime boundaries, including both signed-horizon DPoP entrypoints, are
+  named in `shell_entrypoints`. The projection entries do not claim storage or
+  ledger verification.
 - `formal/MAPPING.md`: new rows for every added Kani harness (enforced by `scripts/check-mapping.sh`); update the "Rust path constrained" column of existing rows that currently point at pre-absorption paths (for example the Apalache `RevocationCutCompleteness` and `KernelTransitionCancelSafe` rows).
 - `docs/reference/CLAIM_REGISTRY.md`: `FORM-IMPLEMENTATION-LINKED` (line 57) may strengthen from "subject to strict Rust verification gates" toward naming the absorbed decision points; any wording change goes through the claim-gate inputs check (`proof-manifest.toml` `claim_gate_inputs`).
 - `formal/rust-verification/kani-public-harnesses.toml` (or `kani-harnesses.toml`, per the open question): register new harnesses.

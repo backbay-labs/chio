@@ -1,9 +1,85 @@
-# releases.toml - Mutation-testing release-cycle gate state.
+# releases.toml - Release qualification and evidence-gate state.
+
+[gates.loom-nightly]
+workflow = "nightly.yml"
+job = "loom-nightly (bounded abstract models)"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 48
+
+[gates.dst-nightly]
+workflow = "nightly.yml"
+job = "dst-nightly (10k real-kernel episodes)"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 48
+
+# Mutation-testing release-cycle gate state follows. Its scored, reviewed
+# evidence lifecycle remains separate from pass/fail lane posture.
 #
-# Read by scripts/mutants-gate.sh from .github/workflows/mutants.yml
-# (jobs mutants-pr and mutants-nightly).
+# Pass/fail lane posture is read by scripts/lane-gate.sh. Mutation scoring is
+# governed separately by scripts/mutants-gate.sh because its evidence requires
+# a reviewed catch-ratio judgment.
 #
-# Schema:
+# Pass/fail lane schema:
+#   [gates.<lane>]
+#   workflow             : workflow filename registered by GitHub Actions.
+#   job                  : exact job display name returned by the jobs API.
+#   event                : schedule or pull_request; dispatch runs never count.
+#   posture              : advisory or required.
+#   required_streak      : consecutive matching-event job successes needed for
+#                          promotion.
+#   evidence_after_run_id
+#                         : exclusive reset boundary for promotion evidence.
+#   max_age_hours        : freshness bound used by release fleet checks.
+#   activation_target    : optional scored-lane percentage required in the
+#                          bound report before a success can count.
+#   scored_artifact_prefix
+#                         : required with activation_target; followed by the
+#                          exact run ID and latest run attempt.
+#   scored_artifact_schema
+#                         : exact report schema selected from the scored
+#                          artifact. Exactly one matching JSON report is
+#                          required.
+#   scored_sample_size    : exact number of mutants required in each scored
+#                          scheduled report.
+#   scored_inventory_size : exact enumerated inventory ratchet for the lane.
+#   scored_inventory_sha256
+#                         : canonical full-inventory identity ratchet.
+#   scored_sources        : exact source-name and repository-path bindings
+#                          required for specification mutation reports.
+#   scored_seeds          : exact historical regression seeds required in
+#                          every specification mutation report.
+#   scored_files          : exact source files required in proof mutation
+#                          reports.
+#   scored_viability_target
+#                         : minimum proof mutants that must compile and run.
+#   scored_tools          : exact normalized tool versions accepted by the
+#                          scored report verifier.
+#   strict_mode_required : optional; successful evidence also needs the named
+#                         strict proof-report artifact.
+#   strict_artifact_prefix
+#                         : required prefix followed by the exact run ID and
+#                          latest run attempt.
+#   base_branch           : required pull-request base branch. Runs targeting
+#                          another base do not count.
+#   execution_artifact_prefix
+#                         : required for pull-request lanes. The proof job
+#                          uploads this prefix plus run ID and attempt only
+#                          after real verification work completes.
+#   frozen               : optional; rejects required posture while true.
+#   frozen_reason        : required explanation when frozen is true.
+#   promotion_evidence   : required inline table for required posture; absent
+#                          for advisory posture. run_ids must contain exactly
+#                          required_streak unique post-reset run IDs, and
+#                          report_sha256 is SHA-256 over those verified run IDs,
+#                          one decimal ID plus newline in listed order.
+#
+# Mutation scoring schema:
 #   [mutants]
 #   initial_merge_tag
 #                    : tag that shipped the initial mutation-testing changes.
@@ -60,10 +136,190 @@
 #
 # Editing this file is gated by CODEOWNERS.
 
+[gates.kani-public-nightly]
+workflow = "nightly.yml"
+job = "kani-public-nightly (lanes.pr + lanes.nightly_only)"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29003108285
+max_age_hours = 48
+
+[gates.formal-qualification]
+workflow = "nightly.yml"
+job = "formal-qualification (proof report + portable + SDK parity)"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29003108285
+max_age_hours = 48
+strict_mode_required = true
+strict_artifact_prefix = "formal-proof-report-strict-"
+
+[gates.apalache-safety]
+workflow = "apalache-safety.yml"
+job = "apalache-subset"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29147080117
+max_age_hours = 48
+
+[gates.apalache-negative]
+workflow = "apalache-safety.yml"
+job = "apalache-negative"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29147080117
+max_age_hours = 48
+
+[gates.spec-mutants]
+workflow = "apalache-safety.yml"
+job = "spec-mutants"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 48
+activation_target = 90
+scored_artifact_prefix = "spec-mutants-report-"
+scored_artifact_schema = "chio.spec-mutants-report.v1"
+scored_sample_size = 16
+scored_inventory_size = 33
+scored_inventory_sha256 = "da4cbb247ecb3bb76056ba0453674ad39e8e3ba787f9543bb9a063d2b2532cb8"
+scored_tools = ["apalache=0.50.1"]
+scored_sources = [
+  "KernelTransitionCancelSafe=formal/apalache/KernelTransitionCancelSafe.tla",
+  "MonotoneLogApalache=formal/apalache/MonotoneLogApalache.tla",
+  "PostAdmissionDropGuard=formal/apalache/PostAdmissionDropGuard.tla",
+  "ReceiptBeforeAllow=formal/apalache/ReceiptBeforeAllow.tla",
+  "RevocationCutCompleteness=formal/apalache/RevocationCutCompleteness.tla",
+  "DelegationDepthBound=formal/tla/DelegationDepthBound.tla",
+  "RevocationPropagation=formal/tla/RevocationPropagation.tla",
+]
+scored_seeds = [
+  "receipt-before-allow-guard",
+  "revocation-transitive-cut",
+]
+
+[gates.proof-mutants]
+workflow = "proof-mutants.yml"
+job = "proof-mutants"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 48
+activation_target = 90
+scored_artifact_prefix = "proof-mutants-report-"
+scored_artifact_schema = "chio.proof-mutants-report.v1"
+scored_sample_size = 15
+scored_inventory_size = 166
+scored_inventory_sha256 = "b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e81d45"
+scored_files = [
+  "crates/kernel/chio-kernel-core/src/formal_core.rs",
+  "crates/kernel/chio-kernel-core/src/formal_aeneas.rs",
+]
+scored_viability_target = 80
+scored_tools = [
+  "cargo_mutants=25.3.1",
+  "kani=0.67.0",
+  "rustc=1.93.0",
+]
+
+[gates.apalache-temporal]
+workflow = "apalache-temporal.yml"
+job = "formal-tla-liveness"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29147109384
+max_age_hours = 48
+frozen = true
+frozen_reason = "Distributed revocation liveness was added on 2026-07-12; its post-change flake rate is unmeasured and both temporal properties must be reliably green before promotion."
+
+[gates.lean-build]
+workflow = "formal-pr-smoke.yml"
+job = "lean-build (lake + sorry scan + manifest cross-ref)"
+event = "pull_request"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 168
+base_branch = "main"
+execution_artifact_prefix = "lane-executed-lean-build-"
+frozen = true
+frozen_reason = "The path-scoped workflow has no run-always aggregator or real-execution marker uploader."
+
+[gates.kani-public-pr]
+workflow = "formal-pr-smoke.yml"
+job = "kani-public-pr (lanes.pr sweep)"
+event = "pull_request"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 168
+base_branch = "main"
+execution_artifact_prefix = "lane-executed-kani-public-pr-"
+frozen = true
+frozen_reason = "The path-scoped workflow has no run-always aggregator or real-execution marker uploader."
+
+[gates.kani-manifest-pr]
+workflow = "formal-pr-smoke.yml"
+job = "kani-manifest-pr (non-core lanes.pr sweep)"
+event = "pull_request"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 168
+base_branch = "main"
+execution_artifact_prefix = "lane-executed-kani-manifest-pr-"
+frozen = true
+frozen_reason = "The path-scoped workflow has no run-always aggregator or real-execution marker uploader."
+
+[gates.rust-verification-metadata]
+workflow = "formal-pr-smoke.yml"
+job = "rust-verification-metadata (schema only, no proofs)"
+event = "pull_request"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 168
+base_branch = "main"
+execution_artifact_prefix = "lane-executed-rust-verification-metadata-"
+frozen = true
+frozen_reason = "The path-scoped workflow has no run-always aggregator or real-execution marker uploader."
+
+[gates.fuzz-corpus-smoke-pr]
+workflow = "formal-pr-smoke.yml"
+job = "fuzz-corpus-smoke-pr (locked replay)"
+event = "pull_request"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 168
+base_branch = "main"
+execution_artifact_prefix = "lane-executed-fuzz-corpus-smoke-pr-"
+frozen = true
+frozen_reason = "The path-scoped workflow has no run-always aggregator or real-execution marker uploader."
+
+[gates.fuzz-corpus-smoke-nightly]
+workflow = "nightly.yml"
+job = "fuzz corpus smoke"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29003108285
+max_age_hours = 48
+
 [mutants]
+# The release floor is 80 percent per crate. Proof and specification mutation
+# lanes use rotating samples and remain advisory until a full-inventory
+# coverage ratchet is promoted.
 initial_merge_tag = "v0.0.0-mutation-gate"
 target_catch_ratio_percent = 80
-activation_threshold_percent_per_crate = 65
+activation_threshold_percent_per_crate = 80
 required_consecutive_nightly_successes = 2
 observed_consecutive_nightly_successes = 0
 activation_evidence = """

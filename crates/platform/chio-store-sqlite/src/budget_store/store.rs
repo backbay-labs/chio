@@ -1,4 +1,5 @@
 use super::*;
+use chio_kernel_core::budget_increment_admits;
 
 /// Budget-store schema revision. Bump on every schema-affecting change.
 pub(crate) const BUDGET_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 10;
@@ -1835,32 +1836,31 @@ impl SqliteBudgetStore {
         let (current, total_cost_exposed, total_cost_realized_spend) = current.unwrap_or((0, 0, 0));
         let updated_at = unix_now();
 
-        if let Some(max) = max_invocations {
-            if current >= max {
-                let event_seq = allocate_budget_replication_seq(&transaction)?;
-                SqliteBudgetStore::append_mutation_event(
-                    &transaction,
-                    event_id,
-                    None,
-                    None,
-                    capability_id,
-                    grant_index,
-                    BudgetMutationKind::IncrementInvocation,
-                    Some(false),
-                    event_seq,
-                    None,
-                    0,
-                    0,
-                    max_invocations,
-                    None,
-                    None,
-                    current,
-                    total_cost_exposed,
-                    total_cost_realized_spend,
-                )?;
-                transaction.commit()?;
-                return Ok(false);
-            }
+        let allowed = budget_increment_admits(current, max_invocations);
+        if !allowed {
+            let event_seq = allocate_budget_replication_seq(&transaction)?;
+            SqliteBudgetStore::append_mutation_event(
+                &transaction,
+                event_id,
+                None,
+                None,
+                capability_id,
+                grant_index,
+                BudgetMutationKind::IncrementInvocation,
+                Some(false),
+                event_seq,
+                None,
+                0,
+                0,
+                max_invocations,
+                None,
+                None,
+                current,
+                total_cost_exposed,
+                total_cost_realized_spend,
+            )?;
+            transaction.commit()?;
+            return Ok(false);
         }
 
         let invocation_count_after = current.checked_add(1).ok_or_else(|| {

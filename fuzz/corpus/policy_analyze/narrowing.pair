@@ -1,0 +1,13 @@
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    allow: ["repo.*"]
+    block: []
+    default: block
+---CHIO-POLICY-PAIR---
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    allow: ["repo.read"]
+    block: []
+    default: block

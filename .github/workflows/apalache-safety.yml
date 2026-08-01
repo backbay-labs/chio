@@ -8,23 +8,169 @@ on:
     paths:
       - "formal/apalache/**"
       - "formal/tla/**"
+      - "crates/tooling/chio-trace-validate/**"
+      - "scripts/check-receipt-trace.sh"
+      - "scripts/check-receipt-trace-bindings.py"
+      - "scripts/check-receipt-trace-negative-registry.py"
+      - "scripts/tests/check-receipt-trace-bindings.test.sh"
+      - "formal/MAPPING.md"
+      - "formal/proof-manifest.toml"
+      - "formal/assumptions.toml"
+      - "docs/reference/CLAIM_REGISTRY.md"
+      - "crates/trust/chio-federation/src/revocation_gossip.rs"
+      - "crates/trust/chio-federation/tests/distributed_revocation_refinement.rs"
+      - "crates/trust/chio-revocation-oracle/src/**"
+      - "crates/core/chio-core-types/src/capability/attenuation.rs"
+      - "crates/core/chio-core-types/src/capability/scope.rs"
+      - "crates/kernel/chio-kernel-core/src/evaluate.rs"
+      - "crates/kernel/chio-kernel-core/src/normalized.rs"
+      - "crates/kernel/chio-kernel-core/src/revocation_view.rs"
+      - "crates/kernel/chio-kernel/src/budget_store.rs"
+      - "crates/kernel/chio-kernel/src/runtime_trace.rs"
+      - "crates/kernel/chio-kernel/src/kernel/construction.rs"
+      - "crates/kernel/chio-kernel/src/kernel/credential_reservation.rs"
+      - "crates/kernel/chio-kernel/src/kernel/mod.rs"
+      - "crates/kernel/chio-kernel/src/receipt_store.rs"
+      - "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs"
+      - "crates/kernel/chio-kernel/src/kernel/kernel_scopes.rs"
+      - "crates/kernel/chio-kernel/src/kernel/delegation.rs"
+      - "crates/kernel/chio-kernel/src/kernel/dispatch.rs"
+      - "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs"
+      - "crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs"
+      - "crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs"
+      - "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs"
+      - "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs"
+      - "crates/kernel/chio-kernel/src/kernel/validation.rs"
+      - "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs"
+      - "crates/kernel/chio-runtime-core/src/admission.rs"
+      - "crates/kernel/chio-runtime-core/src/admission_hook.rs"
+      - "crates/kernel/chio-runtime-core/src/admission_hook/**"
+      - "crates/platform/chio-store-sqlite/src/receipt_store.rs"
+      - "crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs"
+      - "crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs"
+      - "crates/tooling/chio-conformance/src/native_suite.rs"
+      - "crates/tooling/chio-conformance/src/bin/chio_native_conformance_runner.rs"
+      - "crates/tooling/chio-conformance/tests/runtime_trace_corpus.rs"
       - "scripts/check-apalache-formal-slice.py"
+      - "scripts/check-apalache-negative.sh"
+      - "scripts/check-apalache-positive.sh"
+      - "scripts/check-distributed-revocation-temporal.sh"
+      - "scripts/lib/apalache_evidence.py"
+      - "scripts/file-mutation-survivors.py"
+      - "scripts/spec-mutants.py"
+      - "scripts/check-distributed-revocation-refinement.sh"
+      - "scripts/validate-distributed-revocation-trace.py"
+      - "scripts/tests/check-apalache-negative.test.sh"
+      - "scripts/tests/check-apalache-positive.test.sh"
+      - "scripts/tests/apalache-workflow.test.sh"
+      - "scripts/tests/file-mutation-survivors.test.sh"
+      - "scripts/tests/spec-mutants.test.sh"
       - "tools/install-apalache.sh"
       - ".github/workflows/apalache-safety.yml"
       - ".github/workflows/apalache-temporal.yml"
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-apalache-safety', github.ref) || format('main-{0}-apalache-safety', github.sha) }}
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-apalache-safety', github.ref) || format('main-{0}-apalache-safety', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  apalache-subset:
-    name: apalache-subset
+  apalache_contracts:
+    name: apalache-contracts
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Formal slice contract checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/check-apalache-formal-slice.py
+
+      - name: Receipt trace binding contract checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/check-receipt-trace-bindings.test.sh
+
+      - name: Positive evidence runner checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/check-apalache-positive.test.sh
+
+      - name: Workflow aggregation checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/apalache-workflow.test.sh
+
+  apalache_safety_shards:
+    name: apalache-safety-${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: monotone-log
+            config: formal/apalache/MCMonotoneLogApalache.cfg
+            spec: formal/apalache/MonotoneLogApalache.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: SafetyInv
+          - name: revocation-cut
+            config: formal/apalache/MCRevocationCutCompleteness.cfg
+            spec: formal/apalache/RevocationCutCompleteness.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: SafetyInv
+          - name: receipt-before-allow
+            config: formal/apalache/MCReceiptBeforeAllow.cfg
+            spec: formal/apalache/ReceiptBeforeAllow.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: SafetyInv
+          - name: transition-cancel
+            config: formal/apalache/MCKernelTransitionCancelSafe.cfg
+            spec: formal/apalache/KernelTransitionCancelSafe.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: SafetyInv
+          - name: post-admission
+            config: formal/apalache/MCPostAdmissionDropGuard.cfg
+            spec: formal/apalache/PostAdmissionDropGuard.tla
+            length: 8
+            timeout_seconds: 10800
+            invariant: SafetyInv
+          - name: revocation-propagation
+            config: formal/tla/MCRevocationPropagation.cfg
+            spec: formal/tla/RevocationPropagation.tla
+            length: 6
+            timeout_seconds: 10800
+            invariant: SafetyInv
+          - name: distributed-domains
+            config: formal/tla/MCDistributedRevocationDomains.cfg
+            spec: formal/tla/DistributedRevocation.tla
+            length: 0
+            timeout_seconds: 600
+            invariant: DistributedDomainsOK
+          - name: distributed-behavior
+            config: formal/tla/MCDistributedRevocation.cfg
+            spec: formal/tla/DistributedRevocation.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: BehavioralSafetyInv
+          - name: delegation-depth
+            config: formal/tla/MCDelegationDepthBound.cfg
+            spec: formal/tla/DelegationDepthBound.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: SafetyInv
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -41,33 +187,282 @@ jobs:
           ./tools/install-apalache.sh
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
-      - name: Confirm Apalache
-        shell: bash
-        run: |
-          set -euo pipefail
-          command -v apalache-mc
-          apalache-mc version || true
-
-      - name: Formal slice contract checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/check-apalache-formal-slice.py
-
       - name: Apalache safety checks
         shell: bash
         run: |
           set -euo pipefail
-          while IFS="|" read -r cfg spec; do
-            apalache-mc check \
-              --length=6 \
-              --config="${cfg}" \
-              "${spec}"
-          done <<'EOF'
-          formal/apalache/MCMonotoneLogApalache.cfg|formal/apalache/MonotoneLogApalache.tla
-          formal/apalache/MCRevocationCutCompleteness.cfg|formal/apalache/RevocationCutCompleteness.tla
-          formal/apalache/MCReceiptBeforeAllow.cfg|formal/apalache/ReceiptBeforeAllow.tla
-          formal/apalache/MCKernelTransitionCancelSafe.cfg|formal/apalache/KernelTransitionCancelSafe.tla
-          formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla
-          formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla
-          EOF
+          ./scripts/check-apalache-positive.sh \
+            --invariant "${{ matrix.invariant }}" \
+            --length "${{ matrix.length }}" \
+            --timeout-seconds "${{ matrix.timeout_seconds }}" \
+            --config "${{ matrix.config }}" \
+            "${{ matrix.spec }}"
+
+  apalache_scheduled_bounds_and_refinement:
+    name: apalache-scheduled-bounds-and-refinement
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Java runtime
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/install-apalache.sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Distributed revocation nightly bounds
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/check-apalache-positive.sh \
+            --invariant DistributedDomainsOK \
+            --length 0 \
+            --timeout-seconds 3600 \
+            --config formal/tla/MCDistributedRevocationDomainsNightly.cfg \
+            formal/tla/DistributedRevocation.tla
+          ./scripts/check-apalache-positive.sh \
+            --invariant BehavioralSafetyInv \
+            --length 6 \
+            --timeout-seconds 3600 \
+            --config formal/tla/MCDistributedRevocationNightly.cfg \
+            formal/tla/DistributedRevocation.tla
+
+      - name: Production revocation trace projection
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/check-distributed-revocation-refinement.sh
+
+  apalache_verdict:
+    name: apalache-subset
+    if: ${{ always() }}
+    needs:
+      - apalache_contracts
+      - apalache_safety_shards
+      - apalache_scheduled_bounds_and_refinement
+      - apalache-negative
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Validate safety results
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CONTRACT_RESULT: ${{ needs.apalache_contracts.result }}
+          SHARD_RESULT: ${{ needs.apalache_safety_shards.result }}
+          SCHEDULED_RESULT: ${{ needs.apalache_scheduled_bounds_and_refinement.result }}
+          NEGATIVE_RESULT: ${{ needs.apalache-negative.result }}
+        run: |
+          set -euo pipefail
+          if [[ "${CONTRACT_RESULT}" != "success" || "${SHARD_RESULT}" != "success" ]]; then
+            echo "Apalache safety contracts or shards did not succeed" >&2
+            exit 1
+          fi
+          if [[ "${NEGATIVE_RESULT}" != "success" ]]; then
+            echo "Apalache negative safety gate did not succeed" >&2
+            exit 1
+          fi
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            if [[ "${SCHEDULED_RESULT}" != "skipped" ]]; then
+              echo "scheduled Apalache work must be skipped on pull requests" >&2
+              exit 1
+            fi
+          elif [[ "${SCHEDULED_RESULT}" != "success" ]]; then
+            echo "scheduled Apalache work did not succeed" >&2
+            exit 1
+          fi
+
+      - name: Record safety lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: |
+          set -euo pipefail
+          bash scripts/lane-gate.sh apalache-safety
+          exit "${LANE_EXIT}"
+
+  apalache-negative:
+    name: apalache-negative
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Install Java runtime
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/install-apalache.sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Check negative-gate outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/check-apalache-negative.test.sh
+          ./scripts/tests/file-mutation-survivors.test.sh
+          ./scripts/tests/spec-mutants.test.sh
+
+      - name: Reproduce registered counterexamples
+        shell: bash
+        env:
+          CHIO_APALACHE_NEGATIVE_OUTPUT_DIR: target/apalache-negative
+        run: |
+          set -euo pipefail
+          ./scripts/check-apalache-negative.sh
+
+      - name: Upload counterexample traces
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: apalache-negative-${{ github.run_id }}
+          path: target/apalache-negative
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record negative lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh apalache-negative
+
+  spec-mutants:
+    name: spec-mutants
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      CHIO_MUTATION_SAMPLE_EPOCH: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Install Java runtime
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/install-apalache.sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Validate mutation controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/spec-mutants.test.sh
+          first="${RUNNER_TEMP}/spec-mutants-one.json"
+          second="${RUNNER_TEMP}/spec-mutants-two.json"
+          ./scripts/spec-mutants.py --list > "${first}"
+          ./scripts/spec-mutants.py --list > "${second}"
+          cmp "${first}" "${second}"
+
+      - name: Score deterministic specification sample
+        id: mutation_run
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/spec-mutants.py --sample-from-head --sample-size 16
+
+      - name: File surviving mutation issues
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          report="target/formal/spec-mutants-report.json"
+          if [[ -f "${report}" ]]; then
+            ./scripts/file-mutation-survivors.py "${report}"
+          fi
+
+      - name: Upload specification mutation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: spec-mutants-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/formal/spec-mutants-report.json
+            target/formal/spec-mutants
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload specification mutation scored report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: spec-mutants-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/formal/spec-mutants-report.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Preserve mutation verdict
+        if: always()
+        shell: bash
+        env:
+          MUTATION_OUTCOME: ${{ steps.mutation_run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "${MUTATION_OUTCOME}" != "success" ]]; then
+            echo "spec-mutants did not meet its activation target" >&2
+            exit 1
+          fi
+
+      - name: Record specification mutation lane posture
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: |
+          set -euo pipefail
+          bash scripts/lane-gate.sh spec-mutants
+          exit "${LANE_EXIT}"

@@ -62,7 +62,8 @@ pub(crate) fn cmd_trust_underwriting_input_export(
 
     let input = if let Some(url) = backend.query.control_url {
         let token = require_control_token(backend.query.control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.underwriting_policy_input(&query)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .underwriting_policy_input(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -130,7 +131,8 @@ pub(crate) fn cmd_trust_underwriting_decision_evaluate(
 
     let report = if let Some(url) = backend.query.control_url {
         let token = require_control_token(backend.query.control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.underwriting_decision(&query)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .underwriting_decision(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -186,7 +188,8 @@ pub(crate) fn cmd_trust_underwriting_decision_simulate(
 
     let report = if let Some(url) = backend.query.control_url {
         let token = require_control_token(backend.query.control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.simulate_underwriting_decision(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .simulate_underwriting_decision(&request)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -271,22 +274,27 @@ mod trust_command_error_classification_tests {
 pub(crate) fn parse_underwriting_lifecycle_state(
     value: &str,
 ) -> Result<chio_kernel::UnderwritingDecisionLifecycleState, CliError> {
-    serde_json::from_str(&format!("\"{value}\""))
-        .map_err(|_| CliError::policy_constraint_error(format!("invalid underwriting lifecycle state `{value}`")))
+    serde_json::from_str(&format!("\"{value}\"")).map_err(|_| {
+        CliError::policy_constraint_error(format!("invalid underwriting lifecycle state `{value}`"))
+    })
 }
 
 pub(crate) fn parse_underwriting_appeal_status(
     value: &str,
 ) -> Result<chio_kernel::UnderwritingAppealStatus, CliError> {
-    serde_json::from_str(&format!("\"{value}\""))
-        .map_err(|_| CliError::policy_constraint_error(format!("invalid underwriting appeal status `{value}`")))
+    serde_json::from_str(&format!("\"{value}\"")).map_err(|_| {
+        CliError::policy_constraint_error(format!("invalid underwriting appeal status `{value}`"))
+    })
 }
 
 pub(crate) fn parse_underwriting_appeal_resolution(
     value: &str,
 ) -> Result<chio_kernel::UnderwritingAppealResolution, CliError> {
-    serde_json::from_str(&format!("\"{value}\""))
-        .map_err(|_| CliError::policy_constraint_error(format!("invalid underwriting appeal resolution `{value}`")))
+    serde_json::from_str(&format!("\"{value}\"")).map_err(|_| {
+        CliError::policy_constraint_error(format!(
+            "invalid underwriting appeal resolution `{value}`"
+        ))
+    })
 }
 
 pub(crate) fn load_underwriting_decision_policy(
@@ -317,7 +325,8 @@ pub(crate) fn cmd_trust_underwriting_decision_issue(
 
     let decision = if let Some(url) = backend.query.control_url {
         let token = require_control_token(backend.query.control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_underwriting_decision(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_underwriting_decision(&request)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -382,7 +391,8 @@ pub(crate) fn cmd_trust_underwriting_decision_list(
 
     let report = if let Some(url) = backend.control_url {
         let token = require_control_token(backend.control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.list_underwriting_decisions(&query)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .list_underwriting_decisions(&query)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -437,7 +447,8 @@ pub(crate) fn cmd_trust_underwriting_appeal_create(
     };
     let record = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.create_underwriting_appeal(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .create_underwriting_appeal(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -472,7 +483,8 @@ pub(crate) fn cmd_trust_underwriting_appeal_resolve(
     };
     let record = if let Some(url) = backend.control_url {
         let token = require_control_token(backend.control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.resolve_underwriting_appeal(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .resolve_underwriting_appeal(&request)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(

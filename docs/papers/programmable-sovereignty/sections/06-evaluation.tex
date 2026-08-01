@@ -2,36 +2,33 @@
 \label{sec:evaluation}
 
 We ask four questions. RQ1 tests whether the implementation rejects the
-attacks implied by the threat model before dispatch. RQ2 tests whether the
-bounded Lean and Rust semantics remain aligned. RQ3 measures the complete
-receiver path and its principal components. RQ4 examines replayability and
-artifact size.
+attacks in the threat model before dispatch. RQ2 compares the independent Rust
+reference interpreter with the runtime bounded evaluator. RQ3 measures the
+pre-dispatch denial path, the complete local buyer workflow, and their main
+components. RQ4 reports replay coverage and package size.
 
 \subsection{Method}
 
 Experiments ran on Linux/aarch64 with eight Arm Neoverse-N1 cores and
-49.2~GB RAM, using rustc~1.93.0 and Cargo~1.93.0. All reported bilateral
-measurements use the release profile. Each result document records the tested
-commit and whether the source tree was clean when the experiment began; the
-artifact manifest pins the result and source hashes. The end-to-end harness
-uses persistent SQLite stores on one host. It includes process startup,
-artifact production, CLI execution, schema validation, and semantic review,
-rather than approximating those costs with an in-process function.
+49.2~GB RAM, using rustc~1.93.0 and Cargo~1.93.0. Bilateral measurements use
+the release profile. The end-to-end workflow uses persistent SQLite stores on
+one host and includes process startup, package generation, CLI execution,
+schema validation, and semantic review.
 
 \codepath{run-bilateral-admission.sh} performs two warmups,
-\PSPathSampleCount{} end-to-end samples per path, and
-\PSCriterionSampleCount{} Criterion samples per component. It retains raw CSV,
-machine and toolchain metadata, a JSON summary, and generated \TeX{} input.
-\codepath{run-replay-corpus.sh} reports the generic replay suite and bilateral
-matrix separately. No result below is transcribed from a console log.
+\PSPathSampleCount{} samples for each complete workflow, and
+\PSCriterionSampleCount{} samples for each component. It retains raw CSV,
+machine and toolchain metadata, a JSON summary, and generated \TeX{} macros.
+\codepath{run-replay-corpus.sh} reports the generic capability corpus and the
+bilateral negative matrix separately.
 
 \subsection{RQ1: Do Attacks Deny Before Dispatch?}
 
-The corpus contains \PSThreatCaseCount{} stable cases, \codepath{PS-TH-01} through
-\codepath{PS-TH-20}. Each entry names the exact test target, expected failure
-code, and expected phase. The matrix runner rejects duplicate identifiers,
-empty selections, unexpected codes, and any entry whose expected dispatch
-value is not false.
+The corpus contains \PSThreatCaseCount{} cases,
+\codepath{PS-TH-01} through \codepath{PS-TH-20}. Each entry names the test
+target, expected failure code, enforcement phase, and expected dispatch state.
+The runner rejects duplicate identifiers, empty selections, unexpected codes,
+and any case that expects dispatch.
 
 \begin{table}[t]
 \caption{Bilateral negative matrix. All \PSThreatCaseCount{} cases passed.}
@@ -60,124 +57,117 @@ Policy outcome
 \end{tabularx}
 \end{table}
 
-All \PSThreatCaseCount{} cases returned their named denial in both matrix runs.
-The runner compares each test's machine-readable code with the corpus, so a
-wrong diagnostic fails. These targets call validators or the admission hook
-without creating a tool server; the matrix claim is therefore the named
-rejection at the declared phase. A separate dispatch-capable benchmark
-observed an unchanged invocation counter. The release matrix took
-\PSNegativeMatrixSeconds~s, a reproducibility wall time, not denial latency.
+All \PSThreatCaseCount{} cases returned the expected denial code in both matrix
+runs. These focused cases stop at the validator or admission hook and do not
+install a tool server. The dispatch-capable denial benchmark supplies the
+separate non-invocation observation: its counter remained zero. Running the
+complete release matrix took \PSNegativeMatrixSeconds~s.
 
-The corpus also declares \codepath{PS-A-01}: one actor may control two distinct
-keys that the receiver has authorized as the treaty participants. Cryptography
-cannot distinguish that deployment from two organizations. We record it as a
-non-testable operational assumption rather than a passing attack case.
+One assumption cannot be tested by this corpus. If one actor controls both
+private keys that the receiver authorized for the two participants, the
+cryptographic profile still passes. We record this as \codepath{PS-A-01}
+rather than counting it as an attack rejected by the implementation.
 
-\subsection{RQ2: Are the Bounded Semantics Aligned?}
+\subsection{RQ2: Do the Rust Evaluators Agree?}
 
-The Lean gate rebuilds the root import, rejects \codepath{sorry} and
-unregistered axioms, and checks the theorem inventory. Independent Rust tests
-exercise every atomic predicate form. They then run 1,024 generated cases for
-each of three properties: compound predicate denotation, constitutional
-admission, and finite-domain refinement. The Rust specification, the
-production bounded evaluator, and the mechanical view conversion agreed on
-all tested cases.
+The test suite covers every atomic predicate form, then runs 1,024 generated
+cases for each of three properties: compound predicate evaluation,
+constitution admission, and finite-domain refinement. For every tested input,
+the independent Rust interpreter and \codepath{chio-runtime-core} returned the
+same result. The generator keeps its predicates within the runtime's size,
+depth, and node limits.
 
-This result detects many representation and Boolean-composition errors. It
-does not prove the Rust code equivalent to Lean, establish completeness of the
-generator, or verify the runtime admission hook. The production tests and RQ1
-cover the latter boundary independently.
+The Lean model in Section~\ref{sec:model} defines the same data and Boolean
+operations and proves the finite-domain theorem. The differential suite,
+however, compares Rust with Rust. It is useful for finding implementation
+drift, not a proof that Rust is equivalent to Lean or that the surrounding
+admission hook is verified.
 
-\subsection{RQ3: What Does Admission Cost?}
+\subsection{RQ3: What Does the Evaluated Path Cost?}
 
 \begin{table*}[t]
-\caption{Release-profile results. End-to-end paths use \PSPathSampleCount{} samples; components use \PSCriterionSampleCount{}.}
+\caption{Release-profile results. Complete workflows use \PSPathSampleCount{} samples; components use \PSCriterionSampleCount{}.}
 \label{tab:evaluation}
 \scriptsize
 \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.31\textwidth}>{\raggedleft\arraybackslash}p{.13\textwidth}>{\raggedleft\arraybackslash}p{.13\textwidth}>{\raggedright\arraybackslash}X@{}}
 \toprule
 Measured path & p50 & p99 & Included work \\
 \midrule
-Full receiver admission
-& \PSFullAdmissionPFiftyMs{} ms & \PSFullAdmissionPNinetyNineMs{} ms
-& Producer, SQLite, buyer CLI, schema and semantic review \\
-Producer without buyer review
-& \PSProducerPFiftyMs{} ms & \PSProducerPNinetyNineMs{} ms
-& Runtime loopback, SQLite, package production and schema validation \\
-\midrule
 Pre-dispatch treaty denial
-& \PSPredispatchDenyPFiftyUs{} \(\mu\)s & \PSPredispatchDenyPNinetyNineUs{} \(\mu\)s
-& Full kernel path; real hook and SQLite denial receipt \\
+& \PSPredispatchDenyPFiftyMs{} ms & \PSPredispatchDenyPNinetyNineMs{} ms
+& Kernel checks, receiver stores, treaty hook, signed SQLite denial receipt \\
+Complete local buyer workflow
+& \PSBuyerWorkflowPFiftyMs{} ms & \PSBuyerWorkflowPNinetyNineMs{} ms
+& Three-vendor producer, SQLite, buyer CLI, schema and semantic review \\
+Producer workflow
+& \PSProducerPFiftyMs{} ms & \PSProducerPNinetyNineMs{} ms
+& Three-vendor producer, SQLite, package generation and schema validation \\
+\midrule
 Receipt sign
 & \PSReceiptSignPFiftyUs{} \(\mu\)s & \PSReceiptSignPNinetyNineUs{} \(\mu\)s
-& Buyer-shaped Ed25519 receipt \\
+& Ed25519 over the evaluated receipt shape \\
 Receipt verify
 & \PSReceiptVerifyPFiftyUs{} \(\mu\)s & \PSReceiptVerifyPNinetyNineUs{} \(\mu\)s
-& Buyer-shaped Ed25519 receipt \\
+& Ed25519 over the evaluated receipt shape \\
 Strict bilateral DSSE verify
 & \PSBilateralVerifyPFiftyUs{} \(\mu\)s & \PSBilateralVerifyPNinetyNineUs{} \(\mu\)s
 & Two signatures and embedded treaty bindings \\
 Cross-boundary admission allow
 & \PSCrossBoundaryPFiftyUs{} \(\mu\)s & \PSCrossBoundaryPNinetyNineUs{} \(\mu\)s
-& Receiver treaty scope and verified evidence \\
+& Treaty scope and verified evidence \\
 SQLite receipt append
 & \PSReceiptAppendPFiftyUs{} \(\mu\)s & \PSReceiptAppendPNinetyNineUs{} \(\mu\)s
-& Production receipt store; signing outside timed body \\
+& Persistent receipt store; signing excluded \\
 Offline buyer-package verify
 & \PSBuyerVerifyPFiftyUs{} \(\mu\)s & \PSBuyerVerifyPNinetyNineUs{} \(\mu\)s
-& Three-party proof-package verification \\
+& Complete three-vendor package \\
 \bottomrule
 \end{tabularx}
 \end{table*}
 
-Full receiver admission had a \PSFullAdmissionPFiftySec~s median and
-\PSFullAdmissionPNinetyNineSec~s p99. The path is dominated by orchestration, process,
-validation, and storage work rather than the bilateral cryptographic check.
-The two end-to-end distributions differ by
-\PSBuyerPathMedianDifferenceMs~ms at the median, but that difference is not a
-pure buyer-verification ablation: the full path also invokes the CLI and
-performs additional schema and semantic checks. The isolated offline verifier
-median was \PSBuyerVerifyPFiftyMs~ms.
+The most direct measure of the paper's enforcement path is the pre-dispatch
+denial: \PSPredispatchDenyPFiftyMs~ms p50 and
+\PSPredispatchDenyPNinetyNineMs~ms p99. The timed body traverses the kernel's
+capability and federation checks, resolves the stored treaty, ladder,
+continuation, lineage, invocation, and bilateral statement, verifies a signed
+policy denial, and writes the signed denial receipt to SQLite. The tool counter
+remained zero.
 
-The real receiver-owned pre-dispatch denial path was
-\PSPredispatchDenyPFiftyUs~\(\mu\)s at p50 and
-\PSPredispatchDenyPNinetyNineUs~\(\mu\)s at p99. Its timed body traverses the
-kernel capability, federation, and persistence gates; resolves the stored
-treaty scope, ladder intersection, continuation, lineage, invocation, and
-bilateral DSSE; verifies the signed policy denial; and persists the signed
-SQLite denial receipt. The instrumented tool invocation counter remains
-unchanged. Receipt signing measured
-\PSReceiptSignPFiftyUs~\(\mu\)s at the median, strict bilateral DSSE verification
-measured \PSBilateralVerifyPFiftyUs~\(\mu\)s, and persistent SQLite append
-measured \PSReceiptAppendPFiftyUs~\(\mu\)s. These component measurements use
-production-shaped data and production functions, but they do not sum to the
-end-to-end result because the full loop includes work absent from the
-microbenchmarks.
+The complete local buyer workflow measured
+\PSBuyerWorkflowPFiftySec~s p50 and
+\PSBuyerWorkflowPNinetyNineSec~s p99. This number is not receiver-hook latency.
+It includes three-vendor process orchestration, package generation, persistent
+storage, buyer CLI startup, schema validation, and semantic review. Producer
+mode measured \PSProducerPFiftyMs~ms p50. The
+\PSBuyerPathMedianDifferenceMs~ms difference between the workflow medians is
+also not a clean ablation because full mode performs additional CLI and schema
+work. The isolated offline package verifier measured
+\PSBuyerVerifyPFiftyMs~ms p50.
 
-\subsection{RQ4: Replay and Evidence Volume}
+Among the components, receipt signing measured
+\PSReceiptSignPFiftyUs~\(\mu\)s p50, strict bilateral DSSE verification
+measured \PSBilateralVerifyPFiftyUs~\(\mu\)s, and a persistent SQLite append
+measured \PSReceiptAppendPFiftyUs~\(\mu\)s. These measurements isolate real
+library functions, but their sum is not the complete workflow because it omits
+orchestration and validation outside the timed component bodies.
 
-The emitted buyer proof package was \PSProofPackageBytes{} bytes
+\subsection{RQ4: Replay and Package Size}
+
+The buyer package was \PSProofPackageBytes{} bytes
 (\PSProofPackageKiB~KiB). The replay script validated
-\PSGenericReplayCases{} generic kernel-capability fixtures in
-\PSGenericReplaySeconds~s and, in a separate run, the
+\PSGenericReplayCases{} generic capability fixtures in
+\PSGenericReplaySeconds~s and, separately,
 \PSBilateralReplayCases{} bilateral negative cases in
-\PSBilateralReplaySeconds~s. The first corpus covers generic
-capability verdict stability; it is not evidence for bilateral admission. The
-second covers the named failures in Table~\ref{tab:threat-matrix}. Reporting
-them separately prevents the larger generic count from inflating the treaty
-evaluation.
+\PSBilateralReplaySeconds~s. The generic corpus checks stable capability
+verdicts. The bilateral corpus checks the failures in
+Table~\ref{tab:threat-matrix}; its coverage is not inflated by the larger
+generic count.
 
-Public-anchor inclusion is withheld. The protocol can carry anchor evidence,
-but this evaluation does not measure a live transparency service or claim that
-one is required for local admission.
+\subsection{Measurement Limits}
 
-\subsection{Threats to Measurement Validity}
-
-The deterministic, single-host loopback removes network variance and makes
-artifact comparison reproducible, but it does not estimate wide-area latency
-or behavior under partial failure. \PSPathSampleCount{} path samples and
-\PSCriterionSampleCount{} component samples characterize this machine, not a
-deployment population. Criterion percentiles describe benchmark samples
-rather than service-level objectives. The retained result metadata records
-source cleanliness before execution. A clean reconstruction gate in the
-artifact package verifies the precise source set used here.
+The deterministic single-host setup removes network variance and makes package
+comparison reproducible. It does not estimate wide-area latency, concurrent
+load, or partial-failure behavior. The sample counts characterize this machine
+and are not service-level objectives. The supplementary package records the
+source, scripts, raw samples, and environment needed to reproduce the
+experiment.

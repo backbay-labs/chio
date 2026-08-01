@@ -22,9 +22,9 @@ mod snapshots;
 
 pub(crate) use consensus::{
     budget_authority_guarantee_level, budget_authority_metadata_view, build_cluster_state,
-    cluster_authority_lease_view, cluster_consensus_view, cluster_self_url,
-    compute_cluster_consensus_locked, current_budget_event_authority, current_leader_url,
-    handle_internal_cluster_status,
+    cluster_authority_lease_view, cluster_consensus_and_authority_lease_view,
+    cluster_consensus_view, cluster_self_url, compute_cluster_consensus_locked,
+    current_budget_event_authority, current_leader_url, handle_internal_cluster_status,
 };
 pub(crate) use deltas::{
     budget_cursor_from_event, budget_mutation_event_view, budget_mutation_record_from_view,

@@ -192,11 +192,9 @@ mod tests {
         let report = probe.run(&config);
         assert_eq!(report.severity, ProbeSeverity::Ok);
         assert_eq!(report.code, "urn:chio:error:cli:other");
-        assert!(
-            report
-                .context
-                .iter()
-                .any(|ctx| ctx.key == "registry" && ctx.value == "ghcr.io/example/chio")
-        );
+        assert!(report
+            .context
+            .iter()
+            .any(|ctx| ctx.key == "registry" && ctx.value == "ghcr.io/example/chio"));
     }
 }

@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import type { HttpReceipt, Verdict, GuardEvidence } from "@chio-protocol/node-http";
 import { canonicalJsonString } from "./canonical.js";
-import { Receipt_Record } from "./_generated/index.js";
+import type { Receipt_Record } from "./_generated/index.js";
 
 export interface ReceiptAuthorityResult {
   signature_valid: boolean;
@@ -115,7 +115,7 @@ export function validateChioReceiptRecordStructure(receipt: Receipt_Record.ChioR
   if (typeof receipt.signature !== "string" || receipt.signature.length === 0) {
     errors.push("receipt.signature must be a non-empty string");
   }
-  errors.push(...Receipt_Record.validateChioReceiptRecordSemantics(receipt));
+  errors.push(...validateChioReceiptRecordSemantics(receipt));
   return errors;
 }
 
@@ -278,5 +278,61 @@ function validateReceiptSemantics(receipt: HttpReceipt): string[] {
       errors.push("advisory_evaluation receipts must include observation_outcome");
     }
   }
+  return errors;
+}
+
+function validateChioReceiptRecordSemantics(
+  receipt: Receipt_Record.ChioReceiptRecord,
+): string[] {
+  const errors: string[] = [];
+  if (receipt.receipt_kind === "mediated_decision") {
+    if (receipt.decision == null) {
+      errors.push("mediated_decision receipts must include decision");
+    }
+    if (receipt.boundary_class !== "prevent") {
+      errors.push("mediated_decision receipts must use boundary_class prevent");
+    }
+    if (receipt.trust_level !== "mediated") {
+      errors.push("mediated_decision receipts must use trust_level mediated");
+    }
+    if (receipt.observation_outcome != null) {
+      errors.push("mediated_decision receipts must omit observation_outcome");
+    }
+    return errors;
+  }
+
+  if (receipt.receipt_kind === "trace_observation") {
+    if (receipt.decision != null) {
+      errors.push("trace_observation receipts must omit decision");
+    }
+    if (receipt.boundary_class !== "detect_only") {
+      errors.push("trace_observation receipts must use boundary_class detect_only");
+    }
+    if (receipt.trust_level !== "verified") {
+      errors.push("trace_observation receipts must use trust_level verified");
+    }
+    if (receipt.observation_outcome == null) {
+      errors.push("trace_observation receipts must include observation_outcome");
+    }
+    return errors;
+  }
+
+  if (receipt.receipt_kind === "advisory_evaluation") {
+    if (receipt.decision != null) {
+      errors.push("advisory_evaluation receipts must omit decision");
+    }
+    if (receipt.boundary_class !== "advisory_only") {
+      errors.push("advisory_evaluation receipts must use boundary_class advisory_only");
+    }
+    if (receipt.trust_level !== "advisory") {
+      errors.push("advisory_evaluation receipts must use trust_level advisory");
+    }
+    if (receipt.observation_outcome == null) {
+      errors.push("advisory_evaluation receipts must include observation_outcome");
+    }
+    return errors;
+  }
+
+  errors.push("receipt_kind must be a current v1 receipt kind");
   return errors;
 }

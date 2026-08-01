@@ -105,7 +105,7 @@ pub(crate) fn add_core_projection_manifests(builder: &mut AgentWebBundleBuilder)
         _ => Vec::<&str>::new(),
     };
     let webhook_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-standard-webhooks-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "standard-webhooks",
@@ -130,7 +130,7 @@ pub(crate) fn add_core_projection_manifests(builder: &mut AgentWebBundleBuilder)
         &mut builder.graph_nodes,
         "agent-web-proof-envelope",
         "standard-webhooks-envelope",
-        "chio.agent-web-proof-envelope.v1",
+        "chio.agent-web-proof-envelope.v2",
         "standard-webhooks-envelope.json",
         webhook_envelope,
     );

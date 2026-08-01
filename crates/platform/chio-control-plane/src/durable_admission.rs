@@ -1121,7 +1121,7 @@ mod tests {
 
     #[test]
     fn database_path_validation_rejects_hard_link_aliases() -> Result<(), CliError> {
-        let directory = tempfile::tempdir()?;
+        let directory = private_tempdir()?;
         let first = directory.path().join("first.sqlite3");
         let second = directory.path().join("second.sqlite3");
         fs::write(&first, [])?;
@@ -1145,7 +1145,7 @@ mod tests {
     fn database_path_validation_rejects_dangling_symlink_aliases() -> Result<(), CliError> {
         use std::os::unix::fs::symlink;
 
-        let directory = tempfile::tempdir()?;
+        let directory = private_tempdir()?;
         let target = directory.path().join("target.sqlite3");
         let alias = directory.path().join("alias.sqlite3");
         symlink(&target, &alias)?;
@@ -1168,7 +1168,7 @@ mod tests {
     fn database_path_validation_rejects_dangling_parent_symlink_aliases() -> Result<(), CliError> {
         use std::os::unix::fs::symlink;
 
-        let directory = tempfile::tempdir()?;
+        let directory = private_tempdir()?;
         let target_directory = directory.path().join("target");
         let alias_directory = directory.path().join("alias");
         symlink(&target_directory, &alias_directory)?;

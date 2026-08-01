@@ -16,20 +16,20 @@ pub(crate) fn cmd_chio_pheromone_receive(
     report: &Path,
 ) -> Result<(), CliError> {
     let batch_json = read_utf8_json_file(batch, "Chio pheromone gossip batch")?;
-    let batch: chio_federation::pheromone_gossip::PheromoneGossipBatch = serde_json::from_str(&batch_json)
-        .map_err(|error| CliError::cli_other_error(format!("Chio pheromone batch: {error}")))?;
+    let batch: chio_federation::pheromone_gossip::PheromoneGossipBatch =
+        serde_json::from_str(&batch_json)
+            .map_err(|error| CliError::cli_other_error(format!("Chio pheromone batch: {error}")))?;
     let policy_json = read_utf8_json_file(transit_policy, "Chio pheromone transit policy")?;
     let now_unix_ms = now_unix_ms.unwrap_or(batch.flushed_at_unix_ms);
     let workflow_trust_bundle = load_chio_workflow_verifier_trust_bundle(trust_bundle)?;
-    let (transit_policy, receiver_config) =
-        chio_pheromone_runtime::runtime_policy_from_json(
-            &policy_json,
-            now_unix_ms,
-            workflow_trust_bundle.runtime_policy_issuer_public_keys(),
-        )
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chio pheromone runtime policy: {error}"))
-        })?;
+    let (transit_policy, receiver_config) = chio_pheromone_runtime::runtime_policy_from_json(
+        &policy_json,
+        now_unix_ms,
+        workflow_trust_bundle.runtime_policy_issuer_public_keys(),
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chio pheromone runtime policy: {error}"))
+    })?;
     let resolver = load_chio_verified_workflow_resolver(proof_package, trust_bundle, context)?;
     let store = chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore::open(store)
         .map_err(|error| CliError::cli_other_error(format!("Chio pheromone store: {error}")))?;
@@ -50,7 +50,7 @@ pub(crate) fn cmd_chio_pheromone_receive(
             .map_or_else(
                 || "unknown pheromone receiver rejection".to_string(),
                 |frame| format!("{}: {}", frame.code, frame.detail),
-        );
+            );
         Err(CliError::cli_other_error(format!(
             "Chio pheromone receive rejected batch: {failure}"
         )))

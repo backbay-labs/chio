@@ -14,13 +14,9 @@ mod signing;
 #[cfg(test)]
 use crate::CliError;
 
-pub(crate) use admission::{
-    cmd_chio_runtime_admit, cmd_chio_runtime_pheromone_evaluate,
-};
+pub(crate) use admission::{cmd_chio_runtime_admit, cmd_chio_runtime_pheromone_evaluate};
 pub(crate) use io::validate_runtime_relative_path;
-pub(crate) use loopback::{
-    cmd_chio_runtime_run_loopback,
-};
+pub(crate) use loopback::cmd_chio_runtime_run_loopback;
 pub(crate) use ops::{
     cmd_chio_runtime_ops_evidence_health, cmd_chio_runtime_ops_provider_health,
     cmd_chio_runtime_ops_recovery_drill, cmd_chio_runtime_ops_retention_plan,
@@ -51,9 +47,9 @@ pub(crate) fn canonical_sha256_json<T: serde::Serialize>(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod chio_orchestration_cli_tests {
     use super::{
-        canonical_sha256_json, cmd_chio_runtime_ops_status,
-        cmd_chio_runtime_orchestrate_drift, cmd_chio_runtime_orchestrate_resume,
-        cmd_chio_runtime_orchestrate_run, cmd_chio_runtime_orchestrate_status,
+        canonical_sha256_json, cmd_chio_runtime_ops_status, cmd_chio_runtime_orchestrate_drift,
+        cmd_chio_runtime_orchestrate_resume, cmd_chio_runtime_orchestrate_run,
+        cmd_chio_runtime_orchestrate_status,
     };
     use serde::de::DeserializeOwned;
     use std::error::Error;
@@ -71,8 +67,7 @@ mod chio_orchestration_cli_tests {
 
     fn orchestration_profile() -> chio_runtime::RuntimeOrchestrationProfile {
         chio_runtime::RuntimeOrchestrationProfile {
-            schema: chio_runtime::CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA
-                .to_string(),
+            schema: chio_runtime::CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA.to_string(),
             profile_id: "profile-runtime-orchestration-cli".to_string(),
             local_kernel_id: "kernel.vendor-b".to_string(),
             verifier_id: "did:chio:buyer-verifier".to_string(),
@@ -211,8 +206,7 @@ mod chio_orchestration_cli_tests {
             workflow_step_sha256: fixed_hash('4'),
         };
         let proof_report = chio_runtime::RuntimeProofRegenerationReport {
-            schema: chio_runtime::CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
-                .to_string(),
+            schema: chio_runtime::CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
             run_id: run_id.to_string(),
             accepted: true,
             failure_code: None,
@@ -287,8 +281,7 @@ mod chio_orchestration_cli_tests {
             workflow_step_sha256: fixed_hash('4'),
         };
         let proof_report = chio_runtime::RuntimeProofRegenerationReport {
-            schema: chio_runtime::CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
-                .to_string(),
+            schema: chio_runtime::CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
             run_id: run_id.to_string(),
             accepted: false,
             failure_code: Some("runtime_proof_regeneration_missing_package_hash".to_string()),
@@ -372,11 +365,9 @@ mod chio_orchestration_cli_tests {
         )
         .expect_err("stale drift profile unexpectedly passed");
 
-        assert!(
-            error
-                .to_string()
-                .contains("runtime_orchestration_profile_stale")
-        );
+        assert!(error
+            .to_string()
+            .contains("runtime_orchestration_profile_stale"));
         Ok(())
     }
 
@@ -440,8 +431,8 @@ mod chio_orchestration_cli_tests {
     }
 
     #[test]
-    fn runtime_orchestrate_run_records_rejected_proof_without_verifier()
-    -> Result<(), Box<dyn Error>> {
+    fn runtime_orchestrate_run_records_rejected_proof_without_verifier(
+    ) -> Result<(), Box<dyn Error>> {
         let dir = TempDir::new()?;
         let profile = orchestration_profile();
         let profile_path = write_profile(dir.path(), &profile)?;
@@ -472,8 +463,8 @@ mod chio_orchestration_cli_tests {
     }
 
     #[test]
-    fn runtime_orchestrate_run_emits_report_for_missing_manifest_artifact()
-    -> Result<(), Box<dyn Error>> {
+    fn runtime_orchestrate_run_emits_report_for_missing_manifest_artifact(
+    ) -> Result<(), Box<dyn Error>> {
         let dir = TempDir::new()?;
         let profile = orchestration_profile();
         let profile_path = write_profile(dir.path(), &profile)?;
@@ -497,12 +488,10 @@ mod chio_orchestration_cli_tests {
         assert!(!report.accepted);
         assert_eq!(report.status, "terminal_failure");
         assert_eq!(report.failure_code.as_deref(), Some("runtime_admission_io"));
-        assert!(
-            report
-                .checks
-                .iter()
-                .any(|check| check == "runtime_orchestration.evidence_load_failed")
-        );
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check == "runtime_orchestration.evidence_load_failed"));
         Ok(())
     }
 
@@ -524,11 +513,9 @@ mod chio_orchestration_cli_tests {
         )
         .expect_err("stale evidence inside drift window unexpectedly passed");
 
-        assert!(
-            error
-                .to_string()
-                .contains("outside the orchestration profile window")
-        );
+        assert!(error
+            .to_string()
+            .contains("outside the orchestration profile window"));
         Ok(())
     }
 
@@ -545,8 +532,7 @@ mod chio_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_runtime::RuntimeOrchestrationStatusReport =
-            read_json(&report_path)?;
+        let report: chio_runtime::RuntimeOrchestrationStatusReport = read_json(&report_path)?;
 
         assert!(!report.accepted);
         assert!(!report.evidence_sink_healthy);
@@ -573,8 +559,7 @@ mod chio_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_runtime::RuntimeOrchestrationStatusReport =
-            read_json(&report_path)?;
+        let report: chio_runtime::RuntimeOrchestrationStatusReport = read_json(&report_path)?;
 
         assert!(!report.accepted);
         assert!(!report.evidence_sink_healthy);
@@ -596,8 +581,7 @@ mod chio_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_runtime::RuntimeOrchestrationStatusReport =
-            read_json(&report_path)?;
+        let report: chio_runtime::RuntimeOrchestrationStatusReport = read_json(&report_path)?;
 
         assert!(!report.accepted);
         assert!(!report.evidence_sink_healthy);
@@ -624,8 +608,7 @@ mod chio_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_runtime::RuntimeOrchestrationStatusReport =
-            read_json(&report_path)?;
+        let report: chio_runtime::RuntimeOrchestrationStatusReport = read_json(&report_path)?;
 
         assert!(!report.accepted);
         assert!(!report.evidence_sink_healthy);
@@ -634,8 +617,8 @@ mod chio_orchestration_cli_tests {
     }
 
     #[test]
-    fn runtime_ops_status_rejects_empty_evidence_root_when_store_has_runs()
-    -> Result<(), Box<dyn Error>> {
+    fn runtime_ops_status_rejects_empty_evidence_root_when_store_has_runs(
+    ) -> Result<(), Box<dyn Error>> {
         let dir = TempDir::new()?;
         let profile_path = write_supervisor_profile(dir.path(), &supervisor_profile())?;
         let store_path = dir.path().join("runtime.sqlite3");
@@ -669,8 +652,7 @@ mod chio_orchestration_cli_tests {
         write_json(
             &resume_path,
             &chio_runtime::RuntimeOrchestrationResumePlan {
-                schema: chio_runtime::CHIO_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA
-                    .to_string(),
+                schema: chio_runtime::CHIO_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA.to_string(),
                 run_id: "run-forged".to_string(),
                 accepted: true,
                 failure_code: None,
@@ -692,11 +674,9 @@ mod chio_orchestration_cli_tests {
         )
         .expect_err("forged accepted blocked resume plan unexpectedly passed");
 
-        assert!(
-            error
-                .to_string()
-                .contains("runtime_orchestration_resume_accepted_blocked")
-        );
+        assert!(error
+            .to_string()
+            .contains("runtime_orchestration_resume_accepted_blocked"));
         Ok(())
     }
 
@@ -729,11 +709,9 @@ mod chio_orchestration_cli_tests {
         )
         .expect_err("corrupt resume plan unexpectedly passed");
 
-        assert!(
-            error
-                .to_string()
-                .contains("unsupported_runtime_orchestration_resume_plan_schema")
-        );
+        assert!(error
+            .to_string()
+            .contains("unsupported_runtime_orchestration_resume_plan_schema"));
         Ok(())
     }
 }

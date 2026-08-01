@@ -18,7 +18,7 @@
 \input{bench/results/replay-corpus-inline}
 \Urlmuskip=0mu plus 1mu
 
-\title{Proof-Carrying Bilateral Admission for Cross-Organization Agent Tool Calls}
+\title{Receiver-Owned Bilateral Admission for Cross-Organization Agent Tool Calls}
 
 \author{Anonymous for external review}
 \affiliation{\institution{Anonymous Institution}}
@@ -27,7 +27,31 @@
 \begin{document}
 
 \begin{abstract}
-A signed vendor receipt is not sufficient evidence for a buyer to admit a cross-organization agent action: the signature can be valid while the receipt names the wrong treaty, request, outcome, continuation, or receiver policy. We present receiver-owned bilateral admission, a pre-dispatch protocol in which the receiving kernel resolves trust material from its own stores, verifies two distinct configured keys over one canonical DSSE predicate, and checks that the predicate binds the request, outcome, treaty scope, ladder intersection, continuation, lineage, and local and remote receipts. The production Rust hook denies missing, stale, replayed, or mismatched evidence before tool invocation. A companion Lean~4 model gives a strict predicate syntax over a bounded receipt view and proves structural intersection, ladder-floor stability, and sound finite-domain no-widening. An independent Rust reference agrees with the production predicate evaluator over exhaustive atom cases and 1,024 generated cases for each compound property; this is differential alignment, not extraction or whole-runtime verification. On an eight-core Arm server, a deterministic three-vendor SQLite loopback measured full receiver admission at \PSFullAdmissionPFiftySec~s p50 and \PSFullAdmissionPNinetyNineSec~s p99 over \PSPathSampleCount{} release-profile runs. The full pre-dispatch treaty denial path measured \PSPredispatchDenyPFiftyUs~$\mu$s p50 and \PSPredispatchDenyPNinetyNineUs~$\mu$s p99 over \PSCriterionSampleCount{} samples, with the instrumented tool invocation counter unchanged. \PSThreatCaseCount{} named negative cases passed; control of two authorized keys by one actor remains an explicit assumption. We use \emph{programmable sovereignty} only for the resulting local authority over a receipt-admission boundary.
+A receiver cannot authorize a cross-organization agent call from a vendor
+signature alone. The signature authenticates bytes, but it does not show that
+those bytes name the receiver's expected treaty, request, outcome,
+continuation, or policy. We
+present receiver-owned bilateral admission, a protocol that performs that
+check before the receiving kernel invokes a tool. The receiver resolves treaty
+state and authorized keys from its own stores, verifies two distinct
+configured keys over one canonical DSSE predicate, and checks that every
+referenced request, outcome, continuation, lineage statement, and receipt
+belongs to the same invocation. The Rust implementation rejects missing,
+stale, replayed, and mismatched evidence before dispatch. A Lean~4 model gives
+executable semantics to the bounded receipt predicates and proves that its
+finite-domain refinement checker accepts exactly when the candidate predicate
+admits no receipt in the supplied domain that the current predicate rejects. An
+independently written Rust reference evaluator matched the runtime
+evaluator on every atom and on 1,024 generated cases for each of three
+compound properties. On an eight-core Arm server, the full pre-dispatch treaty
+denial path, including a signed SQLite denial receipt, measured
+\PSPredispatchDenyPFiftyMs~ms p50 and
+\PSPredispatchDenyPNinetyNineMs~ms p99 over
+\PSCriterionSampleCount{} samples, with zero tool invocations. A separate
+three-vendor local workflow that produced and verified the complete buyer
+package measured \PSBuyerWorkflowPFiftySec~s p50 and
+\PSBuyerWorkflowPNinetyNineSec~s p99 over \PSPathSampleCount{} runs. All
+\PSThreatCaseCount{} named negative cases passed.
 \end{abstract}
 
 \maketitle

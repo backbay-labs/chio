@@ -262,9 +262,8 @@ fn relay_mode_from_urls(urls: &[String]) -> Result<RelayMode, CliError> {
 /// Load the transport ed25519 secret key from a `{ "seedHex": ".." }` file.
 fn load_transport_secret_key(path: &Path) -> Result<SecretKey, CliError> {
     let json = read_utf8_json_file(path, "Chio iroh transport key")?;
-    let document: IrohTransportKeyDocument = serde_json::from_str(&json).map_err(|error| {
-        CliError::cli_other_error(format!("Chio iroh transport key: {error}"))
-    })?;
+    let document: IrohTransportKeyDocument = serde_json::from_str(&json)
+        .map_err(|error| CliError::cli_other_error(format!("Chio iroh transport key: {error}")))?;
     let bytes = hex::decode(document.seed_hex.trim()).map_err(|error| {
         CliError::cli_other_error(format!("Chio iroh transport key seedHex: {error}"))
     })?;
@@ -388,15 +387,12 @@ pub(crate) fn load_iroh_serve_inputs(
     })?;
     let directory_json =
         read_utf8_json_file(directory_path, "Chio iroh transport directory bundle")?;
-    let bundle: TransportDirectoryBundleDocument = serde_json::from_str(&directory_json)
-        .map_err(|error| {
+    let bundle: TransportDirectoryBundleDocument =
+        serde_json::from_str(&directory_json).map_err(|error| {
             CliError::cli_other_error(format!("Chio iroh transport directory bundle: {error}"))
         })?;
-    let trust = transport_bundle_trust(
-        trusted_issuers,
-        iroh_transport_directory_state,
-        now_unix_ms,
-    )?;
+    let trust =
+        transport_bundle_trust(trusted_issuers, iroh_transport_directory_state, now_unix_ms)?;
     let directory = bundle.verify_bundle(&trust).map_err(|error| {
         CliError::cli_other_error(format!(
             "Chio iroh transport directory bundle verification: {error}"
@@ -564,8 +560,7 @@ fn read_bundle_document(path: &Path) -> Result<TransportDirectoryBundleDocument,
 /// (`VerifiedDirectory::body_sha256` hashes the same whole document), so the reloader can
 /// tell a byte-unchanged bundle from a same-version replacement without re-verifying.
 fn bundle_body_sha256(bundle: &TransportDirectoryBundleDocument) -> Result<String, String> {
-    let bytes =
-        chio_core_types::canonical_json_bytes(bundle).map_err(|error| error.to_string())?;
+    let bytes = chio_core_types::canonical_json_bytes(bundle).map_err(|error| error.to_string())?;
     Ok(chio_core_types::sha256_hex(&bytes))
 }
 
@@ -661,9 +656,7 @@ pub(crate) fn reload_verified_directory(
         let (issuers, trusted_min_version) =
             match read_trusted_issuers(&config.trusted_issuers_path) {
                 Ok(parsed) => parsed,
-                Err(TrustedIssuersReloadError::Empty) => {
-                    return Ok(ReloadOutcome::TrustRootsEmpty)
-                }
+                Err(TrustedIssuersReloadError::Empty) => return Ok(ReloadOutcome::TrustRootsEmpty),
                 Err(TrustedIssuersReloadError::Read(error)) => {
                     return Err(DirectoryReloadError::Read(error))
                 }
@@ -705,9 +698,7 @@ pub(crate) fn reload_verified_directory(
         let (issuers, trusted_min_version) =
             match read_trusted_issuers(&config.trusted_issuers_path) {
                 Ok(parsed) => parsed,
-                Err(TrustedIssuersReloadError::Empty) => {
-                    return Ok(ReloadOutcome::TrustRootsEmpty)
-                }
+                Err(TrustedIssuersReloadError::Empty) => return Ok(ReloadOutcome::TrustRootsEmpty),
                 Err(TrustedIssuersReloadError::Read(error)) => {
                     if expired {
                         return Ok(ReloadOutcome::ExpiredWhileRunning);
@@ -1072,11 +1063,7 @@ pub(crate) async fn run_directory_reloader(
         // clock): if the directory was still admitting at the step but its deadline elapsed
         // before this delay is computed, the gate expiry is now in the past and the reloader
         // rechecks immediately to fail it closed, rather than admitting for another interval.
-        let delay = next_reload_delay(
-            config.interval,
-            now_fn(),
-            gate.current_expires_at_unix_ms(),
-        );
+        let delay = next_reload_delay(config.interval, now_fn(), gate.current_expires_at_unix_ms());
         tokio::time::sleep(delay).await;
     }
 }
@@ -1137,7 +1124,11 @@ pub(crate) async fn build_iroh_router(
     // enforced at JOIN (subscribe_treaty_with_timeout) and RECEIVE
     // (verify_fanout_frame); this guard keeps it that way. parse_iroh_lanes already
     // rejected anything else, so this is a defense-in-depth re-check.
-    if config.lanes.iter().any(|lane| !matches!(lane, IrohLane::Pheromone)) {
+    if config
+        .lanes
+        .iter()
+        .any(|lane| !matches!(lane, IrohLane::Pheromone))
+    {
         return Err(CliError::cli_other_error(
             "Chio iroh transport: only the pheromone lane is wireable on the relay serve hook"
                 .to_string(),
@@ -1170,9 +1161,8 @@ pub(crate) async fn build_iroh_router(
     })?;
     // Each direct lane uses exactly one bidi stream per connection; bound the
     // per-connection window to the batch cap with headroom.
-    let bidi_streams = VarInt::from(
-        chio_federation_transport_iroh::lanes::limits::RECOMMENDED_MAX_BIDI_STREAMS,
-    );
+    let bidi_streams =
+        VarInt::from(chio_federation_transport_iroh::lanes::limits::RECOMMENDED_MAX_BIDI_STREAMS);
     let receive_window = VarInt::from_u64(
         chio_federation_transport_iroh::lanes::limits::recommended_receive_window_bytes(
             max_batch_bytes,
@@ -1318,9 +1308,8 @@ pub(crate) async fn build_iroh_outbound_endpoint(
     // Drain endpoint: one bidi stream, batch-cap-bounded window. `max_batch_bytes`
     // is not in scope on this outbound-only path, so derive the window from the
     // transport hard cap.
-    let bidi_streams = VarInt::from(
-        chio_federation_transport_iroh::lanes::limits::RECOMMENDED_MAX_BIDI_STREAMS,
-    );
+    let bidi_streams =
+        VarInt::from(chio_federation_transport_iroh::lanes::limits::RECOMMENDED_MAX_BIDI_STREAMS);
     let receive_window = VarInt::from_u64(
         chio_federation_transport_iroh::lanes::limits::recommended_receive_window_bytes(
             chio_federation_transport_iroh::lanes::pheromone::MAX_PHEROMONE_BATCH_BYTES,
@@ -1448,7 +1437,11 @@ mod tests {
             expected_previous_version_sha256: None,
             now_unix_ms: NOW,
         };
-        Arc::new(bundle.verify_bundle(&trust).expect("fixture bundle verifies"))
+        Arc::new(
+            bundle
+                .verify_bundle(&trust)
+                .expect("fixture bundle verifies"),
+        )
     }
 
     /// A receiver double: the loopback 403 test never reaches it (the gate rejects
@@ -1464,7 +1457,9 @@ mod tests {
             _authenticated_sender_kernel_id: String,
             _received_at_unix_ms: u64,
         ) -> Result<PheromoneReceiveReport, PheromoneRelayError> {
-            Err(PheromoneRelayError::Json("test receiver never accepts".to_string()))
+            Err(PheromoneRelayError::Json(
+                "test receiver never accepts".to_string(),
+            ))
         }
     }
 
@@ -1594,7 +1589,11 @@ mod tests {
             }],
         });
         std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
-        std::fs::write(&key_path, "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}").unwrap();
+        std::fs::write(
+            &key_path,
+            "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}",
+        )
+        .unwrap();
 
         let error = match load_iroh_serve_inputs(
             true,
@@ -1921,9 +1920,8 @@ mod tests {
 
         // Empty the trusted-issuer set while the on-disk bundle stays byte-unchanged.
         std::fs::write(&issuers_path, r#"{"issuers":[]}"#).unwrap();
-        let outcome =
-            reload_verified_directory(&config, now_in_window, 1, expires_at, &body_hash)
-                .expect("reload runs");
+        let outcome = reload_verified_directory(&config, now_in_window, 1, expires_at, &body_hash)
+            .expect("reload runs");
         assert!(
             matches!(outcome, ReloadOutcome::TrustRootsEmpty),
             "an empty trusted-issuer set must fail closed, got {outcome:?}"
@@ -2041,8 +2039,9 @@ mod tests {
         std::fs::write(&bundle_path, successor).unwrap();
 
         let now_in_window = expires_at - 1;
-        let outcome = reload_verified_directory(&config, now_in_window, 1, expires_at, &genesis_hash)
-            .expect("reload runs");
+        let outcome =
+            reload_verified_directory(&config, now_in_window, 1, expires_at, &genesis_hash)
+                .expect("reload runs");
         assert!(
             matches!(outcome, ReloadOutcome::LocalBindingRevoked(_)),
             "a successor reassigning this node's declared local kernel id must fail closed, \
@@ -2594,7 +2593,11 @@ mod tests {
         // deny-all, but last-good (v1) is PRESERVED.
         let now_expired = NOW + 2;
         directory_reload_step(&gate, &config, now_expired, &mut state, &alive);
-        assert_eq!(gate.current_version(), 0, "expiry lapses the gate to deny-all");
+        assert_eq!(
+            gate.current_version(),
+            0,
+            "expiry lapses the gate to deny-all"
+        );
         assert!(
             !alive.load(Ordering::SeqCst),
             "expiry raises the fail-closed alarm"
@@ -2838,7 +2841,11 @@ mod tests {
             }],
         });
         std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
-        std::fs::write(&key_path, "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}").unwrap();
+        std::fs::write(
+            &key_path,
+            "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}",
+        )
+        .unwrap();
 
         // Without the rotation state, the successor is rejected fail-closed: its
         // previousVersionSha256 cannot chain onto the genesis default of None.
@@ -2910,7 +2917,11 @@ mod tests {
             "minVersion": 5,
         });
         std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
-        std::fs::write(&key_path, "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}").unwrap();
+        std::fs::write(
+            &key_path,
+            "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}",
+        )
+        .unwrap();
 
         // No state file: the floor comes from minVersion (5), so version 3 is rejected.
         let rejected = load_iroh_serve_inputs(
@@ -3122,7 +3133,9 @@ mod tests {
             Err(error) => error,
         };
         assert!(
-            error.to_string().contains("no non-removed transport endpoint"),
+            error
+                .to_string()
+                .contains("no non-removed transport endpoint"),
             "unexpected error: {error}"
         );
     }
@@ -3133,7 +3146,10 @@ mod tests {
         assert!(parse_iroh_lanes("bilateral").is_err());
         assert!(parse_iroh_lanes("pheromone,bilateral").is_err());
         assert!(parse_iroh_lanes("").is_err());
-        assert_eq!(parse_iroh_lanes("pheromone").unwrap(), vec![IrohLane::Pheromone]);
+        assert_eq!(
+            parse_iroh_lanes("pheromone").unwrap(),
+            vec![IrohLane::Pheromone]
+        );
     }
 
     async fn bind_dialer(seed: u8) -> Endpoint {
@@ -3186,7 +3202,7 @@ mod tests {
             MAX_PHEROMONE_BATCH_BYTES,
         )
         .await
-            .expect("mount builder succeeds with a valid directory + gate");
+        .expect("mount builder succeeds with a valid directory + gate");
         assert_eq!(mount.enabled_lanes, vec!["pheromone"]);
         // DEPLOYABILITY: the mount returns the ACTUAL bound socket(s). Binding on
         // loopback port 0, the OS must have assigned a concrete, non-zero port the
@@ -3205,7 +3221,10 @@ mod tests {
         // [::]), so the endpoint binds ONLY the operator-intended family - no stray IPv6
         // wildcard socket exposing the lane on an unintended interface.
         assert!(
-            mount.bound_sockets.iter().all(std::net::SocketAddr::is_ipv4),
+            mount
+                .bound_sockets
+                .iter()
+                .all(std::net::SocketAddr::is_ipv4),
             "a single-family (IPv4 loopback) bind must NOT open any IPv6 socket: {:?}",
             mount.bound_sockets
         );
@@ -3264,7 +3283,7 @@ mod tests {
             MAX_PHEROMONE_BATCH_BYTES,
         )
         .await
-            .expect("mount builder succeeds");
+        .expect("mount builder succeeds");
         let acceptor_addr = direct_addr(mount.router.endpoint());
 
         let dialer = bind_dialer(dialer_seed).await;
@@ -3320,7 +3339,9 @@ mod tests {
         .await
         {
             Ok(_) => {
-                panic!("a transport-directory local id that is not the relay's own must fail closed")
+                panic!(
+                    "a transport-directory local id that is not the relay's own must fail closed"
+                )
             }
             Err(error) => error,
         };
@@ -3364,7 +3385,10 @@ mod tests {
             .await
             .expect("the outbound tick endpoint must bind despite the serve addr being in use");
         let bound = endpoint.bound_sockets();
-        assert!(!bound.is_empty(), "the outbound endpoint must bind a socket");
+        assert!(
+            !bound.is_empty(),
+            "the outbound endpoint must bind a socket"
+        );
         assert!(
             bound.iter().all(|socket| socket.port() != serve_port),
             "the outbound tick endpoint must NOT reuse the serving port {serve_port}, got {bound:?}"

@@ -53,20 +53,26 @@ Ed25519. The signature covers all 8 fields; none are mutable after signing.
    Default clock skew tolerance is 30 seconds.
 5. **Signature** -- Ed25519 signature over canonical JSON of the proof body.
 6. **Nonce replay** -- the `(nonce, capability_id)` pair must not have been
-   seen within the TTL window. The nonce store is an in-memory LRU cache.
+   consumed during the proof's signed validity window. The process-scoped
+   store retains each live marker through that full horizon.
 
 All six steps must pass. The first failure returns an error; the Kernel denies
 fail-closed.
 
-### LRU Nonce Store
+### Signed-Horizon Nonce Store
 
-The nonce store is an in-memory `LruCache<(nonce, capability_id), Instant>`.
-Default capacity is 8192 entries. A nonce is accepted if it is not found in
-the cache, or if its TTL has elapsed since first use. The cache is
-intentionally in-memory (not persisted); restarting the Kernel clears the
-nonce store, which is acceptable because capability tokens have short TTLs
-(typically 60s-3600s) and a replayed proof from before a restart is likely
-expired on its own merits.
+The nonce store uses an in-memory `LruCache` internally, keyed by
+`(nonce, capability_id)`, but live markers are never evicted. Direct
+verification calls `check_and_insert_through`; kernel dispatch calls the
+owner-qualified `reserve_for_dispatch_through` path. Both retain a marker
+through the inclusive `issued_at + proof_ttl_secs` horizon. Expired markers
+are reclaimed, while exhaustion of the default 8192-entry capacity denies new
+proofs fail-closed. Deployments must size the store for peak proof volume over
+the full validity window, including tolerated future clock skew.
+
+The current DPoP nonce store is process-scoped. Restarting the Kernel clears
+its markers, so this implementation does not provide restart-durable replay
+protection for a proof whose signed validity window is still open.
 
 ### DPoP Opt-In
 
@@ -101,7 +107,7 @@ invocation model.
   CPU-constrained agents.
 - The in-memory nonce store is lost on Kernel restart. Brief restart windows
   allow a narrow replay opportunity if a proof was issued just before restart.
-  The short capability TTL (typically 60-300s) limits the attack window.
+  The remaining signed DPoP validity window bounds the attack window.
 
 ## Required Follow-up
 

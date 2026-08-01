@@ -19,10 +19,24 @@ fn durable_terminal_receipt_uses_the_admitted_tenant() {
     kernel
         .activate_session(&session_id)
         .expect("active tenant session");
+    let context = make_operation_context(
+        &session_id,
+        request_id,
+        &request.capability.subject.to_hex(),
+    );
+    kernel
+        .begin_session_request(&context, OperationKind::ToolCall, true)
+        .expect("tenant request");
 
     let response = kernel
-        .evaluate_tool_call_sync_with_session_context(&request, None, None, Some(&session_id))
+        .evaluate_tool_call_sync_with_session_context(&request, Some(&[]), None, Some(&session_id))
         .expect("tenant-scoped durable dispatch");
+    assert_eq!(
+        response.verdict,
+        Verdict::Allow,
+        "unexpected durable tenant denial: {:?}",
+        response.reason
+    );
     assert_eq!(
         response.receipt.tenant_id.as_deref(),
         Some("tenant-durable")
@@ -39,11 +53,15 @@ fn durable_terminal_receipt_uses_the_admitted_tenant() {
     );
 
     let replay = kernel
-        .evaluate_tool_call_sync_with_session_context(&request, None, None, Some(&session_id))
+        .evaluate_tool_call_sync_with_session_context(&request, Some(&[]), None, Some(&session_id))
         .expect("tenant-scoped durable replay");
+    assert_eq!(replay.verdict, Verdict::Allow);
     assert_eq!(replay.receipt.id, response.receipt.id);
     assert_eq!(replay.receipt.tenant_id.as_deref(), Some("tenant-durable"));
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
+    kernel
+        .complete_session_request(&session_id, &context.request_id)
+        .expect("complete tenant request");
 }
 
 #[test]

@@ -13,8 +13,58 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+output_root="target/release-qualification"
+conformance_root="${output_root}/conformance"
+log_root="${output_root}/logs"
+coverage_root="${output_root}/coverage"
+formal_root="${output_root}/formal"
+peer_root="${output_root}/peers"
+checksum_path="${output_root}/SHA256SUMS"
+manifest_path="${output_root}/artifact-manifest.json"
+certify_seed="${output_root}/certify-release.seed"
+
 # ci-workspace is the fast regression gate.
 ./scripts/ci-workspace.sh
+rm -rf \
+  "${conformance_root}" \
+  "${log_root}" \
+  "${coverage_root}" \
+  "${formal_root}" \
+  "${peer_root}"
+mkdir -p \
+  "${conformance_root}" \
+  "${log_root}" \
+  "${coverage_root}" \
+  "${formal_root}" \
+  "${peer_root}"
+install -m 0644 target/formal/proof-report.json "${formal_root}/proof-report.json"
+install -m 0644 target/formal/coverage.json "${formal_root}/coverage.json"
+
+required_formal_lane_count="$(
+  python3 - <<'PY'
+import tomllib
+
+with open("releases.toml", "rb") as release_config:
+    document = tomllib.load(release_config)
+
+gates = document.get("gates")
+if not isinstance(gates, dict) or not gates:
+    raise SystemExit("releases.toml does not define any formal gates")
+
+postures = [gate.get("posture") for gate in gates.values() if isinstance(gate, dict)]
+if len(postures) != len(gates) or any(
+    posture not in {"advisory", "required"} for posture in postures
+):
+    raise SystemExit("releases.toml contains an invalid formal gate posture")
+
+print(sum(posture == "required" for posture in postures))
+PY
+)"
+if [[ "$required_formal_lane_count" -gt 0 ]]; then
+  ./scripts/lane-gate.sh --fleet
+else
+  echo "release qualification: no formal lanes are required; fleet check skipped"
+fi
 cargo test -p chio-provider-conformance \
   --features fixtures-gemini,fixtures-mistral,fixtures-groq,fixtures-ollama,fixtures-cohere \
   --test replay_gemini \
@@ -42,18 +92,6 @@ bash ./scripts/check-chio-schema-registry.sh
 bash ./scripts/check-comptroller-contract-no-drift.sh
 bash ./scripts/check-no-eip3009-broadcast.sh
 bash ./scripts/qualify-comptroller-operator-surfaces.sh
-
-output_root="target/release-qualification"
-conformance_root="${output_root}/conformance"
-log_root="${output_root}/logs"
-coverage_root="${output_root}/coverage"
-peer_root="${output_root}/peers"
-checksum_path="${output_root}/SHA256SUMS"
-manifest_path="${output_root}/artifact-manifest.json"
-certify_seed="${output_root}/certify-release.seed"
-rm -rf "${conformance_root}" "${log_root}" "${coverage_root}" "${peer_root}"
-mkdir -p "${conformance_root}" "${log_root}" "${coverage_root}" "${peer_root}"
-
 read_release_python_peer() {
   python3 - <<'PY'
 import sys

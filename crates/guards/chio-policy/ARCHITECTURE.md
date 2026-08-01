@@ -70,6 +70,7 @@ flowchart TD
 | `src/resolve.rs` | Filesystem `extends` chain resolution with cycle detection. |
 | `src/conditions.rs` | `Condition` predicate tree (`time_window`, `context`, `all_of`/`any_of`/`not`) evaluated against a `RuntimeContext`; gates rule blocks for `evaluate_with_context`. |
 | `src/evaluate.rs` + `evaluate/{context,engine,matchers,outcomes,tests}.rs` | Reference evaluator. The four non-test files are `include!`-d into `evaluate.rs`, not declared as `mod`, so they share one module's namespace and `use` imports rather than being independent submodules. |
+| `src/analyze/{mod,glob,ir,refine,report}.rs` | Bounded analysis IR, exact glob relations, static findings, and evaluator-confirmed policy-refinement witnesses. |
 | `src/compiler.rs` + `compiler/{budgets,detection,patterns,rules,scope,tests}.rs` | HushSpec-to-Chio compiler. Unlike `evaluate`, these are real `mod` submodules reached through `super::`. |
 | `src/detection.rs` | Standalone regex content detectors (`DetectorRegistry`) and `evaluate_with_detection`, layered on `evaluate` rather than wired into the guard compiler. |
 | `src/receipt.rs` | `evaluate_audited`: wraps `evaluate` with timing, SHA-256 policy hashing, and a `DecisionReceipt`. |
@@ -157,6 +158,16 @@ flowchart TD
 - Panic mode is a process-global `AtomicBool`; every `evaluate` and
   `evaluate_with_context` call checks it before origin or posture
   resolution.
+- `evaluate/*` owns the reference allow, warn, and deny evaluator, including
+  condition filtering, posture transitions, and origin profile selection.
+- `analyze/*` owns the bounded analysis IR, exact glob relations, static
+  findings, and evaluator-confirmed policy refinement witnesses. Unsupported
+  rule semantics remain explicit coverage notices.
+- `compiler.rs` owns translation from HushSpec intent into Chio guard
+  pipelines, post-invocation hooks, and default `ChioScope` fragments.
+- `receipt.rs` owns audited evaluation receipts. The crate does not own guard
+  internals, receipt signing, capability verification, or persistent runtime
+  state.
 - `resolve_with_loader`'s composite loader rejects `https://` / `http://`
   extends targets (`ResolveError::Http`); only filesystem-backed loaders are
   wired in this crate.
@@ -181,3 +192,19 @@ timestamps, `thiserror` for error types.
 - `resolve::resolve_with_loader` - supply a custom
   `Fn(&str, Option<&str>) -> Result<LoadedSpec, ResolveError>` loader instead
   of the filesystem-only `create_composite_loader`.
+
+## Security and API constraints
+
+- Invalid HushSpec documents must reject before guard or scope materialization.
+- Public parser, validator, compiler, and evaluator APIs are stable.
+- Analysis must fail closed on invalid policies and exhausted atom, pattern,
+  matcher-comparison, finding, automaton-state, or automaton-transition limits.
+  A changed opaque field cannot yield a successful refinement verdict.
+- Workload identity path prefixes match either the exact workload path or a
+  child segment boundary, never a sibling string prefix.
+- The root prefix `/` matches all canonical workload paths.
+- Trailing slash input in policy prefixes normalizes to the same segment
+  boundary.
+- Tool allow/block/default semantics, runtime-assurance checks, warning-only
+  workload identity preferences, posture checks, conditions, and default-scope
+  compilation are stable.

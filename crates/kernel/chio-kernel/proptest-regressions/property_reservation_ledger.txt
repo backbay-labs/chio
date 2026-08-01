@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# This regression covers the dispatch-capture boundary introduced by the
+# durable economy lifecycle.
+cc c9fb3c067e6e23ec3d81ea69b96c41d1446bccbecbb728b00d649101f0a938e8 # shrinks to operations = [Authorize(1), Reconcile(0)]
+cc a695a49ab26f474f1dd29dd5820a0bcacf59d761cb6629c6229e231e7f09045a # shrinks to operations = [Authorize(1), Release(0)]

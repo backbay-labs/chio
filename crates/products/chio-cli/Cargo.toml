@@ -72,6 +72,7 @@ chio-selective-disclosure = { workspace = true, features = ["bbs"] }
 chio-store-sqlite = { workspace = true }
 chio-tee-frame = { workspace = true }
 chio-tool-call-fabric = { workspace = true }
+chio-trace-validate = { workspace = true }
 chio-workflow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -1,6 +1,6 @@
 # FV-E4: Fuzz plumbing repair
 
-Status: Proposed (2026-07-09)
+Status: Implemented (2026-07-09)
 Theme: E - Verify the verification, and make lanes bite
 Effort: S
 Depends on: none
@@ -163,14 +163,14 @@ Verification: `cd fuzz && cargo test --test smoke` green; the posture lists and 
 
 ## Acceptance criteria
 
-- [ ] No directory under `fuzz/corpus/` fails to match a `[[bin]]` name in `fuzz/Cargo.toml` (item 1).
-- [ ] All 25 matrix targets have a corpus dir with >= 3 seeds OR a documented posture exception in `smoke.rs` (items 2, 7; `revocation_oracle_merkle`'s minimized set may be smaller if cmin produces fewer, with a comment).
-- [ ] `bash scripts/check-corpus-metadata.sh` runs in the required check job and passes (item 4).
-- [ ] `cd fuzz && cargo test` runs in CI on fuzz-touching PRs and nightly; the inventory tests plus the new owners test are among them (items 3, 5).
-- [ ] `fuzz/owners.toml` covers all 25 targets; `promote_fuzz_seed.sh` resolves each (item 5).
-- [ ] Both PR budget steps set `GH_FUZZ_BUDGET_CAP_MODE: fail` explicitly; the four scheduled lanes keep their explicit `warn`; `scripts/tests/fuzz-budget-hard-halt.test.sh` requires the explicit fail settings and runs in the required check job (item 6).
-- [ ] The three formerly orphaned seed sets (2 + 13 + 6 files) are loaded by their targets in a `-runs=0` replay (item 1 verification).
-- [ ] G6 in `docs/formal/GAP_ANALYSIS.md` updated to point here with status.
+- [x] No directory under `fuzz/corpus/` fails to match a `[[bin]]` name in `fuzz/Cargo.toml` (item 1).
+- [x] All 25 matrix targets have a corpus dir with >= 3 seeds OR a documented posture exception in `smoke.rs` (items 2, 7; `revocation_oracle_merkle`'s minimized set may be smaller if cmin produces fewer, with a comment).
+- [x] `bash scripts/check-corpus-metadata.sh` runs in the required check job and passes (item 4).
+- [x] `cd fuzz && cargo test` runs in CI on fuzz-touching PRs and nightly; the inventory tests plus the new owners test are among them (items 3, 5).
+- [x] `fuzz/owners.toml` covers all 27 targets; `promote_fuzz_seed.sh` resolves each (item 5).
+- [x] Both PR budget steps set `GH_FUZZ_BUDGET_CAP_MODE: fail` explicitly; the four scheduled lanes keep their explicit `warn`; `scripts/tests/fuzz-budget-hard-halt.test.sh` requires the explicit fail settings and runs in the required check job (item 6).
+- [x] The three formerly orphaned seed sets (2 + 13 + 6 files) are loaded by their targets in a `-runs=0` replay (item 1 verification).
+- [x] G6 in `docs/formal/GAP_ANALYSIS.md` updated to point here with status.
 
 ## Risks and mitigations
 
@@ -180,11 +180,24 @@ Verification: `cd fuzz && cargo test --test smoke` green; the posture lists and 
 - corpus_metadata edits are fiddly by hand (21 path/target rewrites). Mitigation: a 15-line one-off python script in the PR description (not committed) or careful sed; `check-corpus-metadata.sh` catches every mistake fail-closed, which is the point of item 4 landing in the same effort.
 - Owners for the five added targets drift from `target-map.toml` crates. Mitigation: the standing owners inventory test cross-checks names; crate fields are copied from target-map, the single source that cflite already trusts.
 
-## Open questions
+## Decisions
 
-- Should `fuzz/corpus_quarantine/` (for seeds that crash on load) be formalized in `check-corpus-metadata.sh`'s schema now or only if item 1 actually surfaces crashers? Proposal: only if needed.
-- Does the nightly fuzz-smoke job belong in `nightly.yml` or `fuzz.yml`? `fuzz.yml` groups it with fuzz execution but its schedule (03:23) predates the corpus smoke purpose; either works, decide at phase 3.
-- Item 2's fixture-dump helpers: commit them as `#[test] #[ignore]` writers in the owning crates, or keep them in the PR description only? Committed ignored writers make reseeding reproducible; mild clutter. Proposal: commit them.
+- Every target has a hard floor of three checked-in deterministic seeds. The
+  typed revocation target uses stable `arbitrary` byte sequences rather than a
+  smaller exception corpus.
+- A 200,000-run revocation discovery pass reduced to 344 feature-preserving
+  inputs. Generated coverage corpora remain run artifacts; the required seed
+  registry tracks the three stable operation fixtures.
+- Eval-receipt, federation, and underwriting logic lives in shared in-process
+  entry functions. LibFuzzer binaries retain only macro and mutator adapters.
+- The fuzz workspace's checked-in lockfile is required for smoke replay. Both
+  pull-request and nightly smoke commands use `cargo test --locked`.
+- Corpus smoke runs in `nightly.yml` and in the path-scoped formal smoke
+  workflow. The required workspace lane keeps only lockfile, metadata, and
+  budget-contract checks.
+- Seed files are the reproducible fixtures; no ignored fixture-writer tests are
+  retained. Corpus quarantine remains undefined until a real crashing seed
+  requires it.
 
 ## Manifest and registry updates
 

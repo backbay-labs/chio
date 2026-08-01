@@ -8,9 +8,10 @@ use super::super::read_utf8_json_file;
 pub(crate) fn load_runtime_orchestration_profile(
     path: &Path,
 ) -> Result<chio_runtime::RuntimeOrchestrationProfile, CliError> {
-    let profile = chio_runtime::runtime_orchestration_profile_from_json(
-        &read_utf8_json_file(path, "Chio runtime orchestration profile")?,
-    )
+    let profile = chio_runtime::runtime_orchestration_profile_from_json(&read_utf8_json_file(
+        path,
+        "Chio runtime orchestration profile",
+    )?)
     .map_err(|error| {
         CliError::cli_other_error(format!("Chio runtime orchestration profile: {error}"))
     })?;

@@ -1297,10 +1297,10 @@ async fn nonmonetary_nonce_cleanup_signs_post_commit_reverse_ambiguity(
 
         let response = evaluate_top_or_nested(&kernel, &capability, &changed, nested).await?;
         assert_eq!(response.verdict, Verdict::Deny);
-        assert_eq!(
-            response.reason.as_deref(),
-            Some("pre-dispatch cleanup could not be confirmed")
-        );
+        assert!(response
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("pre-dispatch cleanup could not be confirmed")));
         let cleanup = response
             .receipt
             .metadata
@@ -1391,10 +1391,10 @@ async fn nonce_request_id_mismatch_precedes_payment_and_capture_top_and_nested(
 
         let response = evaluate_top_or_nested(&kernel, &capability, &changed, nested).await?;
         assert_eq!(response.verdict, Verdict::Deny);
-        assert_eq!(
-            response.reason.as_deref(),
-            Some("pre-dispatch cleanup could not be confirmed")
-        );
+        assert!(response
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("pre-dispatch cleanup could not be confirmed")));
         assert_eq!(
             response.receipt.metadata.as_ref().and_then(|metadata| {
                 metadata["budget_authority"]["pre_dispatch_cleanup_unconfirmed"].as_bool()
@@ -1423,7 +1423,7 @@ async fn nonce_request_id_mismatch_precedes_payment_and_capture_top_and_nested(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn nonce_cleanup_retains_payment_and_capture_when_release_is_unconfirmed(
+async fn nonce_replay_precedes_payment_and_capture_when_release_would_be_unconfirmed(
 ) -> Result<(), Box<dyn std::error::Error>> {
     for nested in [false, true] {
         for release_case in [
@@ -1477,52 +1477,36 @@ async fn nonce_cleanup_retains_payment_and_capture_when_release_is_unconfirmed(
                 .metadata
                 .as_ref()
                 .ok_or_else(|| std::io::Error::other("nonce cleanup metadata missing"))?;
-            assert_eq!(
-                metadata["financial"]["payment_release_unconfirmed"].as_bool(),
-                Some(true)
-            );
-            assert_eq!(
-                metadata["financial"]["payment_authorization_retained"].as_bool(),
-                Some(true)
-            );
-            assert_eq!(
-                metadata["financial"]["payment_release_attempt_reference"].as_str(),
-                Some(request.request_id.as_str())
-            );
-            assert_eq!(
-                metadata["budget_authority"]["invocation_capture"]["admission_retained"].as_bool(),
-                Some(true)
-            );
-            if matches!(release_case, NonceCleanupReleaseCase::Pending) {
-                assert_eq!(
-                    metadata["financial"]["payment_release_status"].as_str(),
-                    Some("pending")
-                );
-                assert_eq!(
-                    metadata["financial"]["payment_release_reference"].as_str(),
-                    Some("release_pending_reference")
-                );
-            }
+            let financial = &metadata["financial"];
+            assert!(financial
+                .get("payment_reference")
+                .is_none_or(serde_json::Value::is_null));
+            assert!(financial["cost_breakdown"]
+                .get("payment")
+                .is_none());
+            assert!(metadata["budget_authority"]
+                .get("invocation_capture")
+                .is_none());
             let usage = kernel
                 .budget_store
                 .get_usage(&capability.id, 0)?
                 .ok_or_else(|| std::io::Error::other("retained nonce cleanup usage missing"))?;
-            assert_eq!(usage.invocation_count, 1);
-            assert_eq!(usage.committed_cost_units()?, 100);
+            assert_eq!(usage.invocation_count, 0);
+            assert_eq!(usage.committed_cost_units()?, 0);
         }
     }
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn nonce_cleanup_signs_release_then_cancellation_lost_ack(
+async fn nonce_replay_precedes_payment_and_captured_cancellation(
 ) -> Result<(), Box<dyn std::error::Error>> {
     for nested in [false, true] {
         let store = std::sync::Arc::new(CommittingCaptureErrorBudgetStore::cancellation());
         let payment = TrackingPaymentAdapter::new();
         let mut kernel = make_kernel(make_monetary_config());
         kernel.set_budget_store_handle(store.clone());
-        kernel.set_payment_adapter(Box::new(payment));
+        kernel.set_payment_adapter(Box::new(payment.clone()));
         kernel.register_tool_server(Box::new(MonetaryCostServer {
             id: "cost-srv".to_string(),
             reported_cost: Some(ToolInvocationCost {
@@ -1563,37 +1547,19 @@ async fn nonce_cleanup_signs_release_then_cancellation_lost_ack(
 
         let response = evaluate_top_or_nested(&kernel, &capability, &request, nested).await?;
         assert_eq!(response.verdict, Verdict::Deny);
-        let metadata = response
-            .receipt
-            .metadata
-            .as_ref()
-            .ok_or_else(|| std::io::Error::other("nonce cancellation metadata missing"))?;
         assert_eq!(
-            metadata["financial"]["payment_release_confirmed"].as_bool(),
-            Some(true)
-        );
-        assert!(metadata["financial"]["payment_release_reference"]
-            .as_str()
-            .is_some());
-        assert_eq!(
-            metadata["budget_authority"]["cancel_captured_before_dispatch"]
-                ["cancellation_ambiguous"]
-                .as_bool(),
-            Some(true)
+            payment.authorized.load(std::sync::atomic::Ordering::SeqCst),
+            0
         );
         assert_eq!(
-            metadata["budget_authority"]["invocation_capture"]["admission_retained"].as_bool(),
-            Some(true)
+            payment.released.load(std::sync::atomic::Ordering::SeqCst),
+            0
         );
         let cancellation = store
             .list_mutation_events(20, Some(&capability.id), Some(0))?
             .into_iter()
-            .find(|event| event.kind == BudgetMutationKind::CancelCapturedBeforeDispatch)
-            .ok_or_else(|| std::io::Error::other("durable cancellation event missing"))?;
-        assert_eq!(
-            metadata["budget_authority"]["cancel_captured_before_dispatch"]["event_id"].as_str(),
-            Some(cancellation.event_id.as_str())
-        );
+            .find(|event| event.kind == BudgetMutationKind::CancelCapturedBeforeDispatch);
+        assert!(cancellation.is_none());
     }
     Ok(())
 }

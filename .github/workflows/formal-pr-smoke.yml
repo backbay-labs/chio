@@ -1,0 +1,372 @@
+name: formal-pr-smoke
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/formal-pr-smoke.yml"
+      - ".github/workflows/fuzz.yml"
+      - ".kani/harnesses.toml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "crates/core/chio-core-types/Cargo.toml"
+      - "crates/core/chio-core-types/src/**"
+      - "crates/economy/chio-anchor/Cargo.toml"
+      - "crates/economy/chio-anchor/src/**"
+      - "crates/economy/chio-credit/Cargo.toml"
+      - "crates/economy/chio-credit/src/**"
+      - "crates/economy/chio-web3/Cargo.toml"
+      - "crates/economy/chio-web3/src/**"
+      - "crates/kernel/chio-kernel-core/Cargo.toml"
+      - "crates/kernel/chio-kernel-core/src/**"
+      - "crates/trust/chio-attest-verify/Cargo.toml"
+      - "crates/trust/chio-attest-verify/src/**"
+      - "crates/trust/chio-revocation-oracle/Cargo.toml"
+      - "crates/trust/chio-revocation-oracle/src/**"
+      - "crates/trust/chio-weights/Cargo.toml"
+      - "crates/trust/chio-weights/src/**"
+      - "docs/reference/CLAIM_REGISTRY.md"
+      - "formal/assumptions.toml"
+      - "formal/lean4/**"
+      - "formal/proof-manifest.toml"
+      - "formal/rust-verification/**"
+      - "formal/theorem-inventory.json"
+      - "fuzz/**"
+      - "scripts/check-formal-proofs.sh"
+      - "scripts/lean-assumption-audit.lean"
+      - "scripts/tests/lean-assumption-audit.test.sh"
+      - "scripts/generate-lean-json-fixtures.py"
+      - "scripts/check-kani-public-core.sh"
+      - "scripts/check-rust-verification-gates.sh"
+      - "scripts/run-kani-manifest.sh"
+      - "tests/bindings/vectors/canonical/v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: formal-pr-smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CHIO_CI_RUSTFLAGS: "-D warnings -C link-arg=-Wl,--threads=1"
+  # These pins must stay in lockstep with nightly.yml.
+  CHIO_KANI_VERSION: 0.67.0
+  CHIO_ELAN_VERSION: v4.2.1
+  CHIO_ELAN_TARBALL_SHA256: 4e717523217af592fa2d7b9c479410a31816c065d66ccbf0c2149337cfec0f5c
+
+jobs:
+  scope:
+    name: formal scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      lean: ${{ steps.paths.outputs.lean }}
+      kani_core: ${{ steps.paths.outputs.kani_core }}
+      kani_manifest: ${{ steps.paths.outputs.kani_manifest }}
+      metadata: ${{ steps.paths.outputs.metadata }}
+      fuzz_smoke: ${{ steps.paths.outputs.fuzz_smoke }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: paths
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            for output in lean kani_core kani_manifest metadata fuzz_smoke; do
+              echo "${output}=true" >> "${GITHUB_OUTPUT}"
+            done
+            exit 0
+          fi
+
+          changed="${RUNNER_TEMP}/formal-pr-smoke-paths.txt"
+          merge_base="$(git merge-base "${BASE_SHA}" "${HEAD_SHA}")"
+          git diff --name-only "${merge_base}" "${HEAD_SHA}" > "${changed}"
+          cat "${changed}"
+
+          set_output() {
+            local output="$1"
+            local pattern="$2"
+            if grep -Eq "${pattern}" "${changed}"; then
+              echo "${output}=true" >> "${GITHUB_OUTPUT}"
+            else
+              echo "${output}=false" >> "${GITHUB_OUTPUT}"
+            fi
+          }
+
+          workflow='^\.github/workflows/formal-pr-smoke\.yml$'
+          rust_common="${workflow}|^(Cargo\.lock|Cargo\.toml|rust-toolchain\.toml)$"
+          set_output lean "${workflow}|^(formal/lean4/|formal/(proof-manifest\.toml|theorem-inventory\.json|assumptions\.toml)$|docs/reference/CLAIM_REGISTRY\.md$|scripts/(check-formal-proofs\.sh|lean-assumption-audit\.lean|generate-lean-json-fixtures\.py)$|scripts/tests/lean-assumption-audit\.test\.sh$|tests/bindings/vectors/canonical/v1\.json$)"
+          set_output kani_core "${rust_common}|^(\.kani/harnesses\.toml$|formal/rust-verification/kani-public-harnesses\.toml$|scripts/check-kani-public-core\.sh$|crates/(kernel/chio-kernel-core|core/chio-core-types|trust/chio-revocation-oracle)/(src/|Cargo\.toml$))"
+          set_output kani_manifest "${rust_common}|^(\.kani/harnesses\.toml$|scripts/run-kani-manifest\.sh$|crates/(economy/chio-anchor|economy/chio-credit|economy/chio-web3|trust/chio-attest-verify|trust/chio-weights)/(src/|Cargo\.toml$))"
+          set_output metadata "${workflow}|^(\.kani/harnesses\.toml$|formal/rust-verification/|scripts/check-rust-verification-gates\.sh$)"
+          set_output fuzz_smoke "${workflow}|^(\.github/workflows/fuzz\.yml$|fuzz/)"
+
+  fuzz-corpus-smoke-pr:
+    name: fuzz-corpus-smoke-pr (locked replay)
+    needs: scope
+    if: needs.scope.outputs.fuzz_smoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          workspaces: fuzz -> target
+
+      - name: Replay fuzz corpora
+        working-directory: fuzz
+        run: cargo test --locked
+
+      - name: Record fuzz corpus lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh fuzz-corpus-smoke-pr
+
+  lean-build:
+    name: lean-build (lake + sorry scan + manifest cross-ref)
+    needs: scope
+    if: needs.scope.outputs.lean == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Restore Lean toolchain cache
+        id: elan-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.elan
+          key: ${{ runner.os }}-elan-${{ env.CHIO_ELAN_VERSION }}-${{ env.CHIO_ELAN_TARBALL_SHA256 }}-${{ hashFiles('formal/lean4/Chio/lean-toolchain') }}
+
+      - name: Install Lean toolchain manager
+        if: steps.elan-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/elan-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL \
+            "https://github.com/leanprover/elan/releases/download/${CHIO_ELAN_VERSION}/elan-x86_64-unknown-linux-gnu.tar.gz" \
+            -o "${archive}"
+          echo "${CHIO_ELAN_TARBALL_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "${archive}" -C "${RUNNER_TEMP}"
+          "${RUNNER_TEMP}/elan-init" -y --default-toolchain none
+
+      - name: Configure Lean toolchain path
+        shell: bash
+        run: |
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          echo "ELAN_HOME=$HOME/.elan" >> "$GITHUB_ENV"
+
+      - name: Prime Lean toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          toolchain="$(tr -d '\r\n' < formal/lean4/Chio/lean-toolchain)"
+          if ! "$HOME/.elan/bin/elan" toolchain list | tr -d '\r' | grep -Fq "$toolchain"; then
+            for attempt in 1 2 3 4 5; do
+              if "$HOME/.elan/bin/elan" toolchain install "$toolchain"; then
+                break
+              fi
+              if [[ "$attempt" -eq 5 ]]; then
+                exit 1
+              fi
+              sleep $((attempt * 5))
+            done
+          fi
+          (cd formal/lean4/Chio && "$HOME/.elan/bin/lake" --version)
+
+      - name: Restore Lean build cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: formal/lean4/Chio/.lake
+          key: ${{ runner.os }}-lake-${{ hashFiles('formal/lean4/Chio/lean-toolchain', 'formal/lean4/Chio/lakefile.lean', 'formal/lean4/Chio/lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-lake-${{ hashFiles('formal/lean4/Chio/lean-toolchain', 'formal/lean4/Chio/lakefile.lean', 'formal/lean4/Chio/lake-manifest.json') }}-
+
+      - name: Build proofs and validate proof registries
+        run: bash scripts/check-formal-proofs.sh
+
+      - name: Record Lean lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh lean-build
+
+  kani-public-pr:
+    name: kani-public-pr (lanes.pr sweep)
+    needs: scope
+    if: needs.scope.outputs.kani_core == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Restore Kani tool cache
+        id: kani-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/bin/cargo-kani
+            ~/.cargo/bin/kani
+            ~/.kani
+          key: ${{ runner.os }}-kani-${{ env.CHIO_KANI_VERSION }}
+
+      - name: Install Kani
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/chio-kani-tool-target
+        run: |
+          set -euo pipefail
+          if ! cargo kani --version >/dev/null 2>&1; then
+            cargo install kani-verifier --locked --version "${CHIO_KANI_VERSION}"
+          fi
+          cargo kani setup
+
+      - name: Verify Kani version
+        run: cargo kani --version
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Run public core PR harnesses
+        env:
+          CARGO_BUILD_JOBS: "1"
+        run: bash scripts/check-kani-public-core.sh --lane pr
+
+      - name: Record public Kani lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh kani-public-pr
+
+  kani-manifest-pr:
+    name: kani-manifest-pr (non-core lanes.pr sweep)
+    needs: scope
+    if: needs.scope.outputs.kani_manifest == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Restore Kani tool cache
+        id: kani-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/bin/cargo-kani
+            ~/.cargo/bin/kani
+            ~/.kani
+          key: ${{ runner.os }}-kani-${{ env.CHIO_KANI_VERSION }}
+
+      - name: Install Kani
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/chio-kani-tool-target
+        run: |
+          set -euo pipefail
+          if ! cargo kani --version >/dev/null 2>&1; then
+            cargo install kani-verifier --locked --version "${CHIO_KANI_VERSION}"
+          fi
+          cargo kani setup
+
+      - name: Verify Kani version
+        run: cargo kani --version
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Run non-core PR harnesses
+        env:
+          CARGO_BUILD_JOBS: "1"
+        run: bash scripts/run-kani-manifest.sh --lane pr --exclude-crate chio-kernel-core
+
+      - name: Record manifest Kani lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh kani-manifest-pr
+
+  rust-verification-metadata:
+    name: rust-verification-metadata (schema only, no proofs)
+    needs: scope
+    if: needs.scope.outputs.metadata == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Validate Rust verification metadata
+        env:
+          CHIO_RUST_VERIFICATION_METADATA_ONLY: "1"
+        run: |
+          set -euo pipefail
+          echo "Metadata-only mode validates registry shape; no proofs run."
+          bash scripts/check-rust-verification-gates.sh
+
+      - name: Record Rust metadata lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh rust-verification-metadata

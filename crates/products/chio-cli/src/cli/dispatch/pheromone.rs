@@ -1,6 +1,8 @@
 use super::*;
 
-pub(crate) fn dispatch_chio_pheromone_command(command: ChioPheromoneCommands) -> Result<(), CliError> {
+pub(crate) fn dispatch_chio_pheromone_command(
+    command: ChioPheromoneCommands,
+) -> Result<(), CliError> {
     match command {
         ChioPheromoneCommands::Receive {
             batch,

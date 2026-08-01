@@ -92,8 +92,7 @@ pub(super) fn serve_proof_bundle(
             listener,
             hygiene.max_connections.unwrap_or(usize::MAX),
         );
-        let server =
-            axum::serve(listener, router).with_graceful_shutdown(controller.signalled());
+        let server = axum::serve(listener, router).with_graceful_shutdown(controller.signalled());
 
         // Read-only static serving: nothing to flush after the drain.
         chio_http_serve::run_until_drained(

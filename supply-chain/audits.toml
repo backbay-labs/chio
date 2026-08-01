@@ -727,6 +727,12 @@ criteria = "safe-to-deploy"
 version = "0.3.91"
 notes = "Exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
+[[audits.leb128]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.2.7"
+notes = "Local cargo-vet review. Exact locked source is a pure LEB128 integer encoder and decoder with no dependencies, custom build target, unsafe source, network access, or process execution; used transitively by the wasm fuzz generator."
+
 [[audits.libc]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
@@ -1240,6 +1246,12 @@ notes = "Top-centrality certification seed. Reviewed for dependency role, declar
 [[audits.wasm-encoder]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
+version = "0.221.3"
+notes = "Local cargo-vet review. Exact locked Bytecode Alliance source performs deterministic WebAssembly byte emission, denies unsafe code, has no custom build target, network access, or process execution; enabled only by the wasm fuzz feature."
+
+[[audits.wasm-encoder]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
 version = "0.227.1"
 notes = "cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked separately."
 
@@ -1248,6 +1260,12 @@ who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.227.1"
 notes = "cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked separately."
+
+[[audits.wasm-smith]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.221.3"
+notes = "Local cargo-vet review. Exact locked Bytecode Alliance source is a deterministic arbitrary-input WebAssembly generator, denies unsafe code, and has no custom build target, runtime network access, or process execution; enabled only by the wasm fuzz feature."
 
 [[audits.wasmparser]]
 who = "Chio supply-chain reviewer"

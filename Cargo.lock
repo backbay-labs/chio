@@ -2635,6 +2635,7 @@ dependencies = [
  "chio-core-types",
  "chio-test-support",
  "chio-transaction-passport",
+ "hex",
  "hmac 0.12.1",
  "jsonschema",
  "serde",
@@ -2971,6 +2972,7 @@ dependencies = [
  "chio-tee-frame",
  "chio-test-support",
  "chio-tool-call-fabric",
+ "chio-trace-validate",
  "chio-underwriting",
  "chio-wasm-guards",
  "chio-web3",
@@ -3097,6 +3099,7 @@ dependencies = [
  "chio-store-sqlite",
  "chio-swarm-authority",
  "chio-tee-frame",
+ "chio-trace-validate",
  "chio-wasm-guards",
  "chio-weights",
  "chio-workflow",
@@ -3608,12 +3611,15 @@ dependencies = [
 name = "chio-formal-diff-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-anchor",
  "chio-core-types",
+ "chio-kernel",
  "chio-kernel-core",
  "chio-runtime-core",
  "getrandom 0.3.4",
  "proptest",
+ "serde",
  "serde_json",
  "wasm-bindgen-test",
 ]
@@ -3827,6 +3833,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "toml 0.8.23",
  "tracing",
  "ureq 2.12.1",
  "uuid",
@@ -4578,6 +4585,7 @@ dependencies = [
  "serde",
  "serde_json",
  "syn 2.0.117",
+ "toml 0.8.23",
  "typify",
 ]
 
@@ -4593,13 +4601,16 @@ dependencies = [
 name = "chio-store-sqlite"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chacha20poly1305",
+ "chio-agent-web-interop",
  "chio-core-types",
  "chio-credit",
  "chio-federation",
  "chio-federation-authority",
  "chio-fiscal",
  "chio-kernel",
+ "chio-kernel-core",
  "chio-settle",
  "chio-supervisor",
  "chio-test-support",
@@ -4748,6 +4759,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-trace-validate"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-kernel",
+ "clap 4.6.0",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-transaction-passport"
 version = "0.1.0"
 dependencies = [
@@ -4853,6 +4878,8 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
+ "wasm-encoder 0.221.3",
+ "wasm-smith",
  "wasmparser 0.221.3",
  "wasmtime",
  "wat",
@@ -8502,6 +8529,12 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
  "spin 0.9.9",
 ]
+
+[[package]]
+name = "leb128"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c83bff1d572d6b9aeef67ddfc8448e4a3737909cb28e81f97c791b9018703e52"
 
 [[package]]
 name = "leb128fmt"
@@ -14147,6 +14180,16 @@ dependencies = [
 
 [[package]]
 name = "wasm-encoder"
+version = "0.221.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc8444fe4920de80a4fe5ab564fff2ae58b6b73166b89751f8c6c93509da32e5"
+dependencies = [
+ "leb128",
+ "wasmparser 0.221.3",
+]
+
+[[package]]
+name = "wasm-encoder"
 version = "0.227.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80bb72f02e7fbf07183443b27b0f3d4144abf8c114189f2e088ed95b696a7822"
@@ -14214,6 +14257,20 @@ dependencies = [
  "indexmap 2.13.0",
  "wasm-encoder 0.244.0",
  "wasmparser 0.244.0",
+]
+
+[[package]]
+name = "wasm-smith"
+version = "0.221.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d98b123b3f76e9ccd9a84b029660aeec1660833f9c383ffbe1a17d42e777de9"
+dependencies = [
+ "anyhow",
+ "arbitrary",
+ "flagset",
+ "indexmap 2.13.0",
+ "leb128",
+ "wasm-encoder 0.221.3",
 ]
 
 [[package]]
@@ -15598,15 +15655,21 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "chio-eval-receipt",
+ "chio-formal-diff-tests",
  "chio-spec-codegen",
  "chio-spec-validate",
  "clap 4.6.0",
  "jsonschema",
+ "libc",
+ "proc-macro2",
+ "quote",
  "serde",
  "serde_json",
  "serde_yml",
  "sha2 0.10.9",
+ "syn 2.0.117",
  "toml 0.8.23",
+ "toml_edit 0.22.27",
 ]
 
 [[package]]

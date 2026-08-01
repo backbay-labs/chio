@@ -14,8 +14,9 @@ name: CI
 # elsewhere: the Lean 4 / Aeneas / Creusot proof report, portable browser and
 # mobile qualification, the polyglot SDK-parity lane, and workspace coverage
 # run nightly in nightly.yml; formal model checking is path-scoped in
-# apalache-safety.yml; the Kani lanes run nightly (kani-public-nightly); the
-# JVM SDK build is path-scoped in jvm.yml; macOS coverage stays in
+# apalache-safety.yml; Lean, Kani, and Rust verification metadata are
+# path-scoped in formal-pr-smoke.yml and Kani also runs nightly; the JVM SDK
+# build is path-scoped in jvm.yml; macOS coverage stays in
 # release-binaries.yml for tag releases, where macOS artifact behavior is
 # actually exercised.
 
@@ -91,11 +92,15 @@ jobs:
         env:
           CARGO_BUILD_JOBS: "1"
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: |
           ./scripts/check-release-inputs.sh
           ./scripts/check-web3-contract-parity.sh
           ./scripts/check-workspace-layering.sh
           python3 scripts/check-review-slices.py
+          bash ./scripts/check-regression-tests.sh
+          bash ./scripts/tests/check-regression-tests.test.sh
           python3 scripts/check-mutants-examine-globs.py
           bash scripts/tests/check-mutants-examine-globs.test.sh
           python3 scripts/check-rust-public-surface.py
@@ -111,6 +116,14 @@ jobs:
           bash ./scripts/tests/check-chio-schema-registry.test.sh
           bash ./scripts/check-agent-web-proof-envelope-schema.sh
           bash ./scripts/tests/check-agent-web-proof-envelope-schema.test.sh
+          bash ./scripts/check-mapping.sh
+          bash ./scripts/tests/check-rust-verification-gates.test.sh
+          bash ./scripts/tests/formal-workflow-wiring.test.sh
+          cargo metadata --manifest-path fuzz/Cargo.toml --locked --no-deps --format-version 1 >/dev/null
+          bash ./scripts/check-corpus-metadata.sh
+          bash ./scripts/tests/fuzz-budget-hard-halt.test.sh
+          bash ./scripts/tests/check-proof-report.test.sh
+          bash ./scripts/tests/lane-gate.test.sh
           bash ./scripts/check-liability-roster-enforcement.sh
           bash ./scripts/tests/check-liability-roster-enforcement.test.sh
           bash ./scripts/check-no-eip3009-broadcast.sh
@@ -120,6 +133,12 @@ jobs:
 
       - name: crate-path go-dark guard
         run: cargo xtask check crate-paths
+
+      - name: formal mirror drift guard
+        run: cargo xtask check formal-mirrors
+
+      - name: proof coverage drift guard
+        run: cargo xtask gen proof-coverage --check
 
       - name: Workspace format
         env:
@@ -164,6 +183,9 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: cargo build --workspace
 
+      - name: Policy analysis self-check
+        run: ./scripts/check-policy-analysis.sh target/debug/chio
+
       - name: Build Proof Room dashboard
         uses: ./.github/actions/setup-node
         with:
@@ -197,6 +219,10 @@ jobs:
         run: |
           cargo xtask verify launch-acceptance --out target/proof-room/public-bundle
           bash ./scripts/tests/check-chio-proof-room-launch-acceptance.test.sh
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.3"
 
       - name: Workspace tests
         env:
@@ -322,25 +348,3 @@ jobs:
         run: python3 scripts/check-external-wildcard-deps.py
       - name: cargo deny duplicate baseline
         run: python3 scripts/check-cargo-deny-duplicate-baseline.py
-
-  # Regression-test deletion guard. Detects deletion of fuzz-promoted
-  # regression tests under tests/regression_*.rs or
-  # crates/*/tests/regression_*.rs between the PR base and HEAD. Fails CI
-  # when such a deletion has no paired issue link in the PR body or
-  # commit-message range.
-  check-regression-tests:
-    name: check-regression-tests
-    # owner: Chio maintainers
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          # fetch-depth: 0 so the guard can git-diff between BASE..HEAD.
-          fetch-depth: 0
-      - name: Run regression-test deletion guard
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-        run: bash scripts/check-regression-tests.sh

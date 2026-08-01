@@ -5,6 +5,9 @@ cd "$(dirname "$0")/.."
 
 formal_root="formal/lean4/Chio"
 
+echo "==> Canonical JSON Lean fixture drift"
+python3 scripts/generate-lean-json-fixtures.py --check
+
 if ! command -v lake >/dev/null 2>&1; then
   echo "formal proof check requires lake on PATH (install Lean 4 / elan first)" >&2
   exit 1
@@ -28,15 +31,23 @@ else
     "${formal_root}/Chio.lean")
 fi
 
-if "${placeholder_scan[@]}"; then
+"${placeholder_scan[@]}" && placeholder_rc=0 || placeholder_rc=$?
+if [[ "${placeholder_rc}" -eq 0 ]]; then
   echo "formal proof check failed: found literal sorry in shipped Lean modules" >&2
   exit 1
+elif [[ "${placeholder_rc}" -ne 1 ]]; then
+  echo "formal proof placeholder scan failed with exit ${placeholder_rc}" >&2
+  exit 1
 fi
+
+echo "==> Elaborated Lean assumption audit regressions"
+./scripts/tests/lean-assumption-audit.test.sh
 
 echo "==> Proof manifest and theorem inventory sanity"
 python3 - <<'PY'
 import json
 import re
+import subprocess
 from pathlib import Path
 
 repo = Path(".")
@@ -68,9 +79,17 @@ def parse_manifest_subset(text):
     manifest = {}
     array_key = None
     array_values = []
+    in_array_table = False
     for raw_line in text.splitlines():
         line = strip_toml_comment(raw_line).strip()
         if not line:
+            continue
+        if line.startswith("[[") and line.endswith("]]"):
+            if array_key is not None:
+                raise SystemExit(f"unterminated proof manifest array: {array_key}")
+            in_array_table = True
+            continue
+        if in_array_table:
             continue
         if array_key is not None:
             if line == "]":
@@ -169,40 +188,26 @@ approved_open_modules = set(manifest.get("allowed_open_modules", []))
 if sorted(assumption.get("leanName") for assumption in assumptions) != sorted(approved_axioms):
     raise SystemExit("approved axiom list does not match theorem inventory assumptions")
 
-def lean_axioms_in_file(lean_file):
-    namespace_stack = []
-    axioms = []
-    text = lean_file.read_text(encoding="utf-8")
-    for line in text.splitlines():
-        namespace_match = re.match(r"^\s*namespace\s+([A-Za-z0-9_.']+)\b", line)
-        if namespace_match:
-            namespace_stack.append(namespace_match.group(1))
-            continue
-        end_match = re.match(r"^\s*end(?:\s+([A-Za-z0-9_.']+))?\s*$", line)
-        if end_match and namespace_stack:
-            namespace_stack.pop()
-            continue
-        axiom_match = re.match(r"^\s*axiom\s+([A-Za-z0-9_']+)\b", line)
-        if axiom_match:
-            prefix = ".".join(namespace_stack)
-            short_name = axiom_match.group(1)
-            full_name = f"{prefix}.{short_name}" if prefix else short_name
-            axioms.append((full_name, lean_file.relative_to(repo).as_posix()))
-    return axioms
-
 def lean_surface_controls_in_file(lean_file):
     namespace_stack = []
+    mutual_depth = 0
     opens = []
     exports = []
     abbrevs = []
     for line_number, line in enumerate(lean_file.read_text(encoding="utf-8").splitlines(), 1):
+        if line.strip() == "mutual":
+            mutual_depth += 1
+            continue
         namespace_match = re.match(r"^\s*namespace\s+([A-Za-z0-9_.']+)\b", line)
         if namespace_match:
             namespace_stack.append(namespace_match.group(1))
             continue
         end_match = re.match(r"^\s*end(?:\s+([A-Za-z0-9_.']+))?\s*$", line)
-        if end_match and namespace_stack:
-            namespace_stack.pop()
+        if end_match:
+            if mutual_depth:
+                mutual_depth -= 1
+            elif namespace_stack:
+                namespace_stack.pop()
             continue
         open_match = re.match(r"^\s*open\s+(.+)$", line)
         if open_match:
@@ -223,15 +228,22 @@ def lean_surface_controls_in_file(lean_file):
 
 def lean_named_declarations_in_file(lean_file):
     namespace_stack = []
+    mutual_depth = 0
     declarations = set()
     for line in lean_file.read_text(encoding="utf-8").splitlines():
+        if line.strip() == "mutual":
+            mutual_depth += 1
+            continue
         namespace_match = re.match(r"^\s*namespace\s+([A-Za-z0-9_.']+)\b", line)
         if namespace_match:
             namespace_stack.append(namespace_match.group(1))
             continue
         end_match = re.match(r"^\s*end(?:\s+([A-Za-z0-9_.']+))?\s*$", line)
-        if end_match and namespace_stack:
-            namespace_stack.pop()
+        if end_match:
+            if mutual_depth:
+                mutual_depth -= 1
+            elif namespace_stack:
+                namespace_stack.pop()
             continue
         declaration_match = re.match(
             r"^\s*(?:theorem|lemma)\s+([A-Za-z0-9_.']+)\b",
@@ -267,6 +279,106 @@ project_lean_files = sorted(
     if ".lake" not in path.resolve().relative_to(lean_project_root_resolved).parts
 )
 
+def lean_module_name(lean_file):
+    relative = lean_file.relative_to(lean_project_root).with_suffix("")
+    return ".".join(relative.parts)
+
+audited_module_names = sorted(
+    lean_module_name(path)
+    for path in project_lean_files
+    if path.name != "lakefile.lean"
+)
+audited_module_name_set = set(audited_module_names)
+if len(audited_module_names) != len(audited_module_name_set):
+    raise SystemExit("Lean project contains repeated module names")
+
+audit_helper = (repo / "scripts" / "lean-assumption-audit.lean").resolve()
+if not audit_helper.is_file() or audit_helper.is_symlink():
+    raise SystemExit("Lean assumption audit helper is missing or not a regular file")
+audit_command = [
+    "lake",
+    "env",
+    "lean",
+    "--run",
+    str(audit_helper),
+    "Chio",
+    "FormalAeneas.Funs",
+    "FormalEconomy.Funs",
+    "--",
+    *audited_module_names,
+]
+try:
+    audit = subprocess.run(
+        audit_command,
+        cwd=lean_project_root,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=120,
+    )
+except subprocess.TimeoutExpired as error:
+    raise SystemExit("Lean assumption environment audit timed out") from error
+if audit.returncode != 0:
+    detail = audit.stderr.strip() or audit.stdout.strip() or "no diagnostic"
+    raise SystemExit(f"Lean assumption environment audit failed: {detail}")
+
+environment_assumptions = []
+seen_environment_assumptions = set()
+for line in audit.stdout.splitlines():
+    fields = line.split("\t")
+    if len(fields) != 3:
+        raise SystemExit(f"malformed Lean assumption audit row: {line!r}")
+    kind, module, name = fields
+    row = (kind, module, name)
+    if (
+        kind not in {"axiom", "opaque"}
+        or module not in audited_module_name_set
+        or re.fullmatch(r"[A-Za-z0-9_'.]+", name) is None
+        or row in seen_environment_assumptions
+    ):
+        raise SystemExit(f"invalid Lean assumption audit row: {line!r}")
+    seen_environment_assumptions.add(row)
+    environment_assumptions.append(row)
+
+environment_axioms = {
+    name: module
+    for kind, module, name in environment_assumptions
+    if kind == "axiom"
+}
+if set(environment_axioms) != set(approved_axioms):
+    missing = sorted(set(approved_axioms) - set(environment_axioms))
+    extra = sorted(set(environment_axioms) - set(approved_axioms))
+    raise SystemExit(
+        f"Lean environment axiom mismatch; missing={missing} extra={extra}"
+    )
+
+# Lean emits these exact opaque helpers for the reviewed `deriving Repr`
+# declarations in Chio.Json.Value. Any compiler-generated addition must be
+# reviewed here before it can enter the formal environment.
+approved_generated_opaques = {
+    ("Chio.Json.Value", "Chio.Json.instReprJArray.repr_1"),
+    ("Chio.Json.Value", "Chio.Json.instReprJArray.repr_2"),
+    ("Chio.Json.Value", "Chio.Json.instReprJArray.repr_3"),
+    ("Chio.Json.Value", "Chio.Json.instReprJObject.repr_1"),
+    ("Chio.Json.Value", "Chio.Json.instReprJObject.repr_2"),
+    ("Chio.Json.Value", "Chio.Json.instReprJObject.repr_3"),
+    ("Chio.Json.Value", "Chio.Json.instReprJValue.repr_1"),
+    ("Chio.Json.Value", "Chio.Json.instReprJValue.repr_2"),
+    ("Chio.Json.Value", "Chio.Json.instReprJValue.repr_3"),
+}
+environment_opaques = {
+    (module, name)
+    for kind, module, name in environment_assumptions
+    if kind == "opaque"
+}
+if environment_opaques != approved_generated_opaques:
+    missing = sorted(approved_generated_opaques - environment_opaques)
+    extra = sorted(environment_opaques - approved_generated_opaques)
+    raise SystemExit(
+        f"Lean environment opaque mismatch; missing={missing} extra={extra}"
+    )
+
 for assumption in assumptions:
     if assumption.get("kind") != "axiom":
         raise SystemExit(f"assumption is not marked as axiom: {assumption.get('id')}")
@@ -280,8 +392,7 @@ for assumption in assumptions:
     lean_name = assumption.get("leanName", "")
     if not lean_name:
         raise SystemExit(f"assumption leanName missing: {assumption.get('id')}")
-    assumption_axioms = {name for name, _ in lean_axioms_in_file(assumption_file)}
-    if lean_name not in assumption_axioms:
+    if environment_axioms.get(lean_name) != lean_module_name(assumption_file):
         raise SystemExit(f"assumption definition missing from file: {assumption.get('id')}")
 
 theorems = inventory.get("theorems", [])
@@ -356,24 +467,14 @@ for tool_name in ("lean4", "creusot", "kani", "aeneas"):
 
 approved_axiom_names = set(approved_axioms)
 approved_axiom_short_names = {name.rsplit(".", 1)[-1] for name in approved_axioms}
-found_axioms = []
 found_open_modules = []
 found_exports = []
 found_abbrevs = []
 for lean_file in project_lean_files:
-    found_axioms.extend(lean_axioms_in_file(lean_file))
     opens, exports, abbrevs = lean_surface_controls_in_file(lean_file)
     found_open_modules.extend(opens)
     found_exports.extend(exports)
     found_abbrevs.extend(abbrevs)
-
-unexpected_axioms = sorted(
-    f"{name} ({file})"
-    for name, file in found_axioms
-    if name not in approved_axiom_names
-)
-if unexpected_axioms:
-    raise SystemExit(f"unexpected Lean axioms found: {', '.join(unexpected_axioms)}")
 
 unexpected_open_modules = sorted(
     f"{module} ({file}:{line})"
@@ -398,6 +499,27 @@ if shadowing_abbrevs:
 
 if not claim_registry_path.exists():
     raise SystemExit("claim registry missing: docs/reference/CLAIM_REGISTRY.md")
+claim_registry_text = claim_registry_path.read_text(encoding="utf-8")
+try:
+    approved_assumptions_section = claim_registry_text.split(
+        "## Approved Assumptions", 1
+    )[1].split("\n## ", 1)[0]
+except IndexError as error:
+    raise SystemExit("claim registry Approved Assumptions section missing") from error
+approved_assumption_rows = re.findall(
+    r"^\| `([^`]+)` \| approved(?:_with_scope)? \|",
+    approved_assumptions_section,
+    flags=re.MULTILINE,
+)
+approved_claim_assumption_ids = set(approved_assumption_rows)
+if len(approved_assumption_rows) != len(approved_claim_assumption_ids):
+    raise SystemExit("claim registry contains duplicate approved assumption rows")
+if approved_claim_assumption_ids != required_assumption_ids:
+    missing = sorted(required_assumption_ids - approved_claim_assumption_ids)
+    extra = sorted(approved_claim_assumption_ids - required_assumption_ids)
+    raise SystemExit(
+        f"claim registry assumption mismatch; missing={missing} extra={extra}"
+    )
 PY
 
 echo "formal proof check passed"

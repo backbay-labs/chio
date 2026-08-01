@@ -8,6 +8,7 @@ use chio_core_types::{
 use chio_test_support::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[path = "support_public_settlement_env.rs"]
 mod support_public_settlement_env;
@@ -15,8 +16,7 @@ use support_public_settlement_env::set_public_settlement_fixture_env;
 
 pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
-const STANDARD_WEBHOOKS_VERIFIER_NOW: &str = "1770508860";
-const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: &str = "300";
+const STANDARD_WEBHOOKS_FIXTURE_TIMESTAMP: u64 = 1_770_508_800;
 const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 const COLLECT_SIGNATURE_SEED: [u8; 32] = [11; 32];
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
@@ -30,7 +30,7 @@ const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de,",
     "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff,",
     "bed7d2ab668da3efad613998f06f7abf7875f3a6b7677a9f3ce947d77d7760a6,",
-    "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737,",
+    "204040e364c10f2bec9c1fe500a1cd4c247c89d650a01ed7e82caba867877c21,",
     "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
 );
 const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: &str =
@@ -94,17 +94,18 @@ const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
 
 pub(crate) fn chio_with_agent_web_fixture_secret() -> std::process::Command {
     let mut command = chio_with_transaction_fixture_roots();
+    let (verifier_now, max_age_seconds) = standard_webhooks_clock_env();
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
         STANDARD_WEBHOOKS_VERIFIER_SECRET,
     );
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
-        STANDARD_WEBHOOKS_VERIFIER_NOW,
+        verifier_now,
     );
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
-        STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
+        max_age_seconds,
     );
     command.env(
         "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
@@ -119,6 +120,7 @@ pub(crate) fn chio_with_agent_web_fixture_secret() -> std::process::Command {
 
 pub(crate) fn chio_with_agent_web_fixture_trust_without_webhooks_secret() -> std::process::Command {
     let mut command = chio_with_transaction_fixture_roots();
+    let (verifier_now, max_age_seconds) = standard_webhooks_clock_env();
     command.env(
         "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
         AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
@@ -129,14 +131,26 @@ pub(crate) fn chio_with_agent_web_fixture_trust_without_webhooks_secret() -> std
     );
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
-        STANDARD_WEBHOOKS_VERIFIER_NOW,
+        verifier_now,
     );
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
-        STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
+        max_age_seconds,
     );
     command.env_remove("CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET");
     command
+}
+
+fn standard_webhooks_clock_env() -> (String, String) {
+    let host_now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .test_expect("host clock is after Unix epoch")
+        .as_secs();
+    let verifier_now = host_now.saturating_add(60);
+    let max_age_seconds = verifier_now
+        .saturating_sub(STANDARD_WEBHOOKS_FIXTURE_TIMESTAMP)
+        .saturating_add(300);
+    (verifier_now.to_string(), max_age_seconds.to_string())
 }
 
 pub(crate) fn chio_with_trust_market_fixture_authority() -> std::process::Command {
@@ -1744,6 +1758,7 @@ fn agent_web_envelope_signature_payload(envelope: &serde_json::Value) -> serde_j
             "schema",
             "envelope_id",
             "transaction_passport_ref",
+            "agent_web_passport_scope_sha256",
             "source_protocol",
             "source_protocol_version",
             "external_subject",
@@ -1768,6 +1783,7 @@ fn agent_web_envelope_id(envelope: &serde_json::Value) -> String {
         &[
             "schema",
             "transaction_passport_ref",
+            "agent_web_passport_scope_sha256",
             "source_protocol",
             "source_protocol_version",
             "external_subject",

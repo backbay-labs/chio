@@ -34,13 +34,13 @@ use crate::receipt::{
     body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
 };
 use crate::settlement::{
-    settlement_anchor_receipt_content_hash_parts, validate_web3_settlement_dispatch,
-    validate_web3_settlement_execution_receipt, Web3SettlementDispatchArtifact,
-    Web3SettlementExecutionReceiptArtifact, Web3SettlementIdentityRegistryEvidence,
-    Web3SettlementIdentityRegistryEvidenceBinding, Web3SettlementLifecycleState,
-    Web3SettlementSupportBoundary, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
-    CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
-    CHIO_WEB3_SETTLEMENT_RECEIPT_V1_SCHEMA,
+    settlement_anchor_receipt_content_hash_parts, settlement_state_id,
+    validate_web3_settlement_dispatch, validate_web3_settlement_execution_receipt,
+    Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
+    Web3SettlementIdentityRegistryEvidence, Web3SettlementIdentityRegistryEvidenceBinding,
+    Web3SettlementLifecycleState, Web3SettlementSupportBoundary,
+    CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA,
+    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA, CHIO_WEB3_SETTLEMENT_RECEIPT_V1_SCHEMA,
 };
 use crate::settlement_proof::{
     public_settlement_witness_body_hash, verify_public_settlement_proof,
@@ -1482,6 +1482,42 @@ fn public_settlement_proof_emits_verifier_report() {
     assert!(report
         .verified_claims
         .contains(&CLAIM_PUBLIC_SETTLEMENT_PUBLIC_WITNESS_VERIFIED.to_string()));
+}
+
+#[test]
+fn public_settlement_proof_is_deterministic_for_identical_inputs() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let trust = sample_public_settlement_verifier_trust();
+
+    let first = verify_public_settlement_proof(&bundle, &trust).unwrap();
+    let second = verify_public_settlement_proof(&bundle, &trust).unwrap();
+
+    assert_eq!(first, second);
+}
+
+#[test]
+fn settlement_state_identifiers_cover_every_lifecycle_state() {
+    let cases = [
+        (
+            Web3SettlementLifecycleState::PendingDispatch,
+            "pending_dispatch",
+        ),
+        (Web3SettlementLifecycleState::EscrowLocked, "escrow_locked"),
+        (
+            Web3SettlementLifecycleState::PartiallySettled,
+            "partially_settled",
+        ),
+        (Web3SettlementLifecycleState::Settled, "settled"),
+        (Web3SettlementLifecycleState::Reversed, "reversed"),
+        (Web3SettlementLifecycleState::ChargedBack, "charged_back"),
+        (Web3SettlementLifecycleState::TimedOut, "timed_out"),
+        (Web3SettlementLifecycleState::Failed, "failed"),
+        (Web3SettlementLifecycleState::Reorged, "reorged"),
+    ];
+
+    for (state, expected) in cases {
+        assert_eq!(settlement_state_id(state), expected);
+    }
 }
 
 #[test]

@@ -1,5 +1,12 @@
 # SP-1 Design: Unconditional post-admission unwind (RFC-0002)
 
+> **Superseded behavior note (2026-07-14):** This design record predates the
+> final dispatch trust boundary. Only kernel-owned pre-dispatch failures can
+> release state. Any error returned after polling `invoke*`, including URL
+> elicitation, is outcome-unknown and retains credentials, admission state,
+> child budget, budget exposure, and payment authorization under a signed
+> terminal receipt.
+
 - Date: 2026-07-07
 - Source spec: `docs/architecture/reliability/RFC-0002-unconditional-post-admission-unwind.md` (the technical source of truth; this document records the implementation-cycle decisions only)
 - Program: reliability criticals, track A (parallel; no dependencies)

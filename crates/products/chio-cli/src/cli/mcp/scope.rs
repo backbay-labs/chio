@@ -56,7 +56,9 @@ pub(crate) struct InferredCapability {
 
 /// Infer the capability scope for a single MCP tool entry. Pure function;
 /// safe to call from tests without spinning up a transport.
-pub(crate) fn infer_scope_for_tool(info: &chio_mcp_adapter::edge::McpToolInfo) -> InferredCapability {
+pub(crate) fn infer_scope_for_tool(
+    info: &chio_mcp_adapter::edge::McpToolInfo,
+) -> InferredCapability {
     let scope = classify_tool(info);
     InferredCapability {
         tool: info.name.clone(),
@@ -68,7 +70,9 @@ pub(crate) fn infer_scope_for_tool(info: &chio_mcp_adapter::edge::McpToolInfo) -
 }
 
 /// Run the per-tool inference across the full `tools/list` payload.
-pub(crate) fn infer_scopes(tools: &[chio_mcp_adapter::edge::McpToolInfo]) -> Vec<InferredCapability> {
+pub(crate) fn infer_scopes(
+    tools: &[chio_mcp_adapter::edge::McpToolInfo],
+) -> Vec<InferredCapability> {
     let mut out: Vec<InferredCapability> = tools.iter().map(infer_scope_for_tool).collect();
     out.sort_by(|a, b| a.tool.cmp(&b.tool));
     out
@@ -113,13 +117,13 @@ fn classify_tool(info: &chio_mcp_adapter::edge::McpToolInfo) -> InferredScope {
     }
 
     let name_lower = info.name.to_lowercase();
-    if name_lower.starts_with("get") || name_lower.starts_with("list") || name_lower.contains("read")
+    if name_lower.starts_with("get")
+        || name_lower.starts_with("list")
+        || name_lower.contains("read")
     {
         return InferredScope::Read;
     }
-    if name_lower.contains("delete")
-        || name_lower.contains("remove")
-        || name_lower.contains("drop")
+    if name_lower.contains("delete") || name_lower.contains("remove") || name_lower.contains("drop")
     {
         return InferredScope::Destructive;
     }

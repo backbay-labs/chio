@@ -15,15 +15,18 @@
 //! - [`detection`] -- Regex-based content detectors
 //! - [`receipt`] -- Decision receipts with timing and hashing
 //! - [`rulesets`] -- Built-in HushSpec rulesets embedded at compile time
+//! - [`analyze`] -- Bounded static analysis and policy refinement checks
 
 #![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
+pub mod analyze;
 pub mod compiler;
 pub mod conditions;
 pub mod crypto_floor;
 pub mod detection;
 pub mod evaluate;
+mod glob_pattern;
 pub mod merge;
 pub mod models;
 pub mod receipt;
@@ -34,6 +37,10 @@ pub mod validate;
 pub mod version;
 pub mod weights;
 
+pub use analyze::{
+    analyze, analyze_against, AnalysisError, AnalysisOptions, AnalysisReport, AnalysisSeverity,
+    Finding, FindingKind, GlobRelation, RefinementStatus, RuleRef, Witness,
+};
 pub use compiler::{
     compile_policy, compile_policy_with_approver_directory, compile_policy_with_memory_budget,
     compile_policy_with_source, compile_policy_with_source_and_approver_directory, CompileError,
@@ -49,7 +56,10 @@ pub use evaluate::{
 pub use merge::merge;
 pub use models::{HushSpec, OriginMatch};
 pub use receipt::{evaluate_audited, AuditConfig, DecisionReceipt};
-pub use resolve::{resolve_from_path, resolve_with_loader, LoadedSpec, ResolveError};
+pub use resolve::{
+    resolve_from_path, resolve_from_path_with_limits, resolve_with_loader, LoadedSpec,
+    ResolveError, ResolveLimits, DEFAULT_MAX_EXTENDS_DEPTH, DEFAULT_MAX_POLICY_DOCUMENT_BYTES,
+};
 pub use rulesets::{
     builtin_yaml, list_builtin_names, load_builtin, RulesetError, BUILTIN_RULESETS,
 };

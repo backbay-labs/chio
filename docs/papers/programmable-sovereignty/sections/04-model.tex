@@ -1,15 +1,9 @@
-\section{Bounded Formal Model}
+\section{Bounded Predicate Model}
 \label{sec:model}
 
-The formal development isolates the admission logic from the mechanisms that
-construct its inputs. It does not model cryptography, canonical serialization,
-clock correctness, network transport, durable storage, or organizational key
-custody. Those mechanisms must establish the fields of a bounded receipt view
-before any theorem in this section applies.
-
-\subsection{Receipts, Predicates, and Polities}
-
-A receipt view is the tuple
+The Lean development specifies the small predicate library used for
+differential testing. Its input is a receipt view that has already been built
+from validated artifacts:
 \[
 \begin{aligned}
 r = (&\mathit{id},\mathit{hash},\mathit{action},
@@ -19,141 +13,81 @@ r = (&\mathit{id},\mathit{hash},\mathit{action},
      &\mathit{failureCode},\mathit{evidenceDigests}).
 \end{aligned}
 \]
-The fields are finite data: strings, natural numbers, lists, and an
-allow-or-deny decision. In particular, denial is represented rather than
-inferred from the absence of an allow. A predicate can therefore require a
-specific denial code or an evidence digest just as it can require an action
-class or participant.
+The model starts at this data boundary. Signature verification, canonical
+serialization, clocks, durable storage, and construction of \(r\) are
+implementation obligations described in Section~\ref{sec:implementation}.
 
-The syntax is
+\subsection{Predicate Semantics}
+
+The predicate syntax is
 \[
  p ::= \top \mid \bot \mid \mathsf{atom}(a)
        \mid p \land p \mid p \lor p \mid \neg p.
 \]
-Atoms inspect exactly one of the following relations: receipt identity, receipt
-hash equality, participant-kernel membership, action-class equality, ladder
-rank at least a constant, live-continuation membership, decision equality,
-failure-code equality, or evidence-class and digest equality. The interpreter
-\(\mathsf{denote}(p,r)\) is total and Boolean. This restriction is
-intentional. It gives every production-named atom a concrete meaning without
-pretending that implication between arbitrary host-language closures is
-decidable.
+The nine atom forms test receipt identity, participant membership, action
+class, minimum ladder rank, receipt hash, live continuation membership,
+decision, failure code, or an evidence-class and digest pair. The recursive
+function \(\mathsf{evaluate}(p,r)\) returns a Boolean for every predicate and
+receipt view.
 
-A constitution \(K=[p_1,\ldots,p_n]\) admits \(r\) when every predicate
-does:
+A constitution is a finite list of predicates:
 \[
-  \mathsf{admits}(K,r) = \bigwedge_{p\in K}\mathsf{denote}(p,r).
+  \mathsf{admits}(K,r)
+    = \bigwedge_{p\in K}\mathsf{evaluate}(p,r).
 \]
-A polity is the pair \(P=(T,K)\), where \(T\) is a predicate defining the
-local receipt-admission scope. Thus
+The language covers the receipt checks exercised by the reference and runtime
+evaluators while remaining small enough to execute independently in Lean and
+Rust.
+
+\subsection{Finite-Domain Refinement}
+
+For a candidate constitution \(K'\), a current constitution \(K\), and a
+supplied list of receipt views \(D\), the checker computes
 \[
-  \mathsf{polityAdmits}(P,r) =
-  \mathsf{denote}(T,r)\land\mathsf{admits}(K,r).
+ \mathsf{refinesOn}(K',K,D)
+   = \bigwedge_{r\in D}
+     \left(\mathsf{admits}(K',r)
+       \Rightarrow \mathsf{admits}(K,r)\right).
 \]
-The model contains no membership roster, territorial jurisdiction, or
-authority over another log. Its subject is one receiver's classification of
-receipts at its own boundary.
+The direction is important: on \(D\), the candidate may reject more receipts,
+but it may not admit a receipt rejected by the current constitution.
 
-\subsection{Bilateral Intersection}
-
-A bilateral treaty
-\(\tau=(T_\tau,K_\tau,P_L,P_R,f_\tau)\) contains treaty scope and
-constitutional predicates, the two participant polities, and a minimum ladder
-mode \(f_\tau\). Admission is defined by the grouped expression
+The theorem \thm{finite_refinement_exact} states
 \[
-\begin{split}
-\mathsf{treatyAdmits}(\tau,r) = {}&
- \mathsf{denote}(T_\tau,r)\\
- &{}\land\mathsf{admits}(K_\tau,r)\\
- &{}\land\mathsf{polityAdmits}(P_L,r)\\
- &{}\land\mathsf{polityAdmits}(P_R,r).
-\end{split}
+\begin{aligned}
+&\mathsf{refinesOn}(K',K,D)=\mathsf{true}\\
+&\quad\Longleftrightarrow
+  \forall r\in D.\;
+  \mathsf{admits}(K',r)=\mathsf{true}\\
+&\hspace{35mm}\Rightarrow
+  \mathsf{admits}(K,r)=\mathsf{true}.
+\end{aligned}
 \]
-\thm{treaty_admission_iff_predicate_intersection} proves that this expression
-is equivalent to its fully expanded six-conjunct form. The theorem is
-structural, but that is precisely its role: neither participant's scope or
-constitution disappears when the predicates are regrouped for evaluation.
-It says nothing about whether Rust constructed the intended receipt view or
-verified the signatures that bind it.
+Its forward direction,
+\thm{finite_refinement_sound}, is the condition a caller can rely on after a
+successful check. Both theorems are checked by Lean~4 without project-specific
+axioms.
 
-Mode admission prepends a finite ladder check:
-\[
- \mathsf{underMode}(\tau,m,r) =
- \mathsf{atLeast}(m,f_\tau)\land\mathsf{treatyAdmits}(\tau,r).
-\]
-\thm{treaty_admission_stable_under_ladder_floor} proves that, under the
-hypothesis \(\mathsf{atLeast}(m,f_\tau)=\mathsf{true}\), mode admission
-reduces to treaty admission. A mode below the floor denies. The theorem is
-bounded to the ladder representation imported by the model.
+This guarantee is limited to \(D\). An empty list passes vacuously, and a list
+that omits a relevant receipt says nothing about that receipt. The model proves
+the checker correct for its input; it does not prove that a caller supplied a
+complete deployment domain.
 
-\subsection{Finite-Domain No-Widening}
+\subsection{Relation to Rust}
 
-For constitutions \(K'\), \(K\), and an explicitly declared finite domain
-\(D\), define
-\[
- \mathsf{Refines}_{D}(K',K)
-   \equiv \forall r\in D.\;
-   \mathsf{admits}(K',r)\Rightarrow\mathsf{admits}(K,r).
-\]
-The executable checker evaluates this implication for every member of \(D\).
-\thm{refinesOnConstitution_iff} proves that the Boolean result is equivalent
-to \(\mathsf{Refines}_{D}\), and
-\thm{bridge_decidable_soundness} exposes its soundness direction. A
-\codepath{ConstitutionalDelta} carries \(K\), \(K'\), \(D\), and the successful
-check as a construction-time witness. The development contains both a
-nontrivial narrowing that constructs such a delta and a widening candidate
-that evaluates to false.
+The Rust reference interpreter in \codepath{formal/diff-tests} was written
+separately from \codepath{chio-runtime-core}. Both implement the receipt fields,
+atom forms, Boolean syntax, constitution admission, and finite-domain check
+shown above. Tests enumerate every atom and generate 1,024 cases for each of
+compound predicate evaluation, constitution admission, and finite-domain
+refinement.
 
-This property is no-widening on \(D\). It does not establish refinement outside
-\(D\), preserve receipts that the old constitution happened to admit, or
-justify a claim about all possible future schemas. A narrower constitution can
-reject old allows while satisfying the theorem. The current Rust runtime also
-has no amendment-enactment path consuming \codepath{ConstitutionalDelta};
-amendment is therefore a model-level extension, not a production contribution.
-
-\subsection{Bridges and Assurance Boundary}
-
-The earlier Lean representation used opaque predicates over receipt
-identifiers. Given an explicit resolver from an identifier to a
-\codepath{ReceiptView}, \codepath{toClosure} lifts a syntactic constitution
-into that representation. \thm{bridge_pointwise},
-\thm{treaty_admission_agrees}, and
-\thm{treaty_admission_under_mode_agrees} prove pointwise agreement after the
-lift. They do not turn a finite domain into a universal one.
-
-The Rust predicate evaluator was written independently from the Lean
-interpreter. Differential tests apply a mechanical conversion from generated
-Rust values into a second Rust specification that mirrors the Lean
-definitions. They cover every atom form and 1,024 generated cases each for
-compound predicates, constitutional admission, and finite refinement. This is
-useful evidence against representation drift. It is neither extraction from
-Lean nor a proof of equivalence between Lean and production Rust.
-
-\begin{table}[t]
-\caption{Formal results and their implementation status.}
-\label{tab:theorems}
-\scriptsize
-\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{.29\columnwidth}>{\raggedright\arraybackslash}p{.31\columnwidth}>{\raggedright\arraybackslash}X@{}}
-\toprule
-Result & Model claim & Implementation relation \\
-\midrule
-\thm{treaty_admission_iff_predicate_intersection}
-& Six bounded predicates remain conjunctive
-& Production counterpart plus differential cases \\
-\thm{treaty_admission_stable_under_ladder_floor}
-& A satisfied finite floor reduces to treaty admission
-& Production ladder validator counterpart \\
-\thm{refinesOnConstitution_iff}
-& Boolean no-widening is exact on declared \(D\)
-& Model only \\
-\thm{treaty_admission_agrees}
-& Syntactic and legacy forms agree pointwise
-& Model only \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-All listed theorems are imported by the proof root, inventoried, and checked
-without \codepath{sorry} or added axioms. Their assurance boundary ends at the
-explicit data structures above. The implementation evidence for constructing
-and enforcing those structures is independent and is described next.
+Those tests compare the two Rust implementations. Lean checks the mathematical
+definition and the refinement theorem, but the Rust evaluator is neither
+generated from Lean nor connected to it by a refinement proof. Rust also
+rejects predicates that exceed its size, depth, or node limits before applying
+these semantics; those limits are not modeled in Lean. The receiver admission
+hook performs many checks outside this bounded library. The
+paper evaluates those checks through focused runtime tests and the
+dispatch-capable negative path rather than treating the Lean model as a proof
+of the whole receiver.

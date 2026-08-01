@@ -95,9 +95,7 @@ impl KernelReceiptSigner {
             // poisoned-mutex case.
             Err(err) => KernelSignerCheckpointHealth {
                 consecutive_failures: 0,
-                last_checkpoint_error: Some(format!(
-                    "checkpoint health lock poisoned: {err}"
-                )),
+                last_checkpoint_error: Some(format!("checkpoint health lock poisoned: {err}")),
             },
         }
     }
@@ -233,18 +231,21 @@ impl KernelReceiptSigner {
                 "authorization receipt signer mismatch".to_string(),
             ));
         }
-        if !authorization_receipt.action.verify_hash().map_err(|error| {
-            ReceiptSignError::SigningFailed(format!(
-                "authorization receipt parameter hash verification failed: {error}"
-            ))
-        })? {
+        if !authorization_receipt
+            .action
+            .verify_hash()
+            .map_err(|error| {
+                ReceiptSignError::SigningFailed(format!(
+                    "authorization receipt parameter hash verification failed: {error}"
+                ))
+            })?
+        {
             return Err(ReceiptSignError::SigningFailed(
                 "authorization receipt parameter hash mismatch".to_string(),
             ));
         }
-        let action_authorization_parameter_hash = authorization_receipt
-            .action
-            .parameters
+        let action_parameters = &authorization_receipt.action.parameters;
+        let action_authorization_parameter_hash = action_parameters
             .get("authorization_parameter_hash")
             .and_then(serde_json::Value::as_str);
         if action_authorization_parameter_hash != Some(authorization_parameter_hash) {
@@ -252,15 +253,11 @@ impl KernelReceiptSigner {
                 "authorization receipt action parameter hash mismatch".to_string(),
             ));
         }
-        let operation_payload = authorization_receipt
-            .action
-            .parameters
-            .get("operation_payload")
-            .ok_or_else(|| {
-                ReceiptSignError::SigningFailed(
-                    "authorization receipt must cover the full ACP operation payload".to_string(),
-                )
-            })?;
+        let operation_payload = action_parameters.get("operation_payload").ok_or_else(|| {
+            ReceiptSignError::SigningFailed(
+                "authorization receipt must cover the full ACP operation payload".to_string(),
+            )
+        })?;
         let operation_payload_bytes = chio_core::canonical::canonical_json_bytes(operation_payload)
             .map_err(|error| {
                 ReceiptSignError::SigningFailed(format!(
@@ -301,73 +298,63 @@ impl KernelReceiptSigner {
                 "authorization receipt request id mismatch".to_string(),
             ));
         }
-        let receipt_context = authorization_receipt
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get("receipt_context"));
-        let stored_session_id = receipt_context
-            .and_then(|context| context.get("session_id"))
+        let stored_session_id = action_parameters
+            .get("session_id")
             .and_then(serde_json::Value::as_str);
         if stored_session_id != Some(entry.session_id.as_str()) {
             return Err(ReceiptSignError::SigningFailed(
                 "authorization receipt session id mismatch".to_string(),
             ));
         }
-        let stored_tool_call_id = receipt_context
-            .and_then(|context| context.get("tool_call_id"))
-            .and_then(serde_json::Value::as_str);
+        let stored_tool_call_id = action_parameters.get("tool_call_id").ok_or_else(|| {
+            ReceiptSignError::SigningFailed(
+                "authorization receipt must carry a tool call id field".to_string(),
+            )
+        })?;
+        let stored_tool_call_id = stored_tool_call_id.as_str().ok_or_else(|| {
+            ReceiptSignError::SigningFailed(
+                "authorization receipt tool call id must be a string".to_string(),
+            )
+        })?;
         // Deferred-bind semantics: ACP fs/read_text_file, fs/write_text_file,
         // and terminal/create requests do not carry a `toolCallId` at the
-        // capability gate, so `KernelCapabilityChecker` stores the receipt
-        // context with `tool_call_id = ""`. The real `toolCallId` is later
+        // capability gate, so `KernelCapabilityChecker` signs the action with
+        // `tool_call_id = ""`. The real `toolCallId` is later
         // assigned by the agent and arrives on the `session/update`
         // notification, at which point `bind_pending_capability_context`
         // resolves it through the per-session-operation FIFO. When the stored
-        // value is empty (or missing) we treat it as a deferred bind and
+        // value is explicitly empty we treat it as a deferred bind and
         // accept any non-empty resolved `authorization_tool_call_id`; the
         // link integrity is enforced by the FIFO match and by the strict
         // equality check between `entry.authorization_tool_call_id` and
-        // `entry.tool_call_id` above (lines 113-117).
-        let stored_tool_call_id_present = stored_tool_call_id
-            .map(|value| !value.is_empty())
-            .unwrap_or(false);
-        if stored_tool_call_id_present
-            && stored_tool_call_id != Some(authorization_tool_call_id)
-        {
+        // `entry.tool_call_id` above.
+        if !stored_tool_call_id.is_empty() && stored_tool_call_id != authorization_tool_call_id {
             return Err(ReceiptSignError::SigningFailed(
                 "authorization receipt tool call id mismatch".to_string(),
             ));
         }
-        let stored_correlation_id = receipt_context
-            .and_then(|context| context.get("authorization_correlation_id"))
+        let stored_correlation_id = action_parameters
+            .get("authorization_correlation_id")
             .and_then(serde_json::Value::as_str);
         if stored_correlation_id != Some(authorization_correlation_id) {
             return Err(ReceiptSignError::SigningFailed(
                 "authorization receipt correlation id mismatch".to_string(),
             ));
         }
-        let stored_operation = receipt_context
-            .and_then(|context| context.get("operation"))
+        let stored_operation = action_parameters
+            .get("operation")
             .and_then(serde_json::Value::as_str);
         if stored_operation != Some(authorization_operation) {
             return Err(ReceiptSignError::SigningFailed(
                 "authorization receipt operation mismatch".to_string(),
             ));
         }
-        let stored_resource = receipt_context
-            .and_then(|context| context.get("resource"))
+        let stored_resource = action_parameters
+            .get("resource")
             .and_then(serde_json::Value::as_str);
         if stored_resource != Some(authorization_resource) {
             return Err(ReceiptSignError::SigningFailed(
                 "authorization receipt resource mismatch".to_string(),
-            ));
-        }
-        let stored_parameter_hash = receipt_context
-            .and_then(|context| context.get("authorization_parameter_hash"))
-            .and_then(serde_json::Value::as_str);
-        if stored_parameter_hash != Some(authorization_parameter_hash) {
-            return Err(ReceiptSignError::SigningFailed(
-                "authorization receipt parameter hash mismatch".to_string(),
             ));
         }
         // Tenant id is optional: the kernel legitimately signs receipts with
@@ -411,9 +398,7 @@ impl KernelReceiptSigner {
         let report = store
             .create_next_receipt_checkpoint(self.checkpoint_batch_size, &self.keypair)
             .map_err(|e| {
-                ReceiptSignError::SigningFailed(format!(
-                    "receipt checkpoint creation failed: {e}"
-                ))
+                ReceiptSignError::SigningFailed(format!("receipt checkpoint creation failed: {e}"))
             })?;
 
         if report.created {
@@ -477,7 +462,9 @@ impl ReceiptSigner for KernelReceiptSigner {
                 .unwrap_or_default()
                 .as_secs()
         });
-        let enforcement_mode = entry.enforcement_mode.unwrap_or(AcpEnforcementMode::AuditOnly);
+        let enforcement_mode = entry
+            .enforcement_mode
+            .unwrap_or(AcpEnforcementMode::AuditOnly);
         let authorization_context =
             if enforcement_mode == AcpEnforcementMode::CryptographicallyEnforced {
                 Some(self.verify_live_authorization_receipt(request)?)
@@ -617,9 +604,7 @@ impl ReceiptSigner for KernelReceiptSigner {
                 store
                     .append_chio_receipt_consuming_authorization(&receipt, &consumption)
                     .map_err(|e| {
-                        ReceiptSignError::SigningFailed(format!(
-                            "receipt store append failed: {e}"
-                        ))
+                        ReceiptSignError::SigningFailed(format!("receipt store append failed: {e}"))
                     })?;
             } else {
                 store.append_chio_receipt(&receipt).map_err(|e| {

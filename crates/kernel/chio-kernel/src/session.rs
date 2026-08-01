@@ -128,6 +128,7 @@ pub struct InflightRequest {
     pub started_at: Instant,
     pub progress_token: Option<ProgressToken>,
     pub cancellation_requested: bool,
+    pub cancellation_reason: Option<String>,
     pub cancellable: bool,
     pub pending_execution_nonce_id: Option<String>,
 }
@@ -142,15 +143,19 @@ impl InflightRequest {
 #[derive(Debug)]
 pub struct InflightRegistry {
     requests: RwLock<HashMap<RequestId, InflightRequest>>,
+    dispatching: RwLock<HashSet<RequestId>>,
     active_count: AtomicU64,
 }
 
 impl Clone for InflightRegistry {
     fn clone(&self) -> Self {
-        let requests = self.read_requests().clone();
+        let requests_guard = self.read_requests();
+        let requests = requests_guard.clone();
+        let dispatching = read_lock(&self.dispatching).clone();
         Self {
             active_count: AtomicU64::new(requests.len() as u64),
             requests: RwLock::new(requests),
+            dispatching: RwLock::new(dispatching),
         }
     }
 }
@@ -159,6 +164,7 @@ impl Default for InflightRegistry {
     fn default() -> Self {
         Self {
             requests: RwLock::new(HashMap::new()),
+            dispatching: RwLock::new(HashSet::new()),
             active_count: AtomicU64::new(0),
         }
     }
@@ -197,6 +203,7 @@ impl InflightRegistry {
                 started_at: Instant::now(),
                 progress_token: context.progress_token.clone(),
                 cancellation_requested: false,
+                cancellation_reason: None,
                 cancellable,
                 pending_execution_nonce_id: None,
             },
@@ -229,6 +236,7 @@ impl InflightRegistry {
                 started_at: Instant::now(),
                 progress_token: context.progress_token.clone(),
                 cancellation_requested: false,
+                cancellation_reason: None,
                 cancellable,
                 pending_execution_nonce_id: None,
             },
@@ -245,6 +253,7 @@ impl InflightRegistry {
                 .ok_or_else(|| SessionError::RequestNotInflight {
                     request_id: request_id.clone(),
                 })?;
+        write_lock(&self.dispatching).remove(request_id);
         if self
             .active_count
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
@@ -259,6 +268,14 @@ impl InflightRegistry {
     }
 
     pub fn mark_cancellation_requested(&self, request_id: &RequestId) -> Result<(), SessionError> {
+        self.mark_cancellation_requested_with_reason(request_id, None)
+    }
+
+    pub(crate) fn mark_cancellation_requested_with_reason(
+        &self,
+        request_id: &RequestId,
+        reason: Option<&str>,
+    ) -> Result<(), SessionError> {
         let mut requests = self.write_requests();
         let request =
             requests
@@ -273,8 +290,45 @@ impl InflightRegistry {
             });
         }
 
+        // Dispatch start wins the current side-effect race, but cancellation
+        // still latches on the request. The active dispatch may finish; any
+        // later nested child or repeated dispatch start observes the flag and
+        // fails before another side effect begins.
         request.cancellation_requested = true;
+        if request.cancellation_reason.is_none() {
+            request.cancellation_reason = reason.map(str::to_owned);
+        }
         Ok(())
+    }
+
+    pub(crate) fn try_mark_dispatch_started(
+        &self,
+        request_id: &RequestId,
+        current_session_anchor_id: &str,
+    ) -> Result<(), DispatchStartFailure> {
+        let mut requests = self.write_requests();
+        let request = requests
+            .get_mut(request_id)
+            .ok_or(DispatchStartFailure::RequestNotInflight)?;
+        if request.cancellation_requested {
+            return Err(DispatchStartFailure::CancellationRequested {
+                reason: request.cancellation_reason.clone(),
+            });
+        }
+        if request.session_anchor_id != current_session_anchor_id {
+            return Err(DispatchStartFailure::SessionAnchorChanged);
+        }
+        write_lock(&self.dispatching).insert(request_id.clone());
+        Ok(())
+    }
+
+    pub(crate) fn mark_dispatch_finished(&self, request_id: &RequestId) {
+        write_lock(&self.dispatching).remove(request_id);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_dispatch_active(&self, request_id: &RequestId) -> bool {
+        read_lock(&self.dispatching).contains(request_id)
     }
 
     pub fn get(&self, request_id: &RequestId) -> Option<InflightRequest> {
@@ -310,9 +364,18 @@ impl InflightRegistry {
     }
 
     pub fn clear(&self) {
-        self.write_requests().clear();
+        let mut requests = self.write_requests();
+        requests.clear();
+        write_lock(&self.dispatching).clear();
         self.active_count.store(0, Ordering::Release);
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum DispatchStartFailure {
+    RequestNotInflight,
+    CancellationRequested { reason: Option<String> },
+    SessionAnchorChanged,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -541,6 +604,13 @@ pub enum SessionError {
         parent_request_id: RequestId,
     },
 
+    #[error("parent request {parent_request_id} was cancelled before child request {request_id} could start")]
+    ParentRequestCancelled {
+        request_id: RequestId,
+        parent_request_id: RequestId,
+        reason: Option<String>,
+    },
+
     #[error(
         "parent request {parent_request_id} for child request {request_id} belongs to stale session anchor {parent_session_anchor_id}, current anchor is {current_session_anchor_id}"
     )]
@@ -687,6 +757,13 @@ fn validate_parent_request_lineage_locked(
             parent_request_id: parent_request_id.clone(),
         });
     };
+    if parent_inflight.cancellation_requested {
+        return Err(SessionError::ParentRequestCancelled {
+            request_id: request_id.clone(),
+            parent_request_id: parent_request_id.clone(),
+            reason: parent_inflight.cancellation_reason.clone(),
+        });
+    }
     let Some(parent_lineage) = request_lineage.get(parent_request_id).cloned() else {
         return Err(SessionError::ParentRequestNotInflight {
             request_id: request_id.clone(),
@@ -1351,6 +1428,34 @@ impl Session {
 
     pub fn request_cancellation(&self, request_id: &RequestId) -> Result<(), SessionError> {
         self.inflight.mark_cancellation_requested(request_id)
+    }
+
+    pub(crate) fn request_cancellation_with_reason(
+        &self,
+        request_id: &RequestId,
+        reason: &str,
+    ) -> Result<(), SessionError> {
+        self.inflight
+            .mark_cancellation_requested_with_reason(request_id, Some(reason))
+    }
+
+    pub(crate) fn try_mark_request_dispatch_started(
+        &self,
+        request_id: &RequestId,
+    ) -> Result<(), DispatchStartFailure> {
+        self.auth_state.with_current(|auth_state| {
+            self.inflight
+                .try_mark_dispatch_started(request_id, auth_state.session_anchor.id())
+        })
+    }
+
+    pub(crate) fn mark_request_dispatch_finished(&self, request_id: &RequestId) {
+        self.inflight.mark_dispatch_finished(request_id);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_request_dispatch_active(&self, request_id: &RequestId) -> bool {
+        self.inflight.is_dispatch_active(request_id)
     }
 
     pub fn validate_parent_request_lineage(

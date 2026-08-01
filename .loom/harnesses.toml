@@ -1,0 +1,144 @@
+schema = "chio.loom.v1"
+
+# Every entry is a bounded abstract synchronization model. The tests use
+# Loom-owned primitives in test-local state machines. They do not replace or
+# prove the kernel's production std, Tokio, DashMap, or ArcSwap primitives.
+#
+# The runner fixes `--cfg chio_kernel_loom`, applies the per-entry preemption
+# bound, and records runtime evidence under `target/loom/`.
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_session_create_lookup_terminal_same_id"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models create, lookup, and terminal-state ordering for one session identity."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_parent_signs_receipt_while_child_spawns"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models parent receipt publication before a child receipt becomes observable."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_revocation_race_eval"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models serialized revocation and evaluation event ordering."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_receipt_channel_producer_drain"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models bounded receipt queue backpressure, draining, and exactly-once signing."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_inflight_increment_decrement_storm"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models concurrent in-flight tracking and cancellation without underflow."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_dashmap_session_insert_remove_concurrent"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models one session shard under concurrent insert, remove, and lookup."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_emergency_stop_arcswap"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models publication ordering between emergency-stop state and its reason."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::protocol_primitives_last_unit_contention"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models two concurrent charges against a one-unit atomic budget."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::protocol_primitives_three_key_all_or_nothing_admission"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models overlapping composite quota reservations as one all-or-nothing admission."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::protocol_primitives_immutable_maximum_race"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models concurrent definitions of one quota key with an immutable maximum."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_cumulative_approval_serializes_concurrent_threshold_crossing"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models concurrent reservations crossing one cumulative approval threshold."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::protocol_primitives_capture_versus_reverse"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models capture and pre-dispatch reverse racing for one authorized reservation."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::protocol_primitives_idempotent_compensation"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models duplicate compensation attempts applying exactly one reversal."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_approval_attachment_and_pending_reverse_have_one_winner"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models approval attachment and pending reversal racing for one operation."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_post_admission_drop_guards_race_on_receipt_store_write_lock"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models two armed post-dispatch guards serializing non-atomic receipt appends."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_disarmed_drop_guard_is_noop"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models the disarmed guard as a no-op under a competing receipt append."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::receipt_writer_liveness_no_lost_wakeup"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models receipt-writer liveness publication without torn or lost terminal verdicts."

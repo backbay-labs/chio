@@ -26,6 +26,96 @@ mod tests {
     use crate::error::WasmGuardError;
     use chio_core::capability::scope::ChioScope;
     use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    #[derive(Clone, Copy)]
+    enum BoundaryOutcome {
+        UnknownVerdict,
+        FuelExhausted,
+        MemoryTrap,
+        DenyWithoutReason,
+    }
+
+    struct BoundaryBackend {
+        outcome: BoundaryOutcome,
+        loaded: bool,
+    }
+
+    impl BoundaryBackend {
+        fn new(outcome: BoundaryOutcome) -> Self {
+            Self {
+                outcome,
+                loaded: false,
+            }
+        }
+    }
+
+    impl WasmGuardAbi for BoundaryBackend {
+        fn load_module(
+            &mut self,
+            _wasm_bytes: &[u8],
+            _fuel_limit: u64,
+        ) -> Result<(), WasmGuardError> {
+            self.loaded = true;
+            Ok(())
+        }
+
+        fn evaluate(&mut self, _request: &GuardRequest) -> Result<GuardVerdict, WasmGuardError> {
+            if !self.loaded {
+                return Err(WasmGuardError::BackendUnavailable);
+            }
+            match self.outcome {
+                BoundaryOutcome::UnknownVerdict => Err(WasmGuardError::Trap(
+                    "unexpected return value from evaluate: 7".to_string(),
+                )),
+                BoundaryOutcome::FuelExhausted => Err(WasmGuardError::FuelExhausted {
+                    consumed: 50_000,
+                    limit: 50_000,
+                }),
+                BoundaryOutcome::MemoryTrap => {
+                    Err(WasmGuardError::Trap("memory growth denied".to_string()))
+                }
+                BoundaryOutcome::DenyWithoutReason => Ok(GuardVerdict::Deny { reason: None }),
+            }
+        }
+
+        fn backend_name(&self) -> &str {
+            "boundary-test"
+        }
+    }
+
+    struct CountingBackend {
+        calls: Arc<AtomicU64>,
+        loaded: bool,
+    }
+
+    impl WasmGuardAbi for CountingBackend {
+        fn load_module(
+            &mut self,
+            _wasm_bytes: &[u8],
+            _fuel_limit: u64,
+        ) -> Result<(), WasmGuardError> {
+            self.loaded = true;
+            Ok(())
+        }
+
+        fn evaluate(&mut self, _request: &GuardRequest) -> Result<GuardVerdict, WasmGuardError> {
+            if !self.loaded {
+                return Err(WasmGuardError::BackendUnavailable);
+            }
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(GuardVerdict::Allow)
+        }
+
+        fn backend_name(&self) -> &str {
+            "counting-test"
+        }
+
+        fn last_fuel_consumed(&self) -> Option<u64> {
+            Some(17)
+        }
+    }
 
     fn make_test_capability() -> chio_core::capability::token::CapabilityToken {
         let keypair = chio_core::crypto::Keypair::generate();
@@ -65,6 +155,30 @@ mod tests {
         }
     }
 
+    fn boundary_verdict(outcome: BoundaryOutcome, advisory: bool) -> Verdict {
+        let mut backend = BoundaryBackend::new(outcome);
+        backend.load_module(b"boundary-test", 50_000).unwrap();
+        let guard = WasmGuard::new(
+            "boundary-test".to_string(),
+            Box::new(backend),
+            advisory,
+            None,
+        );
+        let request = make_test_request();
+        let scope = ChioScope::default();
+        let agent_id = "agent-1".to_string();
+        let server_id = "test_server".to_string();
+        let context = GuardContext {
+            request: &request,
+            scope: &scope,
+            agent_id: &agent_id,
+            server_id: &server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+        guard.evaluate(&context).unwrap().verdict
+    }
+
     #[test]
     fn mock_allow_backend() {
         let mut backend = MockWasmBackend::allowing();
@@ -91,6 +205,116 @@ mod tests {
             result,
             Ok(decision) if decision.verdict == Verdict::Allow
         ));
+    }
+
+    #[test]
+    fn wasm_guard_dispatch_revalidation_does_not_execute_guest_twice() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let mut backend = CountingBackend {
+            calls: Arc::clone(&calls),
+            loaded: false,
+        };
+        backend.load_module(b"fake", 1000).unwrap();
+        let guard = WasmGuard::new(
+            "counting-test".to_string(),
+            Box::new(backend),
+            false,
+            Some("admission-manifest".to_string()),
+        );
+        assert!(!guard.requires_dispatch_revalidation());
+
+        let request = make_test_request();
+        let scope = ChioScope::default();
+        let agent_id = "agent-1".to_string();
+        let server_id = "test_server".to_string();
+        let context = GuardContext {
+            request: &request,
+            scope: &scope,
+            agent_id: &agent_id,
+            server_id: &server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+
+        let decision = guard.evaluate(&context).unwrap();
+        assert_eq!(decision.verdict, Verdict::Allow);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let admission_evidence = guard.guard_evidence_metadata();
+
+        guard.revalidate_before_dispatch(&context).unwrap();
+        guard.revalidate_required_before_dispatch(&context).unwrap();
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(guard.guard_evidence_metadata(), admission_evidence);
+    }
+
+    #[test]
+    fn hot_reload_between_admission_and_evidence_preserves_admitting_epoch() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let mut admission_backend = CountingBackend {
+            calls: Arc::clone(&calls),
+            loaded: false,
+        };
+        admission_backend.load_module(b"admission", 1000).unwrap();
+        let guard = WasmGuard::new(
+            "reload-evidence-test".to_string(),
+            Box::new(admission_backend),
+            false,
+            Some("admission-manifest".to_string()),
+        );
+
+        let request = make_test_request();
+        let scope = ChioScope::default();
+        let agent_id = "agent-1".to_string();
+        let server_id = "test_server".to_string();
+        let context = GuardContext {
+            request: &request,
+            scope: &scope,
+            agent_id: &agent_id,
+            server_id: &server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+
+        let decision = guard.evaluate(&context).unwrap();
+        assert_eq!(decision.verdict, Verdict::Allow);
+
+        let mut replacement_backend = CountingBackend {
+            calls: Arc::clone(&calls),
+            loaded: false,
+        };
+        replacement_backend
+            .load_module(b"replacement", 1000)
+            .unwrap();
+        let (admission_module, replacement_epoch) = guard
+            .replace_loaded_module_with_previous(
+                Box::new(replacement_backend),
+                Some("replacement-manifest".to_string()),
+            )
+            .unwrap();
+
+        assert_eq!(replacement_epoch, EpochId::new(1));
+        assert_eq!(guard.current_epoch_id(), replacement_epoch);
+        assert_eq!(
+            guard.guard_evidence_metadata(),
+            serde_json::json!({
+                "epoch_id": EpochId::INITIAL.get(),
+                "fuel_consumed": 17,
+                "manifest_sha256": "admission-manifest",
+            })
+        );
+
+        guard.restore_loaded_module(admission_module);
+        assert_eq!(guard.current_epoch_id(), EpochId::INITIAL);
+        assert_eq!(
+            guard.guard_evidence_metadata(),
+            serde_json::json!({
+                "epoch_id": EpochId::INITIAL.get(),
+                "fuel_consumed": 17,
+                "manifest_sha256": "admission-manifest",
+            })
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -149,6 +373,51 @@ mod tests {
             result,
             Ok(decision) if decision.verdict == Verdict::Allow
         ));
+    }
+
+    #[test]
+    fn blocking_unknown_verdict_error_denies() {
+        // Grounds blocking_unknown_verdict_denies at the kernel guard mapping.
+        assert_eq!(
+            boundary_verdict(BoundaryOutcome::UnknownVerdict, false),
+            Verdict::Deny
+        );
+    }
+
+    #[test]
+    fn blocking_fuel_exhaustion_denies() {
+        // Grounds resource_exhaustion_fail_closed for fuel exhaustion.
+        assert_eq!(
+            boundary_verdict(BoundaryOutcome::FuelExhausted, false),
+            Verdict::Deny
+        );
+    }
+
+    #[test]
+    fn blocking_memory_trap_denies() {
+        // Grounds resource_exhaustion_fail_closed for memory exhaustion.
+        assert_eq!(
+            boundary_verdict(BoundaryOutcome::MemoryTrap, false),
+            Verdict::Deny
+        );
+    }
+
+    #[test]
+    fn blocking_malformed_deny_reason_retains_deny() {
+        // Grounds malformed_deny_reason_preserves_decision.
+        assert_eq!(
+            boundary_verdict(BoundaryOutcome::DenyWithoutReason, false),
+            Verdict::Deny
+        );
+    }
+
+    #[test]
+    fn advisory_error_allows() {
+        // Grounds advisory_mode_is_nonblocking_by_design.
+        assert_eq!(
+            boundary_verdict(BoundaryOutcome::FuelExhausted, true),
+            Verdict::Allow
+        );
     }
 
     #[test]

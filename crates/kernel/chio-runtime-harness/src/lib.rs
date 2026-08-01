@@ -112,7 +112,7 @@ fn run_runtime_loopback_scenario_with_static_baseline(
     chio_store_sqlite::SqliteAuthorityStore::ensure_serving_supported().map_err(|error| {
         RuntimeLoopbackError::message(format!("Chio runtime loopback authority platform: {error}"))
     })?;
-    fs::create_dir_all(store_dir).map_err(|error| {
+    create_private_directory(store_dir).map_err(|error| {
         RuntimeLoopbackError::message(format!(
             "failed to create Chio runtime store directory {}: {error}",
             store_dir.display()
@@ -143,7 +143,7 @@ fn run_runtime_loopback_scenario_with_static_baseline(
         })?;
     let authority_path = store_dir.join("kernel-authority.sqlite3");
     let authority_lock_root = store_dir.join("kernel-authority-locks");
-    fs::create_dir_all(&authority_lock_root).map_err(|error| {
+    create_private_directory(&authority_lock_root).map_err(|error| {
         RuntimeLoopbackError::message(format!(
             "failed to create Chio runtime authority lock directory {}: {error}",
             authority_lock_root.display()
@@ -212,6 +212,17 @@ fn run_runtime_loopback_scenario_with_static_baseline(
             report: static_report,
         },
     )
+}
+
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path)
 }
 
 #[cfg(all(test, windows))]

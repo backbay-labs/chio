@@ -42,9 +42,10 @@ pub(crate) fn cmd_chio_runtime_admit(
     })?;
     let runtime_trust_input = runtime_trust_input
         .map(|path| {
-            chio_runtime::signed_runtime_verifier_trust_bundle_from_json(
-                &read_utf8_json_file(path, "Chio runtime trust input")?,
-            )
+            chio_runtime::signed_runtime_verifier_trust_bundle_from_json(&read_utf8_json_file(
+                path,
+                "Chio runtime trust input",
+            )?)
             .map_err(|error| {
                 CliError::cli_other_error(format!("Chio runtime trust input parse: {error}"))
             })
@@ -57,9 +58,7 @@ pub(crate) fn cmd_chio_runtime_admit(
                 "Chio runtime trusted verifiers",
             )?)
             .map_err(|error| {
-                CliError::cli_other_error(format!(
-                    "Chio runtime trusted verifiers parse: {error}"
-                ))
+                CliError::cli_other_error(format!("Chio runtime trusted verifiers parse: {error}"))
             })
         })
         .transpose()?;
@@ -82,9 +81,7 @@ pub(crate) fn cmd_chio_runtime_admit(
                 "Chio runtime pheromone policy",
             )?)
             .map_err(|error| {
-                CliError::cli_other_error(format!(
-                    "Chio runtime pheromone policy parse: {error}"
-                ))
+                CliError::cli_other_error(format!("Chio runtime pheromone policy parse: {error}"))
             })
         })
         .transpose()?;
@@ -114,9 +111,7 @@ pub(crate) fn cmd_chio_runtime_admit(
     let trust_floor_store = trust_floor_state
         .map(|path| {
             chio_runtime::JsonRuntimeTrustFloorStateStore::open(path).map_err(|error| {
-                CliError::cli_other_error(format!(
-                    "Chio runtime trust-floor state open: {error}"
-                ))
+                CliError::cli_other_error(format!("Chio runtime trust-floor state open: {error}"))
             })
         })
         .transpose()?;
@@ -129,8 +124,8 @@ pub(crate) fn cmd_chio_runtime_admit(
         } else {
             &store
         };
-    let admission_report = chio_runtime::evaluate_runtime_admission(
-        chio_runtime::ChioRuntimeAdmissionInput {
+    let admission_report =
+        chio_runtime::evaluate_runtime_admission(chio_runtime::ChioRuntimeAdmissionInput {
             profile: &profile,
             store: evaluation_store,
             admission_id: &admission_id,
@@ -142,16 +137,11 @@ pub(crate) fn cmd_chio_runtime_admit(
             runtime_pheromone_policy: runtime_pheromone_policy.as_ref(),
             runtime_peer_weights: runtime_peer_weights.as_ref(),
             now_unix_ms,
-        },
-    )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio runtime admission evaluation: {error}"))
-    })?;
-    write_pretty_json(
-        report,
-        &admission_report,
-        "Chio runtime admission report",
-    )?;
+        })
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime admission evaluation: {error}"))
+        })?;
+    write_pretty_json(report, &admission_report, "Chio runtime admission report")?;
     if admission_report.accepted {
         Ok(())
     } else {
@@ -196,9 +186,10 @@ pub(crate) fn cmd_chio_runtime_pheromone_evaluate(
         CliError::cli_other_error(format!("Chio runtime trusted verifiers parse: {error}"))
     })?;
     let query_report = read_chio_runtime_pheromone_query_report(pheromone_query_report)?;
-    let policy = chio_runtime::signed_runtime_pheromone_policy_from_json(
-        &read_utf8_json_file(runtime_pheromone_policy, "Chio runtime pheromone policy")?,
-    )
+    let policy = chio_runtime::signed_runtime_pheromone_policy_from_json(&read_utf8_json_file(
+        runtime_pheromone_policy,
+        "Chio runtime pheromone policy",
+    )?)
     .map_err(|error| {
         CliError::cli_other_error(format!("Chio runtime pheromone policy parse: {error}"))
     })?;
@@ -214,9 +205,10 @@ pub(crate) fn cmd_chio_runtime_pheromone_evaluate(
         issued_at_unix_ms: now_unix_ms.saturating_sub(1),
         expires_at_unix_ms: now_unix_ms.saturating_add(1),
     };
-    let weights = chio_runtime::signed_runtime_peer_weights_from_json(
-        &read_utf8_json_file(runtime_peer_weights, "Chio runtime peer weights")?,
-    )
+    let weights = chio_runtime::signed_runtime_peer_weights_from_json(&read_utf8_json_file(
+        runtime_peer_weights,
+        "Chio runtime peer weights",
+    )?)
     .map_err(|error| {
         CliError::cli_other_error(format!("Chio runtime peer weights parse: {error}"))
     })?;
@@ -226,8 +218,8 @@ pub(crate) fn cmd_chio_runtime_pheromone_evaluate(
     store.insert_bundle(bundle.clone()).map_err(|error| {
         CliError::cli_other_error(format!("Chio runtime policy store update: {error}"))
     })?;
-    let report_value = chio_runtime::evaluate_runtime_admission(
-        chio_runtime::ChioRuntimeAdmissionInput {
+    let report_value =
+        chio_runtime::evaluate_runtime_admission(chio_runtime::ChioRuntimeAdmissionInput {
             profile: &profile,
             store: &store,
             admission_id: &bundle.admission_id,
@@ -239,19 +231,14 @@ pub(crate) fn cmd_chio_runtime_pheromone_evaluate(
             runtime_pheromone_policy: Some(&policy),
             runtime_peer_weights: Some(&weights),
             now_unix_ms,
-        },
-    )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio runtime pheromone evaluation: {error}"))
-    })?;
+        })
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime pheromone evaluation: {error}"))
+        })?;
     let decision = report_value.pheromone_policy_decision.ok_or_else(|| {
         CliError::cli_other_error("Chio runtime pheromone evaluation produced no decision")
     })?;
-    write_pretty_json(
-        report,
-        &decision,
-        "Chio runtime pheromone policy decision",
-    )
+    write_pretty_json(report, &decision, "Chio runtime pheromone policy decision")
 }
 
 fn resolve_runtime_pheromone_evaluation_verifier_id(

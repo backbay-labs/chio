@@ -1,0 +1,3 @@
+-------------- MODULE DistributedRevocationSignerPinBroken --------------
+EXTENDS DistributedRevocation
+=============================================================================

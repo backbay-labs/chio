@@ -79,7 +79,33 @@ pub struct DpopConfig {
 
 `proof_ttl_secs` is how long a proof remains valid after `issued_at`. The default is 5 minutes. `max_clock_skew_secs` is how far in the future a proof's `issued_at` may be while still passing (to accommodate slight clock differences between client and server). The default is 30 seconds.
 
-`nonce_store_capacity` limits the in-memory LRU nonce replay cache. Nonces are keyed by `(nonce, capability_id)`. When the cache is full, the LRU entry is evicted. Capacity should be set above the expected peak rate of concurrent calls times the TTL window.
+`nonce_store_capacity` limits the in-memory nonce replay cache. Nonces are keyed by `(nonce, capability_id)`. Expired entries are reclaimed, but live replay markers are never evicted. When all slots are live, the store denies new reservations fail-closed. Capacity should be set above the expected peak rate of concurrent calls times the full signed validity window, including tolerated future clock skew.
+
+The durable `SqliteExecutionNonceStore` applies the same deny-at-cap policy to
+retained execution-nonce rows. `open` uses
+`DEFAULT_EXECUTION_NONCE_STORE_CAPACITY`; `open_with_capacity` configures a
+different kernel-global limit. Its prune, duplicate check, live-row count, and
+insert execute in one write transaction, so pressure cannot evict a live marker
+or admit a row above the configured bound.
+
+### External payment authorization
+
+DPoP alone does not authorize an external payment rail call. Its built-in nonce
+store is process-scoped, so a fresh proof could be accepted again after a
+kernel restart. Before calling `PaymentAdapter::authorize`, the kernel requires
+a freshly reserved execution nonce or governed approval marker. Deployments
+that need payment replay protection across restart must install the durable
+store for that credential path, such as `SqliteExecutionNonceStore` or
+`SqliteGovernedApprovalReplayStore`.
+
+These capacities are availability boundaries, not tenant quotas. The replay
+store contracts do not carry an authenticated principal or tenant identity, and
+opaque nonce IDs must not be parsed to invent one. Multi-tenant deployments
+that need independent pressure domains must use a dedicated kernel and replay
+store per tenant, or enforce authenticated per-tenant rate limits before calls
+reach a shared kernel. A shared store still preserves replay correctness under
+pressure by denying new reservations, but one tenant can consume the shared
+availability budget.
 
 ## Generating Proofs (Rust)
 

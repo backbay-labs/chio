@@ -648,6 +648,25 @@ impl ChioKernel {
             && (self.dual_signed_receipt(&receipt.id).is_none()
                 || self.federation_dsse_envelope(&receipt.id).is_none())
         {
+            // A completed replay enters recovery before the ordinary runtime
+            // admission stage. Re-admit and reinstall the verified treaty
+            // material before retrying the missing bilateral projection.
+            let now_unix_ms = current_unix_timestamp_ms();
+            let treaty_admission = self.run_runtime_admission_hook(
+                request,
+                tool_return.raw.receipt_metadata_snapshot(),
+                now_unix_ms / 1_000,
+                now_unix_ms,
+                Some(matched_grant_index),
+            );
+            if !treaty_admission.allowed {
+                return Err(KernelError::Internal(format!(
+                    "federation runtime treaty re-admission failed during completed replay: {}",
+                    treaty_admission
+                        .reason
+                        .unwrap_or_else(|| "runtime admission denied".to_string())
+                )));
+            }
             self.apply_federation_cosign_for_admitted_request(request, &receipt)?;
         }
         if let Some(crate::memory_provenance::MemoryActionKind::Write { store, key }) =

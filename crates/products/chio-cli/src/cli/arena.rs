@@ -53,13 +53,11 @@ pub(crate) fn cmd_arena_run(
         "determinism": witness,
     });
     if json_output {
-        let bytes = serde_json::to_vec(&summary).map_err(|err| {
-            CliError::cli_other_error(format!("arena run json encode: {err}"))
-        })?;
+        let bytes = serde_json::to_vec(&summary)
+            .map_err(|err| CliError::cli_other_error(format!("arena run json encode: {err}")))?;
         let mut out = std::io::stdout().lock();
-        std::io::Write::write_all(&mut out, &bytes).map_err(|err| {
-            CliError::cli_io_error(format!("arena run stdout: {err}"))
-        })?;
+        std::io::Write::write_all(&mut out, &bytes)
+            .map_err(|err| CliError::cli_io_error(format!("arena run stdout: {err}")))?;
         std::io::Write::write_all(&mut out, b"\n")
             .map_err(|err| CliError::cli_io_error(format!("arena run stdout: {err}")))?;
     } else {
@@ -99,13 +97,11 @@ pub(crate) fn cmd_arena_replay(
         "engine": "chio-replay-corpus",
     });
     if json_output {
-        let bytes = serde_json::to_vec(&summary).map_err(|err| {
-            CliError::cli_other_error(format!("arena replay json encode: {err}"))
-        })?;
+        let bytes = serde_json::to_vec(&summary)
+            .map_err(|err| CliError::cli_other_error(format!("arena replay json encode: {err}")))?;
         let mut out = std::io::stdout().lock();
-        std::io::Write::write_all(&mut out, &bytes).map_err(|err| {
-            CliError::cli_io_error(format!("arena replay stdout: {err}"))
-        })?;
+        std::io::Write::write_all(&mut out, &bytes)
+            .map_err(|err| CliError::cli_io_error(format!("arena replay stdout: {err}")))?;
         std::io::Write::write_all(&mut out, b"\n")
             .map_err(|err| CliError::cli_io_error(format!("arena replay stdout: {err}")))?;
     } else {
@@ -163,13 +159,11 @@ pub(crate) fn cmd_arena_evolve(
         "budget_gate": "bounded:200_generations_or_30_minutes",
     });
     if json_output {
-        let bytes = serde_json::to_vec(&summary).map_err(|err| {
-            CliError::cli_other_error(format!("arena evolve json encode: {err}"))
-        })?;
+        let bytes = serde_json::to_vec(&summary)
+            .map_err(|err| CliError::cli_other_error(format!("arena evolve json encode: {err}")))?;
         let mut out = std::io::stdout().lock();
-        std::io::Write::write_all(&mut out, &bytes).map_err(|err| {
-            CliError::cli_io_error(format!("arena evolve stdout: {err}"))
-        })?;
+        std::io::Write::write_all(&mut out, &bytes)
+            .map_err(|err| CliError::cli_io_error(format!("arena evolve stdout: {err}")))?;
         std::io::Write::write_all(&mut out, b"\n")
             .map_err(|err| CliError::cli_io_error(format!("arena evolve stdout: {err}")))?;
     } else {

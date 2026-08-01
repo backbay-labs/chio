@@ -100,7 +100,7 @@ if [[ ! -f "$MANIFEST" ]]; then
 fi
 
 # Emit one TSV row per matching harness:
-#   crate \t harness \t default_unwind \t timeout_secs \t features
+#   crate \t harness \t default_unwind \t timeout_secs \t features \t unwinding_checks
 ROWS=$(python3 - "$MANIFEST" "$LANE_FILTER" "$CRATE_FILTER" "$EXCLUDE_CRATES" <<'PY'
 import sys
 from pathlib import Path
@@ -174,6 +174,12 @@ for idx, entry in enumerate(entries):
             f"harness[{idx}].features must be a list of strings\n"
         )
         sys.exit(2)
+    unwinding_checks = entry.get("unwinding_checks", False)
+    if not isinstance(unwinding_checks, bool):
+        sys.stderr.write(
+            f"harness[{idx}].unwinding_checks must be a boolean\n"
+        )
+        sys.exit(2)
     print(
         "\t".join(
             [
@@ -181,7 +187,8 @@ for idx, entry in enumerate(entries):
                 str(entry["harness"]),
                 str(int(entry["default_unwind"])),
                 str(int(entry["timeout_secs"])),
-                ",".join(features),
+                ",".join(features) if features else "-",
+                "true" if unwinding_checks else "false",
             ]
         )
     )
@@ -202,7 +209,7 @@ if [[ -z "$ROWS" ]]; then
 fi
 
 if [[ "$LIST_ONLY" -eq 1 ]]; then
-  while IFS=$'\t' read -r crate harness _ _ _; do
+  while IFS=$'\t' read -r crate harness _ _ _ _; do
     [[ -z "$crate" ]] && continue
     printf '%s::%s\n' "$crate" "$harness"
   done <<< "$ROWS"
@@ -226,13 +233,17 @@ if command -v timeout >/dev/null 2>&1; then
 fi
 
 COUNT=0
-while IFS=$'\t' read -r crate harness unwind timeout features; do
+while IFS=$'\t' read -r crate harness unwind timeout features unwinding_checks; do
   [[ -z "$crate" ]] && continue
   COUNT=$((COUNT + 1))
 
-  CMD=(cargo kani -p "$crate" --lib --harness "$harness"
-       --default-unwind "$unwind" --no-unwinding-checks)
-  if [[ -n "$features" ]]; then
+  qualified_harness="kani_public_harnesses::${harness}"
+  CMD=(cargo kani -p "$crate" --lib --harness "$qualified_harness" --exact
+       --default-unwind "$unwind")
+  if [[ "$unwinding_checks" != "true" ]]; then
+    CMD+=(--no-unwinding-checks)
+  fi
+  if [[ "$features" != "-" ]]; then
     CMD+=(--features "$features")
   fi
 
@@ -245,7 +256,7 @@ while IFS=$'\t' read -r crate harness unwind timeout features; do
     continue
   fi
 
-  echo "::group::cargo kani ${crate}::${harness} (unwind=${unwind} timeout=${timeout}s)"
+  echo "::group::cargo kani ${crate}::${qualified_harness} (unwind=${unwind} timeout=${timeout}s)"
   # Capture the harness exit status without negation. After `if ! cmd; then`,
   # `$?` is 0 because `!` inverts the status before the conditional; running
   # the command directly under a temporary `set +e` and stashing `$?`

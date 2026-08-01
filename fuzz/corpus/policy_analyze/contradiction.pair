@@ -1,0 +1,13 @@
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    allow: ["admin.read"]
+    block: []
+    default: block
+---CHIO-POLICY-PAIR---
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    allow: ["admin.read"]
+    block: ["admin.read"]
+    default: block

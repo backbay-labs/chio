@@ -1,6 +1,9 @@
 use super::*;
 
-pub(crate) fn dispatch_lineage(command: LineageCommands, json_output: bool) -> Result<(), CliError> {
+pub(crate) fn dispatch_lineage(
+    command: LineageCommands,
+    json_output: bool,
+) -> Result<(), CliError> {
     use crate::lineage as ln;
     use chio_lineage::query::QueryBounds;
     match command {
@@ -71,7 +74,10 @@ pub(crate) fn dispatch_lineage(command: LineageCommands, json_output: bool) -> R
     }
 }
 
-pub(crate) fn emit_lineage_report<T: serde::Serialize>(report: &T, json: bool) -> Result<(), CliError> {
+pub(crate) fn emit_lineage_report<T: serde::Serialize>(
+    report: &T,
+    json: bool,
+) -> Result<(), CliError> {
     if json {
         let bytes = serde_json::to_vec_pretty(report)
             .map_err(|e| CliError::Other(format!("lineage serialize: {e}")))?;

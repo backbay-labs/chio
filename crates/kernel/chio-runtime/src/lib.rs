@@ -252,6 +252,17 @@ where
     ) -> Result<(), chio_kernel::KernelError> {
         chio_kernel::RuntimeAdmissionHook::release_reserved(&self.core_hook(), metadata)
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        chio_kernel::RuntimeAdmissionHook::requires_dispatch_revalidation(&self.core_hook())
+    }
+
+    fn revalidate_before_dispatch(
+        &self,
+        context: &chio_kernel::RuntimeAdmissionRevalidationContext<'_>,
+    ) -> Result<(), chio_kernel::KernelError> {
+        chio_kernel::RuntimeAdmissionHook::revalidate_before_dispatch(&self.core_hook(), context)
+    }
 }
 
 pub(crate) type RuntimeCoreError = chio_runtime_core::ChioRuntimeError;

@@ -118,6 +118,26 @@ run_criterion_bench chio-attest-buyer-core buyer_verify
 
 printf 'path,sample,elapsed_ns,proof_package_bytes\n' > "$RAW_CSV"
 
+file_size_bytes() {
+  local path="$1"
+  local size
+  if size="$(stat -c %s -- "$path" 2>/dev/null)"; then
+    :
+  elif size="$(stat -f %z "$path" 2>/dev/null)"; then
+    :
+  else
+    echo "cannot determine file size: $path" >&2
+    return 1
+  fi
+  case "$size" in
+    ''|*[!0-9]*)
+      echo "stat returned a nonnumeric file size for $path: $size" >&2
+      return 1
+      ;;
+  esac
+  printf '%s\n' "$size"
+}
+
 run_hero_sample() {
   local mode="$1"
   local label="$2"
@@ -139,7 +159,7 @@ run_hero_sample() {
   fi
   end_ns="$(date +%s%N)"
   local proof_bytes
-  proof_bytes="$(stat -c %s "$out_dir/proof-package.json")"
+  proof_bytes="$(file_size_bytes "$out_dir/proof-package.json")"
   printf '%s,%s,%s,%s\n' \
     "$label" "$sample" "$((end_ns - start_ns))" "$proof_bytes" >> "$RAW_CSV"
 }
@@ -153,7 +173,7 @@ for sample in $(seq 1 "$SAMPLES"); do
   run_hero_sample --producer-only producer_without_buyer_review "$sample"
 done
 for sample in $(seq 1 "$SAMPLES"); do
-  run_hero_sample --packet-only full_receiver_admission "$sample"
+  run_hero_sample --packet-only complete_buyer_workflow "$sample"
 done
 
 negative_start_ns="$(date +%s%N)"
@@ -195,9 +215,9 @@ import sys
 target = pathlib.Path(target_dir)
 
 criterion_cases = {
-    "receipt_sign": ("receipt_sign", "buyer-closure-shaped Ed25519 receipt"),
-    "receipt_verify": ("receipt_verify", "buyer-closure-shaped Ed25519 receipt"),
-    "receipt_append_sqlite": ("receipt_append_sqlite", "production SQLite receipt store"),
+    "receipt_sign": ("receipt_sign", "Ed25519 over the evaluated receipt shape"),
+    "receipt_verify": ("receipt_verify", "Ed25519 over the evaluated receipt shape"),
+    "receipt_append_sqlite": ("receipt_append_sqlite", "SQLite receipt store"),
     "treaty_predispatch_deny": (
         "treaty_predispatch_deny",
         "full kernel path; real hook, SQLite denial receipt, invocation counter",
@@ -261,7 +281,7 @@ for label, observations_ns in paths.items():
 proof_sizes = {
     int(row["proof_package_bytes"])
     for row in raw_rows
-    if row["path"] == "full_receiver_admission"
+    if row["path"] == "complete_buyer_workflow"
 }
 if len(proof_sizes) != 1:
     raise SystemExit(f"proof package size was not stable: {sorted(proof_sizes)}")
@@ -321,14 +341,13 @@ document = {
         "explicitNonTestableAssumptions": assumptions,
     },
     "proofPackageBytes": proof_package_bytes,
-    "anchorInclusion": "withheld_outside_core_claim",
 }
 pathlib.Path(result_json).write_text(
     json.dumps(document, indent=2, sort_keys=True) + "\n",
     encoding="utf-8",
 )
 
-full = path_summaries["full_receiver_admission"]
+buyer_workflow = path_summaries["complete_buyer_workflow"]
 producer = path_summaries["producer_without_buyer_review"]
 deny = next(
     component for component in components
@@ -346,18 +365,20 @@ cross_boundary = component_by_name["cross_boundary_admission_allow"]
 buyer_verify = component_by_name["buyer_proof_package_verify"]
 proof_package_tex = f"{proof_package_bytes:,}".replace(",", "{,}")
 macros = [
-    ("PSFullAdmissionPFiftyMs", f'{full["p50_ms"]:.3f}'),
-    ("PSFullAdmissionPNinetyNineMs", f'{full["p99_ms"]:.3f}'),
-    ("PSFullAdmissionPFiftySec", f'{full["p50_ms"] / 1000.0:.3f}'),
-    ("PSFullAdmissionPNinetyNineSec", f'{full["p99_ms"] / 1000.0:.3f}'),
+    ("PSBuyerWorkflowPFiftyMs", f'{buyer_workflow["p50_ms"]:.3f}'),
+    ("PSBuyerWorkflowPNinetyNineMs", f'{buyer_workflow["p99_ms"]:.3f}'),
+    ("PSBuyerWorkflowPFiftySec", f'{buyer_workflow["p50_ms"] / 1000.0:.3f}'),
+    ("PSBuyerWorkflowPNinetyNineSec", f'{buyer_workflow["p99_ms"] / 1000.0:.3f}'),
     ("PSProducerPFiftyMs", f'{producer["p50_ms"]:.3f}'),
     ("PSProducerPNinetyNineMs", f'{producer["p99_ms"]:.3f}'),
     (
         "PSBuyerPathMedianDifferenceMs",
-        f'{full["p50_ms"] - producer["p50_ms"]:.3f}',
+        f'{buyer_workflow["p50_ms"] - producer["p50_ms"]:.3f}',
     ),
     ("PSPredispatchDenyPFiftyUs", f'{deny["p50_us"]:.3f}'),
     ("PSPredispatchDenyPNinetyNineUs", f'{deny["p99_us"]:.3f}'),
+    ("PSPredispatchDenyPFiftyMs", f'{deny["p50_us"] / 1000.0:.3f}'),
+    ("PSPredispatchDenyPNinetyNineMs", f'{deny["p99_us"] / 1000.0:.3f}'),
     ("PSReceiptSignPFiftyUs", f'{receipt_sign["p50_us"]:.3f}'),
     ("PSReceiptSignPNinetyNineUs", f'{receipt_sign["p99_us"]:.3f}'),
     ("PSReceiptVerifyPFiftyUs", f'{receipt_verify["p50_us"]:.3f}'),

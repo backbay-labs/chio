@@ -19,13 +19,13 @@ safety violations of `NoAllowAfterRevoke`, `MonotoneLog`, or
 property-counterexample template.
 
 Drop the raw counterexample trace into `formal/tla/counterexamples/`
-(the directory is preserved by `.gitkeep`) and link it from this issue.
+and link it from this issue.
 The naming convention is:
 
-  formal/tla/counterexamples/RevocationEventuallySeen-<UTC-date>-<short-sha>.txt
+  formal/tla/counterexamples/RevocationEventuallySeen-<UTC-date>-<short-sha>.itf.json
 
-Apalache emits the trace in its own format; do NOT translate it. Reviewers
-need the raw output to reproduce.
+Commit the raw ITF output without translating it. Reviewers need the original
+artifact to reproduce the run.
 -->
 
 ## Property violated
@@ -61,12 +61,13 @@ invariants):
 apalache-mc check \
     --temporal=RevocationEventuallySeen \
     --length=<N> \
+    --output-traces \
     --config=formal/tla/MCRevocationPropagationTemporal.cfg \
     formal/tla/RevocationPropagation.tla
 ```
 
-Config used (PR job is `PROCS=4, CAPS=8`; nightly liveness lane is
-`PROCS=6, CAPS=16`):
+Config used (safety and nightly liveness both use `PROCS=4, CAPS=8`;
+larger bounds are reserved for a future TLC lane):
 
 - `PROCS = <int>`
 - `CAPS  = <int>`
@@ -88,7 +89,15 @@ formatting; line numbers in Apalache traces matter.
 Full trace file (committed alongside this issue):
 
 ```text
-formal/tla/counterexamples/RevocationEventuallySeen-<UTC-date>-<short-sha>.txt
+formal/tla/counterexamples/RevocationEventuallySeen-<UTC-date>-<short-sha>.itf.json
+```
+
+Convert the trace after its production replay mapping is complete:
+
+```bash
+cargo xtask formal itf-to-regression \
+  --trace formal/tla/counterexamples/<trace>.itf.json \
+  --spec <replay-family>
 ```
 
 ## What the trace shows
@@ -140,6 +149,8 @@ matching label from the list. Severity drives release-gate posture in
 - [ ] Apalache version recorded above.
 - [ ] Full counterexample trace committed under
       `formal/tla/counterexamples/` and linked from this issue.
+- [ ] Generated `regression_formal_*.rs` trace-shape and replay tests committed
+      and running without exclusions.
 - [ ] Severity label applied (one of the four above).
 - [ ] If `severity-blocker` or `severity-major`: fix ticket opened and
       linked.

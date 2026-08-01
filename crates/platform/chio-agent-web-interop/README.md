@@ -38,6 +38,9 @@ matches what happened externally; it is never proof that Chio authorized it.
   payment protocols, cross-check a bound `CommerceOrderContext`.
 - Enforce that a verifier policy can require only `claim.agent_web.*`
   claims; reject any policy that requires a `claim.external.*` claim.
+- Keep read-only verification idempotent, while consuming verification
+  atomically reserves validated Standard Webhooks replay entries in a bounded
+  durable or in-memory store.
 - Emit an `AgentWebInteropReport` of verified claims, per-envelope
   projections, unsupported claims, and limitations.
 
@@ -51,14 +54,37 @@ matches what happened externally; it is never proof that Chio authorized it.
   `with_trusted_passport_signer_keys`, `with_trusted_receipt_kernel_keys`,
   `with_trusted_envelope_sidecar_keys`, `with_standard_webhooks_secret` /
   `with_standard_webhooks_secret_for`, `with_standard_webhooks_replay_window`,
-  `with_seen_standard_webhooks_id`.
+  `with_seen_standard_webhooks_id`, and
+  `with_standard_webhooks_replay_store`.
 - `verify_agent_web_interop_with_trust(bundle, trust) ->
-  Result<AgentWebInteropReport, TransactionPassportError>` - the entry point.
+  Result<AgentWebInteropReport, TransactionPassportError>` - the read-only,
+  idempotent entry point.
+- `verify_agent_web_interop_with_trust_and_consume_replays` - verify and then
+  atomically reserve all validated Standard Webhooks replay entries.
+- `verify_agent_web_interop_with_trust_and_consume_replays_if_report_matches`
+  - reserve entries only when the consuming pass reproduces a supplied
+  read-only report.
 - `verify_agent_web_interop(bundle)` - shorthand for
   `verify_agent_web_interop_with_trust` with empty trust; only succeeds if
   the bundle needs no pinned key, so real bundles use the trust-carrying form.
+- `AgentWebReplayStore`, `AgentWebReplayScope`, `AgentWebReplayEntry`,
+  `AgentWebReplayStoreError`, and `InMemoryAgentWebReplayStore` - the replay
+  reservation contract and bounded process-local implementation.
 - `AgentWebInteropReport`, `AgentWebProjectionResult`, `AgentWebClaimEvidence`
   - the output report and its per-envelope and per-claim detail.
+
+## Replay protection
+
+`chio proof verify` uses read-only verification. `chio proof collect` consumes
+replay entries only after all proof-family, root, parity, and required-claim
+checks pass and requires `CHIO_AGENT_WEB_REPLAY_STORE_PATH` to identify a
+durable SQLite store when Standard Webhooks replay protection is enabled.
+
+Replay entries are keyed by a derived scope and webhook id, so authenticated
+senders and endpoints do not share identifiers. Stores enforce positive global
+and per-scope capacities, fail closed without evicting live entries, and
+reserve a validated batch atomically. See `ARCHITECTURE.md` for scope
+derivation, migration, and operator capacity guidance.
 
 ## Testing
 

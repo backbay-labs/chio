@@ -57,6 +57,13 @@ describe("canonical JSON (RFC 8785 conformance)", () => {
     expect(canonicalJsonString("line\nbreak")).toBe('"line\\nbreak"');
   });
 
+  it("emits DEL and C1 controls without non-RFC escapes", () => {
+    expect(canonicalJsonString("\u007f\u009f")).toBe('"\u007f\u009f"');
+    expect(canonicalJsonString({ "\u007f\u009f": "\u007f\u009f" })).toBe(
+      '{"\u007f\u009f":"\u007f\u009f"}',
+    );
+  });
+
   it("handles arrays", () => {
     expect(canonicalJsonString([1, 2, 3])).toBe("[1,2,3]");
     expect(canonicalJsonString([])).toBe("[]");

@@ -98,7 +98,10 @@ pub(crate) fn render_doctor_human(writer: &mut impl Write, run: &DoctorRun) -> s
     )
 }
 
-pub(crate) fn write_doctor_report(writer: &mut impl Write, report: &ProbeReport) -> std::io::Result<()> {
+pub(crate) fn write_doctor_report(
+    writer: &mut impl Write,
+    report: &ProbeReport,
+) -> std::io::Result<()> {
     let marker = match report.severity {
         ProbeSeverity::Ok => "[ok]",
         ProbeSeverity::Info => "[info]",

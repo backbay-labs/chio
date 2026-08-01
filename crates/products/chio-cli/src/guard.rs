@@ -6,7 +6,9 @@ mod verify;
 
 pub(crate) use build::{cmd_guard_build, cmd_guard_install, cmd_guard_pack};
 pub(crate) use new::cmd_guard_new;
-pub(crate) use publish::{cmd_guard_publish, cmd_guard_pull, GuardPublishCommand, GuardPullCommand};
+pub(crate) use publish::{
+    cmd_guard_publish, cmd_guard_pull, GuardPublishCommand, GuardPullCommand,
+};
 pub(crate) use verify::{cmd_guard_bench, cmd_guard_inspect, cmd_guard_test};
 
 use crate::CliError;

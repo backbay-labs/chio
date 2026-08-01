@@ -1,0 +1,50 @@
+schema = "chio.aeneas-negative-tests.v1"
+
+[[mutation]]
+name = "target-status-downgrade"
+surface = "formal/aeneas/production.toml"
+operator = "replace generated_equivalence with extraction_only"
+expected_gate = "scripts/check-aeneas-production.sh"
+expected_evidence = "target is not equivalence-checked"
+
+[[mutation]]
+name = "registered-theorem-removal"
+surface = "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean"
+operator = "rename the registered ledger transition theorem"
+expected_gate = "scripts/check-aeneas-production.sh"
+expected_evidence = "registered equivalence proofs are missing"
+
+[[mutation]]
+name = "release-archive-substitution"
+surface = "Aeneas release archive"
+operator = "replace the archive with non-release bytes"
+expected_gate = "scripts/install-aeneas-toolchain.py --archive"
+expected_evidence = "release archive hash mismatch"
+
+[[mutation]]
+name = "charon-driver-substitution"
+surface = "target/formal/aeneas-toolchain/<architecture>/bin/charon-driver"
+operator = "flip one byte in the installed driver"
+expected_gate = "scripts/check-aeneas-production.sh"
+expected_evidence = "runtime binary hash mismatch"
+
+[[mutation]]
+name = "generated-snapshot-drift"
+surface = "formal/lean4/Chio/FormalAeneas/Funs.lean"
+operator = "change one generated definition without refreshing the snapshot"
+expected_gate = "scripts/snapshot-aeneas-generated.sh --check"
+expected_evidence = "GENERATED SNAPSHOT DRIFT"
+
+[[mutation]]
+name = "nonce-decision-semantic-change"
+surface = "formal/lean4/Chio/FormalAeneas/Funs.lean"
+operator = "replace nonce negation in both generated copies"
+expected_gate = "lake build Chio.Proofs.AeneasGeneratedEquivalence"
+expected_evidence = "generated_nonce_admits_eq_mirror"
+
+[[mutation]]
+name = "economy-conversion-semantic-change"
+surface = "formal/lean4/Chio/FormalEconomy/Funs.lean"
+operator = "reverse the generated ceil overflow comparison in both generated copies"
+expected_gate = "lake build Chio.Proofs.AeneasGeneratedEquivalence"
+expected_evidence = "generated_convert_ceil_scalar_eq_model"

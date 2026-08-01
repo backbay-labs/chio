@@ -50,8 +50,14 @@ mod policy;
 mod sign;
 #[path = "bilateral_dsse/types.rs"]
 mod types;
+#[path = "bilateral_dsse/typestate_handlers.rs"]
+pub(crate) mod typestate_handlers;
 #[path = "bilateral_dsse/verify.rs"]
 mod verify;
+
+#[cfg(feature = "typestate")]
+#[path = "_generated/bilateral_dsse_producer_typestate.rs"]
+pub mod typestate;
 
 pub use self::builder::{
     build_chio_bilateral_invocation_predicate, build_chio_bilateral_invocation_statement,

@@ -1,9 +1,34 @@
 use super::evaluation_helpers::{ExecutionNonceReservingResponse, PreDispatchCleanupDeny};
 use super::*;
 use crate::budget_store::BudgetInvocationCaptureDecision;
+use crate::kernel::dispatch::dispatch_admission_error_reason;
+use crate::kernel::kernel_drop_guard::reserved_runtime_admission_ids;
 
 impl ChioKernel {
     pub(super) async fn evaluate_tool_call_async_with_session_context(
+        &self,
+        request: &ToolCallRequest,
+        session_filesystem_roots: Option<&[String]>,
+        extra_metadata: Option<serde_json::Value>,
+        session_id: Option<&SessionId>,
+        preflight_disposition: PreflightHoldDisposition,
+    ) -> Result<ToolCallResponse, KernelError> {
+        let evaluation_id = uuid::Uuid::now_v7().to_string();
+        RECEIPT_EVALUATION_SCOPE_KEY
+            .scope(
+                evaluation_id,
+                self.evaluate_tool_call_async_with_session_context_scoped(
+                    request,
+                    session_filesystem_roots,
+                    extra_metadata,
+                    session_id,
+                    preflight_disposition,
+                ),
+            )
+            .await
+    }
+
+    async fn evaluate_tool_call_async_with_session_context_scoped(
         &self,
         request: &ToolCallRequest,
         session_filesystem_roots: Option<&[String]>,
@@ -88,11 +113,7 @@ impl ChioKernel {
                     "receipt federation admission failed pre-dispatch"
                 );
                 return self.build_negotiation_failclosed_deny_response_with_metadata(
-                    request,
-                    &msg,
-                    now,
-                    None,
-                    extra_metadata.clone(),
+                    request, &msg, now, None, None,
                 );
             }
         };
@@ -101,7 +122,8 @@ impl ChioKernel {
                 &request.request_id,
                 receipt_admission.clone(),
             );
-        let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
+        let _receipt_federation_scope =
+            scope_receipt_federation_admission(Some(receipt_admission.clone()));
 
         self.validate_web3_evidence_prerequisites()?;
 
@@ -229,7 +251,7 @@ impl ChioKernel {
             );
         }
 
-        if let Err(e) = self.check_revocation(cap) {
+        if let Err(e) = self.check_tool_call_revocation_admission(request) {
             let msg = e.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response_with_metadata(
@@ -289,11 +311,27 @@ impl ChioKernel {
         // DPoP enforcement before budget charge: if any matching grant requires
         // DPoP, verify the proof now so an attacker cannot drain the budget with
         // a valid capability token but missing or invalid DPoP proof.
-        if matching_grants
+        let dpop_required = matching_grants
             .iter()
-            .any(|m| m.grant.dpop_required == Some(true))
-        {
-            if let Err(e) = self.verify_dpop_for_request(request, cap) {
+            .any(|matching| matching.grant.dpop_required == Some(true));
+        if dpop_required {
+            let verification = request.dpop_proof.as_ref().map_or_else(
+                || {
+                    Err(KernelError::DpopVerificationFailed(
+                        "grant requires DPoP proof but none was provided".to_string(),
+                    ))
+                },
+                |proof| {
+                    self.verify_dpop_for_permission_preview(
+                        proof,
+                        cap,
+                        &request.server_id,
+                        &request.tool_name,
+                        &request.arguments,
+                    )
+                },
+            );
+            if let Err(e) = verification {
                 let msg = e.to_string();
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "DPoP verification failed");
                 return self.build_deny_response_with_metadata(
@@ -698,6 +736,15 @@ impl ChioKernel {
                 ),
             );
         };
+        let matched_grant = matching_grants
+            .iter()
+            .find(|matching| matching.index == matched_grant_index)
+            .map(|matching| matching.grant)
+            .ok_or_else(|| {
+                KernelError::Internal(
+                    "selected grant disappeared before dispatch revalidation".to_string(),
+                )
+            })?;
 
         let _governed_runtime_attestation_receipt_scope =
             scope_governed_runtime_attestation_receipt_record(
@@ -749,10 +796,11 @@ impl ChioKernel {
         };
 
         if self.execution_nonce_preflight_required(request) {
-            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                match preflight_disposition {
-                    PreflightHoldDisposition::ReverseForRetry => self
-                        .build_execution_nonce_preflight_allow_response_after_cleanup(
+            if preflight_disposition == PreflightHoldDisposition::ReverseForRetry {
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_execution_nonce_preflight_allow_response_after_cleanup(
                             request,
                             now,
                             matched_grant_index,
@@ -763,69 +811,295 @@ impl ChioKernel {
                                 .map(DurableToolAdmission::operation),
                             extra_metadata,
                             budget_lease_acquired,
-                        ),
-                    PreflightHoldDisposition::ReserveForCaller => {
-                        let settled_prepayment = match self.ensure_reserved_mustprepay_prepaid(
-                            request,
-                            budget_mutation.charge_result(),
-                            durable_admission.as_ref(),
-                            now_unix_ms,
-                            verified_governed_payee_binding.as_ref(),
-                        ) {
-                            Ok(prepayment) => prepayment,
-                            Err(error) => {
-                                let reason = error.to_string();
-                                warn!(
-                                    request_id = %request.request_id,
-                                    reason = %redacted!(&reason),
-                                    "reserve-for-caller prepayment gate denied"
-                                );
-                                return self.build_pre_dispatch_cleanup_deny_response(
-                                    PreDispatchCleanupDeny {
-                                        request,
-                                        reason: &reason,
-                                        timestamp: now,
-                                        matched_grant_index,
-                                        cap,
-                                        budget_mutation: &budget_mutation,
-                                        payment_authorization: None,
-                                        durable_operation: durable_admission
-                                            .as_ref()
-                                            .map(DurableToolAdmission::operation),
-                                        runtime_admission_metadata: extra_metadata,
-                                        verified_payee_binding: verified_governed_payee_binding
-                                            .as_ref(),
-                                        budget_lease_acquired,
-                                    },
-                                );
-                            }
-                        };
-                        let reserved_payment_reference = settled_prepayment
-                            .as_ref()
-                            .and_then(|prepayment| prepayment.payment_reference.clone());
-                        let response = self.build_execution_nonce_authorization_reserving_response(
-                            ExecutionNonceReservingResponse {
+                        )
+                    },
+                );
+            }
+
+            let governed_mustprepay = Self::is_governed_mustprepay_request(request);
+            let mut credential_reservation = match self.reserve_caller_authorization_credentials(
+                request,
+                cap,
+                dpop_required,
+                now,
+                governed_mustprepay,
+            ) {
+                Ok(reservation) => reservation,
+                Err(error) => {
+                    let reason = error.to_string();
+                    warn!(
+                        request_id = %request.request_id,
+                        reason = %redacted!(&reason),
+                        "reserve-for-caller credential reservation denied"
+                    );
+                    return self.with_pre_invocation_guard_evidence(
+                        &pre_invocation_guard_evidence,
+                        || {
+                            self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
                                 request,
+                                reason: &reason,
                                 timestamp: now,
                                 matched_grant_index,
+                                cap,
                                 budget_mutation: &budget_mutation,
-                                runtime_admission_metadata: extra_metadata,
-                                reserved_payment_reference,
+                                payment_authorization: None,
+                                durable_operation: durable_admission
+                                    .as_ref()
+                                    .map(DurableToolAdmission::operation),
+                                runtime_admission_metadata: extra_metadata.clone(),
+                                verified_payee_binding: verified_governed_payee_binding.as_ref(),
                                 budget_lease_acquired,
-                            },
-                        );
-                        if response.is_err() {
-                            if let Some(prepayment) = settled_prepayment.as_ref() {
-                                self.refund_reserved_mustprepay_prepayment(
-                                    request,
-                                    &prepayment.authorization,
-                                );
+                            })
+                        },
+                    );
+                }
+            };
+
+            let revalidation_now_unix_ms = current_unix_timestamp_ms();
+            let readiness_result = {
+                let mut readiness_drop_guard = PostAdmissionDropGuard::new(
+                    self,
+                    request,
+                    cap,
+                    Some(matched_grant_index),
+                    &budget_mutation,
+                    None,
+                    PostAdmissionReceiptContext {
+                        extra_metadata: extra_metadata.clone(),
+                        pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
+                        verified_payee_binding: verified_governed_payee_binding.clone(),
+                    },
+                    budget_lease_acquired,
+                )
+                .with_durable_operation(
+                    durable_admission
+                        .as_ref()
+                        .map(DurableToolAdmission::operation),
+                );
+                let result = self
+                    .wait_for_runtime_admission_dispatch_readiness(request)
+                    .await;
+                readiness_drop_guard.disarm();
+                result
+            };
+            let reserve_authorization_admission = match readiness_result {
+                Ok(readiness_waited) => self.revalidate_immediately_before_dispatch(
+                    request,
+                    dpop_required,
+                    matched_grant,
+                    matched_grant_index,
+                    None,
+                    session_id,
+                    session_filesystem_roots,
+                    &receipt_admission,
+                    extra_metadata.as_ref(),
+                    true,
+                    readiness_waited
+                        || credential_reservation.requires_post_reservation_revalidation(),
+                    revalidation_now_unix_ms / 1000,
+                    revalidation_now_unix_ms,
+                ),
+                Err(error) => Err(error),
+            };
+            if let Err(error) = reserve_authorization_admission {
+                let mut reason = dispatch_admission_error_reason(&error);
+                let credential_disposition = if let Err(rollback_error) =
+                    credential_reservation.rollback_before_dispatch()
+                {
+                    reason = format!("{reason}; {rollback_error}");
+                    PaymentCredentialDisposition::RetentionOutcomeUnknown
+                } else {
+                    PaymentCredentialDisposition::NonePresent
+                };
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&reason),
+                    "reserve-for-caller revalidation denied"
+                );
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        let denial = PreDispatchCleanupDeny {
+                            request,
+                            reason: &reason,
+                            timestamp: revalidation_now_unix_ms / 1000,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata: extra_metadata.clone(),
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        };
+                        if credential_disposition
+                            == PaymentCredentialDisposition::RetentionOutcomeUnknown
+                        {
+                            self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                denial,
+                                credential_disposition,
+                            )
+                        } else {
+                            self.build_pre_dispatch_cleanup_deny_response(denial)
+                        }
+                    },
+                );
+            }
+
+            if governed_mustprepay && !credential_reservation.has_payment_authorization_credential()
+            {
+                let mut reason =
+                    "strict reserve-for-caller payment authorization omitted its governed replay marker"
+                        .to_string();
+                if let Err(rollback_error) = credential_reservation.rollback_before_dispatch() {
+                    reason = format!("{reason}; {rollback_error}");
+                }
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &reason,
+                            timestamp: revalidation_now_unix_ms / 1000,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata: extra_metadata.clone(),
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
+            }
+
+            let settled_prepayment = match self.ensure_reserved_mustprepay_prepaid(
+                request,
+                budget_mutation.charge_result(),
+                durable_admission.as_ref(),
+                revalidation_now_unix_ms,
+                verified_governed_payee_binding.as_ref(),
+            ) {
+                Ok(prepayment) => prepayment,
+                Err(error) => {
+                    let mut reason = error.to_string();
+                    let credential_disposition = if governed_mustprepay {
+                        match credential_reservation.commit() {
+                            Ok(disposition) => disposition,
+                            Err(retention_error) => {
+                                reason = format!("{reason}; {retention_error}");
+                                PaymentCredentialDisposition::RetentionOutcomeUnknown
                             }
                         }
-                        response
-                    }
+                    } else {
+                        match credential_reservation.rollback_before_dispatch() {
+                            Ok(()) => PaymentCredentialDisposition::NonePresent,
+                            Err(rollback_error) => {
+                                reason = format!("{reason}; {rollback_error}");
+                                PaymentCredentialDisposition::RetentionOutcomeUnknown
+                            }
+                        }
+                    };
+                    warn!(
+                        request_id = %request.request_id,
+                        reason = %redacted!(&reason),
+                        "reserve-for-caller prepayment gate denied"
+                    );
+                    return self.with_pre_invocation_guard_evidence(
+                        &pre_invocation_guard_evidence,
+                        || {
+                            self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                PreDispatchCleanupDeny {
+                                    request,
+                                    reason: &reason,
+                                    timestamp: revalidation_now_unix_ms / 1000,
+                                    matched_grant_index,
+                                    cap,
+                                    budget_mutation: &budget_mutation,
+                                    payment_authorization: None,
+                                    durable_operation: durable_admission
+                                        .as_ref()
+                                        .map(DurableToolAdmission::operation),
+                                    runtime_admission_metadata: extra_metadata.clone(),
+                                    verified_payee_binding: verified_governed_payee_binding
+                                        .as_ref(),
+                                    budget_lease_acquired,
+                                },
+                                credential_disposition,
+                            )
+                        },
+                    );
                 }
-            });
+            };
+
+            let credential_disposition = match credential_reservation
+                .retain_after_external_authorization()
+            {
+                Ok(disposition) => disposition,
+                Err(error) => {
+                    let reason = format!(
+                        "reserve-for-caller credential retention failed before authorization: {error}"
+                    );
+                    return self.with_pre_invocation_guard_evidence(
+                        &pre_invocation_guard_evidence,
+                        || {
+                            self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                PreDispatchCleanupDeny {
+                                    request,
+                                    reason: &reason,
+                                    timestamp: current_unix_timestamp(),
+                                    matched_grant_index,
+                                    cap,
+                                    budget_mutation: &budget_mutation,
+                                    payment_authorization: settled_prepayment
+                                        .as_ref()
+                                        .map(|prepayment| &prepayment.authorization),
+                                    durable_operation: durable_admission
+                                        .as_ref()
+                                        .map(DurableToolAdmission::operation),
+                                    runtime_admission_metadata: extra_metadata.clone(),
+                                    verified_payee_binding: verified_governed_payee_binding
+                                        .as_ref(),
+                                    budget_lease_acquired,
+                                },
+                                PaymentCredentialDisposition::RetentionOutcomeUnknown,
+                            )
+                        },
+                    );
+                }
+            };
+
+            let reserved_payment_reference = settled_prepayment
+                .as_ref()
+                .and_then(|prepayment| prepayment.payment_reference.clone());
+            let response =
+                self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                    self.build_execution_nonce_authorization_reserving_response(
+                        ExecutionNonceReservingResponse {
+                            request,
+                            timestamp: now,
+                            matched_grant_index,
+                            budget_mutation: &budget_mutation,
+                            runtime_admission_metadata: extra_metadata,
+                            reserved_payment_reference,
+                            budget_lease_acquired,
+                        },
+                    )
+                });
+            if response.is_err() {
+                if let Some(prepayment) = settled_prepayment.as_ref() {
+                    self.refund_reserved_mustprepay_prepayment(request, &prepayment.authorization);
+                }
+            }
+            let response = response?;
+            let committed_disposition = credential_reservation.commit()?;
+            debug_assert_eq!(committed_disposition, credential_disposition);
+            return Ok(response);
         }
 
         if let Err(error) = self.validate_required_execution_nonce(request, cap) {
@@ -881,33 +1155,6 @@ impl ChioKernel {
             });
         }
 
-        if budget_mutation.charge_result().is_none() {
-            if let Err(error) = self.reserve_presented_execution_nonce(request) {
-                let msg = error.to_string();
-                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "execution nonce denied");
-                return self.with_pre_invocation_guard_evidence(
-                    &pre_invocation_guard_evidence,
-                    || {
-                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                            request,
-                            reason: &msg,
-                            timestamp: now,
-                            matched_grant_index,
-                            cap,
-                            budget_mutation: &budget_mutation,
-                            payment_authorization: None,
-                            durable_operation: durable_admission
-                                .as_ref()
-                                .map(DurableToolAdmission::operation),
-                            runtime_admission_metadata: extra_metadata,
-                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
-                            budget_lease_acquired,
-                        })
-                    },
-                );
-            }
-        }
-
         let Some(server) = self.tool_servers.get(&request.server_id).cloned() else {
             let error = KernelError::ToolNotRegistered(format!(
                 "server \"{}\" / tool \"{}\"",
@@ -933,6 +1180,109 @@ impl ChioKernel {
                 })
             });
         };
+        let mut credential_reservation = match self.reserve_dispatch_credentials(
+            request,
+            cap,
+            dpop_required,
+            current_unix_timestamp(),
+        ) {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                let reason = error.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "dispatch credential reservation denied");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &reason,
+                            timestamp: current_unix_timestamp(),
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata: extra_metadata.clone(),
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
+            }
+        };
+        let force_dispatch_revalidation =
+            credential_reservation.requires_post_reservation_revalidation();
+        let revalidation_now_unix_ms = current_unix_timestamp_ms();
+        let readiness_result = {
+            let mut readiness_drop_guard = PostAdmissionDropGuard::new(
+                self,
+                request,
+                cap,
+                Some(matched_grant_index),
+                &budget_mutation,
+                None,
+                PostAdmissionReceiptContext {
+                    extra_metadata: extra_metadata.clone(),
+                    pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
+                    verified_payee_binding: verified_governed_payee_binding.clone(),
+                },
+                budget_lease_acquired,
+            )
+            .with_durable_operation(
+                durable_admission
+                    .as_ref()
+                    .map(DurableToolAdmission::operation),
+            );
+            let result = self
+                .wait_for_runtime_admission_dispatch_readiness(request)
+                .await;
+            readiness_drop_guard.disarm();
+            result
+        };
+        let final_dispatch_admission = match readiness_result {
+            Ok(readiness_waited) => self.revalidate_immediately_before_dispatch(
+                request,
+                dpop_required,
+                matched_grant,
+                matched_grant_index,
+                None,
+                session_id,
+                session_filesystem_roots,
+                &receipt_admission,
+                extra_metadata.as_ref(),
+                false,
+                readiness_waited || force_dispatch_revalidation,
+                revalidation_now_unix_ms / 1000,
+                revalidation_now_unix_ms,
+            ),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = final_dispatch_admission {
+            let mut reason = dispatch_admission_error_reason(&error);
+            if let Err(rollback_error) = credential_reservation.rollback_before_dispatch() {
+                reason = format!("{reason}; {rollback_error}");
+            }
+            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "immediate dispatch revalidation denied");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                    request,
+                    reason: &reason,
+                    timestamp: revalidation_now_unix_ms / 1000,
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    payment_authorization: None,
+                    durable_operation: durable_admission
+                        .as_ref()
+                        .map(DurableToolAdmission::operation),
+                    runtime_admission_metadata: extra_metadata.clone(),
+                    verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                    budget_lease_acquired,
+                })
+            });
+        }
         if let Some(admission) = durable_admission.as_mut() {
             if let Err(error) = self.mark_durable_capture_pending(admission, now_unix_ms) {
                 let reason = error.to_string();
@@ -1006,7 +1356,42 @@ impl ChioKernel {
             now_unix_ms,
             verified_governed_payee_binding.as_ref(),
         ) {
-            Ok(authorization) => authorization,
+            Ok(authorization) => {
+                if authorization.is_some() {
+                    if let Err(error) = credential_reservation.retain_after_external_authorization()
+                    {
+                        let reason = format!(
+                            "dispatch credential retention failed after payment authorization: {error}"
+                        );
+                        warn!(request_id = %request.request_id, reason = %redacted!(&reason), "payment credential retention denied");
+                        return self.with_pre_invocation_guard_evidence(
+                            &pre_invocation_guard_evidence,
+                            || {
+                                self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                    PreDispatchCleanupDeny {
+                                        request,
+                                        reason: &reason,
+                                        timestamp: current_unix_timestamp(),
+                                        matched_grant_index,
+                                        cap,
+                                        budget_mutation: &budget_mutation,
+                                        payment_authorization: authorization.as_ref(),
+                                        durable_operation: durable_admission
+                                            .as_ref()
+                                            .map(DurableToolAdmission::operation),
+                                        runtime_admission_metadata: extra_metadata.clone(),
+                                        verified_payee_binding: verified_governed_payee_binding
+                                            .as_ref(),
+                                        budget_lease_acquired,
+                                    },
+                                    PaymentCredentialDisposition::RetentionOutcomeUnknown,
+                                )
+                            },
+                        );
+                    }
+                }
+                authorization
+            }
             Err(error) => {
                 let internal_reason = error.to_string();
                 warn!(request_id = %request.request_id, reason = %redacted!(&internal_reason), "payment denied");
@@ -1021,21 +1406,64 @@ impl ChioKernel {
                     &error,
                     PaymentError::Declined(_) | PaymentError::InsufficientFunds
                 ) {
+                    let mut denial_reason = reason.clone();
+                    let credential_disposition = if let Err(rollback_error) =
+                        credential_reservation.rollback_before_dispatch()
+                    {
+                        denial_reason = format!("{denial_reason}; {rollback_error}");
+                        PaymentCredentialDisposition::RetentionOutcomeUnknown
+                    } else {
+                        PaymentCredentialDisposition::NonePresent
+                    };
+                    let cleanup_metadata = self.merge_dispatch_credential_disposition_metadata(
+                        extra_metadata,
+                        credential_disposition,
+                    );
+                    if budget_mutation
+                        .charge_result()
+                        .and_then(|charge| charge.invocation_capture.as_ref())
+                        .is_some()
+                    {
+                        return self.with_pre_invocation_guard_evidence(
+                            &pre_invocation_guard_evidence,
+                            || {
+                                self.build_definite_payment_denial_after_capture(
+                                    request,
+                                    &denial_reason,
+                                    now,
+                                    cap,
+                                    &budget_mutation,
+                                    durable_admission
+                                        .as_ref()
+                                        .map(DurableToolAdmission::operation),
+                                    cleanup_metadata,
+                                    budget_lease_acquired,
+                                    verified_governed_payee_binding.as_ref(),
+                                )
+                            },
+                        );
+                    }
                     return self.with_pre_invocation_guard_evidence(
                         &pre_invocation_guard_evidence,
                         || {
-                            self.build_definite_payment_denial_after_capture(
-                                request,
-                                &reason,
-                                now,
-                                cap,
-                                &budget_mutation,
-                                durable_admission
-                                    .as_ref()
-                                    .map(DurableToolAdmission::operation),
-                                extra_metadata,
-                                budget_lease_acquired,
-                                verified_governed_payee_binding.as_ref(),
+                            self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                PreDispatchCleanupDeny {
+                                    request,
+                                    reason: &denial_reason,
+                                    timestamp: now,
+                                    matched_grant_index,
+                                    cap,
+                                    budget_mutation: &budget_mutation,
+                                    payment_authorization: None,
+                                    durable_operation: durable_admission
+                                        .as_ref()
+                                        .map(DurableToolAdmission::operation),
+                                    runtime_admission_metadata: cleanup_metadata,
+                                    verified_payee_binding: verified_governed_payee_binding
+                                        .as_ref(),
+                                    budget_lease_acquired,
+                                },
+                                PaymentCredentialDisposition::NonePresent,
                             )
                         },
                     );
@@ -1050,16 +1478,26 @@ impl ChioKernel {
                         }
                     })),
                 );
-                let nonce_error = self.reserve_presented_execution_nonce(request).err();
-                let denial_reason = nonce_error.as_ref().map_or(reason.as_str(), |_| {
-                    "execution nonce denied after ambiguous payment authorization"
-                });
+                let (denial_reason, credential_disposition) =
+                    match credential_reservation.commit() {
+                        Ok(disposition) => (reason, disposition),
+                        Err(retention_error) => (
+                            format!(
+                                "payment authorization outcome is ambiguous and credential retention failed: {retention_error}"
+                            ),
+                            PaymentCredentialDisposition::RetentionOutcomeUnknown,
+                        ),
+                    };
+                let metadata = self.merge_dispatch_credential_disposition_metadata(
+                    metadata,
+                    credential_disposition,
+                );
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {
                         self.build_deny_response_with_metadata_and_payee_binding(
                             request,
-                            denial_reason,
+                            &denial_reason,
                             now,
                             Some(matched_grant_index),
                             metadata,
@@ -1070,31 +1508,104 @@ impl ChioKernel {
             }
         };
 
-        if budget_mutation.charge_result().is_some() {
-            if let Err(error) = self.reserve_presented_execution_nonce(request) {
-                let reason = error.to_string();
-                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "execution nonce denied after payment authorization");
+        if payment_authorization.is_some() {
+            let post_payment_now_unix_ms = current_unix_timestamp_ms();
+            if let Err(error) = self.revalidate_immediately_before_dispatch(
+                request,
+                dpop_required,
+                matched_grant,
+                matched_grant_index,
+                None,
+                session_id,
+                session_filesystem_roots,
+                &receipt_admission,
+                extra_metadata.as_ref(),
+                false,
+                force_dispatch_revalidation,
+                post_payment_now_unix_ms / 1000,
+                post_payment_now_unix_ms,
+            ) {
+                let reason = dispatch_admission_error_reason(&error);
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "post-payment dispatch revalidation denied");
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {
-                        self.build_nonce_denial_after_monetary_cleanup(PreDispatchCleanupDeny {
-                            request,
-                            reason: &reason,
-                            timestamp: now,
-                            matched_grant_index,
-                            cap,
-                            budget_mutation: &budget_mutation,
-                            payment_authorization: payment_authorization.as_ref(),
-                            durable_operation: durable_admission
-                                .as_ref()
-                                .map(DurableToolAdmission::operation),
-                            runtime_admission_metadata: extra_metadata,
-                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
-                            budget_lease_acquired,
-                        })
+                        self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                            PreDispatchCleanupDeny {
+                                request,
+                                reason: &reason,
+                                timestamp: post_payment_now_unix_ms / 1000,
+                                matched_grant_index,
+                                cap,
+                                budget_mutation: &budget_mutation,
+                                payment_authorization: payment_authorization.as_ref(),
+                                durable_operation: durable_admission
+                                    .as_ref()
+                                    .map(DurableToolAdmission::operation),
+                                runtime_admission_metadata: extra_metadata.clone(),
+                                verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                                budget_lease_acquired,
+                            },
+                            PaymentCredentialDisposition::RetainedAfterAuthorization,
+                        )
                     },
                 );
             }
+        }
+
+        if let Err(error) =
+            self.mark_session_request_dispatch_started(session_id, &request.request_id)
+        {
+            let reason = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "session cancellation won the pre-dispatch boundary");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                    PreDispatchCleanupDeny {
+                        request,
+                        reason: &reason,
+                        timestamp: current_unix_timestamp(),
+                        matched_grant_index,
+                        cap,
+                        budget_mutation: &budget_mutation,
+                        payment_authorization: payment_authorization.as_ref(),
+                        durable_operation: durable_admission
+                            .as_ref()
+                            .map(DurableToolAdmission::operation),
+                        runtime_admission_metadata: extra_metadata.clone(),
+                        verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                        budget_lease_acquired,
+                    },
+                    if payment_authorization.is_some() {
+                        PaymentCredentialDisposition::RetainedAfterAuthorization
+                    } else {
+                        PaymentCredentialDisposition::NonePresent
+                    },
+                )
+            });
+        }
+
+        if let Err(error) = credential_reservation.retain_if_dropped() {
+            let reason = format!("dispatch credential retention failed before dispatch: {error}");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                    PreDispatchCleanupDeny {
+                        request,
+                        reason: &reason,
+                        timestamp: current_unix_timestamp(),
+                        matched_grant_index,
+                        cap,
+                        budget_mutation: &budget_mutation,
+                        payment_authorization: payment_authorization.as_ref(),
+                        durable_operation: durable_admission
+                            .as_ref()
+                            .map(DurableToolAdmission::operation),
+                        runtime_admission_metadata: extra_metadata.clone(),
+                        verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                        budget_lease_acquired,
+                    },
+                    PaymentCredentialDisposition::RetentionOutcomeUnknown,
+                )
+            });
         }
 
         if let Some(admission) = durable_admission.as_mut() {
@@ -1156,30 +1667,85 @@ impl ChioKernel {
         let dispatch_result = self
             .dispatch_resolved_server_within_budget(server, request, has_monetary)
             .await;
-        post_admission_drop_guard.disarm();
-        drop(post_admission_drop_guard);
+        // Keep the terminal-receipt guard armed until credentials commit. The
+        // tool may already have executed, so a failed replay-marker commit must
+        // produce a signed ambiguous receipt instead of returning silently.
         let (tool_output, reported_cost) = match dispatch_result {
-            Ok(result) => result,
+            Ok(result) => {
+                if let Err(error) = credential_reservation.commit() {
+                    post_admission_drop_guard.mark_dispatch_credential_commit_failed();
+                    return Err(error);
+                }
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
+                result
+            }
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
-                if durable_admission.is_none() {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
+                let credential_cleanup = if payment_authorization.is_some() {
+                    credential_reservation
+                        .commit()
+                        .map(|_| PaymentCredentialDisposition::RetainedAfterAuthorization)
+                } else {
+                    credential_reservation
+                        .rollback_before_dispatch()
+                        .map(|()| PaymentCredentialDisposition::NonePresent)
+                };
+                let (credential_disposition, credential_cleanup_error) = match credential_cleanup {
+                    Ok(disposition) => (disposition, None),
+                    Err(cleanup_error) => {
+                        warn!(
+                            request_id = %request.request_id,
+                            reason = %redacted!(&cleanup_error),
+                            audit_fault = "url_elicitation_credential_cleanup_unconfirmed",
+                            "URL-elicitation credential cleanup could not be confirmed"
+                        );
+                        (
+                            PaymentCredentialDisposition::RetentionOutcomeUnknown,
+                            Some(cleanup_error.to_string()),
+                        )
+                    }
+                };
+                let cleanup_reason = credential_cleanup_error.as_ref().map_or_else(
+                    || "tool server requested URL elicitation before execution".to_string(),
+                    |cleanup_error| {
+                        format!(
+                            "tool server requested URL elicitation before execution; dispatch credential cleanup could not be confirmed: {cleanup_error}"
+                        )
+                    },
+                );
+                let cleanup_denial = PreDispatchCleanupDeny {
+                    request,
+                    reason: &cleanup_reason,
+                    timestamp: now,
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    payment_authorization: payment_authorization.as_ref(),
+                    durable_operation: durable_admission
+                        .as_ref()
+                        .map(DurableToolAdmission::operation),
+                    runtime_admission_metadata: extra_metadata.clone(),
+                    verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                    budget_lease_acquired,
+                };
+                let cleanup_requires_receipt = payment_authorization.is_some()
+                    || !reserved_runtime_admission_ids(extra_metadata.as_ref()).is_empty()
+                    || credential_cleanup_error.is_some();
+                if cleanup_requires_receipt {
                     let cleanup = self.with_pre_invocation_guard_evidence(
                         &pre_invocation_guard_evidence,
                         || {
-                            self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                                request,
-                                reason: "tool server requested URL elicitation before execution",
-                                timestamp: now,
-                                matched_grant_index,
-                                cap,
-                                budget_mutation: &budget_mutation,
-                                payment_authorization: payment_authorization.as_ref(),
-                                durable_operation: None,
-                                runtime_admission_metadata: extra_metadata.clone(),
-                                verified_payee_binding: verified_governed_payee_binding.as_ref(),
-                                budget_lease_acquired,
-                            })
+                            self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                cleanup_denial,
+                                credential_disposition,
+                            )
                         },
                     );
+                    if credential_cleanup_error.is_some() {
+                        return cleanup;
+                    }
                     if let Err(cleanup_error) = cleanup {
                         warn!(
                             request_id = %request.request_id,
@@ -1188,35 +1754,14 @@ impl ChioKernel {
                             "URL-elicitation cleanup could not be confirmed"
                         );
                     }
+                } else if let Err(cleanup_error) = self
+                    .unwind_url_elicitation_before_effect(cleanup_denial, credential_disposition)
+                {
                     warn!(
                         request_id = %request.request_id,
-                        reason = %redacted!(&error),
-                        "tool call requires URL elicitation"
-                    );
-                    return Err(error);
-                }
-                let metadata = self.ambiguous_dispatch_receipt_metadata(
-                    &budget_mutation,
-                    payment_authorization.as_ref(),
-                    extra_metadata,
-                );
-                let receipt_result =
-                    self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                        self.build_cancelled_response_with_metadata_and_payee_binding(
-                            request,
-                            "tool server requested URL elicitation after dispatch entry",
-                            now,
-                            Some(matched_grant_index),
-                            metadata,
-                            verified_governed_payee_binding.as_ref(),
-                        )
-                    });
-                if let Err(receipt_error) = receipt_result {
-                    warn!(
-                        request_id = %request.request_id,
-                        reason = %redacted!(&receipt_error),
-                        audit_fault = "url_elicitation_terminal_receipt_unrecorded",
-                        "failed to record ambiguous URL-elicitation receipt"
+                        reason = %redacted!(&cleanup_error),
+                        audit_fault = "url_elicitation_cleanup_unrecorded",
+                        "URL-elicitation cleanup could not be confirmed"
                     );
                 }
                 warn!(
@@ -1227,6 +1772,8 @@ impl ChioKernel {
                 return Err(error);
             }
             Err(KernelError::RequestCancelled { reason, .. }) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,
                     payment_authorization.as_ref(),
@@ -1255,6 +1802,8 @@ impl ChioKernel {
                 );
             }
             Err(KernelError::HotPathDeadlineExceeded { stage, budget_ms }) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let reason = format!("hot-path deadline exceeded at {stage}: budget {budget_ms}ms");
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,
@@ -1286,6 +1835,8 @@ impl ChioKernel {
                 );
             }
             Err(KernelError::RequestIncomplete(reason)) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,
                     payment_authorization.as_ref(),
@@ -1315,6 +1866,8 @@ impl ChioKernel {
                 );
             }
             Err(e) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let msg = e.to_string();
                 let deny_metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,

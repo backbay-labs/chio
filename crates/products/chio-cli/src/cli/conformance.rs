@@ -22,7 +22,9 @@ pub(crate) fn cmd_conformance_run(
                 "--peer-binary requires --peer to select exactly one language".to_string(),
             ));
         }
-        options.peer_binaries.push((options.peers[0], binary.to_path_buf()));
+        options
+            .peer_binaries
+            .push((options.peers[0], binary.to_path_buf()));
     }
 
     let summary = chio_conformance::run_conformance_harness(&options).map_err(|error| {

@@ -4,10 +4,10 @@
 
 use super::*;
 
-#[path = "diff/json.rs"]
-mod replay_diff_json;
 #[path = "diff/human.rs"]
 mod replay_diff_human;
+#[path = "diff/json.rs"]
+mod replay_diff_json;
 
 pub use replay_diff_human::render_traffic_diff_human;
 pub use replay_diff_json::render_traffic_diff_json;
@@ -156,9 +156,7 @@ impl TrafficReplayDiffReport {
 
 /// Build a grouped diff report from a traffic replay execution report.
 #[must_use]
-pub fn build_traffic_diff_report(
-    report: &TrafficReplayReport,
-) -> TrafficReplayDiffReport {
+pub fn build_traffic_diff_report(report: &TrafficReplayReport) -> TrafficReplayDiffReport {
     let mut allow_deny_flips = Vec::new();
     let mut guard_deltas = Vec::new();
     let mut reason_deltas = Vec::new();

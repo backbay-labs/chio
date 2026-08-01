@@ -254,10 +254,7 @@ mod replay_ndjson_tests {
         let cursor = std::io::Cursor::new(Vec::new());
         let mut iter = FrameIter::new(cursor);
         assert!(iter.next().is_none());
-        assert!(
-            iter.next().is_none(),
-            "iterator stays terminated after EOF",
-        );
+        assert!(iter.next().is_none(), "iterator stays terminated after EOF",);
     }
 
     #[test]

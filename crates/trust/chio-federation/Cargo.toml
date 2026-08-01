@@ -14,6 +14,7 @@ name = "chio_federation"
 [features]
 demo = []
 pq = ["chio-core-types/pq"]
+typestate = []
 
 [dependencies]
 chio-core-types = { workspace = true }

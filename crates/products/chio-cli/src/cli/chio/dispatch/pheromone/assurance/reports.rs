@@ -1,5 +1,5 @@
-use super::archive::read_relay_alert_assurance_archive_package;
 use super::super::read_json_file;
+use super::archive::read_relay_alert_assurance_archive_package;
 use super::support::{file_name_ends_with, sorted_files};
 use crate::CliError;
 use serde::de::DeserializeOwned;
@@ -38,24 +38,24 @@ pub(super) fn read_archive_restore_package_reports(
                 CliError::cli_other_error("Chio restore source reports missing".to_string())
             })?;
             let (archive_report, closeout_report) = source_reports.for_package(&package)?;
-            let verified_report = chio_pheromone_relay::verify_relay_alert_assurance_archive_package(
-                chio_pheromone_relay::RelayAlertAssuranceArchivePackageVerifyInput {
-                    package: &package,
-                    trusted_packagers: &trusted_packagers,
-                    trusted_exporters: &trusted_exporters,
-                    archive_report,
-                    closeout_report,
-                    now_unix_ms,
-                },
-            )
-            .map_err(|error| {
-                CliError::cli_other_error(format!(
-                    "Chio relay alert assurance archive package restore verify: {error}"
-                ))
-            })?;
-            let report =
-                read_archive_restore_package_report_sidecar(&path, &verified_report)?
-                    .unwrap_or(verified_report);
+            let verified_report =
+                chio_pheromone_relay::verify_relay_alert_assurance_archive_package(
+                    chio_pheromone_relay::RelayAlertAssuranceArchivePackageVerifyInput {
+                        package: &package,
+                        trusted_packagers: &trusted_packagers,
+                        trusted_exporters: &trusted_exporters,
+                        archive_report,
+                        closeout_report,
+                        now_unix_ms,
+                    },
+                )
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chio relay alert assurance archive package restore verify: {error}"
+                    ))
+                })?;
+            let report = read_archive_restore_package_report_sidecar(&path, &verified_report)?
+                .unwrap_or(verified_report);
             reports.push(report);
         }
     }
@@ -69,9 +69,8 @@ pub(super) fn read_archive_restore_package_reports(
 }
 
 fn retain_archive_restore_package_inputs(package_paths: &mut Vec<PathBuf>) {
-    package_paths.retain(|path| {
-        file_name_ends_with(path, ".tar.gz") || file_name_ends_with(path, ".tgz")
-    });
+    package_paths
+        .retain(|path| file_name_ends_with(path, ".tar.gz") || file_name_ends_with(path, ".tgz"));
 }
 
 fn archive_restore_package_sidecar_report_name(path: &Path) -> Option<String> {
@@ -218,14 +217,14 @@ pub(super) fn read_relay_report_documents<T: DeserializeOwned>(
         }
         let value: serde_json::Value = read_json_file(&path, label)?;
         if value.get("schema").and_then(serde_json::Value::as_str) == Some(schema) {
-            reports.push(serde_json::from_value(value).map_err(|error| {
-                CliError::cli_json_error(format!("{label}: {error}"))
-            })?);
+            reports.push(
+                serde_json::from_value(value)
+                    .map_err(|error| CliError::cli_json_error(format!("{label}: {error}")))?,
+            );
         }
     }
     Ok(reports)
 }
-
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -243,10 +242,7 @@ mod archive_restore_input_tests {
 
         retain_archive_restore_package_inputs(&mut paths);
 
-        assert_eq!(
-            paths,
-            vec![PathBuf::from("relay-archive-package.tar.gz")]
-        );
+        assert_eq!(paths, vec![PathBuf::from("relay-archive-package.tar.gz")]);
     }
 
     #[test]
@@ -308,7 +304,8 @@ mod archive_restore_input_tests {
         .unwrap_err();
 
         assert!(
-            err.to_string().contains("no archive package tarballs found"),
+            err.to_string()
+                .contains("no archive package tarballs found"),
             "{err}"
         );
     }
@@ -337,11 +334,7 @@ mod archive_restore_input_tests {
         let verified_report = archive_restore_package_report_for_test(20_000);
         let sidecar_report = archive_restore_package_report_for_test(10_000);
         let sidecar_path = temp.path().join("relay-archive-package-report.json");
-        std::fs::write(
-            &sidecar_path,
-            serde_json::to_vec(&sidecar_report).unwrap(),
-        )
-        .unwrap();
+        std::fs::write(&sidecar_path, serde_json::to_vec(&sidecar_report).unwrap()).unwrap();
 
         let report =
             read_archive_restore_package_report_sidecar(&package_path, &verified_report).unwrap();
@@ -358,15 +351,10 @@ mod archive_restore_input_tests {
         let mut sidecar_report = archive_restore_package_report_for_test(10_000);
         sidecar_report.package_manifest_sha256 = "f".repeat(64);
         let sidecar_path = temp.path().join("relay-archive-package-report.json");
-        std::fs::write(
-            &sidecar_path,
-            serde_json::to_vec(&sidecar_report).unwrap(),
-        )
-        .unwrap();
+        std::fs::write(&sidecar_path, serde_json::to_vec(&sidecar_report).unwrap()).unwrap();
 
-        let err =
-            read_archive_restore_package_report_sidecar(&package_path, &verified_report)
-                .unwrap_err();
+        let err = read_archive_restore_package_report_sidecar(&package_path, &verified_report)
+            .unwrap_err();
 
         assert!(err.to_string().contains("sidecar report"));
     }
@@ -375,8 +363,9 @@ mod archive_restore_input_tests {
         generated_at_unix_ms: u64,
     ) -> chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport {
         chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport {
-            schema: chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA
-                .to_string(),
+            schema:
+                chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA
+                    .to_string(),
             accepted: true,
             code: "accepted".to_string(),
             local_kernel_id: "did:chio:buyer-kernel".to_string(),

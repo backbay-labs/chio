@@ -48,6 +48,12 @@ impl Drop for ServerGuard {
     }
 }
 
+impl ServerGuard {
+    fn has_exited(&mut self) -> bool {
+        self.child.try_wait().ok().flatten().is_some()
+    }
+}
+
 fn spawn_trust_service(
     listen: std::net::SocketAddr,
     advertise_url: &str,
@@ -146,6 +152,36 @@ fn wait_for_trust_service(client: &Client, base_url: &str) {
         }
     }
     panic!("trust service did not become ready");
+}
+
+fn wait_for_authenticated_trust_service(
+    client: &Client,
+    base_url: &str,
+    service_token: &str,
+    service: &mut ServerGuard,
+) -> bool {
+    for _ in 0..100 {
+        let response = client
+            .get(format!("{base_url}/v1/lineage/readiness-probe"))
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {service_token}"),
+            )
+            .send();
+        if matches!(
+            response,
+            Ok(response)
+                if response.status() == reqwest::StatusCode::NOT_FOUND
+                    || response.status() == reqwest::StatusCode::OK
+        ) {
+            return true;
+        }
+        if service.has_exited() {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    false
 }
 
 fn make_receipt(
@@ -798,16 +834,7 @@ fn setup_enterprise_federated_issue_case(
     )
     .expect("write verifier policy");
 
-    let listen = reserve_listen_addr();
-    let base_url = format!("http://{listen}");
     let service_token = format!("{prefix}-token");
-    create_challenge(&challenge_path, &base_url, Some(&verifier_policy_path));
-    create_challenge_response(
-        &passport_path,
-        &challenge_path,
-        &holder_seed_path,
-        &response_path,
-    );
     write_enterprise_capability_policy(
         &capability_policy_path,
         policy_organization_id,
@@ -819,29 +846,40 @@ fn setup_enterprise_federated_issue_case(
         enterprise_providers_path
     });
 
-    let service = spawn_trust_service(
-        listen,
-        &base_url,
-        &service_token,
-        &receipt_db_path,
-        &revocation_db_path,
-        &authority_seed_path,
-        &budget_db_path,
-        enterprise_providers_file.as_deref(),
-    );
-
     let client = Client::builder().build().expect("build reqwest client");
-    wait_for_trust_service(&client, &base_url);
-
-    EnterpriseFederatedIssueHarness {
-        _service: service,
-        base_url,
-        service_token,
-        challenge_path,
-        response_path,
-        capability_policy_path,
-        enterprise_identity_path,
+    for _ in 0..5 {
+        let listen = reserve_listen_addr();
+        let base_url = format!("http://{listen}");
+        create_challenge(&challenge_path, &base_url, Some(&verifier_policy_path));
+        create_challenge_response(
+            &passport_path,
+            &challenge_path,
+            &holder_seed_path,
+            &response_path,
+        );
+        let mut service = spawn_trust_service(
+            listen,
+            &base_url,
+            &service_token,
+            &receipt_db_path,
+            &revocation_db_path,
+            &authority_seed_path,
+            &budget_db_path,
+            enterprise_providers_file.as_deref(),
+        );
+        if wait_for_authenticated_trust_service(&client, &base_url, &service_token, &mut service) {
+            return EnterpriseFederatedIssueHarness {
+                _service: service,
+                base_url,
+                service_token,
+                challenge_path,
+                response_path,
+                capability_policy_path,
+                enterprise_identity_path,
+            };
+        }
     }
+    panic!("authenticated trust service did not become ready after address retries");
 }
 
 fn create_federated_delegation_policy(

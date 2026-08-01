@@ -11,7 +11,9 @@ corpus, and the source-path globs that trigger it on a PR. That file MUST stay
 in lockstep with `.clusterfuzzlite/build.sh` and `fuzz/oss-fuzz/build.sh`.
 Additional targets add their `[[bin]]` entry in `Cargo.toml` alongside their
 `fuzz_target!` definition under `fuzz_targets/` and a `[targets.<name>]` block
-in `target-map.toml`.
+in `target-map.toml`. Each target also needs an `owners.toml` entry, at least
+three deterministic seeds under `corpus/<name>/`, and one hash-pinned metadata
+entry per seed in `corpus_metadata.toml`.
 
 ## Setup
 
@@ -26,7 +28,7 @@ the workflow under `.github/workflows/cflite_pr.yml` and
 
 ## Targets
 
-There are 25 targets. Each one drives a trust-boundary decode or
+There are 27 targets. Each one drives a trust-boundary decode or
 fail-closed-verification surface with arbitrary bytes. The full mapping
 (owning crate, source path, trigger globs, seed corpus) lives in
 `target-map.toml`; the summaries below are grouped by surface.
@@ -68,6 +70,8 @@ fail-closed-verification surface with arbitrary bytes. The full mapping
   inclusion, and non-inclusion proofs.
 - `policy_parse_compile` (binary `fuzz_policy_parse_compile`) - HushSpec
   parser, validator, compiler, and YAML round-trip.
+- `policy_analyze` - bounded policy relations and evaluator-confirmed
+  refinement witnesses.
 - `chio_yaml_parse` - `chio-config` YAML loader.
 - `eval_receipt_bundle` - eval-report bundle parser and fail-closed verifier.
 - `underwriting_policy_input` - underwriting policy, decision, marketplace,
@@ -80,6 +84,8 @@ fail-closed-verification surface with arbitrary bytes. The full mapping
 - `wit_host_call_boundary` - `GuardRequest` / `GuestDenyResponse` serde
   deserialization.
 - `wasm_guard_escape` - runtime-execution surface across the escape classes.
+- `wasm_guard_smith` - structure-aware modules and components through bounded
+  load and evaluation paths.
 - `sql_parser` (binary `fuzz_sql_parser`) - SQL parser and fail-closed SQL
   guard analysis across dialects.
 - `tool_action` (binary `fuzz_tool_action`) - tool-action classification and
@@ -109,4 +115,11 @@ Build only (the CI build gate):
 
 ```bash
 cargo +nightly fuzz build attest_verify
+```
+
+Replay every in-process corpus entry and validate the binary, workflow, owner,
+and seed-floor inventories with the checked-in lockfile:
+
+```bash
+cargo test --locked
 ```

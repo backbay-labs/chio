@@ -1,12 +1,16 @@
 //! Translation layer between the parsed clap command tree and the existing
 //! handler functions.
 
+use crate::adapter_no_bypass;
 use crate::cli::{
-    self, CheckCommand, CodegenArgs, ErrorsCompat, GenCommand, Lang, QualifyCommand,
+    self, CheckCommand, CodegenArgs, ErrorsCompat, FormalCommand, GenCommand, Lang, QualifyCommand,
     SnippetsCompat, VerifyCommand,
 };
 use crate::fixtures;
+use crate::formal;
+use crate::formal_mirrors;
 use crate::launch_acceptance;
+use crate::proof_coverage;
 use crate::qualify;
 use crate::XtaskError;
 use crate::{crate_paths, eval_receipt_regen};
@@ -24,10 +28,13 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
             GenCommand::Snippets { check } => run_snippets(snippets_regen_argv(check)),
             GenCommand::EvalReceipt { check } => eval_receipt_regen::run(check_argv(check)),
             GenCommand::FreezeVectors { check } => freeze_vectors(check_argv(check)),
+            GenCommand::ProofCoverage { check } => proof_coverage::run(check),
         },
         // -- check group --
         cli::Command::Check { command } => match command {
+            CheckCommand::AdapterNoBypass => adapter_no_bypass::run(),
             CheckCommand::CratePaths => crate_paths::run(Vec::new()),
+            CheckCommand::FormalMirrors { bless } => formal_mirrors::run(bless),
             CheckCommand::Fixtures {
                 facet,
                 schema_only,
@@ -44,6 +51,9 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
         // -- verify group --
         cli::Command::Verify { command } => match command {
             VerifyCommand::LaunchAcceptance(args) => launch_acceptance::run(&args),
+        },
+        cli::Command::Formal { command } => match command {
+            FormalCommand::ItfToRegression(args) => formal::itf_to_regression::run(&args),
         },
         // -- noun-group parents with no implemented leaves (fail closed) --
         cli::Command::Fuzz { .. }

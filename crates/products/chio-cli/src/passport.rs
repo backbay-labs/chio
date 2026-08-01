@@ -5,15 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::{Keypair, PublicKey};
 use chio_credentials::{
-    AgentPassport, AttestationWindow, ChioCredentialEvidence, CredentialError,
-    EnterpriseIdentityProvenance, OID4VP_VERIFIER_METADATA_PATH, Oid4vciCredentialOffer,
-    Oid4vciCredentialRequest, Oid4vciTokenRequest, Oid4vciTokenResponse,
-    Oid4vpPresentationVerification, Oid4vpRequestObject, Oid4vpVerifierMetadata,
-    PassportLifecycleResolution, PassportLifecycleState, PassportPresentationChallenge,
-    PassportPresentationOptions, PassportPresentationResponse, PassportStatusDistribution,
-    PassportVerifierPolicy, PassportVerifierPolicyReference, PortableJwkSet,
-    SignedPassportVerifierPolicy, build_agent_passport,
-    create_passport_presentation_challenge_with_reference, create_signed_passport_verifier_policy,
+    build_agent_passport, create_passport_presentation_challenge_with_reference,
+    create_signed_passport_verifier_policy,
     default_oid4vci_passport_issuer_metadata_with_signing_key,
     default_oid4vci_passport_issuer_metadata_with_status_distribution,
     ensure_signed_passport_verifier_policy_active, evaluate_agent_passport,
@@ -21,15 +14,22 @@ use chio_credentials::{
     present_agent_passport, respond_to_oid4vp_request, respond_to_passport_presentation_challenge,
     verify_agent_passport, verify_passport_presentation_response_with_policy,
     verify_signed_oid4vp_request_object_with_any_key, verify_signed_passport_verifier_policy,
+    AgentPassport, AttestationWindow, ChioCredentialEvidence, CredentialError,
+    EnterpriseIdentityProvenance, Oid4vciCredentialOffer, Oid4vciCredentialRequest,
+    Oid4vciTokenRequest, Oid4vciTokenResponse, Oid4vpPresentationVerification, Oid4vpRequestObject,
+    Oid4vpVerifierMetadata, PassportLifecycleResolution, PassportLifecycleState,
+    PassportPresentationChallenge, PassportPresentationOptions, PassportPresentationResponse,
+    PassportStatusDistribution, PassportVerifierPolicy, PassportVerifierPolicyReference,
+    PortableJwkSet, SignedPassportVerifierPolicy, OID4VP_VERIFIER_METADATA_PATH,
 };
-use chio_credentials::{TrustTier, synthesize_trust_tier};
+use chio_credentials::{synthesize_trust_tier, TrustTier};
 use chio_did::DidChio;
 use chio_errors::_generated::error_codes::TRANSACTION_RECEIPT_UNCHECKPOINTED;
 use chio_kernel::{
-    ComplianceReport, ComplianceScoreConfig, ComplianceScoreInputs, EmaBaselineState,
-    EvidenceChildReceiptScope, EvidenceExportQuery, behavioral_anomaly_score, compliance_score,
+    behavioral_anomaly_score, compliance_score, ComplianceReport, ComplianceScoreConfig,
+    ComplianceScoreInputs, EmaBaselineState, EvidenceChildReceiptScope, EvidenceExportQuery,
 };
-use chio_reputation::{ReputationConfig, compute_local_scorecard};
+use chio_reputation::{compute_local_scorecard, ReputationConfig};
 use chio_store_sqlite::SqliteReceiptStore;
 use url::Url;
 
@@ -43,7 +43,7 @@ use crate::trust_control::{
     CreateIdentityAssertionRequest, CreateOid4vpRequest, CreatePassportChallengeRequest,
     CreatePassportChallengeResponse, VerifierPolicyListResponse, VerifyPassportChallengeRequest,
 };
-use crate::{CliError, load_or_create_authority_keypair};
+use crate::{load_or_create_authority_keypair, CliError};
 
 fn unix_now() -> u64 {
     SystemTime::now()
@@ -801,8 +801,8 @@ pub(crate) fn cmd_passport_create(
     // `compute_local_scorecard` filters every receipt as unsigned and the
     // resulting score is silently unknown / zero (see chio-reputation P2).
     let signing_key = load_or_create_authority_keypair(signing_seed_file)?;
-    let scoring_config = ReputationConfig::default()
-        .with_trusted_kernel_keys([signing_key.public_key().to_hex()]);
+    let scoring_config =
+        ReputationConfig::default().with_trusted_kernel_keys([signing_key.public_key().to_hex()]);
     let scorecard =
         compute_local_scorecard(&subject_key, attestation_until, &corpus, &scoring_config);
     let store = SqliteReceiptStore::open(require_receipt_db(receipt_db_path)?)?;
@@ -1128,13 +1128,14 @@ pub(crate) fn cmd_passport_issuance_offer_create(
     let passport: AgentPassport = serde_json::from_slice(&fs::read(input)?)?;
     let record = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::service_runtime::client::build_client(url, token)?.create_passport_issuance_offer(
-            &crate::trust_control::CreatePassportIssuanceOfferRequest {
-                passport,
-                ttl_seconds: ttl_secs,
-                credential_configuration_id: credential_configuration_id.map(str::to_string),
-            },
-        )?
+        crate::trust_control::service_runtime::client::build_client(url, token)?
+            .create_passport_issuance_offer(
+                &crate::trust_control::CreatePassportIssuanceOfferRequest {
+                    passport,
+                    ttl_seconds: ttl_secs,
+                    credential_configuration_id: credential_configuration_id.map(str::to_string),
+                },
+            )?
     } else {
         let path = require_passport_issuance_registry_path(passport_issuance_offers_file)?;
         let mut registry = load_passport_issuance_registry_for_admin(path)?;
