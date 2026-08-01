@@ -253,7 +253,7 @@ fn signed_terms(seller: &Keypair, finding: &Finding, expires_at: u64) -> SignedF
         audit_epoch_length_secs: 2_592_000,
         audit_eligible: true,
         decision_rule_refs: vec!["decision/replay-v1".to_string()],
-        verifier_profile_envelope_sha256: hex64('e'),
+        verifier_profile_envelope_sha256: hex64('3'),
         challenge_bond_limits: vec![FindingChallengeBondLimit {
             guarantee_class: FindingGuaranteeClass::DeterministicReplay,
             min_bond: usd(10),
@@ -728,15 +728,30 @@ fn terms_digest_mismatch_rejects() {
 }
 
 #[test]
-fn terms_identity_must_match_the_admitted_finding_and_listing() {
+fn terms_identity_must_match_every_admission_binding() {
+    enum TermsBinding {
+        FindingId,
+        FindingArtifact,
+        ListingId,
+        VerifierProfile,
+    }
+
     with_fiscal(|resolver| {
-        for (mismatch, wrong_finding) in [("finding", true), ("listing", false)] {
+        for (mismatch, binding) in [
+            ("finding id", TermsBinding::FindingId),
+            ("finding artifact", TermsBinding::FindingArtifact),
+            ("listing id", TermsBinding::ListingId),
+            ("verifier profile", TermsBinding::VerifierProfile),
+        ] {
             let mut web = base_web();
             let mut terms = web.terms.body.clone();
-            if wrong_finding {
-                terms.finding_id = hex64('f');
-            } else {
-                terms.listing_id = "listing-other".to_string();
+            match binding {
+                TermsBinding::FindingId => terms.finding_id = hex64('f'),
+                TermsBinding::FindingArtifact => terms.finding_artifact_sha256 = hex64('f'),
+                TermsBinding::ListingId => terms.listing_id = "listing-other".to_string(),
+                TermsBinding::VerifierProfile => {
+                    terms.verifier_profile_envelope_sha256 = hex64('e');
+                }
             }
             terms.terms_id = String::new();
             terms.terms_id = compute_terms_id(&terms).test_expect("mismatched terms id");

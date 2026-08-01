@@ -217,7 +217,9 @@ pub fn verify_finding_admission(
     }
     verify_signed_market_terms(context.terms).map_err(FindingAdmissionError::TermsEnvelope)?;
     if context.terms.body.finding_id != admission.finding_id
+        || context.terms.body.finding_artifact_sha256 != admission.finding_artifact_sha256
         || context.terms.body.listing_id != admission.listing_id
+        || context.terms.body.verifier_profile_envelope_sha256 != admission.profile_envelope_sha256
     {
         return Err(FindingAdmissionError::TermsIdentityMismatch);
     }
