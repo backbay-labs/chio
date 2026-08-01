@@ -747,9 +747,17 @@ fn non_edges(machine: &StateMachine) -> Vec<(String, String)> {
     missing
 }
 
+/// Static prefix of every state-machine-pass header. Kept as a standalone
+/// const so `scripts/check-rust-file-hygiene.py` can extract and verify it
+/// against generated files; the per-file source and owner lines follow it.
+const STATE_MACHINE_GENERATED_HEADER_PREFIX: &str = "\
+// DO NOT EDIT - regenerate via 'cargo xtask codegen rust'.
+//
+// Source: ";
+
 fn rust_header(source: &str, owner: &str) -> String {
     format!(
-        "// DO NOT EDIT - regenerate via 'cargo xtask codegen rust'.\n//\n// Source: {source}\n// Tool:   chio-spec-codegen state machine pass\n// Owner:  {owner}\n//\n// Manual edits will be overwritten.\n\n"
+        "{STATE_MACHINE_GENERATED_HEADER_PREFIX}{source}\n// Tool:   chio-spec-codegen state machine pass\n// Owner:  {owner}\n//\n// Manual edits will be overwritten.\n\n"
     )
 }
 
