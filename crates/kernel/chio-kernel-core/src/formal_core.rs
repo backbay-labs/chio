@@ -499,7 +499,10 @@ mod delivery_contract_tests {
             delivery_contract_admits(expected, observed),
             DeliveryVerdict::Deny
         );
-        assert_eq!(delivery_contract_admits(expected, ""), DeliveryVerdict::Deny);
+        assert_eq!(
+            delivery_contract_admits(expected, ""),
+            DeliveryVerdict::Deny
+        );
         assert_eq!(
             delivery_contract_admits("", expected),
             DeliveryVerdict::Deny
