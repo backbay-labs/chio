@@ -13,17 +13,24 @@
 
 use std::collections::BTreeSet;
 
+use chio_appraisal::{
+    verify_runtime_attestation_record, SignedRuntimeAttestationAppraisalReport,
+    RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA,
+};
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::canonical_json_bytes_from_str;
+use chio_core_types::capability::runtime_attestation::RuntimeAttestationEvidence;
+use chio_core_types::capability::trust_policy::AttestationTrustPolicy;
 use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core_types::receipt::body::{chio_receipt_id, ChioReceipt};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
-    compute_report_id, verify_finding, verify_signed_bond_backing, verify_signed_profile, Finding,
-    FindingChallengeVerifierProfile, FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome,
-    FindingFacetResult, FindingGuaranteeClass, FindingPredicate, FindingReceiptRole,
-    FindingReplayRecipeInput, FindingVerifierReport, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
+    compute_report_id, signed_envelope_sha256, verify_finding, verify_pinned_envelope,
+    verify_signed_bond_backing, verify_signed_profile, Finding, FindingChallengeVerifierProfile,
+    FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome, FindingFacetResult,
+    FindingGuaranteeClass, FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput,
+    FindingVerifierReport, SignedFindingBondBacking, SignedFindingChallengeVerifierProfile,
+    SignedFindingVerifierReport,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{
@@ -75,6 +82,16 @@ pub struct FindingVerifierTrustRoots {
     pub admitted_kernel_keys: Vec<PublicKey>,
     /// Collateral authority whose signature makes an allocation evidence.
     pub collateral_authority: PublicKey,
+    /// Runtime-attestation statement signer pinned by deployment
+    /// governance. The profile cannot self-authorize this role.
+    pub runtime_attestation_authority: Option<PublicKey>,
+    /// Appraisal report signer pinned independently from the attestation
+    /// statement signer.
+    pub appraisal_authority: Option<PublicKey>,
+    /// Local rules that map signed attestation evidence to an effective
+    /// assurance tier. An absent or empty policy never accepts the raw
+    /// seller-carried tier.
+    pub attestation_trust_policy: Option<AttestationTrustPolicy>,
     /// Venue trusted time for the evaluation stamp.
     pub trusted_time: u64,
     /// Digest of the trust-root snapshot the caller resolved (pinned
@@ -122,6 +139,12 @@ pub struct FindingEvidenceBundle<'a> {
     pub checkpoint_transparency: CheckpointTransparencySummary,
     /// Raw replay-recipe preimage bytes, when the finding commits one.
     pub recipe_preimage: Option<&'a [u8]>,
+    /// Exact runtime-attestation evidence under the separately pinned
+    /// attestation authority, when the Finding claims an assurance tier.
+    pub runtime_attestation: Option<SignedExportEnvelope<RuntimeAttestationEvidence>>,
+    /// Exact appraisal of `runtime_attestation`, signed by the separately
+    /// pinned appraisal authority.
+    pub runtime_appraisal: Option<SignedRuntimeAttestationAppraisalReport>,
     pub bond_snapshot: Option<FindingBondSnapshot>,
     pub nonce_resolver: &'a dyn FindingNonceResolver,
 }
@@ -454,20 +477,17 @@ pub fn verify_finding_evidence(
     let settled = evaluate_settled_spend(&receipts, &metered);
     facets.push(cost_facet(FindingFacetKind::SettledSpendBacking, &settled));
 
-    // Facet 10: runtime assurance. A seller tier label with no appraisal
-    // evidence is asserted, never verified.
-    facets.push(match finding.runtime_assurance_tier {
-        None => facet(
-            FindingFacetKind::RuntimeAssuranceBacking,
-            FindingFacetOutcome::Unavailable,
-            "finding claims no runtime assurance tier",
-        ),
-        Some(_) => facet(
-            FindingFacetKind::RuntimeAssuranceBacking,
-            FindingFacetOutcome::Asserted,
-            "appraisal and attestation evidence not supplied",
-        ),
-    });
+    // Facet 10: runtime assurance. The seller tier is never a source of
+    // truth. Signed attestation and appraisal artifacts must re-verify
+    // under independent deployment pins and a non-empty local policy,
+    // then match the assurance metadata signed into every producing
+    // receipt.
+    facets.push(evaluate_runtime_assurance(
+        &finding,
+        trust,
+        bundle,
+        receipts_ok,
+    ));
 
     // Step 7 / facet 11: bond backing against the fresh store snapshot.
     let (bond_backing, backing_allocation_id) = evaluate_bond_backing(&finding, trust, bundle);
@@ -491,7 +511,7 @@ pub fn verify_finding_evidence(
     ));
 
     debug_assert_eq!(facets.len(), FindingFacetKind::ALL.len());
-    let resolved_evidence_bundle_sha256 = bundle_digest(bundle)?;
+    let resolved_evidence_bundle_sha256 = bundle_digest(bundle, trust)?;
     Ok(FindingVerifierDraft {
         finding,
         finding_artifact_sha256,
@@ -720,6 +740,202 @@ fn evaluate_bond_backing(
     )
 }
 
+fn evaluate_runtime_assurance(
+    finding: &Finding,
+    trust: &FindingVerifierTrustRoots,
+    bundle: &FindingEvidenceBundle<'_>,
+    receipts_ok: bool,
+) -> FindingFacetResult {
+    let Some(claimed_tier) = finding.runtime_assurance_tier else {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Unavailable,
+            "finding claims no runtime assurance tier",
+        );
+    };
+    let Some(attestation) = bundle.runtime_attestation.as_ref() else {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Unavailable,
+            "signed runtime-attestation evidence not supplied",
+        );
+    };
+    let Some(appraisal) = bundle.runtime_appraisal.as_ref() else {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Unavailable,
+            "signed runtime-attestation appraisal not supplied",
+        );
+    };
+    let Some(attestation_authority) = trust.runtime_attestation_authority.as_ref() else {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Unavailable,
+            "runtime-attestation authority is not pinned",
+        );
+    };
+    let Some(appraisal_authority) = trust.appraisal_authority.as_ref() else {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Unavailable,
+            "runtime-appraisal authority is not pinned",
+        );
+    };
+    let Some(policy) = trust.attestation_trust_policy.as_ref() else {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Unavailable,
+            "local attestation trust policy is not configured",
+        );
+    };
+    if policy.rules.is_empty() {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Failed,
+            "local attestation trust policy has no rules",
+        );
+    }
+    if let Err(error) =
+        verify_pinned_envelope(attestation, attestation_authority, "runtime_attestation")
+    {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Failed,
+            format!("runtime-attestation envelope rejected: {error}"),
+        );
+    }
+    if let Err(error) = verify_pinned_envelope(appraisal, appraisal_authority, "runtime_appraisal")
+    {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Failed,
+            format!("runtime-appraisal envelope rejected: {error}"),
+        );
+    }
+    if appraisal.body.schema != RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Failed,
+            "runtime-appraisal report schema is unsupported",
+        );
+    }
+    if appraisal.body.generated_at > trust.trusted_time
+        || appraisal.body.generated_at < attestation.body.issued_at
+        || appraisal.body.generated_at >= attestation.body.expires_at
+    {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Failed,
+            "runtime-appraisal time is outside the signed attestation window",
+        );
+    }
+    let verified = match verify_runtime_attestation_record(
+        &attestation.body,
+        Some(policy),
+        trust.trusted_time,
+    ) {
+        Ok(verified) => verified,
+        Err(error) => {
+            return facet(
+                FindingFacetKind::RuntimeAssuranceBacking,
+                FindingFacetOutcome::Failed,
+                format!("runtime attestation failed local appraisal: {error}"),
+            )
+        }
+    };
+    if !verified.is_locally_accepted() {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Failed,
+            "runtime attestation was not accepted by the local policy",
+        );
+    }
+    if appraisal.body.appraisal != verified.appraisal
+        || appraisal.body.policy_outcome != verified.policy_outcome
+    {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Failed,
+            "signed appraisal does not equal the locally derived appraisal",
+        );
+    }
+    if claimed_tier != verified.effective_tier() {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Failed,
+            "finding runtime-assurance tier does not equal the policy-derived tier",
+        );
+    }
+    if !receipts_ok || bundle.receipts.is_empty() {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Unavailable,
+            "producing receipts are not available as verified linkage evidence",
+        );
+    }
+    for evidence in &bundle.receipts {
+        let receipt = &evidence.receipt;
+        if receipt.timestamp < attestation.body.issued_at
+            || receipt.timestamp >= attestation.body.expires_at
+        {
+            return facet(
+                FindingFacetKind::RuntimeAssuranceBacking,
+                FindingFacetOutcome::Failed,
+                format!(
+                    "receipt {} falls outside the signed attestation window",
+                    receipt.id
+                ),
+            );
+        }
+        let Some(governed) = receipt.governed_transaction_metadata() else {
+            return facet(
+                FindingFacetKind::RuntimeAssuranceBacking,
+                FindingFacetOutcome::Failed,
+                format!(
+                    "receipt {} has no governed-transaction metadata",
+                    receipt.id
+                ),
+            );
+        };
+        let Some(bound) = governed.runtime_assurance else {
+            return facet(
+                FindingFacetKind::RuntimeAssuranceBacking,
+                FindingFacetOutcome::Failed,
+                format!("receipt {} has no runtime-assurance binding", receipt.id),
+            );
+        };
+        if bound.schema != verified.evidence_schema()
+            || bound.verifier_family != Some(verified.verifier_family())
+            || bound.tier != verified.effective_tier()
+            || bound.verifier != verified.canonical_verifier()
+            || bound.evidence_sha256 != verified.evidence_sha256()
+            || bound.workload_identity.as_ref() != verified.workload_identity()
+        {
+            return facet(
+                FindingFacetKind::RuntimeAssuranceBacking,
+                FindingFacetOutcome::Failed,
+                format!(
+                    "receipt {} runtime-assurance binding does not match the signed evidence",
+                    receipt.id
+                ),
+            );
+        }
+    }
+
+    let mut result = facet(
+        FindingFacetKind::RuntimeAssuranceBacking,
+        FindingFacetOutcome::Verified,
+        "signed attestation and appraisal match every producing receipt",
+    );
+    if let Ok(digest) = signed_envelope_sha256(attestation) {
+        result.evidence_refs.push(digest);
+    }
+    if let Ok(digest) = signed_envelope_sha256(appraisal) {
+        result.evidence_refs.push(digest);
+    }
+    result
+}
+
 fn evaluate_guarantee_consistency(
     finding: &Finding,
     artifact_ok: bool,
@@ -804,7 +1020,10 @@ fn evaluate_guarantee_consistency(
     )
 }
 
-fn bundle_digest(bundle: &FindingEvidenceBundle<'_>) -> Result<String, FindingVerifierError> {
+fn bundle_digest(
+    bundle: &FindingEvidenceBundle<'_>,
+    trust: &FindingVerifierTrustRoots,
+) -> Result<String, FindingVerifierError> {
     // Content commitment over the resolved inputs: receipt bytes,
     // checkpoints, recipe preimage, and backing envelope digest inputs,
     // in deterministic order.
@@ -815,6 +1034,11 @@ fn bundle_digest(bundle: &FindingEvidenceBundle<'_>) -> Result<String, FindingVe
         checkpoint_sha256s: Vec<String>,
         checkpoint_transparency_sha256: String,
         recipe_sha256: Option<String>,
+        runtime_attestation_sha256: Option<String>,
+        runtime_appraisal_sha256: Option<String>,
+        runtime_attestation_authority: Option<String>,
+        appraisal_authority: Option<String>,
+        attestation_trust_policy_sha256: Option<String>,
         backing_allocation_id: Option<&'a str>,
         backing_envelope_sha256: Option<String>,
         backing_live: Option<bool>,
@@ -853,6 +1077,30 @@ fn bundle_digest(bundle: &FindingEvidenceBundle<'_>) -> Result<String, FindingVe
         checkpoint_sha256s,
         checkpoint_transparency_sha256: sha256_hex(&checkpoint_transparency_bytes),
         recipe_sha256: bundle.recipe_preimage.map(sha256_hex),
+        runtime_attestation_sha256: bundle
+            .runtime_attestation
+            .as_ref()
+            .map(signed_envelope_sha256)
+            .transpose()
+            .map_err(|_| FindingVerifierError::Canonicalization)?,
+        runtime_appraisal_sha256: bundle
+            .runtime_appraisal
+            .as_ref()
+            .map(signed_envelope_sha256)
+            .transpose()
+            .map_err(|_| FindingVerifierError::Canonicalization)?,
+        runtime_attestation_authority: trust
+            .runtime_attestation_authority
+            .as_ref()
+            .map(PublicKey::to_hex),
+        appraisal_authority: trust.appraisal_authority.as_ref().map(PublicKey::to_hex),
+        attestation_trust_policy_sha256: trust
+            .attestation_trust_policy
+            .as_ref()
+            .map(canonical_json_bytes)
+            .transpose()
+            .map_err(|_| FindingVerifierError::Canonicalization)?
+            .map(|bytes| sha256_hex(&bytes)),
         backing_allocation_id: bundle
             .bond_snapshot
             .as_ref()

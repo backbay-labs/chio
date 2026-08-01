@@ -493,6 +493,50 @@ fn recipe_blob_is_content_addressed_and_idempotent() {
 }
 
 #[test]
+fn retained_recipe_dependency_survives_restart_and_rejects_deletion() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    secure_temp_directory(temp.path());
+    let database = temp.path().join("authority.db");
+    let lock_root = temp.path().join("locks");
+    fs::create_dir(&lock_root).expect("create lock root");
+    secure_temp_directory(&lock_root);
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision authority");
+
+    let dependency = b"retained replay dependency".to_vec();
+    let digest = chio_core::sha256_hex(&dependency);
+    {
+        let authority =
+            SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open authority");
+        authority
+            .finding_market_store()
+            .put_recipe_blob(&digest, &dependency, NOW)
+            .expect("retain dependency");
+    }
+
+    let raw = rusqlite::Connection::open(&database).expect("open raw connection");
+    let delete = raw.execute(
+        "DELETE FROM recipe_blobs WHERE canonical_sha256 = ?1",
+        [&digest],
+    );
+    assert!(
+        delete.is_err(),
+        "the retention trigger must reject deletion"
+    );
+    drop(raw);
+
+    let authority =
+        SqliteAuthorityStore::open_serving(&database, &lock_root).expect("reopen authority");
+    assert_eq!(
+        authority
+            .finding_market_store()
+            .get_recipe_blob(&digest)
+            .expect("load retained dependency")
+            .expect("dependency remains present"),
+        dependency
+    );
+}
+
+#[test]
 fn allocation_exclusivity_and_single_consumption() {
     let fixture = fixture();
     let finding_id = hex64('a');

@@ -3,12 +3,25 @@
 //! checkpoint, then adversarial tampering on every wrapper dimension the
 //! shipped inclusion-proof verify leaves unchecked.
 
+use std::collections::BTreeMap;
 use std::error::Error;
 
+use chio_appraisal::{
+    verify_runtime_attestation_record, RuntimeAttestationAppraisalReport,
+    SignedRuntimeAttestationAppraisalReport, AZURE_MAA_ATTESTATION_SCHEMA,
+    RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA,
+};
+use chio_core_types::capability::runtime_attestation::{
+    RuntimeAssuranceTier, RuntimeAttestationEvidence,
+};
 use chio_core_types::capability::scope::MonetaryAmount;
+use chio_core_types::capability::trust_policy::{AttestationTrustPolicy, AttestationTrustRule};
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::body::{ChioReceipt, ChioReceiptBody};
 use chio_core_types::receipt::decision::{Decision, ToolCallAction};
+use chio_core_types::receipt::governance::{
+    GovernedTransactionReceiptMetadata, RuntimeAssuranceReceiptMetadata,
+};
 use chio_core_types::receipt::kinds::TrustLevel;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::MerkleTree;
@@ -47,7 +60,29 @@ fn receipt(
     kernel: &Keypair,
     index: u32,
     content_hash: &str,
+    runtime_assurance: Option<&RuntimeAssuranceReceiptMetadata>,
 ) -> Result<ChioReceipt, Box<dyn Error>> {
+    let metadata = runtime_assurance
+        .map(|runtime_assurance| {
+            serde_json::to_value(serde_json::json!({
+                "governed_transaction": GovernedTransactionReceiptMetadata {
+                    intent_id: format!("intent-evidence-{index}"),
+                    intent_hash: HEX64.to_string(),
+                    purpose: "produce finding evidence".to_string(),
+                    server_id: "finding-server".to_string(),
+                    tool_name: "finding.produce".to_string(),
+                    max_amount: None,
+                    commerce: None,
+                    metered_billing: None,
+                    approval: None,
+                    runtime_assurance: Some(runtime_assurance.clone()),
+                    call_chain: None,
+                    autonomy: None,
+                    economic_authorization: None,
+                }
+            }))
+        })
+        .transpose()?;
     let body = ChioReceiptBody {
         id: String::new(),
         timestamp: 1_750_000_000 + u64::from(index),
@@ -65,7 +100,7 @@ fn receipt(
         content_hash: content_hash.to_string(),
         policy_hash: "policy-wedge".to_string(),
         evidence: Vec::new(),
-        metadata: None,
+        metadata,
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: kernel.public_key(),
@@ -169,6 +204,13 @@ fn metered_attested_fixture() -> Result<Fixture, Box<dyn Error>> {
 }
 
 fn fixture() -> Result<Fixture, Box<dyn Error>> {
+    fixture_with_runtime_assurance(None, None)
+}
+
+fn fixture_with_runtime_assurance(
+    runtime_assurance_tier: Option<RuntimeAssuranceTier>,
+    runtime_assurance: Option<&RuntimeAssuranceReceiptMetadata>,
+) -> Result<Fixture, Box<dyn Error>> {
     let issuer = keypair(3);
     let governance = keypair(1);
     let kernel = keypair(21);
@@ -178,8 +220,8 @@ fn fixture() -> Result<Fixture, Box<dyn Error>> {
 
     // Receipts first: the finding binds their recomputed ids in order.
     let payload_sha256 = HEX64.to_string();
-    let first = receipt(&kernel, 0, HEX64)?;
-    let second = receipt(&kernel, 1, HEX64)?;
+    let first = receipt(&kernel, 0, HEX64, runtime_assurance)?;
+    let second = receipt(&kernel, 1, HEX64, runtime_assurance)?;
     let first_bytes = canonical_json_bytes(&first)?;
     let second_bytes = canonical_json_bytes(&second)?;
     let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
@@ -274,7 +316,7 @@ fn fixture() -> Result<Fixture, Box<dyn Error>> {
             units: 10,
             currency: "USD".to_string(),
         },
-        runtime_assurance_tier: None,
+        runtime_assurance_tier,
         evidence_class: FindingEvidenceClass::Verified,
         replay_recipe_sha256: Some(replay_recipe_sha256),
         intent_commitment_receipt_id: None,
@@ -354,12 +396,99 @@ fn fixture() -> Result<Fixture, Box<dyn Error>> {
     })
 }
 
+struct RuntimeFixture {
+    fixture: Fixture,
+    attestation_authority: Keypair,
+    appraisal_authority: Keypair,
+    policy: AttestationTrustPolicy,
+    attestation: SignedExportEnvelope<RuntimeAttestationEvidence>,
+    appraisal: SignedRuntimeAttestationAppraisalReport,
+}
+
+fn runtime_fixture(effective_tier: RuntimeAssuranceTier) -> Result<RuntimeFixture, Box<dyn Error>> {
+    let attestation_authority = keypair(31);
+    let appraisal_authority = keypair(32);
+    let evidence = RuntimeAttestationEvidence {
+        schema: AZURE_MAA_ATTESTATION_SCHEMA.to_string(),
+        verifier: "https://maa.cognition-market.test".to_string(),
+        tier: RuntimeAssuranceTier::Attested,
+        issued_at: 1_749_000_000,
+        expires_at: 1_800_000_000,
+        evidence_sha256: HEX64.to_string(),
+        runtime_identity: None,
+        workload_identity: None,
+        claims: Some(serde_json::json!({
+            "azureMaa": {"attestationType": "sgx"}
+        })),
+    };
+    let policy = AttestationTrustPolicy {
+        rules: vec![AttestationTrustRule {
+            name: "cognition-market-runtime".to_string(),
+            schema: AZURE_MAA_ATTESTATION_SCHEMA.to_string(),
+            verifier: "https://maa.cognition-market.test".to_string(),
+            effective_tier,
+            verifier_family: Some(
+                chio_core_types::runtime_attestation::AttestationVerifierFamily::AzureMaa,
+            ),
+            max_evidence_age_seconds: Some(10_000_000),
+            allowed_attestation_types: vec!["sgx".to_string()],
+            required_assertions: BTreeMap::new(),
+        }],
+    };
+    let verified = verify_runtime_attestation_record(&evidence, Some(&policy), 1_750_000_000)?;
+    let runtime_metadata = RuntimeAssuranceReceiptMetadata {
+        schema: verified.evidence_schema().to_string(),
+        verifier_family: Some(verified.verifier_family()),
+        tier: verified.effective_tier(),
+        verifier: verified.canonical_verifier().to_string(),
+        evidence_sha256: verified.evidence_sha256().to_string(),
+        workload_identity: verified.workload_identity().cloned(),
+    };
+    let fixture = fixture_with_runtime_assurance(Some(effective_tier), Some(&runtime_metadata))?;
+    let attestation = SignedExportEnvelope::sign(evidence, &attestation_authority)?;
+    let appraisal = SignedExportEnvelope::sign(
+        RuntimeAttestationAppraisalReport {
+            schema: RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA.to_string(),
+            generated_at: 1_750_000_000,
+            appraisal: verified.appraisal,
+            policy_outcome: verified.policy_outcome,
+        },
+        &appraisal_authority,
+    )?;
+    Ok(RuntimeFixture {
+        fixture,
+        attestation_authority,
+        appraisal_authority,
+        policy,
+        attestation,
+        appraisal,
+    })
+}
+
+fn runtime_trust_roots(fx: &RuntimeFixture) -> FindingVerifierTrustRoots {
+    let mut trust = trust_roots(&fx.fixture);
+    trust.runtime_attestation_authority = Some(fx.attestation_authority.public_key());
+    trust.appraisal_authority = Some(fx.appraisal_authority.public_key());
+    trust.attestation_trust_policy = Some(fx.policy.clone());
+    trust
+}
+
+fn runtime_bundle(fx: &RuntimeFixture) -> FindingEvidenceBundle<'_> {
+    let mut evidence = bundle(&fx.fixture, clone_receipts(&fx.fixture));
+    evidence.runtime_attestation = Some(fx.attestation.clone());
+    evidence.runtime_appraisal = Some(fx.appraisal.clone());
+    evidence
+}
+
 fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
     FindingVerifierTrustRoots {
         governance_authority: fx.governance.public_key(),
         profile: fx.profile.clone(),
         admitted_kernel_keys: vec![keypair(21).public_key()],
         collateral_authority: keypair(4).public_key(),
+        runtime_attestation_authority: None,
+        appraisal_authority: None,
+        attestation_trust_policy: None,
         trusted_time: 1_750_000_000,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
@@ -376,6 +505,8 @@ fn bundle<'a>(
         checkpoints: vec![fx.checkpoint.clone()],
         checkpoint_transparency: fx.checkpoint_transparency.clone(),
         recipe_preimage: Some(fx.recipe_bytes.as_slice()),
+        runtime_attestation: None,
+        runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
             backing: fx.backing.clone(),
             live: true,
@@ -476,6 +607,170 @@ fn failed_optional_facet_denies_the_draft() -> TestResult {
     status.reason = "status proof contradicted the signed snapshot".to_string();
 
     assert!(!draft.satisfies_required_facets(&fx.profile.body));
+    Ok(())
+}
+
+#[test]
+fn signed_runtime_assurance_can_verify_each_claimed_tier() -> TestResult {
+    for tier in [
+        RuntimeAssuranceTier::Basic,
+        RuntimeAssuranceTier::Attested,
+        RuntimeAssuranceTier::Verified,
+    ] {
+        let fx = runtime_fixture(tier)?;
+        let trust = runtime_trust_roots(&fx);
+        let evidence = runtime_bundle(&fx);
+        let draft = verify_finding_evidence(&fx.fixture.raw_finding, &trust, &evidence)?;
+        assert_eq!(
+            draft.facet_outcome(FindingFacetKind::RuntimeAssuranceBacking),
+            Some(FindingFacetOutcome::Verified),
+            "tier {tier:?}"
+        );
+        assert!(draft.satisfies_required_facets(&fx.fixture.profile.body));
+    }
+    Ok(())
+}
+
+#[test]
+fn resolved_bundle_commitment_includes_assurance_artifacts_pins_and_policy() -> TestResult {
+    let fx = runtime_fixture(RuntimeAssuranceTier::Verified)?;
+    let trust = runtime_trust_roots(&fx);
+    let evidence = runtime_bundle(&fx);
+    let baseline = verify_finding_evidence(&fx.fixture.raw_finding, &trust, &evidence)?;
+
+    let alternate_attestation_authority = keypair(33);
+    let mut alternate_trust = runtime_trust_roots(&fx);
+    alternate_trust.runtime_attestation_authority =
+        Some(alternate_attestation_authority.public_key());
+    let mut alternate_evidence = runtime_bundle(&fx);
+    alternate_evidence.runtime_attestation = Some(SignedExportEnvelope::sign(
+        fx.attestation.body.clone(),
+        &alternate_attestation_authority,
+    )?);
+    let alternate = verify_finding_evidence(
+        &fx.fixture.raw_finding,
+        &alternate_trust,
+        &alternate_evidence,
+    )?;
+    assert_eq!(
+        alternate.facet_outcome(FindingFacetKind::RuntimeAssuranceBacking),
+        Some(FindingFacetOutcome::Verified)
+    );
+    assert_ne!(
+        baseline.resolved_evidence_bundle_sha256,
+        alternate.resolved_evidence_bundle_sha256
+    );
+
+    let mut policy_trust = runtime_trust_roots(&fx);
+    policy_trust
+        .attestation_trust_policy
+        .as_mut()
+        .ok_or("missing policy")?
+        .rules[0]
+        .max_evidence_age_seconds = Some(2_000_000);
+    let policy_evidence = runtime_bundle(&fx);
+    let policy_changed =
+        verify_finding_evidence(&fx.fixture.raw_finding, &policy_trust, &policy_evidence)?;
+    assert_eq!(
+        policy_changed.facet_outcome(FindingFacetKind::RuntimeAssuranceBacking),
+        Some(FindingFacetOutcome::Verified)
+    );
+    assert_ne!(
+        baseline.resolved_evidence_bundle_sha256,
+        policy_changed.resolved_evidence_bundle_sha256
+    );
+
+    let mut appraisal_evidence = runtime_bundle(&fx);
+    let mut appraisal_body = fx.appraisal.body.clone();
+    appraisal_body.generated_at -= 1;
+    appraisal_evidence.runtime_appraisal = Some(SignedExportEnvelope::sign(
+        appraisal_body,
+        &fx.appraisal_authority,
+    )?);
+    let appraisal_changed =
+        verify_finding_evidence(&fx.fixture.raw_finding, &trust, &appraisal_evidence)?;
+    assert_eq!(
+        appraisal_changed.facet_outcome(FindingFacetKind::RuntimeAssuranceBacking),
+        Some(FindingFacetOutcome::Verified)
+    );
+    assert_ne!(
+        baseline.resolved_evidence_bundle_sha256,
+        appraisal_changed.resolved_evidence_bundle_sha256
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_assurance_rejects_empty_policy_and_unrelated_signed_evidence() -> TestResult {
+    let fx = runtime_fixture(RuntimeAssuranceTier::Verified)?;
+
+    let mut trust = runtime_trust_roots(&fx);
+    trust.attestation_trust_policy = Some(AttestationTrustPolicy { rules: Vec::new() });
+    let evidence = runtime_bundle(&fx);
+    let draft = verify_finding_evidence(&fx.fixture.raw_finding, &trust, &evidence)?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::RuntimeAssuranceBacking),
+        Some(FindingFacetOutcome::Failed)
+    );
+    assert!(!draft.satisfies_required_facets(&fx.fixture.profile.body));
+
+    // Both replacement artifacts are validly signed and locally appraised,
+    // but they name different attestation evidence than the kernel signed
+    // into the producing receipts.
+    let mut replacement_evidence = fx.attestation.body.clone();
+    replacement_evidence.evidence_sha256 = "1".repeat(64);
+    let replacement_record =
+        verify_runtime_attestation_record(&replacement_evidence, Some(&fx.policy), 1_750_000_000)?;
+    let replacement_attestation =
+        SignedExportEnvelope::sign(replacement_evidence, &fx.attestation_authority)?;
+    let replacement_appraisal = SignedExportEnvelope::sign(
+        RuntimeAttestationAppraisalReport {
+            schema: RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA.to_string(),
+            generated_at: 1_750_000_000,
+            appraisal: replacement_record.appraisal,
+            policy_outcome: replacement_record.policy_outcome,
+        },
+        &fx.appraisal_authority,
+    )?;
+    let trust = runtime_trust_roots(&fx);
+    let mut evidence = runtime_bundle(&fx);
+    evidence.runtime_attestation = Some(replacement_attestation);
+    evidence.runtime_appraisal = Some(replacement_appraisal);
+    let draft = verify_finding_evidence(&fx.fixture.raw_finding, &trust, &evidence)?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::RuntimeAssuranceBacking),
+        Some(FindingFacetOutcome::Failed)
+    );
+    assert!(!draft.satisfies_required_facets(&fx.fixture.profile.body));
+    Ok(())
+}
+
+#[test]
+fn runtime_assurance_rejects_invalid_or_stale_signed_artifacts() -> TestResult {
+    let fx = runtime_fixture(RuntimeAssuranceTier::Verified)?;
+    let trust = runtime_trust_roots(&fx);
+
+    let mut invalid = runtime_bundle(&fx);
+    invalid
+        .runtime_appraisal
+        .as_mut()
+        .ok_or("missing appraisal")?
+        .body
+        .generated_at += 1;
+    let draft = verify_finding_evidence(&fx.fixture.raw_finding, &trust, &invalid)?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::RuntimeAssuranceBacking),
+        Some(FindingFacetOutcome::Failed)
+    );
+
+    let mut stale_trust = runtime_trust_roots(&fx);
+    stale_trust.trusted_time = 1_800_000_000;
+    let stale = runtime_bundle(&fx);
+    let draft = verify_finding_evidence(&fx.fixture.raw_finding, &stale_trust, &stale)?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::RuntimeAssuranceBacking),
+        Some(FindingFacetOutcome::Failed)
+    );
     Ok(())
 }
 

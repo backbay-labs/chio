@@ -354,7 +354,34 @@ fn recipe_environment() -> FindingRecipeEnvironment {
     }
 }
 
-fn build_recipe(profile_envelope_sha256: &str) -> FindingReplayRecipeInput {
+struct RecipeDependencies {
+    blobs: Vec<Vec<u8>>,
+    baseline_input_sha256: String,
+    candidate_input_sha256: String,
+    parameters_sha256: String,
+    pre_run_template_sha256: String,
+}
+
+fn recipe_dependencies() -> RecipeDependencies {
+    let blobs = vec![
+        b"baseline input bundle".to_vec(),
+        b"candidate input bundle".to_vec(),
+        b"canonical parameter bundle".to_vec(),
+        b"cycle-free pre-run template".to_vec(),
+    ];
+    RecipeDependencies {
+        baseline_input_sha256: sha256_hex(&blobs[0]),
+        candidate_input_sha256: sha256_hex(&blobs[1]),
+        parameters_sha256: sha256_hex(&blobs[2]),
+        pre_run_template_sha256: sha256_hex(&blobs[3]),
+        blobs,
+    }
+}
+
+fn build_recipe(
+    profile_envelope_sha256: &str,
+    dependencies: &RecipeDependencies,
+) -> FindingReplayRecipeInput {
     FindingReplayRecipeInput {
         schema: FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1.to_string(),
         decision_rule_ref: "decision/replay-v1".to_string(),
@@ -367,20 +394,20 @@ fn build_recipe(profile_envelope_sha256: &str) -> FindingReplayRecipeInput {
         phases: vec![
             FindingRecipePhase {
                 phase: FindingRecipePhaseKind::Baseline,
-                input_bundle_sha256: HEX64.to_string(),
+                input_bundle_sha256: dependencies.baseline_input_sha256.clone(),
                 payload_application: "not_applied".to_string(),
             },
             FindingRecipePhase {
                 phase: FindingRecipePhaseKind::Candidate,
-                input_bundle_sha256: HEX64.to_string(),
+                input_bundle_sha256: dependencies.candidate_input_sha256.clone(),
                 payload_application: "apply_patch_v1".to_string(),
             },
         ],
-        parameters_sha256: HEX64.to_string(),
+        parameters_sha256: dependencies.parameters_sha256.clone(),
         environment: recipe_environment(),
         resource_bounds: resource_caps(),
         predicate: FindingPredicate::BaselineFailsCandidatePassesV1,
-        pre_run_template_sha256: HEX64.to_string(),
+        pre_run_template_sha256: dependencies.pre_run_template_sha256.clone(),
         claimed_verdict: FindingClaimedVerdict::PredicateHolds,
     }
 }
@@ -734,6 +761,9 @@ fn make_signed_report(
         profile: inputs.profile.clone(),
         admitted_kernel_keys: vec![inputs.kernel.public_key()],
         collateral_authority: inputs.collateral.public_key(),
+        runtime_attestation_authority: None,
+        appraisal_authority: None,
+        attestation_trust_policy: None,
         trusted_time,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
@@ -746,6 +776,8 @@ fn make_signed_report(
             inputs.checkpoint,
         ))?,
         recipe_preimage: Some(inputs.recipe_bytes),
+        runtime_attestation: None,
+        runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
             backing: inputs.backing.clone(),
             live: true,
@@ -902,6 +934,7 @@ struct MarketWeb {
     second_finding_id: String,
     recipe_bytes: Vec<u8>,
     recipe_sha256: String,
+    recipe_dependencies: Vec<Vec<u8>>,
     profile_raw: String,
     profile_sha256: String,
     schedule: SignedOpenMarketFeeSchedule,
@@ -968,7 +1001,8 @@ impl MarketWeb {
         let profile = build_profile(&governance, log_id)?;
         let profile_raw = canonical_string(&profile)?;
         let profile_sha256 = sha256_hex(profile_raw.as_bytes());
-        let recipe = build_recipe(&profile_sha256);
+        let recipe_dependencies = recipe_dependencies();
+        let recipe = build_recipe(&profile_sha256, &recipe_dependencies);
         let recipe_bytes = canonical_json_bytes(&recipe)?;
         let recipe_sha256 = sha256_hex(&recipe_bytes);
 
@@ -1075,6 +1109,7 @@ impl MarketWeb {
             second_finding_id,
             recipe_bytes,
             recipe_sha256,
+            recipe_dependencies: recipe_dependencies.blobs,
             profile_raw,
             profile_sha256,
             schedule,
@@ -1224,6 +1259,20 @@ impl MarketStack {
             json_body(&body)?["canonicalSha256"],
             serde_json::json!(self.web.recipe_sha256)
         );
+
+        for dependency in &self.web.recipe_dependencies {
+            let expected_digest = sha256_hex(dependency);
+            let (status, body) = send(
+                &self.state,
+                authed_post("/v1/findings/recipes", dependency.clone())?,
+            )
+            .await?;
+            assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+            assert_eq!(
+                json_body(&body)?["canonicalSha256"],
+                serde_json::json!(expected_digest)
+            );
+        }
 
         let (status, body) = send(
             &self.state,
@@ -2057,6 +2106,57 @@ async fn price_hint_ref_and_unretained_recipe_reject() -> TestResult {
     .await?;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(String::from_utf8_lossy(&body).contains("not retained"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn deterministic_publish_requires_every_retained_recipe_dependency_class() -> TestResult {
+    for (omitted_index, expected_fragment) in [
+        (0_usize, "phase input bundle 0"),
+        (2_usize, "parameter bundle"),
+        (3_usize, "pre-run template"),
+    ] {
+        let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+        let web = &stack.web;
+
+        let (status, body) = send(
+            &stack.state,
+            authed_post("/v1/findings/profiles", web.profile_raw.clone())?,
+        )
+        .await?;
+        assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+
+        let (status, body) = send(
+            &stack.state,
+            authed_post("/v1/findings/recipes", web.recipe_bytes.clone())?,
+        )
+        .await?;
+        assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+
+        for (index, dependency) in web.recipe_dependencies.iter().enumerate() {
+            if index == omitted_index {
+                continue;
+            }
+            let (status, body) = send(
+                &stack.state,
+                authed_post("/v1/findings/recipes", dependency.clone())?,
+            )
+            .await?;
+            assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+        }
+
+        let (status, body) = send(
+            &stack.state,
+            authed_post("/v1/findings/publish", web.raw_finding.clone())?,
+        )
+        .await?;
+        let text = String::from_utf8_lossy(&body);
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{text}");
+        assert!(
+            text.contains(expected_fragment),
+            "expected {expected_fragment:?} in {text:?}"
+        );
+    }
     Ok(())
 }
 

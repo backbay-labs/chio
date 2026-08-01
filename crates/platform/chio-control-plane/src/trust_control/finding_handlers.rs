@@ -211,6 +211,82 @@ fn strict_artifact_ingress<T: serde::de::DeserializeOwned + serde::Serialize>(
     Ok((strict_bytes, typed))
 }
 
+/// Re-load the exact recipe committed by a deterministic-replay Finding
+/// and require every opaque dependency that the v1 recipe says must be
+/// venue-retained. The profile has its own signed registration path;
+/// this closure covers both phase input bundles, the canonical parameter
+/// bundle, and the cycle-free pre-run template. These blobs cannot vanish
+/// after this check because the store rejects recipe-blob deletion.
+fn verify_retained_recipe_closure(
+    store: &SqliteFindingMarketStore,
+    recipe_sha256: &str,
+) -> Result<(), Response> {
+    let recipe_bytes = match store.get_recipe_blob(recipe_sha256) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => {
+            return Err(plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "replay recipe preimage is not retained; upload it before publishing",
+            ))
+        }
+        Err(error) => {
+            return Err(plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &error.to_string(),
+            ))
+        }
+    };
+    let raw = std::str::from_utf8(&recipe_bytes).map_err(|_| {
+        plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "retained replay recipe is not UTF-8",
+        )
+    })?;
+    let (_, recipe) = strict_artifact_ingress::<FindingReplayRecipeInput>(
+        raw,
+        FINDING_DEPENDENCY_MAX_BODY_BYTES,
+        RECIPE_SCHEMA_JSON,
+        "chio-finding/v1/replay-recipe-input.schema.json",
+    )?;
+    recipe
+        .validate()
+        .map_err(|error| plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()))?;
+
+    let mut dependencies = Vec::with_capacity(recipe.phases.len() + 2);
+    for (index, phase) in recipe.phases.iter().enumerate() {
+        dependencies.push((
+            format!("phase input bundle {index}"),
+            phase.input_bundle_sha256.as_str(),
+        ));
+    }
+    dependencies.push((
+        "parameter bundle".to_string(),
+        recipe.parameters_sha256.as_str(),
+    ));
+    dependencies.push((
+        "pre-run template".to_string(),
+        recipe.pre_run_template_sha256.as_str(),
+    ));
+    for (kind, digest) in dependencies {
+        match store.get_recipe_blob(digest) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return Err(plain_http_error(
+                    StatusCode::BAD_REQUEST,
+                    &format!("replay recipe {kind} is not retained: {digest}"),
+                ))
+            }
+            Err(error) => {
+                return Err(plain_http_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &error.to_string(),
+                ))
+            }
+        }
+    }
+    Ok(())
+}
+
 /// POST /v1/findings/publish (authenticated): the strict canonical
 /// Finding ingress. Publication indexes the finding; admission is the
 /// separate activation transaction.
@@ -263,17 +339,8 @@ pub(crate) async fn handle_publish_finding(
         let Some(recipe_sha256) = finding.replay_recipe_sha256.as_deref() else {
             return plain_http_error(StatusCode::BAD_REQUEST, "replay recipe digest missing");
         };
-        match store.get_recipe_blob(recipe_sha256) {
-            Ok(Some(_)) => {}
-            Ok(None) => {
-                return plain_http_error(
-                    StatusCode::BAD_REQUEST,
-                    "replay recipe preimage is not retained; upload it before publishing",
-                )
-            }
-            Err(error) => {
-                return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-            }
+        if let Err(response) = verify_retained_recipe_closure(&store, recipe_sha256) {
+            return response;
         }
     }
     let artifact_json = match std::str::from_utf8(&strict_bytes) {
@@ -768,6 +835,14 @@ pub(crate) async fn handle_activate_finding(
             )
         }
     };
+    if finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
+        let Some(recipe_sha256) = finding.replay_recipe_sha256.as_deref() else {
+            return plain_http_error(StatusCode::BAD_REQUEST, "replay recipe digest missing");
+        };
+        if let Err(response) = verify_retained_recipe_closure(&store, recipe_sha256) {
+            return response;
+        }
+    }
     let artifact_sha256 = chio_core::sha256_hex(artifact_json.as_bytes());
     if admission.finding_artifact_sha256 != artifact_sha256 {
         return plain_http_error(

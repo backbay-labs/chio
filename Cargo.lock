@@ -3612,6 +3612,7 @@ dependencies = [
 name = "chio-finding-verifier"
 version = "0.1.0"
 dependencies = [
+ "chio-appraisal",
  "chio-core-types",
  "chio-finding",
  "chio-kernel",

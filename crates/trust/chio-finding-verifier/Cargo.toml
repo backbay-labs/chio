@@ -12,6 +12,7 @@ publish = false
 name = "chio_finding_verifier"
 
 [dependencies]
+chio-appraisal = { workspace = true }
 chio-core-types = { workspace = true }
 chio-finding = { workspace = true }
 chio-kernel = { workspace = true }
