@@ -43,6 +43,9 @@ jobs:
   check:
     name: Build, lint, test
     runs-on: ubuntu-latest
+    # Failsafe well above the healthy-lane ceiling (~40m): a wedged test
+    # surfaces as a failure in 2h instead of eating the 6h default.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -252,6 +255,9 @@ jobs:
   msrv:
     name: MSRV build and test
     runs-on: ubuntu-latest
+    # Serial (CARGO_BUILD_JOBS=1) full-workspace lane; healthy runs finish
+    # well under 3h. Same wedge failsafe as the check job.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: ./.github/actions/setup-rust

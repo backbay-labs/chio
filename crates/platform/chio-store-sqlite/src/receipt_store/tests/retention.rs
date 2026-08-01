@@ -4225,7 +4225,13 @@ mod state_machine {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig::with_cases(48))]
+        // 24 cases, health folded at rotation boundaries: each health call
+        // re-verifies the whole chain over a synchronous=FULL file-backed
+        // store, so a per-op fold at 48 cases is hours of fsync-bound work on
+        // a loaded runner (the lane wedges to the 6h job ceiling). Rotation is
+        // the transition this invariant guards; per-append head divergence is
+        // covered by head_property's full-audit equality.
+        #![proptest_config(ProptestConfig::with_cases(24))]
         #[test]
         fn prop_retention_preserves_append_invariant(ops in prop::collection::vec(op_strategy(), 1..40)) {
             let path = unique_db_path("prop-retention");
@@ -4276,6 +4282,14 @@ mod state_machine {
                             // permanent no-op (W = 0), so the archived/live
                             // partition below would never actually be exercised.
                             store.archive_receipts_before(3_000, archive_path).map_err(map_err)?;
+                            // Invariant (3): health stays healthy across the
+                            // rotation (folds set-equality and chain
+                            // integrity). Asserted at rotation boundaries and
+                            // after the final op rather than per append: the
+                            // fold re-verifies the whole chain, and rotation is
+                            // the transition this invariant guards.
+                            store.flush_receipt_writes().map_err(map_err)?;
+                            prop_assert!(store.receipt_store_health().map_err(map_err)?.healthy);
                         }
                     }
                     // Invariant (1): the next append still succeeds.
@@ -4284,11 +4298,12 @@ mod state_machine {
                         &format!("probe-{seq}"), seq, 2_000, &keypair);
                     appended_ids.insert(probe.id.clone());
                     store.append_chio_receipt_returning_seq(&probe).map_err(map_err)?;
-                    // Invariant (3): health stays healthy (folds set-equality
-                    // and chain integrity).
-                    store.flush_receipt_writes().map_err(map_err)?;
-                    prop_assert!(store.receipt_store_health().map_err(map_err)?.healthy);
                 }
+                // Invariant (3) at the end of the run: the final interleaving
+                // (including trailing un-rotated appends) leaves a healthy
+                // store.
+                store.flush_receipt_writes().map_err(map_err)?;
+                prop_assert!(store.receipt_store_health().map_err(map_err)?.healthy);
             }
             // Invariant (2): reopen succeeds (open-time seed re-verifies).
             // The verified-head seed runs on the commit-writer thread, so flush
