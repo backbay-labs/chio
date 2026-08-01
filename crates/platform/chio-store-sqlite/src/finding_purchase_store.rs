@@ -386,7 +386,7 @@ impl SqliteFindingPurchaseStore {
 
     /// Seed the sibling admission table for cross-store unit tests whose
     /// subject is purchase or challenge transactionality, not activation.
-    #[cfg(feature = "cognition-market-test-support")]
+    #[cfg(any(test, feature = "cognition-market-test-support"))]
     pub fn install_active_admission_for_tests(
         &self,
         finding_id: &str,

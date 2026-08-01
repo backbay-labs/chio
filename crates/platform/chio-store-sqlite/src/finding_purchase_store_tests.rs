@@ -1471,6 +1471,7 @@ fn the_exposure_query_follows_reservation_expiry_without_a_sweep() {
             record_json: &bytes,
             record_sha256: &digest,
             delivery_receipt_id: "receipt-delivery-beta",
+            payout_destination: PAYOUT_DESTINATION,
             retention_expires_at: EXPIRES_AT + 100_000,
             now: EXPIRES_AT,
         })
@@ -1653,6 +1654,7 @@ fn blocking_sales_stops_the_slot_line_and_the_wait_predicate_is_exact() {
             record_json: &bytes,
             record_sha256: &digest,
             delivery_receipt_id: "receipt-delivery-alpha",
+            payout_destination: PAYOUT_DESTINATION,
             retention_expires_at: NOW + 100_000,
             now: NOW + 5,
         })

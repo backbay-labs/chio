@@ -12,7 +12,7 @@ use chio_finding::{
 use tempfile::TempDir;
 
 use super::*;
-use crate::finding_market_store::SqliteFindingMarketStore;
+use crate::finding_market_store::{FindingRecordInput, SqliteFindingMarketStore};
 use crate::finding_purchase_store::{
     FindingPurchaseDeliveryInput, FindingPurchaseDenyInput, FindingPurchaseReservationInput,
     FindingPurchaseStoreError, SqliteFindingPurchaseStore,
@@ -54,7 +54,18 @@ fn fixture() -> Fixture {
     let market = authority.finding_market_store();
     let purchases = authority.finding_purchase_store();
     let store = authority.finding_challenge_store();
+    publish_finding(&market);
     let allocation_id = consume_allocation(&market, "vault:finding-collateral", LISTING_ID);
+    purchases
+        .install_active_admission_for_tests(
+            &hex64('a'),
+            &allocation_id,
+            LISTING_ID,
+            &hex64('d'),
+            &hex64('c'),
+            NOW,
+        )
+        .expect("install active admission");
     Fixture {
         _temp: temp,
         _authority: authority,
@@ -99,6 +110,24 @@ fn envelope_string<T: serde::Serialize + Clone>(body: &T, signer: &Keypair) -> S
     let signed = SignedExportEnvelope::sign(body.clone(), signer).expect("sign envelope");
     String::from_utf8(canonical_json_bytes(&signed).expect("canonical envelope"))
         .expect("utf8 envelope")
+}
+
+fn publish_finding(market: &SqliteFindingMarketStore) {
+    let finding_id = hex64('a');
+    let artifact = format!("{{\"finding_id\":\"{finding_id}\"}}");
+    market
+        .put_finding(
+            &FindingRecordInput {
+                finding_id: &finding_id,
+                artifact_json: &artifact,
+                topic: "challenge-store-test",
+                context_sha256: &hex64('0'),
+                issued_at: 1_700_000_000,
+                expires_at: 1_900_000_000,
+            },
+            NOW,
+        )
+        .expect("publish finding");
 }
 
 /// Collateral backing the fixture finding on one listing, mirroring the
@@ -456,6 +485,7 @@ fn settle_slot(fixture: &Fixture, tag: &str, purchase_key: &str, now: u64) {
             record_json: &bytes,
             record_sha256: &record_sha256,
             delivery_receipt_id: "receipt-delivery",
+            payout_destination: "rail:venue-ledger:buyer-42",
             retention_expires_at: NOW + 100_000,
             now,
         })
@@ -2194,6 +2224,8 @@ fn case_head_resolves_one_live_case_and_rejects_two() {
         .begin_appeal_window(
             &head.liability_key,
             FindingLiabilityState::UpheldPendingClaims,
+            &digest("finding-market-terms-alpha"),
+            APPEAL_WINDOW,
             NOW + 4,
         )
         .expect("open appeal window");
@@ -2360,6 +2392,8 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
         .begin_appeal_window(
             &head.liability_key,
             FindingLiabilityState::UpheldPendingClaims,
+            &digest("finding-market-terms-finality-race"),
+            APPEAL_WINDOW,
             NOW + 4,
         )
         .expect("open appeal window");
@@ -2444,6 +2478,8 @@ fn appeal_supersession_wins_the_race_against_finalizing() {
         .begin_appeal_window(
             &head.liability_key,
             FindingLiabilityState::UpheldPendingClaims,
+            &digest("finding-market-terms-appeal-race"),
+            APPEAL_WINDOW,
             NOW + 4,
         )
         .expect("open appeal window");

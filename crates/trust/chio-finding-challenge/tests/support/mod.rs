@@ -942,6 +942,7 @@ pub struct EvidenceCase {
     pub purchase_record: SignedFindingPurchaseRecord,
     pub challenged_receipts: Vec<ResolvedReceiptEvidence>,
     pub challenged_checkpoint: KernelCheckpoint,
+    pub checkpoint_transparency: CheckpointTransparencySummary,
     pub revoked_keys: Vec<RevokedKey>,
 }
 
@@ -1115,11 +1116,21 @@ fn build_evidence_case(
     let affected = vec![world.affected_delivery(&challenged_refs[0])];
     let challenge = world.sign_challenge(authorization, evidence, affected)?;
 
+    // Negative shapes may intentionally carry a checkpoint whose signature
+    // cannot produce valid derived transparency. Keep the supplied summary
+    // empty so the evaluator, rather than fixture setup, performs the
+    // fail-closed rejection.
+    let checkpoint_transparency =
+        match build_checkpoint_transparency(core::slice::from_ref(&challenged_checkpoint)) {
+            Ok(summary) => summary,
+            Err(_) => CheckpointTransparencySummary::default(),
+        };
     Ok(EvidenceCase {
         challenge,
         purchase_record,
         challenged_receipts,
         challenged_checkpoint,
+        checkpoint_transparency,
         revoked_keys,
     })
 }

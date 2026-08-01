@@ -28,6 +28,25 @@ fn fixture() -> (TempDir, PathBuf, PathBuf) {
     (temp, database, lock_root)
 }
 
+#[test]
+fn live_store_verifies_the_configured_database_identity() {
+    let (temp, database, lock_root) = fixture();
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision");
+    let authority =
+        SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open serving");
+
+    authority
+        .verify_database_path(&database)
+        .expect("configured database matches the serving owner");
+
+    let foreign = temp.path().join("foreign.db");
+    File::create(&foreign).expect("create foreign database path");
+    assert!(matches!(
+        authority.verify_database_path(&foreign),
+        Err(SqliteServingOwnerError::Invalid(_))
+    ));
+}
+
 /// Tightens a fixture directory to owner-only access. Both `tempfile::tempdir` and
 /// `fs::create_dir` inherit the process umask, and `validate_secure_directory`
 /// refuses anything group or world writable.
