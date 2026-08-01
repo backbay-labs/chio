@@ -378,6 +378,50 @@ impl SqliteFindingPurchaseStore {
             .map_err(|error| FindingPurchaseStoreError::Unavailable(error.to_string()))
     }
 
+    /// Seed the sibling admission table for cross-store unit tests whose
+    /// subject is purchase or challenge transactionality, not activation.
+    #[cfg(feature = "cognition-market-test-support")]
+    pub fn install_active_admission_for_tests(
+        &self,
+        finding_id: &str,
+        allocation_id: &str,
+        listing_id: &str,
+        admission_id: &str,
+        admission_envelope_sha256: &str,
+        activated_at: u64,
+    ) -> Result<(), FindingPurchaseStoreError> {
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        transaction
+            .execute(
+                "UPDATE admissions SET state = 'superseded' WHERE state = 'active' AND finding_id = ?1",
+                [finding_id],
+            )
+            .map_err(sqlite_error)?;
+        transaction
+            .execute(
+                r#"
+                INSERT INTO admissions (
+                    admission_id, finding_id, listing_id, backing_allocation_id,
+                    admission_envelope_sha256, admission_envelope_json,
+                    expires_at, activated_at, state
+                ) VALUES (?1, ?2, ?3, ?4, ?5, '{}', ?6, ?7, 'active')
+                "#,
+                params![
+                    admission_id,
+                    finding_id,
+                    listing_id,
+                    allocation_id,
+                    admission_envelope_sha256,
+                    1_900_000_000_i64,
+                    sqlite_i64(activated_at, "activated_at")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)
+    }
+
     /// Fence one purchase before its payment dispatches. In one immediate
     /// transaction this inserts the reservation `open` and opens the
     /// seller exposure encumbrance that backs it, after asserting the
@@ -444,6 +488,7 @@ impl SqliteFindingPurchaseStore {
             input.encumbrance_id,
             "encumbrance id",
         )?;
+        assert_allocation_backs_sale(&transaction, input)?;
         expire_due_allocation_reservations_tx(&transaction, input.allocation_id, input.created_at)?;
         let outstanding =
             outstanding_exposure_total_tx(&transaction, input.allocation_id, input.created_at)?;
@@ -1815,7 +1860,7 @@ fn expire_due_allocation_reservations_tx(
 /// keeps counting, because its delivery may still settle into a retained
 /// encumbrance until the expiry sweep closes it; dropping it early would
 /// undercount against exposure that can still materialize.
-fn outstanding_exposure_total_tx(
+pub(crate) fn outstanding_exposure_total_tx(
     transaction: &Transaction<'_>,
     allocation_id: &str,
     now: u64,

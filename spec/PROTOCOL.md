@@ -1748,6 +1748,14 @@ observation digests; that result maps in that order onto `upheld`,
 `rejected`, and `indeterminate`, and the body's verdict MUST equal the
 mapped value.
 
+An indeterminate outcome MAY carry `retry_deadline` only when the signed
+filing policy grants another attempt. The evaluator MUST derive that
+absolute deadline from the challenge-bound seller terms, cap it at the
+terms expiry and at the buyer's signed dispute-lock expiry when present,
+and include it before deriving `outcome_id` and signing. The deadline MUST
+be strictly later than `evaluated_at`. A terminal verdict, an exhausted
+retry, or a closed policy window MUST omit it.
+
 A checked penalty calculation is present exactly when the verdict is
 `upheld`. It records the base stake, the open per-sale encumbrances, the
 computed exposure, the signed listing requirement, the live allocated

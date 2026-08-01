@@ -1497,6 +1497,7 @@ pub fn outcome_for(
         facet: adjudication.facet().clone(),
         reason: adjudication.reason().to_string(),
         trigger_digest: HEX64_THIRD.to_string(),
+        retry_deadline: None,
         penalty_calculation,
         evaluator_key_epoch: 1,
         evaluated_at: 1_750_000_500,

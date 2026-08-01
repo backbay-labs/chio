@@ -69,12 +69,13 @@ use thiserror::Error;
 
 use crate::admission_operation_store::verify_active_owner;
 use crate::finding_purchase_store::{
-    block_new_slots_tx, highest_slot_ordinal_tx, lift_sales_block_tx, FindingPurchaseStoreError,
+    block_new_slots_tx, highest_slot_ordinal_tx, lift_sales_block_tx,
+    outstanding_exposure_total_tx, FindingPurchaseStoreError,
 };
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 2;
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 3;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] =
     &["challenges", "admission_operations", "chio_serving_owner"];
 const FINDING_CHALLENGE_SCHEMA: &str = include_str!("finding_challenge_store.sql");
@@ -341,6 +342,14 @@ pub struct FindingLiabilityRecord {
     /// Trusted time the seller-signed claim window closes. Frozen with
     /// the cutoff; no snapshot seals before it.
     pub claim_deadline: Option<u64>,
+    /// Trusted time the seller-signed appeal window opened. Frozen with
+    /// the absolute deadline when the head enters `pending_appeal`.
+    pub appeal_window_opened_at: Option<u64>,
+    /// Absolute trusted deadline derived from the signed appeal duration.
+    pub appeal_deadline: Option<u64>,
+    /// Envelope digest of the exact seller-signed terms that supplied the
+    /// frozen appeal duration.
+    pub appeal_terms_envelope_sha256: Option<String>,
     pub snapshot_digest: Option<String>,
     pub allocation_digest: Option<String>,
     pub publication_pending: bool,
@@ -415,6 +424,9 @@ pub struct FindingEffectIntentRecord {
     pub liability_key: Option<String>,
     pub kind: FindingEffectIntentKind,
     pub intent_digest: String,
+    /// Whether this effect must reach `confirmed` before its liability may
+    /// leave `finalizing`.
+    pub settlement_required: bool,
     pub state: FindingEffectIntentState,
     pub attempt_count: u64,
     pub recorded_at: u64,
@@ -950,11 +962,13 @@ impl SqliteFindingChallengeStore {
                     liability_key, defect_key, finding_id, listing_id,
                     allocation_id, venue_id, chain_id, vault_contract, vault_id,
                     state, upheld_challenge_id, purchase_cutoff_slot,
-                    snapshot_digest, allocation_digest, publication_pending,
-                    quarantined, opened_at, updated_at
+                    claim_deadline, appeal_window_opened_at, appeal_deadline,
+                    appeal_terms_envelope_sha256, snapshot_digest,
+                    allocation_digest, publication_pending, quarantined,
+                    opened_at, updated_at
                 ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open', NULL, NULL,
-                    NULL, NULL, 0, 0, ?10, ?10
+                    NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, ?10, ?10
                 )
                 "#,
                 params![
@@ -1012,6 +1026,50 @@ impl SqliteFindingChallengeStore {
         claim_deadline: u64,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        self.uphold_liability_inner(
+            liability_key,
+            challenge_id,
+            cutoff_slot,
+            claim_deadline,
+            None,
+            now,
+        )
+    }
+
+    /// Freeze and block exactly like [`Self::uphold_liability`], while
+    /// atomically requiring the authoritative allocation exposure to
+    /// equal the evaluator-signed calculation. A reservation racing the
+    /// coordinator's earlier read therefore lands wholly before this
+    /// check and rejects the transition, or wholly after the sales block
+    /// and is refused by the purchase store.
+    pub fn uphold_liability_with_exposure_fence(
+        &self,
+        liability_key: &str,
+        challenge_id: &str,
+        cutoff_slot: u64,
+        claim_deadline: u64,
+        expected_open_exposure_units: u64,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        self.uphold_liability_inner(
+            liability_key,
+            challenge_id,
+            cutoff_slot,
+            claim_deadline,
+            Some(expected_open_exposure_units),
+            now,
+        )
+    }
+
+    fn uphold_liability_inner(
+        &self,
+        liability_key: &str,
+        challenge_id: &str,
+        cutoff_slot: u64,
+        claim_deadline: u64,
+        expected_open_exposure_units: Option<u64>,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
         require_hex64(liability_key, "liability_key")?;
         require_identifier(challenge_id, "challenge_id")?;
         require_trusted_time(now, "now")?;
@@ -1023,6 +1081,20 @@ impl SqliteFindingChallengeStore {
         }
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
+        if let Some(expected) = expected_open_exposure_units {
+            let liability = load_liability_tx(&transaction, liability_key)?
+                .ok_or(FindingChallengeStoreError::NotFound)?;
+            if liability.state == FindingLiabilityState::Open {
+                let authoritative =
+                    outstanding_exposure_total_tx(&transaction, &liability.allocation_id, now)
+                        .map_err(purchase_error)?;
+                if authoritative != expected {
+                    return Err(FindingChallengeStoreError::Conflict(
+                        "allocation exposure changed before the upheld transaction".to_owned(),
+                    ));
+                }
+            }
+        }
         let outcome = uphold_liability_tx(
             &transaction,
             liability_key,
@@ -1036,21 +1108,84 @@ impl SqliteFindingChallengeStore {
         Ok(outcome)
     }
 
-    /// Compare-and-set `upheld_pending_claims -> pending_appeal`.
+    /// Compare-and-set `upheld_pending_claims -> pending_appeal`, freezing
+    /// the seller-signed appeal window in the same transaction.
+    ///
+    /// The caller supplies the already verified signed duration and the
+    /// digest of the terms envelope that carried it. The store derives the
+    /// absolute deadline from the trusted transition clock. A replay must
+    /// present the same duration and envelope digest, and never recomputes
+    /// the absolute deadline from its later clock.
     pub fn begin_appeal_window(
         &self,
         liability_key: &str,
         expected_state: FindingLiabilityState,
+        appeal_terms_envelope_sha256: &str,
+        appeal_window_secs: u64,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
-        self.transition_liability(
-            liability_key,
+        require_hex64(liability_key, "liability_key")?;
+        require_hex64(appeal_terms_envelope_sha256, "appeal_terms_envelope_sha256")?;
+        require_trusted_time(now, "now")?;
+        if appeal_window_secs == 0 {
+            return Err(invariant("appeal_window_secs must be nonzero"));
+        }
+        require_transition_source(
             expected_state,
             FindingLiabilityState::UpheldPendingClaims,
             FindingLiabilityState::PendingAppeal,
-            None,
-            now,
-        )
+        )?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let liability = load_liability_tx(&transaction, liability_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if liability.state == FindingLiabilityState::PendingAppeal {
+            let same_window = liability
+                .appeal_window_opened_at
+                .and_then(|opened_at| opened_at.checked_add(appeal_window_secs))
+                == liability.appeal_deadline;
+            if same_window
+                && liability.appeal_terms_envelope_sha256.as_deref()
+                    == Some(appeal_terms_envelope_sha256)
+            {
+                return Ok(FindingChallengeWriteOutcome::ExistingSame);
+            }
+            return Err(FindingChallengeStoreError::Conflict(
+                "appeal window is already bound to different signed terms".to_owned(),
+            ));
+        }
+        if liability.state != FindingLiabilityState::UpheldPendingClaims {
+            return Err(FindingChallengeStoreError::Conflict(format!(
+                "liability is in state {}, not the expected upheld_pending_claims",
+                liability_state_name(liability.state)
+            )));
+        }
+        let appeal_deadline = now
+            .checked_add(appeal_window_secs)
+            .ok_or_else(|| invariant("appeal deadline overflowed u64"))?;
+        let changed = transaction
+            .execute(
+                r#"
+                UPDATE liability_heads
+                SET state = 'pending_appeal', appeal_window_opened_at = ?2,
+                    appeal_deadline = ?3, appeal_terms_envelope_sha256 = ?4,
+                    updated_at = ?2
+                WHERE liability_key = ?1 AND state = 'upheld_pending_claims'
+                "#,
+                params![
+                    liability_key,
+                    sqlite_i64(now, "now")?,
+                    sqlite_i64(appeal_deadline, "appeal_deadline")?,
+                    appeal_terms_envelope_sha256,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        if changed != 1 {
+            return Err(invariant("appeal-window transition did not affect one row"));
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingChallengeWriteOutcome::Inserted)
     }
 
     /// Test-only raw lifecycle edge. Production finalization must use
@@ -1128,22 +1263,84 @@ impl SqliteFindingChallengeStore {
     }
 
     /// Compare-and-set `finalizing -> settled`, clearing the pending
-    /// publication. A caller reaches this edge only with every effect
-    /// confirmed; the store refuses it from any other state.
+    /// publication only after every required effect is confirmed.
+    ///
+    /// The gate and the lifecycle transition share one immediate
+    /// transaction. Exactly one required seller impairment, root
+    /// publication, and retraction must exist for the liability, and no
+    /// required effect may remain in any state other than `confirmed`.
     pub fn settle_liability(
         &self,
         liability_key: &str,
         expected_state: FindingLiabilityState,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
-        self.transition_liability(
-            liability_key,
+        require_hex64(liability_key, "liability_key")?;
+        require_trusted_time(now, "now")?;
+        require_transition_source(
             expected_state,
+            FindingLiabilityState::Finalizing,
+            FindingLiabilityState::Settled,
+        )?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let liability = load_liability_tx(&transaction, liability_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if liability.state == FindingLiabilityState::Settled {
+            return Ok(FindingChallengeWriteOutcome::ExistingSame);
+        }
+        if liability.state != FindingLiabilityState::Finalizing {
+            return Err(FindingChallengeStoreError::Conflict(format!(
+                "liability is in state {}, not the expected finalizing",
+                liability_state_name(liability.state)
+            )));
+        }
+        let (required, seller, root, retraction, unconfirmed): (i64, i64, i64, i64, i64) =
+            transaction
+                .query_row(
+                    r#"
+                    SELECT
+                        COUNT(*),
+                        COALESCE(SUM(kind = 'seller_impair'), 0),
+                        COALESCE(SUM(kind = 'root_intent'), 0),
+                        COALESCE(SUM(kind = 'retraction'), 0),
+                        COALESCE(SUM(state <> 'confirmed'), 0)
+                    FROM effect_intents
+                    WHERE liability_key = ?1 AND settlement_required = 1
+                    "#,
+                    [liability_key],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    },
+                )
+                .map_err(sqlite_error)?;
+        if required < 3 || seller != 1 || root != 1 || retraction != 1 {
+            return Err(FindingChallengeStoreError::Conflict(
+                "liability does not carry the required finalization effect set".to_owned(),
+            ));
+        }
+        if unconfirmed != 0 {
+            return Err(FindingChallengeStoreError::Conflict(
+                "liability still has unconfirmed required effects".to_owned(),
+            ));
+        }
+        let (outcome, _) = apply_liability_transition_tx(
+            &transaction,
+            liability_key,
             FindingLiabilityState::Finalizing,
             FindingLiabilityState::Settled,
             Some(false),
             now,
-        )
+        )?;
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(outcome)
     }
 
     /// Compare-and-set `pending_appeal -> reversed_before_impairment`,
@@ -1571,12 +1768,18 @@ impl SqliteFindingChallengeStore {
         kind: FindingEffectIntentKind,
         intent_digest: &str,
         liability_key: Option<&str>,
+        settlement_required: bool,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
         require_hex64(intent_key, "intent_key")?;
         require_hex64(intent_digest, "intent_digest")?;
         if let Some(key) = liability_key {
             require_hex64(key, "liability_key")?;
+        }
+        if settlement_required && liability_key.is_none() {
+            return Err(invariant(
+                "a settlement-required effect must name its liability",
+            ));
         }
         require_trusted_time(now, "now")?;
         let mut connection = self.connection()?;
@@ -1585,6 +1788,7 @@ impl SqliteFindingChallengeStore {
             if existing.kind == kind
                 && existing.intent_digest == intent_digest
                 && existing.liability_key.as_deref() == liability_key
+                && existing.settlement_required == settlement_required
             {
                 return Ok(FindingChallengeWriteOutcome::ExistingSame);
             }
@@ -1602,15 +1806,17 @@ impl SqliteFindingChallengeStore {
             .execute(
                 r#"
                 INSERT INTO effect_intents (
-                    intent_key, liability_key, kind, intent_digest, state,
-                    attempt_count, recorded_at, updated_at
-                ) VALUES (?1, ?2, ?3, ?4, 'pending', 0, ?5, ?5)
+                    intent_key, liability_key, kind, intent_digest,
+                    settlement_required, state, attempt_count, recorded_at,
+                    updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, 'pending', 0, ?6, ?6)
                 "#,
                 params![
                     intent_key,
                     liability_key,
                     effect_intent_kind_name(kind),
                     intent_digest,
+                    i64::from(settlement_required),
                     recorded_at,
                 ],
             )
@@ -2063,8 +2269,9 @@ fn load_dispute_lock_tx(
 const LIABILITY_COLUMNS: &str = r#"
     liability_key, defect_key, finding_id, listing_id, allocation_id, venue_id,
     chain_id, vault_contract, vault_id, state, upheld_challenge_id,
-    purchase_cutoff_slot, claim_deadline, snapshot_digest, allocation_digest,
-    publication_pending, quarantined, opened_at, updated_at
+    purchase_cutoff_slot, claim_deadline, appeal_window_opened_at,
+    appeal_deadline, appeal_terms_envelope_sha256, snapshot_digest,
+    allocation_digest, publication_pending, quarantined, opened_at, updated_at
 "#;
 
 struct RawLiability {
@@ -2081,6 +2288,9 @@ struct RawLiability {
     upheld_challenge_id: Option<String>,
     purchase_cutoff_slot: Option<i64>,
     claim_deadline: Option<i64>,
+    appeal_window_opened_at: Option<i64>,
+    appeal_deadline: Option<i64>,
+    appeal_terms_envelope_sha256: Option<String>,
     snapshot_digest: Option<String>,
     allocation_digest: Option<String>,
     publication_pending: i64,
@@ -2104,12 +2314,15 @@ fn map_liability(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawLiability> {
         upheld_challenge_id: row.get(10)?,
         purchase_cutoff_slot: row.get(11)?,
         claim_deadline: row.get(12)?,
-        snapshot_digest: row.get(13)?,
-        allocation_digest: row.get(14)?,
-        publication_pending: row.get(15)?,
-        quarantined: row.get(16)?,
-        opened_at: row.get(17)?,
-        updated_at: row.get(18)?,
+        appeal_window_opened_at: row.get(13)?,
+        appeal_deadline: row.get(14)?,
+        appeal_terms_envelope_sha256: row.get(15)?,
+        snapshot_digest: row.get(16)?,
+        allocation_digest: row.get(17)?,
+        publication_pending: row.get(18)?,
+        quarantined: row.get(19)?,
+        opened_at: row.get(20)?,
+        updated_at: row.get(21)?,
     })
 }
 
@@ -2136,6 +2349,15 @@ fn liability_from_raw(
             .claim_deadline
             .map(|value| stored_u64(value, "claim_deadline"))
             .transpose()?,
+        appeal_window_opened_at: raw
+            .appeal_window_opened_at
+            .map(|value| stored_u64(value, "appeal_window_opened_at"))
+            .transpose()?,
+        appeal_deadline: raw
+            .appeal_deadline
+            .map(|value| stored_u64(value, "appeal_deadline"))
+            .transpose()?,
+        appeal_terms_envelope_sha256: raw.appeal_terms_envelope_sha256,
         snapshot_digest: raw.snapshot_digest,
         allocation_digest: raw.allocation_digest,
         publication_pending: stored_flag(raw.publication_pending, "publication_pending")?,
@@ -2323,8 +2545,8 @@ fn load_claim_snapshot_tx(
 }
 
 const EFFECT_INTENT_COLUMNS: &str = r#"
-    intent_key, liability_key, kind, intent_digest, state, attempt_count,
-    recorded_at, updated_at
+    intent_key, liability_key, kind, intent_digest, settlement_required, state,
+    attempt_count, recorded_at, updated_at
 "#;
 
 struct RawEffectIntent {
@@ -2332,6 +2554,7 @@ struct RawEffectIntent {
     liability_key: Option<String>,
     kind: String,
     intent_digest: String,
+    settlement_required: i64,
     state: String,
     attempt_count: i64,
     recorded_at: i64,
@@ -2344,10 +2567,11 @@ fn map_effect_intent(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawEffectInten
         liability_key: row.get(1)?,
         kind: row.get(2)?,
         intent_digest: row.get(3)?,
-        state: row.get(4)?,
-        attempt_count: row.get(5)?,
-        recorded_at: row.get(6)?,
-        updated_at: row.get(7)?,
+        settlement_required: row.get(4)?,
+        state: row.get(5)?,
+        attempt_count: row.get(6)?,
+        recorded_at: row.get(7)?,
+        updated_at: row.get(8)?,
     })
 }
 
@@ -2359,6 +2583,7 @@ fn effect_intent_from_raw(
         liability_key: raw.liability_key,
         kind: effect_intent_kind_from_name(&raw.kind)?,
         intent_digest: raw.intent_digest,
+        settlement_required: stored_flag(raw.settlement_required, "settlement_required")?,
         state: effect_intent_state_from_name(&raw.state)?,
         attempt_count: stored_u64(raw.attempt_count, "attempt_count")?,
         recorded_at: stored_u64(raw.recorded_at, "recorded_at")?,
@@ -2852,11 +3077,205 @@ pub(crate) fn initialize_finding_challenge_schema(
     if on_disk == FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
         return verify_finding_challenge_invariants(connection);
     }
+    if on_disk == 0 {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+        transaction
+            .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .map_err(sqlite_error)?;
+        crate::stamp_schema_version(
+            &transaction,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| invariant(error.to_string()))?;
+        verify_finding_challenge_invariants(&transaction)?;
+        return transaction.commit().map_err(sqlite_error);
+    }
+
+    if !matches!(on_disk, 1 | 2) {
+        return Err(invariant(format!(
+            "unsupported finding challenge schema version {on_disk}"
+        )));
+    }
+
+    // Later revisions add columns to existing tables. `CREATE TABLE IF
+    // NOT EXISTS` cannot install them, and ALTER-produced table SQL would
+    // not match the canonical schema catalog. Rebuild the two tables under
+    // an immediate transaction with foreign-key enforcement temporarily
+    // off, then validate every reference before committing the new version.
+    connection
+        .execute_batch("PRAGMA foreign_keys = OFF;")
+        .map_err(sqlite_error)?;
+    let migration = migrate_finding_challenge_schema(connection);
+    let foreign_keys = connection
+        .execute_batch("PRAGMA foreign_keys = ON;")
+        .map_err(sqlite_error);
+    match (migration, foreign_keys) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(error),
+    }
+}
+
+fn migrate_finding_challenge_schema(
+    connection: &mut Connection,
+) -> Result<(), FindingChallengeStoreError> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(sqlite_error)?;
+
+    let has_claim_deadline = table_has_column(&transaction, "liability_heads", "claim_deadline")?;
+    let has_appeal_window_opened_at =
+        table_has_column(&transaction, "liability_heads", "appeal_window_opened_at")?;
+    let has_appeal_deadline = table_has_column(&transaction, "liability_heads", "appeal_deadline")?;
+    let has_appeal_terms = table_has_column(
+        &transaction,
+        "liability_heads",
+        "appeal_terms_envelope_sha256",
+    )?;
+    let has_appeal_window = has_appeal_window_opened_at && has_appeal_deadline && has_appeal_terms;
+    let has_settlement_required =
+        table_has_column(&transaction, "effect_intents", "settlement_required")?;
+
+    if (has_appeal_window_opened_at || has_appeal_deadline || has_appeal_terms)
+        && !has_appeal_window
+    {
+        return Err(invariant(
+            "legacy liability schema has only part of the appeal commitment",
+        ));
+    }
+
+    if !has_claim_deadline
+        && table_has_rows_where(&transaction, "liability_heads", "state <> 'open'")?
+    {
+        return Err(invariant(
+            "v1 liability state cannot be migrated without its signed claim deadline",
+        ));
+    }
+    if !has_appeal_window
+        && table_has_rows_where(
+            &transaction,
+            "liability_heads",
+            "state IN ('pending_appeal', 'finalizing', 'settled', 'reversed_before_impairment')",
+        )?
+    {
+        return Err(invariant(
+            "active legacy appeal state cannot be migrated without its signed appeal window",
+        ));
+    }
+    if !has_settlement_required
+        && table_has_rows_where(
+            &transaction,
+            "liability_heads",
+            "state IN ('finalizing', 'settled')",
+        )?
+    {
+        return Err(invariant(
+            "legacy finalization state cannot be migrated without its required effect set",
+        ));
+    }
+
+    let claim_deadline = if has_claim_deadline {
+        "claim_deadline"
+    } else {
+        "NULL"
+    };
+    let appeal_window_opened_at = if has_appeal_window {
+        "appeal_window_opened_at"
+    } else {
+        "NULL"
+    };
+    let appeal_deadline = if has_appeal_window {
+        "appeal_deadline"
+    } else {
+        "NULL"
+    };
+    let appeal_terms = if has_appeal_window {
+        "appeal_terms_envelope_sha256"
+    } else {
+        "NULL"
+    };
+    transaction
+        .execute_batch(&format!(
+            r#"
+            CREATE TEMP TABLE finding_liability_heads_migration AS
+            SELECT liability_key, defect_key, finding_id, listing_id,
+                   allocation_id, venue_id, chain_id, vault_contract, vault_id,
+                   state, upheld_challenge_id, purchase_cutoff_slot,
+                   {claim_deadline} AS claim_deadline,
+                   {appeal_window_opened_at} AS appeal_window_opened_at,
+                   {appeal_deadline} AS appeal_deadline,
+                   {appeal_terms} AS appeal_terms_envelope_sha256,
+                   snapshot_digest, allocation_digest, publication_pending,
+                   quarantined, opened_at, updated_at
+            FROM liability_heads;
+            "#
+        ))
+        .map_err(sqlite_error)?;
+
+    let settlement_required = if has_settlement_required {
+        "settlement_required"
+    } else {
+        // Before finalizing, every liability-bound effect is one of the
+        // signed enforcement bindings. The later anchor-evidence fence is
+        // created only from finalizing, a state rejected above when this
+        // column is absent.
+        "CASE WHEN liability_key IS NULL THEN 0 ELSE 1 END"
+    };
+    transaction
+        .execute_batch(&format!(
+            r#"
+            CREATE TEMP TABLE finding_effect_intents_migration AS
+            SELECT intent_key, liability_key, kind, intent_digest,
+                   {settlement_required} AS settlement_required, state,
+                   attempt_count, recorded_at, updated_at
+            FROM effect_intents;
+
+            DROP TABLE effect_intents;
+            DROP TABLE liability_heads;
+            "#
+        ))
+        .map_err(sqlite_error)?;
     transaction
         .execute_batch(FINDING_CHALLENGE_SCHEMA)
+        .map_err(sqlite_error)?;
+    transaction
+        .execute_batch(
+            r#"
+            INSERT INTO liability_heads (
+                liability_key, defect_key, finding_id, listing_id,
+                allocation_id, venue_id, chain_id, vault_contract, vault_id,
+                state, upheld_challenge_id, purchase_cutoff_slot,
+                claim_deadline, appeal_window_opened_at, appeal_deadline,
+                appeal_terms_envelope_sha256, snapshot_digest,
+                allocation_digest, publication_pending, quarantined,
+                opened_at, updated_at
+            )
+            SELECT liability_key, defect_key, finding_id, listing_id,
+                   allocation_id, venue_id, chain_id, vault_contract, vault_id,
+                   state, upheld_challenge_id, purchase_cutoff_slot,
+                   claim_deadline, appeal_window_opened_at, appeal_deadline,
+                   appeal_terms_envelope_sha256, snapshot_digest,
+                   allocation_digest, publication_pending, quarantined,
+                   opened_at, updated_at
+            FROM finding_liability_heads_migration;
+
+            INSERT INTO effect_intents (
+                intent_key, liability_key, kind, intent_digest,
+                settlement_required, state, attempt_count, recorded_at,
+                updated_at
+            )
+            SELECT intent_key, liability_key, kind, intent_digest,
+                   settlement_required, state, attempt_count, recorded_at,
+                   updated_at
+            FROM finding_effect_intents_migration;
+
+            DROP TABLE finding_effect_intents_migration;
+            DROP TABLE finding_liability_heads_migration;
+            "#,
+        )
         .map_err(sqlite_error)?;
     crate::stamp_schema_version(
         &transaction,
@@ -2865,7 +3284,49 @@ pub(crate) fn initialize_finding_challenge_schema(
     )
     .map_err(|error| invariant(error.to_string()))?;
     verify_finding_challenge_invariants(&transaction)?;
+    let foreign_key_violation: Option<String> = transaction
+        .query_row(
+            "SELECT 'foreign key violation in ' || \"table\" FROM pragma_foreign_key_check LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    if let Some(detail) = foreign_key_violation {
+        return Err(invariant(detail));
+    }
     transaction.commit().map_err(sqlite_error)
+}
+
+fn table_has_column(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+) -> Result<bool, FindingChallengeStoreError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2)",
+            params![table, column],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)
+}
+
+fn table_has_rows_where(
+    connection: &Connection,
+    table: &str,
+    predicate: &str,
+) -> Result<bool, FindingChallengeStoreError> {
+    // Both inputs are private constants at the call sites above. Keeping the
+    // query helper here makes the migration preconditions auditable without
+    // accepting caller-controlled SQL.
+    connection
+        .query_row(
+            &format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE {predicate})"),
+            [],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)
 }
 
 /// Verify the challenge schema's shape: this database's table, index, and

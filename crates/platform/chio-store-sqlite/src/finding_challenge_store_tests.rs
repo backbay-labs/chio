@@ -26,6 +26,9 @@ const RETRY_DEADLINE: u64 = NOW + 3_600;
 /// Seller-signed claim window every upheld liability in these tests
 /// freezes, measured from the instant the window opens.
 const CLAIM_WINDOW: u64 = 604_800;
+/// Seller-signed appeal duration frozen when a liability enters its
+/// appeal window.
+const APPEAL_WINDOW: u64 = 259_200;
 /// The exposure cap `backing_body` registers for every fixture allocation.
 const REGISTERED_EXPOSURE_CAP: u64 = 450;
 
@@ -298,6 +301,88 @@ fn open_liability(fixture: &Fixture, liability: &Liability) -> FindingChallengeW
         .store
         .open_liability(&liability.input())
         .expect("open liability")
+}
+
+fn confirm_settlement_effects(fixture: &Fixture, liability_key: &str, now: u64) {
+    for (tag, kind) in [
+        ("seller-impair", FindingEffectIntentKind::SellerImpair),
+        ("root-intent", FindingEffectIntentKind::RootIntent),
+        ("retraction", FindingEffectIntentKind::Retraction),
+    ] {
+        let intent_key = digest(&format!("{liability_key}-{tag}-intent"));
+        fixture
+            .store
+            .record_effect_intent(
+                &intent_key,
+                kind,
+                &digest(&format!("{liability_key}-{tag}-commitment")),
+                Some(liability_key),
+                true,
+                now,
+            )
+            .expect("record required settlement effect");
+        fixture
+            .store
+            .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, now)
+            .expect("dispatch required settlement effect");
+        fixture
+            .store
+            .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
+            .expect("confirm required settlement effect");
+    }
+}
+
+fn remove_schema_fragment(schema: String, fragment: &str) -> String {
+    assert!(
+        schema.contains(fragment),
+        "the v2 fixture fragment must match the canonical v3 schema"
+    );
+    schema.replacen(fragment, "", 1)
+}
+
+fn finding_challenge_v2_schema() -> String {
+    let mut schema = FINDING_CHALLENGE_SCHEMA.to_owned();
+    for fragment in [
+        r#"    -- The appeal window is derived from the seller-signed terms when the
+    -- head enters pending_appeal, then frozen for the rest of the lifecycle.
+    appeal_window_opened_at INTEGER CHECK (
+        appeal_window_opened_at IS NULL OR appeal_window_opened_at > 0
+    ),
+    appeal_deadline INTEGER CHECK (
+        appeal_deadline IS NULL OR appeal_deadline > 0
+    ),
+    appeal_terms_envelope_sha256 TEXT CHECK (
+        appeal_terms_envelope_sha256 IS NULL
+        OR (length(appeal_terms_envelope_sha256) = 64
+            AND appeal_terms_envelope_sha256 NOT GLOB '*[^0-9a-f]*')
+    ),
+"#,
+        r#"    -- All three appeal-window commitments appear together exactly when the
+    -- liability reaches the appeal edge or a later state.
+    CHECK ((appeal_window_opened_at IS NULL) = (appeal_deadline IS NULL)),
+    CHECK ((appeal_window_opened_at IS NULL)
+           = (appeal_terms_envelope_sha256 IS NULL)),
+    CHECK (appeal_deadline IS NULL
+           OR appeal_deadline > appeal_window_opened_at),
+    CHECK ((appeal_deadline IS NOT NULL) = (state IN (
+        'pending_appeal', 'finalizing', 'settled',
+        'reversed_before_impairment'
+    ))),
+"#,
+        r#"  OR (OLD.appeal_window_opened_at IS NOT NULL
+      AND NEW.appeal_window_opened_at IS NOT OLD.appeal_window_opened_at)
+  OR (OLD.appeal_deadline IS NOT NULL
+      AND NEW.appeal_deadline IS NOT OLD.appeal_deadline)
+  OR (OLD.appeal_terms_envelope_sha256 IS NOT NULL
+      AND NEW.appeal_terms_envelope_sha256
+          IS NOT OLD.appeal_terms_envelope_sha256)
+"#,
+        "    settlement_required INTEGER NOT NULL CHECK (settlement_required IN (0, 1)),\n",
+        "  OR NEW.settlement_required <> OLD.settlement_required\n",
+    ] {
+        schema = remove_schema_fragment(schema, fragment);
+    }
+    schema
 }
 
 fn lock_input<'a>(
@@ -1089,6 +1174,9 @@ fn liability_head_advances_only_by_compare_and_set() {
             upheld_challenge_id: None,
             purchase_cutoff_slot: None,
             claim_deadline: None,
+            appeal_window_opened_at: None,
+            appeal_deadline: None,
+            appeal_terms_envelope_sha256: None,
             snapshot_digest: None,
             allocation_digest: None,
             publication_pending: false,
@@ -1119,6 +1207,8 @@ fn liability_head_advances_only_by_compare_and_set() {
             fixture.store.begin_appeal_window(
                 &head.liability_key,
                 FindingLiabilityState::UpheldPendingClaims,
+                &digest("finding-market-terms-alpha"),
+                APPEAL_WINDOW,
                 NOW + 1
             ),
             Err(FindingChallengeStoreError::Conflict(_))
@@ -1176,12 +1266,40 @@ fn liability_head_advances_only_by_compare_and_set() {
         ),
         "a head at upheld_pending_claims cannot skip to settled"
     );
+    assert!(
+        matches!(
+            fixture.store.begin_appeal_window(
+                &head.liability_key,
+                FindingLiabilityState::UpheldPendingClaims,
+                &digest("finding-market-terms-alpha"),
+                0,
+                NOW + 4
+            ),
+            Err(FindingChallengeStoreError::Invariant(_))
+        ),
+        "a signed appeal duration must be nonzero"
+    );
+    assert!(
+        matches!(
+            fixture.store.begin_appeal_window(
+                &head.liability_key,
+                FindingLiabilityState::UpheldPendingClaims,
+                &digest("finding-market-terms-alpha"),
+                u64::MAX,
+                NOW + 4
+            ),
+            Err(FindingChallengeStoreError::Invariant(_))
+        ),
+        "an appeal deadline that cannot be represented must reject"
+    );
     assert_eq!(
         fixture
             .store
             .begin_appeal_window(
                 &head.liability_key,
                 FindingLiabilityState::UpheldPendingClaims,
+                &digest("finding-market-terms-alpha"),
+                APPEAL_WINDOW,
                 NOW + 4
             )
             .expect("open the appeal window"),
@@ -1193,10 +1311,59 @@ fn liability_head_advances_only_by_compare_and_set() {
             .begin_appeal_window(
                 &head.liability_key,
                 FindingLiabilityState::UpheldPendingClaims,
+                &digest("finding-market-terms-alpha"),
+                APPEAL_WINDOW,
                 NOW + 5
             )
             .expect("replay the appeal window"),
         FindingChallengeWriteOutcome::ExistingSame
+    );
+    assert_eq!(
+        fixture
+            .store
+            .begin_appeal_window(
+                &head.liability_key,
+                FindingLiabilityState::UpheldPendingClaims,
+                &digest("finding-market-terms-alpha"),
+                APPEAL_WINDOW,
+                i64::MAX as u64,
+            )
+            .expect("replay from the maximum trusted clock"),
+        FindingChallengeWriteOutcome::ExistingSame,
+        "a retry must not recompute the frozen deadline from its later clock"
+    );
+    let appealed = liability(&fixture, &head.liability_key);
+    assert_eq!(appealed.appeal_window_opened_at, Some(NOW + 4));
+    assert_eq!(appealed.appeal_deadline, Some(NOW + 4 + APPEAL_WINDOW));
+    assert_eq!(
+        appealed.appeal_terms_envelope_sha256.as_deref(),
+        Some(digest("finding-market-terms-alpha").as_str())
+    );
+    assert!(
+        matches!(
+            fixture.store.begin_appeal_window(
+                &head.liability_key,
+                FindingLiabilityState::UpheldPendingClaims,
+                &digest("finding-market-terms-alpha"),
+                APPEAL_WINDOW + 1,
+                NOW + 5
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "a replay cannot replace the frozen signed appeal duration"
+    );
+    assert!(
+        matches!(
+            fixture.store.begin_appeal_window(
+                &head.liability_key,
+                FindingLiabilityState::UpheldPendingClaims,
+                &digest("finding-market-terms-beta"),
+                APPEAL_WINDOW,
+                NOW + 5
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "a replay cannot replace the frozen signed terms digest"
     );
     assert_eq!(
         fixture
@@ -1231,6 +1398,7 @@ fn liability_head_advances_only_by_compare_and_set() {
         .store
         .set_liability_quarantine(&head.liability_key, false, NOW + 9)
         .expect("clear quarantine");
+    confirm_settlement_effects(&fixture, &head.liability_key, NOW + 9);
     assert_eq!(
         fixture
             .store
@@ -1280,6 +1448,8 @@ fn liability_head_advances_only_by_compare_and_set() {
         .begin_appeal_window(
             &reversed.liability_key,
             FindingLiabilityState::UpheldPendingClaims,
+            &digest("finding-market-terms-beta"),
+            APPEAL_WINDOW,
             NOW + 4,
         )
         .expect("open the appeal window");
@@ -1322,6 +1492,8 @@ fn liability_head_advances_only_by_compare_and_set() {
             fixture.store.begin_appeal_window(
                 &digest("liability-absent"),
                 FindingLiabilityState::UpheldPendingClaims,
+                &digest("finding-market-terms-absent"),
+                APPEAL_WINDOW,
                 NOW
             ),
             Err(FindingChallengeStoreError::NotFound)
@@ -1502,6 +1674,68 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
 }
 
 #[test]
+fn upheld_transition_fences_the_signed_exposure_before_blocking_sales() {
+    let fixture = fixture();
+    assert_eq!(
+        reserve_slot(
+            &fixture,
+            "exposure-race",
+            LISTING_ID,
+            &fixture.allocation_id
+        ),
+        1
+    );
+    let head = Liability::new("exposure-race", LISTING_ID, &fixture.allocation_id);
+    open_liability(&fixture, &head);
+    let challenge = Challenge::buyer("exposure-race");
+    close_challenge(
+        &fixture,
+        &challenge,
+        FindingChallengeVerdict::Upheld,
+        NOW + 2,
+    );
+
+    assert!(matches!(
+        fixture.store.uphold_liability_with_exposure_fence(
+            &head.liability_key,
+            &challenge.challenge_id,
+            1,
+            NOW + CLAIM_WINDOW,
+            0,
+            NOW + 3,
+        ),
+        Err(FindingChallengeStoreError::Conflict(_))
+    ));
+    assert_eq!(
+        liability(&fixture, &head.liability_key).state,
+        FindingLiabilityState::Open
+    );
+    assert!(!fixture
+        .purchases
+        .sales_blocked(LISTING_ID)
+        .expect("read sales block"));
+
+    assert_eq!(
+        fixture
+            .store
+            .uphold_liability_with_exposure_fence(
+                &head.liability_key,
+                &challenge.challenge_id,
+                1,
+                NOW + CLAIM_WINDOW,
+                10,
+                NOW + 3,
+            )
+            .expect("matching exposure freezes the cutoff"),
+        FindingChallengeWriteOutcome::Inserted
+    );
+    assert!(fixture
+        .purchases
+        .sales_blocked(LISTING_ID)
+        .expect("read sales block"));
+}
+
+#[test]
 fn a_successful_appeal_returns_the_listing_to_selling() {
     let fixture = fixture();
     assert_eq!(
@@ -1538,6 +1772,8 @@ fn a_successful_appeal_returns_the_listing_to_selling() {
         .begin_appeal_window(
             &head.liability_key,
             FindingLiabilityState::UpheldPendingClaims,
+            &digest("finding-market-terms-alpha"),
+            APPEAL_WINDOW,
             NOW + 6,
         )
         .expect("open the appeal window");
@@ -1674,6 +1910,8 @@ fn only_an_exoneration_lifts_a_listing_sales_block() {
         .begin_appeal_window(
             &head.liability_key,
             FindingLiabilityState::UpheldPendingClaims,
+            &digest("finding-market-terms-alpha"),
+            APPEAL_WINDOW,
             NOW + 5,
         )
         .expect("open the appeal window");
@@ -1687,6 +1925,7 @@ fn only_an_exoneration_lifts_a_listing_sales_block() {
         )
         .expect("begin finalizing");
     still_blocked("finalizing");
+    confirm_settlement_effects(&fixture, &head.liability_key, NOW + 6);
     fixture
         .store
         .settle_liability(
@@ -1744,6 +1983,8 @@ fn a_listing_another_liability_still_holds_stays_blocked() {
             .begin_appeal_window(
                 &head.liability_key,
                 FindingLiabilityState::UpheldPendingClaims,
+                &digest(&format!("finding-market-terms-{}", head.liability_key)),
+                APPEAL_WINDOW,
                 NOW + 4,
             )
             .expect("open the appeal window");
@@ -2381,6 +2622,188 @@ fn claim_snapshot_seals_once_against_the_frozen_cutoff() {
 }
 
 #[test]
+fn settlement_waits_for_every_required_effect_confirmation() {
+    let fixture = fixture();
+    let head = Liability::new("settlement-gate", LISTING_ID, &fixture.allocation_id);
+    open_liability(&fixture, &head);
+    let challenge = Challenge::buyer("settlement-gate");
+    close_challenge(
+        &fixture,
+        &challenge,
+        FindingChallengeVerdict::Upheld,
+        NOW + 1,
+    );
+    fixture
+        .store
+        .uphold_liability(
+            &head.liability_key,
+            &challenge.challenge_id,
+            0,
+            NOW + CLAIM_WINDOW,
+            NOW + 3,
+        )
+        .expect("uphold liability");
+    fixture
+        .store
+        .begin_appeal_window(
+            &head.liability_key,
+            FindingLiabilityState::UpheldPendingClaims,
+            &digest("finding-market-terms-settlement-gate"),
+            APPEAL_WINDOW,
+            NOW + 4,
+        )
+        .expect("open appeal window");
+    fixture
+        .store
+        .begin_finalizing(
+            &head.liability_key,
+            FindingLiabilityState::PendingAppeal,
+            NOW + 5,
+        )
+        .expect("begin finalizing");
+
+    assert!(
+        matches!(
+            fixture.store.settle_liability(
+                &head.liability_key,
+                FindingLiabilityState::Finalizing,
+                NOW + 6
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "missing required effects keep the liability finalizing"
+    );
+
+    let anchor_key = digest("settlement-gate-anchor-evidence");
+    fixture
+        .store
+        .record_effect_intent(
+            &anchor_key,
+            FindingEffectIntentKind::RootIntent,
+            &digest("settlement-gate-anchor-evidence-commitment"),
+            Some(&head.liability_key),
+            false,
+            NOW + 6,
+        )
+        .expect("record optional anchor evidence");
+
+    let required = [
+        (
+            digest("settlement-gate-seller-impair"),
+            FindingEffectIntentKind::SellerImpair,
+            digest("settlement-gate-seller-impair-commitment"),
+        ),
+        (
+            digest("settlement-gate-root-intent"),
+            FindingEffectIntentKind::RootIntent,
+            digest("settlement-gate-root-intent-commitment"),
+        ),
+        (
+            digest("settlement-gate-retraction"),
+            FindingEffectIntentKind::Retraction,
+            digest("settlement-gate-retraction-commitment"),
+        ),
+    ];
+    for (intent_key, kind, intent_digest) in &required {
+        fixture
+            .store
+            .record_effect_intent(
+                intent_key,
+                *kind,
+                intent_digest,
+                Some(&head.liability_key),
+                true,
+                NOW + 6,
+            )
+            .expect("record required effect");
+    }
+    assert!(
+        matches!(
+            fixture.store.settle_liability(
+                &head.liability_key,
+                FindingLiabilityState::Finalizing,
+                NOW + 7
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "pending required effects keep the liability finalizing"
+    );
+
+    for (intent_key, _, _) in &required[..2] {
+        fixture
+            .store
+            .advance_effect_intent(intent_key, FindingEffectIntentState::Dispatched, NOW + 7)
+            .expect("dispatch required effect");
+        fixture
+            .store
+            .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, NOW + 7)
+            .expect("confirm required effect");
+    }
+    assert!(
+        matches!(
+            fixture.store.settle_liability(
+                &head.liability_key,
+                FindingLiabilityState::Finalizing,
+                NOW + 8
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "one pending retraction keeps the liability finalizing"
+    );
+    let still_finalizing = liability(&fixture, &head.liability_key);
+    assert_eq!(still_finalizing.state, FindingLiabilityState::Finalizing);
+    assert!(still_finalizing.publication_pending);
+
+    fixture
+        .store
+        .advance_effect_intent(
+            &required[2].0,
+            FindingEffectIntentState::Dispatched,
+            NOW + 8,
+        )
+        .expect("dispatch retraction");
+    fixture
+        .store
+        .advance_effect_intent(&required[2].0, FindingEffectIntentState::Confirmed, NOW + 8)
+        .expect("confirm retraction");
+    assert_eq!(
+        fixture
+            .store
+            .settle_liability(
+                &head.liability_key,
+                FindingLiabilityState::Finalizing,
+                NOW + 9,
+            )
+            .expect("settle after every required effect confirms"),
+        FindingChallengeWriteOutcome::Inserted
+    );
+    let settled = liability(&fixture, &head.liability_key);
+    assert_eq!(settled.state, FindingLiabilityState::Settled);
+    assert!(!settled.publication_pending);
+    assert_eq!(
+        fixture
+            .store
+            .get_effect_intent(&anchor_key)
+            .expect("get optional anchor evidence")
+            .expect("optional anchor evidence present")
+            .state,
+        FindingEffectIntentState::Pending,
+        "a pending non-required evidence fence does not block settlement"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .settle_liability(
+                &head.liability_key,
+                FindingLiabilityState::Finalizing,
+                NOW + 10,
+            )
+            .expect("replay settlement"),
+        FindingChallengeWriteOutcome::ExistingSame
+    );
+}
+
+#[test]
 fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
     let fixture = fixture();
     let head = Liability::new("alpha", LISTING_ID, &fixture.allocation_id);
@@ -2396,6 +2819,7 @@ fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
                 FindingEffectIntentKind::SellerImpair,
                 &intent_digest,
                 Some(&head.liability_key),
+                false,
                 NOW
             )
             .expect("record intent"),
@@ -2409,10 +2833,25 @@ fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
                 FindingEffectIntentKind::SellerImpair,
                 &intent_digest,
                 Some(&head.liability_key),
+                false,
                 NOW + 1
             )
             .expect("identical retry reconciles"),
         FindingChallengeWriteOutcome::ExistingSame
+    );
+    assert!(
+        matches!(
+            fixture.store.record_effect_intent(
+                &intent_key,
+                FindingEffectIntentKind::SellerImpair,
+                &intent_digest,
+                Some(&head.liability_key),
+                true,
+                NOW + 1
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "the settlement gate is immutable under one intent key"
     );
     for (kind, commitment, liability_key) in [
         (
@@ -2438,6 +2877,7 @@ fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
                     kind,
                     &commitment,
                     liability_key.as_deref(),
+                    false,
                     NOW + 2
                 ),
                 Err(FindingChallengeStoreError::Conflict(_))
@@ -2456,6 +2896,7 @@ fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
             liability_key: Some(head.liability_key.clone()),
             kind: FindingEffectIntentKind::SellerImpair,
             intent_digest: intent_digest.clone(),
+            settlement_required: false,
             state: FindingEffectIntentState::Pending,
             attempt_count: 0,
             recorded_at: NOW,
@@ -2531,6 +2972,7 @@ fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
             FindingEffectIntentKind::ChallengeBond,
             &digest("bond-returned"),
             None,
+            false,
             NOW,
         )
         .expect("record bond intent");
@@ -2561,10 +3003,25 @@ fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
     assert!(
         matches!(
             fixture.store.record_effect_intent(
+                &digest("required-orphan-intent"),
+                FindingEffectIntentKind::SellerImpair,
+                &digest("required-orphan-commitment"),
+                None,
+                true,
+                NOW
+            ),
+            Err(FindingChallengeStoreError::Invariant(_))
+        ),
+        "a settlement-required effect must name its liability"
+    );
+    assert!(
+        matches!(
+            fixture.store.record_effect_intent(
                 &digest("orphan-intent"),
                 FindingEffectIntentKind::Fee,
                 &digest("fee-commitment"),
                 Some(&digest("liability-absent")),
+                false,
                 NOW
             ),
             Err(FindingChallengeStoreError::NotFound)
@@ -2582,6 +3039,102 @@ fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
         ),
         "an unknown intent has no state to advance"
     );
+}
+
+#[test]
+fn v2_schema_migrates_to_frozen_appeals_and_required_effects() {
+    let mut connection = Connection::open_in_memory().expect("open legacy database");
+    connection
+        .execute_batch(&finding_challenge_v2_schema())
+        .expect("install v2 challenge schema");
+    assert_eq!(
+        crate::check_schema_version(
+            &connection,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            FINDING_CHALLENGE_SCHEMA_ANCHORS,
+        )
+        .expect("adopt legacy database"),
+        0
+    );
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 2)
+        .expect("stamp v2 schema");
+
+    let liability_key = digest("legacy-v2-liability");
+    connection
+        .execute(
+            r#"
+            INSERT INTO liability_heads (
+                liability_key, defect_key, finding_id, listing_id,
+                allocation_id, venue_id, chain_id, vault_contract, vault_id,
+                state, upheld_challenge_id, purchase_cutoff_slot,
+                claim_deadline, snapshot_digest, allocation_digest,
+                publication_pending, quarantined, opened_at, updated_at
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, 'venue-legacy', 'eip155:8453',
+                '0xlegacy', 'vault-legacy', 'open', NULL, NULL, NULL, NULL,
+                NULL, 0, 0, ?6, ?6
+            )
+            "#,
+            params![
+                liability_key,
+                digest("legacy-v2-defect"),
+                hex64('a'),
+                LISTING_ID,
+                digest("legacy-v2-allocation"),
+                sqlite_i64(NOW, "now").expect("legacy time"),
+            ],
+        )
+        .expect("insert v2 liability");
+    let intent_key = digest("legacy-v2-effect");
+    connection
+        .execute(
+            r#"
+            INSERT INTO effect_intents (
+                intent_key, liability_key, kind, intent_digest, state,
+                attempt_count, recorded_at, updated_at
+            ) VALUES (?1, ?2, 'seller_impair', ?3, 'pending', 0, ?4, ?4)
+            "#,
+            params![
+                intent_key,
+                liability_key,
+                digest("legacy-v2-effect-commitment"),
+                sqlite_i64(NOW, "now").expect("legacy time"),
+            ],
+        )
+        .expect("insert v2 effect");
+
+    initialize_finding_challenge_schema(&mut connection).expect("migrate v2 schema");
+
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_CHALLENGE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION);
+    let appeal: (Option<i64>, Option<i64>, Option<String>) = connection
+        .query_row(
+            r#"
+            SELECT appeal_window_opened_at, appeal_deadline,
+                   appeal_terms_envelope_sha256
+            FROM liability_heads WHERE liability_key = ?1
+            "#,
+            [&liability_key],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read migrated appeal commitments");
+    assert_eq!(appeal, (None, None, None));
+    let settlement_required: i64 = connection
+        .query_row(
+            "SELECT settlement_required FROM effect_intents WHERE intent_key = ?1",
+            [&intent_key],
+            |row| row.get(0),
+        )
+        .expect("read migrated settlement gate");
+    assert_eq!(settlement_required, 1);
+    verify_finding_challenge_invariants(&connection).expect("verify canonical v3 schema");
 }
 
 #[test]

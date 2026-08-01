@@ -366,6 +366,7 @@ fn outcome_body(
         facet,
         reason: "committed payload digest does not match the delivered output".to_string(),
         trigger_digest: HEX64_ALT.to_string(),
+        retry_deadline: None,
         penalty_calculation,
         evaluator_key_epoch: 7,
         evaluated_at: 1_750_000_500,
@@ -1087,6 +1088,47 @@ fn outcome_reserves_the_penalty_calculation_for_upheld_verdicts() -> TestResult 
 }
 
 #[test]
+fn outcome_retry_deadline_is_future_and_indeterminate_only() -> TestResult {
+    let mut retryable = outcome_body(
+        HEX64,
+        FindingChallengeVerdict::Indeterminate,
+        replay_facet(FindingReplayPredicateResult::Indeterminate),
+    )?;
+    retryable.retry_deadline = Some(retryable.evaluated_at + 60);
+    retryable.outcome_id = derive_outcome_id(&retryable)?;
+    (retryable.validate())?;
+
+    let mut terminal = outcome_body(
+        HEX64,
+        FindingChallengeVerdict::Rejected,
+        replay_facet(FindingReplayPredicateResult::Consistent),
+    )?;
+    terminal.retry_deadline = Some(terminal.evaluated_at + 60);
+    terminal.outcome_id = derive_outcome_id(&terminal)?;
+    assert_eq!(
+        terminal.validate(),
+        Err(FindingError::InvalidField("retry_deadline"))
+    );
+
+    let mut elapsed = retryable.clone();
+    elapsed.retry_deadline = Some(elapsed.evaluated_at);
+    elapsed.outcome_id = derive_outcome_id(&elapsed)?;
+    assert_eq!(
+        elapsed.validate(),
+        Err(FindingError::InvalidField("retry_deadline"))
+    );
+
+    let mut unsafe_deadline = retryable;
+    unsafe_deadline.retry_deadline = Some(1_u64 << 53);
+    unsafe_deadline.outcome_id = derive_outcome_id(&unsafe_deadline)?;
+    assert_eq!(
+        unsafe_deadline.validate(),
+        Err(FindingError::IJsonIntegerOutOfRange("retry_deadline"))
+    );
+    Ok(())
+}
+
+#[test]
 fn outcome_penalty_calculation_is_checked_against_its_own_formula() -> TestResult {
     let mut wrong_sum = outcome_body(
         HEX64,
@@ -1267,6 +1309,35 @@ fn outcome_conforms_to_its_schema() -> TestResult {
         &evaluator,
     )?;
     validate_family_schema("challenge-outcome", &serde_json::to_value(&rejected)?)?;
+
+    let mut retryable = outcome_body(
+        HEX64,
+        FindingChallengeVerdict::Indeterminate,
+        replay_facet(FindingReplayPredicateResult::Indeterminate),
+    )?;
+    retryable.retry_deadline = Some(retryable.evaluated_at + 60);
+    retryable.outcome_id = derive_outcome_id(&retryable)?;
+    let signed_retryable = SignedExportEnvelope::sign(retryable, &evaluator)?;
+    validate_family_schema(
+        "challenge-outcome",
+        &serde_json::to_value(&signed_retryable)?,
+    )?;
+
+    let mut deadline_on_rejected = serde_json::to_value(&rejected)?;
+    deadline_on_rejected["body"]["retry_deadline"] = json!(1_750_000_560_u64);
+    assert_family_schema_rejects(
+        "challenge-outcome",
+        &deadline_on_rejected,
+        "retry deadline on a rejected verdict",
+    )?;
+
+    let mut unsafe_retry_deadline = serde_json::to_value(&signed_retryable)?;
+    unsafe_retry_deadline["body"]["retry_deadline"] = json!(1_u64 << 53);
+    assert_family_schema_rejects(
+        "challenge-outcome",
+        &unsafe_retry_deadline,
+        "retry deadline above the I-JSON safe integer",
+    )?;
 
     let mut unknown_verdict = value.clone();
     unknown_verdict["body"]["verdict"] = json!("maybe");

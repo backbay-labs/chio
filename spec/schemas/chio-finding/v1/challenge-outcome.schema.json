@@ -85,6 +85,9 @@
         "trigger_digest": {
           "$ref": "#/$defs/sha256"
         },
+        "retry_deadline": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
         "penalty_calculation": {
           "$ref": "#/$defs/penaltyCalculation"
         },
@@ -116,6 +119,25 @@
             "not": {
               "required": [
                 "penalty_calculation"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verdict": {
+                "const": "indeterminate"
+              }
+            },
+            "required": [
+              "verdict"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "retry_deadline"
               ]
             }
           }

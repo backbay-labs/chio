@@ -371,6 +371,10 @@ pub struct FindingChallengeOutcome {
     pub reason: String,
     /// Digest of the exact input set that triggered this evaluation.
     pub trigger_digest: String,
+    /// End of the signed retry window granted by an indeterminate outcome.
+    /// Absent when no retry is granted or the verdict is terminal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_deadline: Option<u64>,
     /// Present exactly when the verdict is `upheld`; nothing else may enter
     /// the penalty lane, so nothing else carries a calculation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -413,6 +417,18 @@ impl FindingChallengeOutcome {
         }
         require_nonzero(self.evaluator_key_epoch, "evaluator_key_epoch")?;
         require_nonzero(self.evaluated_at, "evaluated_at")?;
+        match (self.verdict, self.retry_deadline) {
+            (FindingChallengeVerdict::Indeterminate, Some(deadline)) => {
+                require_i_json_u64(deadline, "retry_deadline")?;
+                if deadline <= self.evaluated_at {
+                    return Err(FindingError::InvalidField("retry_deadline"));
+                }
+            }
+            (FindingChallengeVerdict::Upheld | FindingChallengeVerdict::Rejected, Some(_)) => {
+                return Err(FindingError::InvalidField("retry_deadline"));
+            }
+            (_, None) => {}
+        }
         self.verify_outcome_id()
     }
 

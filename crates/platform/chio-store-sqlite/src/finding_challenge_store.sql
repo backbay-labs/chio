@@ -185,6 +185,19 @@ CREATE TABLE IF NOT EXISTS liability_heads (
     -- accounting may be sealed before it, so harmed buyers and omission
     -- proofs keep the whole window they were promised.
     claim_deadline INTEGER CHECK (claim_deadline IS NULL OR claim_deadline > 0),
+    -- The appeal window is derived from the seller-signed terms when the
+    -- head enters pending_appeal, then frozen for the rest of the lifecycle.
+    appeal_window_opened_at INTEGER CHECK (
+        appeal_window_opened_at IS NULL OR appeal_window_opened_at > 0
+    ),
+    appeal_deadline INTEGER CHECK (
+        appeal_deadline IS NULL OR appeal_deadline > 0
+    ),
+    appeal_terms_envelope_sha256 TEXT CHECK (
+        appeal_terms_envelope_sha256 IS NULL
+        OR (length(appeal_terms_envelope_sha256) = 64
+            AND appeal_terms_envelope_sha256 NOT GLOB '*[^0-9a-f]*')
+    ),
     snapshot_digest TEXT CHECK (
         snapshot_digest IS NULL
         OR (length(snapshot_digest) = 64
@@ -207,6 +220,17 @@ CREATE TABLE IF NOT EXISTS liability_heads (
     -- that records the upheld challenge, so none exists without the rest.
     CHECK ((upheld_challenge_id IS NULL) = (purchase_cutoff_slot IS NULL)),
     CHECK ((upheld_challenge_id IS NULL) = (claim_deadline IS NULL)),
+    -- All three appeal-window commitments appear together exactly when the
+    -- liability reaches the appeal edge or a later state.
+    CHECK ((appeal_window_opened_at IS NULL) = (appeal_deadline IS NULL)),
+    CHECK ((appeal_window_opened_at IS NULL)
+           = (appeal_terms_envelope_sha256 IS NULL)),
+    CHECK (appeal_deadline IS NULL
+           OR appeal_deadline > appeal_window_opened_at),
+    CHECK ((appeal_deadline IS NOT NULL) = (state IN (
+        'pending_appeal', 'finalizing', 'settled',
+        'reversed_before_impairment'
+    ))),
     -- Both snapshot commitments are sealed together or not at all.
     CHECK ((snapshot_digest IS NULL) = (allocation_digest IS NULL))
 );
@@ -241,6 +265,13 @@ WHEN (OLD.upheld_challenge_id IS NOT NULL
       AND NEW.purchase_cutoff_slot IS NOT OLD.purchase_cutoff_slot)
   OR (OLD.claim_deadline IS NOT NULL
       AND NEW.claim_deadline IS NOT OLD.claim_deadline)
+  OR (OLD.appeal_window_opened_at IS NOT NULL
+      AND NEW.appeal_window_opened_at IS NOT OLD.appeal_window_opened_at)
+  OR (OLD.appeal_deadline IS NOT NULL
+      AND NEW.appeal_deadline IS NOT OLD.appeal_deadline)
+  OR (OLD.appeal_terms_envelope_sha256 IS NOT NULL
+      AND NEW.appeal_terms_envelope_sha256
+          IS NOT OLD.appeal_terms_envelope_sha256)
   OR (OLD.snapshot_digest IS NOT NULL
       AND NEW.snapshot_digest IS NOT OLD.snapshot_digest)
   OR (OLD.allocation_digest IS NOT NULL
@@ -379,6 +410,7 @@ CREATE TABLE IF NOT EXISTS effect_intents (
     intent_digest TEXT NOT NULL CHECK (
         length(intent_digest) = 64 AND intent_digest NOT GLOB '*[^0-9a-f]*'
     ),
+    settlement_required INTEGER NOT NULL CHECK (settlement_required IN (0, 1)),
     state TEXT NOT NULL CHECK (
         state IN ('pending', 'dispatched', 'confirmed', 'failed', 'quarantined')
     ),
@@ -399,6 +431,7 @@ WHEN NEW.intent_key <> OLD.intent_key
   OR NEW.liability_key IS NOT OLD.liability_key
   OR NEW.kind <> OLD.kind
   OR NEW.intent_digest <> OLD.intent_digest
+  OR NEW.settlement_required <> OLD.settlement_required
   OR NEW.recorded_at <> OLD.recorded_at
 BEGIN
     SELECT RAISE(ABORT, 'effect intent identity is immutable');
