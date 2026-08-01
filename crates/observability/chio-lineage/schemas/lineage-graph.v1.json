@@ -41,7 +41,8 @@
         "tool_call_to_receipt",
         "receipt_to_child_request",
         "request_to_request",
-        "receipt_lineage_parent"
+        "receipt_lineage_parent",
+        "finding_memory_write_to_delivery"
       ]
     },
     "Node": {

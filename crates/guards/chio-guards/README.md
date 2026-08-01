@@ -67,7 +67,7 @@ often fallible).
 | CUA | `EmbeddingAnomalyGuard` | Cosine-similarity match against a threat-pattern embedding database |
 | CUA | `BrowserAutomationGuard` | Navigation domain gate + verb allowlist + credential detection on `type`/`input` actions |
 | CUA | `CodeExecutionGuard` | Language allowlist + dangerous-module detection + network gate + execution-time bound |
-| Memory | `MemoryGovernanceGuard` | Store allowlist + retention-TTL ceiling + per-session entry count + content-size + deny-pattern |
+| Memory | `MemoryGovernanceGuard` | Store allowlist + retention-TTL ceiling + per-session entry count + content-size + deny-pattern, with an opt-in verified Finding-retraction resolver for reads |
 | Advisory | `AdvisoryPipeline`, `AnomalyAdvisoryGuard`, `DataTransferAdvisoryGuard` | Non-blocking signals, optionally promoted to `Verdict::Deny` |
 | Post-invocation | `SanitizerHook`, `sanitize_json` | Runs `OutputSanitizer` over a tool result after the call returns |
 | External | `AsyncGuardAdapter`, `ExternalGuard` | Resilience wrapper for calling out to an async external guardrail |

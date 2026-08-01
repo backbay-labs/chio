@@ -58,6 +58,29 @@ pub fn reverse(graph: &LineageGraph, seeds: &[&str], bounds: QueryBounds) -> Que
     walk(graph, seeds, &adjacency, bounds)
 }
 
+/// Reverse-resolve governed memory writes that depend on one verified Finding
+/// delivery receipt. Only the typed M6 relation participates, so an unrelated
+/// generic receipt parent cannot be promoted into Finding provenance.
+pub fn finding_memory_dependents(
+    graph: &LineageGraph,
+    delivery_receipt_id: &str,
+    bounds: QueryBounds,
+) -> QueryResult {
+    let edges: Vec<LineageEdge> = graph
+        .edges
+        .iter()
+        .filter(|edge| edge.kind == crate::schema::EdgeKind::FindingMemoryWriteToDelivery)
+        .cloned()
+        .collect();
+    let typed = LineageGraph {
+        schema_version: graph.schema_version.clone(),
+        nodes: graph.nodes.clone(),
+        edges,
+        truncated: None,
+    };
+    reverse(&typed, &[delivery_receipt_id], bounds)
+}
+
 fn build_outgoing(edges: &[LineageEdge]) -> HashMap<String, Vec<usize>> {
     let mut adj: HashMap<String, Vec<usize>> = HashMap::new();
     for (i, e) in edges.iter().enumerate() {
@@ -236,6 +259,62 @@ mod tests {
             .filter(|n| n.kind == NodeKind::Capability)
             .collect();
         assert_eq!(caps.len(), 1);
+    }
+
+    #[test]
+    fn finding_delivery_reverse_query_returns_only_typed_memory_dependents() {
+        let mut g = LineageGraph::empty();
+        for id in ["rcpt:delivery", "rcpt:memory", "rcpt:generic"] {
+            g.nodes.push(LineageNode {
+                id: id.to_owned(),
+                kind: NodeKind::Receipt,
+                evidence_class: EvidenceClass::Verified,
+                tenant_id: None,
+                recorded_at: None,
+                label: None,
+                source_table: None,
+                source_id: None,
+            });
+        }
+        g.edges.push(LineageEdge {
+            from: "rcpt:memory".to_owned(),
+            to: "rcpt:delivery".to_owned(),
+            kind: EdgeKind::FindingMemoryWriteToDelivery,
+            evidence_class: EvidenceClass::Verified,
+            source_table: None,
+            source_id: None,
+            tenant_id: None,
+            recorded_at: None,
+        });
+        g.edges.push(LineageEdge {
+            from: "rcpt:generic".to_owned(),
+            to: "rcpt:delivery".to_owned(),
+            kind: EdgeKind::ReceiptLineageParent,
+            evidence_class: EvidenceClass::Verified,
+            source_table: None,
+            source_id: None,
+            tenant_id: None,
+            recorded_at: None,
+        });
+
+        let result = finding_memory_dependents(
+            &g,
+            "rcpt:delivery",
+            QueryBounds {
+                depth_limit: 4,
+                row_limit: 10,
+            },
+        );
+        let ids: HashSet<_> = result
+            .graph
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect();
+        assert!(ids.contains("rcpt:delivery"));
+        assert!(ids.contains("rcpt:memory"));
+        assert!(!ids.contains("rcpt:generic"));
+        assert!(result.truncated.is_none());
     }
 
     #[test]

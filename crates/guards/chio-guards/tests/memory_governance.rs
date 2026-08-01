@@ -8,12 +8,18 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::sync::Arc;
+
 use chio_core::capability::{
     scope::{ChioScope, Constraint, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
-use chio_guards::{MemoryGovernanceConfig, MemoryGovernanceGuard};
+use chio_guards::{
+    FindingRetractionGuardConfig, FindingRetractionQuery, FindingRetractionResolution,
+    FindingRetractionResolveError, FindingRetractionResolver, FindingStatusValue,
+    MemoryGovernanceConfig, MemoryGovernanceGuard,
+};
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 
 fn signed_cap(kp: &Keypair, scope: &ChioScope) -> CapabilityToken {
@@ -374,4 +380,128 @@ fn invalid_regex_fails_initialization() {
         ..MemoryGovernanceConfig::default()
     };
     assert!(MemoryGovernanceGuard::with_config(cfg).is_err());
+}
+
+struct StubFindingResolver {
+    resolver_id: &'static str,
+    feed_id: &'static str,
+    outcome: Result<FindingStatusValue, FindingRetractionResolveError>,
+}
+
+impl FindingRetractionResolver for StubFindingResolver {
+    fn resolver_id(&self) -> &str {
+        self.resolver_id
+    }
+
+    fn feed_id(&self) -> &str {
+        self.feed_id
+    }
+
+    fn resolve(
+        &self,
+        _query: FindingRetractionQuery<'_>,
+    ) -> Result<FindingRetractionResolution, FindingRetractionResolveError> {
+        self.outcome
+            .clone()
+            .map(|value| FindingRetractionResolution {
+                delivery_receipt_id: "delivery-1".to_owned(),
+                finding_id: "finding-1".to_owned(),
+                feed_id: self.feed_id.to_owned(),
+                map_epoch: 3,
+                epoch_id: "a".repeat(64),
+                root_hash: "b".repeat(64),
+                value,
+            })
+    }
+}
+
+fn finding_quarantine_config() -> MemoryGovernanceConfig {
+    MemoryGovernanceConfig {
+        finding_retraction: Some(FindingRetractionGuardConfig {
+            resolver_id: "resolver-1".to_owned(),
+            feed_id: "feed-1".to_owned(),
+        }),
+        ..MemoryGovernanceConfig::default()
+    }
+}
+
+fn finding_guard(
+    outcome: Result<FindingStatusValue, FindingRetractionResolveError>,
+) -> MemoryGovernanceGuard {
+    MemoryGovernanceGuard::with_config_and_retraction_resolver(
+        finding_quarantine_config(),
+        Arc::new(StubFindingResolver {
+            resolver_id: "resolver-1",
+            feed_id: "feed-1",
+            outcome,
+        }),
+    )
+    .expect("build finding quarantine guard")
+}
+
+#[test]
+fn finding_quarantine_allows_only_fresh_live_exact_key_reads() {
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let live = eval_at(
+        &finding_guard(Ok(FindingStatusValue::Live)),
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory", "id": "key-1"}),
+        None,
+    );
+    assert!(matches!(live, Verdict::Allow));
+
+    for value in [FindingStatusValue::Pending, FindingStatusValue::Retracted] {
+        let denied = eval_at(
+            &finding_guard(Ok(value)),
+            &kp,
+            &scope,
+            "vector_query",
+            serde_json::json!({"collection": "memory", "id": "key-1"}),
+            None,
+        );
+        assert!(matches!(denied, Verdict::Deny));
+    }
+
+    let no_key = eval_at(
+        &finding_guard(Ok(FindingStatusValue::Live)),
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory"}),
+        None,
+    );
+    assert!(matches!(no_key, Verdict::Deny));
+}
+
+#[test]
+fn finding_quarantine_denies_unavailable_state_and_resolver_substitution() {
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let unavailable = eval_at(
+        &finding_guard(Err(FindingRetractionResolveError::StatusUnavailable(
+            "offline".to_owned(),
+        ))),
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory", "id": "key-1"}),
+        None,
+    );
+    assert!(matches!(unavailable, Verdict::Deny));
+
+    let substituted = MemoryGovernanceGuard::with_config_and_retraction_resolver(
+        finding_quarantine_config(),
+        Arc::new(StubFindingResolver {
+            resolver_id: "other-resolver",
+            feed_id: "feed-1",
+            outcome: Ok(FindingStatusValue::Live),
+        }),
+    );
+    assert!(substituted.is_err());
+
+    let missing = MemoryGovernanceGuard::with_config(finding_quarantine_config());
+    assert!(missing.is_err());
 }
