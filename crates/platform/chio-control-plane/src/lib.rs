@@ -21,12 +21,8 @@ pub mod certify;
 mod durable_admission;
 pub use chio_enterprise_export as enterprise_export;
 use durable_admission::create_private_directory;
+pub use durable_admission::*;
 pub(crate) use durable_admission::{durable_admission_lock_root, write_private_file_atomically};
-pub use durable_admission::{
-    durable_admission_sidecar_path, ensure_private_directory, open_durable_admission_runtime,
-    validate_distinct_database_paths, validate_durable_admission_participant_paths,
-    DurableAdmissionRuntime,
-};
 pub mod economic_admission_cancellation;
 pub mod economic_effect_coordinator;
 pub mod economic_state_anchor;

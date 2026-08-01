@@ -229,10 +229,26 @@ struct ProvisioningRecord {
 }
 
 impl SqliteAuthorityStore {
+    /// Rejects platforms that cannot provide the filesystem identity and
+    /// positioned I/O required by durable authority serving.
+    pub fn ensure_serving_supported() -> Result<(), SqliteServingOwnerError> {
+        #[cfg(unix)]
+        {
+            Ok(())
+        }
+        #[cfg(not(unix))]
+        {
+            Err(SqliteServingOwnerError::Invalid(
+                UNSUPPORTED_SERVING_PLATFORM_MESSAGE.to_string(),
+            ))
+        }
+    }
+
     pub fn provision(
         database_path: impl AsRef<Path>,
         lock_root: impl AsRef<Path>,
     ) -> Result<(), SqliteServingOwnerError> {
+        Self::ensure_serving_supported()?;
         let database_path = database_path.as_ref();
         let lock_root = canonical_lock_root(lock_root.as_ref())?;
         let provision_lock = File::open(&lock_root)?;
@@ -454,6 +470,7 @@ impl SqliteAuthorityStore {
         database_path: impl AsRef<Path>,
         lock_root: impl AsRef<Path>,
     ) -> Result<Self, SqliteServingOwnerError> {
+        Self::ensure_serving_supported()?;
         let database_path = database_path.as_ref();
         validate_database_path_component(database_path)?;
         let database_path = fs::canonicalize(database_path)?;
@@ -1332,6 +1349,10 @@ fn validate_database_identity(
     Ok(())
 }
 
+#[cfg(not(unix))]
+const UNSUPPORTED_SERVING_PLATFORM_MESSAGE: &str =
+    "sqlite authority serving requires Unix file identity and positioned I/O";
+
 fn validate_lock_metadata(
     lock_root: &Path,
     metadata: &fs::Metadata,
@@ -1456,3 +1477,65 @@ fn verify_authority_store_invariants(
 #[path = "serving_owner/tests.rs"]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests;
+
+#[cfg(all(test, windows))]
+mod windows_platform_tests {
+    use super::*;
+
+    #[test]
+    fn provision_rejects_windows_before_creating_database_ancestry(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let lock_root = temp.path().join("locks");
+        fs::create_dir(&lock_root)?;
+        let database_parent = temp.path().join("state");
+        let database = database_parent.join("authority.sqlite3");
+
+        let error = match SqliteAuthorityStore::provision(&database, &lock_root) {
+            Ok(()) => {
+                return Err(std::io::Error::other(
+                    "Windows authority provisioning unexpectedly succeeded",
+                )
+                .into());
+            }
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            SqliteServingOwnerError::Invalid(message)
+                if message == UNSUPPORTED_SERVING_PLATFORM_MESSAGE
+        ));
+        assert!(!database_parent.exists());
+        assert!(!database.exists());
+        assert!(fs::read_dir(&lock_root)?.next().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn open_serving_rejects_windows_before_accessing_paths(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let database = temp.path().join("missing").join("authority.sqlite3");
+        let lock_root = temp.path().join("missing-locks");
+
+        let error = match SqliteAuthorityStore::open_serving(&database, &lock_root) {
+            Ok(_) => {
+                return Err(std::io::Error::other(
+                    "Windows authority serving unexpectedly succeeded",
+                )
+                .into());
+            }
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            SqliteServingOwnerError::Invalid(message)
+                if message == UNSUPPORTED_SERVING_PLATFORM_MESSAGE
+        ));
+        assert!(!database.exists());
+        assert!(!lock_root.exists());
+        Ok(())
+    }
+}
