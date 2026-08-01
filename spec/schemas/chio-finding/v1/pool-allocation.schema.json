@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/pool-allocation.schema.json",
+  "title": "Chio Finding Pool Allocation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "allocation_id",
+        "pool_id",
+        "pool_sha256",
+        "graph_id",
+        "purpose",
+        "purchaser_id",
+        "purchaser_key",
+        "currency",
+        "amount_units",
+        "nonce",
+        "authority",
+        "issued_at_unix_ms",
+        "expires_at_unix_ms"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.pool-allocation.v1"
+        },
+        "allocation_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "pool_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "pool_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "graph_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "purpose": {
+          "const": "cognition_market_finding_purchase_v1"
+        },
+        "purchaser_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "purchaser_key": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]{1,16}$"
+        },
+        "amount_units": {
+          "$ref": "#/$defs/positiveU64"
+        },
+        "nonce": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "authority": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "issued_at_unix_ms": {
+          "$ref": "#/$defs/u64"
+        },
+        "expires_at_unix_ms": {
+          "$ref": "#/$defs/u64"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nonBlankString": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "\\S"
+    },
+    "u64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "positiveU64": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18446744073709551615
+    }
+  }
+}

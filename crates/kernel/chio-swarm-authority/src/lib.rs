@@ -1,4 +1,5 @@
 mod error;
+pub mod finding_pool;
 mod types;
 mod verifier;
 

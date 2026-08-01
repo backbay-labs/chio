@@ -10,6 +10,9 @@
 //! assembled from the checked-in chio-fiscal fixtures exactly like
 //! `chio-market/tests/insurance_flow.rs`.
 
+use chio_core_types::crypto::sha256_hex;
+use chio_core_types::merkle::MerkleTree;
+use chio_core_types::SigningAlgorithm;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_finding_id, compute_terms_id,
     sign_finding, signed_envelope_sha256, Finding, FindingAdmission, FindingAuthorityKeyPolicy,
@@ -27,6 +30,7 @@ use chio_fiscal::{
     SignedFiscalRuntimeReadiness, VerifiedFiscalCharter, VerifiedFiscalContinuityCheckpoint,
     VerifiedFiscalRuntimeReadiness, FISCAL_RUNTIME_ADAPTER_COUNT,
 };
+use chio_open_market::canonical_json_bytes;
 use chio_open_market::{
     bidding::{BidMintContext, BidRequest, RequestedScope, SignedBidRequest, BID_REQUEST_SCHEMA},
     capability::scope::MonetaryAmount,
@@ -44,6 +48,13 @@ use chio_open_market::{
         FindingAdmissionError, FindingAdmissionPenaltyGate, FindingAllocationSnapshot,
         FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
     },
+    finding_pheromone::{
+        admit_and_resolve_finding_pheromone_hint, finding_pheromone_subject_policy,
+        FindingPheromoneConvention, FindingPheromoneError, FindingPheromoneIndicator,
+        FINDING_PHEROMONE_CONFIDENCE, FINDING_PHEROMONE_DECAY_HALF_LIFE_SECS,
+        FINDING_PHEROMONE_EVAPORATION_FLOOR, FINDING_PHEROMONE_INDICATOR_SCHEMA_V1,
+        FINDING_PHEROMONE_SUBJECT_CLASS, FINDING_PHEROMONE_SUBJECT_NAMESPACE,
+    },
     fiscal_adapter::signed_fee_schedule_digest,
     listing::{
         GenericListingActorKind, GenericListingArtifact, GenericListingBoundary,
@@ -54,6 +65,20 @@ use chio_open_market::{
         GENERIC_LISTING_ARTIFACT_SCHEMA, LISTING_PRICING_HINT_SCHEMA,
     },
     penalty::{OpenMarketPenaltyAction, OpenMarketPenaltyEffectiveState, OpenMarketPenaltyState},
+};
+use chio_pheromone::{
+    agent_passport_jwk_thumbprint, agent_passport_key_hash, scarcity_policy_sha256,
+    scarcity_window_id, sign_deposit, InMemoryPheromoneSubstrate, ObservationCostVerificationMode,
+    PassportAdmission, PheromoneCostCommitment, PheromoneDeposit, PheromoneDepositBody,
+    PheromoneObservationCostAmount, PheromoneObservationCostLeaf,
+    PheromoneObservationCostStatement, PheromoneObservationCostTelemetryRoot,
+    PheromoneObservationCostVerifierRoot, PheromoneObservationCostVerifierRootBody,
+    PheromoneRuntimeTrustFloorEntry, PheromoneRuntimeTrustFloorState, PheromoneScarcityPolicy,
+    PheromoneValidationContext, Severity, OBSERVATION_COST_TELEMETRY_ALGORITHM,
+    OBSERVATION_COST_UNIT, PHEROMONE_COST_COMMITMENT_SCHEMA, PHEROMONE_DEPOSIT_SCHEMA,
+    PHEROMONE_OBSERVATION_COST_LEAF_SCHEMA, PHEROMONE_OBSERVATION_COST_STATEMENT_SCHEMA,
+    PHEROMONE_OBSERVATION_COST_TELEMETRY_ROOT_SCHEMA,
+    PHEROMONE_OBSERVATION_COST_VERIFIER_ROOT_SCHEMA, PHEROMONE_SCARCITY_POLICY_SCHEMA,
 };
 use chio_test_support::prelude::*;
 
@@ -658,6 +683,207 @@ fn finding_bid_request(finding: &Finding, max_price_units: u64) -> BidRequest {
     }
 }
 
+const FINDING_PHEROMONE_TREATY: &str = "treaty:cognition-market:discovery";
+const FINDING_PHEROMONE_NOW_MS: u64 = NOW * 1_000;
+
+fn finding_pheromone_policy() -> PheromoneScarcityPolicy {
+    let mut policy = PheromoneScarcityPolicy {
+        schema: PHEROMONE_SCARCITY_POLICY_SCHEMA.to_string(),
+        policy_id: "policy:cognition-market:finding-hints".to_string(),
+        reputation_epoch: 9,
+        window_id: String::new(),
+        window_start_unix_ms: FINDING_PHEROMONE_NOW_MS - 10_000,
+        window_end_unix_ms: FINDING_PHEROMONE_NOW_MS + 10_000,
+        token_capacity: 100,
+        newcomer_horizon_epochs: 8,
+        treaty_scope: vec![FINDING_PHEROMONE_TREATY.to_string()],
+        subject_class_namespace: FINDING_PHEROMONE_SUBJECT_NAMESPACE.to_string(),
+        subject_class: FINDING_PHEROMONE_SUBJECT_CLASS.to_string(),
+        observation_cost_verification: ObservationCostVerificationMode::Required,
+        verifier_id: "did:chio:finding-cost-verifier".to_string(),
+        runtime_policy_sha256: hex64('d'),
+        policy_sha256: String::new(),
+        active_peers_epoch: 9,
+    };
+    policy.window_id =
+        scarcity_window_id(&policy, FINDING_PHEROMONE_TREATY).test_expect("window id");
+    policy.policy_sha256 = scarcity_policy_sha256(&policy).test_expect("scarcity policy digest");
+    policy
+}
+
+fn finding_pheromone_context(passport: &Keypair, kernel: &Keypair) -> PheromoneValidationContext {
+    let verifier = keypair(84);
+    let root_issuer = keypair(85);
+    let root_body = PheromoneObservationCostVerifierRootBody {
+        schema: PHEROMONE_OBSERVATION_COST_VERIFIER_ROOT_SCHEMA.to_string(),
+        verifier_id: "did:chio:finding-cost-verifier".to_string(),
+        verifier_key_id: "finding-cost-key-1".to_string(),
+        public_key: verifier.public_key(),
+        signature_algorithm: SigningAlgorithm::Ed25519,
+        valid_from_unix_ms: FINDING_PHEROMONE_NOW_MS - 100_000,
+        valid_until_unix_ms: FINDING_PHEROMONE_NOW_MS + 100_000,
+        allowed_treaties: vec![FINDING_PHEROMONE_TREATY.to_string()],
+        allowed_subject_class_namespaces: vec![FINDING_PHEROMONE_SUBJECT_NAMESPACE.to_string()],
+        allowed_subject_classes: vec![FINDING_PHEROMONE_SUBJECT_CLASS.to_string()],
+        runtime_policy_sha256: hex64('d'),
+        issuer_kernel_id: "did:chio:receiver-runtime".to_string(),
+    };
+    let root = PheromoneObservationCostVerifierRoot {
+        issuer_signature: root_issuer
+            .sign(&canonical_json_bytes(&root_body).test_expect("canonical observation cost root")),
+        body: root_body,
+    };
+    let trust_floor = PheromoneRuntimeTrustFloorState {
+        entries: vec![PheromoneRuntimeTrustFloorEntry {
+            verifier_id: root.body.verifier_id.clone(),
+            key_id: root.body.verifier_key_id.clone(),
+            highest_version: 1,
+            latest_bundle_sha256: sha256_hex(b"finding-cost-verifier-bundle:v1"),
+            latest_revocation_checkpoint_sha256: sha256_hex(b"finding-cost-verifier-revocation:v1"),
+        }],
+        ..PheromoneRuntimeTrustFloorState::default()
+    };
+    PheromoneValidationContext {
+        now_unix_ms: FINDING_PHEROMONE_NOW_MS,
+        replay_window_ms: 20_000,
+        active_peers_in_treaty: 16,
+        active_reputation_epoch: 9,
+        known_reputation_epochs: vec![9],
+        passports: vec![PassportAdmission {
+            kernel_id: "did:chio:buyer-kernel".to_string(),
+            public_key: passport.public_key(),
+            valid_from_unix_ms: FINDING_PHEROMONE_NOW_MS - 100_000,
+            valid_until_unix_ms: FINDING_PHEROMONE_NOW_MS + 100_000,
+            first_seen_epoch: 1,
+            revoked: false,
+        }],
+        kernel_public_keys: vec![kernel.public_key()],
+        subject_classes: vec![finding_pheromone_subject_policy(FINDING_PHEROMONE_TREATY)],
+        max_deposits_per_pair: 10,
+        scarcity_policies: vec![finding_pheromone_policy()],
+        runtime_policy_sha256: Some(hex64('d')),
+        runtime_policy_issuer_public_keys: vec![root_issuer.public_key()],
+        observation_cost_verifier_roots: vec![root],
+        runtime_trust_floor_state: trust_floor,
+    }
+}
+
+fn finding_pheromone_deposit(
+    web: &Web,
+    listing: &Listing,
+    passport: &Keypair,
+    nonce: &str,
+    cost: u64,
+) -> PheromoneDeposit {
+    let admission_sha256 =
+        signed_envelope_sha256(&web.admission).test_expect("admission envelope digest");
+    let indicator = FindingPheromoneIndicator {
+        schema: FINDING_PHEROMONE_INDICATOR_SCHEMA_V1.to_string(),
+        finding_id: web.finding.finding_id.clone(),
+        listing_id: listing.listing_id().to_string(),
+        listing_envelope_sha256: signed_envelope_sha256(&listing.listing)
+            .test_expect("listing envelope digest"),
+        admission_envelope_sha256: admission_sha256,
+        capability_scope: format!("finding:{}", web.finding.finding_id),
+    };
+    let body = PheromoneDepositBody {
+        schema: PHEROMONE_DEPOSIT_SCHEMA.to_string(),
+        kernel_id: "did:chio:buyer-kernel".to_string(),
+        agent_passport_key_hash: agent_passport_key_hash(&passport.public_key()),
+        agent_passport_jwk_thumbprint: agent_passport_jwk_thumbprint(&passport.public_key()),
+        subject_class: FINDING_PHEROMONE_SUBJECT_CLASS.to_string(),
+        subject_class_namespace: FINDING_PHEROMONE_SUBJECT_NAMESPACE.to_string(),
+        indicator: serde_json::to_value(indicator).test_expect("serialize indicator"),
+        severity: Severity::Medium,
+        confidence: FINDING_PHEROMONE_CONFIDENCE,
+        timestamp_unix_ms: FINDING_PHEROMONE_NOW_MS - 1_000,
+        decay_half_life_secs: FINDING_PHEROMONE_DECAY_HALF_LIFE_SECS,
+        evaporation_floor: Some(FINDING_PHEROMONE_EVAPORATION_FLOOR),
+        nonce: nonce.to_string(),
+        treaty_scope: vec![FINDING_PHEROMONE_TREATY.to_string()],
+        cost_commitment: None,
+        workflow_context: None,
+    };
+    let mut deposit = sign_deposit(body, passport).test_expect("sign finding pheromone");
+    let policy = finding_pheromone_policy();
+    let deposit_body_sha256 = {
+        let mut body = deposit.body.clone();
+        body.cost_commitment = None;
+        sha256_hex(&canonical_json_bytes(&body).test_expect("canonical deposit body"))
+    };
+    let deposit_signature_sha256 = sha256_hex(deposit.signature.to_hex().as_bytes());
+    let observation_cost = PheromoneObservationCostAmount {
+        unit: OBSERVATION_COST_UNIT.to_string(),
+        amount: cost,
+    };
+    let leaf = PheromoneObservationCostLeaf {
+        schema: PHEROMONE_OBSERVATION_COST_LEAF_SCHEMA.to_string(),
+        deposit_body_sha256,
+        deposit_signature_sha256,
+        kernel_id: deposit.body.kernel_id.clone(),
+        agent_passport_key_hash: deposit.body.agent_passport_key_hash.clone(),
+        treaty_id: FINDING_PHEROMONE_TREATY.to_string(),
+        subject_class_namespace: FINDING_PHEROMONE_SUBJECT_NAMESPACE.to_string(),
+        subject_class: FINDING_PHEROMONE_SUBJECT_CLASS.to_string(),
+        observed_at_unix_ms: FINDING_PHEROMONE_NOW_MS - 500,
+        event_digest_sha256: sha256_hex(nonce.as_bytes()),
+        cost: observation_cost.clone(),
+        scarcity_policy_sha256: policy.policy_sha256.clone(),
+        runtime_policy_sha256: hex64('d'),
+    };
+    let leaf_bytes = canonical_json_bytes(&leaf).test_expect("canonical observation cost leaf");
+    let tree = MerkleTree::from_leaves(std::slice::from_ref(&leaf_bytes))
+        .test_expect("build observation cost tree");
+    let statement = PheromoneObservationCostStatement {
+        schema: PHEROMONE_OBSERVATION_COST_STATEMENT_SCHEMA.to_string(),
+        commitment_id: format!("cost:{nonce}"),
+        verifier_id: "did:chio:finding-cost-verifier".to_string(),
+        verifier_key_id: "finding-cost-key-1".to_string(),
+        runtime_policy_sha256: hex64('d'),
+        scarcity_policy_sha256: leaf.scarcity_policy_sha256.clone(),
+        deposit_body_sha256: leaf.deposit_body_sha256.clone(),
+        deposit_signature_sha256: leaf.deposit_signature_sha256.clone(),
+        kernel_id: leaf.kernel_id.clone(),
+        agent_passport_key_hash: leaf.agent_passport_key_hash.clone(),
+        treaty_id: leaf.treaty_id.clone(),
+        subject_class_namespace: leaf.subject_class_namespace.clone(),
+        subject_class: leaf.subject_class.clone(),
+        observation_window_start_unix_ms: policy.window_start_unix_ms,
+        observation_window_end_unix_ms: policy.window_end_unix_ms,
+        observed_at_unix_ms: leaf.observed_at_unix_ms,
+        event_digest_sha256: leaf.event_digest_sha256.clone(),
+        cost: observation_cost,
+        telemetry: PheromoneObservationCostTelemetryRoot {
+            schema: PHEROMONE_OBSERVATION_COST_TELEMETRY_ROOT_SCHEMA.to_string(),
+            algorithm: OBSERVATION_COST_TELEMETRY_ALGORITHM.to_string(),
+            root_hash: tree.root(),
+            tree_size: 1,
+            verifier_id: "did:chio:finding-cost-verifier".to_string(),
+            verifier_key_id: "finding-cost-key-1".to_string(),
+            closed_at_unix_ms: FINDING_PHEROMONE_NOW_MS,
+        },
+        inclusion_proof: tree
+            .inclusion_proof(0)
+            .test_expect("observation cost inclusion proof"),
+        leaf_preimage_sha256: sha256_hex(&leaf_bytes),
+    };
+    let signature =
+        keypair(84).sign(&canonical_json_bytes(&statement).test_expect("canonical cost statement"));
+    deposit.body.cost_commitment = Some(PheromoneCostCommitment {
+        schema: PHEROMONE_COST_COMMITMENT_SCHEMA.to_string(),
+        statement,
+        signature,
+    });
+    deposit
+}
+
+fn finding_pheromone_convention() -> FindingPheromoneConvention {
+    FindingPheromoneConvention {
+        treaty_id: FINDING_PHEROMONE_TREATY.to_string(),
+        max_observation_cost_microunits: 125,
+    }
+}
+
 #[test]
 fn admitted_finding_clears_the_real_bid_path() {
     with_fiscal(|resolver| {
@@ -699,6 +925,191 @@ fn admitted_finding_clears_the_real_bid_path() {
         assert_eq!(grant.tool_name, "read_finding");
         assert_eq!(grant.max_invocations, Some(1));
         assert_eq!(grant.max_total_cost, Some(usd(900)));
+    });
+}
+
+#[test]
+fn finding_pheromone_positive_hint_re_resolves_current_listing_without_purchase_authority() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let deposit = finding_pheromone_deposit(&web, &listing, &passport, "hint-positive", 125);
+        let substrate = InMemoryPheromoneSubstrate::new();
+        let resolved = admit_and_resolve_finding_pheromone_hint(
+            &substrate,
+            deposit,
+            &finding_pheromone_context(&passport, &kernel),
+            &finding_pheromone_convention(),
+            &listing,
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect("fully admit and resolve finding pheromone");
+        assert_eq!(resolved.indicator.finding_id, web.finding.finding_id);
+        assert_eq!(resolved.admission.listing_id(), FINDING_LISTING_ID);
+        assert!(!resolved.grants_purchase_authority());
+    });
+}
+
+#[test]
+fn finding_pheromone_rejects_stale_unadmitted_wrong_signer_and_wrong_passport() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let wrong = keypair(83);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+
+        let mut stale = finding_pheromone_deposit(&web, &listing, &passport, "hint-stale", 125);
+        stale.body.timestamp_unix_ms = FINDING_PHEROMONE_NOW_MS - 20_000;
+        stale = sign_deposit(stale.body, &passport).test_expect("re-sign stale hint");
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                stale,
+                &finding_pheromone_context(&passport, &kernel),
+                &finding_pheromone_convention(),
+                &listing,
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Deposit(_))
+        ));
+
+        let unadmitted =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-unadmitted", 125);
+        let mut unadmitted_context = finding_pheromone_context(&passport, &kernel);
+        unadmitted_context.passports.clear();
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                unadmitted,
+                &unadmitted_context,
+                &finding_pheromone_convention(),
+                &listing,
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Deposit(_))
+        ));
+
+        let valid = finding_pheromone_deposit(&web, &listing, &passport, "hint-signer", 125);
+        let wrong_signer =
+            sign_deposit(valid.body.clone(), &wrong).test_expect("wrong signer hint");
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                wrong_signer,
+                &finding_pheromone_context(&passport, &kernel),
+                &finding_pheromone_convention(),
+                &listing,
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Deposit(_))
+        ));
+
+        let mut wrong_passport = valid.body;
+        wrong_passport.agent_passport_key_hash = hex64('f');
+        let wrong_passport =
+            sign_deposit(wrong_passport, &passport).test_expect("wrong passport hint");
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                wrong_passport,
+                &finding_pheromone_context(&passport, &kernel),
+                &finding_pheromone_convention(),
+                &listing,
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Deposit(_))
+        ));
+    });
+}
+
+#[test]
+fn finding_pheromone_rejects_wrong_scope_replay_and_over_cost() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let context = finding_pheromone_context(&passport, &kernel);
+        let convention = finding_pheromone_convention();
+
+        let mut wrong_scope =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-scope", 125);
+        wrong_scope.body.treaty_scope = vec!["treaty:other".to_string()];
+        wrong_scope = sign_deposit(wrong_scope.body, &passport).test_expect("re-sign scope hint");
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                wrong_scope,
+                &context,
+                &convention,
+                &listing,
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Convention(_))
+        ));
+
+        let over_cost = finding_pheromone_deposit(&web, &listing, &passport, "hint-over-cost", 126);
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                over_cost,
+                &context,
+                &convention,
+                &listing,
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::ObservationCostExceeded)
+        ));
+
+        let replay = finding_pheromone_deposit(&web, &listing, &passport, "hint-replay", 125);
+        let substrate = InMemoryPheromoneSubstrate::new();
+        admit_and_resolve_finding_pheromone_hint(
+            &substrate,
+            replay.clone(),
+            &context,
+            &convention,
+            &listing,
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect("first hint admission");
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &substrate,
+                replay,
+                &context,
+                &convention,
+                &listing,
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Deposit(_))
+        ));
     });
 }
 

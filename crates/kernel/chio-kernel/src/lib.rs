@@ -62,6 +62,8 @@ pub mod evidence_export;
 pub mod execution_nonce;
 #[cfg(not(loom))]
 pub mod federation_artifact_store;
+#[cfg(feature = "cognition-market-experimental")]
+pub mod finding_pool;
 #[cfg(not(loom))]
 pub mod finding_purchase;
 #[cfg(not(loom))]

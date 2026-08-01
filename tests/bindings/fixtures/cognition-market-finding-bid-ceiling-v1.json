@@ -1,0 +1,114 @@
+{
+  "schema": "chio.finding-bid-ceiling-v1.test-vectors.v1",
+  "rounding": "floor_after_combined_basis_points",
+  "valid_cases": [
+    {
+      "id": "basic_discount",
+      "input": {
+        "estimate": {
+          "units": "4200",
+          "currency": "USD",
+          "provenance": "buyer_metering_history_v1",
+          "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "contextSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "replayRecipeSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "observedAtUnixMs": "1700000000000",
+          "validUntilUnixMs": "1700000060000"
+        },
+        "policy": {
+          "budgetRemainingUnits": "10000",
+          "currency": "USD",
+          "wouldHaveRunBps": "6000",
+          "siblingRedundancyBps": "2500",
+          "guaranteeClassBps": "10000"
+        },
+        "expectedSourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expectedContextSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "expectedReplayRecipeSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "nowUnixMs": "1700000001000"
+      },
+      "expectedCeiling": "1890"
+    },
+    {
+      "id": "above_javascript_safe_integer",
+      "input": {
+        "estimate": {
+          "units": "9007199254740993",
+          "currency": "USD",
+          "provenance": "buyer_fresh_metered_quote_v1",
+          "sourceSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "contextSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "replayRecipeSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "observedAtUnixMs": "1700000000000",
+          "validUntilUnixMs": "1700000060000"
+        },
+        "policy": {
+          "budgetRemainingUnits": "18446744073709551615",
+          "currency": "USD",
+          "wouldHaveRunBps": "10000",
+          "siblingRedundancyBps": "0",
+          "guaranteeClassBps": "10000"
+        },
+        "expectedSourceSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "expectedContextSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "expectedReplayRecipeSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "nowUnixMs": "1700000001000"
+      },
+      "expectedCeiling": "9007199254740993"
+    },
+    {
+      "id": "budget_cap",
+      "input": {
+        "estimate": {
+          "units": "18446744073709551615",
+          "currency": "EUR",
+          "provenance": "buyer_metering_history_v1",
+          "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "contextSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "replayRecipeSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "observedAtUnixMs": "1700000000000",
+          "validUntilUnixMs": "1700000060000"
+        },
+        "policy": {
+          "budgetRemainingUnits": "500",
+          "currency": "EUR",
+          "wouldHaveRunBps": "10000",
+          "siblingRedundancyBps": "0",
+          "guaranteeClassBps": "10000"
+        },
+        "expectedSourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "expectedContextSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "expectedReplayRecipeSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "nowUnixMs": "1700000001000"
+      },
+      "expectedCeiling": "500"
+    },
+    {
+      "id": "combined_floor_once",
+      "input": {
+        "estimate": {
+          "units": "11",
+          "currency": "USD",
+          "provenance": "buyer_metering_history_v1",
+          "sourceSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "contextSha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "replayRecipeSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+          "observedAtUnixMs": "1700000000000",
+          "validUntilUnixMs": "1700000060000"
+        },
+        "policy": {
+          "budgetRemainingUnits": "100",
+          "currency": "USD",
+          "wouldHaveRunBps": "5000",
+          "siblingRedundancyBps": "5000",
+          "guaranteeClassBps": "5000"
+        },
+        "expectedSourceSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+        "expectedContextSha256": "5555555555555555555555555555555555555555555555555555555555555555",
+        "expectedReplayRecipeSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+        "nowUnixMs": "1700000001000"
+      },
+      "expectedCeiling": "1"
+    }
+  ]
+}

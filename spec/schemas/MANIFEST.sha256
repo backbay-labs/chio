@@ -128,6 +128,7 @@ c5bc56c8965281047d38e79a228b00ab427d4e97d8afa792a71297090cc6f53b  spec/schemas/c
 895a7fa9cf80094b289227db48889077dcc254fdce22cccf5a0f765e7ae280dc  spec/schemas/chio-finding/v1/key-revocation.schema.json
 dd0bb78a638d0798450a524347cb82158aba382116de9fd5206bd31c88618df6  spec/schemas/chio-finding/v1/market-penalty.schema.json
 161f372dc1c5f89758bf2fd84253082e34058fc814d9580154e65a66cdf55d72  spec/schemas/chio-finding/v1/market-terms.schema.json
+127dc569f305d4588a239a52701004192c98c2ab67b0694c98a02b1d4fe45654  spec/schemas/chio-finding/v1/pool-allocation.schema.json
 87dc0f50befcda8ba0f347401161fedb3e6fbc2d9c4d1d59839574abdbdff398  spec/schemas/chio-finding/v1/purchase-context.schema.json
 a4bc54088b6aef5d000ad717275342a966cd55fd0391e6c555aaa93bcc111395  spec/schemas/chio-finding/v1/purchase-record.schema.json
 730eef07858d4d7e64749cfed9f617924d50d52d088181236f1a6a23299131a2  spec/schemas/chio-finding/v1/recovery-context.schema.json

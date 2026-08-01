@@ -50,6 +50,13 @@ from chio_sdk.testing import (
     deny_all,
     with_policy,
 )
+from chio_sdk.finding import (
+    BuyerFindingEstimate,
+    FindingBidCeilingError,
+    FindingBidCeilingInput,
+    FindingBidCeilingPolicy,
+    finding_bid_ceiling,
+)
 
 __all__ = [
     # Client
@@ -61,6 +68,12 @@ __all__ = [
     "allow_all",
     "deny_all",
     "with_policy",
+    # Cognition market buyer-local policy
+    "BuyerFindingEstimate",
+    "FindingBidCeilingError",
+    "FindingBidCeilingInput",
+    "FindingBidCeilingPolicy",
+    "finding_bid_ceiling",
     # Models -- capabilities
     "CapabilityToken",
     "CapabilityTokenBody",

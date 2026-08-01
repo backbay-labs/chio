@@ -48,6 +48,8 @@ pub mod finding_challenge_store;
 #[cfg(feature = "cognition-market-experimental")]
 pub mod finding_market_store;
 #[cfg(feature = "cognition-market-experimental")]
+pub mod finding_pool_ledger;
+#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_purchase_store;
 #[cfg(feature = "cognition-market-experimental")]
 pub mod finding_recovery_store;

@@ -32,6 +32,7 @@ chaos-test-hooks = []
 # the chio-finding artifact types it persists.
 cognition-market-experimental = [
     "dep:chio-finding",
+    "chio-kernel/cognition-market-experimental",
     "chio-settle/cognition-market-experimental",
 ]
 # Test-only helpers used by cross-crate cognition-market integration tests.
@@ -71,6 +72,8 @@ zeroize = { workspace = true, features = ["derive"] }
 async-trait = { workspace = true }
 chio-kernel = { workspace = true, features = ["admission-test-support"] }
 chio-test-support = { workspace = true }
+chio-swarm-authority = { workspace = true }
+chio-open-market = { workspace = true, features = ["cognition-market-experimental"] }
 criterion = { workspace = true }
 frost-ed25519 = { workspace = true }
 loom = { workspace = true }

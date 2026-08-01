@@ -124,6 +124,8 @@ pub const CHIO_FINDING_KEY_REVOCATION_V1_SCHEMA: &str = "chio.finding.key-revoca
 pub const CHIO_FINDING_STATUS_EPOCH_V1_SCHEMA: &str = "chio.finding.status-epoch.v1";
 /// Cognition-market seller market terms.
 pub const CHIO_FINDING_MARKET_TERMS_V1_SCHEMA: &str = "chio.finding.market-terms.v1";
+/// Cognition-market authenticated pool allocation.
+pub const CHIO_FINDING_POOL_ALLOCATION_V1_SCHEMA: &str = "chio.finding.pool-allocation.v1";
 /// Cognition-market settled purchase record.
 pub const CHIO_FINDING_PURCHASE_RECORD_V1_SCHEMA: &str = "chio.finding.purchase-record.v1";
 /// Cognition-market issuer-signed seller authorization.
@@ -624,6 +626,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_FINDING_MARKET_TERMS_V1_SCHEMA,
         Some(("finding_market_terms", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_POOL_ALLOCATION_V1_SCHEMA,
+        Some(("finding_pool_allocation", "finding-market-v1")),
     ),
     (
         CHIO_FINDING_PURCHASE_RECORD_V1_SCHEMA,
