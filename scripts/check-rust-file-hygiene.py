@@ -293,8 +293,18 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/admission_operation_tests.rs": allow(
         "2026-08-31",
-        "durable admission operation regression suite; capped to current size until split",
-        max_lines=2_339,
+        "durable admission operation regression suite with authoritative outcome binding coverage; capped to current size until split",
+        max_lines=2_359,
+    ),
+    "crates/kernel/chio-kernel/src/admission_operation/projection.rs": allow(
+        "2026-08-31",
+        "durable admission projection surface with authoritative outcome bindings; capped to current size until split",
+        max_lines=2_151,
+    ),
+    "crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs": allow(
+        "2026-08-31",
+        "durable terminal coordinator with signed outcome projection; capped to current size until split",
+        max_lines=2_320,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/budget.rs": allow(
         "2026-08-31",
@@ -331,10 +341,35 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "capital liability control surface; capped to current size until split",
         max_lines=2_166,
     ),
+    "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
+        "2026-08-31",
+        "cognition market exit regression suite; capped to current size until split",
+        max_lines=2_428,
+    ),
+    "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
+        "2026-08-31",
+        "cognition purchase and recovery end-to-end regression suite; capped to current size until split",
+        max_lines=4_662,
+    ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",
         "admission factor assignment store surface; capped to current size until split",
         max_lines=2_246,
+    ),
+    "crates/platform/chio-store-sqlite/src/budget_store/composite_schema.rs": allow(
+        "2026-08-31",
+        "durable composite budget schema and migration surface; capped to current size until split",
+        max_lines=2_104,
+    ),
+    "crates/platform/chio-store-sqlite/src/finding_market_store.rs": allow(
+        "2026-08-31",
+        "cognition finding market authority store; capped to current size until split",
+        max_lines=2_017,
+    ),
+    "crates/platform/chio-store-sqlite/src/finding_purchase_store.rs": allow(
+        "2026-08-31",
+        "cognition purchase and recovery authority store; capped to current size until split",
+        max_lines=2_025,
     ),
     "crates/platform/chio-store-sqlite/src/fiscal_store.rs": allow(
         "2026-08-31",

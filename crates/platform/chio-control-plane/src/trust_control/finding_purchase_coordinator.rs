@@ -566,11 +566,14 @@ impl FindingPurchaseCoordinator {
                 "receipt signature or content-addressed id is invalid".to_owned(),
             ));
         }
-        let decision_matches = match (expected, receipt.decision.as_ref()) {
-            (ExpectedPurchaseTerminal::Delivered, Some(Decision::Allow)) => true,
-            (ExpectedPurchaseTerminal::Denied, Some(Decision::Deny { .. })) => true,
-            _ => false,
-        };
+        let decision_matches = matches!(
+            (expected, receipt.decision.as_ref()),
+            (ExpectedPurchaseTerminal::Delivered, Some(Decision::Allow))
+                | (
+                    ExpectedPurchaseTerminal::Denied,
+                    Some(Decision::Deny { .. })
+                )
+        );
         if !decision_matches {
             return Err(PurchaseCoordinatorError::TerminalEvidence(
                 "receipt decision does not authorize the requested terminal".to_owned(),

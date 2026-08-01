@@ -19,13 +19,11 @@ fn context() -> FindingRecoveryContext {
 }
 
 #[test]
-fn canonical_recovery_context_round_trips() {
+fn canonical_recovery_context_round_trips() -> Result<(), Box<dyn std::error::Error>> {
     let context = context();
-    let bytes = chio_finding::canonical_json_bytes(&context).expect("canonical context");
-    assert_eq!(
-        parse_finding_recovery_context(&bytes).expect("parse context"),
-        context
-    );
+    let bytes = chio_finding::canonical_json_bytes(&context)?;
+    assert_eq!(parse_finding_recovery_context(&bytes)?, context);
+    Ok(())
 }
 
 #[test]
@@ -50,13 +48,15 @@ fn recovery_identity_is_deterministic_and_cross_bound() {
 }
 
 #[test]
-fn recovery_context_rejects_noncanonical_or_substituted_shape() {
+fn recovery_context_rejects_noncanonical_or_substituted_shape(
+) -> Result<(), Box<dyn std::error::Error>> {
     let context = context();
-    let pretty = serde_json::to_vec_pretty(&context).expect("pretty context");
+    let pretty = serde_json::to_vec_pretty(&context)?;
     assert!(parse_finding_recovery_context(&pretty).is_err());
 
-    let mut value = serde_json::to_value(context).expect("context value");
+    let mut value = serde_json::to_value(context)?;
     value["unexpected"] = serde_json::json!(true);
-    let bytes = chio_finding::canonical_json_bytes(&value).expect("canonical tamper");
+    let bytes = chio_finding::canonical_json_bytes(&value)?;
     assert!(parse_finding_recovery_context(&bytes).is_err());
+    Ok(())
 }

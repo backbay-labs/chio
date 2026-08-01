@@ -4104,7 +4104,8 @@ async fn wedge_purchase_reserve_refuses_a_malformed_purchase_grant() -> TestResu
         Ok((signed, signature))
     };
 
-    let cases: [(&str, &str, fn(&mut ToolGrant)); 8] = [
+    type GrantMutationCase = (&'static str, &'static str, fn(&mut ToolGrant));
+    let cases: [GrantMutationCase; 8] = [
         ("max_invocations", "max_invocations", |grant| {
             grant.max_invocations = Some(2);
         }),

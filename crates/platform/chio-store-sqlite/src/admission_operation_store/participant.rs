@@ -1091,27 +1091,6 @@ fn load_authoritative_tool_outcome_binding(
     })
 }
 
-#[cfg(test)]
-mod participant_outcome_binding_tests {
-    use super::*;
-
-    #[test]
-    fn participant_versions_must_equal_the_authoritative_outcome(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let outcome_id = AdmissionDigest::try_new("outcome_id", "a".repeat(64))?;
-        let other_outcome_id = AdmissionDigest::try_new("outcome_id", "b".repeat(64))?;
-        let authoritative = AuthoritativeToolOutcomeBindingV1 {
-            outcome_id: outcome_id.clone(),
-            outcome_version: 7,
-        };
-
-        assert!(verify_participant_outcome_binding(&outcome_id, 7, &authoritative).is_ok());
-        assert!(verify_participant_outcome_binding(&outcome_id, 8, &authoritative).is_err());
-        assert!(verify_participant_outcome_binding(&other_outcome_id, 7, &authoritative).is_err());
-        Ok(())
-    }
-}
-
 pub(crate) fn advance_tool_outcome_tx(
     transaction: &Transaction<'_>,
     owner: &SqliteServingOwner,
@@ -1614,4 +1593,25 @@ pub(crate) fn finalize_channel_reservation_operation_tx(
         trusted_now_unix_ms,
     )?;
     Ok(updated)
+}
+
+#[cfg(test)]
+mod participant_outcome_binding_tests {
+    use super::*;
+
+    #[test]
+    fn participant_versions_must_equal_the_authoritative_outcome(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let outcome_id = AdmissionDigest::try_new("outcome_id", "a".repeat(64))?;
+        let other_outcome_id = AdmissionDigest::try_new("outcome_id", "b".repeat(64))?;
+        let authoritative = AuthoritativeToolOutcomeBindingV1 {
+            outcome_id: outcome_id.clone(),
+            outcome_version: 7,
+        };
+
+        assert!(verify_participant_outcome_binding(&outcome_id, 7, &authoritative).is_ok());
+        assert!(verify_participant_outcome_binding(&outcome_id, 8, &authoritative).is_err());
+        assert!(verify_participant_outcome_binding(&other_outcome_id, 7, &authoritative).is_err());
+        Ok(())
+    }
 }

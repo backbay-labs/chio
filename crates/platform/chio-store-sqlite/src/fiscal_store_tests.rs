@@ -537,15 +537,14 @@ struct StoreFixture {
 
 fn store_fixture() -> TestResult<StoreFixture> {
     let temp = tempfile::tempdir()?;
-    secure_temp_directory(temp.path());
+    secure_temp_directory(temp.path())?;
     let database = temp.path().join("authority.db");
     let lock_root = temp.path().join("locks");
     fs::create_dir(&lock_root)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&lock_root, std::fs::Permissions::from_mode(0o700))
-            .unwrap_or_else(|error| panic!("secure directory: {error}"));
+        std::fs::set_permissions(&lock_root, std::fs::Permissions::from_mode(0o700))?;
     }
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     Ok(StoreFixture {
@@ -1166,13 +1165,13 @@ fn unanchored_fiscal_stage_can_be_discarded_without_advancing_authority() -> Tes
     Ok(())
 }
 
-fn secure_temp_directory(path: &std::path::Path) {
+fn secure_temp_directory(path: &std::path::Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-            .unwrap_or_else(|error| panic!("secure temp directory: {error}"));
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
     }
     #[cfg(not(unix))]
     let _ = path;
+    Ok(())
 }

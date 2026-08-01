@@ -250,38 +250,6 @@ pub(crate) fn purchase_marked_grant(
     }))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-    #[test]
-    fn a_committed_digest_admits_only_a_matching_value_delivery() {
-        let unconstrained_stream = evaluate_delivery(None, DIGEST, false, b"{}", None);
-        assert!(unconstrained_stream.denial.is_none());
-        assert!(!unconstrained_stream.digest_mismatched);
-
-        let matching_value = evaluate_delivery(Some(DIGEST), DIGEST, true, b"{}", None);
-        assert!(matching_value.denial.is_none());
-        assert!(!matching_value.digest_mismatched);
-
-        // A stream whose derived content hash collides with the committed
-        // digest still denies: the commitment is over canonical value
-        // bytes, and a stream hash is provider-authored chunk metadata.
-        let colliding_stream = evaluate_delivery(Some(DIGEST), DIGEST, false, b"{}", None);
-        assert!(colliding_stream.digest_mismatched);
-        let denial = colliding_stream
-            .denial
-            .as_ref()
-            .filter(|denial| denial.guard == "delivery_contract");
-        assert!(
-            denial.is_some_and(|denial| denial.message.contains("single value delivery")),
-            "a stream delivery must deny under a committed digest"
-        );
-    }
-}
-
 impl ChioKernel {
     /// Deterministically verify the purchase context for a marked grant
     /// and cross-check the result against the grant, the request, and the
@@ -409,5 +377,37 @@ impl ChioKernel {
             .verify_purchase_admission(&view, &verified, now_unix_secs)
             .map_err(|error| format!("purchase admission rejected: {error}"))?;
         Ok(Some(verified))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn a_committed_digest_admits_only_a_matching_value_delivery() {
+        let unconstrained_stream = evaluate_delivery(None, DIGEST, false, b"{}", None);
+        assert!(unconstrained_stream.denial.is_none());
+        assert!(!unconstrained_stream.digest_mismatched);
+
+        let matching_value = evaluate_delivery(Some(DIGEST), DIGEST, true, b"{}", None);
+        assert!(matching_value.denial.is_none());
+        assert!(!matching_value.digest_mismatched);
+
+        // A stream whose derived content hash collides with the committed
+        // digest still denies: the commitment is over canonical value
+        // bytes, and a stream hash is provider-authored chunk metadata.
+        let colliding_stream = evaluate_delivery(Some(DIGEST), DIGEST, false, b"{}", None);
+        assert!(colliding_stream.digest_mismatched);
+        let denial = colliding_stream
+            .denial
+            .as_ref()
+            .filter(|denial| denial.guard == "delivery_contract");
+        assert!(
+            denial.is_some_and(|denial| denial.message.contains("single value delivery")),
+            "a stream delivery must deny under a committed digest"
+        );
     }
 }
