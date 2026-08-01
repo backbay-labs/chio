@@ -135,9 +135,9 @@ impl VerifiedAdmissionReceipt {
 
     /// Qualify a signed Deny that a delivery-digest mismatch produced after
     /// the tool returned. The terminal carries no completed-tool-outcome
-    /// attachment: the delivered output is retained only as the receipt's
-    /// content hash and the delivery-contract block, mirroring the other
-    /// non-`Completed` terminals.
+    /// attachment: the actual output remains in privileged durable outcome
+    /// evidence while the public receipt carries only the deterministic
+    /// redaction binding, mirroring the other non-`Completed` terminals.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_kernel_verified_denied_after_delivery(
         receipt: ChioReceipt,

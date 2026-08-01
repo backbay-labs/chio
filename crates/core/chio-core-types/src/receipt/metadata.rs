@@ -243,7 +243,11 @@ pub struct DeliveryContract {
     pub schema: String,
     /// Canonical lowercase 64-hex SHA-256 digest the grant fixed in advance.
     pub expected_digest: String,
-    /// Canonical lowercase 64-hex SHA-256 digest of the delivered output.
+    /// Receipt-visible canonical lowercase 64-hex SHA-256 commitment. For a
+    /// match this is the delivered output digest. For a mismatch it is the
+    /// kernel's domain-separated redaction commitment keyed by the expected
+    /// digest; the actual digest stays in privileged durable outcome evidence
+    /// so the public Deny is not a payload confirmation oracle.
     pub observed_digest: String,
     /// Whether the observed digest matched the expected digest.
     pub result: DeliveryResult,

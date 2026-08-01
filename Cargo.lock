@@ -4178,6 +4178,7 @@ dependencies = [
 name = "chio-open-market"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chio-core-types",
  "chio-finding",
  "chio-fiscal",

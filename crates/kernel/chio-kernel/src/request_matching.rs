@@ -446,10 +446,14 @@ fn constraint_matches(
         {
             Ok(false)
         }
-        Constraint::Custom(key, _) if key == "require_finding_recovery" => {
+        Constraint::Custom(key, _)
+            if matches!(
+                key.as_str(),
+                "require_finding_recovery" | "recovery_of_receipt_id" | "recovery_of_capability_id"
+            ) =>
+        {
             Err(KernelError::InvalidConstraint(
-                "require_finding_recovery must use the RequireFindingRecovery constraint, not \
-                 Custom"
+                "finding recovery must use the RequireFindingRecovery constraint, not Custom"
                     .to_owned(),
             ))
         }
@@ -848,6 +852,25 @@ mod tests {
             ),
             Err(KernelError::InvalidConstraint(_))
         ));
+    }
+
+    #[test]
+    fn legacy_custom_only_recovery_authority_is_rejected() {
+        for key in ["recovery_of_receipt_id", "recovery_of_capability_id"] {
+            let capability = capability_with_constraints(vec![Constraint::Custom(
+                key.to_owned(),
+                "original".to_owned(),
+            )]);
+            assert!(matches!(
+                capability_matches_request(
+                    &capability,
+                    "tool",
+                    "srv",
+                    &serde_json::json!({key: "original"}),
+                ),
+                Err(KernelError::InvalidConstraint(_))
+            ));
+        }
     }
 }
 

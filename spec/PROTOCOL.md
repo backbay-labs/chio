@@ -457,15 +457,21 @@ The shipped scope model includes:
 
 The shipped `constraints` surface includes ordinary argument constraints plus
 governed-transaction controls such as `governed_intent_required`,
-`require_approval_above`, and `seller_exact`, and two delivery controls:
+`require_approval_above`, and `seller_exact`, and three delivery controls:
 `output_digest_sha256` (the expected post-transform output digest, enforced
-at the output-aware durable terminal) and `require_finding_purchase` (a
+at the output-aware durable terminal), `require_finding_purchase` (a
 provider-signed purchase marker binding `finding_id`, `listing_id`, and a
 closed settlement selector whose modes are `local_reversible_hold` and
-`cross_org_escrow` with a pinned `settlement_profile_sha256`). Surfaces
-without output-aware or purchase-aware admission reject both delivery
-controls fail-closed before any budget or payment mutation, and the
-`Custom`-keyed spellings of either name are rejected as downgrade attempts.
+`cross_org_escrow` with a pinned `settlement_profile_sha256`), and
+`require_finding_recovery` (a no-charge recovery marker binding the original
+capability, settled purchase, successful delivery receipt, and one durable
+attempt ceiling shared by every deterministic re-mint). Recovery capabilities
+are undelegated, DPoP-bound, single-grant authorities with exactly one output
+digest and no monetary ceiling. Surfaces without the corresponding
+output-aware, purchase-aware, or recovery-aware admission reject these
+delivery controls fail-closed before any budget or payment mutation. Their
+`Custom`-keyed spellings, including the retired receipt- and
+capability-keyed recovery aliases, are rejected as downgrade attempts.
 
 ### Capability Attenuation
 

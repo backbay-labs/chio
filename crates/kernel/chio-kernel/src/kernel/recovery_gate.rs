@@ -18,6 +18,15 @@ pub(crate) struct RecoveryMarkedGrant<'a> {
 pub(crate) fn recovery_marked_grant(
     grant: &ToolGrant,
 ) -> Result<Option<RecoveryMarkedGrant<'_>>, String> {
+    if grant.constraints.iter().any(|constraint| {
+        matches!(constraint, Constraint::Custom(key, _)
+            if matches!(key.as_str(), "recovery_of_receipt_id" | "recovery_of_capability_id"))
+    }) {
+        return Err(
+            "legacy Custom-only recovery authority is forbidden; use RequireFindingRecovery"
+                .to_owned(),
+        );
+    }
     let mut markers = grant.constraints.iter().filter_map(|constraint| {
         if let Constraint::RequireFindingRecovery(marker) = constraint {
             Some(marker.as_ref())
@@ -30,6 +39,14 @@ pub(crate) fn recovery_marked_grant(
     };
     if markers.next().is_some() {
         return Err("recovery grant carries more than one recovery marker".to_owned());
+    }
+    if grant.operations.as_slice() != [chio_core::capability::scope::Operation::Invoke] {
+        return Err("recovery grant permits only the Invoke operation".to_owned());
+    }
+    if grant.constraints.len() != 2 {
+        return Err(
+            "recovery grant requires exactly its recovery marker and output digest".to_owned(),
+        );
     }
     if grant
         .constraints
@@ -68,6 +85,30 @@ pub(crate) fn recovery_marked_grant(
     }))
 }
 
+fn validate_recovery_capability_profile(
+    capability: &chio_core::capability::token::CapabilityToken,
+) -> Result<(), String> {
+    let carries_recovery_authority = capability.scope.grants.iter().any(|grant| {
+        grant.constraints.iter().any(|constraint| {
+            matches!(constraint, Constraint::RequireFindingRecovery(_))
+                || matches!(constraint, Constraint::Custom(key, _)
+                    if matches!(key.as_str(), "recovery_of_receipt_id" | "recovery_of_capability_id" | "require_finding_recovery"))
+        })
+    });
+    if !carries_recovery_authority {
+        return Ok(());
+    }
+    if capability.scope.grants.len() != 1
+        || !capability.scope.resource_grants.is_empty()
+        || !capability.scope.prompt_grants.is_empty()
+        || capability.aggregate_invocation_budget.is_some()
+        || !capability.delegation_chain.is_empty()
+    {
+        return Err("finding recovery requires an undelegated, single-grant capability".to_owned());
+    }
+    Ok(())
+}
+
 impl ChioKernel {
     /// Deterministically re-derive a recovery binding from the frozen request.
     pub(crate) fn verify_recovery_context(
@@ -75,6 +116,7 @@ impl ChioKernel {
         grant: &ToolGrant,
         request: &ToolCallRequest,
     ) -> Result<Option<VerifiedFindingRecovery>, String> {
+        validate_recovery_capability_profile(&request.capability)?;
         let Some(marked) = recovery_marked_grant(grant)? else {
             return Ok(None);
         };
@@ -174,8 +216,11 @@ pub(crate) fn finding_recovery_block(
 mod tests {
     use super::*;
     use chio_core::capability::scope::{
-        FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount, Operation,
+        ChioScope, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount, Operation,
+        PromptGrant, ResourceGrant,
     };
+    use chio_core::capability::token::{CapabilityToken, CapabilityTokenBody};
+    use chio_core::crypto::Keypair;
 
     fn marker() -> FindingRecoveryMarkerV1 {
         FindingRecoveryMarkerV1 {
@@ -207,6 +252,28 @@ mod tests {
         }
     }
 
+    fn capability() -> CapabilityToken {
+        let key = Keypair::from_seed(&[9; 32]);
+        CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "recovery-capability".to_owned(),
+                issuer: key.public_key(),
+                subject: key.public_key(),
+                scope: ChioScope {
+                    grants: vec![grant(Vec::new())],
+                    resource_grants: Vec::new(),
+                    prompt_grants: Vec::new(),
+                },
+                issued_at: 1,
+                expires_at: 2,
+                delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
+            },
+            &key,
+        )
+        .expect("sign recovery capability")
+    }
+
     #[test]
     fn recovery_profile_is_first_class_no_charge() {
         assert!(recovery_marked_grant(&grant(Vec::new()))
@@ -228,6 +295,28 @@ mod tests {
             ),)]))
             .is_err()
         );
+        assert!(recovery_marked_grant(&grant(vec![Constraint::Custom(
+            "recovery_of_receipt_id".to_owned(),
+            "receipt-original".to_owned(),
+        )]))
+        .is_err());
+
+        let mut legacy = grant(Vec::new());
+        legacy.constraints = vec![
+            Constraint::Custom(
+                "recovery_of_receipt_id".to_owned(),
+                "receipt-original".to_owned(),
+            ),
+            Constraint::Custom(
+                "recovery_of_capability_id".to_owned(),
+                "capability-original".to_owned(),
+            ),
+        ];
+        assert!(recovery_marked_grant(&legacy).is_err());
+
+        let mut widened = grant(Vec::new());
+        widened.operations.push(Operation::Read);
+        assert!(recovery_marked_grant(&widened).is_err());
     }
 
     #[test]
@@ -250,5 +339,35 @@ mod tests {
             verified.original_delivery_receipt_id
         );
         assert_eq!(block.purchase_key, verified.purchase_key);
+    }
+
+    #[test]
+    fn recovery_capability_rejects_additional_authority_surfaces() {
+        assert!(validate_recovery_capability_profile(&capability()).is_ok());
+
+        let mut additional_grant = capability();
+        additional_grant.scope.grants.push(grant(Vec::new()));
+        assert!(validate_recovery_capability_profile(&additional_grant).is_err());
+
+        let mut ordinary = capability();
+        ordinary.scope.grants.iter_mut().for_each(|grant| {
+            grant.constraints = vec![Constraint::OutputDigestSha256("d".repeat(64))]
+        });
+        ordinary.scope.grants.push(ordinary.scope.grants[0].clone());
+        assert!(validate_recovery_capability_profile(&ordinary).is_ok());
+
+        let mut resource = capability();
+        resource.scope.resource_grants.push(ResourceGrant {
+            uri_pattern: "*".to_owned(),
+            operations: vec![Operation::Read],
+        });
+        assert!(validate_recovery_capability_profile(&resource).is_err());
+
+        let mut prompt = capability();
+        prompt.scope.prompt_grants.push(PromptGrant {
+            prompt_name: "*".to_owned(),
+            operations: vec![Operation::Get],
+        });
+        assert!(validate_recovery_capability_profile(&prompt).is_err());
     }
 }

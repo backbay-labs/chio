@@ -12,6 +12,7 @@ publish = false
 name = "chio_open_market"
 
 [dependencies]
+base64 = { workspace = true, optional = true }
 chio-core-types = { workspace = true }
 chio-finding = { workspace = true, optional = true }
 chio-fiscal = { workspace = true }
@@ -24,7 +25,7 @@ thiserror = { workspace = true }
 [features]
 # The finding admission seam compiles only when this feature is enabled,
 # so default builds omit it entirely and keep byte-identical behavior.
-cognition-market-experimental = ["dep:chio-finding", "dep:serde_json"]
+cognition-market-experimental = ["dep:base64", "dep:chio-finding", "dep:serde_json"]
 
 [dev-dependencies]
 chio-finding = { workspace = true }

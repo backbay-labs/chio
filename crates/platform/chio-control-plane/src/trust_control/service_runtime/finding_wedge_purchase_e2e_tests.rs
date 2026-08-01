@@ -25,9 +25,10 @@ use base64::Engine as _;
 use chio_core::canonical_json_bytes;
 use chio_core::capability::governance::{GovernedTransactionIntent, GovernedTransactionIntentBody};
 use chio_core::capability::scope::{
-    ChioScope, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant,
+    ChioScope, Constraint, FindingRecoveryMarkerV1, MonetaryAmount, Operation, PromptGrant,
+    ResourceGrant, ToolGrant,
 };
-use chio_core::capability::token::CapabilityToken;
+use chio_core::capability::token::{CapabilityToken, CapabilityTokenBody};
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_core::merkle::MerkleTree;
 use chio_core::receipt::body::{ChioReceipt, ChioReceiptBody};
@@ -46,21 +47,22 @@ use chio_core::session::{RequestId, SessionAnchorReference};
 use chio_core::sha256_hex;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
-    compute_profile_id, compute_terms_id, derive_purchase_key, sign_finding,
-    verify_signed_failed_delivery, verify_signed_purchase_record, Finding, FindingAdmission,
-    FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
+    compute_profile_id, compute_terms_id, derive_finding_recovery_id, derive_purchase_key,
+    sign_finding, verify_signed_failed_delivery, verify_signed_purchase_record, Finding,
+    FindingAdmission, FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
     FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
     FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
     FindingCollateralVault, FindingDescriptor, FindingEvidenceClass, FindingFacetKind,
     FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass, FindingMarketTerms,
     FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
     FindingPurchaseContext, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
-    FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
-    FindingSellerAuthorization, SignedFindingAdmission, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
+    FindingRecipePhase, FindingRecipePhaseKind, FindingRecoveryContext, FindingReplayRecipeInput,
+    FindingResourceCaps, FindingSellerAuthorization, SignedFindingAdmission,
+    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
     SignedFindingSellerAuthorization, SignedFindingVerifierReport, FINDING_ADMISSION_SCHEMA_V1,
     FINDING_BOND_BACKING_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
-    FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
+    FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_RECOVERY_CONTEXT_SCHEMA_V1,
+    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
     FINDING_SELLER_AUTHORIZATION_SCHEMA_V1, PURCHASE_CONTEXT_SCHEMA,
 };
 use chio_finding_verifier::{
@@ -73,6 +75,7 @@ use chio_kernel::checkpoint::{
     ReceiptInclusionProof,
 };
 use chio_kernel::finding_purchase::FINDING_PURCHASE_CONTEXT_KEY;
+use chio_kernel::finding_recovery::FINDING_RECOVERY_CONTEXT_ARGUMENT;
 use chio_kernel::{
     ChioKernel, DpopConfig, DpopNonceStore, DpopProof, DpopProofBody, KernelConfig, KernelError,
     NestedFlowBridge, PaymentAdapter, PaymentAuthorization, PaymentAuthorizationState,
@@ -108,8 +111,8 @@ use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id, PurchaseVerificationAuthorities,
 };
 use chio_open_market::recovery::{
-    mint_finding_recovery_grant, RecoveryMintError, RecoveryMintRequest,
-    RECOVERY_CAPABILITY_ARGUMENT, RECOVERY_RECEIPT_ARGUMENT,
+    mint_verified_finding_recovery_grant, verify_finding_recovery_context,
+    RecoveryVerificationAuthorities, RecoveryVerificationInputs,
 };
 use chio_store_sqlite::finding_market_store::FindingAllocationState;
 use chio_store_sqlite::{
@@ -122,6 +125,7 @@ use crate::trust_control::finding_purchase_coordinator::{
     PurchaseCoordinatorError,
 };
 use crate::trust_control::finding_purchase_verifier::MarketFindingPurchaseVerifier;
+use crate::trust_control::finding_recovery_verifier::MarketFindingRecoveryVerifier;
 use crate::trust_control::finding_reveal_server::{
     FindingRevealServer, SealedFindingPayload, READ_FINDING_TOOL,
 };
@@ -1535,6 +1539,18 @@ fn purchase_authorities(web: &MarketWeb) -> PurchaseVerificationAuthorities {
     }
 }
 
+fn recovery_authorities(
+    web: &MarketWeb,
+    kernel_keypair: &Keypair,
+) -> RecoveryVerificationAuthorities {
+    RecoveryVerificationAuthorities {
+        purchase: purchase_authorities(web),
+        purchase_authority: keypair(16).public_key(),
+        kernel_receipt_authority: kernel_keypair.public_key(),
+        recovery_authority: web.operator.public_key(),
+    }
+}
+
 fn build_reveal_kernel(inputs: &RevealKernelInputs<'_>) -> Result<ChioKernel, AnyError> {
     let mut kernel = ChioKernel::new(kernel_config(
         inputs.kernel_keypair.clone(),
@@ -1573,6 +1589,10 @@ fn build_reveal_kernel(inputs: &RevealKernelInputs<'_>) -> Result<ChioKernel, An
                 inputs.authority.finding_purchase_store(),
                 inputs.authority.finding_market_store(),
             ),
+        )));
+        kernel.set_finding_recovery_verifier(Arc::new(MarketFindingRecoveryVerifier::new(
+            recovery_authorities(inputs.web, inputs.kernel_keypair),
+            inputs.authority.finding_recovery_store(),
         )));
     }
     Ok(kernel)
@@ -2244,10 +2264,25 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
         .ok_or_else(|| missing("settled reservation"))?;
     assert_eq!(reservation.state, FindingPurchaseReservationState::Consumed);
     assert_eq!(record.body.recorded_at, reservation.created_at);
-    assert!(lane.deployment.web.admission.body.purchase_authority.valid_from
-        <= record.body.recorded_at);
-    assert!(record.body.recorded_at
-        <= lane.deployment.web.admission.body.purchase_authority.valid_until);
+    assert!(
+        lane.deployment
+            .web
+            .admission
+            .body
+            .purchase_authority
+            .valid_from
+            <= record.body.recorded_at
+    );
+    assert!(
+        record.body.recorded_at
+            <= lane
+                .deployment
+                .web
+                .admission
+                .body
+                .purchase_authority
+                .valid_until
+    );
     let slot = purchase_store
         .get_slot(&lane.purchase.handshake.reservation_id)?
         .ok_or_else(|| missing("settled slot"))?;
@@ -2486,22 +2521,25 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
             .ok_or_else(|| missing("denied reservation"))?;
         assert_eq!(reservation.state, FindingPurchaseReservationState::Released);
         assert_eq!(failed.body.recorded_at, reservation.created_at);
-        assert!(lane
-            .deployment
-            .web
-            .admission
-            .body
-            .failed_delivery_authority
-            .valid_from
-            <= failed.body.recorded_at);
-        assert!(failed.body.recorded_at
-            <= lane
-                .deployment
+        assert!(
+            lane.deployment
                 .web
                 .admission
                 .body
                 .failed_delivery_authority
-                .valid_until);
+                .valid_from
+                <= failed.body.recorded_at
+        );
+        assert!(
+            failed.body.recorded_at
+                <= lane
+                    .deployment
+                    .web
+                    .admission
+                    .body
+                    .failed_delivery_authority
+                    .valid_until
+        );
         let slot = purchase_store
             .get_slot(&lane.purchase.handshake.reservation_id)?
             .ok_or_else(|| missing("denied slot"))?;
@@ -2676,25 +2714,85 @@ async fn wedge_purchase_without_a_verifier_denies() -> TestResult {
     Ok(())
 }
 
-/// The seller's recovery service re-authorizes exactly one lost delivery.
-fn recovery_mint_request<'a>(
-    original_receipt: &'a ChioReceipt,
-    original_capability_id: &'a str,
-    finding_id: &'a str,
-    payload_sha256: &'a str,
+fn finding_recovery_request(
+    request_id: &str,
+    capability: &CapabilityToken,
+    buyer: &Keypair,
+    finding_id: &str,
+    context_b64: &str,
+    nonce: &str,
+) -> Result<ToolCallRequest, AnyError> {
+    let arguments = serde_json::json!({
+        "finding_id": finding_id,
+        FINDING_RECOVERY_CONTEXT_ARGUMENT: context_b64,
+    });
+    let proof = dpop_proof(capability, buyer, READ_FINDING_TOOL, &arguments, nonce)?;
+    Ok(ToolCallRequest {
+        request_id: request_id.to_owned(),
+        capability: capability.clone(),
+        tool_name: READ_FINDING_TOOL.to_owned(),
+        server_id: SERVER_ID.to_owned(),
+        agent_id: capability.subject.to_hex(),
+        arguments,
+        dpop_proof: Some(proof),
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    })
+}
+
+fn legacy_custom_recovery_token(
     subject: PublicKey,
+    issuer: &Keypair,
+    token_id: &str,
+    finding_id: &str,
+    payload_sha256: &str,
+    original_receipt_id: &str,
+    original_capability_id: &str,
     now: u64,
-) -> RecoveryMintRequest<'a> {
-    RecoveryMintRequest {
-        original_receipt,
-        original_capability_id,
-        finding_id,
-        payload_sha256,
-        subject,
-        max_retries: 2,
-        issued_at: now.saturating_sub(5),
-        expires_at: now.saturating_add(600),
-    }
+) -> Result<CapabilityToken, AnyError> {
+    Ok(CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: token_id.to_owned(),
+            issuer: issuer.public_key(),
+            subject,
+            scope: ChioScope {
+                grants: vec![ToolGrant {
+                    server_id: SERVER_ID.to_owned(),
+                    tool_name: READ_FINDING_TOOL.to_owned(),
+                    operations: vec![Operation::Invoke],
+                    constraints: vec![
+                        Constraint::OutputDigestSha256(payload_sha256.to_owned()),
+                        Constraint::Custom(
+                            "recovery_of_receipt_id".to_owned(),
+                            original_receipt_id.to_owned(),
+                        ),
+                        Constraint::Custom(
+                            "recovery_of_capability_id".to_owned(),
+                            original_capability_id.to_owned(),
+                        ),
+                        Constraint::Custom("finding_id".to_owned(), finding_id.to_owned()),
+                    ],
+                    max_invocations: Some(2),
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: Some(true),
+                }],
+                resource_grants: Vec::new(),
+                prompt_grants: Vec::new(),
+            },
+            issued_at: now.saturating_sub(5),
+            expires_at: now.saturating_add(600),
+            delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
+        },
+        issuer,
+    )?)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2722,83 +2820,170 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
 
-    // A denial is not delivery evidence, and the receipt must name the
-    // capability the recovery re-authorizes.
     let now = unix_timestamp_now();
-    assert_eq!(
-        mint_finding_recovery_grant(
-            &recovery_mint_request(
-                &denied.receipt,
-                &lane.purchase.capability.id,
-                &finding_id,
-                &payload_sha256,
-                lane.buyer.public_key(),
-                now,
-            ),
-            &lane.deployment.web.operator,
-            "recovery-token-reject".to_string(),
-        )
-        .err(),
-        Some(RecoveryMintError::NotAnAllow)
-    );
-    assert_eq!(
-        mint_finding_recovery_grant(
-            &recovery_mint_request(
-                &response.receipt,
-                "cap-that-was-never-issued",
-                &finding_id,
-                &payload_sha256,
-                lane.buyer.public_key(),
-                now,
-            ),
-            &lane.deployment.web.operator,
-            "recovery-token-reject".to_string(),
-        )
-        .err(),
-        Some(RecoveryMintError::CapabilityMismatch)
-    );
-
-    let recovery = mint_finding_recovery_grant(
-        &recovery_mint_request(
-            &response.receipt,
-            &lane.purchase.capability.id,
-            &finding_id,
-            &payload_sha256,
-            lane.buyer.public_key(),
+    lane.authority
+        .finding_purchase_store()
+        .register_community_fund_destination(
+            &lane.deployment.web.allocation_id,
+            COMMUNITY_FUND_DESTINATION,
             now,
-        ),
-        &lane.deployment.web.operator,
-        "recovery-token-0001".to_string(),
+        )?;
+    let purchase_record = lane.coordinator.finalize_delivery(
+        &lane.purchase.handshake.reservation_id,
+        &response.receipt,
+        &lane.deployment.web.admission,
+        &lane.deployment.web.backing,
+        now,
     )?;
-    let arguments = serde_json::json!({
+    let recovery_id = derive_finding_recovery_id(
+        &lane.purchase.capability.id,
+        &purchase_record.body.purchase_key,
+        &response.receipt.id,
+    );
+    let context = FindingRecoveryContext {
+        schema: FINDING_RECOVERY_CONTEXT_SCHEMA_V1.to_owned(),
+        recovery_id: recovery_id.clone(),
+        original_capability_json: String::from_utf8(canonical_json_bytes(
+            &lane.purchase.capability,
+        )?)?,
+        purchase_context_json: String::from_utf8(STANDARD.decode(&lane.purchase.context_b64)?)?,
+        purchase_record_envelope_json: String::from_utf8(canonical_json_bytes(&purchase_record)?)?,
+        original_delivery_receipt_json: String::from_utf8(canonical_json_bytes(
+            &response.receipt,
+        )?)?,
+    };
+    let context_b64 = STANDARD.encode(canonical_json_bytes(&context)?);
+    let marker = FindingRecoveryMarkerV1 {
+        recovery_id,
+        finding_id: finding_id.clone(),
+        listing_id: LISTING_ID.to_owned(),
+        original_capability_id: lane.purchase.capability.id.clone(),
+        original_delivery_receipt_id: response.receipt.id.clone(),
+        purchase_key: purchase_record.body.purchase_key.clone(),
+        max_recoveries: 2,
+    };
+    let verification_arguments = serde_json::json!({
         "finding_id": finding_id,
-        RECOVERY_RECEIPT_ARGUMENT: response.receipt.id,
-        RECOVERY_CAPABILITY_ARGUMENT: lane.purchase.capability.id,
+        FINDING_RECOVERY_CONTEXT_ARGUMENT: context_b64,
     });
-    let proof = dpop_proof(
-        &recovery,
+    let recovery_context_b64 = verification_arguments[FINDING_RECOVERY_CONTEXT_ARGUMENT]
+        .as_str()
+        .ok_or_else(|| missing("recovery context"))?;
+    let authorities = recovery_authorities(&lane.deployment.web, &keypair(40));
+    let recovery_subject = lane.buyer.public_key();
+    let recovery_issuer = lane.deployment.web.operator.public_key();
+    let verified = verify_finding_recovery_context(
+        &RecoveryVerificationInputs {
+            marker: &marker,
+            context_b64: recovery_context_b64,
+            recovery_subject: &recovery_subject,
+            recovery_issuer: &recovery_issuer,
+            server_id: SERVER_ID,
+            tool_name: READ_FINDING_TOOL,
+            arguments: &verification_arguments,
+            expected_output_digest: &payload_sha256,
+        },
+        &authorities,
+    )?;
+
+    let mut substituted_marker = marker.clone();
+    substituted_marker.original_delivery_receipt_id = denied.receipt.id.clone();
+    assert!(verify_finding_recovery_context(
+        &RecoveryVerificationInputs {
+            marker: &substituted_marker,
+            context_b64: recovery_context_b64,
+            recovery_subject: &recovery_subject,
+            recovery_issuer: &recovery_issuer,
+            server_id: SERVER_ID,
+            tool_name: READ_FINDING_TOOL,
+            arguments: &verification_arguments,
+            expected_output_digest: &payload_sha256,
+        },
+        &authorities,
+    )
+    .is_err());
+
+    let recovery_service = MarketFindingRecoveryVerifier::new(
+        authorities.clone(),
+        lane.authority.finding_recovery_store(),
+    );
+    let recovery = recovery_service.issue_and_mint(
+        &verified,
+        &lane.deployment.web.operator,
+        "recovery-token-0001".to_owned(),
+        2,
+        now.saturating_sub(5),
+        now.saturating_add(600),
+    )?;
+
+    let legacy = legacy_custom_recovery_token(
+        lane.buyer.public_key(),
+        &lane.deployment.web.operator,
+        "legacy-recovery-token-1",
+        &finding_id,
+        &payload_sha256,
+        &response.receipt.id,
+        &lane.purchase.capability.id,
+        now,
+    )?;
+    let legacy_arguments = serde_json::json!({
+        "finding_id": finding_id,
+        "recovery_of_receipt_id": response.receipt.id,
+        "recovery_of_capability_id": lane.purchase.capability.id,
+    });
+    let mut legacy_request = finding_recovery_request(
+        "wedge-legacy-recovery-1",
+        &legacy,
+        &lane.buyer,
+        &finding_id,
+        recovery_context_b64,
+        "nonce-unused-legacy",
+    )?;
+    legacy_request.dpop_proof = Some(dpop_proof(
+        &legacy,
         &lane.buyer,
         READ_FINDING_TOOL,
-        &arguments,
+        &legacy_arguments,
+        "nonce-legacy-recovery-1",
+    )?);
+    legacy_request.arguments = legacy_arguments;
+    assert_eq!(
+        lane.kernel
+            .evaluate_tool_call_blocking(&legacy_request)?
+            .verdict,
+        Verdict::Deny
+    );
+
+    let self_minted = mint_verified_finding_recovery_grant(
+        &verified,
+        &lane.buyer,
+        "buyer-self-minted-recovery".to_owned(),
+        2,
+        now.saturating_sub(5),
+        now.saturating_add(3_600),
+    )?;
+    assert_eq!(
+        lane.kernel
+            .evaluate_tool_call_blocking(&finding_recovery_request(
+                "wedge-self-minted-recovery-1",
+                &self_minted,
+                &lane.buyer,
+                &finding_id,
+                recovery_context_b64,
+                "nonce-self-minted-recovery-1",
+            )?)?
+            .verdict,
+        Verdict::Deny,
+    );
+
+    let request = finding_recovery_request(
+        "wedge-recovery-1",
+        &recovery,
+        &lane.buyer,
+        &finding_id,
+        recovery_context_b64,
         "nonce-recovery-grant-1",
     )?;
-    let request = ToolCallRequest {
-        request_id: "wedge-recovery-1".to_string(),
-        capability: recovery.clone(),
-        tool_name: READ_FINDING_TOOL.to_string(),
-        server_id: SERVER_ID.to_string(),
-        agent_id: recovery.subject.to_hex(),
-        arguments,
-        dpop_proof: Some(proof),
-        execution_nonce: None,
-        governed_intent: None,
-        approval_token: None,
-        approval_tokens: Vec::new(),
-        threshold_approval_proposal: None,
-        supplemental_authorization: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
     let recovered = lane.kernel.evaluate_tool_call_blocking(&request)?;
     assert_eq!(recovered.verdict, Verdict::Allow, "{:?}", recovered.reason);
     assert_eq!(
@@ -2811,6 +2996,83 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         reveal_envelope(REVEAL_MEDIA_TYPE, SEALED_PAYLOAD)
     );
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
+
+    let restarted = build_reveal_kernel(&RevealKernelInputs {
+        authority: &lane.authority,
+        kernel_keypair: &keypair(40),
+        web: &lane.deployment.web,
+        rail: Rail::ReversibleHold,
+        calls: &lane.calls,
+        invocations: &lane.invocations,
+        install_verifier: true,
+    })?;
+    let legacy_remint = legacy_custom_recovery_token(
+        lane.buyer.public_key(),
+        &lane.deployment.web.operator,
+        "legacy-recovery-token-2",
+        &finding_id,
+        &payload_sha256,
+        &response.receipt.id,
+        &lane.purchase.capability.id,
+        now,
+    )?;
+    let legacy_remint_arguments = serde_json::json!({
+        "finding_id": finding_id,
+        "recovery_of_receipt_id": response.receipt.id,
+        "recovery_of_capability_id": lane.purchase.capability.id,
+    });
+    let mut legacy_remint_request = finding_recovery_request(
+        "wedge-legacy-recovery-2",
+        &legacy_remint,
+        &lane.buyer,
+        &finding_id,
+        recovery_context_b64,
+        "nonce-unused-legacy-remint",
+    )?;
+    legacy_remint_request.dpop_proof = Some(dpop_proof(
+        &legacy_remint,
+        &lane.buyer,
+        READ_FINDING_TOOL,
+        &legacy_remint_arguments,
+        "nonce-legacy-recovery-2",
+    )?);
+    legacy_remint_request.arguments = legacy_remint_arguments;
+    assert_eq!(
+        restarted
+            .evaluate_tool_call_blocking(&legacy_remint_request)?
+            .verdict,
+        Verdict::Deny
+    );
+
+    let remint = recovery_service.issue_and_mint(
+        &verified,
+        &lane.deployment.web.operator,
+        "recovery-token-0002".to_owned(),
+        2,
+        now,
+        now.saturating_add(600),
+    )?;
+    let second = restarted.evaluate_tool_call_blocking(&finding_recovery_request(
+        "wedge-recovery-2",
+        &remint,
+        &lane.buyer,
+        &finding_id,
+        recovery_context_b64,
+        "nonce-recovery-grant-2",
+    )?)?;
+    assert_eq!(second.verdict, Verdict::Allow, "{:?}", second.reason);
+    let exhausted = restarted.evaluate_tool_call_blocking(&finding_recovery_request(
+        "wedge-recovery-3",
+        &remint,
+        &lane.buyer,
+        &finding_id,
+        recovery_context_b64,
+        "nonce-recovery-grant-3",
+    )?)?;
+    assert_denied_with(&exhausted, "quota");
+    assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 1);
+    assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
+    assert_eq!(lane.invocations.load(Ordering::SeqCst), 3);
     Ok(())
 }
 

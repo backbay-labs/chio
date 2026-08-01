@@ -101,6 +101,42 @@ struct CompletedDurableReceiptExpectation<'a> {
     post_invocation_evidence: &'a [chio_core::receipt::metadata::GuardEvidence],
 }
 
+const DELIVERY_MISMATCH_REDACTION_DOMAIN: &[u8] = b"chio.delivery-mismatch.redacted.v1\0";
+
+/// Produce the receipt-visible content binding for a delivery verdict.
+///
+/// A mismatch keeps the actual output and digest only in the durable outcome
+/// store for privileged challenge handling. The public Deny receipt binds a
+/// domain-separated redaction preimage keyed by the committed expected digest,
+/// so neither its content hash, delivery-contract block, nor stream metadata
+/// becomes a payload confirmation oracle. Replaying the same mismatch
+/// reconstructs identical receipt bytes without requiring new randomness.
+fn receipt_visible_delivery_content(
+    actual: &ReceiptContent,
+    digest_mismatched: bool,
+    expected_digest: Option<&str>,
+) -> ReceiptContent {
+    if digest_mismatched {
+        let mut canonical_content = Vec::with_capacity(
+            DELIVERY_MISMATCH_REDACTION_DOMAIN.len() + expected_digest.map_or(0, str::len),
+        );
+        canonical_content.extend_from_slice(DELIVERY_MISMATCH_REDACTION_DOMAIN);
+        if let Some(expected_digest) = expected_digest {
+            canonical_content.extend_from_slice(expected_digest.as_bytes());
+        }
+        return ReceiptContent {
+            content_hash: sha256_hex(&canonical_content),
+            metadata: None,
+            canonical_content,
+        };
+    }
+    ReceiptContent {
+        content_hash: actual.content_hash.clone(),
+        metadata: actual.metadata.clone(),
+        canonical_content: actual.canonical_content.clone(),
+    }
+}
+
 fn payment_journal_matches_settlement(
     journal: &crate::payment::PaymentJournalRecord,
     action: crate::payment::PaymentSettleAction,
@@ -607,6 +643,11 @@ impl ChioKernel {
             &receipt_content.canonical_content,
             purchase.as_ref(),
         );
+        let receipt_visible_content = receipt_visible_delivery_content(
+            &receipt_content,
+            delivery_evaluation.digest_mismatched,
+            expected_output_digest.as_deref(),
+        );
         let expected_decision = match &delivery_evaluation.denial {
             Some(denial) => Decision::Deny {
                 reason: denial.message.to_owned(),
@@ -620,7 +661,7 @@ impl ChioKernel {
         };
         let expected_non_financial_metadata = merge_metadata_objects(
             merge_metadata_objects(
-                receipt_content.metadata.clone(),
+                receipt_visible_content.metadata.clone(),
                 tool_return.raw.receipt_metadata_snapshot().cloned(),
             ),
             post_invocation_metadata,
@@ -718,7 +759,7 @@ impl ChioKernel {
                 let block = chio_core::receipt::metadata::DeliveryContract {
                     schema: chio_core::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
                     expected_digest: expected.to_owned(),
-                    observed_digest: receipt_content.content_hash.clone(),
+                    observed_digest: receipt_visible_content.content_hash.clone(),
                     result: if delivery_evaluation.digest_mismatched {
                         chio_core::receipt::metadata::DeliveryResult::Mismatched
                     } else {
@@ -762,7 +803,7 @@ impl ChioKernel {
             request,
             &tool_return,
             CompletedDurableReceiptExpectation {
-                content_hash: &receipt_content.content_hash,
+                content_hash: &receipt_visible_content.content_hash,
                 non_admission_metadata: expected_non_admission_metadata,
                 decision: &expected_decision,
                 post_invocation_evidence: &post_invocation_evidence,
@@ -844,9 +885,9 @@ impl ChioKernel {
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
             verdict,
-            // A denied delivery discloses the expected and observed digests
-            // through the receipt, never the payload: the caller is not
-            // paying for these bytes and must not receive them.
+            // A denied delivery returns no payload. An actual digest mismatch
+            // exposes only the deterministic redaction binding; another
+            // delivery denial may retain the already-committed matched digest.
             output: delivery_evaluation.denial.is_none().then_some(output),
             reason,
             terminal_state,
@@ -1519,6 +1560,15 @@ impl ChioKernel {
         } else {
             AdmissionOperationState::Completed
         };
+        let receipt_visible_content = receipt_visible_delivery_content(
+            &receipt_content,
+            delivery_evaluation.digest_mismatched,
+            expected_output_digest.as_deref(),
+        );
+        let receipt_visible_digest = AdmissionDigest::try_new(
+            "receipt_visible_output_digest",
+            receipt_visible_content.content_hash.clone(),
+        )?;
         let terminal_decision = match &delivery_evaluation.denial {
             Some(denial) => Decision::Deny {
                 reason: denial.message.to_owned(),
@@ -1794,10 +1844,11 @@ impl ChioKernel {
                 .clone(),
             request_binding_hash: admission.operation.binding().request_binding_hash().clone(),
             projected_operation_version,
-            // A delivery mismatch terminates as DeniedAfterDelivery, which,
-            // like the other non-Completed terminals, attaches no
-            // completed-tool-outcome reference. The delivered output survives
-            // as the receipt content hash and the delivery-contract block.
+            // A delivery denial terminates as DeniedAfterDelivery, which,
+            // like the other non-Completed terminals, attaches no public
+            // completed-tool-outcome reference. The actual output remains in
+            // the durable outcome store. On a digest mismatch, the receipt
+            // exposes only a domain-separated redaction commitment.
             projected_state: projected_terminal_state,
             projected_dispatch_state: AdmissionDispatchState::Terminal,
             trusted_time_unix_ms: trusted_now_unix_ms,
@@ -1866,7 +1917,7 @@ impl ChioKernel {
             merge_metadata_objects(
                 merge_metadata_objects(
                     merge_metadata_objects(
-                        receipt_content.metadata,
+                        receipt_visible_content.metadata.clone(),
                         tool_return.raw.receipt_metadata_snapshot().cloned(),
                     ),
                     post_invocation_metadata,
@@ -1896,7 +1947,7 @@ impl ChioKernel {
             let block = chio_core::receipt::metadata::DeliveryContract {
                 schema: chio_core::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
                 expected_digest: expected.to_owned(),
-                observed_digest: resolved_output_digest.as_str().to_owned(),
+                observed_digest: receipt_visible_content.content_hash.clone(),
                 result: if delivery_evaluation.digest_mismatched {
                     chio_core::receipt::metadata::DeliveryResult::Mismatched
                 } else {
@@ -1980,8 +2031,8 @@ impl ChioKernel {
             server_id: &request.server_id,
             decision: terminal_decision.clone(),
             action,
-            content_hash: receipt_content.content_hash,
-            canonical_content: receipt_content.canonical_content,
+            content_hash: receipt_visible_content.content_hash,
+            canonical_content: receipt_visible_content.canonical_content,
             metadata,
             timestamp,
             trust_level: chio_core::receipt::kinds::TrustLevel::default(),
@@ -1994,7 +2045,7 @@ impl ChioKernel {
                 &terminal_decision,
                 &request.server_id,
                 &request.tool_name,
-                &resolved_output_digest,
+                &receipt_visible_digest,
                 &admission.operation,
                 &context,
             )
@@ -2234,14 +2285,55 @@ impl ChioKernel {
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
             verdict,
-            // A denied delivery discloses the expected and observed digests
-            // through the receipt, never the payload: the caller is not
-            // paying for these bytes and must not receive them.
+            // A denied delivery returns no payload. An actual digest mismatch
+            // exposes only the deterministic redaction binding; another
+            // delivery denial may retain the already-committed matched digest.
             output: delivery_evaluation.denial.is_none().then_some(output),
             reason,
             terminal_state,
             receipt: projected_receipt,
             execution_nonce,
         })
+    }
+}
+
+#[cfg(test)]
+mod delivery_redaction_tests {
+    use super::*;
+
+    fn actual(bytes: &[u8]) -> ReceiptContent {
+        ReceiptContent {
+            content_hash: sha256_hex(bytes),
+            metadata: Some(serde_json::json!({"stream": {"chunk_hashes": [sha256_hex(bytes)]}})),
+            canonical_content: bytes.to_vec(),
+        }
+    }
+
+    #[test]
+    fn mismatch_receipt_commitment_is_deterministic_and_payload_independent() {
+        let expected = sha256_hex(b"authorized-output");
+        let first = receipt_visible_delivery_content(&actual(b"secret-a"), true, Some(&expected));
+        let second = receipt_visible_delivery_content(&actual(b"secret-b"), true, Some(&expected));
+        assert_eq!(first.content_hash, second.content_hash);
+        assert!(first
+            .canonical_content
+            .starts_with(DELIVERY_MISMATCH_REDACTION_DOMAIN));
+        assert_eq!(first.metadata, None);
+        assert_ne!(first.content_hash, sha256_hex(b"secret-a"));
+        assert_ne!(first.content_hash, sha256_hex(b"secret-b"));
+
+        let old_fixed_sentinel = sha256_hex(br#"{"schema":"chio.delivery-mismatch.redacted.v1"}"#);
+        let collision_attempt =
+            receipt_visible_delivery_content(&actual(b"mismatch"), true, Some(&old_fixed_sentinel));
+        assert_ne!(collision_attempt.content_hash, old_fixed_sentinel);
+    }
+
+    #[test]
+    fn digest_matched_receipt_keeps_actual_binding_even_for_other_denials() {
+        let actual = actual(b"authorized-output");
+        let visible = receipt_visible_delivery_content(&actual, false, Some(&actual.content_hash));
+        assert_eq!(visible.content_hash, actual.content_hash);
+        assert_eq!(visible.canonical_content, actual.canonical_content);
+        assert_eq!(visible.metadata, actual.metadata);
     }
 }

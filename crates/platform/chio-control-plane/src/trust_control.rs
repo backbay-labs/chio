@@ -314,6 +314,9 @@ pub mod finding_purchase_coordinator;
 #[path = "trust_control/finding_purchase_verifier.rs"]
 pub mod finding_purchase_verifier;
 #[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_recovery_verifier.rs"]
+pub mod finding_recovery_verifier;
+#[cfg(feature = "cognition-market-experimental")]
 #[path = "trust_control/finding_reveal_server.rs"]
 pub mod finding_reveal_server;
 #[path = "trust_control/passport_handlers.rs"]
