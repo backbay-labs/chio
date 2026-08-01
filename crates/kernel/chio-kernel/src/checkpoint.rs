@@ -22,6 +22,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::ReceiptStoreError;
 
+#[path = "checkpoint/consistency.rs"]
+mod consistency;
+pub use consistency::CheckpointConsistencyAnchor;
+use consistency::{chain_leaf_is_committed, consistency_prefix_is_anchored};
+
 #[cfg(test)]
 std::thread_local! {
     static CHECKPOINT_SIGNATURE_VERIFICATION_COUNT: std::cell::Cell<usize> =
@@ -267,14 +272,6 @@ pub struct CheckpointConsistencyProof {
     /// bodies the proof names and still produce a verifying consistency path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to_leaf_inclusion: Option<MerkleProof>,
-}
-
-/// Whether `leaf` is committed by `root` as the final leaf of a `size`-leaf
-/// chain tree, per the supplied inclusion proof.
-fn chain_leaf_is_committed(inclusion: &MerkleProof, size: usize, leaf: Hash, root: &Hash) -> bool {
-    inclusion.tree_size == size
-        && size.checked_sub(1) == Some(inclusion.leaf_index)
-        && inclusion.verify_hash(leaf, root)
 }
 
 /// Classifies a conflicting checkpoint observation.
@@ -816,17 +813,39 @@ pub fn build_checkpoint_consistency_proof(
     build_checkpoint_consistency_proof_from_tree(previous, current, chain_leaf_hashes, &tree)
 }
 
-/// Verify a consistency proof against two signed checkpoints.
+/// Verify a genesis-anchored consistency proof against two signed checkpoints.
 ///
-/// The Merkle path in the proof is checked against the `chain_root`
-/// commitments inside the two signed bodies, so a verifier needs nothing
-/// beyond the two checkpoints and the proof itself. Structural mismatches
-/// (wrong pair, missing chain commitments, unsupported schema) are errors; a
-/// well-formed proof that does not verify returns `Ok(false)`.
+/// The earlier endpoint must be checkpoint 1; a pair that starts later carries
+/// a prefix this input set cannot judge, so it is an error here. Mid-chain
+/// pairs go through [`verify_checkpoint_consistency_proof_with_anchor`].
 pub fn verify_checkpoint_consistency_proof(
     previous: &KernelCheckpoint,
     current: &KernelCheckpoint,
     proof: &CheckpointConsistencyProof,
+) -> Result<bool, CheckpointError> {
+    verify_checkpoint_consistency_proof_with_anchor(
+        previous,
+        current,
+        proof,
+        CheckpointConsistencyAnchor::Genesis,
+    )
+}
+
+/// Verify a consistency proof against two signed checkpoints and an anchor for
+/// the prefix below the earlier endpoint.
+///
+/// The Merkle path in the proof is checked against the `chain_root`
+/// commitments inside the two signed bodies, so a verifier needs nothing
+/// beyond the two checkpoints, the proof, and the anchor. Structural
+/// mismatches (wrong pair, missing chain commitments, unsupported schema, an
+/// unanchored mid-chain pair) are errors; a well-formed proof that does not
+/// verify returns `Ok(false)`. Legacy v1 records make no Merkle claim over the
+/// chain, so the anchor does not apply to them.
+pub fn verify_checkpoint_consistency_proof_with_anchor(
+    previous: &KernelCheckpoint,
+    current: &KernelCheckpoint,
+    proof: &CheckpointConsistencyProof,
+    anchor: CheckpointConsistencyAnchor<'_>,
 ) -> Result<bool, CheckpointError> {
     validate_checkpoint_predecessor(previous, current)?;
     let previous_log_id = checkpoint_log_id(previous);
@@ -904,6 +923,10 @@ pub fn verify_checkpoint_consistency_proof(
         checkpoint_chain_leaf_hash(&current.body)?,
         &to_chain_root,
     ) {
+        return Ok(false);
+    }
+
+    if !consistency_prefix_is_anchored(previous, from_size, &from_chain_root, anchor)? {
         return Ok(false);
     }
 

@@ -896,8 +896,26 @@ fn checkpoint_consistency_proof_verifies_chain_growth() {
         "a chain extension past one leaf must carry node hashes"
     );
     assert!(
-        verify_checkpoint_consistency_proof(&second, &third, &later).expect("verify later"),
-        "second chain-growth proof should verify"
+        verify_checkpoint_consistency_proof_with_anchor(
+            &second,
+            &third,
+            &later,
+            CheckpointConsistencyAnchor::ChainPrefix(&leaves[..2]),
+        )
+        .expect("verify later"),
+        "second chain-growth proof should verify against the verified prefix"
+    );
+    assert!(
+        verify_checkpoint_consistency_proof_with_anchor(
+            &second,
+            &third,
+            &later,
+            CheckpointConsistencyAnchor::VerifiedChainRoot(
+                second.body.chain_root.expect("second chain root")
+            ),
+        )
+        .expect("verify later against a pinned root"),
+        "a previously verified chain root anchors the same proof"
     );
 }
 
@@ -1268,10 +1286,114 @@ fn checkpoint_consistency_proof_binds_the_earlier_endpoint_too() {
         ),
         "the forged chain is genuinely prefix-related, so only leaf binding can catch it"
     );
+    // Even handed the forged root as the anchor, the earlier body is not in
+    // the tree that root commits.
     assert!(
-        !verify_checkpoint_consistency_proof(&forged_second, &forged_third, &forged)
-            .expect("verify forged mid-chain pair"),
+        !verify_checkpoint_consistency_proof_with_anchor(
+            &forged_second,
+            &forged_third,
+            &forged,
+            CheckpointConsistencyAnchor::VerifiedChainRoot(forged_from_tree.root()),
+        )
+        .expect("verify forged mid-chain pair"),
         "an earlier root that does not commit the earlier body must not verify"
+    );
+}
+
+/// The mirror of the case above: the forged earlier tree does end in
+/// checkpoint 2's real leaf, so both endpoints bind and the consistency path
+/// is genuine. Only the leaf below the pair is fabricated, which is invisible
+/// to a verifier that never sees checkpoint 1.
+#[test]
+fn mid_chain_consistency_proof_requires_an_anchored_prefix() {
+    let kp = Keypair::generate();
+    let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("first");
+    let second = build_checkpoint_with_previous(
+        2,
+        4,
+        6,
+        &make_receipt_bytes(3),
+        &kp,
+        Some(&first),
+        &chain_leaves(&[&first]),
+    )
+    .expect("second");
+    let third = build_checkpoint_with_previous(
+        3,
+        7,
+        9,
+        &make_receipt_bytes(3),
+        &kp,
+        Some(&second),
+        &chain_leaves(&[&first, &second]),
+    )
+    .expect("third");
+    let honest_leaves = chain_leaves(&[&first, &second, &third]);
+    let honest =
+        build_checkpoint_consistency_proof(&second, &third, &honest_leaves).expect("honest");
+
+    // Checkpoint 1's leaf is replaced by junk; checkpoints 2 and 3 keep their
+    // real leaves at their own positions.
+    let forged_from = vec![leaf_hash(b"never-checkpoint-one"), honest_leaves[1]];
+    let mut forged_to = forged_from.clone();
+    forged_to.push(honest_leaves[2]);
+    let forged_from_tree = MerkleTree::from_hashes(forged_from).expect("forged from tree");
+    let forged_to_tree = MerkleTree::from_hashes(forged_to).expect("forged to tree");
+
+    let mut forged_second = second.clone();
+    forged_second.body.chain_root = Some(forged_from_tree.root());
+    forged_second.signature =
+        kp.sign(&canonical_json_bytes(&forged_second.body).expect("canonical forged second body"));
+    let mut forged_third = third.clone();
+    forged_third.body.previous_checkpoint_sha256 =
+        Some(checkpoint_body_sha256(&forged_second.body).expect("forged second digest"));
+    forged_third.body.chain_root = Some(forged_to_tree.root());
+    forged_third.signature =
+        kp.sign(&canonical_json_bytes(&forged_third.body).expect("canonical forged third body"));
+
+    let forged = CheckpointConsistencyProof {
+        from_checkpoint_sha256: checkpoint_body_sha256(&forged_second.body)
+            .expect("forged from digest"),
+        to_checkpoint_sha256: checkpoint_body_sha256(&forged_third.body).expect("forged to digest"),
+        from_chain_root: Some(forged_from_tree.root()),
+        to_chain_root: Some(forged_to_tree.root()),
+        chain_proof_hashes: forged_to_tree.consistency_proof(2).expect("forged path"),
+        from_leaf_inclusion: Some(
+            forged_from_tree
+                .inclusion_proof(1)
+                .expect("forged from leaf"),
+        ),
+        to_leaf_inclusion: Some(forged_to_tree.inclusion_proof(2).expect("forged to leaf")),
+        ..honest.clone()
+    };
+
+    let error = verify_checkpoint_consistency_proof(&forged_second, &forged_third, &forged)
+        .expect_err("a mid-chain pair is not genesis-anchored");
+    assert!(
+        error.to_string().contains("is unanchored"),
+        "unexpected error: {error}"
+    );
+
+    assert!(
+        !verify_checkpoint_consistency_proof_with_anchor(
+            &forged_second,
+            &forged_third,
+            &forged,
+            CheckpointConsistencyAnchor::ChainPrefix(&honest_leaves[..2]),
+        )
+        .expect("verify forged prefix"),
+        "a fabricated pre-pair history must not verify against the real prefix"
+    );
+
+    assert!(
+        verify_checkpoint_consistency_proof_with_anchor(
+            &second,
+            &third,
+            &honest,
+            CheckpointConsistencyAnchor::ChainPrefix(&honest_leaves[..2]),
+        )
+        .expect("verify honest prefix"),
+        "the honest pair still verifies against the real prefix"
     );
 }
 

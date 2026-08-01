@@ -139,7 +139,11 @@ inclusion proof binding EACH endpoint's own chain leaf to its own root
 the earlier root for any pair starting after checkpoint 1), and
 `verify_checkpoint_consistency_proof` verifies them against the two signed
 commitments; a pair without commitments is unverifiable (an error), never
-true. New statements use `chio.checkpoint_statement.v2`, and real
+true. The pair primitive constrains nothing below its earlier endpoint, so a
+pair that starts after checkpoint 1 must also name what anchors that prefix
+(a previously verified chain root or the prefix leaves themselves) through
+`verify_checkpoint_consistency_proof_with_anchor`; the set-level derivation
+builds its chain from sequence 1 and is anchored by construction. New statements use `chio.checkpoint_statement.v2`, and real
 cryptographic proofs use `chio.checkpoint_consistency_proof.v2`. Explicit v1
 parsers and legacy verification remain for old statements and metadata-only
 records, while v2 fields cannot be smuggled under a v1 schema. This version
