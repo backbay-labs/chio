@@ -4232,7 +4232,15 @@ mod state_machine {
         // the transition this invariant guards; per-append head divergence is
         // covered by head_property's full-audit equality.
         #![proptest_config(ProptestConfig::with_cases(24))]
+        // Quarantined from the hot CI lanes: on GitHub runners this test
+        // enters and never completes (2.5h+ before the job timeout), wedging
+        // Build-lint-test and MSRV, while finishing in ~34s locally. The
+        // suspected livelock is the background checkpoint signer racing
+        // archival rotation under runner-grade fsync latency; issue #1045
+        // tracks reproducing it and restoring the lane. Run explicitly with
+        // `cargo test -p chio-store-sqlite --lib -- --ignored retention`.
         #[test]
+        #[ignore = "wedges CI runners; see issue #1045"]
         fn prop_retention_preserves_append_invariant(ops in prop::collection::vec(op_strategy(), 1..40)) {
             let path = unique_db_path("prop-retention");
             let archive = unique_db_path("prop-archive");
