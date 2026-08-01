@@ -43,17 +43,11 @@ pub mod economic_state_cache;
 pub mod encrypted_blob;
 pub mod evidence_export;
 pub mod execution_nonce_store;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_challenge_store;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_market_store;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_pool_ledger;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_purchase_store;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_recovery_store;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_status_store;
 pub mod fiscal_store;
 pub mod frost_store;
@@ -369,7 +363,6 @@ pub use encrypted_blob::{
     EncryptedBlob, SqliteEncryptedBlobStore, TenantId, TenantKey,
 };
 pub use execution_nonce_store::{SqliteExecutionNonceStore, SqliteExecutionNonceStoreError};
-#[cfg(feature = "cognition-market-experimental")]
 pub use finding_challenge_store::{
     derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
     derive_dispute_fee_collection_intent_key, derive_dispute_fee_return_intent_key,
@@ -386,7 +379,6 @@ pub use finding_challenge_store::{
     FindingLiabilityState, FindingSellerImpairmentReconciliationRecord,
     SqliteFindingChallengeStore,
 };
-#[cfg(feature = "cognition-market-experimental")]
 pub use finding_market_store::{
     finding_fee_idempotency_key, FindingActivationAttemptSnapshot, FindingActivationAttemptState,
     FindingActivationOutcome, FindingActivationPreparationOutcome, FindingAdmissionSnapshot,
@@ -394,7 +386,6 @@ pub use finding_market_store::{
     FindingFeeIntentOutcome, FindingFeeIntentResult, FindingFeeState, FindingMarketStoreError,
     FindingPutOutcome, FindingRecordInput, FindingSearchRow, SqliteFindingMarketStore,
 };
-#[cfg(feature = "cognition-market-experimental")]
 pub use finding_purchase_store::{
     FindingFailedDeliveryRow, FindingPayoutDestinationAdmission, FindingPurchaseDeliveryInput,
     FindingPurchaseDenyInput, FindingPurchaseEncumbranceRecord, FindingPurchaseEncumbranceState,
@@ -402,13 +393,11 @@ pub use finding_purchase_store::{
     FindingPurchaseReservationState, FindingPurchaseSlotRecord, FindingPurchaseSlotState,
     FindingPurchaseStoreError, FindingPurchaseWriteOutcome, SqliteFindingPurchaseStore,
 };
-#[cfg(feature = "cognition-market-experimental")]
 pub use finding_recovery_store::{
     FindingRecoveryIssuanceInput, FindingRecoveryIssuanceRecord,
     FindingRecoveryReceiptLineageInput, FindingRecoveryReceiptLineageRecord,
     FindingRecoveryStoreError, FindingRecoveryWriteOutcome, SqliteFindingRecoveryStore,
 };
-#[cfg(feature = "cognition-market-experimental")]
 pub use finding_status_store::{
     FindingRetractionIntentCommitLiveness, FindingRetractionIntentInput,
     FindingRetractionIntentRecord, FindingRetractionIntentSource, FindingRetractionIntentState,

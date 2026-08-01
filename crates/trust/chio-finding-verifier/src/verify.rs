@@ -26,11 +26,12 @@ use chio_core_types::receipt::body::{chio_receipt_id, ChioReceipt};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
     compute_report_id, signed_envelope_sha256, verify_finding, verify_pinned_envelope,
-    verify_signed_bond_backing, verify_signed_profile, Finding, FindingAuthorityKeyPolicy,
-    FindingChallengeVerifierProfile, FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome,
-    FindingFacetResult, FindingGuaranteeClass, FindingPredicate, FindingReceiptRole,
-    FindingReplayRecipeInput, FindingVerifierReport, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
+    verify_signed_bond_backing, verify_signed_profile, verify_status_proof_input, Finding,
+    FindingAuthorityKeyPolicy, FindingChallengeVerifierProfile, FindingEvidenceClass,
+    FindingFacetKind, FindingFacetOutcome, FindingFacetResult, FindingGuaranteeClass,
+    FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
+    FindingStatusOperatorAuthorization, FindingStatusProofInput, FindingVerifierReport,
+    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{
@@ -94,6 +95,11 @@ pub struct FindingVerifierTrustRoots {
     /// assurance tier. An absent or empty policy never accepts the raw
     /// seller-carried tier.
     pub attestation_trust_policy: Option<AttestationTrustPolicy>,
+    /// Governance-pinned status-feed authority. A proof without this
+    /// independent authorization cannot establish status freshness.
+    pub status_operator_authorization: Option<FindingStatusOperatorAuthorization>,
+    /// Trusted-time freshness policy applied to the portable status proof.
+    pub status_freshness_policy: Option<FindingStatusFreshnessPolicy>,
     /// Venue trusted time for the evaluation stamp.
     pub trusted_time: u64,
     /// Digest of the trust-root snapshot the caller resolved (pinned
@@ -141,6 +147,9 @@ pub struct FindingEvidenceBundle<'a> {
     pub checkpoint_transparency: CheckpointTransparencySummary,
     /// Raw replay-recipe preimage bytes, when the finding commits one.
     pub recipe_preimage: Option<&'a [u8]>,
+    /// Exact canonical portable status-proof input bytes. This unsigned input
+    /// remains a non-authority attachment and is independently rechecked.
+    pub status_proof_input: Option<&'a [u8]>,
     /// Exact runtime-attestation evidence under the separately pinned
     /// attestation authority, when the Finding claims an assurance tier.
     pub runtime_attestation: Option<SignedExportEnvelope<RuntimeAttestationEvidence>>,
@@ -158,6 +167,9 @@ pub struct FindingVerifierDraft {
     pub finding_artifact_sha256: String,
     pub facets: Vec<FindingFacetResult>,
     pub resolved_evidence_bundle_sha256: String,
+    /// Exact raw attachment digests copied into the signed report.
+    pub replay_recipe_input_sha256: Option<String>,
+    pub status_proof_input_sha256: Option<String>,
     pub evaluation_time: u64,
     /// Allocation id carried to the report when bond backing verified.
     pub backing_allocation_id: Option<String>,
@@ -504,14 +516,10 @@ pub fn verify_finding_evidence(
     let (bond_backing, backing_allocation_id) = evaluate_bond_backing(&finding, trust, bundle);
     facets.push(bond_backing);
 
-    // Facet 12: status liveness. Callers supply no portable sparse
-    // non-inclusion proof; an authenticated online status observation is
-    // a venue configuration concern, not evidence this verifier resolves.
-    facets.push(facet(
-        FindingFacetKind::StatusLiveness,
-        FindingFacetOutcome::Unavailable,
-        "portable status non-inclusion proof not supplied",
-    ));
+    // Facet 12: status liveness. Only a fresh, governance-authorized portable
+    // non-inclusion proof establishes that the named Finding was live at the
+    // checked time. Inclusion is an authenticated retraction and denies.
+    facets.push(evaluate_status_liveness(&finding, trust, bundle));
 
     // Facet 13: guarantee and evidence-class consistency, without
     // upgrading any facet from another.
@@ -528,9 +536,71 @@ pub fn verify_finding_evidence(
         finding_artifact_sha256,
         facets,
         resolved_evidence_bundle_sha256,
+        replay_recipe_input_sha256: bundle.recipe_preimage.map(sha256_hex),
+        status_proof_input_sha256: bundle.status_proof_input.map(sha256_hex),
         evaluation_time: trust.trusted_time,
         backing_allocation_id,
     })
+}
+
+fn evaluate_status_liveness(
+    finding: &Finding,
+    trust: &FindingVerifierTrustRoots,
+    bundle: &FindingEvidenceBundle<'_>,
+) -> FindingFacetResult {
+    let Some(raw) = bundle.status_proof_input else {
+        return facet(
+            FindingFacetKind::StatusLiveness,
+            FindingFacetOutcome::Unavailable,
+            "portable status non-inclusion proof not supplied",
+        );
+    };
+    let (Some(authorization), Some(freshness)) = (
+        trust.status_operator_authorization.as_ref(),
+        trust.status_freshness_policy,
+    ) else {
+        return facet(
+            FindingFacetKind::StatusLiveness,
+            FindingFacetOutcome::Failed,
+            "status proof supplied without pinned operator authorization and freshness policy",
+        );
+    };
+    let proof = match chio_finding::parse_status_proof_input(raw) {
+        Ok(proof) => proof,
+        Err(error) => {
+            return facet(
+                FindingFacetKind::StatusLiveness,
+                FindingFacetOutcome::Failed,
+                format!("status proof failed strict canonical parsing: {error}"),
+            );
+        }
+    };
+    if proof.finding_id() != finding.finding_id {
+        return facet(
+            FindingFacetKind::StatusLiveness,
+            FindingFacetOutcome::Failed,
+            "status proof finding id does not match the verified Finding",
+        );
+    }
+    if matches!(proof, FindingStatusProofInput::Inclusion(_)) {
+        return facet(
+            FindingFacetKind::StatusLiveness,
+            FindingFacetOutcome::Failed,
+            "status proof authenticates a retracted Finding",
+        );
+    }
+    match verify_status_proof_input(&proof, authorization, freshness) {
+        Ok(_) => facet(
+            FindingFacetKind::StatusLiveness,
+            FindingFacetOutcome::Verified,
+            "fresh governance-authorized status non-inclusion proof verified",
+        ),
+        Err(error) => facet(
+            FindingFacetKind::StatusLiveness,
+            FindingFacetOutcome::Failed,
+            format!("status proof verification failed: {error}"),
+        ),
+    }
 }
 
 fn cost_facet(kind: FindingFacetKind, outcome: &CostFacetOutcome) -> FindingFacetResult {
@@ -1045,6 +1115,7 @@ fn bundle_digest(
         checkpoint_sha256s: Vec<String>,
         checkpoint_transparency_sha256: String,
         recipe_sha256: Option<String>,
+        status_proof_sha256: Option<String>,
         runtime_attestation_sha256: Option<String>,
         runtime_appraisal_sha256: Option<String>,
         runtime_attestation_authority: Option<String>,
@@ -1088,6 +1159,7 @@ fn bundle_digest(
         checkpoint_sha256s,
         checkpoint_transparency_sha256: sha256_hex(&checkpoint_transparency_bytes),
         recipe_sha256: bundle.recipe_preimage.map(sha256_hex),
+        status_proof_sha256: bundle.status_proof_input.map(sha256_hex),
         runtime_attestation_sha256: bundle
             .runtime_attestation
             .as_ref()
@@ -1155,6 +1227,8 @@ pub fn sign_finding_verifier_report(
         verifier_profile_envelope_sha256: sha256_hex(&profile_envelope_bytes),
         verifier_implementation_id: verifier_implementation_id.to_string(),
         resolved_evidence_bundle_sha256: draft.resolved_evidence_bundle_sha256.clone(),
+        replay_recipe_input_sha256: draft.replay_recipe_input_sha256.clone(),
+        status_proof_input_sha256: draft.status_proof_input_sha256.clone(),
         trust_root_snapshot_sha256: trust.trust_root_snapshot_sha256.clone(),
         resolver_policy_sha256: trust.resolver_policy_sha256.clone(),
         trusted_time_input_sha256: trust.trusted_time_input_sha256.clone(),

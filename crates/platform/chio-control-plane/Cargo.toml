@@ -18,27 +18,13 @@ name = "chio_control_plane"
 [features]
 default = []
 pq = ["chio-core/pq", "chio-kernel/pq", "chio-store-sqlite/pq"]
-# Cognition-market surfaces: the
-# finding publish/discover/admission routes, their store, and the
-# open-market admission gate compile only under this feature flag,
-# which is off by default.
-cognition-market-experimental = [
-    "dep:chio-finding",
-    "dep:chio-finding-challenge",
-    "dep:chio-revocation-oracle",
-    "dep:chio-spec-validate",
-    "chio-store-sqlite/cognition-market-experimental",
-    "chio-open-market/cognition-market-experimental",
-    "chio-settle/cognition-market-experimental",
-]
-
 [dependencies]
 async-trait = { workspace = true }
 chio-agent-web-interop = { workspace = true }
-chio-finding = { workspace = true, optional = true }
-chio-finding-challenge = { workspace = true, optional = true }
-chio-revocation-oracle = { workspace = true, optional = true }
-chio-spec-validate = { workspace = true, optional = true }
+chio-finding = { workspace = true }
+chio-finding-challenge = { workspace = true }
+chio-revocation-oracle = { workspace = true }
+chio-spec-validate = { workspace = true }
 chio-appraisal = { workspace = true }
 chio-commerce-order = { workspace = true }
 chio-core = { workspace = true }

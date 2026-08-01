@@ -10,8 +10,6 @@
 //! finding. The grant carries the same output-digest commitment, no
 //! monetary ceilings, a mandatory proof-of-possession binding, a short
 //! expiry, and a bounded retry count.
-//!
-//! Compiled only under the `cognition-market-experimental` feature.
 
 use base64::Engine as _;
 use chio_core_types::receipt::body::ChioReceipt;

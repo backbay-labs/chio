@@ -42,10 +42,10 @@ chio-external-guards = { workspace = true }
 chio-federation = { workspace = true }
 chio-federation-transport-iroh = { workspace = true, optional = true }
 iroh = { version = "1.0", default-features = false, features = ["tls-ring"], optional = true }
-chio-finding = { workspace = true, optional = true }
-chio-finding-verifier = { workspace = true, optional = true }
-chio-open-market = { workspace = true, optional = true }
-chio-spec-validate = { workspace = true, optional = true }
+chio-finding = { workspace = true }
+chio-finding-verifier = { workspace = true }
+chio-open-market = { workspace = true }
+chio-spec-validate = { workspace = true }
 chio-hosted-mcp = { workspace = true }
 chio-http-serve = { workspace = true }
 chio-kernel = { workspace = true }
@@ -135,17 +135,5 @@ tee-quotes = ["chio-attest-verify/tee-quotes"]
 # stays a workspace member (root Cargo.toml:85) and a chio-conformance dev-dep
 # (crates/tooling/chio-conformance/Cargo.toml). Containment, not removal.
 iroh = ["dep:chio-federation-transport-iroh", "dep:iroh"]
-# Default-OFF. The `chio finding` family and the crates behind it compile
-# only under this flag, matching the control plane, whose finding routes
-# are gated by the same feature name. Default builds link none of it.
-cognition-market-experimental = [
-    "dep:chio-finding",
-    "dep:chio-finding-verifier",
-    "dep:chio-open-market",
-    "dep:chio-spec-validate",
-    "chio-control-plane/cognition-market-experimental",
-    "chio-open-market/cognition-market-experimental",
-]
-
 [lints]
 workspace = true

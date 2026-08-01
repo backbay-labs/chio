@@ -5,8 +5,6 @@
 //! finding identities and sealed bytes, never buyer identity, pricing, or
 //! reservation state; the mediating kernel owns every admission and money
 //! decision before this server is reached.
-//!
-//! Compiled only under the `cognition-market-experimental` feature.
 
 use std::collections::HashMap;
 use std::sync::Arc;

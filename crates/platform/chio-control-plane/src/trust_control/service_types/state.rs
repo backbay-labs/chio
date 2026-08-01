@@ -20,19 +20,16 @@ pub(crate) struct TrustServiceState {
     pub(crate) cluster_progress: Option<Arc<ClusterProgress>>,
     /// Evidenced rail seam for finding-market fee collection;
     /// `None` fails activation closed.
-    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>>,
     /// Explicit deployment adapter for the end-to-end finding purchase.
     /// Absent by default so the public route fails closed until the seller,
     /// coordinator, durable store, and purchase-aware kernel are wired.
-    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) finding_purchase_executor:
         Option<super::super::finding_purchase_routes::SharedFindingPurchaseExecutor>,
     /// Explicit durable challenge-submission dependency. It is absent in the
     /// default runtime because public configuration does not carry the private
     /// signing keys or published-artifact resolver required to construct the
     /// coordinator. The HTTP route fails closed while it is absent.
-    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) finding_challenge_executor: Option<
         Arc<dyn super::super::finding_challenge_handlers::FindingChallengeSubmissionExecutor>,
     >,

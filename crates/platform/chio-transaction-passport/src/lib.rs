@@ -1,3 +1,4 @@
+mod cognition_market;
 mod error;
 mod evidence_graph;
 mod ids;
@@ -7,6 +8,9 @@ mod types;
 mod validation;
 mod verifier_policy;
 
+pub use cognition_market::{
+    verify_cognition_market_passport_artifacts, CognitionMarketProofTrust, COGNITION_MARKET_CLAIMS,
+};
 pub use error::TransactionPassportError;
 pub use evidence_graph::validate_transaction_evidence_graph;
 pub use ids::{

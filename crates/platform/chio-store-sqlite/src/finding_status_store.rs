@@ -20,7 +20,6 @@ use rusqlite::{
 use thiserror::Error;
 
 use crate::admission_operation_store::verify_active_owner;
-#[cfg(feature = "cognition-market-experimental")]
 use crate::finding_challenge_store::{
     begin_finalizing_under_sanction_tx, FindingFinalizingAuthorizationInput, FindingLiabilityState,
 };
@@ -602,7 +601,6 @@ impl SqliteFindingStatusStore {
     /// hold cannot call it because the liability must still be in the durable
     /// `pending_appeal` state. Exact replay accepts an already-finalizing head
     /// only when the outbox and sticky row remain consistent.
-    #[cfg(feature = "cognition-market-experimental")]
     pub fn begin_finalizing_with_retraction(
         &self,
         liability_key: &str,

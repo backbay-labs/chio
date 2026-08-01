@@ -5,8 +5,6 @@
 //! before any sale. Nothing in this module reads mutable state or accepts
 //! a caller-chosen total: a misconfigured promise must reject rather than
 //! quietly settle for less than it advertised.
-//!
-//! Compiled only under the `cognition-market-experimental` feature.
 
 use chio_core_types::capability::scope::MonetaryAmount;
 

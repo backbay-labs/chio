@@ -51,6 +51,8 @@ and does not license claim wording.
 | `ASSUME-CHAIN-FINALITY` | approved_with_scope | Chain evidence is accepted only after the configured finality policy. | `audited_assumption` |
 | `ASSUME-TRACE-OBSERVER` | approved_with_scope | Runtime trace claims depend on synchronous exactly-once callback delivery, unmodified kernel-assigned fields, and mutation-free recorder operation; detectable omissions, duplicates, or inconsistent joins fail closed. | `audited_assumption`, `rust_trace_projection` |
 | `ASSUME-WASM-ENGINE` | approved_with_scope | Wasm boundary proofs rely on wasmtime enforcing its documented verdict, trap, fuel, memory-limiter, and in-process sandbox semantics. | `audited_assumption` |
+| `ASSUME-FINDING-STATUS-OPERATOR-COMPLETENESS` | approved_with_scope | A fresh authentic finding-status proof does not prove the external operator inserted every required retraction. The qualified profile depends on the operator completeness contract. | `audited_assumption` |
+| `ASSUME-FINDING-SELLER-TOOL-SERVER` | approved_with_scope | A delivery digest proves the kernel-observed seller response bytes, not effects the seller tool server claims outside Chio's observation boundary. | `audited_assumption` |
 
 The sole explicit root-imported Lean axiom is machine-readably enumerated as
 `Chio.Json.hash_collision_resistant` in `formal/theorem-inventory.json` and
@@ -76,6 +78,10 @@ machine-readably enumerated in `formal/assumptions.toml`.
 | `P9` | approved_with_scope | Chio has bounded Lean proofs that verified call-chain consistency requires consistent subjects and parent capability references. | `lean_root_imported`, `audited_assumption` |
 | `P10` | approved_with_scope | Chio has bounded Lean proofs that report/export labels cannot upgrade asserted or observed evidence to verified evidence. | `lean_root_imported`, `claim_gate` |
 | `POLICY-ANALYZE` | approved_with_scope | Chio ships bounded static policy analysis for rule relations and supported policy-refinement checks, with production-evaluator confirmation for every reported widening witness. Changed semantics outside the bounded fragment produce an inconclusive verdict. | `differential_test`, `runtime_qualification` |
+| `claim.finding.delivery_digest_bound` | approved_with_scope | The qualified single-operator cognition-market profile binds the signed Finding, verified receipts, checkpoint membership, and delivered response digest through a signed Finding-verifier report. It does not prove external receipt of bytes or seller effects. | `runtime_qualification`, `audited_assumption` |
+| `claim.finding.evidence_bound` | approved_with_scope | The cognition-market transaction passport binds its ClaimSet to a signed Finding-verifier report and exact canonical recipe and status attachments; role, schema, digest, and attachment substitution reject. | `runtime_qualification`, `claim_gate` |
+| `claim.finding.status_fresh` | approved_with_scope | The named status feed, signed root, sparse path, and checked-time freshness verified under the qualified operator authorization. This claim does not establish external operator insertion completeness. | `runtime_qualification`, `audited_assumption` |
+| `claim.finding.bond_backed` | approved_with_scope | The signed Finding-verifier report binds a live, authority-signed collateral allocation that existed before evaluation. It does not promise future solvency or cross-org settlement. | `runtime_qualification`, `audited_assumption` |
 
 ## Downgraded Or Disallowed Claims
 

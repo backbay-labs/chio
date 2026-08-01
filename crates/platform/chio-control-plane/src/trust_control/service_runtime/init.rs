@@ -8,7 +8,6 @@ use chio_http_serve::{
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-#[cfg(feature = "cognition-market-experimental")]
 pub(crate) async fn serve_async(
     config: TrustServiceConfig,
     injected_joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
@@ -28,20 +27,13 @@ pub(crate) async fn serve_async(
     .await
 }
 
-#[cfg(not(feature = "cognition-market-experimental"))]
-pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliError> {
-    serve_async_inner(config).await
-}
-
 async fn serve_async_inner(
     config: TrustServiceConfig,
-    #[cfg(feature = "cognition-market-experimental")] injected_joint_authority_store: Option<
-        Arc<SqliteAuthorityStore>,
-    >,
-    #[cfg(feature = "cognition-market-experimental")] finding_purchase_executor: Option<
+    injected_joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
+    finding_purchase_executor: Option<
         super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
     >,
-    #[cfg(feature = "cognition-market-experimental")] finding_challenge_executor: Option<
+    finding_challenge_executor: Option<
         Arc<dyn super::super::finding_challenge_handlers::FindingChallengeSubmissionExecutor>,
     >,
 ) -> Result<(), CliError> {
@@ -52,7 +44,6 @@ async fn serve_async_inner(
     )?;
     let verifier_policy_registry =
         load_verifier_policy_registry(config.verifier_policies_file.as_deref(), "trust_control")?;
-    #[cfg(feature = "cognition-market-experimental")]
     let joint_authority_store = match injected_joint_authority_store {
         Some(store) => {
             validate_injected_joint_authority_store(&config, &store)?;
@@ -60,8 +51,6 @@ async fn serve_async_inner(
         }
         None => open_configured_joint_authority_store(&config)?,
     };
-    #[cfg(not(feature = "cognition-market-experimental"))]
-    let joint_authority_store = open_configured_joint_authority_store(&config)?;
     let fiscal_runtime = compose_trust_fiscal_runtime(
         joint_authority_store.as_ref(),
         config.fiscal_runtime.as_ref(),
@@ -100,7 +89,6 @@ async fn serve_async_inner(
     let cluster_progress = cluster.as_ref().map(|_| Arc::new(ClusterProgress::new()));
     // The evidenced rail is present exactly when the finding market
     // is configured, so activation fails closed on unconfigured venues.
-    #[cfg(feature = "cognition-market-experimental")]
     let finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>> =
         config.finding_market.as_ref().map(|_| {
             Arc::new(super::super::finding_handlers::VenueLedgerRailObserver)
@@ -117,11 +105,8 @@ async fn serve_async_inner(
         federation_admission_rate_limiter,
         cluster,
         cluster_progress,
-        #[cfg(feature = "cognition-market-experimental")]
         finding_rail,
-        #[cfg(feature = "cognition-market-experimental")]
         finding_purchase_executor,
-        #[cfg(feature = "cognition-market-experimental")]
         finding_challenge_executor,
     };
     let controller = ShutdownController::install();
@@ -201,7 +186,6 @@ async fn serve_async_inner(
     })
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 fn validate_injected_joint_authority_store(
     config: &TrustServiceConfig,
     store: &SqliteAuthorityStore,
@@ -246,18 +230,14 @@ fn cluster_join_budget(drain_timeout: Duration, elapsed_since_signal: Duration) 
 #[cfg(test)]
 mod tests {
     use super::cluster_join_budget;
-    #[cfg(feature = "cognition-market-experimental")]
     use super::{
         open_configured_joint_authority_store, validate_injected_joint_authority_store,
         SqliteAuthorityStore, TrustServiceConfig,
     };
-    #[cfg(feature = "cognition-market-experimental")]
     use std::collections::BTreeMap;
-    #[cfg(feature = "cognition-market-experimental")]
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    #[cfg(feature = "cognition-market-experimental")]
     fn test_config(joint_authority_db_path: PathBuf) -> TrustServiceConfig {
         TrustServiceConfig {
             listen: "127.0.0.1:0"
@@ -294,7 +274,7 @@ mod tests {
         }
     }
 
-    #[cfg(all(feature = "cognition-market-experimental", unix))]
+    #[cfg(unix)]
     fn secure_directory(path: &Path) -> std::io::Result<()> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
@@ -319,7 +299,7 @@ mod tests {
         }
     }
 
-    #[cfg(all(feature = "cognition-market-experimental", unix))]
+    #[cfg(unix)]
     #[test]
     fn injected_challenge_authority_must_match_configured_database(
     ) -> Result<(), Box<dyn std::error::Error>> {

@@ -24,22 +24,13 @@ pub struct RevokeCapabilityResponse {
 }
 
 pub fn serve(config: TrustServiceConfig) -> Result<(), CliError> {
-    serve_with_optional_finding_challenge_executor(
-        config,
-        #[cfg(feature = "cognition-market-experimental")]
-        None,
-        #[cfg(feature = "cognition-market-experimental")]
-        None,
-        #[cfg(feature = "cognition-market-experimental")]
-        None,
-    )
+    serve_with_optional_finding_challenge_executor(config, None, None, None)
 }
 
 /// Serve trust control with a checked cognition-market challenge runtime.
 /// The ordinary [`serve`] entrypoint supplies no runtime and the challenge
 /// route fails closed. The runtime's already-open authority store takes the
 /// place of reopening `joint_authority_db_path` during startup.
-#[cfg(feature = "cognition-market-experimental")]
 pub fn serve_with_finding_challenge_runtime(
     config: TrustServiceConfig,
     runtime: FindingChallengeSubmissionRuntime,
@@ -58,7 +49,6 @@ pub fn serve_with_finding_challenge_runtime(
 ///
 /// This is the production composition path for deployments whose challenge
 /// coordinator and purchase executor share the serving-owned purchase store.
-#[cfg(feature = "cognition-market-experimental")]
 pub fn serve_with_finding_market_runtime(
     config: TrustServiceConfig,
     challenge_runtime: FindingChallengeSubmissionRuntime,
@@ -78,7 +68,6 @@ pub fn serve_with_finding_market_runtime(
     )
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 fn validate_finding_market_mutation_fence(
     challenge_fence: &chio_kernel::admission_operation::StoreMutationFence,
     purchase_fence: &chio_kernel::admission_operation::StoreMutationFence,
@@ -91,7 +80,6 @@ fn validate_finding_market_mutation_fence(
     Ok(())
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 fn validate_finding_challenge_runtime(
     config: &TrustServiceConfig,
     runtime: &FindingChallengeSubmissionRuntime,
@@ -112,15 +100,9 @@ fn validate_finding_challenge_runtime(
 
 fn serve_with_optional_finding_challenge_executor(
     config: TrustServiceConfig,
-    #[cfg(feature = "cognition-market-experimental")] joint_authority_store: Option<
-        Arc<SqliteAuthorityStore>,
-    >,
-    #[cfg(feature = "cognition-market-experimental")] purchase_executor: Option<
-        super::finding_purchase_routes::SharedFindingPurchaseExecutor,
-    >,
-    #[cfg(feature = "cognition-market-experimental")] executor: Option<
-        Arc<dyn FindingChallengeSubmissionExecutor>,
-    >,
+    joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
+    purchase_executor: Option<super::finding_purchase_routes::SharedFindingPurchaseExecutor>,
+    executor: Option<Arc<dyn FindingChallengeSubmissionExecutor>>,
 ) -> Result<(), CliError> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -130,15 +112,12 @@ fn serve_with_optional_finding_challenge_executor(
         .build()
         .map_err(|error| {
             CliError::cli_other_error(format!("failed to start async runtime: {error}"))
-        })?;
+    })?;
     runtime.block_on(async move {
         service_runtime::serve_async(
             config,
-            #[cfg(feature = "cognition-market-experimental")]
             joint_authority_store,
-            #[cfg(feature = "cognition-market-experimental")]
             purchase_executor,
-            #[cfg(feature = "cognition-market-experimental")]
             executor,
         )
         .await
@@ -147,7 +126,6 @@ fn serve_with_optional_finding_challenge_executor(
 
 /// Serve trust-control with an explicitly configured cognition-market
 /// purchase adapter. Ordinary [`serve`] keeps the purchase route unavailable.
-#[cfg(feature = "cognition-market-experimental")]
 pub fn serve_with_finding_purchase_executor(
     config: TrustServiceConfig,
     executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
@@ -1472,7 +1450,6 @@ mod config_and_public_tests {
             cluster_sync_interval: Duration::from_millis(200),
             roster_policy: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
-            #[cfg(feature = "cognition-market-experimental")]
             finding_market: None,
         }
     }

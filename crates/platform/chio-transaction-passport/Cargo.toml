@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 chio-core-types = { workspace = true }
+chio-finding = { workspace = true }
 chrono = { version = "0.4", features = ["clock"] }
 hex = { workspace = true }
 serde = { workspace = true }
@@ -18,6 +19,7 @@ sha2 = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+chio-revocation-oracle = { workspace = true }
 chio-test-support = { workspace = true }
 jsonschema = { workspace = true }
 

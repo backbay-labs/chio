@@ -30,7 +30,6 @@ tokio-console-smoke = ["tokio/tracing"]
 # ML-DSA-65 key. Default-off; enabled by deployments that flip
 # `policy.crypto_floor` to `allow_hybrid` or `pq_required`.
 pq = ["chio-core-types/pq", "chio-core/pq"]
-cognition-market-experimental = ["dep:chio-swarm-authority"]
 # Recursive-delegation kernel integration. Default OFF for the
 # trust boundary: when ON, the verifier consults the installed
 # `RevocationView` snapshot on every delegated dispatch and denies the
@@ -95,7 +94,7 @@ tracing = { workspace = true }
 opentelemetry-semantic-conventions = { workspace = true, optional = true }
 rusqlite = { workspace = true }
 chio-underwriting = { workspace = true }
-chio-swarm-authority = { workspace = true, optional = true }
+chio-swarm-authority = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 ureq = { version = "2.10", features = ["json"] }
 rand = { workspace = true }

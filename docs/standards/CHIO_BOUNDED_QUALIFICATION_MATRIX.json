@@ -74,6 +74,35 @@
         "docs/release/RELEASE_AUDIT.md",
         "docs/release/QUALIFICATION.md"
       ]
+    },
+    {
+      "id": "COGM9-01",
+      "summary": "The named single-operator cognition-market profile traverses the qualified M0-M6 and M8 wedge without cross-org escrow overclaiming.",
+      "witnesses": [
+        "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs",
+        "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs",
+        "crates/platform/chio-store-sqlite/tests/finding_pool_ledger.rs",
+        "docs/release/CHIO_FINDING_MARKET_RUNBOOK.md"
+      ]
+    },
+    {
+      "id": "COGM9-02",
+      "summary": "The cognition-market ClaimSet and transaction passport bind four registered claims to a signed verifier report and independently checked non-authority attachments.",
+      "witnesses": [
+        "crates/platform/chio-transaction-passport/tests/cognition_market.rs",
+        "fixtures/proof-room/finding/cognition-market-qualified-profile/transaction-passport.json",
+        "spec/registries/claim-registry.v1.json",
+        "spec/registries/proof-manifest.v1.json"
+      ]
+    },
+    {
+      "id": "COGM9-03",
+      "summary": "Status-operator completeness and seller tool-server behavior remain explicit audited assumptions rather than upgraded runtime facts.",
+      "witnesses": [
+        "formal/assumptions.toml",
+        "docs/reference/CLAIM_REGISTRY.md",
+        "docs/release/RELEASE_CANDIDATE.md"
+      ]
     }
   ],
   "entrypoint": "cargo xtask qualify bounded-chio"

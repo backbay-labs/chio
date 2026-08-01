@@ -31,18 +31,17 @@ Baseline: branch `codex/cognition-market-m2`, stacked on
 
 ## Program constraints that bind every task
 
-- Ship dark: every M2 runtime, service, and storage surface sits behind a
-  `cognition-market-experimental` cargo feature (default off, kebab-case,
-  forwarded crate-to-crate exactly like the `pq` chain:
+- Ship dark until M9: at M2 every runtime, service, and storage surface sat
+  behind one default-off cargo feature, forwarded crate-to-crate like the
+  `pq` chain:
   `crates/platform/chio-control-plane/Cargo.toml:18-20` ->
   `crates/platform/chio-store-sqlite/Cargo.toml:14-16` ->
   `crates/core/chio-core/Cargo.toml:42-44`). Pure artifact types, JSON
   schemas, and their registrations are spec, not runtime surface: they stay
   always-on exactly like the M1 leaf crate and M0 schema (PLAN.md global
-  constraints). Each milestone tests feature-off absence AND feature-on
-  behavior; CI copies the iroh lane pair (absence via `cargo tree`,
-  `.github/workflows/ci.yml:203-213`; feature-on build/clippy/test lane,
-  `ci.yml:215-227`).
+  constraints). The M2 exit tested both absence and enabled behavior. M9
+  removed that gate after qualification and made the surface part of the
+  default build graph.
 - Fail-closed everywhere; clippy `unwrap_used`/`expect_used` deny; no em
   dashes; conventional commits; Chio naming.
 - Schema discipline: every standalone signed artifact lands in all four
@@ -168,8 +167,7 @@ cite them as D1..D15.
 - D11 Exit-test home: `crates/platform/chio-control-plane` (it depends on
   chio-open-market and chio-listing; the reverse direction cannot host the
   HTTP legs). New integration test file
-  `tests/finding_market.rs`, entirely under
-  `#![cfg(feature = "cognition-market-experimental")]`, drives the router
+  `tests/finding_market.rs`, which drives the router
   via `tower::ServiceExt::oneshot` wrapped with `apply_server_hygiene`
   (body-cap parity with serve site, router_tests.rs:696-744 precedent) and
   calls the open-market admission-gated bid seam directly for the bid leg.
@@ -637,7 +635,7 @@ transaction`.
   note extended to cover M2.
 
 Commits: `test(chio-control-plane): M2 publish-discover-admission exit
-test`, `ci: cognition-market-experimental lanes`,
+test`, `ci: add cognition-market lanes`,
 `docs(cognition-market): record M2 in the program ladder`.
 
 ## Task 6: Full gate and review

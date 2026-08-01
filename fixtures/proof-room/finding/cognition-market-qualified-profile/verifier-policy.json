@@ -1,0 +1,1 @@
+{"id":"verifier-policy-cognition-market-qualified-profile","issued_at":"2026-07-31T20:00:30Z","omitted_claims":[],"required_claims":["claim.finding.delivery_digest_bound","claim.finding.evidence_bound","claim.finding.status_fresh","claim.finding.bond_backed"],"required_evidence_roles":["report","advisory-observation"],"schema":"chio.transaction.verifier-policy.v1"}

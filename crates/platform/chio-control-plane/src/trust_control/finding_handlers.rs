@@ -3,7 +3,7 @@
 //! paginated descriptor index, digest-addressed dependency retention,
 //! governance-profile registration, collateral registration, the durable
 //! idempotent activation transaction, participation-epoch renewal, and
-//! admission serving. Compiled only under `cognition-market-experimental`.
+//! admission serving.
 //!
 //! Ingress discipline (the reusable Finding-ingress invariant): the raw
 //! request body is size-limited at the route layer, strict-canonicalized

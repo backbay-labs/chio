@@ -27,16 +27,18 @@ use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::MerkleTree;
 use chio_core_types::{canonical_json_bytes, sha256_hex};
 use chio_finding::{
-    compute_allocation_id, compute_finding_id, compute_profile_id, sign_finding,
-    verify_signed_verifier_report, Finding, FindingAuthorityKeyPolicy, FindingBbsIssuerPolicy,
-    FindingBondBacking, FindingBondClass, FindingChallengeVerifierProfile,
-    FindingCheckpointLogPolicy, FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor,
-    FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome, FindingGuaranteeClass,
-    FindingOutcomeClass, FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole,
-    FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput,
-    FindingResourceCaps, FINDING_BOND_BACKING_SCHEMA_V1,
+    build_status_non_inclusion_proof_input, compute_allocation_id, compute_finding_id,
+    compute_profile_id, compute_status_epoch_id, sign_finding, verify_signed_verifier_report,
+    Finding, FindingAuthorityKeyPolicy, FindingBbsIssuerPolicy, FindingBondBacking,
+    FindingBondClass, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
+    FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor, FindingEvidenceClass,
+    FindingFacetKind, FindingFacetOutcome, FindingGuaranteeClass, FindingOutcomeClass,
+    FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
+    FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
+    FindingStatusEpoch, FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization,
+    FindingStatusOperatorRole, FINDING_BOND_BACKING_SCHEMA_V1,
     FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
-    FINDING_SCHEMA_V1,
+    FINDING_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
 };
 use chio_finding_verifier::{
     sign_finding_verifier_report, verify_checkpoint_membership, verify_finding_evidence,
@@ -46,6 +48,13 @@ use chio_finding_verifier::{
 use chio_kernel::checkpoint::{
     build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_log_id,
     CheckpointTransparencySummary, KernelCheckpoint,
+};
+use chio_revocation_oracle::{
+    finding_status_empty_leaf_hash, FindingStatusSparseMap, FINDING_STATUS_BRANCH_DOMAIN,
+    FINDING_STATUS_EMPTY_LEAF_DOMAIN, FINDING_STATUS_HASH_ALGORITHM,
+    FINDING_STATUS_KEY_DOMAIN_NONCE, FINDING_STATUS_KEY_HASH_DOMAIN, FINDING_STATUS_MAP_VERSION,
+    FINDING_STATUS_OCCUPIED_LEAF_DOMAIN, FINDING_STATUS_PROOF_SEMANTICS,
+    FINDING_STATUS_SPARSE_DEPTH,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -489,6 +498,8 @@ fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
         runtime_attestation_authority: None,
         appraisal_authority: None,
         attestation_trust_policy: None,
+        status_operator_authorization: None,
+        status_freshness_policy: None,
         trusted_time: 1_750_000_000,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
@@ -512,6 +523,7 @@ fn bundle<'a>(
         checkpoints: vec![fx.checkpoint.clone()],
         checkpoint_transparency: fx.checkpoint_transparency.clone(),
         recipe_preimage: Some(fx.recipe_bytes.as_slice()),
+        status_proof_input: None,
         runtime_attestation: None,
         runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
@@ -521,6 +533,73 @@ fn bundle<'a>(
         }),
         nonce_resolver: &NoNonceEvidence,
     }
+}
+
+fn portable_live_status_proof(
+    finding_id: &str,
+) -> Result<
+    (
+        Vec<u8>,
+        FindingStatusOperatorAuthorization,
+        FindingStatusFreshnessPolicy,
+    ),
+    Box<dyn Error>,
+> {
+    let operator = keypair(42);
+    let mut map = FindingStatusSparseMap::new();
+    let root = map.insert("aa".repeat(32).as_str(), "11".repeat(32).as_str())?;
+    let sparse = map.proof(finding_id)?;
+    let mut epoch = FindingStatusEpoch {
+        schema: FINDING_STATUS_EPOCH_SCHEMA_V1.to_string(),
+        status_epoch_id: String::new(),
+        signature_domain: FINDING_STATUS_SIGNATURE_DOMAIN.to_string(),
+        status_map_version: FINDING_STATUS_MAP_VERSION.to_string(),
+        proof_semantics: FINDING_STATUS_PROOF_SEMANTICS.to_string(),
+        feed_id: "status-feed/venue-wedge".to_string(),
+        key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+        map_epoch: root.map_epoch,
+        operator_id: "venue-status-operator".to_string(),
+        operator_key: operator.public_key(),
+        operator_key_epoch: 1,
+        root_hash: hex::encode(root.root_hash),
+        tree_depth: FINDING_STATUS_SPARSE_DEPTH as u16,
+        hash_algorithm: FINDING_STATUS_HASH_ALGORITHM.to_string(),
+        key_hash_domain: FINDING_STATUS_KEY_HASH_DOMAIN.to_string(),
+        empty_leaf_domain: FINDING_STATUS_EMPTY_LEAF_DOMAIN.to_string(),
+        occupied_leaf_domain: FINDING_STATUS_OCCUPIED_LEAF_DOMAIN.to_string(),
+        branch_domain: FINDING_STATUS_BRANCH_DOMAIN.to_string(),
+        empty_leaf_hash: hex::encode(finding_status_empty_leaf_hash()),
+        anchor_refs: vec!["anchor/status-feed/qualified".to_string()],
+        generated_at: 1_750_000_000,
+        valid_from: 1_749_999_900,
+        valid_until: 1_750_000_300,
+    };
+    epoch.status_epoch_id = compute_status_epoch_id(&epoch)?;
+    let signed = SignedExportEnvelope::sign(epoch, &operator)?;
+    let proof =
+        build_status_non_inclusion_proof_input(&signed, finding_id, &sparse, 1_750_000_030)?;
+    let authorization = FindingStatusOperatorAuthorization {
+        role: FindingStatusOperatorRole::FindingStatusOperator,
+        feed_id: "status-feed/venue-wedge".to_string(),
+        operator: FindingAuthorityKeyPolicy {
+            authority_id: "venue-status-operator".to_string(),
+            key: operator.public_key(),
+            key_epoch: 1,
+            valid_from: 1_749_999_900,
+            valid_until: 1_750_000_300,
+            rotation_policy_ref: "rotation/status-feed-v1".to_string(),
+            revocation_status_ref: "revocations/status-feed-v1".to_string(),
+        },
+        revoked_from: None,
+    };
+    Ok((
+        canonical_json_bytes(&proof)?,
+        authorization,
+        FindingStatusFreshnessPolicy {
+            now: 1_750_000_030,
+            max_epoch_age_secs: 60,
+        },
+    ))
 }
 
 fn clone_receipts(fx: &Fixture) -> Vec<ResolvedReceiptEvidence> {
@@ -588,6 +667,45 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
     let signed =
         sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.verifier)?;
     verify_signed_verifier_report(&signed, &fx.verifier.public_key())?;
+    Ok(())
+}
+
+#[test]
+fn portable_status_proof_verifies_and_is_pinned_into_signed_report() -> TestResult {
+    let fx = fixture()?;
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let (status_bytes, authorization, freshness) = portable_live_status_proof(&finding.finding_id)?;
+    let mut trust = trust_roots(&fx);
+    trust.status_operator_authorization = Some(authorization);
+    trust.status_freshness_policy = Some(freshness);
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.status_proof_input = Some(&status_bytes);
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::StatusLiveness),
+        Some(FindingFacetOutcome::Verified)
+    );
+    assert_eq!(
+        draft.replay_recipe_input_sha256.as_deref(),
+        Some(sha256_hex(&fx.recipe_bytes).as_str())
+    );
+    assert_eq!(
+        draft.status_proof_input_sha256.as_deref(),
+        Some(sha256_hex(&status_bytes).as_str())
+    );
+
+    let signed =
+        sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.verifier)?;
+    verify_signed_verifier_report(&signed, &fx.verifier.public_key())?;
+    assert_eq!(
+        signed.body.replay_recipe_input_sha256,
+        draft.replay_recipe_input_sha256
+    );
+    assert_eq!(
+        signed.body.status_proof_input_sha256,
+        draft.status_proof_input_sha256
+    );
     Ok(())
 }
 

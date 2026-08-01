@@ -1,5 +1,3 @@
-#![cfg(feature = "cognition-market-experimental")]
-
 //! Direct coverage for the verifiable audit selection: the deterministic
 //! decision about which listings one published-rate round must audit, and
 //! the independent recheck of the report that round publishes.

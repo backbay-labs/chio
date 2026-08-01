@@ -1,5 +1,3 @@
-#![cfg(feature = "cognition-market-experimental")]
-
 //! Direct coverage for `verify_purchase_context_pure`, the deterministic
 //! decision that a buyer-presented purchase context is genuine.
 //!

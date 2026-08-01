@@ -5,19 +5,12 @@ solved cognition: verified fixes and negative results). This extends the
 original spike memo and holds the architecture, mechanism, threat, and
 planning documents as they mature.
 
-Status: the design set merged through PR #1025 at `9ec6814a2`. On this
-execution branch, commits `015381975` through `04f5d3e66` implement M0/M1:
-the pure `chio.finding.v1` type, validator, strict issuer verification,
-public schema registration, normative protocol text, and golden fixture.
-Commits `c679cce1c` and `e429963d8` provide and clarify the test-only
-market-progress spec. The full workspace build, test, clippy, and formatting
-gate passed at `88d4bde1f` under `umask 022`; the later spec-only edit passed
-its focused test, clippy, and formatting checks, and later M1
-diagnostic/documentation refinements through `ea105498d` passed the Finding
-target and clippy.
-Publish/search, evidence and liveness verification, reveal digest enforcement,
-settlement, challenges, and status feeds remain M2+ design, not shipped market
-surfaces or roadmap commitments.
+Status: the cumulative implementation includes M0-M6, M8, and the completed M9
+qualification boundary. The named bounded-profile integration, approved scoped
+claims, audited assumptions, persisted transaction-passport golden, and
+promoted-default workspace gates have passed. M7 stays conditional and unbuilt
+because no bilateral seller/buyer deployment has triggered its ADR-C
+prerequisite. Usage-gated stochastic R&D extensions also remain unbuilt.
 
 Reading order:
 
@@ -25,7 +18,7 @@ Reading order:
    primitive-to-module map, Q1-Q8 verdicts with file-level evidence, minimal
    design, wedge recommendation (start with coding-agent verified fixes).
 2. [ADR-0017](../../adr/ADR-0017-cognition-market-finding-artifacts.md)
-   (Proposed) - the compressed decision set: finding artifacts, reveal as a
+   - the accepted single-operator decision set: finding artifacts, reveal as a
    governed tool call, predeclared fabrication slash lane, status feeds.
 3. [ARCHITECTURE.md](ARCHITECTURE.md) - components, artifact schemas, flows,
    enforcement points, deployment topologies, crate-level integration map.
@@ -38,9 +31,10 @@ Reading order:
    crates and verification, formal/conformance hooks, decision backlog
    (future ADRs), risk register.
 
-Companion executable spec: `crates/economy/chio-open-market/tests/cognition_market_flow.rs`
-(three tests pass; one ignored test clears M1 artifact integrity and names the
-first missing reveal seam).
+Companion executable spec: `crates/economy/chio-open-market/tests/cognition_market_flow.rs`.
+The single-operator flow is implemented in control-plane exits; the separate
+`cognition_market_cross_org_escrow` test remains ignored and fail-first until
+M7's bilateral-demand trigger is met.
 
 House discipline carried over from the spike: every codebase claim cites a
 real path; speculative design is labeled; proof claims stay inside the

@@ -845,6 +845,8 @@ fn make_signed_report(
         runtime_attestation_authority: None,
         appraisal_authority: None,
         attestation_trust_policy: None,
+        status_operator_authorization: None,
+        status_freshness_policy: None,
         trusted_time,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
@@ -865,6 +867,7 @@ fn make_signed_report(
             inputs.checkpoint,
         ))?,
         recipe_preimage: Some(inputs.recipe_bytes),
+        status_proof_input: None,
         runtime_attestation: None,
         runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
@@ -2683,6 +2686,10 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cognition_market_wedge_purchase_e2e() -> TestResult {
+    run_cognition_market_wedge_purchase_e2e().await
+}
+
+pub(super) async fn run_cognition_market_wedge_purchase_e2e() -> TestResult {
     let deployment = provision(RevealCase::honest())?;
     let calls = Arc::new(PaymentCalls::default());
     let invocations = Arc::new(AtomicU64::new(0));

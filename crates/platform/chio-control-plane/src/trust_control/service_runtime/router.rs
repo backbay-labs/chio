@@ -704,10 +704,8 @@ async fn handle_trust_control_metrics(
         .into_response()
 }
 
-/// Cognition-market finding routes. Publish takes a
-/// tighter body cap than the service-wide limit; dependency uploads keep
-/// the 1 MiB bound. Feature-off builds get an empty router here.
-#[cfg(feature = "cognition-market-experimental")]
+/// Cognition-market finding routes. Publish takes a tighter body cap than
+/// the service-wide limit; dependency uploads keep the 1 MiB bound.
 fn finding_market_routes() -> Router<TrustServiceState> {
     Router::new()
         .route(
@@ -766,24 +764,34 @@ fn finding_market_routes() -> Router<TrustServiceState> {
         )
 }
 
-#[cfg(not(feature = "cognition-market-experimental"))]
-fn finding_market_routes() -> Router<TrustServiceState> {
-    Router::new()
-}
-
 #[cfg(test)]
 #[path = "router_tests.rs"]
 mod tests;
 
-#[cfg(all(test, feature = "cognition-market-experimental"))]
+#[cfg(test)]
 #[path = "finding_market_exit_tests.rs"]
 mod finding_market_exit_tests;
 
-#[cfg(all(test, feature = "cognition-market-experimental"))]
+#[cfg(test)]
 #[path = "finding_wedge_purchase_e2e_tests.rs"]
 mod finding_wedge_purchase_e2e_tests;
 
-#[cfg(all(test, feature = "cognition-market-experimental"))]
+#[cfg(test)]
 #[path = "finding_challenge_enforcement_e2e_tests.rs"]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod finding_challenge_enforcement_e2e_tests;
+
+/// The bounded single-operator cognition-market qualification composes the
+/// milestone exits through their production-facing SQLite and router seams.
+/// Each leg provisions an independent deployment so authority state from one
+/// security boundary cannot make a later boundary pass accidentally.
+#[cfg(test)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cognition_market_qualified_profile() -> Result<(), Box<dyn std::error::Error>> {
+    finding_market_exit_tests::run_finding_publish_discover_admission().await?;
+    finding_wedge_purchase_e2e_tests::run_cognition_market_wedge_purchase_e2e().await?;
+    finding_challenge_enforcement_e2e_tests::run_finding_challenge_digest_mismatch()?;
+    finding_challenge_enforcement_e2e_tests::run_enforced_challenge_status_retraction()?;
+    finding_wedge_purchase_e2e_tests::run_finding_status_retraction().await?;
+    Ok(())
+}

@@ -372,6 +372,8 @@ fn report_body(verifier: &Keypair) -> Result<FindingVerifierReport, FindingError
         verifier_profile_envelope_sha256: HEX64.to_string(),
         verifier_implementation_id: "chio-finding-verifier/0.1".to_string(),
         resolved_evidence_bundle_sha256: HEX64.to_string(),
+        replay_recipe_input_sha256: None,
+        status_proof_input_sha256: None,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
         trusted_time_input_sha256: HEX64.to_string(),

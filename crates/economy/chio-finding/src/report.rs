@@ -98,6 +98,16 @@ pub struct FindingVerifierReport {
     pub verifier_profile_envelope_sha256: String,
     pub verifier_implementation_id: String,
     pub resolved_evidence_bundle_sha256: String,
+    /// Exact canonical replay-recipe input bytes independently rechecked by
+    /// the verifier. The unsigned input remains a non-authority attachment;
+    /// this digest is the signed commitment to those bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay_recipe_input_sha256: Option<String>,
+    /// Exact canonical portable status-proof input bytes independently
+    /// rechecked by the verifier. The proof input is not promoted to a signed
+    /// artifact role; the report commits its bytes here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_proof_input_sha256: Option<String>,
     pub trust_root_snapshot_sha256: String,
     pub resolver_policy_sha256: String,
     pub trusted_time_input_sha256: String,
@@ -140,6 +150,12 @@ impl FindingVerifierReport {
             &self.resolved_evidence_bundle_sha256,
             "resolved_evidence_bundle_sha256",
         )?;
+        if let Some(digest) = &self.replay_recipe_input_sha256 {
+            require_hex64(digest, "replay_recipe_input_sha256")?;
+        }
+        if let Some(digest) = &self.status_proof_input_sha256 {
+            require_hex64(digest, "status_proof_input_sha256")?;
+        }
         require_hex64(
             &self.trust_root_snapshot_sha256,
             "trust_root_snapshot_sha256",

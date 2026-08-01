@@ -1589,7 +1589,6 @@ mod underwriting_and_support_tests {
             cluster_sync_interval: Duration::from_millis(200),
             roster_policy: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
-            #[cfg(feature = "cognition-market-experimental")]
             finding_market: None,
         }
     }

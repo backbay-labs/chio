@@ -14,8 +14,6 @@
 //! after the fact is refused rather than tolerated: a seed outside the
 //! published commitment, a substituted or resized eligible snapshot, and an
 //! algorithm identifier this module does not implement.
-//!
-//! Compiled only under the `cognition-market-experimental` feature.
 
 use std::cmp::Ordering;
 use std::collections::BTreeSet;

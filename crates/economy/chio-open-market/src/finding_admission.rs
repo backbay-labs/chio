@@ -11,9 +11,6 @@
 //! [`VerifiedFindingAdmission`] witness whose existence is the only proof
 //! of currency [`bid_with_finding_admission`] accepts before delegating to
 //! the real [`bid`] path unchanged.
-//!
-//! Compiled only under the `cognition-market-experimental` feature; default
-//! builds omit this module entirely.
 
 use chio_finding::{
     signed_envelope_sha256, verify_signed_admission, verify_signed_bond_backing,

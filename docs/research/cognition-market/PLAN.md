@@ -52,15 +52,14 @@ external dependencies anticipated before M7.
   registry/manifest, but are signed by the enclosing receipt and do not
   enter the standalone allowlist. They require typed structs, reserved keys,
   PROTOCOL text, and enclosing-receipt canonical/signature round-trip tests.
-- Ship dark until qualified: M2+ runtime, service, and CLI surfaces sit
-  behind a consistently named `cognition-market-experimental` feature on
-  each owning crate and outside the bounded operational profile until M9
-  (`docs/release/QUALIFICATION.md`, bounded gate `cargo xtask qualify
-  bounded-chio`). Each milestone tests both feature-off absence and
-  feature-on behavior. The pure M1 leaf crate and M0 public schema are
-  protocol foundations, not enabled operational market surfaces. M9 repeats
-  qualification against the exact source and feature set proposed for the
-  flip; passing while still dark is not release evidence.
+- Ship dark until qualified: M2+ runtime, service, and CLI surfaces remained
+  behind one default-off gate and outside the bounded operational profile
+  until M9 (`docs/release/QUALIFICATION.md`, bounded gate `cargo xtask
+  qualify bounded-chio`). Earlier milestones tested both disabled absence
+  and enabled behavior. M9 repeats qualification against the exact source
+  proposed for promotion, then removes the gate and verifies the default
+  build graph. The pure M1 leaf crate and M0 public schema were always-on
+  protocol foundations.
 - Proof-claim discipline: nothing listable under capabilities
   `ChioProofClaims` rejects; evidence classes never upgraded.
 
@@ -97,16 +96,16 @@ production surface half-wired.
 
 | M | Name | One-line scope | Depends on | Plan status |
 |---|---|---|---|---|
-| M0 | Spec and registration | `chio.finding.v1` registered (challenge/status schemas deferred to M5/M6 per review); ADR-0017 remains Proposed | - | implemented with M1 |
+| M0 | Spec and registration | `chio.finding.v1` registered (challenge/status schemas deferred to M5/M6 per review) | - | implemented with M1 |
 | M1 | `chio-finding` crate | artifact types, strict validators/signing, golden | M0 | implemented; qualified workspace gate passed |
-| M2 | Publish and discover | descriptor search surface; listing publish path; bond-proof admission gate | M1 | implemented dark behind `cognition-market-experimental`; plan [plans/2026-07-28-M2-publish-and-discover.md](plans/2026-07-28-M2-publish-and-discover.md) |
+| M2 | Publish and discover | descriptor search surface; listing publish path; bond-proof admission gate | M1 | implemented; plan [plans/2026-07-28-M2-publish-and-discover.md](plans/2026-07-28-M2-publish-and-discover.md) |
 | M3 | Kernel delivery contract | candidate `Constraint::OutputDigestSha256`; durable and legacy digest enforcement; generic `chio.delivery-contract.v1` receipt block; verdict-matrix rotation; bounded Lean settlement-admission model | M1 | implemented on `codex/cognition-market-m3`; ADR-A landed as [ADR-0019](../../adr/ADR-0019-kernel-delivery-contract.md); plan and recorded results [plans/2026-07-28-M3-kernel-delivery-contract.md](plans/2026-07-28-M3-kernel-delivery-contract.md) |
 | M4 | Wedge purchase E2E | reference finding server; ADR-A-selected output-aware durable hold/capture; `chio finding` CLI (publish/search/verify/buy) | M2, M3 | implemented on `codex/cognition-market-m4`, including authenticated live purchase route exit; plan and recorded results [plans/2026-07-28-M4-wedge-purchase-e2e.md](plans/2026-07-28-M4-wedge-purchase-e2e.md) |
 | M5 | Challenge and audit lane | frozen-v1 `FraudulentListing` mapping plus signed finding challenge outcome; challenge evaluator; verifiable audit schedule; slash wiring | M4 | implemented on `codex/cognition-market-m5`; plan and recorded results [plans/2026-07-30-M5-challenge-and-audit-lane.md](plans/2026-07-30-M5-challenge-and-audit-lane.md) |
 | M6 | Status feed and retraction | oracle instance; control-plane root/proof surfaces; purchase-time non-inclusion; challenge-outcome outbox; quarantine guard rule; ops runbook | M4, M5 | implemented; plan and recorded results [plans/2026-07-31-M6-status-feed-retraction.md](plans/2026-07-31-M6-status-feed-retraction.md) |
-| M7 | Cross-org escrow path | delivery-receipt settlement-authority bridge; bilateral evidence flow; funded escrow and watchdog runbook | M4, M5, M6 | blocked pending bilateral demand and ADR-C |
+| M7 | Cross-org escrow path | delivery-receipt settlement-authority bridge; bilateral evidence flow; funded escrow and watchdog runbook | M4, M5, M6 | conditional and unbuilt: trigger re-evaluated false on 2026-08-01; ignored exit retained |
 | M8 | Pool purchasing and SDK | swarm purchasing convention; elicitation ceiling in SDKs; pheromone hint convention | M4 | implemented; plan and recorded results [plans/2026-07-31-M8-pool-purchasing-sdk.md](plans/2026-07-31-M8-pool-purchasing-sdk.md) |
-| M9 | Qualification and claims | bounded-matrix entries; CLAIM_REGISTRY rows; RC guarantee entries; R&D-instance extensions | M5, M6 | plan after M6 |
+| M9 | Qualification and claims | bounded-matrix entries; CLAIM_REGISTRY rows; RC guarantee entries; proof passport and release promotion | M5, M6 | implemented; cumulative qualification in progress; plan [plans/2026-07-31-M9-qualification-claims.md](plans/2026-07-31-M9-qualification-claims.md) |
 
 ## 2. Per-milestone definition
 
@@ -139,10 +138,10 @@ Status: implemented on `codex/cognition-market-m2` (stacked on the M0/M1
 branch) per the bite-sized plan
 [plans/2026-07-28-M2-publish-and-discover.md](plans/2026-07-28-M2-publish-and-discover.md),
 which fixes the fifteen design points this definition left open (D1-D15)
-and records the recorded-results gate. Every runtime surface ships dark
-behind `cognition-market-experimental`; the artifact families and their
-registrations are always-on spec. The definition below remains the
-normative scope statement.
+and records the recorded-results gate. M2 shipped its runtime surface dark;
+M9 promotes the qualified surface into the default build graph. The artifact
+families and their registrations remain always-on spec. The definition below
+remains the normative scope statement.
 
 
 - Control-plane `POST /v1/findings/publish`: the REUSABLE `Finding`-ingress
@@ -1460,6 +1459,9 @@ normative scope statement.
   gate are green.
 
 ### M9 Qualification, claims, and the R&D turn
+
+- Implementation and named qualification record:
+  [2026-07-31-M9-qualification-claims.md](plans/2026-07-31-M9-qualification-claims.md).
 
 - Bounded-matrix entries + feature-flag removal for qualified surfaces;
   CLAIM_REGISTRY approved-claim rows + two `audited_assumption` rows

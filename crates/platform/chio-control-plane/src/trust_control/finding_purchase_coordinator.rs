@@ -12,8 +12,6 @@
 //! through the accepted bid's receipt id; no caller-shaped value overrides
 //! it. Every artifact this coordinator signs passes its own validator
 //! first, because both closes are one-shot and the store keeps the bytes.
-//!
-//! Compiled only under the `cognition-market-experimental` feature.
 
 use std::sync::Arc;
 

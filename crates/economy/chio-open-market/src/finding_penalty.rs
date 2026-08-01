@@ -13,8 +13,6 @@
 //! request the generic evaluator takes, plus the finding-specific facts,
 //! and it runs the generic evaluation first, refuses any result carrying
 //! findings, and then applies the branch rules below.
-//!
-//! Compiled only under the `cognition-market-experimental` feature.
 
 use chio_core_types::capability::scope::MonetaryAmount;
 

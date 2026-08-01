@@ -42,8 +42,6 @@
 //!   the injected publisher, and settles only on a confirmed
 //!   reconciliation the chain still qualifies.
 //!
-//! Compiled only under the `cognition-market-experimental` feature.
-
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};

@@ -13,8 +13,7 @@
 //! - [`penalty`] - abuse classes, penalty artifacts, issue requests, and states.
 //! - [`evidence`] - evidence references and evaluation finding codes.
 //! - [`evaluation`] - penalty evaluation requests and fail-closed market rules.
-//! - `finding_admission` - admission-gated cognition-market bid seam,
-//!   compiled only under the `cognition-market-experimental` feature.
+//! - `finding_admission` - admission-gated cognition-market bid seam.
 
 #![forbid(unsafe_code)]
 
@@ -27,25 +26,17 @@ pub mod bidding;
 pub mod evaluation;
 pub mod evidence;
 pub mod fee_schedule;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_admission;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_audit;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_bid_policy;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_penalty;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_pheromone;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_slash_amount;
 pub mod fiscal_adapter;
 #[cfg(all(kani, feature = "cognition-market-experimental"))]
 mod kani_public_harnesses;
 pub mod penalty;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod purchase_verification;
-#[cfg(feature = "cognition-market-experimental")]
 pub mod recovery;
 pub(crate) mod validation;
 

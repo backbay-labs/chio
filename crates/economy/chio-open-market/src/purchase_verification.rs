@@ -7,8 +7,6 @@
 //! verdict after a crash. Clocked liveness bounds and authoritative
 //! reservation state live with the caller's admission-time check, never
 //! here.
-//!
-//! Compiled only under the `cognition-market-experimental` feature.
 
 use chio_finding::{
     decode_purchase_context_b64, verify_finding, verify_signed_admission,

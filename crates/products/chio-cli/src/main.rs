@@ -112,7 +112,6 @@ pub(crate) use types_cli::{
     TrustUnderwritingAppealCommands, TrustUnderwritingDecisionCommands,
     TrustUnderwritingInputCommands, WorkflowCommands,
 };
-#[cfg(feature = "cognition-market-experimental")]
 pub(crate) use types_cli::{FindingChallengeClassArg, FindingCommands};
 #[path = "cli/chio/types.rs"]
 mod chio_types;

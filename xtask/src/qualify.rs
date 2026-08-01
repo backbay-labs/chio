@@ -33,6 +33,8 @@ pub(crate) const BOUNDED_ENTRYPOINT: &str = "cargo xtask qualify bounded-chio";
 /// longer describes the ship-facing bounded release boundary.
 const BOUNDED_SCOPE: &str = "bounded_chio_release_qualification";
 
+const REQUIRED_COGNITION_MARKET_GATES: [&str; 3] = ["COGM9-01", "COGM9-02", "COGM9-03"];
+
 /// The implemented qualification profiles. Compile-time fail-closed
 /// enumeration: the CLI rejects anything not listed here.
 pub(crate) const KNOWN_PROFILES: [&str; 1] = ["bounded-chio"];
@@ -82,6 +84,44 @@ fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
         return Err(XtaskError::Validation(format!(
             "bounded operational profile document is missing on disk: {profile_doc}"
         )));
+    }
+
+    let conditions = matrix
+        .get("gateConditions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            XtaskError::Validation("bounded matrix has no gateConditions array".into())
+        })?;
+    for condition in conditions {
+        let id = condition
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("<unknown>");
+        let witnesses = condition
+            .get("witnesses")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                XtaskError::Validation(format!(
+                    "bounded matrix gate condition {id} has no witnesses array"
+                ))
+            })?;
+        if witnesses.is_empty() {
+            return Err(XtaskError::Validation(format!(
+                "bounded matrix gate condition {id} has no witnesses"
+            )));
+        }
+        for witness in witnesses {
+            let path = witness.as_str().ok_or_else(|| {
+                XtaskError::Validation(format!(
+                    "bounded matrix gate condition {id} has a non-string witness"
+                ))
+            })?;
+            if !resolve_repo_relative(root, path)?.is_file() {
+                return Err(XtaskError::Validation(format!(
+                    "bounded matrix gate condition {id} witness is missing: {path}"
+                )));
+            }
+        }
     }
 
     let conditions = matrix
@@ -138,6 +178,16 @@ fn assert_bounded_matrix(matrix: &Value) -> Result<(), XtaskError> {
         if condition.get("summary").and_then(Value::as_str).is_none() {
             return Err(XtaskError::Validation(format!(
                 "bounded matrix gate condition {index} has no summary"
+            )));
+        }
+    }
+    for required in REQUIRED_COGNITION_MARKET_GATES {
+        if !conditions
+            .iter()
+            .any(|condition| condition.get("id").and_then(Value::as_str) == Some(required))
+        {
+            return Err(XtaskError::Validation(format!(
+                "bounded matrix is missing cognition-market gate {required}"
             )));
         }
     }
@@ -262,6 +312,23 @@ mod tests {
         });
         match assert_bounded_matrix(&matrix) {
             Ok(()) => panic!("idless gate condition passed"),
+            Err(XtaskError::Validation(_)) => {}
+            Err(other) => panic!("expected Validation, got {other}"),
+        }
+    }
+
+    #[test]
+    fn missing_cognition_market_gate_fails_closed() {
+        let matrix = serde_json::json!({
+            "scope": BOUNDED_SCOPE,
+            "entrypoint": BOUNDED_ENTRYPOINT,
+            "gateConditions": [
+                { "id": "COGM9-01", "summary": "flow" },
+                { "id": "COGM9-02", "summary": "proof bundle" }
+            ],
+        });
+        match assert_bounded_matrix(&matrix) {
+            Ok(()) => panic!("matrix missing COGM9-03 passed"),
             Err(XtaskError::Validation(_)) => {}
             Err(other) => panic!("expected Validation, got {other}"),
         }

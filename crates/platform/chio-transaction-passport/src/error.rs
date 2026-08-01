@@ -82,6 +82,12 @@ pub enum TransactionPassportError {
     TrustMarketClaimFailed(String),
     #[error("risk comptroller claim failed: {0}")]
     RiskComptrollerClaimFailed(String),
+    #[error("missing cognition-market artifact: {0}")]
+    MissingCognitionMarketArtifact(String),
+    #[error("invalid cognition-market artifact {path}: {message}")]
+    InvalidCognitionMarketArtifact { path: String, message: String },
+    #[error("cognition-market claim failed: {0}")]
+    CognitionMarketClaimFailed(String),
     #[error("advisory evidence cannot authorize runtime execution")]
     AdvisoryEvidenceCannotAuthorize,
     #[error("evidence graph digest mismatch: expected {expected}, got {actual}")]

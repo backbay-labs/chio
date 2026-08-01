@@ -120,6 +120,23 @@ kernel/browser/mobile qualification lanes.
 
 ## Supported Guarantees
 
+- Chio ships one bounded single-operator cognition-market profile that
+  traverses Finding publication and bounded discovery, verified purchase and
+  digest-bound reveal, challenge and outbox-backed retraction, portable status
+  rejection, and governed-memory quarantine; cross-org escrow remains a
+  separate conditional non-goal until bilateral demand triggers ADR-C
+- the cognition-market transaction passport binds the four qualified
+  `claim.finding.*` rows through the existing ClaimSet role to a signed
+  Finding-verifier report and exact content-addressed recipe and status
+  attachments; wrong role, schema, digest, or attachment substitution fails
+  closed
+- `claim.finding.status_fresh` means that the named feed, signed root, sparse
+  path, and freshness window verified at the checked time; it does not upgrade
+  the separately labeled status-operator completeness assumption
+- cognition-market delivery and bond claims remain bounded to kernel-observed
+  output bytes, checkpointed receipt evidence, and the live allocation
+  observed at evaluation; they do not prove seller-side external effects,
+  future solvency, or cross-org fair exchange
 - capability-scoped mediation remains the root trust contract for local,
   wrapped, and hosted runtime surfaces
 - allow, deny, cancelled, and incomplete outcomes always produce signed

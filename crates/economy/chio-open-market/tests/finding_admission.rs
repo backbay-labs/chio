@@ -1,5 +1,3 @@
-#![cfg(feature = "cognition-market-experimental")]
-
 //! Feature-gated coverage for the admission-gated bid seam:
 //! `verify_finding_admission` over externally pinned inputs, then
 //! `bid_with_finding_admission` delegating to the REAL marketplace

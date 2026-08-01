@@ -2946,6 +2946,98 @@
           "ref": "spec/schemas/chio-trust/v1/financial-passport-presentation-challenge.schema.json"
         }
       ]
+    },
+    {
+      "id": "manifest.finding.delivery_digest_bound",
+      "claim_ref": "claim.finding.delivery_digest_bound",
+      "introduced_by": "cognition-market-qualified-profile-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/cognition_market.rs::cognition_market_qualified_profile"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/finding/cognition-market-qualified-profile/report.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-finding/v1/verifier-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.finding.evidence_bound",
+      "claim_ref": "claim.finding.evidence_bound",
+      "introduced_by": "cognition-market-qualified-profile-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/cognition_market.rs::cognition_market_qualified_profile_rejects_wrong_role_and_schema"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/cognition_market.rs::cognition_market_qualified_profile_rejects_wrong_digest"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/cognition_market.rs::cognition_market_qualified_profile_rejects_substituted_attachment"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/finding/cognition-market-qualified-profile/attachments/replay-recipe-input.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-finding/v1/replay-recipe-input.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.finding.status_fresh",
+      "claim_ref": "claim.finding.status_fresh",
+      "introduced_by": "cognition-market-qualified-profile-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-finding-verifier/tests/verifier.rs::portable_status_proof_verifies_and_is_pinned_into_signed_report"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/cognition_market.rs::cognition_market_qualified_profile"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/finding/cognition-market-qualified-profile/attachments/status-proof-input.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-finding/v1/status-proof-input.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.finding.bond_backed",
+      "claim_ref": "claim.finding.bond_backed",
+      "introduced_by": "cognition-market-qualified-profile-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-finding-verifier/tests/verifier.rs::full_evidence_bundle_verifies_the_required_facets"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/cognition_market.rs::cognition_market_qualified_profile"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/finding/cognition-market-qualified-profile/report.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-finding/v1/verifier-report.schema.json"
+        }
+      ]
     }
   ],
   "proposed_manifests": [

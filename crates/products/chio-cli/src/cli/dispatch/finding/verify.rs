@@ -111,6 +111,8 @@ pub(super) fn cmd_finding_verify(
         runtime_attestation_authority: roots.runtime_attestation_authority,
         appraisal_authority: roots.appraisal_authority,
         attestation_trust_policy: roots.attestation_trust_policy,
+        status_operator_authorization: None,
+        status_freshness_policy: None,
         trusted_time,
         trust_root_snapshot_sha256,
         resolver_policy_sha256: resolver_policy_digest(
@@ -135,6 +137,7 @@ pub(super) fn cmd_finding_verify(
         checkpoints: evidence_file.checkpoints,
         checkpoint_transparency: evidence_file.checkpoint_transparency,
         recipe_preimage: recipe_preimage.as_deref(),
+        status_proof_input: None,
         runtime_attestation: evidence_file.runtime_attestation,
         runtime_appraisal: evidence_file.runtime_appraisal,
         bond_snapshot: evidence_file.bond_snapshot.map(FindingBondSnapshot::from),

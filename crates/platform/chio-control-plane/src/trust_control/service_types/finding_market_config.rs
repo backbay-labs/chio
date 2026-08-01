@@ -1,5 +1,5 @@
 //! Deployment-pinned authority roster for the cognition-market finding
-//! surfaces. Compiled only under `cognition-market-experimental`.
+//! surfaces.
 //!
 //! Every value-moving role is pinned here, independently of whatever keys
 //! artifacts embed: an envelope verifies only against its configured role,
@@ -803,9 +803,9 @@ mod status_feed_config_tests {
 
     #[test]
     fn selected_status_nonce_is_i_json_safe_and_fixed() {
-        assert_eq!(FINDING_STATUS_KEY_DOMAIN_NONCE, 3_318_287_169_837_494);
         const {
             assert!(FINDING_STATUS_KEY_DOMAIN_NONCE < (1_u64 << 53));
         }
+        assert_eq!(FINDING_STATUS_KEY_DOMAIN_NONCE, 3_318_287_169_837_494);
     }
 }

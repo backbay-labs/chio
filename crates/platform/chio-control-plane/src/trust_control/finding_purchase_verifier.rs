@@ -5,8 +5,6 @@
 //! deterministic half to the pure market core and the admission-time
 //! half to finding liveness plus an authoritative reservation reader, so
 //! the kernel itself never grows a market dependency.
-//!
-//! Compiled only under the `cognition-market-experimental` feature.
 
 use std::sync::Arc;
 

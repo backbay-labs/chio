@@ -55,6 +55,12 @@
         "resolved_evidence_bundle_sha256": {
           "$ref": "#/$defs/sha256"
         },
+        "replay_recipe_input_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "status_proof_input_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
         "trust_root_snapshot_sha256": {
           "$ref": "#/$defs/sha256"
         },

@@ -12,30 +12,22 @@ publish = false
 name = "chio_open_market"
 
 [dependencies]
-base64 = { workspace = true, optional = true }
+base64 = { workspace = true }
 chio-core-types = { workspace = true }
-chio-finding = { workspace = true, optional = true }
+chio-finding = { workspace = true }
 chio-fiscal = { workspace = true }
 chio-governance = { workspace = true }
 chio-listing = { workspace = true }
-chio-pheromone = { workspace = true, optional = true }
+chio-pheromone = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true, optional = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [features]
-# The finding admission seam compiles only when this feature is enabled,
-# so default builds omit it entirely and keep byte-identical behavior.
-cognition-market-experimental = [
-  "dep:base64",
-  "dep:chio-finding",
-  "dep:chio-pheromone",
-  "dep:serde_json",
-]
 # Opts in to the cognition-market surface exercised by the
 # `#[cfg(kani)]` public proof harness. Production builds never compile the
 # harness module because cargo-kani alone supplies that cfg.
-kani = ["cognition-market-experimental"]
+kani = []
 
 [dev-dependencies]
 chio-finding = { workspace = true }

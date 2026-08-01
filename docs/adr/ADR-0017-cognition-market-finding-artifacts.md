@@ -1,20 +1,12 @@
 # ADR-0017: Cognition-Market Finding Artifacts And Reveal-As-Governed-Call
 
-- Status: Proposed (research spike; see `docs/research/agent-cognition-market.md` for the full analysis this ADR compresses)
-- Partial implementation (2026-07-27): M0/M1 implements the leaf finding
-  type, validator, strict issuer verification, registered schema, normative
-  `spec/PROTOCOL.md` 6.4.7 text, and golden fixture. D1 listing/publish
-  integration and D2-D5 remain proposed.
-- Partial implementation (2026-07-28): M2 implements D1 publish/discover:
-  the six market artifact families plus the unsigned replay-recipe input
-  (`spec/PROTOCOL.md` 6.4.7.1-6.4.7.8), the offline
-  `FindingEvidenceVerifier` facet profile, the durable finding-market
-  store (exact-bytes serving, exclusive collateral, idempotent fees,
-  atomic activation), and the feature-gated control-plane
-  publish/search/activation surfaces with the admission-gated bid seam.
-  Everything ships dark behind `cognition-market-experimental`. D2
-  reveal-as-governed-call and D3-D5 remain proposed (M3+, blocked on
-  ADR-A).
+- Status: Accepted (2026-07-31)
+- Implementation record: M0-M6, M8, and M9 implement and qualify the
+  single-operator profile. The default-off implementation gate was removed
+  after the full workspace qualification gate passed. M7 remains conditional
+  and unbuilt because no bilateral deployment has triggered ADR-C. The release
+  boundary publishes four scoped claims, preserves two audited assumptions,
+  and assigns proof-bundle ownership to `chio-transaction-passport`.
 - Decision owner: economy and settlement lane
 - Related: ADR-0015 (non-discretionary escrow posture), ADR-0016 (authoritative spend contract), `spec/PROTOCOL.md` 6.4.5 (disclosure and lineage family), `spec/PROTOCOL.md` 6.4.7 (finding artifact family)
 
@@ -28,10 +20,11 @@ marketplace whose buyers are agent subjects, bonds with adjudicated slashing,
 escrow with two predeclared price-free terminal states, and receipts that bind
 an output digest (`content_hash`) under WYSIWYS signing. At proposal time, the
 missing pieces were an information-good type and a binding between payment
-release and information delivery. M0/M1 has since supplied the type and
-registered schema; publication and the payment-delivery binding remain
-proposed. The memo's gap analysis (Q1-Q8) grounds the proposal-time claims in
-file-level evidence.
+release and information delivery. The qualified single-operator profile now
+supplies the registered type, publication and discovery, governed delivery,
+challenge and audit, status and retraction, pool purchasing, and independently
+verifiable proof-passport evidence. The memo's gap analysis (Q1-Q8) grounds
+the proposal-time claims in file-level evidence.
 
 ## Decision
 
@@ -46,13 +39,12 @@ runtime assurance tier), an evidence class from the normative
 `asserted`/`observed`/`verified` taxonomy, typed issuer identity, an opaque
 collateral reference, a status-feed reference, optional license and pricing-hint
 references, an optional pre-outcome intent-commitment receipt reference, and
-an expiry. The required M1 verification procedure has the caller check the
+an expiry. The verification procedure has the caller check the
 registered schema at the raw boundary, run `Finding::validate` for structure
 and id/content-address consistency, and run `verify_finding` for the strict
-issuer signature. M1 ships these components and conformance coverage, not a
-production ingress service. Reference validation is still syntactic. M2 must
-resolve and authenticate every reference before a listing can advertise an
-evidence-backed guarantee.
+issuer signature. Production admission resolves and authenticates the
+required references before a listing can advertise an evidence-backed
+guarantee.
 Negative results are `outcome_class = null_result`, not a separate type.
 Findings are published, discovered, and priced through the existing
 `chio-listing` registry (listed under the existing `ToolServer` actor
@@ -422,8 +414,8 @@ Automatic invalidation of derived data is out of scope.
 
 - Positive: the market uses bounded extensions around a new artifact family
   while reusing the settlement, bonding, adjudication, and provenance
-  architecture already ratified. When M2-M4 land, the one-operator Arrow
-  flow targets a payment-versus-delivery binding without new cryptography.
+  architecture already ratified. The qualified one-operator Arrow flow binds
+  payment to delivery without new cryptography.
   Full-receipt evidence can establish a kernel-accounted spend floor only
   after strict receipt/checkpoint verification, authoritative-spend and nonce
   checks, and qualifying capture or finalized-settlement evidence. This is not

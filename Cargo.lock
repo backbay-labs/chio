@@ -3639,6 +3639,8 @@ dependencies = [
  "chio-core-types",
  "chio-finding",
  "chio-kernel",
+ "chio-revocation-oracle",
+ "hex",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -4846,6 +4848,8 @@ name = "chio-transaction-passport"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-finding",
+ "chio-revocation-oracle",
  "chio-test-support",
  "chrono",
  "hex",

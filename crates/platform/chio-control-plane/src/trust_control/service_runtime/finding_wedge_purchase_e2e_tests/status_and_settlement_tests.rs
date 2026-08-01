@@ -193,6 +193,10 @@ async fn finding_purchase_without_status_verifier_denies_before_effects() -> Tes
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn finding_status_retraction() -> TestResult {
+    run_finding_status_retraction().await
+}
+
+pub(super) async fn run_finding_status_retraction() -> TestResult {
     let lane = open_lane(LaneOptions {
         install_status_verifier: true,
         publish_status_proof: false,

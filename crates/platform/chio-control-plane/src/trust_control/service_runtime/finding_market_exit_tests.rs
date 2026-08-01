@@ -747,6 +747,8 @@ fn make_signed_report(
         runtime_attestation_authority: None,
         appraisal_authority: None,
         attestation_trust_policy: None,
+        status_operator_authorization: None,
+        status_freshness_policy: None,
         trusted_time,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
@@ -759,6 +761,7 @@ fn make_signed_report(
             inputs.checkpoint,
         ))?,
         recipe_preimage: Some(inputs.recipe_bytes),
+        status_proof_input: None,
         runtime_attestation: None,
         runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
@@ -1407,6 +1410,10 @@ async fn assert_activation_rejected(
 
 #[tokio::test]
 async fn finding_publish_discover_admission() -> TestResult {
+    run_finding_publish_discover_admission().await
+}
+
+pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     let web = &stack.web;
     stack.seed_market().await?;
