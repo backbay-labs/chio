@@ -72,7 +72,8 @@ use chio_open_market::listing::{
     GENERIC_LISTING_ARTIFACT_SCHEMA, LISTING_PRICING_HINT_SCHEMA,
 };
 use chio_store_sqlite::finding_market_store::{
-    finding_fee_idempotency_key, FindingAllocationState, FindingFeeState, SqliteFindingMarketStore,
+    finding_fee_idempotency_key, FindingActivationAttemptState, FindingAllocationState,
+    FindingFeeState, SqliteFindingMarketStore,
 };
 use tower::ServiceExt;
 
@@ -136,6 +137,12 @@ fn authority_pin(seed: u8, label: &str) -> FindingAuthorityPin {
     }
 }
 
+fn listing_authority_pin() -> FindingAuthorityPin {
+    let mut pin = authority_pin(24, "listing");
+    pin.authority_id = PUBLISHER_OPERATOR_ID.to_string();
+    pin
+}
+
 fn key_policy(seed: u8, label: &str) -> FindingAuthorityKeyPolicy {
     FindingAuthorityKeyPolicy {
         authority_id: format!("authority-{label}"),
@@ -161,6 +168,7 @@ fn market_config() -> FindingMarketConfig {
     FindingMarketConfig {
         venue_id: VENUE_ID.to_string(),
         venue: authority_pin(6, "venue"),
+        listing: listing_authority_pin(),
         governance_root: authority_pin(1, "governance"),
         verifier_report: authority_pin(15, "verifier-report"),
         collateral: authority_pin(4, "collateral"),
@@ -1127,6 +1135,16 @@ impl MarketWeb {
         schedule: &SignedOpenMarketFeeSchedule,
         report: &SignedFindingVerifierReport,
     ) -> Result<String, AnyError> {
+        self.activate_request_with_listing(admission, schedule, report, &self.listing)
+    }
+
+    fn activate_request_with_listing(
+        &self,
+        admission: &SignedFindingAdmission,
+        schedule: &SignedOpenMarketFeeSchedule,
+        report: &SignedFindingVerifierReport,
+        listing: &SignedGenericListing,
+    ) -> Result<String, AnyError> {
         let body = serde_json::json!({
             "admission": serde_json::to_value(admission)?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
@@ -1134,7 +1152,7 @@ impl MarketWeb {
             "backing": serde_json::to_value(&self.backing)?,
             "feeSchedule": serde_json::to_value(schedule)?,
             "verifierReport": serde_json::to_value(report)?,
-            "listing": serde_json::to_value(&self.listing)?,
+            "listing": serde_json::to_value(listing)?,
             "pricingHint": serde_json::to_value(&self.pricing_hint)?,
         });
         Ok(body.to_string())
@@ -1300,9 +1318,10 @@ impl MarketStack {
     }
 }
 
-/// A rejected activation must leave nothing admitted: no stored admission,
-/// no search marker, and the collateral allocation still live.
-async fn assert_nothing_admitted(stack: &MarketStack) -> TestResult {
+async fn assert_not_admitted_with_allocation(
+    stack: &MarketStack,
+    expected_allocation_state: FindingAllocationState,
+) -> TestResult {
     assert!(stack
         .store
         .get_current_admission(&stack.web.finding_id)?
@@ -1314,8 +1333,14 @@ async fn assert_nothing_admitted(stack: &MarketStack) -> TestResult {
     )
     .await?;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    assert_eq!(stack.allocation_state()?, FindingAllocationState::Live);
+    assert_eq!(stack.allocation_state()?, expected_allocation_state);
     Ok(())
+}
+
+/// A rejection before durable prepare leaves no admission and keeps the
+/// collateral allocation live.
+async fn assert_nothing_admitted(stack: &MarketStack) -> TestResult {
+    assert_not_admitted_with_allocation(stack, FindingAllocationState::Live).await
 }
 
 async fn assert_activation_rejected(
@@ -1448,6 +1473,72 @@ async fn finding_publish_discover_admission() -> TestResult {
     )
     .await?;
 
+    // The admission must pin an ACTIVE listing signed by the configured
+    // listing authority. Every terminal listing status rejects even when
+    // its envelope is otherwise valid and exactly bound.
+    for status in [
+        GenericListingStatus::Suspended,
+        GenericListingStatus::Superseded,
+        GenericListingStatus::Revoked,
+        GenericListingStatus::Retired,
+    ] {
+        let mut listing_body = web.listing.body.clone();
+        listing_body.status = status;
+        let listing = SignedGenericListing::sign(listing_body, &web.operator)?;
+        let mut admission_body =
+            web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+        admission_body.listing_envelope_sha256 = digest_of(&listing)?;
+        let admission = sign_admission(admission_body, &web.venue)?;
+        assert_activation_rejected(
+            &stack,
+            web.activate_request_with_listing(&admission, &web.schedule, &web.report, &listing)?,
+            "finding listing is not active",
+        )
+        .await?;
+    }
+
+    // Exact digest binding cannot turn a tampered listing into a valid
+    // signed artifact.
+    let mut tampered_listing = web.listing.clone();
+    tampered_listing.body.subject.display_name = Some("Tampered finding server".to_string());
+    let mut tampered_admission_body =
+        web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+    tampered_admission_body.listing_envelope_sha256 = digest_of(&tampered_listing)?;
+    let tampered_admission = sign_admission(tampered_admission_body, &web.venue)?;
+    assert_activation_rejected(
+        &stack,
+        web.activate_request_with_listing(
+            &tampered_admission,
+            &web.schedule,
+            &web.report,
+            &tampered_listing,
+        )?,
+        "finding listing signature is invalid",
+    )
+    .await?;
+
+    // A self-consistent listing authority embedded by the request cannot
+    // replace the deployment pin.
+    let attacker = keypair(25);
+    let mut forged_body = web.listing.body.clone();
+    forged_body.namespace_ownership.signer_public_key = attacker.public_key();
+    let forged_listing = SignedGenericListing::sign(forged_body, &attacker)?;
+    let mut forged_admission_body =
+        web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+    forged_admission_body.listing_envelope_sha256 = digest_of(&forged_listing)?;
+    let forged_admission = sign_admission(forged_admission_body, &web.venue)?;
+    assert_activation_rejected(
+        &stack,
+        web.activate_request_with_listing(
+            &forged_admission,
+            &web.schedule,
+            &web.report,
+            &forged_listing,
+        )?,
+        "configured listing authority",
+    )
+    .await?;
+
     // Wrong metadata binding.
     let mut wrong_metadata =
         web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
@@ -1560,11 +1651,19 @@ async fn finding_publish_discover_admission() -> TestResult {
         .ok_or_else(|| missing("publication fee intent must survive the rail outage"))?;
     assert_eq!(publication_event.state, FindingFeeState::Failed);
     assert!(publication_event.observation_sha256.is_none());
-    assert!(stack
+    let epoch_zero_event = stack
         .store
         .get_fee_event(&stack.epoch_fee_key(0))?
-        .is_none());
-    assert_nothing_admitted(&stack).await?;
+        .ok_or_else(|| missing("all fee intents must exist before activation prepare"))?;
+    assert_eq!(epoch_zero_event.state, FindingFeeState::Intent);
+    assert!(epoch_zero_event.observation_sha256.is_none());
+    assert_not_admitted_with_allocation(&stack, FindingAllocationState::Consumed).await?;
+    let attempt = stack
+        .store
+        .get_activation_attempt(&web.admission.body.admission_id)?
+        .ok_or_else(|| missing("durable activation prepare must survive the rail outage"))?;
+    assert_eq!(attempt.state, FindingActivationAttemptState::Prepared);
+    assert_eq!(attempt.envelope_json, web.admission_json);
 
     // Second leg: the SAME activation request retries against the working
     // rail and reconciles without double-charging.
@@ -1604,6 +1703,14 @@ async fn finding_publish_discover_admission() -> TestResult {
         assert_eq!(event.rail_destination, AUDIT_POOL_DESTINATION);
     }
     assert_eq!(stack.allocation_state()?, FindingAllocationState::Consumed);
+    assert_eq!(
+        stack
+            .store
+            .get_activation_attempt(&web.admission.body.admission_id)?
+            .ok_or_else(|| missing("activation attempt after finalization"))?
+            .state,
+        FindingActivationAttemptState::Activated
+    );
 
     // The qualified-profile marker: search now carries the admission
     // block, and the public admission surface serves the exact envelope.

@@ -105,6 +105,9 @@ impl FindingPoolPin {
 pub struct FindingMarketConfig {
     pub venue_id: String,
     pub venue: FindingAuthorityPin,
+    /// Namespace owner authorized to sign listings accepted by this
+    /// venue. This is independent of the fee-schedule operator roster.
+    pub listing: FindingAuthorityPin,
     pub governance_root: FindingAuthorityPin,
     pub verifier_report: FindingAuthorityPin,
     pub collateral: FindingAuthorityPin,
@@ -129,6 +132,7 @@ impl FindingMarketConfig {
             ));
         }
         self.venue.validate("venue")?;
+        self.listing.validate("listing")?;
         self.governance_root.validate("governance root")?;
         self.verifier_report.validate("verifier report")?;
         self.collateral.validate("collateral")?;

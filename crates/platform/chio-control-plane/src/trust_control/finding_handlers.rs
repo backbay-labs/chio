@@ -31,10 +31,13 @@ use chio_open_market::finding_admission::{
     FindingAllocationSnapshot as AdmissionAllocationSnapshot, FindingFeeScheduleGate,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
-use chio_open_market::listing::SignedGenericListing;
+use chio_open_market::listing::{
+    ensure_generic_listing_signed_by_namespace_owner, GenericListingStatus, SignedGenericListing,
+};
 use chio_store_sqlite::finding_market_store::{
-    finding_fee_idempotency_key, FindingAllocationState, FindingFeeIntent, FindingFeeIntentOutcome,
-    FindingRecordInput, SqliteFindingMarketStore,
+    finding_fee_idempotency_key, FindingActivationAttemptState,
+    FindingActivationPreparationOutcome, FindingAllocationState, FindingFeeIntent,
+    FindingFeeIntentOutcome, FindingRecordInput, SqliteFindingMarketStore,
 };
 
 use super::report_validation::validate_service_auth;
@@ -83,9 +86,17 @@ pub(crate) struct FindingRailObservation {
     pub rail: String,
 }
 
+struct PreparedFindingFeeCharge {
+    idempotency_key: String,
+    instruction: FindingRailInstruction,
+    instruction_sha256: String,
+}
+
 /// The evidenced rail seam: the deterministic venue-ledger observer is
 /// the rail implementation; tests inject failing observers to prove a
-/// failed charge cannot admit.
+/// failed charge cannot admit. Implementations must treat the
+/// instruction idempotency key as the replay key: retrying the same
+/// instruction may recover its observation but must not move money twice.
 pub(crate) trait FindingRailObserver: Send + Sync {
     fn dispatch(
         &self,
@@ -668,11 +679,11 @@ fn required_facets(
 }
 
 /// POST /v1/findings/{finding_id}/activate (authenticated): the durable
-/// idempotent activation transaction. Fee collection runs
-/// on the evidenced rail first; the store transaction then atomically
-/// asserts the reconciled terminals, consumes the allocation, and indexes
-/// the admission. A failed charge cannot publish for free and crash or
-/// retry replays idempotently.
+/// idempotent activation transaction. A durable prepare first claims the
+/// allocation for the exact admission. Fee collection then runs on the
+/// evidenced rail, and finalization atomically asserts the reconciled
+/// terminals and indexes the admission. A crash after settlement resumes
+/// from the prepare record without charging again.
 pub(crate) async fn handle_activate_finding(
     State(state): State<TrustServiceState>,
     AxumPath(finding_id): AxumPath<String>,
@@ -691,25 +702,55 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::BAD_REQUEST, "admission names another finding");
     }
     let now = unix_timestamp_now();
+    let admission_json = match chio_core::canonical_json_bytes(&request.admission)
+        .map_err(|_| ())
+        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ()))
+    {
+        Ok(json) => json,
+        Err(()) => {
+            return plain_http_error(StatusCode::BAD_REQUEST, "admission failed canonicalization")
+        }
+    };
+
+    // A prepared retry owns the consumed allocation named by these exact
+    // bytes. An activated retry is already complete, including when a
+    // later admission superseded it.
+    let activation_attempt_state = match store.get_activation_attempt(&admission.admission_id) {
+        Ok(Some(attempt)) => {
+            if attempt.envelope_json != admission_json {
+                return plain_http_error(
+                    StatusCode::BAD_REQUEST,
+                    "admission id is already bound to different activation bytes",
+                );
+            }
+            Some(attempt.state)
+        }
+        Ok(None) => None,
+        Err(error) => {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+        }
+    };
+    let prepared_replay = activation_attempt_state == Some(FindingActivationAttemptState::Prepared);
+    let mut completed_replay =
+        activation_attempt_state == Some(FindingActivationAttemptState::Activated);
 
     // Exact-replay short circuit: a retry of an already committed
     // activation must return the stored outcome instead of re-verifying
     // against the post-commit allocation state. Byte equality on the
-    // canonical envelope is the replay test; a different envelope for the
-    // same admission id falls through and rejects below.
-    if let Ok(Some(snapshot)) = store.get_current_admission(&finding_id) {
-        if snapshot.admission_id == admission.admission_id {
-            match chio_core::canonical_json_bytes(&request.admission) {
-                Ok(bytes) if bytes == snapshot.envelope_json.as_bytes() => {
-                    return Json(serde_json::json!({
-                        "admissionId": admission.admission_id,
-                        "outcome": "ExactReplay",
-                    }))
-                    .into_response();
-                }
-                _ => {}
+    // canonical envelope is the replay test. Listing pin, signature, and
+    // status checks still run below before the success is returned.
+    match store.get_current_admission(&finding_id) {
+        Ok(Some(snapshot)) if snapshot.admission_id == admission.admission_id => {
+            if admission_json != snapshot.envelope_json {
+                return plain_http_error(
+                    StatusCode::BAD_REQUEST,
+                    "admission id is already bound to different bytes",
+                );
             }
+            completed_replay = true;
         }
+        Ok(_) => {}
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 
     // The published finding is the root of every binding.
@@ -743,6 +784,35 @@ pub(crate) async fn handle_activate_finding(
     };
     if listing_digest != admission.listing_envelope_sha256 {
         return plain_http_error(StatusCode::BAD_REQUEST, "listing envelope digest mismatch");
+    }
+    if let Err(error) =
+        ensure_generic_listing_signed_by_namespace_owner(&request.listing, "finding listing")
+    {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
+    let listing_authority = match config.listing.key() {
+        Ok(key) => key,
+        Err(error) => {
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+        }
+    };
+    if request.listing.signer_key != listing_authority
+        || request.listing.body.namespace_ownership.owner_id != config.listing.authority_id
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding listing signer does not match the configured listing authority",
+        );
+    }
+    if request.listing.body.status != GenericListingStatus::Active {
+        return plain_http_error(StatusCode::BAD_REQUEST, "finding listing is not active");
+    }
+    if completed_replay {
+        return Json(serde_json::json!({
+            "admissionId": admission.admission_id,
+            "outcome": "ExactReplay",
+        }))
+        .into_response();
     }
     let hint_digest = match canonical_digest_of(&request.pricing_hint) {
         Ok(digest) => digest,
@@ -885,7 +955,8 @@ pub(crate) async fn handle_activate_finding(
         terms: &request.terms,
         backing: &request.backing,
         allocation_snapshot: AdmissionAllocationSnapshot {
-            live: allocation.state == FindingAllocationState::Live,
+            live: allocation.state == FindingAllocationState::Live
+                || (prepared_replay && allocation.state == FindingAllocationState::Consumed),
             accepted_at: allocation.accepted_at,
         },
         collateral_authority: &collateral_key,
@@ -982,10 +1053,9 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, "terms retention failed");
     }
 
-    // Fee collection on the evidenced rail, one terminal at a time:
-    // intent (durable idempotency fence) -> rail dispatch -> exact
-    // reconciliation. The admission's bound digests must equal the
-    // locally computed instruction/observation commitments.
+    // Validate every fee terminal and install every idempotency fence
+    // before the allocation is prepared. No rail dispatch occurs until
+    // all local fee inputs are known to be internally consistent.
     let Some(rail) = state.finding_rail.as_ref() else {
         return plain_http_error(
             StatusCode::CONFLICT,
@@ -996,6 +1066,7 @@ pub(crate) async fn handle_activate_finding(
         Ok(digest) => digest,
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
+    let mut charges = Vec::with_capacity(admission.fee_terminals.len());
     for terminal in &admission.fee_terminals {
         if terminal.fee_schedule_envelope_sha256 != schedule_digest {
             return plain_http_error(StatusCode::BAD_REQUEST, "fee terminal schedule mismatch");
@@ -1046,6 +1117,14 @@ pub(crate) async fn handle_activate_finding(
                 "fee terminal instruction commitment mismatch",
             );
         }
+        charges.push(PreparedFindingFeeCharge {
+            idempotency_key,
+            instruction,
+            instruction_sha256,
+        });
+    }
+    let mut fee_outcomes = Vec::with_capacity(charges.len());
+    for (terminal, charge) in admission.fee_terminals.iter().zip(&charges) {
         let intent = FindingFeeIntent {
             fee_schedule_envelope_sha256: &schedule_digest,
             event: &terminal.event,
@@ -1055,25 +1134,50 @@ pub(crate) async fn handle_activate_finding(
             amount: &terminal.amount,
             pool_principal_id: &terminal.pool_principal_id,
             rail_destination: &terminal.rail_destination,
-            instruction_sha256: &instruction_sha256,
+            instruction_sha256: &charge.instruction_sha256,
         };
         match store.begin_fee_intent(&intent) {
-            Ok(fenced) if fenced.outcome == FindingFeeIntentOutcome::AlreadyReconciled => {
-                // Settled by an earlier attempt: dispatching again would
-                // ask the rail to move the same money twice.
-                continue;
-            }
-            Ok(_) => {}
+            Ok(fenced) => fee_outcomes.push(fenced.outcome),
             Err(error) => {
                 return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
             }
         }
-        let observation = match rail.dispatch(&instruction) {
+    }
+
+    // Claim the allocation and retain the exact admission before money
+    // can move. A crash from here onward leaves a replayable prepare
+    // record, so a reconciled charge cannot lose its activation owner to
+    // a concurrent allocation consumer.
+    match store.prepare_listing_activation(&admission_json, admission, now) {
+        Ok(FindingActivationPreparationOutcome::Prepared)
+        | Ok(FindingActivationPreparationOutcome::PendingReplay) => {}
+        Ok(FindingActivationPreparationOutcome::AlreadyActivated) => {
+            return Json(serde_json::json!({
+                "admissionId": admission.admission_id,
+                "outcome": "ExactReplay",
+            }))
+            .into_response();
+        }
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    }
+
+    // Dispatch and reconcile each unsettled terminal. Reconciled intents
+    // from an earlier attempt are never dispatched twice.
+    for ((terminal, charge), outcome) in admission
+        .fee_terminals
+        .iter()
+        .zip(&charges)
+        .zip(fee_outcomes)
+    {
+        if outcome == FindingFeeIntentOutcome::AlreadyReconciled {
+            continue;
+        }
+        let observation = match rail.dispatch(&charge.instruction) {
             Ok(observation) => observation,
             Err(reason) => {
-                // The intent stays durable and unreconciled; activation
-                // below cannot complete, so a failed charge cannot admit.
-                let _ = store.mark_fee_failed(&idempotency_key);
+                // The intent and prepare record stay durable. No admission
+                // becomes active, and an identical retry can resume.
+                let _ = store.mark_fee_failed(&charge.idempotency_key);
                 return plain_http_error(
                     StatusCode::BAD_GATEWAY,
                     &format!("rail dispatch failed: {reason}"),
@@ -1091,7 +1195,7 @@ pub(crate) async fn handle_activate_finding(
             );
         }
         if let Err(error) = store.mark_fee_reconciled(
-            &idempotency_key,
+            &charge.idempotency_key,
             &observation_sha256,
             &terminal.amount,
             &terminal.rail_destination,
@@ -1100,18 +1204,9 @@ pub(crate) async fn handle_activate_finding(
         }
     }
 
-    // The atomic activation: reconciled terminals asserted, allocation
-    // consumed, admission indexed, prior admission superseded; any
-    // failure rolls the whole transaction back.
-    let admission_json = match chio_core::canonical_json_bytes(&request.admission)
-        .map_err(|_| ())
-        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ()))
-    {
-        Ok(json) => json,
-        Err(()) => {
-            return plain_http_error(StatusCode::BAD_REQUEST, "admission failed canonicalization")
-        }
-    };
+    // Finalization atomically checks every reconciled terminal, inserts
+    // the active admission, supersedes the prior active row, and marks
+    // the durable prepare complete.
     match store.activate_listing(&admission_json, admission, now) {
         Ok(outcome) => Json(serde_json::json!({
             "admissionId": admission.admission_id,

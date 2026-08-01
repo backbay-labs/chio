@@ -236,7 +236,8 @@ pub use encrypted_blob::{
 pub use execution_nonce_store::{SqliteExecutionNonceStore, SqliteExecutionNonceStoreError};
 #[cfg(feature = "cognition-market-experimental")]
 pub use finding_market_store::{
-    finding_fee_idempotency_key, FindingActivationOutcome, FindingAdmissionSnapshot,
+    finding_fee_idempotency_key, FindingActivationAttemptSnapshot, FindingActivationAttemptState,
+    FindingActivationOutcome, FindingActivationPreparationOutcome, FindingAdmissionSnapshot,
     FindingAllocationSnapshot, FindingAllocationState, FindingFeeEventRecord, FindingFeeIntent,
     FindingFeeIntentOutcome, FindingFeeIntentResult, FindingFeeState, FindingMarketStoreError,
     FindingPutOutcome, FindingRecordInput, FindingSearchRow, SqliteFindingMarketStore,

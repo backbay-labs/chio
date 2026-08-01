@@ -741,8 +741,37 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     );
     let admission_envelope = envelope_string(&admission, &venue);
 
-    // (i) An unreconciled fee event rolls the whole transaction back: no
-    // admission is inserted and the allocation stays live.
+    // Finalization cannot bypass the durable prepare, even when some fee
+    // events already exist. The allocation remains available until the
+    // exact activation owns it.
+    let unprepared = fixture
+        .store
+        .activate_listing(&admission_envelope, &admission, NOW);
+    assert!(matches!(
+        unprepared,
+        Err(FindingMarketStoreError::Conflict(ref detail))
+            if detail.contains("not durably prepared")
+    ));
+    assert_eq!(
+        fixture
+            .store
+            .get_allocation(&backing.allocation_id)
+            .expect("get unprepared allocation")
+            .expect("unprepared allocation present")
+            .state,
+        FindingAllocationState::Live
+    );
+
+    // (i) Prepare claims the allocation before any fee can settle and
+    // retains the exact prospective admission. Finalization still refuses
+    // an unreconciled fee, leaving the attempt replayable.
+    assert_eq!(
+        fixture
+            .store
+            .prepare_listing_activation(&admission_envelope, &admission, NOW)
+            .expect("prepare activation"),
+        FindingActivationPreparationOutcome::Prepared
+    );
     let unreconciled = fixture
         .store
         .activate_listing(&admission_envelope, &admission, NOW);
@@ -762,8 +791,66 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
         .expect("allocation present");
     assert_eq!(
         live.state,
+        FindingAllocationState::Consumed,
+        "the durable prepare must own the allocation before fee settlement"
+    );
+    let prepared = fixture
+        .store
+        .get_activation_attempt(&admission.admission_id)
+        .expect("get prepare record")
+        .expect("prepare record present");
+    assert_eq!(prepared.state, FindingActivationAttemptState::Prepared);
+    assert_eq!(prepared.envelope_json, admission_envelope);
+    assert_eq!(
+        fixture
+            .store
+            .prepare_listing_activation(&admission_envelope, &admission, NOW + 1)
+            .expect("replay prepare"),
+        FindingActivationPreparationOutcome::PendingReplay
+    );
+    let conflicting_envelope = envelope_string(&admission, &keypair(32));
+    assert!(
+        matches!(
+            fixture
+                .store
+                .prepare_listing_activation(&conflicting_envelope, &admission, NOW + 1),
+            Err(FindingMarketStoreError::Conflict(_))
+        ),
+        "the same admission id cannot bind different prepare bytes"
+    );
+
+    // A competing admission for the same finding/listing cannot claim a
+    // second allocation while the first prepare is pending.
+    let second_backing = backing_body(&finding_id, "vault:finding-collateral-2");
+    let second_backing_envelope = envelope_string(&second_backing, &collateral);
+    let second_backing_sha256 = chio_core::sha256_hex(second_backing_envelope.as_bytes());
+    fixture
+        .store
+        .register_allocation(&second_backing_envelope, &second_backing, NOW + 10)
+        .expect("register second allocation");
+    let second_admission = admission_body(
+        &finding_id,
+        &artifact_sha256,
+        &second_backing,
+        &second_backing_sha256,
+    );
+    assert_ne!(second_admission.admission_id, admission.admission_id);
+    let second_envelope = envelope_string(&second_admission, &venue);
+    assert!(matches!(
+        fixture
+            .store
+            .prepare_listing_activation(&second_envelope, &second_admission, NOW + 10),
+        Err(FindingMarketStoreError::Conflict(_))
+    ));
+    assert_eq!(
+        fixture
+            .store
+            .get_allocation(&second_backing.allocation_id)
+            .expect("get competing allocation")
+            .expect("competing allocation present")
+            .state,
         FindingAllocationState::Live,
-        "a failed activation must not consume the allocation"
+        "a competing prepare must not consume another allocation"
     );
 
     // (ii) After reconciling, activation succeeds atomically.
@@ -792,8 +879,24 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     assert_eq!(current.expires_at, admission.expires_at);
     assert_eq!(current.backing_allocation_id, backing.allocation_id);
     assert_eq!(current.allocation_state, FindingAllocationState::Consumed);
+    assert_eq!(
+        fixture
+            .store
+            .get_activation_attempt(&admission.admission_id)
+            .expect("get activated attempt")
+            .expect("activated attempt present")
+            .state,
+        FindingActivationAttemptState::Activated
+    );
 
     // (iii) Re-running the same activation replays as a no-op success.
+    assert_eq!(
+        fixture
+            .store
+            .prepare_listing_activation(&admission_envelope, &admission, NOW + 5)
+            .expect("replay completed prepare"),
+        FindingActivationPreparationOutcome::AlreadyActivated
+    );
     assert_eq!(
         fixture
             .store
@@ -802,7 +905,7 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
         FindingActivationOutcome::ExactReplay
     );
     // Conflicting bytes under the same admission id reject.
-    let tampered = envelope_string(&admission, &keypair(32));
+    let tampered = envelope_string(&admission, &keypair(33));
     assert!(
         matches!(
             fixture
@@ -815,21 +918,13 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
 
     // (iv) A superseding admission (fresh allocation, new admission id)
     // marks the prior admission superseded and becomes current.
-    let second_backing = backing_body(&finding_id, "vault:finding-collateral-2");
-    let second_backing_envelope = envelope_string(&second_backing, &collateral);
-    let second_backing_sha256 = chio_core::sha256_hex(second_backing_envelope.as_bytes());
-    fixture
-        .store
-        .register_allocation(&second_backing_envelope, &second_backing, NOW + 10)
-        .expect("register second allocation");
-    let second_admission = admission_body(
-        &finding_id,
-        &artifact_sha256,
-        &second_backing,
-        &second_backing_sha256,
+    assert_eq!(
+        fixture
+            .store
+            .prepare_listing_activation(&second_envelope, &second_admission, NOW + 20)
+            .expect("prepare superseding admission"),
+        FindingActivationPreparationOutcome::Prepared
     );
-    assert_ne!(second_admission.admission_id, admission.admission_id);
-    let second_envelope = envelope_string(&second_admission, &venue);
     assert_eq!(
         fixture
             .store

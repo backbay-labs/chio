@@ -191,6 +191,63 @@ BEGIN
     SELECT RAISE(ABORT, 'fee event is a charge tombstone');
 END;
 
+CREATE TABLE IF NOT EXISTS finding_activation_attempts (
+    admission_id TEXT NOT NULL PRIMARY KEY
+        CHECK (length(admission_id) = 64 AND admission_id NOT GLOB '*[^0-9a-f]*'),
+    finding_id TEXT NOT NULL
+        CHECK (length(finding_id) = 64 AND finding_id NOT GLOB '*[^0-9a-f]*'),
+    listing_id TEXT NOT NULL CHECK (length(listing_id) BETWEEN 1 AND 512),
+    backing_allocation_id TEXT NOT NULL CHECK (
+        length(backing_allocation_id) = 64
+        AND backing_allocation_id NOT GLOB '*[^0-9a-f]*'
+    ),
+    admission_envelope_sha256 TEXT NOT NULL CHECK (
+        length(admission_envelope_sha256) = 64
+        AND admission_envelope_sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+    admission_envelope_json TEXT NOT NULL CHECK (
+        typeof(admission_envelope_json) = 'text'
+        AND length(admission_envelope_json) BETWEEN 1 AND 262144
+    ),
+    prepared_at INTEGER NOT NULL CHECK (prepared_at > 0),
+    state TEXT NOT NULL CHECK (state IN ('prepared', 'activated')),
+    FOREIGN KEY (finding_id) REFERENCES findings(finding_id),
+    FOREIGN KEY (backing_allocation_id)
+        REFERENCES collateral_allocations(allocation_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS finding_activation_attempts_prepared_finding
+    ON finding_activation_attempts(finding_id) WHERE state = 'prepared';
+
+CREATE UNIQUE INDEX IF NOT EXISTS finding_activation_attempts_prepared_listing
+    ON finding_activation_attempts(listing_id) WHERE state = 'prepared';
+
+CREATE TRIGGER IF NOT EXISTS finding_activation_attempts_immutable_identity
+BEFORE UPDATE ON finding_activation_attempts
+WHEN NEW.admission_id <> OLD.admission_id
+  OR NEW.finding_id <> OLD.finding_id
+  OR NEW.listing_id <> OLD.listing_id
+  OR NEW.backing_allocation_id <> OLD.backing_allocation_id
+  OR NEW.admission_envelope_sha256 <> OLD.admission_envelope_sha256
+  OR NEW.admission_envelope_json <> OLD.admission_envelope_json
+  OR NEW.prepared_at <> OLD.prepared_at
+BEGIN
+    SELECT RAISE(ABORT, 'finding activation attempt identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS finding_activation_attempts_lifecycle
+BEFORE UPDATE OF state ON finding_activation_attempts
+WHEN NOT (OLD.state = 'prepared' AND NEW.state = 'activated')
+BEGIN
+    SELECT RAISE(ABORT, 'finding activation attempt only moves prepared to activated');
+END;
+
+CREATE TRIGGER IF NOT EXISTS finding_activation_attempts_no_delete
+BEFORE DELETE ON finding_activation_attempts
+BEGIN
+    SELECT RAISE(ABORT, 'finding activation attempt must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS admissions (
     admission_id TEXT NOT NULL PRIMARY KEY
         CHECK (length(admission_id) = 64 AND admission_id NOT GLOB '*[^0-9a-f]*'),
