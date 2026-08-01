@@ -162,6 +162,31 @@ pub(crate) fn require_currency(currency: &str, field: &'static str) -> Result<()
     Ok(())
 }
 
+/// Require a carried member to be present, bounded, and byte-identical to
+/// its own strict canonicalization.
+///
+/// Carried bytes are transport, never authority: the consumer re-derives
+/// every identity from them, so a member that does not canonicalize back to
+/// itself is rejected before anything reads its content.
+pub(crate) fn require_canonical_json_text(
+    value: &str,
+    field: &'static str,
+    max_bytes: usize,
+) -> Result<(), FindingError> {
+    if value.is_empty() {
+        return Err(FindingError::EmptyField(field));
+    }
+    if value.len() > max_bytes {
+        return Err(FindingError::SizeLimitExceeded(field));
+    }
+    let canonical = chio_core_types::canonical_json_bytes_from_str(value)
+        .map_err(|_| FindingError::NonCanonicalBytes(field))?;
+    if canonical.as_slice() != value.as_bytes() {
+        return Err(FindingError::NonCanonicalBytes(field));
+    }
+    Ok(())
+}
+
 pub(crate) fn require_window(
     issued_at: u64,
     expires_at: u64,

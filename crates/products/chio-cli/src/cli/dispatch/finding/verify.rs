@@ -2,8 +2,12 @@ use super::*;
 
 use std::io::Read;
 
+use chio_appraisal::SignedRuntimeAttestationAppraisalReport;
+use chio_core_types::capability::runtime_attestation::RuntimeAttestationEvidence;
+use chio_core_types::capability::trust_policy::AttestationTrustPolicy;
 use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_core_types::receipt::body::ChioReceipt;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
     Finding, FindingFacetKind, FindingFacetOutcome, SignedFindingBondBacking,
@@ -13,7 +17,9 @@ use chio_finding_verifier::{
     verify_finding_evidence, FindingBondSnapshot, FindingEvidenceBundle, FindingVerifierDraft,
     FindingVerifierTrustRoots, NoNonceEvidence, ResolvedReceiptEvidence, MAX_RAW_FINDING_BYTES,
 };
-use chio_kernel::checkpoint::{KernelCheckpoint, ReceiptInclusionProof};
+use chio_kernel::checkpoint::{
+    CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
+};
 
 const FINDING_SCHEMA_JSON: &str =
     include_str!("../../../../../../../spec/schemas/chio-finding/v1/finding.schema.json");
@@ -26,10 +32,10 @@ pub(super) const FINDING_VERIFY_SUPPORT_MAX_BYTES: usize = 512 * 1024;
 const RESOLVER_POLICY_ID: &str = "chio-cli/finding-verify";
 
 /// An artifact that cleared the strict raw-first ingress.
-struct AcceptedFinding {
-    raw: String,
-    finding: Finding,
-    artifact_sha256: String,
+pub(super) struct AcceptedFinding {
+    pub(super) raw: String,
+    pub(super) finding: Finding,
+    pub(super) artifact_sha256: String,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -43,7 +49,7 @@ pub(super) fn cmd_finding_verify(
     json_output: bool,
     control_url: Option<&str>,
 ) -> Result<(), CliError> {
-    let (raw, source) = match (file, id) {
+    let accepted = match (file, id) {
         (Some(path), None) => {
             let bytes = fs::read(path)?;
             if bytes.len() > MAX_RAW_FINDING_BYTES {
@@ -56,19 +62,12 @@ pub(super) fn cmd_finding_verify(
             let raw = String::from_utf8(bytes).map_err(|error| {
                 CliError::cli_other_error(format!("{} is not valid UTF-8: {error}", path.display()))
             })?;
-            (raw, path.display().to_string())
+            strict_finding_ingress(raw, &path.display().to_string())?
         }
         (None, Some(finding_id)) => {
             let url = require_control_url(control_url)?;
             let finding_id = require_finding_id(finding_id)?;
-            let raw = fetch_finding_bytes(url, finding_id)?;
-            if raw.len() > MAX_RAW_FINDING_BYTES {
-                return Err(CliError::cli_other_error(format!(
-                    "finding {finding_id} is {} bytes, above the {MAX_RAW_FINDING_BYTES} byte finding bound",
-                    raw.len()
-                )));
-            }
-            (raw, format!("finding {finding_id}"))
+            accept_finding_from_venue(url, finding_id)?
         }
         _ => {
             return Err(CliError::cli_other_error(
@@ -76,16 +75,6 @@ pub(super) fn cmd_finding_verify(
             ))
         }
     };
-
-    let accepted = strict_finding_ingress(raw, &source)?;
-    if let Some(requested_id) = id {
-        if accepted.finding.finding_id != requested_id {
-            return Err(CliError::cli_other_error(format!(
-                "venue returned finding {} for requested id {requested_id}",
-                accepted.finding.finding_id
-            )));
-        }
-    }
 
     if integrity_only {
         emit_integrity_only(&accepted, json_output)?;
@@ -119,6 +108,9 @@ pub(super) fn cmd_finding_verify(
         profile: roots.profile,
         admitted_kernel_keys: roots.admitted_kernel_keys,
         collateral_authority: roots.collateral_authority,
+        runtime_attestation_authority: roots.runtime_attestation_authority,
+        appraisal_authority: roots.appraisal_authority,
+        attestation_trust_policy: roots.attestation_trust_policy,
         trusted_time,
         trust_root_snapshot_sha256,
         resolver_policy_sha256: resolver_policy_digest(
@@ -141,7 +133,10 @@ pub(super) fn cmd_finding_verify(
     let bundle = FindingEvidenceBundle {
         receipts,
         checkpoints: evidence_file.checkpoints,
+        checkpoint_transparency: evidence_file.checkpoint_transparency,
         recipe_preimage: recipe_preimage.as_deref(),
+        runtime_attestation: evidence_file.runtime_attestation,
+        runtime_appraisal: evidence_file.runtime_appraisal,
         bond_snapshot: evidence_file.bond_snapshot.map(FindingBondSnapshot::from),
         nonce_resolver: &nonce_resolver,
     };
@@ -152,11 +147,37 @@ pub(super) fn cmd_finding_verify(
     emit_evidence_report(&accepted, &draft, &trust.profile.body, json_output)
 }
 
+/// Fetch one stored artifact by its content address and run the strict
+/// raw-first ingress over the exact bytes the venue served.
+pub(super) fn accept_finding_from_venue(
+    control_url: &str,
+    finding_id: &str,
+) -> Result<AcceptedFinding, CliError> {
+    let raw = fetch_finding_bytes(control_url, finding_id)?;
+    if raw.len() > MAX_RAW_FINDING_BYTES {
+        return Err(CliError::cli_other_error(format!(
+            "finding {finding_id} is {} bytes, above the {MAX_RAW_FINDING_BYTES} byte finding bound",
+            raw.len()
+        )));
+    }
+    let accepted = strict_finding_ingress(raw, &format!("finding {finding_id}"))?;
+    if accepted.finding.finding_id != finding_id {
+        return Err(CliError::cli_other_error(format!(
+            "venue returned finding {} for requested id {finding_id}",
+            accepted.finding.finding_id
+        )));
+    }
+    Ok(accepted)
+}
+
 /// The strict raw-first ingress the publish surface applies, run before
 /// any evidence question is asked: an artifact that is not exactly its
 /// own canonical serialization is rejected outright rather than
 /// normalized into acceptance.
-fn strict_finding_ingress(raw: String, source: &str) -> Result<AcceptedFinding, CliError> {
+pub(super) fn strict_finding_ingress(
+    raw: String,
+    source: &str,
+) -> Result<AcceptedFinding, CliError> {
     let strict_bytes = canonical_json_bytes_from_str(&raw).map_err(|error| {
         CliError::cli_other_error(format!("{source} is not strict canonical I-JSON: {error}"))
     })?;
@@ -206,6 +227,12 @@ struct FindingTrustRootsFile {
     admitted_kernel_keys: Vec<PublicKey>,
     collateral_authority: PublicKey,
     #[serde(default)]
+    runtime_attestation_authority: Option<PublicKey>,
+    #[serde(default)]
+    appraisal_authority: Option<PublicKey>,
+    #[serde(default)]
+    attestation_trust_policy: Option<AttestationTrustPolicy>,
+    #[serde(default)]
     trusted_time: Option<u64>,
 }
 
@@ -216,6 +243,12 @@ struct FindingEvidenceFile {
     receipts: Vec<FindingEvidenceReceiptEntry>,
     #[serde(default)]
     checkpoints: Vec<KernelCheckpoint>,
+    #[serde(default)]
+    checkpoint_transparency: CheckpointTransparencySummary,
+    #[serde(default)]
+    runtime_attestation: Option<SignedExportEnvelope<RuntimeAttestationEvidence>>,
+    #[serde(default)]
+    runtime_appraisal: Option<SignedRuntimeAttestationAppraisalReport>,
     #[serde(default)]
     bond_snapshot: Option<FindingBondSnapshotEntry>,
 }

@@ -19,7 +19,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 
-use crate::validate::{require_bounded_id, FindingError};
+use crate::validate::{require_bounded_id, require_canonical_json_text, FindingError};
 
 /// Unsigned buyer-presented purchase context.
 pub const PURCHASE_CONTEXT_SCHEMA: &str = "chio.finding.purchase-context.v1";
@@ -122,7 +122,7 @@ impl FindingPurchaseContext {
         }
         let mut total = 0_usize;
         for (field, value) in self.canonical_members() {
-            require_canonical_member(value, field)?;
+            require_canonical_json_text(value, field, PURCHASE_CONTEXT_MAX_CANONICAL_BYTES)?;
             total = total
                 .checked_add(value.len())
                 .ok_or(FindingError::SizeLimitExceeded("purchase_context"))?;
@@ -132,23 +132,6 @@ impl FindingPurchaseContext {
         }
         require_bounded_id(&self.reservation_store_key, "reservation_store_key")
     }
-}
-
-/// Require one carried member to be present, bounded, and byte-identical to
-/// its own strict canonicalization.
-fn require_canonical_member(value: &str, field: &'static str) -> Result<(), FindingError> {
-    if value.is_empty() {
-        return Err(FindingError::EmptyField(field));
-    }
-    if value.len() > PURCHASE_CONTEXT_MAX_CANONICAL_BYTES {
-        return Err(FindingError::SizeLimitExceeded(field));
-    }
-    let canonical = chio_core_types::canonical_json_bytes_from_str(value)
-        .map_err(|_| FindingError::NonCanonicalBytes(field))?;
-    if canonical.as_slice() != value.as_bytes() {
-        return Err(FindingError::NonCanonicalBytes(field));
-    }
-    Ok(())
 }
 
 /// Parse a raw purchase context, fail-closed.
