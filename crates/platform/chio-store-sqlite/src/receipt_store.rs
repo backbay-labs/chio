@@ -2870,8 +2870,6 @@ fn append_receipt_batch(
     let tx = connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(ReceiptStoreError::Sqlite)?;
-    #[cfg(feature = "chaos-test-hooks")]
-    chaos_test_hooks::pause_inflight_append()?;
     if !incremental_verification {
         verify_latest_checkpoint_integrity(&tx)?;
     }
@@ -2944,6 +2942,8 @@ fn append_receipt_batch(
         .copied()
         .collect::<std::collections::BTreeSet<u64>>()
         .len() as u64;
+    #[cfg(feature = "chaos-test-hooks")]
+    chaos_test_hooks::pause_after_receipt_write_before_commit(inserted > 0)?;
     // O(b) projection cross-check over the delta only: the claim-log
     // projection triggers (bootstrap/open.rs:676 tool, :711 child) must have
     // advanced the projection by exactly the rows this batch inserted.

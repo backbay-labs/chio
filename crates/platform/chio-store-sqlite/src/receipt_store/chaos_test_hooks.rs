@@ -8,17 +8,24 @@ use std::time::{Duration, Instant};
 #[cfg(feature = "chaos-test-hooks")]
 use chio_kernel::ReceiptStoreError;
 
-/// Pause after `BEGIN IMMEDIATE` has acquired the SQLite write transaction and
-/// before the first receipt record is written. The separate-process chaos
-/// victim enables this hook with unique paths and a seeded batch number. A
-/// release file lets focused harnesses resume; the crash lane kills the process.
+/// Pause after a new receipt and its claim-log projection have been written in
+/// the SQLite transaction, but before the transaction commits. The
+/// separate-process chaos victim enables this hook with unique paths and a
+/// seeded batch number. A release file lets focused harnesses resume; the crash
+/// lane kills the process. An all-idempotent or all-rejected batch cannot
+/// publish the marker because it made no new durable-state mutation.
 #[cfg(feature = "chaos-test-hooks")]
-pub(super) fn pause_inflight_append() -> Result<(), ReceiptStoreError> {
+pub(super) fn pause_after_receipt_write_before_commit(
+    inserted_new_receipt: bool,
+) -> Result<(), ReceiptStoreError> {
     const READY_ENV: &str = "CHIO_CHAOS_APPEND_READY_PATH";
     const RELEASE_ENV: &str = "CHIO_CHAOS_APPEND_RELEASE_PATH";
     const PAUSE_BATCH_ENV: &str = "CHIO_CHAOS_APPEND_PAUSE_BATCH";
     const HOOK_TIMEOUT: Duration = Duration::from_secs(30);
 
+    if !inserted_new_receipt {
+        return Ok(());
+    }
     let (ready, release, pause_batch) = match (
         std::env::var_os(READY_ENV),
         std::env::var_os(RELEASE_ENV),
@@ -59,7 +66,7 @@ pub(super) fn pause_inflight_append() -> Result<(), ReceiptStoreError> {
         .create_new(true)
         .open(&ready)
         .map_err(ReceiptStoreError::Io)?;
-    std::io::Write::write_all(&mut marker, b"append-transaction-open\n")
+    std::io::Write::write_all(&mut marker, b"receipt-written-before-commit\n")
         .map_err(ReceiptStoreError::Io)?;
     marker.sync_all().map_err(ReceiptStoreError::Io)?;
 

@@ -9,7 +9,7 @@
 //! located through `CARGO_BIN_EXE_chaos_victim`; the test never shells out to
 //! cargo.
 
-#![cfg(unix)]
+#![cfg(all(unix, feature = "chaos-victim"))]
 
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
@@ -140,9 +140,9 @@ fn chaos_kill_mid_append_preserves_durable_acks() {
     );
 }
 
-/// Wait until the victim's writer has acquired `BEGIN IMMEDIATE` and published
-/// the feature-gated marker from inside `append_receipt_batch`. A process exit,
-/// marker I/O failure, or timeout is a failed injection, never a benign race.
+/// Wait until the victim has written a receipt inside its transaction and
+/// published the feature-gated pre-commit marker. A process exit, marker I/O
+/// failure, or timeout is a failed injection, never a benign race.
 fn wait_for_inflight_append(
     child: &mut std::process::Child,
     ready_path: &Path,

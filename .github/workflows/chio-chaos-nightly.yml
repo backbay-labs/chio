@@ -45,11 +45,11 @@ jobs:
         env:
           CARGO_BUILD_JOBS: "4"
         run: |
-          cargo build -p chio-chaos --release --bin chaos_victim
-          cargo test -p chio-chaos --release --no-run
+          cargo build -p chio-chaos --release --features chaos-victim --bin chaos_victim
+          cargo test -p chio-chaos --release --features chaos-victim --no-run
 
       - name: Run chaos scenarios
-        run: cargo test -p chio-chaos --release -- --nocapture
+        run: cargo test -p chio-chaos --release --features chaos-victim -- --nocapture
 
   chio-chaos-windows-compile:
     name: chio chaos windows compile
@@ -79,4 +79,4 @@ jobs:
       - name: Compile portable chaos tests
         env:
           CARGO_BUILD_JOBS: "4"
-        run: cargo test -p chio-chaos --tests --no-run
+        run: cargo test -p chio-chaos --features chaos-victim --tests --no-run

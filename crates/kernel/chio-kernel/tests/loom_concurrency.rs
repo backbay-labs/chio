@@ -153,7 +153,10 @@ fn loom_real_session_admission_never_outlives_terminal() {
                 "agent-loom".to_string(),
                 Vec::new(),
             );
-            session.activate().expect("session activates to ready");
+            assert!(
+                session.activate().is_ok(),
+                "session should activate to ready"
+            );
             Arc::new(session)
         };
 
@@ -181,8 +184,11 @@ fn loom_real_session_admission_never_outlives_terminal() {
             let _ = close_session.close();
         });
 
-        let admitted = admit.join().expect("admit thread joins");
-        close.join().expect("close thread joins");
+        let admitted = match admit.join() {
+            Ok(admitted) => admitted,
+            Err(_) => panic!("admit thread should join"),
+        };
+        assert!(close.join().is_ok(), "close thread should join");
 
         let final_state = session.state();
         let admitted_inflight = session.inflight().get(&request_id).is_some();
