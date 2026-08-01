@@ -725,12 +725,22 @@ pub(super) fn verify_payment_terminal_source<'a>(
             transaction,
             operation.binding().operation_id().as_str(),
         )
-        .map_err(|error| AdmissionOperationStoreError::Invariant(error.to_string()))?
-        .ok_or_else(|| {
-            AdmissionOperationStoreError::Invariant(
-                "pre-dispatch compensation lost its payment journal".to_owned(),
-            )
-        })?;
+        .map_err(|error| AdmissionOperationStoreError::Invariant(error.to_string()))?;
+        let payment_acquired = operation.payment_participant_id().is_some();
+        let Some(journal) = journal else {
+            if payment_acquired {
+                return Err(AdmissionOperationStoreError::Invariant(
+                    "pre-dispatch compensation lost its acquired payment journal".to_owned(),
+                ));
+            }
+            return Ok(());
+        };
+        if !payment_acquired {
+            return Err(AdmissionOperationStoreError::Invariant(
+                "pre-dispatch compensation found a journal for a payment participant that was never acquired"
+                    .to_owned(),
+            ));
+        }
         journal
             .validate()
             .map_err(|error| AdmissionOperationStoreError::Invariant(error.to_string()))?;
@@ -788,12 +798,14 @@ pub(super) fn verify_payment_terminal_source<'a>(
         return verify_payment_terminal_record(
             record_id,
             bytes,
-            receipt_record,
-            operation,
-            context,
-            terminal_state,
-            &journal,
-            authoritative_outcome.as_ref(),
+            PaymentTerminalVerificationV1 {
+                receipt_record,
+                operation,
+                context,
+                terminal_state,
+                journal: &journal,
+                authoritative_outcome: authoritative_outcome.as_ref(),
+            },
         );
     }
     if records.len() != usize::from(requires_payment) {
@@ -827,13 +839,24 @@ pub(super) fn verify_payment_terminal_source<'a>(
     verify_payment_terminal_record(
         record_id,
         bytes,
-        receipt_record,
-        operation,
-        context,
-        terminal_state,
-        &journal,
-        None,
+        PaymentTerminalVerificationV1 {
+            receipt_record,
+            operation,
+            context,
+            terminal_state,
+            journal: &journal,
+            authoritative_outcome: None,
+        },
     )
+}
+
+struct PaymentTerminalVerificationV1<'a> {
+    receipt_record: Option<&'a [u8]>,
+    operation: &'a AdmissionOperationV1,
+    context: &'a chio_kernel::admission_operation::AdmissionProjectionContext,
+    terminal_state: AdmissionOperationState,
+    journal: &'a chio_kernel::payment::PaymentJournalRecord,
+    authoritative_outcome: Option<&'a AuthoritativeToolOutcomeBindingV1>,
 }
 
 /// Cross-check one payment-terminal projection record against the fenced
@@ -843,13 +866,16 @@ pub(super) fn verify_payment_terminal_source<'a>(
 fn verify_payment_terminal_record(
     record_id: &AdmissionIdentifier,
     bytes: &[u8],
-    receipt_record: Option<&[u8]>,
-    operation: &AdmissionOperationV1,
-    context: &chio_kernel::admission_operation::AdmissionProjectionContext,
-    terminal_state: AdmissionOperationState,
-    journal: &chio_kernel::payment::PaymentJournalRecord,
-    authoritative_outcome: Option<&AuthoritativeToolOutcomeBindingV1>,
+    verification: PaymentTerminalVerificationV1<'_>,
 ) -> Result<(), AdmissionOperationStoreError> {
+    let PaymentTerminalVerificationV1 {
+        receipt_record,
+        operation,
+        context,
+        terminal_state,
+        journal,
+        authoritative_outcome,
+    } = verification;
     let evidence: UntrustedPaymentTerminalEvidenceV1 =
         serde_json::from_slice(bytes).map_err(|error| {
             AdmissionOperationStoreError::Invariant(format!(

@@ -724,6 +724,14 @@ impl AdmissionOperationV1 {
     }
 
     #[must_use]
+    pub fn payment_participant_id(&self) -> Option<&AdmissionIdentifier> {
+        match self.attachment(AdmissionAttachmentKind::PaymentParticipant) {
+            Some(AdmissionAttachment::PaymentParticipantId(participant_id)) => Some(participant_id),
+            _ => None,
+        }
+    }
+
+    #[must_use]
     pub fn channel_reservation_proposal_digest(&self) -> Option<&AdmissionDigest> {
         match self.attachment(AdmissionAttachmentKind::ChannelReservationProposal) {
             Some(AdmissionAttachment::ChannelReservationProposalDigest(digest)) => Some(digest),
