@@ -161,11 +161,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "existing oversized remote MCP test suite; capped to current size until split",
         max_lines=2_012,
     ),
-    "crates/tooling/chio-conformance/src/native_suite.rs": allow(
-        "2026-08-31",
-        "native conformance suite with formal roadmap regressions; capped until split",
-        max_lines=2_004,
-    ),
     "crates/trust/chio-selective-disclosure/src/lib.rs": allow(
         "2026-08-31",
         "launch selective disclosure verifier surface; capped to current size until split",
