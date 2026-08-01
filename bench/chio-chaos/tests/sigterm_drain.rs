@@ -15,6 +15,7 @@
 //! dependency) is required. The assertion is therefore exit-by-signal within a
 //! bounded window plus a passing [`check_durable_acks`], not a clean exit code.
 
+#![cfg(unix)]
 #![forbid(unsafe_code)]
 
 use std::os::unix::process::ExitStatusExt;

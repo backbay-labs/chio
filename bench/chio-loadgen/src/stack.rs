@@ -70,7 +70,11 @@ impl StackHarness {
         allow_memory: bool,
         deadlines: HotPathDeadlineConfig,
     ) -> Result<Self, LoadgenError> {
-        let runtime = Builder::new_current_thread()
+        // Dispatch workers call `block_on` concurrently to preserve the configured
+        // open-loop arrival schedule. A multi-thread runtime is therefore part of
+        // the load contract, not an optimization.
+        let runtime = Builder::new_multi_thread()
+            .worker_threads(4)
             .enable_all()
             .build()
             .map_err(|error| {

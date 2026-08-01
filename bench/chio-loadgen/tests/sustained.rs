@@ -24,25 +24,31 @@ fn pacer_holds_arrival_rate_within_tolerance() {
     let harness = StackHarness::boot_smoke(&config).test_unwrap();
     let report = run_sustained(&harness, &config).test_unwrap();
 
-    // The pacer schedules against absolute tick instants (start + n * interval),
-    // so 2s at 200hz has at most ~400 tick slots and can never dispatch more,
-    // regardless of machine speed. This ceiling is the pacer's real safety
-    // property: it never runs the kernel unbounded or faster than the rate.
-    // No throughput floor is asserted, because achieved throughput is a function
-    // of how fast a real ed25519 dispatch runs on the host, and a saturated CI
-    // runner legitimately completes far fewer than the target in the window; the
-    // deterministic pacer-interval math is covered by a unit test instead. The
-    // floor here is only "it made progress", which cannot flake on load.
-    assert!(
-        report.calls_attempted >= 1,
-        "the pacer must dispatch at least once in a 2s window, got {}",
-        report.calls_attempted
-    );
-    assert!(
-        report.calls_attempted <= 440,
-        "the pacer must not exceed the ~400 tick slots in 2s at 200hz, got {}",
-        report.calls_attempted
-    );
+    // The open-loop scheduler must deliver every configured tick. A slower
+    // closed-loop run is a failed load gate, even if its p99 stays below budget.
+    assert_eq!(report.calls_attempted, 400);
+    assert_eq!(report.calls_ok, 400);
+}
+
+#[test]
+fn slow_dispatches_do_not_collapse_the_open_loop_rate() {
+    let config = LoadgenConfig {
+        arrival_rate_hz: 40,
+        duration: Duration::from_millis(500),
+        tool_latency: Duration::from_millis(100),
+        store: StoreBacking::Memory,
+        p99_budget: Duration::from_millis(500),
+        rss_growth_budget_bytes: 256 * 1024 * 1024,
+    };
+
+    let harness = StackHarness::boot_smoke(&config).test_unwrap();
+    let report = run_sustained(&harness, &config).test_unwrap();
+
+    // A synchronous dispatcher can complete at most about five 100ms calls in
+    // this window. Delivering all twenty proves dispatches overlap while the
+    // pacer maintains the configured arrival schedule.
+    assert_eq!(report.calls_attempted, 20);
+    assert_eq!(report.calls_ok, 20);
 }
 
 #[test]

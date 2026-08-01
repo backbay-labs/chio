@@ -9,10 +9,12 @@
 //! located through `CARGO_BIN_EXE_chaos_victim`; the test never shells out to
 //! cargo.
 
+#![cfg(unix)]
+
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chio_chaos::{
     ack_line, chaos_iterations, chaos_receipt, chaos_seed, check_durable_acks,
@@ -29,9 +31,14 @@ const DEFAULT_SEED: u64 = 0xC10A_0515;
 /// `CHIO_CHAOS_ITERATIONS`.
 const DEFAULT_ITERATIONS: u64 = 5;
 
-/// Victim loop bound, sized so the victim cannot drain it before the longest
-/// seeded kill delay lands. Raising this is the fix if `InjectionNoOp` fires.
+/// Victim loop bound. The feature-gated store hook pauses a seeded batch while
+/// its SQLite `BEGIN IMMEDIATE` transaction is open, so the process cannot drain
+/// this loop before the parent kills it.
 const MAX_RECEIPTS: u64 = 1_000_000;
+
+/// Bound startup and store-open time before an absent in-transaction marker is
+/// treated as a broken injection lane.
+const APPEND_READY_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// SIGKILL signal number on Unix. `child.kill()` sends this; the reaped status
 /// must carry it for a round to count as a genuine kill-while-alive.
@@ -56,10 +63,15 @@ fn chaos_kill_mid_append_preserves_durable_acks() {
     let victim_bin = env!("CARGO_BIN_EXE_chaos_victim");
 
     let mut kills_while_alive: u64 = 0;
-    let mut raced_exit: u64 = 0;
     let mut verified_acks_total: usize = 0;
 
     for round in 0..rounds {
+        let ready_path = dir.path().join(format!("append-ready-{round}"));
+        let release_path = dir.path().join(format!("append-release-{round}"));
+        // Pause after several successful batches so the durable-ack recovery
+        // assertion is non-vacuous. The nightly seed explores a different batch
+        // and a different in-transaction dwell on every run.
+        let pause_batch = rng.range(2, 64);
         let mut child = Command::new(victim_bin)
             .arg(&db_path)
             .arg(&ack_path)
@@ -67,64 +79,38 @@ fn chaos_kill_mid_append_preserves_durable_acks() {
             // Round index as the id nonce: rounds reuse one store, and a
             // recycled OS pid would otherwise collide on the UNIQUE receipt_id.
             .arg(round.to_string())
+            .env("CHIO_CHAOS_APPEND_READY_PATH", &ready_path)
+            .env("CHIO_CHAOS_APPEND_RELEASE_PATH", &release_path)
+            .env("CHIO_CHAOS_APPEND_PAUSE_BATCH", pause_batch.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
             .spawn()
             .test_expect("spawn chaos victim");
 
-        let delay_ms = rng.range(5, 400);
+        wait_for_inflight_append(&mut child, &ready_path, round)
+            .unwrap_or_else(|error| panic!("{error}"));
+        let delay_ms = rng.range(5, 50);
         std::thread::sleep(Duration::from_millis(delay_ms));
 
-        // InjectionNoOp discipline: a victim that already finished on its own
-        // was not fault-injected this round. Record the race; the aggregate
-        // check below fails the test if EVERY round raced.
-        match child.try_wait().test_expect("poll victim liveness") {
-            Some(status) => {
-                raced_exit += 1;
-                eprintln!(
-                    "round {round}: victim exited before kill (status {status:?}) after {delay_ms}ms"
-                );
-                // With MAX_RECEIPTS a clean drain before the kill is impossible, so
-                // a benign race can only be a success exit. A non-zero exit is a
-                // victim crash, not a race, and must fail the round.
-                if !status.success() {
-                    panic!(
-                        "{}",
-                        ChaosError::Victim(format!(
-                            "round {round}: victim exited with failure status {status:?} before the kill; a pre-kill victim crash is a harness bug, not a race"
-                        ))
-                    );
-                }
-            }
-            None => {
-                child.kill().test_expect("SIGKILL victim");
-                let status = child.wait().test_expect("reap victim");
-                // kill() reports success even against a victim that exited on its
-                // own in the window after try_wait returned None but before the
-                // signal landed, so the reaped status is the real evidence. Only a
-                // process the signal actually terminated is a genuine
-                // kill-while-alive; a self-exit that raced the signal is the same
-                // benign race as the try_wait Some arm. With MAX_RECEIPTS a clean
-                // drain is impossible, so a non-signal exit is either a success
-                // (benign race) or a victim crash that must fail the round.
-                if status.signal() == Some(SIGKILL) {
-                    kills_while_alive += 1;
-                } else {
-                    raced_exit += 1;
-                    eprintln!(
-                        "round {round}: victim self-exited (status {status:?}) racing the kill after {delay_ms}ms"
-                    );
-                    if !status.success() {
-                        panic!(
-                            "{}",
-                            ChaosError::Victim(format!(
-                                "round {round}: victim exited with failure status {status:?} racing the kill; a victim crash is a harness bug, not a race"
-                            ))
-                        );
-                    }
-                }
-            }
+        if let Some(status) = child.try_wait().test_expect("poll paused victim liveness") {
+            panic!(
+                "{}",
+                ChaosError::Victim(format!(
+                    "round {round}: victim exited with status {status:?} after publishing the in-transaction marker"
+                ))
+            );
         }
+        child.kill().test_expect("SIGKILL in-flight append victim");
+        let status = child.wait().test_expect("reap in-flight append victim");
+        if status.signal() != Some(SIGKILL) {
+            panic!(
+                "{}",
+                ChaosError::InvariantViolated(format!(
+                    "round {round}: expected SIGKILL while append transaction was paused, got {status:?}"
+                ))
+            );
+        }
+        kills_while_alive += 1;
 
         verified_acks_total += assert_round_invariants(&db_path, &ack_path, round);
     }
@@ -135,7 +121,7 @@ fn chaos_kill_mid_append_preserves_durable_acks() {
         panic!(
             "{}",
             ChaosError::InjectionNoOp(
-                "victim exited cleanly before the kill in every round; raise MAX_RECEIPTS"
+                "the in-transaction append hook never produced a SIGKILL round"
             )
         );
     }
@@ -149,9 +135,46 @@ fn chaos_kill_mid_append_preserves_durable_acks() {
     }
 
     eprintln!(
-        "chaos kill summary: {kills_while_alive} kills mid-append, {raced_exit} raced exits, \
+        "chaos kill summary: {kills_while_alive} proven in-transaction kills, \
          {verified_acks_total} durable acks verified over {rounds} rounds"
     );
+}
+
+/// Wait until the victim's writer has acquired `BEGIN IMMEDIATE` and published
+/// the feature-gated marker from inside `append_receipt_batch`. A process exit,
+/// marker I/O failure, or timeout is a failed injection, never a benign race.
+fn wait_for_inflight_append(
+    child: &mut std::process::Child,
+    ready_path: &Path,
+    round: u64,
+) -> Result<(), ChaosError> {
+    let deadline = Instant::now() + APPEND_READY_TIMEOUT;
+    loop {
+        match std::fs::metadata(ready_path) {
+            Ok(_) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(ChaosError::Boot(format!(
+                    "round {round}: inspect in-transaction marker {}: {error}",
+                    ready_path.display()
+                )))
+            }
+        }
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| ChaosError::Victim(format!("round {round}: poll victim: {error}")))?
+        {
+            return Err(ChaosError::Victim(format!(
+                "round {round}: victim exited with status {status:?} before proving an in-flight append"
+            )));
+        }
+        if Instant::now() >= deadline {
+            return Err(ChaosError::InjectionNoOp(
+                "victim never published the in-transaction append marker",
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
 }
 
 /// Reopen the reused store after a kill and assert the four post-fault

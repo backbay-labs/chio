@@ -16,9 +16,19 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use chio_chaos::{ack_line, chaos_receipt, check_durable_acks, wait_until_healthy, ChaosError};
+use chio_chaos::{
+    ack_line, chaos_iterations, chaos_receipt, check_durable_acks, wait_until_healthy, ChaosError,
+};
 use chio_kernel::ReceiptStoreError;
 use chio_store_sqlite::{SqlitePoolConfig, SqliteReceiptStore};
+
+/// Store-fault scenarios are expensive, so the PR tier runs one deterministic
+/// round. The nightly lane raises this through `CHIO_CHAOS_ITERATIONS`.
+const DEFAULT_STORE_FAULT_ITERATIONS: u64 = 1;
+
+/// Maximum time a maintenance window may go without a successful concurrent
+/// append before the retention race fails as a no-op.
+const RETENTION_PROGRESS_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Map any `Display` error into a boot failure with context.
 fn boot<E: std::fmt::Display>(context: &str) -> impl Fn(E) -> ChaosError + '_ {
@@ -127,6 +137,15 @@ fn append_flush_ack(
 /// pre-fault durable ack.
 #[test]
 fn chaos_enospc_denies_typed_and_recovers() -> Result<(), ChaosError> {
+    let rounds = chaos_iterations(DEFAULT_STORE_FAULT_ITERATIONS)?;
+    for round in 0..rounds {
+        run_enospc_round(round)?;
+    }
+    Ok(())
+}
+
+fn run_enospc_round(round: u64) -> Result<(), ChaosError> {
+    eprintln!("ENOSPC chaos round {round}");
     let dir = tempfile::tempdir().map_err(boot("tempdir"))?;
     let db = dir.path().join("enospc.db");
     let ack = dir.path().join("acks.log");
@@ -142,7 +161,12 @@ fn chaos_enospc_denies_typed_and_recovers() -> Result<(), ChaosError> {
             .open(&ack)
             .map_err(boot("open ack file"))?;
         for i in 0..24u64 {
-            append_flush_ack(&store, &mut ack_file, &format!("enospc-pre-{i}"), i + 1)?;
+            append_flush_ack(
+                &store,
+                &mut ack_file,
+                &format!("enospc-{round}-pre-{i}"),
+                i + 1,
+            )?;
         }
     }
     let baseline_pages = page_count(&db)?;
@@ -158,7 +182,7 @@ fn chaos_enospc_denies_typed_and_recovers() -> Result<(), ChaosError> {
             .open(&ack)
             .map_err(boot("reopen ack file"))?;
         for i in 0..50_000u64 {
-            let receipt = chaos_receipt(&format!("enospc-cap-{i}"), 1_000 + i)?;
+            let receipt = chaos_receipt(&format!("enospc-{round}-cap-{i}"), 1_000 + i)?;
             let seq = match store.append_chio_receipt_returning_seq(&receipt) {
                 Ok(seq) => seq,
                 Err(error) => {
@@ -195,7 +219,7 @@ fn chaos_enospc_denies_typed_and_recovers() -> Result<(), ChaosError> {
         // SQLITE_FULL or (once the store-wide fault poisons the verified head)
         // with a poisoned-head Conflict.
         for i in 0..8u64 {
-            let receipt = chaos_receipt(&format!("enospc-after-{i}"), 2_000 + i)?;
+            let receipt = chaos_receipt(&format!("enospc-{round}-after-{i}"), 2_000 + i)?;
             match store.append_chio_receipt_returning_seq(&receipt) {
                 Ok(seq) => {
                     return Err(ChaosError::InvariantViolated(format!(
@@ -217,7 +241,7 @@ fn chaos_enospc_denies_typed_and_recovers() -> Result<(), ChaosError> {
             "recovery health after reopen with a larger page cap",
         )?;
         check_durable_acks(&store, &ack)?;
-        let receipt = chaos_receipt("enospc-recovered", 3_000_000)?;
+        let receipt = chaos_receipt(&format!("enospc-{round}-recovered"), 3_000_000)?;
         store
             .append_chio_receipt_returning_seq(&receipt)
             .map_err(invariant("append after recovery"))?;
@@ -232,12 +256,21 @@ fn chaos_enospc_denies_typed_and_recovers() -> Result<(), ChaosError> {
 /// and appends must recover once the wedge is released.
 #[test]
 fn chaos_wedged_writer_yields_typed_busy_deny() -> Result<(), ChaosError> {
+    let rounds = chaos_iterations(DEFAULT_STORE_FAULT_ITERATIONS)?;
+    for round in 0..rounds {
+        run_wedged_writer_round(round)?;
+    }
+    Ok(())
+}
+
+fn run_wedged_writer_round(round: u64) -> Result<(), ChaosError> {
+    eprintln!("wedged-writer chaos round {round}");
     let dir = tempfile::tempdir().map_err(boot("tempdir"))?;
     let db = dir.path().join("wedged.db");
     let store = Arc::new(SqliteReceiptStore::open(&db).map_err(boot("open store"))?);
 
     // Seed one receipt so the writer head is verified before the wedge lands.
-    let seed = chaos_receipt("wedged-seed", 1)?;
+    let seed = chaos_receipt(&format!("wedged-{round}-seed"), 1)?;
     store
         .append_chio_receipt_returning_seq(&seed)
         .map_err(invariant("seed append"))?;
@@ -262,7 +295,7 @@ fn chaos_wedged_writer_yields_typed_busy_deny() -> Result<(), ChaosError> {
     // failure rather than wedging CI.
     let watchdog = Duration::from_secs(30);
     let append_store = Arc::clone(&store);
-    let receipt = chaos_receipt("wedged-blocked", 2)?;
+    let receipt = chaos_receipt(&format!("wedged-{round}-blocked"), 2)?;
     let (sender, receiver) = std::sync::mpsc::channel();
     let start = Instant::now();
     std::thread::spawn(move || {
@@ -314,7 +347,7 @@ fn chaos_wedged_writer_yields_typed_busy_deny() -> Result<(), ChaosError> {
     store
         .reseed_verified_head()
         .map_err(invariant("reseed head after wedge released"))?;
-    let recovered = chaos_receipt("wedged-recovered", 3)?;
+    let recovered = chaos_receipt(&format!("wedged-{round}-recovered"), 3)?;
     store
         .append_chio_receipt_returning_seq(&recovered)
         .map_err(invariant("append after wedge released"))?;
@@ -327,6 +360,15 @@ fn chaos_wedged_writer_yields_typed_busy_deny() -> Result<(), ChaosError> {
 /// committed floor must not have regressed, and a fresh append must succeed.
 #[test]
 fn chaos_retention_under_load_keeps_verified_head() -> Result<(), ChaosError> {
+    let rounds = chaos_iterations(DEFAULT_STORE_FAULT_ITERATIONS)?;
+    for round in 0..rounds {
+        run_retention_under_load_round(round)?;
+    }
+    Ok(())
+}
+
+fn run_retention_under_load_round(round: u64) -> Result<(), ChaosError> {
+    eprintln!("retention-under-load chaos round {round}");
     let dir = tempfile::tempdir().map_err(boot("tempdir"))?;
     let db = dir.path().join("retention.db");
     let archive = dir.path().join("archive.db");
@@ -334,7 +376,7 @@ fn chaos_retention_under_load_keeps_verified_head() -> Result<(), ChaosError> {
 
     // Seed a committed prefix to snapshot the floor against.
     for i in 0..16u64 {
-        let receipt = chaos_receipt(&format!("retention-seed-{i}"), i + 1)?;
+        let receipt = chaos_receipt(&format!("retention-{round}-seed-{i}"), i + 1)?;
         store
             .append_chio_receipt_returning_seq(&receipt)
             .map_err(invariant("seed append"))?;
@@ -355,7 +397,7 @@ fn chaos_retention_under_load_keeps_verified_head() -> Result<(), ChaosError> {
     let worker = std::thread::spawn(move || -> Result<(), ChaosError> {
         let mut i = 0u64;
         while !worker_stop.load(Ordering::Relaxed) {
-            let receipt = chaos_receipt(&format!("retention-load-{i}"), 100_000 + i)?;
+            let receipt = chaos_receipt(&format!("retention-{round}-load-{i}"), 100_000 + i)?;
             worker_store
                 .append_chio_receipt_returning_seq(&receipt)
                 .map_err(invariant("concurrent append during retention load"))?;
@@ -376,11 +418,26 @@ fn chaos_retention_under_load_keeps_verified_head() -> Result<(), ChaosError> {
         let archive_path = archive
             .to_str()
             .ok_or_else(|| ChaosError::Boot("archive path is not valid UTF-8".to_string()))?;
-        for _ in 0..16 {
+        for maintenance_round in 0..16 {
+            let before = appended.load(Ordering::SeqCst);
             store
                 .retention_repair(archive_path)
                 .map_err(invariant("retention_repair under load"))?;
-            std::thread::sleep(Duration::from_millis(2));
+            // Prove the append actor makes progress in every maintenance
+            // window. An aggregate final count can pass after one early append
+            // even if the actor is starved for the entire repair loop.
+            let deadline = Instant::now() + RETENTION_PROGRESS_TIMEOUT;
+            while appended.load(Ordering::SeqCst) <= before {
+                if Instant::now() >= deadline {
+                    return Err(ChaosError::InjectionNoOp(
+                        "the append actor made no progress during a retention maintenance window",
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            eprintln!(
+                "retention chaos round {round}, maintenance {maintenance_round}: append count advanced past {before}"
+            );
         }
         Ok(())
     })();
@@ -411,7 +468,7 @@ fn chaos_retention_under_load_keeps_verified_head() -> Result<(), ChaosError> {
             "latest_committed_entry_seq regressed under retention load: {seq_before} -> {seq_after}"
         )));
     }
-    let receipt = chaos_receipt("retention-final", 200_000_000)?;
+    let receipt = chaos_receipt(&format!("retention-{round}-final"), 200_000_000)?;
     store
         .append_chio_receipt_returning_seq(&receipt)
         .map_err(invariant("append after retention load"))?;

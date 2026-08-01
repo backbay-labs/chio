@@ -12,7 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 chio-loadgen = { path = "../chio-loadgen" }
-chio-store-sqlite = { workspace = true }
+chio-store-sqlite = { workspace = true, features = ["chaos-test-hooks"] }
 chio-kernel = { workspace = true }
 chio-core-types = { workspace = true }
 thiserror = { workspace = true }

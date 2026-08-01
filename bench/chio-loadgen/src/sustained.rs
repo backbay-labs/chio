@@ -2,6 +2,7 @@
 //! measures per-call latency percentiles plus resident-set growth, and reports
 //! a fail-closed budget verdict.
 
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -12,6 +13,22 @@ use crate::{LoadgenConfig, LoadgenError, StackHarness};
 /// high-water mark so a long run's peak, not just its final sample, bounds the
 /// growth budget.
 const RSS_SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Maximum concurrent dispatch workers. The queue is deliberately bounded; if
+/// all workers and queue slots are occupied, the configured arrival rate was not
+/// delivered and the run fails instead of silently degrading to closed-loop.
+const MAX_DISPATCH_WORKERS: usize = 32;
+const QUEUE_SLOTS_PER_WORKER: usize = 2;
+
+/// Hard ceiling on scheduled calls and the resident latency vector. Eight
+/// million u64 samples is 64 MiB. Larger schedules deny before allocation.
+const MAX_SCHEDULED_DISPATCHES: u64 = 8_000_000;
+
+struct DispatchResults {
+    latencies_ns: Vec<u64>,
+    ttfrh: Option<Duration>,
+    first_error: Option<LoadgenError>,
+}
 
 /// Measured outcome of one sustained run.
 ///
@@ -73,12 +90,11 @@ pub fn run_sustained(
     }
 
     let durable = harness.store().is_some();
-
-    // Fail closed before allocating: a duration too large to place on the
-    // monotonic clock denies now, rather than after committing the latency buffer
-    // or aborting on an `Instant + Duration` overflow once the run is underway.
-    let run_start = Instant::now();
-    let run_end = schedule_run_end(run_start, config.duration)?;
+    // Preserve the typed duration-overflow contract before evaluating the
+    // bounded schedule size. An unrepresentable clock deadline is a duration
+    // error even though it would also imply an enormous dispatch count.
+    schedule_run_end(Instant::now(), config.duration)?;
+    let scheduled = scheduled_dispatch_count(config)?;
 
     // Pre-size the latency buffer before the RSS baseline is sampled, and touch
     // every element so the backing pages are resident now: `with_capacity` alone
@@ -90,59 +106,155 @@ pub fn run_sustained(
     // charging the resident pages to the baseline. Capacity tracks the pacer's
     // dispatch count (rate x duration), capped so a pathological config cannot
     // request an unbounded allocation.
-    let mut latencies_ns: Vec<u64> = Vec::with_capacity(expected_dispatch_count(config));
-    latencies_ns.resize(latencies_ns.capacity(), 1);
-    latencies_ns.clear();
+    let latency_capacity =
+        usize::try_from(scheduled).map_err(|_| LoadgenError::DispatchScheduleTooLarge {
+            scheduled: u128::from(scheduled),
+            maximum: MAX_SCHEDULED_DISPATCHES,
+        })?;
+    let mut latency_buffer: Vec<u64> = Vec::with_capacity(latency_capacity);
+    latency_buffer.resize(latency_buffer.capacity(), 1);
+    latency_buffer.clear();
 
     let rss_start = rss::current_rss_bytes();
     let mut rss_high_water = rss_start;
 
+    // Start the measured window only after bounded allocations are resident.
+    // This keeps setup cost out of the configured arrival interval and RSS
+    // growth inside it.
+    let run_start = Instant::now();
+
     let mut next_rss_sample = run_start + RSS_SAMPLE_INTERVAL;
+    let (calls_attempted, mut dispatch_results) = thread::scope(|scope| {
+        let worker_count = usize::try_from(scheduled)
+            .unwrap_or(MAX_DISPATCH_WORKERS)
+            .clamp(1, MAX_DISPATCH_WORKERS);
+        let queue_capacity = worker_count.saturating_mul(QUEUE_SLOTS_PER_WORKER);
+        let (tick_sender, tick_receiver) = mpsc::sync_channel::<()>(queue_capacity);
+        let tick_receiver = Arc::new(Mutex::new(tick_receiver));
+        let (result_sender, result_receiver) = mpsc::channel::<Result<Duration, LoadgenError>>();
 
-    let mut calls_attempted: u64 = 0;
-    let mut calls_ok: u64 = 0;
-    let mut ttfrh: Option<Duration> = None;
-
-    let mut tick: u64 = 0;
-    while Instant::now() < run_end {
-        let target =
-            run_start + Duration::from_nanos(pacer_offset_ns(tick, config.arrival_rate_hz));
-        let now = Instant::now();
-        if target > now {
-            thread::sleep(target - now);
+        let mut workers = Vec::with_capacity(worker_count);
+        for _ in 0..worker_count {
+            let receiver = Arc::clone(&tick_receiver);
+            let sender = result_sender.clone();
+            workers.push(scope.spawn(move || loop {
+                let next = match receiver.lock() {
+                    Ok(guard) => guard.recv(),
+                    Err(_) => {
+                        let _ = sender.send(Err(LoadgenError::Dispatch(
+                            "loadgen dispatch queue lock was poisoned".to_string(),
+                        )));
+                        break;
+                    }
+                };
+                match next {
+                    Ok(()) => {
+                        let _ = sender.send(harness.dispatch_allow_once());
+                    }
+                    Err(_) => break,
+                }
+            }));
         }
+        drop(result_sender);
 
-        // Recheck the deadline after pacing to the tick instant: the top-of-loop
-        // check can pass just before this final sleep, and dispatching a tick that
-        // lands on or past run_end would overstate the window by one call (a 1s run
-        // at 1hz would otherwise dispatch at t=0 and again at t=1s = 2 calls).
-        if Instant::now() >= run_end {
-            break;
-        }
+        let collector = scope.spawn(move || {
+            let mut results = DispatchResults {
+                latencies_ns: latency_buffer,
+                ttfrh: None,
+                first_error: None,
+            };
+            while let Ok(result) = result_receiver.recv() {
+                match result {
+                    Ok(latency) => {
+                        results
+                            .latencies_ns
+                            .push(u64::try_from(latency.as_nanos()).unwrap_or(u64::MAX));
+                        if durable && results.ttfrh.is_none() && results.first_error.is_none() {
+                            match harness.flush_durable() {
+                                Ok(committed_seq) if committed_seq >= 1 => {
+                                    results.ttfrh = Some(run_start.elapsed());
+                                }
+                                Ok(_) => {}
+                                Err(error) => results.first_error = Some(error),
+                            }
+                        }
+                    }
+                    Err(error) if results.first_error.is_none() => {
+                        results.first_error = Some(error);
+                    }
+                    Err(_) => {}
+                }
+            }
+            results
+        });
 
-        while Instant::now() >= next_rss_sample {
-            fold_high_water(&mut rss_high_water, rss::current_rss_bytes());
-            next_rss_sample += RSS_SAMPLE_INTERVAL;
-        }
+        let mut attempted = 0u64;
+        let mut pacing_error = None;
+        for tick in 0..scheduled {
+            let target =
+                run_start + Duration::from_nanos(pacer_offset_ns(tick, config.arrival_rate_hz));
+            let now = Instant::now();
+            if target > now {
+                thread::sleep(target - now);
+            }
 
-        calls_attempted += 1;
-        let latency = harness.dispatch_allow_once()?;
-        calls_ok += 1;
-        latencies_ns.push(u64::try_from(latency.as_nanos()).unwrap_or(u64::MAX));
+            while Instant::now() >= next_rss_sample {
+                fold_high_water(&mut rss_high_water, rss::current_rss_bytes());
+                next_rss_sample += RSS_SAMPLE_INTERVAL;
+            }
 
-        if durable && ttfrh.is_none() {
-            let committed_seq = harness.flush_durable()?;
-            if committed_seq >= 1 {
-                ttfrh = Some(run_start.elapsed());
+            match tick_sender.try_send(()) {
+                Ok(()) => attempted += 1,
+                Err(mpsc::TrySendError::Full(())) => {
+                    pacing_error = Some(LoadgenError::ArrivalRateMissed {
+                        scheduled,
+                        attempted,
+                        completed: 0,
+                    });
+                    break;
+                }
+                Err(mpsc::TrySendError::Disconnected(())) => {
+                    pacing_error = Some(LoadgenError::Dispatch(
+                        "all loadgen dispatch workers exited".to_string(),
+                    ));
+                    break;
+                }
             }
         }
+        drop(tick_sender);
 
-        tick += 1;
+        for worker in workers {
+            if worker.join().is_err() && pacing_error.is_none() {
+                pacing_error = Some(LoadgenError::Dispatch(
+                    "loadgen dispatch worker panicked".to_string(),
+                ));
+            }
+        }
+        let results = collector
+            .join()
+            .map_err(|_| LoadgenError::Dispatch("loadgen result collector panicked".to_string()))?;
+        if let Some(error) = pacing_error {
+            return Err(error);
+        }
+        Ok((attempted, results))
+    })?;
+
+    if let Some(error) = dispatch_results.first_error.take() {
+        return Err(error);
+    }
+    let calls_ok = u64::try_from(dispatch_results.latencies_ns.len()).unwrap_or(u64::MAX);
+    if calls_attempted != scheduled || calls_ok != scheduled {
+        return Err(LoadgenError::ArrivalRateMissed {
+            scheduled,
+            attempted: calls_attempted,
+            completed: calls_ok,
+        });
     }
 
     fold_high_water(&mut rss_high_water, rss::current_rss_bytes());
     let rss_end = rss_high_water;
 
+    let mut latencies_ns = dispatch_results.latencies_ns;
     latencies_ns.sort_unstable();
     let p50_ns = percentile_ns(&latencies_ns, 50);
     let p99_ns = percentile_ns(&latencies_ns, 99);
@@ -153,7 +265,7 @@ pub fn run_sustained(
     let mut report = LoadReport {
         calls_attempted,
         calls_ok,
-        ttfrh_ms: ttfrh.map(|elapsed| elapsed.as_millis()),
+        ttfrh_ms: dispatch_results.ttfrh.map(|elapsed| elapsed.as_millis()),
         p50_ms,
         p99_ms,
         p99_nanos,
@@ -195,6 +307,15 @@ pub fn enforce_budget(report: &LoadReport, config: &LoadgenConfig) -> Result<(),
         return Err(LoadgenError::EmptyRun);
     }
 
+    let scheduled = scheduled_dispatch_count(config)?;
+    if report.calls_attempted != scheduled || report.calls_ok != scheduled {
+        return Err(LoadgenError::ArrivalRateMissed {
+            scheduled,
+            attempted: report.calls_attempted,
+            completed: report.calls_ok,
+        });
+    }
+
     let budget_nanos = config.p99_budget.as_nanos();
     if report.p99_nanos > budget_nanos {
         return Err(LoadgenError::P99Exceeded {
@@ -217,24 +338,27 @@ pub fn enforce_budget(report: &LoadReport, config: &LoadgenConfig) -> Result<(),
     Ok(())
 }
 
-/// Upper bound on the pre-sized latency buffer so a pathological rate x duration
-/// cannot request an unbounded allocation. Eight million u64 samples is 64 MiB,
-/// which covers hours of realistic rates while capping the worst case.
-const MAX_PREALLOCATED_LATENCIES: usize = 8_000_000;
-
-/// Expected dispatch count for the run, used only to pre-size the latency buffer.
-/// Derived from the pacer's target rate over the run duration (rate x duration),
-/// computed on nanoseconds so fractional-second durations are not truncated away,
-/// then capped at [`MAX_PREALLOCATED_LATENCIES`].
-fn expected_dispatch_count(config: &LoadgenConfig) -> usize {
-    let expected = config
+/// Exact number of tick instants in `[run_start, run_end)`. Fractional windows
+/// round up because tick zero is immediate: 500ms at 1Hz schedules one call,
+/// while 1s at 3Hz schedules exactly three. Schedules beyond the bounded result
+/// buffer fail closed before any work begins.
+fn scheduled_dispatch_count(config: &LoadgenConfig) -> Result<u64, LoadgenError> {
+    let scheduled = config
         .duration
         .as_nanos()
         .saturating_mul(u128::from(config.arrival_rate_hz))
-        / 1_000_000_000;
-    usize::try_from(expected)
-        .unwrap_or(usize::MAX)
-        .min(MAX_PREALLOCATED_LATENCIES)
+        .div_ceil(1_000_000_000);
+    let maximum = u128::from(MAX_SCHEDULED_DISPATCHES);
+    if scheduled > maximum {
+        return Err(LoadgenError::DispatchScheduleTooLarge {
+            scheduled,
+            maximum: MAX_SCHEDULED_DISPATCHES,
+        });
+    }
+    u64::try_from(scheduled).map_err(|_| LoadgenError::DispatchScheduleTooLarge {
+        scheduled,
+        maximum: MAX_SCHEDULED_DISPATCHES,
+    })
 }
 
 /// Highest arrival rate the nanosecond pacer can resolve: one dispatch per
@@ -376,6 +500,21 @@ mod tests {
     }
 
     #[test]
+    fn scheduled_dispatch_count_covers_fractional_windows_exactly() {
+        let mut config = config_with_p99_budget(Duration::from_millis(50));
+        config.arrival_rate_hz = 3;
+        config.duration = Duration::from_secs(1);
+        assert!(matches!(scheduled_dispatch_count(&config), Ok(3)));
+
+        config.arrival_rate_hz = 1;
+        config.duration = Duration::from_millis(500);
+        assert!(matches!(scheduled_dispatch_count(&config), Ok(1)));
+
+        config.duration = Duration::ZERO;
+        assert!(matches!(scheduled_dispatch_count(&config), Ok(0)));
+    }
+
+    #[test]
     fn enforce_budget_rejects_empty_run() {
         let config = config_with_p99_budget(Duration::from_millis(50));
         let report = make_report(0, 0);
@@ -421,6 +560,23 @@ mod tests {
         assert!(
             enforce_budget(&at, &config).is_ok(),
             "a p99 exactly at budget must pass"
+        );
+    }
+
+    #[test]
+    fn enforce_budget_rejects_arrival_under_delivery() {
+        let config = config_with_p99_budget(Duration::from_millis(50));
+        let report = make_report(99, 10_000_000);
+        assert!(
+            matches!(
+                enforce_budget(&report, &config),
+                Err(LoadgenError::ArrivalRateMissed {
+                    scheduled: 100,
+                    attempted: 99,
+                    completed: 99,
+                })
+            ),
+            "a 100Hz one-second gate must reject a report that delivered only 99 calls"
         );
     }
 

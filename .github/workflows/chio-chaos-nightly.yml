@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "43 4 * * *"
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "bench/chio-chaos/**"
+      - "bench/chio-loadgen/**"
+      - "crates/platform/chio-store-sqlite/**"
+      - ".github/workflows/chio-chaos-nightly.yml"
 
 permissions:
   contents: read
@@ -25,6 +31,7 @@ env:
 jobs:
   chio-chaos:
     name: chio chaos
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -43,3 +50,19 @@ jobs:
 
       - name: Run chaos scenarios
         run: cargo test -p chio-chaos --release -- --nocapture
+
+  chio-chaos-windows-compile:
+    name: chio chaos windows compile
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: stable
+
+      - name: Compile portable chaos tests
+        env:
+          CARGO_BUILD_JOBS: "4"
+        run: cargo test -p chio-chaos --tests --no-run

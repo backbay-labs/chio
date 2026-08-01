@@ -67,6 +67,18 @@ pub enum LoadgenError {
     #[error("sustained run completed no successful calls")]
     EmptyRun,
     #[error(
+        "configured schedule requires {scheduled} dispatches, above the bounded maximum of {maximum}"
+    )]
+    DispatchScheduleTooLarge { scheduled: u128, maximum: u64 },
+    #[error(
+        "configured arrival schedule missed: required {scheduled} dispatches, attempted {attempted}, completed {completed}"
+    )]
+    ArrivalRateMissed {
+        scheduled: u64,
+        attempted: u64,
+        completed: u64,
+    },
+    #[error(
         "resident-set size was never measured, so the growth budget cannot be proven satisfied"
     )]
     RssUnmeasured,

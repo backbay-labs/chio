@@ -114,6 +114,55 @@ fn bounded_page_count_yields_full_error() {
     let _ = fs::remove_file(path);
 }
 
+#[test]
+fn bounded_page_count_rejects_zero_effective_mismatch() {
+    let path = unique_db_path("chio-receipts-zero-page-cap");
+    let error = match SqliteReceiptStore::open_with_pool_config(
+        &path,
+        crate::SqlitePoolConfig {
+            max_page_count: Some(0),
+            ..crate::SqlitePoolConfig::default()
+        },
+    ) {
+        Ok(_) => panic!("a zero page cap must not open as SQLite's default maximum"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(_)),
+        "a silently ignored zero page cap must deny with Conflict, got {error:?}"
+    );
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn bounded_page_count_rejects_cap_below_existing_database() {
+    let path = unique_db_path("chio-receipts-below-existing-page-cap");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let current_pages: i64 = store
+        .connection()
+        .test_unwrap()
+        .query_row("PRAGMA page_count", [], |row| row.get(0))
+        .test_unwrap();
+    drop(store);
+    let requested = u32::try_from(current_pages.saturating_sub(1)).test_unwrap();
+
+    let error = match SqliteReceiptStore::open_with_pool_config(
+        &path,
+        crate::SqlitePoolConfig {
+            max_page_count: Some(requested),
+            ..crate::SqlitePoolConfig::default()
+        },
+    ) {
+        Ok(_) => panic!("a page cap below the existing database must not be raised silently"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(_)),
+        "an effective cap above the requested cap must deny with Conflict, got {error:?}"
+    );
+    let _ = fs::remove_file(path);
+}
+
 #[cfg(feature = "pq")]
 #[test]
 fn receipt_verify_accepts_hybrid_receipts_for_persistence() {
