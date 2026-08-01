@@ -695,6 +695,10 @@ import Chio.Treaty.ReceiptPredicate
 
 def lean_archive_bytes() -> bytes:
     project = REPO / "formal/lean4/Chio"
+    generated_project_files = {
+        project / "Chio.lean",
+        project / "lakefile.lean",
+    }
     project_files = [
         project / "lean-toolchain",
         project / "lake-manifest.json",
@@ -702,6 +706,7 @@ def lean_archive_bytes() -> bytes:
             path
             for path in project.rglob("*.lean")
             if ".lake" not in path.relative_to(project).parts
+            and path not in generated_project_files
         ),
     ]
     vendor = REPO / "formal/lean4/vendor/aeneas"
@@ -770,6 +775,9 @@ def lean_archive_bytes() -> bytes:
                     for path in vendor_files
                 ],
             ]
+            entry_names = [name for name, _ in entries]
+            if len(entry_names) != len(set(entry_names)):
+                fail("Lean archive contains duplicate member paths")
             for name, data in sorted(entries):
                 info = tarfile.TarInfo(name)
                 info.size = len(data)
