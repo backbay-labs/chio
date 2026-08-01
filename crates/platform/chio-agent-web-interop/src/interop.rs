@@ -60,6 +60,7 @@ pub struct AgentWebVerifierTrust {
     standard_webhooks_replay_window: Option<StandardWebhooksReplayWindow>,
     seen_standard_webhooks_ids: BTreeSet<String>,
     standard_webhooks_replay_store: Option<Arc<dyn AgentWebReplayStore>>,
+    standard_webhooks_replay_reservation_id: Option<String>,
     trusted_receipt_kernel_keys: Vec<PublicKey>,
     trusted_envelope_sidecar_keys: Vec<PublicKey>,
 }
@@ -181,6 +182,19 @@ pub trait AgentWebReplayStore: fmt::Debug + Send + Sync {
         now_unix_seconds: u64,
         entries: &[AgentWebReplayEntry],
     ) -> Result<(), AgentWebReplayStoreError>;
+
+    /// Atomically reserves a replay batch for an idempotent external commit.
+    ///
+    /// The default remains strict for stores that do not implement durable
+    /// reservation recovery. Such stores never turn a replay into a success.
+    fn check_and_insert_for_reservation(
+        &self,
+        now_unix_seconds: u64,
+        entries: &[AgentWebReplayEntry],
+        _reservation_id: &str,
+    ) -> Result<(), AgentWebReplayStoreError> {
+        self.check_and_insert(now_unix_seconds, entries)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -426,6 +440,25 @@ impl AgentWebVerifierTrust {
         self
     }
 
+    pub fn with_standard_webhooks_replay_reservation_id(
+        mut self,
+        reservation_id: impl Into<String>,
+    ) -> Result<Self, AgentWebReplayStoreError> {
+        let reservation_id = reservation_id.into();
+        if reservation_id.len() != 64
+            || !reservation_id
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(AgentWebReplayStoreError::Unavailable(
+                "replay reservation id must be exactly 64 lowercase hexadecimal characters"
+                    .to_string(),
+            ));
+        }
+        self.standard_webhooks_replay_reservation_id = Some(reservation_id);
+        Ok(self)
+    }
+
     pub fn with_trusted_receipt_kernel_keys(
         mut self,
         keys: impl IntoIterator<Item = PublicKey>,
@@ -522,8 +555,16 @@ impl AgentWebVerifierTrust {
             .standard_webhooks_replay_store
             .as_ref()
             .ok_or_else(|| claim_failed("missing durable Standard Webhooks replay store"))?;
-        store
-            .check_and_insert(replay_window.now_unix_seconds, entries)
+        let reservation = self.standard_webhooks_replay_reservation_id.as_deref();
+        let result = match reservation {
+            Some(reservation_id) => store.check_and_insert_for_reservation(
+                replay_window.now_unix_seconds,
+                entries,
+                reservation_id,
+            ),
+            None => store.check_and_insert(replay_window.now_unix_seconds, entries),
+        };
+        result
             .map_err(|error| match error {
                 AgentWebReplayStoreError::Replayed(_) => {
                     claim_failed("replayed Standard Webhooks id")

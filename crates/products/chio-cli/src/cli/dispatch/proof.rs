@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[path = "proof/env.rs"]
 mod proof_env;
 use proof_env::{
-    agent_web_verifier_trust_from_env,
+    agent_web_replay_store_from_env_if_configured, agent_web_verifier_trust_from_env,
     commerce_trusted_event_authority_receipt_kernel_keys_from_env,
     commerce_trusted_payment_signer_keys_from_env, commerce_trusted_provider_keys_from_env,
     disclosure_lineage_verifier_trust_from_env, enterprise_trusted_approval_signer_keys_from_env,
@@ -853,6 +853,7 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
     verify_transaction_passport_file_with_mode(path, TransactionPassportVerificationMode::ReadOnly)
 }
 
+#[cfg(test)]
 pub(super) fn verify_transaction_passport_file_and_consume_agent_web_replays(
     path: &Path,
     expected_read_only_report: &serde_json::Value,
@@ -861,6 +862,21 @@ pub(super) fn verify_transaction_passport_file_and_consume_agent_web_replays(
         path,
         TransactionPassportVerificationMode::ConsumeAgentWebReplays {
             expected_read_only_report,
+            replay_reservation_id: None,
+        },
+    )
+}
+
+pub(super) fn verify_transaction_passport_file_and_reserve_agent_web_replays(
+    path: &Path,
+    expected_read_only_report: &serde_json::Value,
+    replay_reservation_id: &str,
+) -> Result<serde_json::Value, CliError> {
+    verify_transaction_passport_file_with_mode(
+        path,
+        TransactionPassportVerificationMode::ConsumeAgentWebReplays {
+            expected_read_only_report,
+            replay_reservation_id: Some(replay_reservation_id),
         },
     )
 }
@@ -870,6 +886,7 @@ enum TransactionPassportVerificationMode<'a> {
     ReadOnly,
     ConsumeAgentWebReplays {
         expected_read_only_report: &'a serde_json::Value,
+        replay_reservation_id: Option<&'a str>,
     },
 }
 
@@ -1031,9 +1048,18 @@ fn verify_transaction_passport_file_with_mode(
         )?);
     }
     if claim_requirements.requires(CLAIM_PREFIX_AGENT_WEB) {
-        let agent_web_trust =
-            agent_web_verifier_trust_from_env(verification_mode.agent_web_replay_mode())?
-                .with_trusted_passport_signer_keys(trusted_transaction_root_keys.clone());
+        let replay_reservation_id = match verification_mode {
+            TransactionPassportVerificationMode::ConsumeAgentWebReplays {
+                replay_reservation_id,
+                ..
+            } => replay_reservation_id,
+            TransactionPassportVerificationMode::ReadOnly => None,
+        };
+        let agent_web_trust = agent_web_verifier_trust_from_env(
+            verification_mode.agent_web_replay_mode(),
+            replay_reservation_id,
+        )?
+        .with_trusted_passport_signer_keys(trusted_transaction_root_keys.clone());
         let artifacts = load_agent_web_artifacts_from_graph(bundle_dir, &evidence_graph_bytes)?;
         let agent_web_evidence_graph_bytes =
             scoped_evidence_graph_bytes(&evidence_graph_bytes, is_agent_web_evidence_graph_node)?;
@@ -1144,6 +1170,7 @@ fn verify_transaction_passport_file_with_mode(
 
     if let TransactionPassportVerificationMode::ConsumeAgentWebReplays {
         expected_read_only_report,
+        ..
     } = verification_mode
     {
         if &report != expected_read_only_report {

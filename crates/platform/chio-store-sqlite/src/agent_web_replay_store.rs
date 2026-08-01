@@ -11,6 +11,7 @@ use chio_agent_web_interop::{
     AgentWebReplayEntry, AgentWebReplayStore, AgentWebReplayStoreError,
     DEFAULT_AGENT_WEB_REPLAY_GLOBAL_CAPACITY, DEFAULT_AGENT_WEB_REPLAY_PER_SCOPE_CAPACITY,
 };
+use chio_core::sha256_hex;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 const LEGACY_UNSCOPED_REPLAY_SCOPE: &str = "__chio_legacy_unscoped_replay_scope__";
@@ -18,6 +19,41 @@ const LEGACY_UNSCOPED_REPLAY_SCOPE: &str = "__chio_legacy_unscoped_replay_scope_
 #[derive(Debug, thiserror::Error)]
 #[error("sqlite Agent-Web replay store error: {0}")]
 pub struct SqliteAgentWebReplayStoreError(String);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqliteAgentWebReplayReservationState {
+    Pending,
+    FilesystemFinalized,
+    Complete,
+}
+
+impl SqliteAgentWebReplayReservationState {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::FilesystemFinalized => "filesystem_finalized",
+            Self::Complete => "complete",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, SqliteAgentWebReplayStoreError> {
+        match value {
+            "pending" => Ok(Self::Pending),
+            "filesystem_finalized" => Ok(Self::FilesystemFinalized),
+            "complete" => Ok(Self::Complete),
+            _ => Err(SqliteAgentWebReplayStoreError(format!(
+                "invalid Agent-Web replay reservation state {value:?}"
+            ))),
+        }
+    }
+}
+
+struct ReplayReservationMetadata {
+    id: String,
+    entries_digest: String,
+    entry_count: i64,
+    expires_at: i64,
+}
 
 impl From<std::io::Error> for SqliteAgentWebReplayStoreError {
     fn from(error: std::io::Error) -> Self {
@@ -132,6 +168,19 @@ impl SqliteAgentWebReplayStore {
 
             CREATE INDEX IF NOT EXISTS idx_chio_agent_web_replays_expires_at
                 ON chio_agent_web_replays(expires_at);
+
+            CREATE TABLE IF NOT EXISTS chio_agent_web_replay_reservations (
+                reservation_id TEXT PRIMARY KEY,
+                entries_digest TEXT NOT NULL,
+                entry_count    INTEGER NOT NULL CHECK (entry_count > 0),
+                expires_at     INTEGER NOT NULL,
+                state          TEXT NOT NULL CHECK (
+                    state IN ('pending', 'filesystem_finalized', 'complete')
+                )
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_chio_agent_web_replay_reservations_expires_at
+                ON chio_agent_web_replay_reservations(expires_at);
 
             CREATE TABLE IF NOT EXISTS chio_agent_web_replay_clock (
                 singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -272,6 +321,98 @@ impl SqliteAgentWebReplayStore {
         Ok(())
     }
 
+    pub fn replay_reservation_state(
+        &self,
+        reservation_id: &str,
+    ) -> Result<Option<SqliteAgentWebReplayReservationState>, SqliteAgentWebReplayStoreError> {
+        validate_reservation_id(reservation_id)?;
+        let connection = self.connection()?;
+        let state = connection
+            .query_row(
+                "SELECT state FROM chio_agent_web_replay_reservations WHERE reservation_id = ?1",
+                params![reservation_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        state
+            .map(|state| SqliteAgentWebReplayReservationState::parse(&state))
+            .transpose()
+    }
+
+    pub fn mark_replay_reservation_filesystem_finalized(
+        &self,
+        reservation_id: &str,
+    ) -> Result<(), SqliteAgentWebReplayStoreError> {
+        self.transition_replay_reservation(
+            reservation_id,
+            SqliteAgentWebReplayReservationState::Pending,
+            SqliteAgentWebReplayReservationState::FilesystemFinalized,
+        )
+    }
+
+    pub fn complete_replay_reservation(
+        &self,
+        reservation_id: &str,
+    ) -> Result<(), SqliteAgentWebReplayStoreError> {
+        self.transition_replay_reservation(
+            reservation_id,
+            SqliteAgentWebReplayReservationState::FilesystemFinalized,
+            SqliteAgentWebReplayReservationState::Complete,
+        )
+    }
+
+    fn transition_replay_reservation(
+        &self,
+        reservation_id: &str,
+        expected: SqliteAgentWebReplayReservationState,
+        target: SqliteAgentWebReplayReservationState,
+    ) -> Result<(), SqliteAgentWebReplayStoreError> {
+        validate_reservation_id(reservation_id)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let changed = transaction.execute(
+            "UPDATE chio_agent_web_replay_reservations SET state = ?1 WHERE reservation_id = ?2 AND state = ?3",
+            params![target.as_str(), reservation_id, expected.as_str()],
+        )?;
+        if changed == 0 {
+            let state = transaction
+                .query_row(
+                    "SELECT state FROM chio_agent_web_replay_reservations WHERE reservation_id = ?1",
+                    params![reservation_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            let Some(state) = state else {
+                return Err(SqliteAgentWebReplayStoreError(format!(
+                    "Agent-Web replay reservation {reservation_id} does not exist"
+                )));
+            };
+            let state = SqliteAgentWebReplayReservationState::parse(&state)?;
+            if state != target && state != SqliteAgentWebReplayReservationState::Complete {
+                return Err(SqliteAgentWebReplayStoreError(format!(
+                    "Agent-Web replay reservation {reservation_id} is {}, expected {}",
+                    state.as_str(),
+                    expected.as_str()
+                )));
+            }
+        }
+        match transaction.commit() {
+            Ok(()) => Ok(()),
+            Err(commit_error) => {
+                let confirmed = self.replay_reservation_state(reservation_id)?;
+                if confirmed == Some(target)
+                    || confirmed == Some(SqliteAgentWebReplayReservationState::Complete)
+                {
+                    Ok(())
+                } else {
+                    Err(SqliteAgentWebReplayStoreError(format!(
+                        "commit Agent-Web replay reservation transition: {commit_error}"
+                    )))
+                }
+            }
+        }
+    }
+
     fn connection(&self) -> Result<Connection, SqliteAgentWebReplayStoreError> {
         let connection = Connection::open(&self.path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
@@ -280,11 +421,12 @@ impl SqliteAgentWebReplayStore {
     }
 }
 
-impl AgentWebReplayStore for SqliteAgentWebReplayStore {
-    fn check_and_insert(
+impl SqliteAgentWebReplayStore {
+    fn check_and_insert_internal(
         &self,
         now_unix_seconds: u64,
         entries: &[AgentWebReplayEntry],
+        reservation_id: Option<&str>,
     ) -> Result<(), AgentWebReplayStoreError> {
         let now = i64::try_from(now_unix_seconds).map_err(|error| {
             AgentWebReplayStoreError::Unavailable(format!("invalid verifier time: {error}"))
@@ -354,6 +496,12 @@ impl AgentWebReplayStore for SqliteAgentWebReplayStore {
             }
             expires_at_values.push(expires_at);
         }
+        let reservation = reservation_id
+            .map(|reservation_id| {
+                replay_reservation_metadata(reservation_id, entries, &expires_at_values)
+            })
+            .transpose()
+            .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
 
         let mut batch_keys = BTreeSet::new();
         let mut batch_scope_counts = BTreeMap::<&str, usize>::new();
@@ -370,6 +518,77 @@ impl AgentWebReplayStore for SqliteAgentWebReplayStore {
             *batch_scope_counts
                 .entry(entry.replay_scope().as_str())
                 .or_default() += 1;
+        }
+
+        if let Some(reservation) = reservation.as_ref() {
+            let existing = transaction
+                .query_row(
+                    r#"
+                    SELECT entries_digest, entry_count, expires_at, state
+                    FROM chio_agent_web_replay_reservations
+                    WHERE reservation_id = ?1
+                    "#,
+                    params![reservation.id],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, String>(3)?,
+                        ))
+                    },
+                )
+                .optional()
+                .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+            if let Some((entries_digest, entry_count, expires_at, state)) = existing {
+                if entries_digest != reservation.entries_digest
+                    || entry_count != reservation.entry_count
+                    || expires_at != reservation.expires_at
+                {
+                    return Err(AgentWebReplayStoreError::Unavailable(format!(
+                        "replay reservation {} was reused for a different entry batch",
+                        reservation.id
+                    )));
+                }
+                let state = SqliteAgentWebReplayReservationState::parse(&state)
+                    .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+                if state == SqliteAgentWebReplayReservationState::Complete
+                    || reservation.expires_at < now
+                {
+                    return Err(AgentWebReplayStoreError::Replayed(
+                        entries.first().map_or_else(
+                            || reservation.id.clone(),
+                            |entry| entry.webhook_id().to_string(),
+                        ),
+                    ));
+                }
+                for (entry, expected_expiry) in entries.iter().zip(&expires_at_values) {
+                    let stored_expiry = transaction
+                        .query_row(
+                            r#"
+                            SELECT expires_at
+                            FROM chio_agent_web_replays
+                            WHERE replay_scope = ?1 AND webhook_id = ?2
+                            "#,
+                            params![entry.replay_scope().as_str(), entry.webhook_id()],
+                            |row| row.get::<_, i64>(0),
+                        )
+                        .optional()
+                        .map_err(|error| {
+                            AgentWebReplayStoreError::Unavailable(error.to_string())
+                        })?;
+                    if stored_expiry != Some(*expected_expiry) {
+                        return Err(AgentWebReplayStoreError::Unavailable(format!(
+                            "replay reservation {} is missing its exact replay entry batch",
+                            reservation.id
+                        )));
+                    }
+                }
+                transaction
+                    .commit()
+                    .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+                return Ok(());
+            }
         }
 
         for entry in entries {
@@ -465,6 +684,12 @@ impl AgentWebReplayStore for SqliteAgentWebReplayStore {
                 params![now],
             )
             .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+        transaction
+            .execute(
+                "DELETE FROM chio_agent_web_replay_reservations WHERE expires_at < ?1",
+                params![now],
+            )
+            .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
 
         for (entry, expires_at) in entries.iter().zip(expires_at_values) {
             transaction
@@ -487,10 +712,122 @@ impl AgentWebReplayStore for SqliteAgentWebReplayStore {
                 )
                 .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
         }
+        if let Some(reservation) = reservation {
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO chio_agent_web_replay_reservations (
+                        reservation_id,
+                        entries_digest,
+                        entry_count,
+                        expires_at,
+                        state
+                    )
+                    VALUES (?1, ?2, ?3, ?4, 'pending')
+                    "#,
+                    params![
+                        reservation.id,
+                        reservation.entries_digest,
+                        reservation.entry_count,
+                        reservation.expires_at
+                    ],
+                )
+                .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+        }
         transaction
             .commit()
             .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))
     }
+}
+
+impl AgentWebReplayStore for SqliteAgentWebReplayStore {
+    fn check_and_insert(
+        &self,
+        now_unix_seconds: u64,
+        entries: &[AgentWebReplayEntry],
+    ) -> Result<(), AgentWebReplayStoreError> {
+        self.check_and_insert_internal(now_unix_seconds, entries, None)
+    }
+
+    fn check_and_insert_for_reservation(
+        &self,
+        now_unix_seconds: u64,
+        entries: &[AgentWebReplayEntry],
+        reservation_id: &str,
+    ) -> Result<(), AgentWebReplayStoreError> {
+        self.check_and_insert_internal(now_unix_seconds, entries, Some(reservation_id))
+    }
+}
+
+fn validate_reservation_id(reservation_id: &str) -> Result<(), SqliteAgentWebReplayStoreError> {
+    if reservation_id.len() != 64
+        || !reservation_id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(SqliteAgentWebReplayStoreError(
+            "replay reservation id must be exactly 64 lowercase hexadecimal characters".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn replay_reservation_metadata(
+    reservation_id: &str,
+    entries: &[AgentWebReplayEntry],
+    expires_at_values: &[i64],
+) -> Result<ReplayReservationMetadata, SqliteAgentWebReplayStoreError> {
+    validate_reservation_id(reservation_id)?;
+    if entries.is_empty() || entries.len() != expires_at_values.len() {
+        return Err(SqliteAgentWebReplayStoreError(
+            "replay reservation requires a non-empty, complete entry batch".to_string(),
+        ));
+    }
+    let mut ordered = entries
+        .iter()
+        .map(|entry| {
+            (
+                entry.replay_scope().as_str(),
+                entry.webhook_id(),
+                entry.expires_at_unix_seconds(),
+            )
+        })
+        .collect::<Vec<_>>();
+    ordered.sort_unstable();
+    let mut digest_input = b"chio.agent-web-replay-reservation.entries.v1\0".to_vec();
+    for (scope, webhook_id, expires_at) in ordered {
+        append_length_prefixed(&mut digest_input, scope.as_bytes())?;
+        append_length_prefixed(&mut digest_input, webhook_id.as_bytes())?;
+        digest_input.extend_from_slice(&expires_at.to_be_bytes());
+    }
+    let entry_count = i64::try_from(entries.len()).map_err(|_| {
+        SqliteAgentWebReplayStoreError(
+            "replay reservation entry count exceeds SQLite integer range".to_string(),
+        )
+    })?;
+    let expires_at = expires_at_values.iter().copied().min().ok_or_else(|| {
+        SqliteAgentWebReplayStoreError("replay reservation has no expiry".to_string())
+    })?;
+    Ok(ReplayReservationMetadata {
+        id: reservation_id.to_string(),
+        entries_digest: sha256_hex(&digest_input),
+        entry_count,
+        expires_at,
+    })
+}
+
+fn append_length_prefixed(
+    output: &mut Vec<u8>,
+    value: &[u8],
+) -> Result<(), SqliteAgentWebReplayStoreError> {
+    let length = u64::try_from(value.len()).map_err(|_| {
+        SqliteAgentWebReplayStoreError(
+            "replay reservation entry component exceeds u64 length".to_string(),
+        )
+    })?;
+    output.extend_from_slice(&length.to_be_bytes());
+    output.extend_from_slice(value);
+    Ok(())
 }
 
 fn validate_capacities(
@@ -530,7 +867,7 @@ mod tests {
     use chio_test_support::prelude::*;
     use rusqlite::{params, Connection};
 
-    use super::SqliteAgentWebReplayStore;
+    use super::{SqliteAgentWebReplayReservationState, SqliteAgentWebReplayStore};
 
     fn replay_entry(webhook_id: &str, expires_at_unix_seconds: u64) -> AgentWebReplayEntry {
         replay_entry_in_scope(1, webhook_id, expires_at_unix_seconds)
@@ -1189,5 +1526,66 @@ mod tests {
                 SqliteAgentWebReplayStore::open(path).test_expect_err("non-durable path rejects");
             assert!(error.to_string().contains("durable filesystem path"));
         }
+    }
+
+    #[test]
+    fn replay_reservation_resumes_only_the_exact_incomplete_batch() {
+        let tempdir = tempfile::tempdir().test_expect("tempdir creates");
+        let path = tempdir.path().join("replay-reservation.sqlite");
+        let store = SqliteAgentWebReplayStore::open(&path).test_expect("replay store opens");
+        let now = unix_now();
+        let entries = [replay_entry_in_scope(1, "reserved", now + 3_600)];
+        let reservation_id = "a".repeat(64);
+        store
+            .check_and_insert_for_reservation(now, &entries, &reservation_id)
+            .test_expect("initial reservation commits atomically");
+        assert_eq!(
+            store
+                .replay_reservation_state(&reservation_id)
+                .test_expect("reservation state reads"),
+            Some(SqliteAgentWebReplayReservationState::Pending)
+        );
+
+        drop(store);
+        let reopened = SqliteAgentWebReplayStore::open(&path).test_expect("replay store reopens");
+        reopened
+            .check_and_insert_for_reservation(now, &entries, &reservation_id)
+            .test_expect("exact pending reservation resumes after reopen");
+        let mismatched = reopened
+            .check_and_insert_for_reservation(
+                now,
+                &[replay_entry_in_scope(1, "different", now + 3_600)],
+                &reservation_id,
+            )
+            .test_expect_err("reservation id cannot bind a different batch");
+        assert!(matches!(
+            mismatched,
+            AgentWebReplayStoreError::Unavailable(message)
+                if message.contains("different entry batch")
+        ));
+        let competing = reopened
+            .check_and_insert_for_reservation(now, &entries, &"b".repeat(64))
+            .test_expect_err("a different reservation cannot claim active entries");
+        assert_eq!(
+            competing,
+            AgentWebReplayStoreError::Replayed("reserved".to_string())
+        );
+
+        reopened
+            .mark_replay_reservation_filesystem_finalized(&reservation_id)
+            .test_expect("filesystem finalization records");
+        reopened
+            .check_and_insert_for_reservation(now, &entries, &reservation_id)
+            .test_expect("filesystem-finalized reservation remains resumable");
+        reopened
+            .complete_replay_reservation(&reservation_id)
+            .test_expect("reservation completes");
+        let replayed = reopened
+            .check_and_insert_for_reservation(now, &entries, &reservation_id)
+            .test_expect_err("completed reservation never resumes");
+        assert_eq!(
+            replayed,
+            AgentWebReplayStoreError::Replayed("reserved".to_string())
+        );
     }
 }

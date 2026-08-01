@@ -220,9 +220,59 @@ fn proof_collect_consumes_replays_only_after_sealing_succeeds() {
         std::fs::remove_file(&verifier_path),
         "remove verifier path blocker",
     );
+    collect::fail_after_replay_reservation_once();
+    let interrupted = collect::seal_collected_proof_bundle(
+        ProofCollectKind::AgentWebEnvelope,
+        &bundle,
+    );
+    assert!(interrupted.is_err_and(|error| error
+        .to_string()
+        .contains("injected failure after Agent-Web replay reservation")));
+    let pending_signature_path = bundle.join(".bundle-signature.dsse.json.pending");
+    assert!(pending_signature_path.is_file());
+    assert!(!bundle.join("bundle-signature.dsse.json").exists());
+    let replay_reservation_id = chio_core::sha256_hex(&proof_test_ok(
+        std::fs::read(&pending_signature_path),
+        "read pending bundle signature",
+    ));
+    let replay_store = proof_test_ok(
+        chio_store_sqlite::SqliteAgentWebReplayStore::open(&replay_store_path),
+        "open replay reservation store",
+    );
+    assert_eq!(
+        proof_test_ok(
+            replay_store.replay_reservation_state(&replay_reservation_id),
+            "read pending replay reservation state",
+        ),
+        Some(chio_store_sqlite::SqliteAgentWebReplayReservationState::Pending)
+    );
+    collect::fail_after_final_signature_link_once();
+    let link_interrupted = collect::seal_collected_proof_bundle(
+        ProofCollectKind::AgentWebEnvelope,
+        &bundle,
+    );
+    assert!(link_interrupted.is_err_and(|error| error
+        .to_string()
+        .contains("injected failure after final bundle signature link")));
+    assert!(pending_signature_path.is_file());
+    assert!(bundle.join("bundle-signature.dsse.json").is_file());
+    assert_eq!(
+        proof_test_ok(
+            replay_store.replay_reservation_state(&replay_reservation_id),
+            "read replay reservation after final link failure",
+        ),
+        Some(chio_store_sqlite::SqliteAgentWebReplayReservationState::Pending)
+    );
     proof_test_ok(
         collect::seal_collected_proof_bundle(ProofCollectKind::AgentWebEnvelope, &bundle),
-        "retry after sealing failure",
+        "retry after post-reservation failure",
+    );
+    assert_eq!(
+        proof_test_ok(
+            replay_store.replay_reservation_state(&replay_reservation_id),
+            "read completed replay reservation state",
+        ),
+        Some(chio_store_sqlite::SqliteAgentWebReplayReservationState::Complete)
     );
 
     let replay_error = collect::seal_collected_proof_bundle(

@@ -22,6 +22,43 @@ const TERMINAL_RECEIPT_CATEGORIES: [&str; 3] = [
     "runtime_terminal_failure",
 ];
 
+#[cfg(test)]
+static FAIL_AFTER_REPLAY_RESERVATION_ONCE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(test)]
+static FAIL_AFTER_FINAL_SIGNATURE_LINK_ONCE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(test)]
+pub(super) fn fail_after_replay_reservation_once() {
+    FAIL_AFTER_REPLAY_RESERVATION_ONCE.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(test)]
+pub(super) fn fail_after_final_signature_link_once() {
+    FAIL_AFTER_FINAL_SIGNATURE_LINK_ONCE.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn enforce_post_reservation_test_hook() -> Result<(), CliError> {
+    #[cfg(test)]
+    if FAIL_AFTER_REPLAY_RESERVATION_ONCE.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return Err(CliError::cli_other_error(
+            "injected failure after Agent-Web replay reservation",
+        ));
+    }
+    Ok(())
+}
+
+fn enforce_post_signature_link_test_hook() -> Result<(), CliError> {
+    #[cfg(test)]
+    if FAIL_AFTER_FINAL_SIGNATURE_LINK_ONCE.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return Err(CliError::cli_other_error(
+            "injected failure after final bundle signature link",
+        ));
+    }
+    Ok(())
+}
+
 #[derive(serde::Serialize)]
 struct ProofCollectReport {
     schema: &'static str,
@@ -178,14 +215,15 @@ fn seal_collected_proof_bundle_with_fixture_id(
     )?;
     sync_collected_proof_room_bundle(bundle)?;
     if let Some(read_only_report) = replay_snapshot {
-        let consume_result =
-            super::verify_transaction_passport_file_and_consume_agent_web_replays(
-                &passport_path,
-                &read_only_report,
-            )
-            .and_then(|consumed_report| {
-                enforce_collect_kind_requirements(kind, &consumed_report)
-            });
+        let pending_signature_path = bundle.join(PROOF_ROOM_PENDING_BUNDLE_SIGNATURE_PATH);
+        let final_signature_path = bundle.join(PROOF_ROOM_BUNDLE_SIGNATURE_PATH);
+        let replay_reservation_id = chio_core::sha256_hex(&fs::read(&pending_signature_path)?);
+        let consume_result = super::verify_transaction_passport_file_and_reserve_agent_web_replays(
+            &passport_path,
+            &read_only_report,
+            &replay_reservation_id,
+        )
+        .and_then(|consumed_report| enforce_collect_kind_requirements(kind, &consumed_report));
         if let Err(error) = consume_result {
             return match invalidate_collected_proof_room_bundle(bundle) {
                 Ok(()) => Err(error),
@@ -194,11 +232,35 @@ fn seal_collected_proof_bundle_with_fixture_id(
                 ))),
             };
         }
-        fs::rename(
-            bundle.join(PROOF_ROOM_PENDING_BUNDLE_SIGNATURE_PATH),
-            bundle.join(PROOF_ROOM_BUNDLE_SIGNATURE_PATH),
-        )?;
+        enforce_post_reservation_test_hook()?;
+        let replay_store = agent_web_replay_store_from_env_if_configured()?;
+        let reservation_state = replay_store
+            .as_ref()
+            .map(|store| store.replay_reservation_state(&replay_reservation_id))
+            .transpose()
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?
+            .flatten();
+        fs::hard_link(&pending_signature_path, &final_signature_path)?;
+        enforce_post_signature_link_test_hook()?;
         sync_collected_proof_room_bundle(bundle)?;
+        if reservation_state.is_some() {
+            let store = replay_store.as_ref().ok_or_else(|| {
+                CliError::cli_other_error("Agent-Web replay reservation store disappeared")
+            })?;
+            store
+                .mark_replay_reservation_filesystem_finalized(&replay_reservation_id)
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        }
+        fs::remove_file(&pending_signature_path)?;
+        sync_collected_proof_room_bundle(bundle)?;
+        if reservation_state.is_some() {
+            let store = replay_store.as_ref().ok_or_else(|| {
+                CliError::cli_other_error("Agent-Web replay reservation store disappeared")
+            })?;
+            store
+                .complete_replay_reservation(&replay_reservation_id)
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        }
     }
     Ok(report)
 }

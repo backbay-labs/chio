@@ -194,7 +194,9 @@ pub fn sqlite_filesystem_path(text: &str) -> PathBuf {
 pub use admission_operation_store::{
     CreditExposureAccountSnapshot, DurableObligationV1, SqliteAdmissionOperationStore,
 };
-pub use agent_web_replay_store::{SqliteAgentWebReplayStore, SqliteAgentWebReplayStoreError};
+pub use agent_web_replay_store::{
+    SqliteAgentWebReplayReservationState, SqliteAgentWebReplayStore, SqliteAgentWebReplayStoreError,
+};
 pub use approval_store::SqliteApprovalStore;
 pub use authority::SqliteCapabilityAuthority;
 pub use batch_approval_store::SqliteBatchApprovalStore;
