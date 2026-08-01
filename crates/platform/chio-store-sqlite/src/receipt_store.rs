@@ -2902,12 +2902,9 @@ fn append_single_receipt_record(
 
 /// Append a coalesced group-commit batch.
 ///
-/// `Err` is a STORE-WIDE fault (pool acquisition, checkpoint or predecessor
-/// verification, transaction open/commit, projection drift, a disk-full commit)
-/// that rejected the whole batch and will reject every future append until an
-/// operator reseeds: the caller poisons the head. `Ok` carries one result per
-/// request; a single malformed receipt fails only its own slot via its
-/// per-record savepoint and leaves the head intact.
+/// `Err` is a STORE-WIDE fault that rejects the batch and poisons the head until
+/// an operator reseeds. `Ok` carries one result per request; a malformed receipt
+/// fails only its own savepoint and leaves the head intact.
 fn append_receipt_batch(
     pool: &Pool<SqliteConnectionManager>,
     head: &mut VerifiedHead,
@@ -2999,6 +2996,8 @@ fn append_receipt_batch(
         .copied()
         .collect::<std::collections::BTreeSet<u64>>()
         .len() as u64;
+    #[cfg(feature = "chaos-test-hooks")]
+    chaos_test_hooks::pause_after_receipt_write_before_commit(inserted > 0)?;
     // O(b) projection cross-check over the delta only: the claim-log
     // projection triggers (bootstrap/open.rs:676 tool, :711 child) must have
     // advanced the projection by exactly the rows this batch inserted.
@@ -3238,6 +3237,7 @@ pub(crate) mod test_hooks {
 
 #[path = "receipt_store/bootstrap.rs"]
 mod bootstrap;
+mod chaos_test_hooks;
 #[path = "receipt_store/evidence_retention.rs"]
 mod evidence_retention;
 #[path = "receipt_store/liability_claims.rs"]

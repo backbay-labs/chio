@@ -20,6 +20,10 @@ pq = ["chio-core/pq", "chio-kernel/pq"]
 # byte-equivalent behaviour. Enabling this feature wires the
 # recursive-CTE query layer.
 lineage = []
+# Deterministic fault-injection hooks used only by the separate-process chaos
+# harness. Default-off so production store builds expose no environment-driven
+# pause points.
+chaos-test-hooks = []
 
 [dependencies]
 chacha20poly1305 = { workspace = true }

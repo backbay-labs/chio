@@ -1,4 +1,22 @@
 #![cfg_attr(not(any(loom, chio_kernel_loom)), allow(dead_code))]
+//! Loom interleaving models for the kernel's concurrency-sensitive state.
+//!
+//! One model drives a real shipped type. `loom_real_session_admission_never_
+//! outlives_terminal` constructs an actual `chio_kernel::session::Session`
+//! whose `inner` RwLock, inflight registry, and atomics are compiled against
+//! `loom::sync` under `--cfg loom`, then checks the terminal-admission
+//! invariant directly on the shipped state machine: no interleaving admits a
+//! tool call into a session that has been driven to its terminal (Closed)
+//! state.
+//!
+//! The other eleven models are hand-built replicas, each of a single kernel
+//! invariant (session terminal flag, receipt-store append, drop-guard receipt
+//! race, inflight counter, tenant budget, emergency stop, revocation, writer
+//! liveness). They link no kernel type: the surrounding kernel dispatch graph
+//! is async and pulls hyper-util, which cannot compile under `--cfg loom`
+//! (tokio drops `tokio::net`), so only the `session` module is exposed to
+//! loom. A reader must treat those eleven as models of an invariant, not as
+//! coverage of the shipped code paths that implement it.
 
 #[cfg(any(loom, chio_kernel_loom))]
 use std::collections::{BTreeSet, VecDeque};
@@ -111,6 +129,96 @@ fn loom_session_create_lookup_terminal_same_id() {
             denied_after_terminal.load(Ordering::Acquire) <= 1,
             "terminal lookup should deny at most once"
         );
+    });
+}
+
+// Drives the real shipped `chio_kernel::session::Session`. Under `--cfg loom`
+// the session's own RwLock and atomics are `loom::sync` primitives, so loom
+// explores real schedules on the `inner` lock that serializes tool-call
+// admission against the terminal-state transition. Gated `#[cfg(loom)]` (not
+// `chio_kernel_loom`) because it needs both the loom-instrumented session and
+// the loom-only chio-core dev-dependency.
+#[cfg(loom)]
+#[test]
+fn loom_real_session_admission_never_outlives_terminal() {
+    use chio_core::session::{
+        OperationContext, OperationKind, ProgressToken, RequestId, SessionId,
+    };
+    use chio_kernel::session::{Session, SessionState};
+
+    loom::model(|| {
+        let session = {
+            let session = Session::new(
+                SessionId::new("sess-loom"),
+                "agent-loom".to_string(),
+                Vec::new(),
+            );
+            assert!(
+                session.activate().is_ok(),
+                "session should activate to ready"
+            );
+            Arc::new(session)
+        };
+
+        let request_id = RequestId::new("req-loom-toolcall");
+        let admit_context = OperationContext {
+            session_id: SessionId::new("sess-loom"),
+            request_id: request_id.clone(),
+            agent_id: "agent-loom".to_string(),
+            parent_request_id: None,
+            progress_token: Some(ProgressToken::String("progress-loom".to_string())),
+        };
+
+        let admit_session = Arc::clone(&session);
+        let admit = thread::spawn(move || {
+            admit_session
+                .track_request(&admit_context, OperationKind::ToolCall, false)
+                .is_ok()
+        });
+
+        let close_session = Arc::clone(&session);
+        let close = thread::spawn(move || {
+            // close() drives the session to its terminal (Closed) state. If a
+            // tool call is already inflight it refuses and downgrades to
+            // Draining rather than clearing the admitted request.
+            let _ = close_session.close();
+        });
+
+        let admitted = match admit.join() {
+            Ok(admitted) => admitted,
+            Err(_) => panic!("admit thread should join"),
+        };
+        assert!(close.join().is_ok(), "close thread should join");
+
+        let final_state = session.state();
+        let admitted_inflight = session.inflight().get(&request_id).is_some();
+
+        // The session `inner` RwLock serializes admission against the terminal
+        // transition: track_request checks the lifecycle state and records the
+        // inflight entry while holding the read lock; close() flips the state
+        // while holding the write lock. The two cannot overlap, so a tool call
+        // is either admitted before the terminal transition (and survives in
+        // the inflight registry, forcing close() to downgrade to Draining) or
+        // it is denied because the terminal state was already observed. No
+        // interleaving admits a tool call into an already-closed session.
+        if admitted {
+            assert!(
+                admitted_inflight,
+                "an admitted tool call vanished from the inflight registry"
+            );
+            assert_ne!(
+                final_state,
+                SessionState::Closed,
+                "a tool call was admitted into a closed session"
+            );
+        }
+        if final_state == SessionState::Closed {
+            assert!(!admitted, "close linearized ahead of a tool-call admission");
+            assert!(
+                !admitted_inflight,
+                "a closed session retained an admitted tool call"
+            );
+        }
     });
 }
 

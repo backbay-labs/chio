@@ -5,6 +5,9 @@
 //! unconditional dequeue decrement, bounded queue with fail-closed
 //! rejection) across concurrent Append- and Write-shaped producers.
 //! Run: RUSTFLAGS="--cfg chio_store_sqlite_loom" cargo test -p chio-store-sqlite --test loom_receipt_writer --release
+//! (or via `make loom`; the nightly loom lane runs this target). The custom
+//! cfg exists because the global `--cfg loom` gates the chio-kernel modules
+//! this crate's lib imports out of existence.
 #![cfg_attr(not(any(loom, chio_store_sqlite_loom)), allow(dead_code))]
 
 #[cfg(any(loom, chio_store_sqlite_loom))]
@@ -23,10 +26,14 @@ mod model {
 
     impl Channel {
         fn try_send(&self, job: u64) -> bool {
+            self.try_send_bounded(job, QUEUE_CAPACITY)
+        }
+
+        fn try_send_bounded(&self, job: u64, capacity: usize) -> bool {
             // Pre-send increment (receipt_store.rs append/run_write invariant).
             self.inflight.fetch_add(1, Ordering::SeqCst);
             let pushed = match self.queue.lock() {
-                Ok(mut queue) if queue.len() < QUEUE_CAPACITY => {
+                Ok(mut queue) if queue.len() < capacity => {
                     queue.push_back(job);
                     true
                 }
@@ -123,6 +130,86 @@ mod model {
                 channel.inflight.load(Ordering::SeqCst),
                 0,
                 "inflight must be zero after every accepted job is drained"
+            );
+        });
+    }
+
+    #[test]
+    fn inflight_accounting_never_leaks_across_intent_consume_flush() {
+        loom::model(|| {
+            let channel = Arc::new(Channel {
+                queue: Mutex::new(VecDeque::new()),
+                inflight: AtomicU64::new(0),
+            });
+            // The dispatch-intent journal adds two producer shapes to the one
+            // channel: a metadata-only intent insert (Write-shaped) and the
+            // consuming receipt append (Append-shaped). The accounting is
+            // command-agnostic, so no interleaving with a concurrent drain
+            // may leak or double-count inflight.
+            let intent_writer = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.try_send(10)) // Write-shaped intent insert
+            };
+            let consuming_appender = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.try_send(11)) // Append-shaped consume
+            };
+            let drainer = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.drain())
+            };
+            let _ = intent_writer.join();
+            let _ = consuming_appender.join();
+            let _ = drainer.join();
+            channel.drain();
+            assert_eq!(
+                channel.inflight.load(Ordering::SeqCst),
+                0,
+                "inflight must be zero after every accepted intent and consume drains"
+            );
+        });
+    }
+
+    /// The fail-closed rejection arm: with a capacity-1 queue, two producers,
+    /// and no concurrent drain, at least one `try_send` observes a full queue
+    /// in every interleaving, so the speculative-increment undo runs hot. A
+    /// missing or misordered undo leaves `inflight` above the drained count
+    /// and fails the quiescence assertion. (The other models keep the queue
+    /// under capacity, which would leave this arm unexplored.)
+    #[test]
+    fn queue_full_rejection_restores_inflight() {
+        loom::model(|| {
+            let channel = Arc::new(Channel {
+                queue: Mutex::new(VecDeque::new()),
+                inflight: AtomicU64::new(0),
+            });
+            let producer_a = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.try_send_bounded(1, 1))
+            };
+            let producer_b = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.try_send_bounded(2, 1))
+            };
+            let sent_a = producer_a.join().unwrap_or(false);
+            let sent_b = producer_b.join().unwrap_or(false);
+
+            // Exactly one send fits a capacity-1 queue with no drain running.
+            let accepted = u64::from(sent_a) + u64::from(sent_b);
+            assert_eq!(accepted, 1, "a capacity-1 queue accepts exactly one send");
+            // The rejected send must have undone its speculative increment.
+            assert_eq!(
+                channel.inflight.load(Ordering::SeqCst),
+                accepted,
+                "inflight must equal accepted sends before the drain"
+            );
+
+            let drained = channel.drain();
+            assert_eq!(drained, accepted, "the drain consumes the accepted send");
+            assert_eq!(
+                channel.inflight.load(Ordering::SeqCst),
+                0,
+                "inflight must be zero after the accepted send drains"
             );
         });
     }

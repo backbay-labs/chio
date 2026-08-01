@@ -51,6 +51,118 @@ fn sqlite_receipt_store_persists_across_reopen() {
     let _ = fs::remove_file(path);
 }
 
+#[test]
+fn bounded_page_count_yields_full_error() {
+    let path = unique_db_path("chio-receipts-bounded-pages");
+
+    // Establish the schema and a baseline under the default (uncapped) config,
+    // then measure the live page count so the cap sits just above it. The bound
+    // must clear the schema yet leave only a little headroom, so a bounded append
+    // loop provably reaches SQLITE_FULL rather than looping forever.
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    for i in 0..16u64 {
+        let receipt = sample_receipt_with_id_and_timestamp(&format!("bounded-pre-{i}"), i + 1);
+        store
+            .append_chio_receipt_returning_seq(&receipt)
+            .test_unwrap();
+    }
+    store.flush_receipt_writes().test_unwrap();
+    let baseline_pages: i64 = store
+        .connection()
+        .test_unwrap()
+        .query_row("PRAGMA page_count", [], |row| row.get(0))
+        .test_unwrap();
+    drop(store);
+
+    let cap = u32::try_from(baseline_pages).test_unwrap() + 48;
+    let store = SqliteReceiptStore::open_with_pool_config(
+        &path,
+        crate::SqlitePoolConfig {
+            max_page_count: Some(cap),
+            ..crate::SqlitePoolConfig::default()
+        },
+    )
+    .test_unwrap();
+
+    let mut full_error = None;
+    for i in 0..50_000u64 {
+        let receipt = sample_receipt_with_id_and_timestamp(&format!("bounded-fill-{i}"), 1_000 + i);
+        match store.append_chio_receipt_returning_seq(&receipt) {
+            Ok(_) => continue,
+            Err(error) => {
+                full_error = Some(error);
+                break;
+            }
+        }
+    }
+
+    // The cap must actually have forced a rejection; a silent pass would prove
+    // nothing about the bound.
+    let error = match full_error {
+        Some(error) => error,
+        None => panic!("a bounded page count must eventually reject an append"),
+    };
+    match error {
+        ReceiptStoreError::Sqlite(sqlite_error) => assert_eq!(
+            sqlite_error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::DiskFull),
+            "a bounded page count must surface SQLITE_FULL as a typed Sqlite error"
+        ),
+        other => panic!("expected ReceiptStoreError::Sqlite(SQLITE_FULL), got {other:?}"),
+    }
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn bounded_page_count_rejects_zero_effective_mismatch() {
+    let path = unique_db_path("chio-receipts-zero-page-cap");
+    let error = match SqliteReceiptStore::open_with_pool_config(
+        &path,
+        crate::SqlitePoolConfig {
+            max_page_count: Some(0),
+            ..crate::SqlitePoolConfig::default()
+        },
+    ) {
+        Ok(_) => panic!("a zero page cap must not open as SQLite's default maximum"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(_)),
+        "a silently ignored zero page cap must deny with Conflict, got {error:?}"
+    );
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn bounded_page_count_rejects_cap_below_existing_database() {
+    let path = unique_db_path("chio-receipts-below-existing-page-cap");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let current_pages: i64 = store
+        .connection()
+        .test_unwrap()
+        .query_row("PRAGMA page_count", [], |row| row.get(0))
+        .test_unwrap();
+    drop(store);
+    let requested = u32::try_from(current_pages.saturating_sub(1)).test_unwrap();
+
+    let error = match SqliteReceiptStore::open_with_pool_config(
+        &path,
+        crate::SqlitePoolConfig {
+            max_page_count: Some(requested),
+            ..crate::SqlitePoolConfig::default()
+        },
+    ) {
+        Ok(_) => panic!("a page cap below the existing database must not be raised silently"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(_)),
+        "an effective cap above the requested cap must deny with Conflict, got {error:?}"
+    );
+    let _ = fs::remove_file(path);
+}
+
 #[cfg(feature = "pq")]
 #[test]
 fn receipt_verify_accepts_hybrid_receipts_for_persistence() {

@@ -1,0 +1,41 @@
+[package]
+name = "chio-chaos"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+default = []
+# This feature is enabled only by the isolated chaos-victim build and test
+# invocations. Keeping it default-off prevents Cargo's workspace feature
+# unification from compiling environment-driven fault hooks into product
+# artifacts built by `cargo build --workspace`.
+chaos-victim = ["chio-store-sqlite/chaos-test-hooks"]
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "chaos_victim"
+path = "src/bin/chaos_victim.rs"
+required-features = ["chaos-victim"]
+
+[dependencies]
+chio-loadgen = { path = "../chio-loadgen" }
+chio-store-sqlite = { workspace = true }
+chio-kernel = { workspace = true }
+chio-core-types = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+chio-test-support = { workspace = true }
+tempfile = { workspace = true }
+rusqlite = { workspace = true }
+
+[lints]
+workspace = true

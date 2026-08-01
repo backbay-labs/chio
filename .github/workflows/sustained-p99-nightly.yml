@@ -22,7 +22,7 @@ jobs:
   sustained-p99:
     name: sustained p99
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -30,8 +30,13 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Build sustained gate binary
+        env:
+          CARGO_BUILD_JOBS: "4"
+        run: cargo build -p chio-loadgen --release --bin sustained
+
       - name: Run sustained kernel p99 lane
-        run: cargo bench -p chio-kernel --features sustained-p99-nightly --bench sustained_p99_30min -- --test --nocapture
+        run: cargo run -p chio-loadgen --release --bin sustained
 
       - name: Run store write throughput bench smoke
         run: cargo bench -p chio-store-sqlite --bench store_receipt_write_throughput -- --test

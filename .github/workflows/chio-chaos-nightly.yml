@@ -1,0 +1,82 @@
+name: chio-chaos-nightly
+
+on:
+  schedule:
+    - cron: "43 4 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "bench/chio-chaos/**"
+      - "bench/chio-loadgen/**"
+      - "crates/platform/chio-store-sqlite/**"
+      - ".github/workflows/chio-chaos-nightly.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chio-chaos-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: "1"
+  CARGO_INCREMENTAL: "0"
+  CHIO_CHAOS_ITERATIONS: "40"
+  # Vary the SplitMix64 delay schedule each night so successive runs explore new
+  # interleavings, while staying reproducible: the chosen seed is printed on
+  # entry, so a failing run can be replayed by pinning CHIO_CHAOS_SEED to it.
+  CHIO_CHAOS_SEED: "${{ github.run_id }}"
+
+jobs:
+  chio-chaos:
+    name: chio chaos
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: stable
+
+      - name: Build chaos victim and test binaries
+        env:
+          CARGO_BUILD_JOBS: "4"
+        run: |
+          cargo build -p chio-chaos --release --features chaos-victim --bin chaos_victim
+          cargo test -p chio-chaos --release --features chaos-victim --no-run
+
+      - name: Run chaos scenarios
+        run: cargo test -p chio-chaos --release --features chaos-victim -- --nocapture
+
+  chio-chaos-windows-compile:
+    name: chio chaos windows compile
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: stable
+
+      - name: Locate the OpenSSL SDK
+        shell: pwsh
+        run: |
+          $opensslRoot = Join-Path $env:ProgramFiles "OpenSSL"
+          $includeDirectory = Join-Path $opensslRoot "include"
+          $sslLibrary = Get-ChildItem (Join-Path $opensslRoot "lib") -Recurse -File -Filter "libssl.lib" |
+            Where-Object { Test-Path (Join-Path $_.DirectoryName "libcrypto.lib") } |
+            Select-Object -First 1
+          if (-not (Test-Path $includeDirectory) -or $null -eq $sslLibrary) {
+            throw "GitHub runner OpenSSL SDK is incomplete"
+          }
+          "OPENSSL_INCLUDE_DIR=$includeDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENSSL_LIB_DIR=$($sslLibrary.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Compile portable chaos tests
+        env:
+          CARGO_BUILD_JOBS: "4"
+        run: cargo test -p chio-chaos --features chaos-victim --tests --no-run
