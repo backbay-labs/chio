@@ -256,6 +256,7 @@ fn market_state(
         cluster: None,
         cluster_progress: None,
         finding_rail: Some(rail),
+        finding_purchase_executor: None,
     }
 }
 

@@ -130,7 +130,7 @@ pub(crate) use self::paths::{
 pub(crate) use self::paths::{
     FINDINGS_COLLATERAL_PATH, FINDINGS_PROFILES_PATH, FINDINGS_PUBLISH_PATH, FINDINGS_RECIPES_PATH,
     FINDINGS_SEARCH_PATH, FINDING_ACTIVATE_PATH, FINDING_ADMISSION_PATH,
-    FINDING_PARTICIPATION_PATH, FINDING_PATH,
+    FINDING_PARTICIPATION_PATH, FINDING_PATH, FINDING_PURCHASE_PATH,
 };
 pub(crate) use self::requests::{
     build_capability_snapshot, build_federated_delegation_anchor_snapshot,

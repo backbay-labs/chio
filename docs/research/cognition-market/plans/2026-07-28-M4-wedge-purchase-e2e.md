@@ -341,10 +341,12 @@ authorization is a market-side mint), and challenge evaluation (M5).
 - New feature on `chio-cli` forwarding to the market crates;
   `Commands::Finding { publish | search | verify | buy }` following the
   liability-market precedent (types + dispatch + cmd fns). `verify` runs the
-  M2 `FindingEvidenceVerifier` and prints every facet; `buy` drives
-  bid/reserve/accept/reveal against the control plane plus a local kernel
-  and repeats the digest and media checks client-side before interpreting
-  bytes (usability backstop only).
+  M2 `FindingEvidenceVerifier` and prints every facet. `buy` verifies the
+  signed public Finding, submits only bounded buyer policy inputs to the
+  authenticated control-plane purchase route, and repeats the digest and
+  media checks client-side before interpreting bytes (usability backstop
+  only). The explicitly installed server-side executor owns
+  bid/reserve/accept/reveal and the purchase-aware kernel.
 - The module name avoids the existing guard-market `market` module.
 
 ## Task 9: `finding_purchase` verdict-matrix class
@@ -418,17 +420,25 @@ authorization is a market-side mint), and challenge evaluation (M5).
   exit lanes caught were fixed with them: the purchase key now derives
   from the accepted-bid envelope digest, and the delivery finalizer
   resolves the exposure encumbrance by its reservation key.
-- Documented deviations: the purchase coordinator is an in-process
-  control-plane seam and the HTTP purchase routes are deferred, so
-  `chio finding buy` registers its full surface but refuses cleanly until
-  that wiring exists (the CLI round trip covers publish, search, and the
-  thirteen-facet verify; the buy and reveal legs are proved by the
-  in-process exit flow). Denial slot-close commits atomically with the
-  signed standing artifact after the checkpoint, so a checkpoint outage
-  delays the cutoff slot rather than leaving an unclosable one; closure
-  stays recovery-guaranteed from the durable kernel terminal. A real
-  deployment constraint surfaced by the lanes: the ask and token minter
-  must be the finding issuer or the authorized seller named by the
+- The deferred public purchase exit is now closed. Authenticated
+  `POST /v1/findings/{finding_id}/purchase` accepts strict canonical,
+  bounded buyer policy inputs and returns only a pinned signed captured
+  Allow or released Deny terminal. A deployment must explicitly inject the
+  high-level executor; ordinary startup returns the stable
+  `purchase_executor_unavailable` terminal instead of inventing signer or
+  seller state. The adapter keeps asks, admissions, reveal carriers, and
+  seller payloads behind the server boundary while driving the existing
+  coordinator, durable store, and purchase-aware kernel. `chio finding buy`
+  now uses this route and independently verifies the signed Finding and
+  revealed media/digest commitment. The named live route exit proves the
+  authenticated reserve-to-reveal-to-capture flow and byte-identical replay
+  after the sale windows expire, without a second capture.
+- Remaining documented deviations: denial slot-close commits atomically
+  with the signed standing artifact after the checkpoint, so a checkpoint
+  outage delays the cutoff slot rather than leaving an unclosable one;
+  closure stays recovery-guaranteed from the durable kernel terminal. A
+  real deployment constraint surfaced by the lanes: the ask and token
+  minter must be the finding issuer or the authorized seller named by the
   issuer-signed authorization.
 
 ## Post-implementation review

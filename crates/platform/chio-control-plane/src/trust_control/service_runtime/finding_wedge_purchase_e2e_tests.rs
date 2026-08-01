@@ -85,8 +85,9 @@ use chio_kernel::{
     DEFAULT_MAX_STREAM_TOTAL_BYTES, DPOP_SCHEMA,
 };
 use chio_open_market::bidding::{
-    BidMintContext, BidRequest, RequestedScope, SignedAcceptedBid, SignedAskResponse,
-    SignedBidRequest, SignedReservationReceipt, VerifiedReservationReceipt, BID_REQUEST_SCHEMA,
+    BidMintContext, BidRequest, RequestedScope, ReservationReceipt, SignedAcceptedBid,
+    SignedAskResponse, SignedBidRequest, SignedReservationReceipt, VerifiedReservationReceipt,
+    BID_REQUEST_SCHEMA, RESERVATION_RECEIPT_SCHEMA,
 };
 use chio_open_market::fee_schedule::{
     build_open_market_fee_schedule_artifact, OpenMarketBondClass, OpenMarketBondRequirement,
@@ -123,6 +124,11 @@ use tower::ServiceExt;
 use crate::trust_control::finding_purchase_coordinator::{
     derive_reservation_id, CoordinatorReservationReader, FindingPurchaseCoordinator,
     PurchaseCoordinatorError,
+};
+use crate::trust_control::finding_purchase_routes::{
+    FindingPurchaseExecutionError, FindingPurchaseExecutor, FindingPurchaseRequest,
+    FindingPurchaseResult, FindingPurchaseSettlementTerminal, FindingPurchaseVerdict,
+    FindingPurchasedOutput, FINDING_PURCHASE_MAX_BODY_BYTES, FINDING_PURCHASE_RESULT_SCHEMA,
 };
 use crate::trust_control::finding_purchase_verifier::MarketFindingPurchaseVerifier;
 use crate::trust_control::finding_recovery_verifier::MarketFindingRecoveryVerifier;
@@ -295,6 +301,7 @@ fn market_state(
         cluster: None,
         cluster_progress: None,
         finding_rail: Some(Arc::new(VenueLedgerRailObserver)),
+        finding_purchase_executor: None,
     }
 }
 
@@ -1633,13 +1640,36 @@ fn handshake(
     token_id: &str,
 ) -> Result<Handshake, AnyError> {
     let now = unix_timestamp_now();
+    handshake_at(
+        web,
+        witness,
+        buyer,
+        agent_id,
+        token_id,
+        now,
+        usd(PRICE_UNITS),
+        3_600,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handshake_at(
+    web: &MarketWeb,
+    witness: &VerifiedFindingAdmission,
+    buyer: &Keypair,
+    agent_id: &str,
+    token_id: &str,
+    now: u64,
+    max_price_per_call: MonetaryAmount,
+    window_seconds: u64,
+) -> Result<Handshake, AnyError> {
     let bid = SignedBidRequest::sign(
         BidRequest {
             schema: BID_REQUEST_SCHEMA.to_string(),
             agent_id: agent_id.to_string(),
             listing_id: LISTING_ID.to_string(),
-            max_price_per_call: usd(PRICE_UNITS),
-            window_seconds: 3_600,
+            max_price_per_call,
+            window_seconds,
             requested_scope: RequestedScope {
                 server_id: SERVER_ID.to_string(),
                 tool_name: READ_FINDING_TOOL.to_string(),
@@ -1714,6 +1744,24 @@ fn dpop_proof(
     arguments: &serde_json::Value,
     nonce: &str,
 ) -> Result<DpopProof, AnyError> {
+    dpop_proof_at(
+        capability,
+        buyer,
+        tool_name,
+        arguments,
+        nonce,
+        unix_timestamp_now(),
+    )
+}
+
+fn dpop_proof_at(
+    capability: &CapabilityToken,
+    buyer: &Keypair,
+    tool_name: &str,
+    arguments: &serde_json::Value,
+    nonce: &str,
+    issued_at: u64,
+) -> Result<DpopProof, AnyError> {
     Ok(DpopProof::sign(
         DpopProofBody {
             schema: DPOP_SCHEMA.to_string(),
@@ -1722,7 +1770,7 @@ fn dpop_proof(
             tool_name: tool_name.to_string(),
             action_hash: sha256_hex(&canonical_json_bytes(arguments)?),
             nonce: nonce.to_string(),
-            issued_at: unix_timestamp_now(),
+            issued_at,
             agent_key: buyer.public_key(),
         },
         buyer,
@@ -1758,13 +1806,21 @@ struct RevealRequestInputs<'a> {
 }
 
 fn reveal_request(inputs: &RevealRequestInputs<'_>) -> Result<ToolCallRequest, AnyError> {
+    reveal_request_at(inputs, unix_timestamp_now())
+}
+
+fn reveal_request_at(
+    inputs: &RevealRequestInputs<'_>,
+    issued_at: u64,
+) -> Result<ToolCallRequest, AnyError> {
     let arguments = serde_json::json!({ "finding_id": inputs.finding_id });
-    let proof = dpop_proof(
+    let proof = dpop_proof_at(
         inputs.capability,
         inputs.buyer,
         READ_FINDING_TOOL,
         &arguments,
         inputs.nonce,
+        issued_at,
     )?;
     Ok(ToolCallRequest {
         request_id: inputs.request_id.to_string(),
@@ -1996,9 +2052,413 @@ impl Lane {
     }
 }
 
+/// Deployment adapter used by the public-route exit. It owns the seller web,
+/// buyer mapping, coordinator keys, and kernel construction, so none of those
+/// artifacts become caller-authoritative request fields.
+struct RoutedPurchaseExecutor {
+    authority: Arc<SqliteAuthorityStore>,
+    web: MarketWeb,
+    witness: VerifiedFindingAdmission,
+    buyer: Keypair,
+    kernel_keypair: Keypair,
+    calls: Arc<PaymentCalls>,
+    invocations: Arc<AtomicU64>,
+    attempts: Arc<AtomicU64>,
+    exchange_now: u64,
+    now: Arc<AtomicU64>,
+}
+
+impl RoutedPurchaseExecutor {
+    fn execution_error(error: impl std::fmt::Display) -> FindingPurchaseExecutionError {
+        FindingPurchaseExecutionError::Internal(error.to_string())
+    }
+}
+
+#[async_trait::async_trait]
+impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
+    async fn execute(
+        &self,
+        request: FindingPurchaseRequest,
+    ) -> Result<FindingPurchaseResult, FindingPurchaseExecutionError> {
+        self.attempts.fetch_add(1, Ordering::SeqCst);
+        let now = self.now.load(Ordering::SeqCst);
+        if request.finding_id != self.web.finding_id
+            || request.max_price.currency != "USD"
+            || request.max_price.units < PRICE_UNITS
+        {
+            return Err(FindingPurchaseExecutionError::Rejected(
+                "finding or price ceiling does not match the admitted offer".to_owned(),
+            ));
+        }
+        let payer_key = self.buyer.public_key();
+        let payer = request.payer.clone().unwrap_or_else(|| payer_key.to_hex());
+        if payer != payer_key.to_hex() {
+            return Err(FindingPurchaseExecutionError::Rejected(
+                "payer is not mapped to the authenticated buyer key".to_owned(),
+            ));
+        }
+        let deadline_secs = request.deadline_secs.unwrap_or(RESERVATION_TTL_SECS);
+        let exchange = handshake_at(
+            &self.web,
+            &self.witness,
+            &self.buyer,
+            &payer,
+            TOKEN_ID,
+            self.exchange_now,
+            request.max_price.clone(),
+            deadline_secs,
+        )
+        .map_err(Self::execution_error)?;
+        let coordinator = coordinator(&self.authority).map_err(Self::execution_error)?;
+        let reservation_receipt = match coordinator.resolve(&exchange.reservation_id) {
+            Ok(reservation) => {
+                let bid_envelope_sha256 =
+                    digest_of(&exchange.bid).map_err(Self::execution_error)?;
+                let admission_envelope_sha256 =
+                    digest_of(&self.web.admission).map_err(Self::execution_error)?;
+                if reservation.state != FindingPurchaseReservationState::Consumed {
+                    return Err(FindingPurchaseExecutionError::Pending(
+                        "durable reservation has not reached a purchase terminal".to_owned(),
+                    ));
+                }
+                if reservation.purchase_intent_id
+                    != derive_purchase_intent_id(&exchange.reservation_id)
+                    || reservation.authoritative_payment_operation_id
+                        != derive_payment_operation_id(&exchange.reservation_id)
+                    || reservation.payer_hex != payer_key.to_hex()
+                    || reservation.agent_id != exchange.ask.body.agent_id
+                    || reservation.finding_id != self.web.finding_id
+                    || reservation.listing_id != exchange.ask.body.listing_id
+                    || reservation.bid_envelope_sha256 != bid_envelope_sha256
+                    || reservation.ask_digest != exchange.ask_digest
+                    || reservation.admission_envelope_sha256 != admission_envelope_sha256
+                    || reservation.amount_units != exchange.ask.body.quoted_price.units
+                    || reservation.currency != exchange.ask.body.quoted_price.currency
+                    || reservation.created_at != self.exchange_now
+                    || reservation.expires_at != self.exchange_now.saturating_add(deadline_secs)
+                {
+                    return Err(FindingPurchaseExecutionError::Conflict(
+                        "durable reservation does not bind the public replay".to_owned(),
+                    ));
+                }
+                SignedReservationReceipt::sign(
+                    ReservationReceipt {
+                        schema: RESERVATION_RECEIPT_SCHEMA.to_owned(),
+                        receipt_id: exchange.reservation_id.clone(),
+                        agent_id: exchange.ask.body.agent_id.clone(),
+                        listing_id: exchange.ask.body.listing_id.clone(),
+                        ask_digest: exchange.ask_digest.clone(),
+                        reserved_amount: exchange.ask.body.quoted_price.clone(),
+                    },
+                    &keypair(16),
+                )
+                .map_err(Self::execution_error)?
+            }
+            Err(PurchaseCoordinatorError::UnknownReservation) => coordinator
+                .reserve(
+                    &exchange.bid,
+                    &exchange.ask,
+                    &exchange.buyer_signature_hex,
+                    &self.web.admission,
+                    &self.web.authorization,
+                    EXPOSURE_UNITS,
+                    deadline_secs,
+                    now,
+                )
+                .map_err(Self::execution_error)?,
+            Err(error) => return Err(Self::execution_error(error)),
+        };
+        let verified = VerifiedReservationReceipt::from_signed(
+            &reservation_receipt,
+            &keypair(16).public_key(),
+        )
+        .map_err(Self::execution_error)?;
+        let accepted = accept_finding_purchase(
+            &exchange.ask,
+            &verified,
+            &self.buyer,
+            self.exchange_now,
+            &self.witness,
+            &self.web.finding,
+        )
+        .map_err(Self::execution_error)?;
+        let reservation = coordinator
+            .resolve(&exchange.reservation_id)
+            .map_err(Self::execution_error)?;
+        match reservation.state {
+            FindingPurchaseReservationState::Open => {
+                coordinator
+                    .reserve_slot(&exchange.reservation_id, now)
+                    .map_err(Self::execution_error)?;
+            }
+            FindingPurchaseReservationState::SlotReserved
+            | FindingPurchaseReservationState::Consumed => {}
+            FindingPurchaseReservationState::Released
+            | FindingPurchaseReservationState::Expired => {
+                return Err(FindingPurchaseExecutionError::Conflict(
+                    "reservation is already closed without a purchase record".to_owned(),
+                ));
+            }
+        }
+        let context_b64 = purchase_context_b64(&CarrierInputs {
+            web: &self.web,
+            handshake: &exchange,
+            accepted: &accepted,
+            reservation_receipt: &reservation_receipt,
+        })
+        .map_err(Self::execution_error)?;
+        let capability = exchange.ask.body.token_offer.clone();
+        let reveal = reveal_request_at(
+            &RevealRequestInputs {
+                request_id: &request.request_id,
+                capability: &capability,
+                buyer: &self.buyer,
+                finding_id: &self.web.finding_id,
+                context_b64: Some(&context_b64),
+                nonce: &request.request_id,
+            },
+            self.exchange_now,
+        )
+        .map_err(Self::execution_error)?;
+        let kernel = build_reveal_kernel(&RevealKernelInputs {
+            authority: &self.authority,
+            kernel_keypair: &self.kernel_keypair,
+            web: &self.web,
+            rail: Rail::ReversibleHold,
+            calls: &self.calls,
+            invocations: &self.invocations,
+            install_verifier: true,
+        })
+        .map_err(Self::execution_error)?;
+        let response = kernel
+            .evaluate_tool_call_blocking(&reveal)
+            .map_err(Self::execution_error)?;
+        if response.verdict != Verdict::Allow {
+            return Err(FindingPurchaseExecutionError::Pending(
+                "test adapter received a denial requiring checkpointed finalization".to_owned(),
+            ));
+        }
+        let output = delivered_value(&response).map_err(Self::execution_error)?;
+        let media_type = output
+            .get("media_type")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| Self::execution_error("reveal media type missing"))?
+            .to_owned();
+        let payload_b64 = output
+            .get("payload_b64")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| Self::execution_error("reveal payload missing"))?
+            .to_owned();
+        self.authority
+            .finding_purchase_store()
+            .register_community_fund_destination(
+                &self.web.allocation_id,
+                COMMUNITY_FUND_DESTINATION,
+                now,
+            )
+            .map_err(Self::execution_error)?;
+        let record = coordinator
+            .finalize_delivery(
+                &exchange.reservation_id,
+                &response.receipt,
+                &self.web.admission,
+                &self.web.backing,
+                now,
+            )
+            .map_err(Self::execution_error)?;
+        Ok(FindingPurchaseResult {
+            schema: FINDING_PURCHASE_RESULT_SCHEMA.to_owned(),
+            request_id: request.request_id,
+            finding_id: self.web.finding_id.clone(),
+            payer,
+            payer_key,
+            reservation_id: exchange.reservation_id.clone(),
+            purchase_intent_id: record.body.purchase_intent_id.clone(),
+            authoritative_payment_operation_id: record
+                .body
+                .authoritative_payment_operation_id
+                .clone(),
+            verdict: FindingPurchaseVerdict::Allow,
+            settlement: FindingPurchaseSettlementTerminal::Captured,
+            accepted_price: record.body.accepted_price.clone(),
+            realized_spend: record.body.realized_spend.clone(),
+            delivery_receipt: response.receipt,
+            purchase_record: Some(record),
+            failed_delivery: None,
+            output: Some(FindingPurchasedOutput {
+                media_type,
+                payload_b64,
+            }),
+        })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The end-to-end wedge purchase
 // ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cognition_market_live_purchase_route_exit() -> TestResult {
+    let deployment = provision(RevealCase::honest())?;
+    let authority = deployment.open()?;
+    let mut state = market_state(authority.clone(), market_config());
+    deployment.seed_and_activate(&state).await?;
+    let fixed_now = unix_timestamp_now();
+    let replay_now = deployment
+        .web
+        .admission
+        .body
+        .expires_at
+        .max(deployment.web.finding.expires_at)
+        .max(deployment.web.admission.body.purchase_authority.valid_until)
+        .max(fixed_now.saturating_add(901))
+        .saturating_add(1);
+    let accepted_at = allocation_accepted_at(&authority, &deployment.web)?;
+    let witness = admission_witness(&deployment.web, accepted_at)?;
+    let buyer = keypair(31);
+    let payer = buyer.public_key().to_hex();
+    let request = FindingPurchaseRequest::new(
+        deployment.web.finding_id.clone(),
+        PRICE_UNITS + 50,
+        "USD".to_owned(),
+        Some(payer.clone()),
+        Some(900),
+    )?;
+    let request_body = canonical_json_bytes(&request)?;
+    let path = format!("/v1/findings/{}/purchase", deployment.web.finding_id);
+    let expected_finding_id = deployment.web.finding_id.clone();
+
+    // Authentication is checked before any request body is consumed.
+    let (status, body) = send(
+        &state,
+        Request::builder()
+            .method("POST")
+            .uri(&path)
+            .header("content-type", "application/json")
+            .body(Body::from(vec![b' '; FINDING_PURCHASE_MAX_BODY_BYTES + 1]))?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_unauthorized")
+    );
+
+    let mut noncanonical = request_body.clone();
+    noncanonical.push(b'\n');
+    let (status, body) = send(&state, authed_post(&path, noncanonical)?).await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_request_not_canonical")
+    );
+
+    let (status, body) = send(
+        &state,
+        authed_post(&path, vec![b' '; FINDING_PURCHASE_MAX_BODY_BYTES + 1])?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_request_too_large")
+    );
+
+    // Ordinary service startup is deliberately inert: no coordinator or
+    // seller adapter is inferred from the mere presence of market config.
+    let (status, body) = send(&state, authed_post(&path, request_body.clone())?).await?;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_executor_unavailable")
+    );
+
+    // A path/body disagreement is rejected before the adapter can reserve.
+    let mismatched_path = format!("/v1/findings/{}/purchase", "f".repeat(64));
+    let (status, body) = send(&state, authed_post(&mismatched_path, request_body.clone())?).await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_path_mismatch")
+    );
+
+    let calls = Arc::new(PaymentCalls::default());
+    let invocations = Arc::new(AtomicU64::new(0));
+    let attempts = Arc::new(AtomicU64::new(0));
+    let purchase_clock = Arc::new(AtomicU64::new(fixed_now));
+    state.finding_purchase_executor = Some(Arc::new(RoutedPurchaseExecutor {
+        authority: authority.clone(),
+        web: deployment.web,
+        witness,
+        buyer,
+        kernel_keypair: keypair(40),
+        calls: calls.clone(),
+        invocations: invocations.clone(),
+        attempts: attempts.clone(),
+        exchange_now: fixed_now,
+        now: purchase_clock.clone(),
+    }));
+
+    let (status, first_body) = send(&state, authed_post(&path, request_body.clone())?).await?;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&first_body)
+    );
+    let first: FindingPurchaseResult = serde_json::from_slice(&first_body)?;
+    assert_eq!(first.request_id, request.request_id);
+    assert_eq!(first.finding_id, expected_finding_id);
+    assert_eq!(first.payer, payer);
+    assert_eq!(first.verdict, FindingPurchaseVerdict::Allow);
+    assert_eq!(
+        first.settlement,
+        FindingPurchaseSettlementTerminal::Captured
+    );
+    assert_eq!(first.accepted_price, usd(PRICE_UNITS));
+    assert_eq!(first.realized_spend, usd(PRICE_UNITS));
+    assert_eq!(
+        first.output,
+        Some(FindingPurchasedOutput {
+            media_type: REVEAL_MEDIA_TYPE.to_owned(),
+            payload_b64: STANDARD.encode(SEALED_PAYLOAD),
+        })
+    );
+    let record = first
+        .purchase_record
+        .as_ref()
+        .ok_or_else(|| missing("public purchase result omitted its record"))?;
+    verify_signed_purchase_record(record, &keypair(16).public_key())?;
+    assert_eq!(record.body.delivery_receipt_id, first.delivery_receipt.id);
+    assert_eq!(calls.captures.load(Ordering::SeqCst), 1);
+    assert_eq!(calls.releases.load(Ordering::SeqCst), 0);
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+    let stored = authority
+        .finding_purchase_store()
+        .get_reservation(&first.reservation_id)?
+        .ok_or_else(|| missing("public purchase reservation missing"))?;
+    assert_eq!(stored.state, FindingPurchaseReservationState::Consumed);
+    let slot = authority
+        .finding_purchase_store()
+        .get_slot(&first.reservation_id)?
+        .ok_or_else(|| missing("public purchase slot missing"))?;
+    assert_eq!(slot.state, FindingPurchaseSlotState::ClosedRecord);
+
+    // The identical public request rebuilds the same signed exchange, replays
+    // the durable kernel terminal, and returns byte-identical result JSON even
+    // after the ask, Finding, admission, and purchase authority have expired.
+    purchase_clock.store(replay_now, Ordering::SeqCst);
+    let (status, replay_body) = send(&state, authed_post(&path, request_body)?).await?;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay_body, first_body);
+    assert_eq!(calls.captures.load(Ordering::SeqCst), 1);
+    assert_eq!(calls.releases.load(Ordering::SeqCst), 0);
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    Ok(())
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cognition_market_wedge_purchase_e2e() -> TestResult {

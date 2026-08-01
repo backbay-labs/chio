@@ -311,6 +311,9 @@ mod finding_handlers;
 #[path = "trust_control/finding_purchase_coordinator.rs"]
 pub mod finding_purchase_coordinator;
 #[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_purchase_routes.rs"]
+pub mod finding_purchase_routes;
+#[cfg(feature = "cognition-market-experimental")]
 #[path = "trust_control/finding_purchase_verifier.rs"]
 pub mod finding_purchase_verifier;
 #[cfg(feature = "cognition-market-experimental")]
@@ -352,6 +355,10 @@ pub(crate) use self::certification_handlers::*;
 pub(crate) use self::credit_and_loss::*;
 #[cfg(feature = "cognition-market-experimental")]
 pub(crate) use self::finding_handlers::*;
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) use self::finding_purchase_routes::{
+    handle_purchase_finding, FINDING_PURCHASE_MAX_BODY_BYTES,
+};
 pub(crate) use self::fiscal_handlers::*;
 pub(crate) use self::fiscal_runtime::*;
 pub(crate) use self::passport_handlers::*;

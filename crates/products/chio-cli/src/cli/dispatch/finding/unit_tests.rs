@@ -1,6 +1,20 @@
 use super::*;
 
 use crate::cli_entrypoint_support::parse_cli;
+use base64::Engine as _;
+use chio_core_types::capability::scope::MonetaryAmount;
+use chio_core_types::crypto::Keypair;
+use chio_core_types::receipt::body::{ChioReceipt, ChioReceiptBody};
+use chio_core_types::receipt::decision::{Decision, ToolCallAction};
+use chio_core_types::receipt::kinds::TrustLevel;
+use chio_finding::{
+    compute_finding_id, derive_purchase_key, sign_finding, Finding, FindingDescriptor,
+    FindingEvidenceClass, FindingGuaranteeClass, FindingOutcomeClass, FindingPurchaseRecord,
+    SignedFindingPurchaseRecord, FINDING_PURCHASE_RECORD_SCHEMA_V1, FINDING_SCHEMA_V1,
+};
+use chio_open_market::purchase_verification::{
+    derive_payment_operation_id, derive_purchase_intent_id,
+};
 use wiremock::matchers::{body_string, header, method, path as path_matcher, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -40,6 +54,178 @@ fn oversized_support_file(dir: &tempfile::TempDir, name: &str) -> PathBuf {
         name,
         &"x".repeat(super::finding_verify::FINDING_VERIFY_SUPPORT_MAX_BYTES + 1),
     )
+}
+
+struct LiveBuyFixture {
+    finding_id: String,
+    raw_finding: String,
+    request: FindingPurchaseRequest,
+    result: FindingPurchaseResult,
+}
+
+fn live_buy_fixture() -> LiveBuyFixture {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let issuer = Keypair::from_seed(&[71; 32]);
+    let buyer = Keypair::from_seed(&[72; 32]);
+    let kernel = Keypair::from_seed(&[73; 32]);
+    let purchase_authority = Keypair::from_seed(&[74; 32]);
+    let payload = br#"{"fix":"verified through the public route"}"#;
+    let media_type = "application/json";
+    let payload_b64 = base64::engine::general_purpose::STANDARD.encode(payload);
+    let reveal = serde_json::json!({
+        "media_type": media_type,
+        "payload_b64": payload_b64,
+    });
+    let payload_sha256 = chio_core_types::sha256_hex(
+        &chio_core_types::canonical_json_bytes(&reveal).unwrap(),
+    );
+    let mut finding = Finding {
+        schema: FINDING_SCHEMA_V1.to_owned(),
+        finding_id: String::new(),
+        descriptor: FindingDescriptor {
+            topic: "repo:test/live-buy".to_owned(),
+            context_sha256: "1".repeat(64),
+            outcome_class: FindingOutcomeClass::VerifiedFix,
+        },
+        guarantee_class: FindingGuaranteeClass::Asserted,
+        payload_sha256,
+        payload_media_type: media_type.to_owned(),
+        evidence_receipt_ids: Vec::new(),
+        evidence_checkpoint_ref: "checkpoint:test/live-buy".to_owned(),
+        evidence_cost: MonetaryAmount {
+            units: 0,
+            currency: "USD".to_owned(),
+        },
+        runtime_assurance_tier: None,
+        evidence_class: FindingEvidenceClass::Asserted,
+        replay_recipe_sha256: None,
+        intent_commitment_receipt_id: None,
+        bond_ref: "bond:test/live-buy".to_owned(),
+        status_feed_ref: "status:test/live-buy".to_owned(),
+        license_ref: None,
+        price_hint_ref: None,
+        issuer: issuer.public_key(),
+        issued_at: now.saturating_sub(60),
+        expires_at: now.saturating_add(3_600),
+        signature: String::new(),
+    };
+    finding.finding_id = compute_finding_id(&finding).unwrap();
+    let finding = sign_finding(finding, &issuer).unwrap();
+    let raw_finding = String::from_utf8(chio_core_types::canonical_json_bytes(&finding).unwrap())
+        .unwrap();
+    let payer = buyer.public_key().to_hex();
+    let request = FindingPurchaseRequest::new(
+        finding.finding_id.clone(),
+        400,
+        "USD".to_owned(),
+        Some(payer.clone()),
+        Some(900),
+    )
+    .unwrap();
+    let receipt = ChioReceipt::sign(
+        ChioReceiptBody {
+            id: String::new(),
+            timestamp: now,
+            capability_id: "capability-live-buy".to_owned(),
+            tool_server: "finding-server.test".to_owned(),
+            tool_name: "read_finding".to_owned(),
+            action: ToolCallAction::from_parameters(serde_json::json!({
+                "finding_id": finding.finding_id,
+            }))
+            .unwrap(),
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            content_hash: finding.payload_sha256.clone(),
+            policy_hash: "2".repeat(64),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: TrustLevel::Mediated,
+            tenant_id: None,
+            kernel_key: kernel.public_key(),
+            bbs_projection_version: None,
+        },
+        &kernel,
+    )
+    .unwrap();
+    let accepted_bid_envelope_sha256 = "3".repeat(64);
+    let reservation_id = "8".repeat(64);
+    let purchase_intent_id = derive_purchase_intent_id(&reservation_id);
+    let authoritative_payment_operation_id = derive_payment_operation_id(&reservation_id);
+    let record = FindingPurchaseRecord {
+        schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_owned(),
+        purchase_key: derive_purchase_key(
+            &accepted_bid_envelope_sha256,
+            &authoritative_payment_operation_id,
+        ),
+        purchase_intent_id: purchase_intent_id.clone(),
+        authoritative_payment_operation_id: authoritative_payment_operation_id.clone(),
+        buyer: buyer.public_key(),
+        payer: buyer.public_key(),
+        finding_id: finding.finding_id.clone(),
+        listing_id: "listing-live-buy".to_owned(),
+        accepted_bid_envelope_sha256,
+        venue_admission_envelope_sha256: "6".repeat(64),
+        accepted_price: MonetaryAmount {
+            units: 300,
+            currency: "USD".to_owned(),
+        },
+        realized_spend: MonetaryAmount {
+            units: 300,
+            currency: "USD".to_owned(),
+        },
+        seller_backing_envelope_sha256: "7".repeat(64),
+        encumbrance_id: "encumbrance-live-buy".to_owned(),
+        delivery_receipt_id: receipt.id.clone(),
+        payment_reference: authoritative_payment_operation_id.clone(),
+        payout_destination: "rail:test:seller".to_owned(),
+        recorded_at: now,
+    };
+    let signed_record = SignedFindingPurchaseRecord::sign(record, &purchase_authority).unwrap();
+    let result = FindingPurchaseResult {
+        schema: chio_control_plane::trust_control::finding_purchase_routes::FINDING_PURCHASE_RESULT_SCHEMA
+            .to_owned(),
+        request_id: request.request_id.clone(),
+        finding_id: finding.finding_id.clone(),
+        payer,
+        payer_key: buyer.public_key(),
+        reservation_id,
+        purchase_intent_id,
+        authoritative_payment_operation_id,
+        verdict: FindingPurchaseVerdict::Allow,
+        settlement: chio_control_plane::trust_control::finding_purchase_routes::FindingPurchaseSettlementTerminal::Captured,
+        accepted_price: MonetaryAmount {
+            units: 300,
+            currency: "USD".to_owned(),
+        },
+        realized_spend: MonetaryAmount {
+            units: 300,
+            currency: "USD".to_owned(),
+        },
+        delivery_receipt: receipt,
+        purchase_record: Some(signed_record),
+        failed_delivery: None,
+        output: Some(
+            chio_control_plane::trust_control::finding_purchase_routes::FindingPurchasedOutput {
+                media_type: media_type.to_owned(),
+                payload_b64,
+            },
+        ),
+    };
+    result.validate_shape(&request).unwrap();
+    LiveBuyFixture {
+        finding_id: finding.finding_id,
+        raw_finding,
+        request,
+        result,
+    }
 }
 
 #[test]
@@ -228,12 +414,34 @@ fn buy_subcommand_parses() {
 }
 
 #[test]
-fn buy_reports_the_missing_reveal_coordinator() {
-    let error = cmd_finding_buy().unwrap_err().to_string();
-    assert!(
-        error.contains("reveal coordinator"),
-        "unexpected buy error: {error}"
-    );
+fn buy_requires_a_venue_url_and_service_token() {
+    let missing_url = cmd_finding_buy(
+        GOLDEN_FINDING_ID,
+        4_200,
+        "USD",
+        None,
+        None,
+        false,
+        None,
+        Some("token"),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(missing_url.contains("--control-url"));
+
+    let missing_token = cmd_finding_buy(
+        GOLDEN_FINDING_ID,
+        4_200,
+        "USD",
+        None,
+        None,
+        false,
+        Some("http://127.0.0.1:1"),
+        None,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(missing_token.contains("--control-token"));
 }
 
 #[test]
@@ -601,4 +809,70 @@ async fn verify_by_id_rejects_a_different_valid_artifact() {
         error.contains("venue returned finding") && error.contains("requested id"),
         "unexpected error: {error}"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn buy_drives_the_authenticated_live_purchase_roundtrip() {
+    if !loopback_bind_available() {
+        eprintln!("skipping finding buy transport test: loopback bind denied");
+        return;
+    }
+    let fixture = live_buy_fixture();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path_matcher(format!(
+            "/v1/findings/{}",
+            fixture.finding_id
+        )))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/json")
+                .set_body_string(fixture.raw_finding.clone()),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let request_body = String::from_utf8(
+        chio_core_types::canonical_json_bytes(&fixture.request).unwrap(),
+    )
+    .unwrap();
+    let response_body = String::from_utf8(
+        chio_core_types::canonical_json_bytes(&fixture.result).unwrap(),
+    )
+    .unwrap();
+    Mock::given(method("POST"))
+        .and(path_matcher(format!(
+            "/v1/findings/{}/purchase",
+            fixture.finding_id
+        )))
+        .and(header("authorization", "Bearer venue-token"))
+        .and(header("content-type", "application/json"))
+        .and(body_string(request_body))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/json")
+                .set_body_string(response_body),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let uri = server.uri();
+    let finding_id = fixture.finding_id;
+    let payer = fixture.result.payer;
+    tokio::task::spawn_blocking(move || {
+        cmd_finding_buy(
+            &finding_id,
+            400,
+            "USD",
+            Some(&payer),
+            Some(900),
+            true,
+            Some(&uri),
+            Some("venue-token"),
+        )
+    })
+    .await
+    .unwrap()
+    .unwrap();
 }

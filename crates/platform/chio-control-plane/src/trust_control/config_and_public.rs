@@ -36,6 +36,25 @@ pub fn serve(config: TrustServiceConfig) -> Result<(), CliError> {
     runtime.block_on(async move { service_runtime::serve_async(config).await })
 }
 
+/// Serve trust-control with an explicitly configured cognition-market
+/// purchase adapter. Ordinary [`serve`] keeps the purchase route unavailable.
+#[cfg(feature = "cognition-market-experimental")]
+pub fn serve_with_finding_purchase_executor(
+    config: TrustServiceConfig,
+    executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+) -> Result<(), CliError> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(8 * 1024 * 1024)
+        .build()
+        .map_err(|error| {
+            CliError::cli_other_error(format!("failed to start async runtime: {error}"))
+        })?;
+    runtime.block_on(async move {
+        service_runtime::serve_async_with_finding_purchase_executor(config, executor).await
+    })
+}
+
 pub(crate) fn load_enterprise_provider_registry(
     path: Option<&std::path::Path>,
     surface: &str,

@@ -30,3 +30,5 @@ mod tests;
 use super::*;
 
 pub(crate) use init::serve_async;
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) use init::serve_async_with_finding_purchase_executor;
