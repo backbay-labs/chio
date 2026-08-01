@@ -66,6 +66,13 @@ impl FindingAuthorityPin {
         PublicKey::from_hex(&self.key_hex)
             .map_err(|_| CliError::cli_other_error("pinned finding-market key is not valid"))
     }
+
+    /// Whether this role's configured validity window covers `instant`.
+    /// The upper bound is exclusive.
+    #[must_use]
+    pub const fn covers(&self, instant: u64) -> bool {
+        instant >= self.valid_from && instant < self.valid_until
+    }
 }
 
 /// One governance-pinned pool identity with its rail-tagged destination.

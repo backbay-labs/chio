@@ -27,10 +27,10 @@ use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
     compute_report_id, signed_envelope_sha256, verify_finding, verify_pinned_envelope,
     verify_signed_bond_backing, verify_signed_profile, Finding, FindingChallengeVerifierProfile,
-    FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome, FindingFacetResult,
-    FindingGuaranteeClass, FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput,
-    FindingVerifierReport, SignedFindingBondBacking, SignedFindingChallengeVerifierProfile,
-    SignedFindingVerifierReport,
+    FindingAuthorityKeyPolicy, FindingChallengeVerifierProfile, FindingEvidenceClass,
+    FindingFacetKind, FindingFacetOutcome, FindingFacetResult, FindingGuaranteeClass,
+    FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput, FindingVerifierReport,
+    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{
@@ -67,6 +67,8 @@ pub enum FindingVerifierError {
     Canonicalization,
     #[error("report signer does not match the pinned verifier authority")]
     ReportSignerMismatch,
+    #[error("report evaluation is outside the profile-authorized signer window")]
+    ReportSignerInactive,
     #[error("report signing failed")]
     ReportSigning,
 }
@@ -223,6 +225,10 @@ fn facet(
     }
 }
 
+pub(crate) const fn policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u64) -> bool {
+    instant >= policy.valid_from && instant < policy.valid_until
+}
+
 /// Run the offline evidence verifier. The normative order from
 /// ARCHITECTURE 4.1.1: strict raw parse, receipt resolution and strict
 /// verification, checkpoint membership, issuer lineage, recipe binding,
@@ -258,6 +264,11 @@ pub fn verify_finding_evidence(
     // an unverified profile no facet below is meaningful.
     verify_signed_profile(&trust.profile, &trust.governance_authority)
         .map_err(|_| FindingVerifierError::ProfileInvalid)?;
+    if trust.trusted_time < trust.profile.body.issued_at
+        || trust.trusted_time >= trust.profile.body.expires_at
+    {
+        return Err(FindingVerifierError::ProfileInvalid);
+    }
     if trust.admitted_kernel_keys.is_empty() {
         return Err(FindingVerifierError::NoAdmittedKernelKeys);
     }
@@ -299,11 +310,11 @@ pub fn verify_finding_evidence(
         // The profile pins which kernel keys may sign production
         // evidence. Strict self-verification proves the bytes are
         // internally authentic; only this set makes them trusted.
-        let production_signers: Vec<&PublicKey> = profile
+        let production_signers: Vec<&FindingAuthorityKeyPolicy> = profile
             .receipt_signers
             .iter()
             .filter(|signer| signer.role == FindingReceiptRole::Production)
-            .map(|signer| &signer.policy.key)
+            .map(|signer| &signer.policy)
             .collect();
         if bundle.receipts.len() as u64 > profile.resource_caps.max_evidence_receipts {
             failure = Some("evidence receipt count exceeds the profile cap".to_string());
@@ -316,12 +327,12 @@ pub fn verify_finding_evidence(
                 failure = Some(format!("receipt {}: {error}", evidence.receipt.id));
                 break;
             }
-            if !production_signers
-                .iter()
-                .any(|pinned| **pinned == evidence.receipt.kernel_key)
-            {
+            if !production_signers.iter().any(|policy| {
+                policy.key == evidence.receipt.kernel_key
+                    && policy_covers(policy, evidence.receipt.timestamp)
+            }) {
                 failure = Some(format!(
-                    "receipt {} is signed by a key the profile does not pin as a production signer",
+                    "receipt {} signer is not a profile-pinned production key active at the receipt timestamp",
                     evidence.receipt.id
                 ));
                 break;
@@ -1129,6 +1140,9 @@ pub fn sign_finding_verifier_report(
     let profile = &trust.profile.body;
     if verifier_keypair.public_key() != profile.verifier_report_signer.key {
         return Err(FindingVerifierError::ReportSignerMismatch);
+    }
+    if !policy_covers(&profile.verifier_report_signer, draft.evaluation_time) {
+        return Err(FindingVerifierError::ReportSignerInactive);
     }
     let profile_envelope_bytes =
         canonical_json_bytes(&trust.profile).map_err(|_| FindingVerifierError::Canonicalization)?;

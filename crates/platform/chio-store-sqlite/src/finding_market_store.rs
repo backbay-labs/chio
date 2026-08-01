@@ -108,8 +108,9 @@ pub struct FindingSearchRow {
     pub expires_at: u64,
 }
 
-/// Lifecycle of a collateral allocation. `live` is the only state that
-/// backs an admission; every exit from `live` is final.
+/// Lifecycle of a collateral allocation. `live` is available for one
+/// activation; `consumed` backs the admission that atomically claimed it.
+/// Every exit from `live` is final.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FindingAllocationState {
     Live,
@@ -128,6 +129,10 @@ pub struct FindingAllocationSnapshot {
     pub backing: FindingBondBacking,
     pub backing_envelope_sha256: String,
     pub state: FindingAllocationState,
+    /// Admission that currently and exclusively encumbers this allocation.
+    /// `None` for an available allocation and for one whose admission was
+    /// superseded.
+    pub active_admission_id: Option<String>,
     pub accepted_at: u64,
 }
 
@@ -1391,10 +1396,16 @@ fn load_allocation_snapshot_tx(
     let row = transaction
         .query_row(
             r#"
-            SELECT seller_hex, finding_id, listing_id, backing_envelope_sha256,
-                   backing_envelope_json, currency, locked_units,
-                   maximum_sale_exposure_units, expires_at, accepted_at, state
-            FROM collateral_allocations WHERE allocation_id = ?1
+            SELECT ca.seller_hex, ca.finding_id, ca.listing_id,
+                   ca.backing_envelope_sha256, ca.backing_envelope_json,
+                   ca.currency, ca.locked_units,
+                   ca.maximum_sale_exposure_units, ca.expires_at,
+                   ca.accepted_at, ca.state, active.admission_id
+            FROM collateral_allocations AS ca
+            LEFT JOIN admissions AS active
+              ON active.backing_allocation_id = ca.allocation_id
+             AND active.state = 'active'
+            WHERE ca.allocation_id = ?1
             "#,
             [allocation_id],
             |row| {
@@ -1410,6 +1421,7 @@ fn load_allocation_snapshot_tx(
                     row.get::<_, i64>(8)?,
                     row.get::<_, i64>(9)?,
                     row.get::<_, String>(10)?,
+                    row.get::<_, Option<String>>(11)?,
                 ))
             },
         )
@@ -1427,6 +1439,7 @@ fn load_allocation_snapshot_tx(
         expires_at,
         accepted_at,
         state,
+        active_admission_id,
     )) = row
     else {
         return Ok(None);
@@ -1459,6 +1472,7 @@ fn load_allocation_snapshot_tx(
         backing,
         backing_envelope_sha256,
         state: allocation_state_from_name(&state)?,
+        active_admission_id,
         accepted_at: stored_u64(accepted_at, "accepted_at")?,
     }))
 }

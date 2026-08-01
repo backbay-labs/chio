@@ -69,8 +69,16 @@ pub enum FindingAdmissionError {
     BackingIdentityMismatch,
     #[error("backing commits different terms, profile, or fee schedule than the admission")]
     BackingBindingMismatch,
-    #[error("backing allocation is not live in the collateral snapshot")]
-    AllocationNotLive,
+    #[error("backing allocation snapshot does not match the admission or backing envelope")]
+    AllocationSnapshotMismatch,
+    #[error("backing allocation has expired at the verification time")]
+    AllocationExpired,
+    #[error("backing allocation has been released")]
+    AllocationReleased,
+    #[error("backing allocation is not available for activation")]
+    AllocationUnavailableForActivation,
+    #[error("admission is not active for the consumed backing allocation")]
+    AdmissionNotActiveForAllocation,
     #[error("fee schedule envelope digest does not match the admission binding")]
     FeeScheduleDigestMismatch,
     #[error("fee schedule envelope rejected: {0}")]
@@ -101,15 +109,51 @@ pub enum FindingAdmissionError {
     Bidding(BiddingError),
 }
 
-/// Fresh point-in-time view of the backing allocation named by the
-/// admission, taken from the venue collateral store by the caller. The
-/// store owns lifecycle and exclusivity; this seam only refuses to treat a
-/// non-live allocation as collateral.
+/// Lifecycle state of the allocation named by a finding admission.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindingAllocationStatus {
+    /// Registered and still available for one activation transaction.
+    Available,
+    /// Atomically consumed by an active admission.
+    Consumed,
+    /// Its signed backing window has elapsed.
+    Expired,
+    /// Its collateral has been released.
+    Released,
+}
+
+/// Fresh point-in-time view of the backing allocation named by the
+/// admission, taken from the venue collateral store by the caller. Exact
+/// identity and envelope bindings prevent a snapshot for another
+/// allocation from supplying lifecycle evidence here.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingAllocationSnapshot {
-    /// True only while the allocation is live (not consumed, expired, or
-    /// released).
-    pub live: bool,
+    pub allocation_id: String,
+    pub backing_envelope_sha256: String,
+    pub expires_at: u64,
+    pub status: FindingAllocationStatus,
+    /// Present only when this allocation is consumed by the named active
+    /// admission. The store derives this from the active-admission row in
+    /// the same snapshot transaction.
+    pub active_admission_id: Option<String>,
+    /// Present only while an exact durable activation prepare owns the
+    /// consumed allocation but has not published its active admission.
+    pub prepared_admission_id: Option<String>,
+    /// Venue trusted time when the collateral authority registered the
+    /// allocation (the report-before-backing ordering input).
+    pub accepted_at: u64,
+}
+
+/// Expiry windows resolved from the signed constituents that are supplied
+/// to the activation surface but represented only by digests in the
+/// admission verifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FindingConstituentExpiryBounds {
+    pub finding: u64,
+    pub listing: u64,
+    pub pricing_hint: u64,
+    pub seller_authorization: u64,
+    pub profile: u64,
 }
 
 /// Externally pinned inputs for [`verify_finding_admission`]. Every
@@ -143,10 +187,9 @@ pub struct FindingAdmissionContext<'a> {
     pub allocation_snapshot: FindingAllocationSnapshot,
     /// Configured collateral authority key the backing must verify under.
     pub collateral_authority: &'a PublicKey,
-    /// Earliest expiry across the constituents the admission carries only
-    /// as digests (finding, listing, pricing hint), resolved by the
-    /// caller that holds their exact bytes.
-    pub earliest_constituent_expiry: u64,
+    /// Explicit expiry bounds for constituents the admission carries only
+    /// as digests, resolved by the caller that holds their exact bytes.
+    pub constituent_expiry_bounds: FindingConstituentExpiryBounds,
 }
 
 /// Witness that a signed admission passed every check in
@@ -192,10 +235,41 @@ impl VerifiedFindingAdmission {
 }
 
 /// Verify a venue-signed admission bundle against externally pinned
-/// inputs, fail-closed on every binding.
+/// inputs for a current bid. The allocation must already be consumed by
+/// this exact active admission.
 pub fn verify_finding_admission(
     signed: &SignedFindingAdmission,
     context: &FindingAdmissionContext<'_>,
+) -> Result<VerifiedFindingAdmission, FindingAdmissionError> {
+    verify_finding_admission_inner(signed, context, AllocationRequirement::ActiveAdmission)
+}
+
+/// Verify the same signed bindings immediately before the durable
+/// activation transaction. This check cannot produce a bid witness: it
+/// accepts only an available, admission-unbound allocation that the store
+/// transaction will consume atomically.
+pub fn verify_finding_admission_for_activation(
+    signed: &SignedFindingAdmission,
+    context: &FindingAdmissionContext<'_>,
+) -> Result<(), FindingAdmissionError> {
+    verify_finding_admission_inner(
+        signed,
+        context,
+        AllocationRequirement::AvailableForActivation,
+    )
+    .map(|_| ())
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AllocationRequirement {
+    AvailableForActivation,
+    ActiveAdmission,
+}
+
+fn verify_finding_admission_inner(
+    signed: &SignedFindingAdmission,
+    context: &FindingAdmissionContext<'_>,
+    allocation_requirement: AllocationRequirement,
 ) -> Result<VerifiedFindingAdmission, FindingAdmissionError> {
     verify_signed_admission(signed, context.venue_authority, context.venue_id)
         .map_err(FindingAdmissionError::AdmissionEnvelope)?;
@@ -224,8 +298,8 @@ pub fn verify_finding_admission(
         return Err(FindingAdmissionError::TermsIdentityMismatch);
     }
 
-    // The exact backing envelope, bound by digest, verified under the
-    // pinned collateral authority, naming a live allocation.
+    // The exact backing envelope, bound by digest and verified under the
+    // pinned collateral authority.
     let backing_digest =
         signed_envelope_sha256(context.backing).map_err(FindingAdmissionError::BackingEnvelope)?;
     if backing_digest != admission.backing_envelope_sha256 {
@@ -242,8 +316,40 @@ pub fn verify_finding_admission(
     {
         return Err(FindingAdmissionError::BackingIdentityMismatch);
     }
-    if !context.allocation_snapshot.live {
-        return Err(FindingAdmissionError::AllocationNotLive);
+    let snapshot = &context.allocation_snapshot;
+    if snapshot.allocation_id != context.backing.body.allocation_id
+        || snapshot.backing_envelope_sha256 != backing_digest
+        || snapshot.expires_at != context.backing.body.expires_at
+    {
+        return Err(FindingAdmissionError::AllocationSnapshotMismatch);
+    }
+    if context.now >= snapshot.expires_at || snapshot.status == FindingAllocationStatus::Expired {
+        return Err(FindingAdmissionError::AllocationExpired);
+    }
+    if snapshot.status == FindingAllocationStatus::Released {
+        return Err(FindingAdmissionError::AllocationReleased);
+    }
+    match allocation_requirement {
+        AllocationRequirement::AvailableForActivation => {
+            let available = snapshot.status == FindingAllocationStatus::Available
+                && snapshot.active_admission_id.is_none()
+                && snapshot.prepared_admission_id.is_none();
+            let exact_prepared_replay = snapshot.status == FindingAllocationStatus::Consumed
+                && snapshot.active_admission_id.is_none()
+                && snapshot.prepared_admission_id.as_deref()
+                    == Some(admission.admission_id.as_str());
+            if !available && !exact_prepared_replay {
+                return Err(FindingAdmissionError::AllocationUnavailableForActivation);
+            }
+        }
+        AllocationRequirement::ActiveAdmission => {
+            if snapshot.status != FindingAllocationStatus::Consumed
+                || snapshot.active_admission_id.as_deref() != Some(admission.admission_id.as_str())
+                || snapshot.prepared_admission_id.is_some()
+            {
+                return Err(FindingAdmissionError::AdmissionNotActiveForAllocation);
+            }
+        }
     }
 
     // The exact signed fee schedule, bound by digest, authorized by the
@@ -307,8 +413,8 @@ pub fn verify_finding_admission(
 
     // Admission expiry never outlives a constituent: the windows supplied
     // in full here, the authority policy snapshots the admission body
-    // itself carries, and the caller-resolved earliest bound for the
-    // digest-only constituents.
+    // itself carries, and every digest-only constituent resolved by the
+    // caller.
     let expiry_bounds = [
         (context.terms.body.expires_at, "terms"),
         (context.backing.body.expires_at, "backing"),
@@ -320,10 +426,17 @@ pub fn verify_finding_admission(
             admission.failed_delivery_authority.valid_until,
             "failed_delivery_authority",
         ),
+        (context.constituent_expiry_bounds.finding, "finding"),
+        (context.constituent_expiry_bounds.listing, "listing"),
         (
-            context.earliest_constituent_expiry,
-            "earliest_constituent_expiry",
+            context.constituent_expiry_bounds.pricing_hint,
+            "pricing_hint",
         ),
+        (
+            context.constituent_expiry_bounds.seller_authorization,
+            "seller_authorization",
+        ),
+        (context.constituent_expiry_bounds.profile, "profile"),
         // A schedule with no expiry never lapses, so absence is an
         // unbounded ceiling rather than a missing bound.
         (

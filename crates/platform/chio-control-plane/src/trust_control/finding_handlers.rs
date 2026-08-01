@@ -27,8 +27,9 @@ use chio_finding::{
 };
 use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
 use chio_open_market::finding_admission::{
-    verify_finding_admission, FindingAdmissionContext,
-    FindingAllocationSnapshot as AdmissionAllocationSnapshot, FindingFeeScheduleGate,
+    verify_finding_admission_for_activation, FindingAdmissionContext,
+    FindingAllocationSnapshot as AdmissionAllocationSnapshot, FindingAllocationStatus,
+    FindingConstituentExpiryBounds, FindingFeeScheduleGate,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
@@ -434,10 +435,11 @@ struct FindingSearchResponse {
 }
 
 /// A stored admission is CURRENT only while its envelope is unexpired,
-/// its allocation is live, and participation fees are paid through the
-/// present audit epoch (computed from the retained terms envelope the
-/// admission binds by digest). Presence of this block in a search row IS
-/// the qualified cognition-market profile marker.
+/// its allocation remains consumed by the active admission, and
+/// participation fees are paid through the present audit epoch (computed
+/// from the retained terms envelope the admission binds by digest).
+/// Presence of this block in a search row IS the qualified
+/// cognition-market profile marker.
 fn current_admission_view(
     store: &SqliteFindingMarketStore,
     finding_id: &str,
@@ -745,6 +747,62 @@ fn required_facets(
     required.into_iter().collect()
 }
 
+pub(crate) fn verify_profile_for_activation(
+    profile: &SignedFindingChallengeVerifierProfile,
+    expected_envelope_sha256: &str,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<(), String> {
+    profile.body.validate().map_err(|error| error.to_string())?;
+    let digest = canonical_digest_of(profile)?;
+    if digest != expected_envelope_sha256 {
+        return Err("retained profile digest does not match the admission".to_string());
+    }
+    let governance_key = config
+        .governance_root
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_profile(profile, &governance_key).map_err(|error| error.to_string())?;
+    if !config.governance_root.covers(profile.body.issued_at) {
+        return Err("profile was issued outside the governance key validity window".to_string());
+    }
+    if now < profile.body.issued_at || now >= profile.body.expires_at {
+        return Err("verifier profile is not live at activation".to_string());
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_report_authority_lifecycle(
+    report: &SignedFindingVerifierReport,
+    profile: &SignedFindingChallengeVerifierProfile,
+    config: &FindingMarketConfig,
+) -> Result<(), String> {
+    let instant = report.body.evaluation_time;
+    let verifier_key = config
+        .verifier_report
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_verifier_report(report, &verifier_key).map_err(|error| error.to_string())?;
+    if !config.verifier_report.covers(instant) {
+        return Err("verifier report evaluation is outside the pinned key validity window".into());
+    }
+    if report.body.verifier_key_epoch != config.verifier_report.key_epoch {
+        return Err("verifier report key epoch does not match the deployment pin".into());
+    }
+    let policy = &profile.body.verifier_report_signer;
+    if policy.authority_id != config.verifier_report.authority_id
+        || policy.key != verifier_key
+        || policy.key_epoch != config.verifier_report.key_epoch
+        || policy.revocation_status_ref != config.verifier_report.revocation_status_ref
+    {
+        return Err("profile verifier-report authority does not match the deployment pin".into());
+    }
+    if instant < policy.valid_from || instant >= policy.valid_until {
+        return Err("verifier report evaluation is outside the profile signer policy".into());
+    }
+    Ok(())
+}
+
 /// POST /v1/findings/{finding_id}/activate (authenticated): the durable
 /// idempotent activation transaction. A durable prepare first claims the
 /// allocation for the exact admission. Fee collection then runs on the
@@ -986,22 +1044,44 @@ pub(crate) async fn handle_activate_finding(
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
 
+    // The retained profile remains an authority-bearing dependency at
+    // activation. Digest-addressed storage proves only byte identity, so
+    // re-run its body validation, governance signature, and liveness
+    // checks before any profile field influences admission.
+    let profile_bytes = match store.get_recipe_blob(&admission.profile_envelope_sha256) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "verifier profile is not registered with this venue",
+            )
+        }
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    };
+    let profile: SignedFindingChallengeVerifierProfile =
+        match serde_json::from_slice(&profile_bytes) {
+            Ok(profile) => profile,
+            Err(_) => {
+                return plain_http_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "retained profile failed deserialization",
+                )
+            }
+        };
+    if let Err(error) =
+        verify_profile_for_activation(&profile, &admission.profile_envelope_sha256, &config, now)
+    {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
+
     // Pinned keys.
-    let (venue_key, collateral_key, verifier_key) = match (
-        config.venue.key(),
-        config.collateral.key(),
-        config.verifier_report.key(),
-    ) {
-        (Ok(venue), Ok(collateral), Ok(verifier)) => (venue, collateral, verifier),
+    let (venue_key, collateral_key) = match (config.venue.key(), config.collateral.key()) {
+        (Ok(venue), Ok(collateral)) => (venue, collateral),
         _ => return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, "pinned keys invalid"),
     };
 
     // The full admission verification: venue pin, liveness, terms and
     // backing bindings, fiscal gate, sizing inequality, expiry bound.
-    let earliest_constituent_expiry = finding
-        .expires_at
-        .min(request.pricing_hint.body.expires_at)
-        .min(authorization.expires_at);
     let trusted_signers = match config.fee_schedule_operators() {
         Ok(signers) => signers,
         Err(error) => {
@@ -1030,21 +1110,41 @@ pub(crate) async fn handle_activate_finding(
         terms: &request.terms,
         backing: &request.backing,
         allocation_snapshot: AdmissionAllocationSnapshot {
-            live: allocation.state == FindingAllocationState::Live
-                || (prepared_replay && allocation.state == FindingAllocationState::Consumed),
+            allocation_id: allocation.backing.allocation_id.clone(),
+            backing_envelope_sha256: allocation.backing_envelope_sha256.clone(),
+            expires_at: allocation.backing.expires_at,
+            status: match allocation.state {
+                FindingAllocationState::Live => FindingAllocationStatus::Available,
+                FindingAllocationState::Consumed => FindingAllocationStatus::Consumed,
+                FindingAllocationState::Expired => FindingAllocationStatus::Expired,
+                FindingAllocationState::Released => FindingAllocationStatus::Released,
+            },
+            active_admission_id: allocation.active_admission_id.clone(),
+            prepared_admission_id: prepared_replay.then(|| admission.admission_id.clone()),
+            accepted_at: allocation.accepted_at,
         },
         collateral_authority: &collateral_key,
-        earliest_constituent_expiry,
+        constituent_expiry_bounds: FindingConstituentExpiryBounds {
+            finding: finding.expires_at,
+            listing: request.listing.body.expires_at.unwrap_or(u64::MAX),
+            pricing_hint: request.pricing_hint.body.expires_at,
+            seller_authorization: authorization.expires_at,
+            profile: profile.body.expires_at,
+        },
     };
-    if let Err(error) = verify_finding_admission(&request.admission, &admission_context) {
+    if let Err(error) =
+        verify_finding_admission_for_activation(&request.admission, &admission_context)
+    {
         return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
     }
 
     // Verifier report: pinned signer, exact bindings, report-before-
     // backing, and the required-facet policy against the
     // retained profile.
-    if let Err(error) = verify_signed_verifier_report(&request.verifier_report, &verifier_key) {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+    if let Err(error) =
+        verify_report_authority_lifecycle(&request.verifier_report, &profile, &config)
+    {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     let report = &request.verifier_report.body;
     let report_digest = match canonical_digest_of(&request.verifier_report) {
@@ -1065,6 +1165,9 @@ pub(crate) async fn handle_activate_finding(
     if report.verifier_profile_envelope_sha256 != admission.profile_envelope_sha256 {
         return plain_http_error(StatusCode::BAD_REQUEST, "verifier profile binding mismatch");
     }
+    if report.verifier_profile_id != profile.body.profile_id {
+        return plain_http_error(StatusCode::BAD_REQUEST, "verifier profile id mismatch");
+    }
     if report.facet_outcome(FindingFacetKind::BondBacking) == Some(FindingFacetOutcome::Verified) {
         if report.backing_allocation_id.as_deref() != Some(admission.backing_allocation_id.as_str())
         {
@@ -1082,26 +1185,6 @@ pub(crate) async fn handle_activate_finding(
             );
         }
     }
-    let profile_bytes = match store.get_recipe_blob(&admission.profile_envelope_sha256) {
-        Ok(Some(bytes)) => bytes,
-        Ok(None) => {
-            return plain_http_error(
-                StatusCode::BAD_REQUEST,
-                "verifier profile is not registered with this venue",
-            )
-        }
-        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
-    };
-    let profile: SignedFindingChallengeVerifierProfile =
-        match serde_json::from_slice(&profile_bytes) {
-            Ok(profile) => profile,
-            Err(_) => {
-                return plain_http_error(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "retained profile failed deserialization",
-                )
-            }
-        };
     if report
         .facets
         .iter()

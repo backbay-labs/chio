@@ -11,14 +11,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use chio_core_types::crypto::PublicKey;
 use chio_finding::FindingChallengeVerifierProfile;
 use chio_kernel::checkpoint::{
     checkpoint_log_id, validate_checkpoint, verify_checkpoint_transparency_records,
     CheckpointTransparencySummary, KernelCheckpoint,
 };
 
-use crate::verify::ResolvedReceiptEvidence;
+use crate::verify::{policy_covers, ResolvedReceiptEvidence};
 
 fn has_strict_checkpoint_signature(checkpoint: &KernelCheckpoint) -> bool {
     matches!(
@@ -47,6 +46,8 @@ pub enum CheckpointMembershipError {
     LogNotPinned(u64),
     #[error("checkpoint {0} signer does not match the pinned log signer")]
     SignerNotPinned(u64),
+    #[error("checkpoint {0} was issued outside the pinned signer window")]
+    SignerInactive(u64),
     #[error("inclusion proof references unknown checkpoint seq {0}")]
     UnknownCheckpoint(u64),
     #[error("duplicate inclusion proof for receipt seq {0}")]
@@ -82,10 +83,10 @@ pub fn verify_checkpoint_membership(
     }
     verify_checkpoint_transparency_records(checkpoints, transparency)
         .map_err(|_| CheckpointMembershipError::TransparencyInvalid)?;
-    let pinned_logs: BTreeMap<&str, &PublicKey> = profile
+    let pinned_logs: BTreeMap<&str, _> = profile
         .checkpoint_logs
         .iter()
-        .map(|log| (log.log_id.as_str(), &log.signer.key))
+        .map(|log| (log.log_id.as_str(), &log.signer))
         .collect();
     let mut by_seq = BTreeMap::new();
     for checkpoint in checkpoints {
@@ -106,8 +107,11 @@ pub fn verify_checkpoint_membership(
         let Some(pinned_signer) = pinned_logs.get(log_id.as_str()) else {
             return Err(CheckpointMembershipError::LogNotPinned(seq));
         };
-        if checkpoint.body.kernel_key != **pinned_signer {
+        if checkpoint.body.kernel_key != pinned_signer.key {
             return Err(CheckpointMembershipError::SignerNotPinned(seq));
+        }
+        if !policy_covers(pinned_signer, checkpoint.body.issued_at) {
+            return Err(CheckpointMembershipError::SignerInactive(seq));
         }
         if by_seq.insert(seq, checkpoint).is_some() {
             return Err(CheckpointMembershipError::DuplicateCheckpoint(seq));

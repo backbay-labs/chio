@@ -60,7 +60,8 @@ use chio_open_market::fee_schedule::{
 };
 use chio_open_market::finding_admission::{
     bid_with_finding_admission, verify_finding_admission, FindingAdmissionContext,
-    FindingAllocationSnapshot as SeamAllocationSnapshot, FindingFeeScheduleGate,
+    FindingAllocationSnapshot as SeamAllocationSnapshot, FindingAllocationStatus,
+    FindingConstituentExpiryBounds, FindingFeeScheduleGate,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
@@ -1854,7 +1855,7 @@ async fn finding_publish_discover_admission() -> TestResult {
         "{}",
         String::from_utf8_lossy(&body)
     );
-    assert!(String::from_utf8_lossy(&body).contains("not live"));
+    assert!(String::from_utf8_lossy(&body).contains("not available for activation"));
 
     // The bid leg: the REAL marketplace path, gated by the verified
     // admission witness over the pinned deployment authorities.
@@ -1870,9 +1871,23 @@ async fn finding_publish_discover_admission() -> TestResult {
         trusted_local_operator_signers: &trusted_signers,
         terms: &web.terms,
         backing: &web.backing,
-        allocation_snapshot: SeamAllocationSnapshot { live: true },
+        allocation_snapshot: SeamAllocationSnapshot {
+            allocation_id: allocation.backing.allocation_id.clone(),
+            backing_envelope_sha256: allocation.backing_envelope_sha256.clone(),
+            expires_at: allocation.backing.expires_at,
+            status: FindingAllocationStatus::Consumed,
+            active_admission_id: allocation.active_admission_id.clone(),
+            prepared_admission_id: None,
+            accepted_at: allocation.accepted_at,
+        },
         collateral_authority: &collateral_key,
-        earliest_constituent_expiry: WINDOW_EXPIRES_AT,
+        constituent_expiry_bounds: FindingConstituentExpiryBounds {
+            finding: web.finding.expires_at,
+            listing: web.listing.body.expires_at.unwrap_or(u64::MAX),
+            pricing_hint: web.pricing_hint.body.expires_at,
+            seller_authorization: web.authorization.body.expires_at,
+            profile: WINDOW_EXPIRES_AT,
+        },
     };
     let witness = verify_finding_admission(&web.admission, &context)?;
     assert_eq!(witness.capability_scope(), web.scope);
@@ -2232,6 +2247,38 @@ async fn profile_not_signed_by_governance_rejects() -> TestResult {
         "{}",
         String::from_utf8_lossy(&body)
     );
+    Ok(())
+}
+
+#[test]
+fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult {
+    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let governance = keypair(1);
+    let profile = build_profile(&governance, checkpoint_log_id(&stack.web.checkpoint))?;
+    let config = market_config();
+    let profile_sha256 = digest_of(&profile)?;
+    let now = stack.web.report.body.evaluation_time;
+    verify_profile_for_activation(&profile, &profile_sha256, &config, now)
+        .map_err(std::io::Error::other)?;
+    verify_report_authority_lifecycle(&stack.web.report, &profile, &config)
+        .map_err(std::io::Error::other)?;
+
+    let forged = build_profile(&keypair(9), checkpoint_log_id(&stack.web.checkpoint))?;
+    assert!(verify_profile_for_activation(&forged, &digest_of(&forged)?, &config, now).is_err());
+
+    let mut expired_body = profile.body.clone();
+    expired_body.expires_at = now;
+    expired_body.profile_id = compute_profile_id(&expired_body)?;
+    let expired = SignedExportEnvelope::sign(expired_body, &governance)?;
+    assert!(verify_profile_for_activation(&expired, &digest_of(&expired)?, &config, now).is_err());
+
+    let mut stale_pin = config.clone();
+    stale_pin.verifier_report.valid_until = stack.web.report.body.evaluation_time;
+    assert!(verify_report_authority_lifecycle(&stack.web.report, &profile, &stale_pin).is_err());
+
+    let mut wrong_epoch = config;
+    wrong_epoch.verifier_report.key_epoch += 1;
+    assert!(verify_report_authority_lifecycle(&stack.web.report, &profile, &wrong_epoch).is_err());
     Ok(())
 }
 

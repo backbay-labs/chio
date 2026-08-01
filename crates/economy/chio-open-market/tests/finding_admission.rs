@@ -37,8 +37,10 @@ use chio_open_market::{
         OpenMarketFeeScheduleIssueRequest, SignedOpenMarketFeeSchedule,
     },
     finding_admission::{
-        bid_with_finding_admission, verify_finding_admission, FindingAdmissionContext,
-        FindingAdmissionError, FindingAllocationSnapshot, FindingFeeScheduleGate,
+        bid_with_finding_admission, verify_finding_admission,
+        verify_finding_admission_for_activation, FindingAdmissionContext, FindingAdmissionError,
+        FindingAllocationSnapshot, FindingAllocationStatus, FindingConstituentExpiryBounds,
+        FindingFeeScheduleGate,
     },
     fiscal_adapter::signed_fee_schedule_digest,
     listing::{
@@ -510,9 +512,23 @@ impl Web {
             trusted_local_operator_signers: &self.trusted_signers,
             terms: &self.terms,
             backing: &self.backing,
-            allocation_snapshot: FindingAllocationSnapshot { live: true },
+            allocation_snapshot: FindingAllocationSnapshot {
+                allocation_id: self.backing.body.allocation_id.clone(),
+                backing_envelope_sha256: self.backing_sha256.clone(),
+                expires_at: self.backing.body.expires_at,
+                status: FindingAllocationStatus::Consumed,
+                active_admission_id: Some(self.admission.body.admission_id.clone()),
+                prepared_admission_id: None,
+                accepted_at: ADMISSION_ISSUED_AT,
+            },
             collateral_authority: &self.collateral_key,
-            earliest_constituent_expiry: CONSTITUENT_EXPIRES_AT,
+            constituent_expiry_bounds: FindingConstituentExpiryBounds {
+                finding: CONSTITUENT_EXPIRES_AT,
+                listing: WINDOW_EXPIRES_AT,
+                pricing_hint: WINDOW_EXPIRES_AT,
+                seller_authorization: WINDOW_EXPIRES_AT,
+                profile: WINDOW_EXPIRES_AT,
+            },
         }
     }
 
@@ -785,13 +801,79 @@ fn backing_digest_mismatch_rejects() {
 }
 
 #[test]
-fn dead_allocation_snapshot_rejects() {
+fn consumed_allocation_must_name_the_active_admission() {
     with_fiscal(|resolver| {
         let web = base_web();
         let mut context = web.context(resolver);
-        context.allocation_snapshot.live = false;
+        context.allocation_snapshot.active_admission_id = None;
         let error = verify_finding_admission(&web.admission, &context).test_unwrap_err();
-        assert_eq!(error, FindingAdmissionError::AllocationNotLive);
+        assert_eq!(
+            error,
+            FindingAdmissionError::AdmissionNotActiveForAllocation
+        );
+
+        context.allocation_snapshot.active_admission_id = Some(hex64('f'));
+        let error = verify_finding_admission(&web.admission, &context).test_unwrap_err();
+        assert_eq!(
+            error,
+            FindingAdmissionError::AdmissionNotActiveForAllocation
+        );
+    });
+}
+
+#[test]
+fn activation_and_current_admission_require_distinct_allocation_states() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let mut context = web.context(resolver);
+
+        // The post-transaction state is consumed by this exact active
+        // admission, so it produces the bid witness.
+        verify_finding_admission(&web.admission, &context)
+            .test_expect("consumed allocation backs the active admission");
+        assert_eq!(
+            verify_finding_admission_for_activation(&web.admission, &context).err(),
+            Some(FindingAdmissionError::AllocationUnavailableForActivation)
+        );
+
+        // Before the transaction the same exact allocation is available
+        // and unbound. It may pass activation validation but cannot
+        // produce a spendable admission witness.
+        context.allocation_snapshot.status = FindingAllocationStatus::Available;
+        context.allocation_snapshot.active_admission_id = None;
+        verify_finding_admission_for_activation(&web.admission, &context)
+            .test_expect("available allocation may enter activation");
+        assert_eq!(
+            verify_finding_admission(&web.admission, &context).err(),
+            Some(FindingAdmissionError::AdmissionNotActiveForAllocation)
+        );
+    });
+}
+
+#[test]
+fn expired_released_or_mismatched_allocation_snapshot_rejects() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let mut context = web.context(resolver);
+        context.allocation_snapshot.status = FindingAllocationStatus::Expired;
+        assert_eq!(
+            verify_finding_admission(&web.admission, &context).err(),
+            Some(FindingAdmissionError::AllocationExpired)
+        );
+
+        context = web.context(resolver);
+        context.allocation_snapshot.status = FindingAllocationStatus::Released;
+        assert_eq!(
+            verify_finding_admission(&web.admission, &context).err(),
+            Some(FindingAdmissionError::AllocationReleased)
+        );
+
+        context = web.context(resolver);
+        context.allocation_snapshot.backing_envelope_sha256 = hex64('f');
+        assert_eq!(
+            verify_finding_admission(&web.admission, &context).err(),
+            Some(FindingAdmissionError::AllocationSnapshotMismatch)
+        );
     });
 }
 
@@ -828,14 +910,14 @@ fn wrong_currency_requirement_rejects() {
 #[test]
 fn admission_expiry_past_a_constituent_rejects() {
     with_fiscal(|resolver| {
-        // Caller-resolved earliest bound (finding/listing/hint digests).
+        // Caller-resolved finding bound.
         let web = base_web();
         let mut context = web.context(resolver);
-        context.earliest_constituent_expiry = ADMISSION_EXPIRES_AT - 1;
+        context.constituent_expiry_bounds.finding = ADMISSION_EXPIRES_AT - 1;
         let error = verify_finding_admission(&web.admission, &context).test_unwrap_err();
         assert_eq!(
             error,
-            FindingAdmissionError::ExpiryBeyondConstituent("earliest_constituent_expiry")
+            FindingAdmissionError::ExpiryBeyondConstituent("finding")
         );
 
         // A terms window shorter than the admission window.
@@ -958,28 +1040,75 @@ fn fee_schedule_digest_mismatch_rejects() {
 #[test]
 fn admission_expiry_is_bounded_by_every_constituent() {
     with_fiscal(|resolver| {
-        // Each bound is driven independently so a mislabeled or dropped
-        // tuple in the bounds array cannot pass unnoticed.
-        for (label, expires_at) in [
-            ("backing", ADMISSION_EXPIRES_AT - 1),
-            ("purchase_authority", ADMISSION_EXPIRES_AT - 2),
-            ("failed_delivery_authority", ADMISSION_EXPIRES_AT - 3),
+        for label in [
+            "finding",
+            "listing",
+            "pricing_hint",
+            "seller_authorization",
+            "profile",
         ] {
             let web = web_with_schedule(REQUIREMENT_UNITS, true, "USD");
-            let context = web.context(resolver);
-            // Shrink only the caller-supplied bound and confirm the
-            // admission is refused for outliving it.
-            let mut narrowed = context.clone();
-            narrowed.earliest_constituent_expiry = expires_at;
+            let mut narrowed = web.context(resolver);
+            let expires_at = ADMISSION_EXPIRES_AT - 1;
+            match label {
+                "finding" => narrowed.constituent_expiry_bounds.finding = expires_at,
+                "listing" => narrowed.constituent_expiry_bounds.listing = expires_at,
+                "pricing_hint" => narrowed.constituent_expiry_bounds.pricing_hint = expires_at,
+                "seller_authorization" => {
+                    narrowed.constituent_expiry_bounds.seller_authorization = expires_at;
+                }
+                "profile" => narrowed.constituent_expiry_bounds.profile = expires_at,
+                _ => unreachable!(),
+            }
             let outcome = verify_finding_admission(&web.admission, &narrowed);
-            assert!(
-                matches!(
-                    outcome.err(),
-                    Some(FindingAdmissionError::ExpiryBeyondConstituent(_))
-                ),
-                "bound {label} did not deny an over-long admission"
+            assert_eq!(
+                outcome.err(),
+                Some(FindingAdmissionError::ExpiryBeyondConstituent(label)),
+                "bound {label} did not deny an over-long admission",
             );
         }
+
+        for label in ["purchase_authority", "failed_delivery_authority"] {
+            let mut web = web_with_schedule(REQUIREMENT_UNITS, true, "USD");
+            let mut admission = web.admission.body.clone();
+            match label {
+                "purchase_authority" => {
+                    admission.purchase_authority.valid_until = ADMISSION_EXPIRES_AT - 1;
+                }
+                "failed_delivery_authority" => {
+                    admission.failed_delivery_authority.valid_until = ADMISSION_EXPIRES_AT - 1;
+                }
+                _ => unreachable!(),
+            }
+            admission.admission_id = compute_admission_id(&admission).test_expect("admission id");
+            web.admission = SignedFindingAdmission::sign(admission, &web.venue)
+                .test_expect("sign narrowed admission");
+            let context = web.context(resolver);
+            assert_eq!(
+                verify_finding_admission(&web.admission, &context).err(),
+                Some(FindingAdmissionError::ExpiryBeyondConstituent(label)),
+                "bound {label} did not deny an over-long admission",
+            );
+        }
+
+        let mut web = web_with_schedule(REQUIREMENT_UNITS, true, "USD");
+        let mut backing = web.backing.body.clone();
+        backing.expires_at = ADMISSION_EXPIRES_AT - 1;
+        backing.allocation_id = compute_allocation_id(&backing).test_expect("allocation id");
+        web.backing = SignedFindingBondBacking::sign(backing, &keypair(4))
+            .test_expect("sign narrowed backing");
+        web.backing_sha256 = signed_envelope_sha256(&web.backing).test_expect("backing digest");
+        let mut admission = web.admission.body.clone();
+        admission.backing_allocation_id = web.backing.body.allocation_id.clone();
+        admission.backing_envelope_sha256 = web.backing_sha256.clone();
+        admission.admission_id = compute_admission_id(&admission).test_expect("admission id");
+        web.admission = SignedFindingAdmission::sign(admission, &web.venue)
+            .test_expect("sign backing-bounded admission");
+        let context = web.context(resolver);
+        assert_eq!(
+            verify_finding_admission(&web.admission, &context).err(),
+            Some(FindingAdmissionError::ExpiryBeyondConstituent("backing"))
+        );
     });
 }
 

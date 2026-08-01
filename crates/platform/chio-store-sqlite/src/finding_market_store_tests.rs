@@ -584,6 +584,7 @@ fn allocation_exclusivity_and_single_consumption() {
         .expect("get allocation")
         .expect("allocation present");
     assert_eq!(snapshot.state, FindingAllocationState::Consumed);
+    assert_eq!(snapshot.active_admission_id, None);
     assert_eq!(snapshot.accepted_at, NOW);
     assert_eq!(snapshot.backing, backing);
     // With no live allocation left, a fresh allocation id for the same
@@ -896,6 +897,7 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
         FindingAllocationState::Live,
         "a competing prepare must not consume another allocation"
     );
+    assert_eq!(live.active_admission_id, None);
 
     // (ii) After reconciling, activation succeeds atomically.
     reconcile(&fixture.store, &epoch_zero.idempotency_key, &hex64('9'), 3)
@@ -913,6 +915,11 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
         .expect("get allocation")
         .expect("allocation present");
     assert_eq!(consumed.state, FindingAllocationState::Consumed);
+    assert_eq!(
+        consumed.active_admission_id.as_deref(),
+        Some(admission.admission_id.as_str()),
+        "the consumed allocation must name the admission that encumbers it"
+    );
     let current = fixture
         .store
         .get_current_admission(&finding_id)
@@ -987,6 +994,25 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
          guarantees the prior row moved to superseded"
     );
     assert_eq!(superseding.envelope_json, second_envelope);
+    let old_allocation = fixture
+        .store
+        .get_allocation(&backing.allocation_id)
+        .expect("get superseded allocation")
+        .expect("superseded allocation present");
+    assert_eq!(old_allocation.state, FindingAllocationState::Consumed);
+    assert_eq!(
+        old_allocation.active_admission_id, None,
+        "a superseded admission no longer actively binds its consumed allocation"
+    );
+    let new_allocation = fixture
+        .store
+        .get_allocation(&second_backing.allocation_id)
+        .expect("get superseding allocation")
+        .expect("superseding allocation present");
+    assert_eq!(
+        new_allocation.active_admission_id.as_deref(),
+        Some(second_admission.admission_id.as_str())
+    );
 }
 
 #[test]

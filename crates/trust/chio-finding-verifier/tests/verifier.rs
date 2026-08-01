@@ -496,6 +496,13 @@ fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
     }
 }
 
+fn resign_profile(
+    mut body: FindingChallengeVerifierProfile,
+) -> Result<SignedExportEnvelope<FindingChallengeVerifierProfile>, Box<dyn Error>> {
+    body.profile_id = compute_profile_id(&body)?;
+    Ok(SignedExportEnvelope::sign(body, &keypair(1))?)
+}
+
 fn bundle<'a>(
     fx: &'a Fixture,
     receipts: Vec<ResolvedReceiptEvidence>,
@@ -978,6 +985,61 @@ fn report_signing_requires_the_profile_authorized_key() -> TestResult {
     assert!(
         sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.issuer)
             .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn receipt_and_checkpoint_signers_must_cover_the_evidence_timestamp() -> TestResult {
+    let fx = fixture()?;
+
+    let mut trust = trust_roots(&fx);
+    let mut profile = fx.profile.body.clone();
+    let first_receipt_time = fx.receipts[0].receipt.timestamp;
+    for signer in &mut profile.receipt_signers {
+        if signer.role == FindingReceiptRole::Production {
+            signer.policy.valid_until = first_receipt_time;
+        }
+    }
+    trust.profile = resign_profile(profile)?;
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::ReceiptAuthenticity),
+        Some(FindingFacetOutcome::Failed)
+    );
+
+    let mut trust = trust_roots(&fx);
+    let mut profile = fx.profile.body.clone();
+    profile.checkpoint_logs[0].signer.valid_until = fx.checkpoint.body.issued_at;
+    trust.profile = resign_profile(profile)?;
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::CheckpointMembership),
+        Some(FindingFacetOutcome::Failed)
+    );
+    Ok(())
+}
+
+#[test]
+fn report_signer_policy_must_cover_the_evaluation_time() -> TestResult {
+    let fx = fixture()?;
+    let original_trust = trust_roots(&fx);
+    let draft = verify_finding_evidence(
+        &fx.raw_finding,
+        &original_trust,
+        &bundle(&fx, clone_receipts(&fx)),
+    )?;
+
+    let mut trust = trust_roots(&fx);
+    let mut profile = fx.profile.body.clone();
+    profile.verifier_report_signer.valid_until = draft.evaluation_time;
+    trust.profile = resign_profile(profile)?;
+    assert_eq!(
+        sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.verifier,)
+            .err(),
+        Some(FindingVerifierError::ReportSignerInactive)
     );
     Ok(())
 }
