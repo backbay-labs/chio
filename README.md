@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Proofs, Governance, and Economic Protocol for AI Systems</strong>
+  <strong>The Clearinghouse for Agentic Commerce</strong>
 </p>
 
 <p align="center">
