@@ -14,7 +14,7 @@ use chio_settle::FindingFinalityRequirement;
 use crate::CliError;
 
 /// One pinned authority key with its lifecycle policy.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingAuthorityPin {
     pub authority_id: String,
     /// Canonical bare lowercase Ed25519 key hex.
@@ -80,7 +80,7 @@ impl FindingAuthorityPin {
 }
 
 /// One governance-pinned pool identity with its rail-tagged destination.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingPoolPin {
     pub principal_id: String,
     pub rail_destination: String,
@@ -112,7 +112,7 @@ impl FindingPoolPin {
 /// The finding-market deployment configuration. `None` on
 /// `TrustServiceConfig` keeps every finding surface at 409, matching the
 /// fiscal-runtime gating convention.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingMarketConfig {
     pub venue_id: String,
     pub venue: FindingAuthorityPin,

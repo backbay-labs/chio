@@ -63,6 +63,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use chio_core::StoreMutationFence;
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use thiserror::Error;
@@ -448,6 +449,12 @@ impl SqliteFindingChallengeStore {
             connection,
             serving_owner,
         }
+    }
+
+    /// Serving identity shared by every store opened alongside this one.
+    #[must_use]
+    pub fn mutation_fence(&self) -> StoreMutationFence {
+        self.serving_owner.fence.clone()
     }
 
     fn connection(&self) -> Result<MutexGuard<'_, Connection>, FindingChallengeStoreError> {
@@ -1927,6 +1934,7 @@ impl SqliteFindingChallengeStore {
     /// believes the head is in, and that state must be the only legal
     /// source of this edge, so no caller can skip a state by naming a
     /// later one. Idempotent once the head already sits at the target.
+    #[cfg(test)]
     fn transition_liability(
         &self,
         liability_key: &str,

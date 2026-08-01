@@ -1250,6 +1250,7 @@ fn challenge_requires_a_venue_url() {
         true,
         false,
         None,
+        None,
     )
     .unwrap_err()
     .to_string();
@@ -1285,6 +1286,7 @@ fn challenge_refuses_a_class_the_document_does_not_carry() {
             true,
             false,
             Some(UNREACHABLE_VENUE),
+            None,
         )
         .unwrap_err()
         .to_string();
@@ -1312,6 +1314,7 @@ fn challenge_refuses_a_venue_audit_over_a_buyer_submission() {
         true,
         false,
         Some(UNREACHABLE_VENUE),
+        None,
     )
     .unwrap_err()
     .to_string();
@@ -1338,6 +1341,7 @@ fn challenge_refuses_an_audit_document_without_the_audit_flag() {
         true,
         false,
         Some(UNREACHABLE_VENUE),
+        None,
     )
     .unwrap_err()
     .to_string();
@@ -1361,6 +1365,7 @@ fn challenge_refuses_a_buyer_submission_without_a_challenger_key() {
         true,
         false,
         Some(UNREACHABLE_VENUE),
+        None,
     )
     .unwrap_err()
     .to_string();
@@ -1622,6 +1627,7 @@ async fn challenge_dry_run_emits_the_canonical_challenge_without_transmitting() 
             true,
             true,
             Some(&uri),
+            None,
         )
     })
     .await
@@ -1629,8 +1635,59 @@ async fn challenge_dry_run_emits_the_canonical_challenge_without_transmitting() 
     .unwrap();
 }
 
+#[test]
+fn live_challenge_requires_service_authorization_before_contacting_the_venue() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    let document = load_document(
+        &dir,
+        &buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch),
+    );
+    let error = cmd_finding_challenge(
+        GOLDEN_FINDING_ID,
+        FindingChallengeClassArg::DigestMismatch,
+        &document,
+        Some(&key),
+        false,
+        false,
+        false,
+        Some(UNREACHABLE_VENUE),
+        None,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("--control-token"), "unexpected error: {error}");
+}
+
+#[test]
+fn live_venue_audit_is_reserved_for_the_pinned_scheduler() {
+    let dir = tempfile::tempdir().unwrap();
+    let document = load_document(
+        &dir,
+        &venue_audit_document(FindingChallengeClassArg::DigestMismatch),
+    );
+    let error = cmd_finding_challenge(
+        GOLDEN_FINDING_ID,
+        FindingChallengeClassArg::DigestMismatch,
+        &document,
+        None,
+        true,
+        false,
+        false,
+        Some(UNREACHABLE_VENUE),
+        Some("service-secret"),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("venue audit scheduler") && error.contains("--dry-run"),
+        "unexpected error: {error}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
-async fn challenge_without_dry_run_reports_the_missing_coordinator_route() {
+async fn challenge_without_dry_run_posts_the_exact_canonical_envelope() {
     if !loopback_bind_available() {
         eprintln!("skipping finding challenge submission test: loopback bind denied");
         return;
@@ -1643,9 +1700,51 @@ async fn challenge_without_dry_run_reports_the_missing_coordinator_route() {
         &dir,
         &buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch),
     );
+    let expected = prepare_challenge(
+        &accepted_golden_finding(),
+        load_challenge_evidence_document(&document).unwrap(),
+        Some(&key),
+    )
+    .unwrap();
+    let canonical_envelope = canonical_json_string(
+        expected
+            .signed
+            .as_ref()
+            .expect("buyer challenge carries a signed envelope"),
+    )
+    .unwrap();
+    let expected_lock_id = match &expected.challenge.authorization {
+        FindingChallengeAuthorization::BuyerSubmission(submission) => {
+            submission.dispute_lock_ref.lock_id.clone()
+        }
+        FindingChallengeAuthorization::VenueAudit(_) => {
+            panic!("buyer fixture unexpectedly produced a venue-audit challenge")
+        }
+    };
+    Mock::given(method("POST"))
+        .and(path_matcher(format!(
+            "/v1/findings/{GOLDEN_FINDING_ID}/challenges"
+        )))
+        .and(header("authorization", "Bearer service-secret"))
+        .and(header("content-type", "application/json"))
+        .and(body_string(canonical_envelope))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/json")
+                .set_body_json(serde_json::json!({
+                    "challengeId": expected.challenge.challenge_id,
+                    "authorizationBranch": "buyer_submission",
+                    "write": "inserted",
+                    "disputeFeeIntentKey": "fee-intent-01",
+                    "disputeBondLockId": expected_lock_id
+                })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
 
     let uri = server.uri();
-    let error = tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         cmd_finding_challenge(
             GOLDEN_FINDING_ID,
             FindingChallengeClassArg::DigestMismatch,
@@ -1655,21 +1754,12 @@ async fn challenge_without_dry_run_reports_the_missing_coordinator_route() {
             false,
             false,
             Some(&uri),
+            Some("service-secret"),
         )
     })
     .await
     .unwrap()
-    .unwrap_err();
-
-    assert!(
-        matches!(error, CliError::Chio(_)),
-        "the refusal must stay inside the typed error taxonomy"
-    );
-    let message = error.to_string();
-    assert!(
-        message.contains("coordinator route") && message.contains("--dry-run"),
-        "unexpected error: {message}"
-    );
+    .unwrap();
 }
 
 async fn challenge_venue() -> MockServer {

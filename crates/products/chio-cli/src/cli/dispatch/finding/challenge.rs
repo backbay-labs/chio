@@ -9,6 +9,10 @@ use chio_finding::{
     FindingChallengeAuthorizationKind, FindingChallengeEvidence, FindingChallengeEvidenceKind,
     SignedFindingChallenge, FINDING_CHALLENGE_SCHEMA_V1,
 };
+use chio_control_plane::trust_control::{
+    FindingChallengeSubmissionAuthorization, FindingChallengeSubmissionResponse,
+    FindingChallengeSubmissionWrite,
+};
 
 use super::finding_verify::{accept_finding_from_venue, AcceptedFinding};
 
@@ -75,6 +79,7 @@ pub(super) fn cmd_finding_challenge(
     dry_run: bool,
     json_output: bool,
     control_url: Option<&str>,
+    control_token: Option<&str>,
 ) -> Result<(), CliError> {
     let url = require_control_url(control_url)?;
     let finding_id = require_finding_id(finding)?;
@@ -86,6 +91,14 @@ pub(super) fn cmd_finding_challenge(
     require_class_agreement(class, &document.evidence)?;
     require_branch_agreement(venue_audit, &document.authorization)?;
     require_challenger_key(&document.authorization, challenger_key)?;
+    if !dry_run && venue_audit {
+        return Err(live_venue_audit_error());
+    }
+    let control_token = if dry_run {
+        None
+    } else {
+        Some(require_control_token(control_token)?)
+    };
 
     let accepted = accept_finding_from_venue(url, finding_id)?;
     if accepted.finding.finding_id != finding_id {
@@ -97,21 +110,106 @@ pub(super) fn cmd_finding_challenge(
 
     let prepared = prepare_challenge(&accepted, document, challenger_key)?;
 
-    if !dry_run {
-        return Err(missing_coordinator_route_error());
+    if dry_run {
+        return emit_prepared_challenge(&prepared, json_output);
     }
-    emit_prepared_challenge(&prepared, json_output)
+    let token = control_token.ok_or_else(|| {
+        CliError::cli_other_error("finding challenge submission requires a control token")
+    })?;
+    submit_prepared_challenge(url, token, &prepared, json_output)
 }
 
-/// Submission needs a coordinator that accepts the signed challenge,
-/// collects the dispute fee, and takes the exclusive dispute lock. No route
-/// in this workspace revision exposes it, so the command refuses rather
-/// than posting a challenge into a surface that would not hold it.
-fn missing_coordinator_route_error() -> CliError {
+fn live_venue_audit_error() -> CliError {
     CliError::cli_other_error(
-        "finding challenge submission requires the challenge coordinator route that this workspace revision does not expose to the CLI; re-run with --dry-run to emit the canonical challenge for out-of-band submission"
+        "live venue-audit challenges are filed by the configured venue audit scheduler, which holds the pinned audit signing key; re-run with --dry-run to inspect the unsigned challenge body"
             .to_string(),
     )
+}
+
+fn submit_prepared_challenge(
+    control_url: &str,
+    control_token: &str,
+    prepared: &PreparedChallenge,
+    json_output: bool,
+) -> Result<(), CliError> {
+    let signed = prepared.signed.as_ref().ok_or_else(live_venue_audit_error)?;
+    let canonical_envelope = canonical_json_string(signed)?;
+    let endpoint = finding_endpoint(
+        control_url,
+        &format!(
+            "/v1/findings/{}/challenges",
+            prepared.challenge.finding_id
+        ),
+    );
+    let response = match ureq::post(&endpoint)
+        .set(AUTHORIZATION_HEADER, &format!("Bearer {control_token}"))
+        .set("Content-Type", "application/json")
+        .send_string(&canonical_envelope)
+    {
+        Ok(response) => response,
+        Err(ureq::Error::Status(status, response)) => {
+            return Err(http_status_error(status, response))
+        }
+        Err(ureq::Error::Transport(error)) => {
+            return Err(CliError::transport_error(format!(
+                "transport request failed: {error}"
+            )))
+        }
+    };
+    let submitted: FindingChallengeSubmissionResponse =
+        serde_json::from_reader(response.into_reader())?;
+    if submitted.challenge_id != prepared.challenge.challenge_id {
+        return Err(CliError::transport_error(
+            "challenge submission response named a different challenge id".to_string(),
+        ));
+    }
+    let expected_lock_id = match &prepared.challenge.authorization {
+        FindingChallengeAuthorization::BuyerSubmission(submission) => {
+            submission.dispute_lock_ref.lock_id.as_str()
+        }
+        FindingChallengeAuthorization::VenueAudit(_) => return Err(live_venue_audit_error()),
+    };
+    if submitted.authorization_branch
+        != FindingChallengeSubmissionAuthorization::BuyerSubmission
+        || submitted.dispute_fee_intent_key.is_none()
+        || submitted.dispute_bond_lock_id.as_deref() != Some(expected_lock_id)
+    {
+        return Err(CliError::transport_error(
+            "buyer challenge submission response omitted its durable fee or bond binding"
+                .to_string(),
+        ));
+    }
+    emit_submitted_challenge(&submitted, json_output)
+}
+
+fn emit_submitted_challenge(
+    submitted: &FindingChallengeSubmissionResponse,
+    json_output: bool,
+) -> Result<(), CliError> {
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(submitted)?);
+        return Ok(());
+    }
+    let authorization = match submitted.authorization_branch {
+        FindingChallengeSubmissionAuthorization::BuyerSubmission => "buyer_submission",
+        FindingChallengeSubmissionAuthorization::VenueAudit => "venue_audit",
+    };
+    let write = match submitted.write {
+        FindingChallengeSubmissionWrite::Inserted => "inserted",
+        FindingChallengeSubmissionWrite::ExistingSame => "existing_same",
+    };
+    println!("challenge_id:           {}", submitted.challenge_id);
+    println!("authorization_branch:  {authorization}");
+    println!("write:                 {write}");
+    println!(
+        "dispute_fee_intent:    {}",
+        submitted.dispute_fee_intent_key.as_deref().unwrap_or("-")
+    );
+    println!(
+        "dispute_bond_lock:     {}",
+        submitted.dispute_bond_lock_id.as_deref().unwrap_or("-")
+    );
+    Ok(())
 }
 
 /// The strict raw-first ingress the artifact surfaces apply, run over the

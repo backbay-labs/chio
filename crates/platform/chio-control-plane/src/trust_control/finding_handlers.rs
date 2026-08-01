@@ -27,9 +27,9 @@ use chio_finding::{
 };
 use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
 use chio_open_market::finding_admission::{
-    verify_finding_admission_for_activation, FindingAdmissionContext,
-    FindingAdmissionPenaltyGate, FindingAllocationSnapshot as AdmissionAllocationSnapshot,
-    FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
+    verify_finding_admission_for_activation, FindingAdmissionContext, FindingAdmissionPenaltyGate,
+    FindingAllocationSnapshot as AdmissionAllocationSnapshot, FindingAllocationStatus,
+    FindingConstituentExpiryBounds, FindingFeeScheduleGate,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
@@ -131,7 +131,7 @@ fn canonical_digest_of<T: serde::Serialize>(value: &T) -> Result<String, String>
     Ok(chio_core::sha256_hex(&bytes))
 }
 
-fn finding_market_context(
+pub(super) fn finding_market_context(
     state: &TrustServiceState,
 ) -> Result<(FindingMarketConfig, SqliteFindingMarketStore), Response> {
     let Some(config) = state.config.finding_market.clone() else {
@@ -154,7 +154,7 @@ fn finding_market_context(
 }
 
 /// The strict raw-first ingress pipeline for one registered artifact.
-fn strict_artifact_ingress<T: serde::de::DeserializeOwned + serde::Serialize>(
+pub(super) fn strict_artifact_ingress<T: serde::de::DeserializeOwned + serde::Serialize>(
     raw: &str,
     max_bytes: usize,
     schema_json: &str,
@@ -1128,8 +1128,10 @@ pub(crate) async fn handle_activate_finding(
         }
         None => FindingFeeScheduleGate::Legacy,
     };
-    if let Err(error) = verify_signed_verifier_report(&request.verifier_report, &verifier_key) {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+    if let Err(error) =
+        verify_report_authority_lifecycle(&request.verifier_report, &profile, &config)
+    {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     // The report's affirmative bond claim, if any, feeds the admission
     // seam's report-before-backing ordering check.

@@ -24,6 +24,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use axum::body::{to_bytes, Body};
+use axum::http::header::AUTHORIZATION;
+use axum::http::{Request as HttpRequest, StatusCode};
 use chio_core::canonical_json_bytes;
 use chio_core::canonical_json_string;
 use chio_core::capability::scope::MonetaryAmount;
@@ -132,13 +135,21 @@ use chio_store_sqlite::{
 use crate::trust_control::finding_challenge_coordinator::{
     derive_anchor_evidence_intent_key, derive_defect_key, derive_liability_key,
     root_intent_commitment, AppealDisposition, AppealResolution, AuthorizedImpairment,
-    ChallengeCoordinatorError, ChallengeEvaluationRequest, EvaluationAdmission, FindingAuditRound,
-    FindingChallengeCoordinator, FindingCollateralFacts, FindingFilingResolver,
-    FindingFinalization, FindingKeyRevocationStatus, FindingLiabilityIdentity,
-    FindingPenaltyGovernance, UpheldLiability,
+    ChallengeCoordinatorError, ChallengeEvaluationRequest, ChallengeSubmissionOutcome,
+    EvaluationAdmission, FindingAuditRound, FindingChallengeCoordinator, FindingCollateralFacts,
+    FindingFilingResolver, FindingFinalization, FindingKeyRevocationStatus,
+    FindingLiabilityIdentity, FindingPenaltyGovernance, UpheldLiability,
 };
-use crate::trust_control::{FindingAuthorityPin, FindingMarketConfig, FindingPoolPin};
+use crate::trust_control::{
+    FederationAdmissionRateLimiter, FindingAuthorityPin, FindingChallengeSubmissionExecutor,
+    FindingChallengeSubmissionRequest, FindingChallengeSubmissionResponse,
+    FindingChallengeSubmissionRuntime, FindingChallengeSubmissionWrite, FindingMarketConfig,
+    FindingPoolPin, TrustServiceConfig, TrustServiceState,
+};
 use crate::trust_control::{FindingRailInstruction, FindingRailObservation, FindingRailObserver};
+use tower::ServiceExt;
+
+use super::build_router;
 
 type AnyError = Box<dyn std::error::Error>;
 type TestResult = Result<(), AnyError>;
@@ -453,7 +464,7 @@ struct Deployment {
     _temp: tempfile::TempDir,
     database: PathBuf,
     lock_root: PathBuf,
-    _authority: SqliteAuthorityStore,
+    _authority: Arc<SqliteAuthorityStore>,
     market: SqliteFindingMarketStore,
     purchases: SqliteFindingPurchaseStore,
     challenges: SqliteFindingChallengeStore,
@@ -479,7 +490,7 @@ fn deployment_publishing_terms(
     std::fs::create_dir(&lock_root)?;
     secure_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
-    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+    let authority = Arc::new(SqliteAuthorityStore::open_serving(&database, &lock_root)?);
     let market = authority.finding_market_store();
     let purchases = authority.finding_purchase_store();
     let challenges = authority.finding_challenge_store();
@@ -586,7 +597,7 @@ impl Deployment {
         drop(purchases);
         drop(market);
         drop(_authority);
-        let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+        let authority = Arc::new(SqliteAuthorityStore::open_serving(&database, &lock_root)?);
         let market = authority.finding_market_store();
         let purchases = authority.finding_purchase_store();
         let challenges = authority.finding_challenge_store();
@@ -604,6 +615,117 @@ impl Deployment {
             filings,
         })
     }
+}
+
+/// Route adapter that records the exact ingress views and delegates every
+/// submission to the real durable coordinator. The fixed coordinator clock
+/// keeps this historical fixture's signed fee schedule live; the handler's
+/// independently observed clock is still recorded and asserted by the test.
+struct RouteChallengeExecutor {
+    coordinator: FindingChallengeCoordinator,
+    raw_challenge_envelopes: Mutex<Vec<String>>,
+    raw_findings: Mutex<Vec<String>>,
+    handler_times: Mutex<Vec<u64>>,
+}
+
+impl FindingChallengeSubmissionExecutor for RouteChallengeExecutor {
+    fn submit(
+        &self,
+        request: &FindingChallengeSubmissionRequest,
+        raw_challenge_envelope: &str,
+        raw_finding: &str,
+        now: u64,
+    ) -> Result<ChallengeSubmissionOutcome, ChallengeCoordinatorError> {
+        self.raw_challenge_envelopes
+            .lock()
+            .map_err(|_| ChallengeCoordinatorError::Canonical)?
+            .push(raw_challenge_envelope.to_string());
+        self.raw_findings
+            .lock()
+            .map_err(|_| ChallengeCoordinatorError::Canonical)?
+            .push(raw_finding.to_string());
+        self.handler_times
+            .lock()
+            .map_err(|_| ChallengeCoordinatorError::Canonical)?
+            .push(now);
+        self.coordinator
+            .submit(&request.challenge, raw_finding, NOW)
+    }
+}
+
+fn challenge_route_state(
+    deployment: &Deployment,
+    executor: Arc<dyn FindingChallengeSubmissionExecutor>,
+) -> TrustServiceState {
+    let config = TrustServiceConfig {
+        listen: std::net::SocketAddr::from(([127, 0, 0, 1], 0)),
+        service_token: "challenge-service-secret".to_string(),
+        tenant_read_tokens: BTreeMap::new(),
+        receipt_db_path: None,
+        revocation_db_path: None,
+        authority_seed_path: None,
+        authority_db_path: None,
+        budget_db_path: None,
+        joint_authority_db_path: None,
+        fiscal_runtime: None,
+        enterprise_providers_file: None,
+        federation_policies_file: None,
+        scim_lifecycle_file: None,
+        verifier_policies_file: None,
+        verifier_challenge_db_path: None,
+        passport_statuses_file: None,
+        passport_issuance_offers_file: None,
+        certification_registry_file: None,
+        certification_discovery_file: None,
+        issuance_policy: None,
+        runtime_assurance_policy: None,
+        advertise_url: None,
+        allow_local_peer_urls: true,
+        certification_public_metadata_ttl_seconds: 300,
+        peer_urls: Vec::new(),
+        cluster_sync_interval: std::time::Duration::from_millis(25),
+        roster_policy: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+        finding_market: Some(market_config()),
+    };
+    TrustServiceState {
+        config,
+        joint_authority_store: Some(Arc::clone(&deployment._authority)),
+        fiscal_runtime: None,
+        budget_store: None,
+        revocation_store: None,
+        enterprise_provider_registry: None,
+        verifier_policy_registry: None,
+        federation_admission_rate_limiter: Arc::new(Mutex::new(
+            FederationAdmissionRateLimiter::default(),
+        )),
+        cluster: None,
+        cluster_progress: None,
+        finding_rail: Some(deployment.rail.clone()),
+        finding_purchase_executor: None,
+        finding_challenge_executor: Some(executor),
+    }
+}
+
+async fn submit_challenge_route(
+    state: &TrustServiceState,
+    finding_id: &str,
+    raw_envelope: &str,
+    authenticated: bool,
+) -> Result<(StatusCode, Vec<u8>), AnyError> {
+    let mut builder = HttpRequest::builder()
+        .method("POST")
+        .uri(format!("/v1/findings/{finding_id}/challenges"))
+        .header("content-type", "application/json");
+    if authenticated {
+        builder = builder.header(AUTHORIZATION, "Bearer challenge-service-secret");
+    }
+    let response = build_router(state.clone())
+        .oneshot(builder.body(Body::from(raw_envelope.to_string()))?)
+        .await?;
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX).await?;
+    Ok((status, body.to_vec()))
 }
 
 /// Register and consume one collateral allocation for a listing. The
@@ -1255,7 +1377,7 @@ impl DigestMismatchCase {
             failed_delivery: &self.failed_delivery,
             deny_receipt: &self.deny_receipt,
             deny_checkpoint: &self.deny_checkpoint,
-            deny_checkpoint_transparency: &self.deny_checkpoint_transparency,
+            checkpoint_transparency: &self.deny_checkpoint_transparency,
         })
     }
 }
@@ -1415,7 +1537,7 @@ impl EvidenceInvalidCase {
             purchase_record: &self.purchase_record,
             challenged_receipts: &self.receipts,
             challenged_checkpoint: checkpoint,
-            challenged_checkpoint_transparency: checkpoint_transparency,
+            checkpoint_transparency,
             revoked_keys: &[],
         })
     }
@@ -2566,6 +2688,129 @@ fn upheld_outcome(
 // ---------------------------------------------------------------------------
 // Submission and the dispute-fee lane
 // ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn finding_challenge_live_route_submits_to_the_durable_coordinator_exactly_once() -> TestResult
+{
+    let other_deployment = deployment()?;
+    let deployment = deployment()?;
+    let mismatched_runtime = FindingChallengeSubmissionRuntime::new(
+        deployment._authority.clone(),
+        Arc::new(other_deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?),
+    );
+    assert!(matches!(
+        mismatched_runtime,
+        Err(ChallengeCoordinatorError::Configuration(_))
+    ));
+    let (finding, raw_finding) = finding_artifact()?;
+    deployment.market.put_finding(
+        &FindingRecordInput {
+            finding_id: &finding.finding_id,
+            artifact_json: &raw_finding,
+            topic: &finding.descriptor.topic,
+            context_sha256: &finding.descriptor.context_sha256,
+            issued_at: finding.issued_at,
+            expires_at: finding.expires_at,
+        },
+        NOW,
+    )?;
+    let challenge = buyer_challenge(&keypair(41))?;
+    let raw_challenge = canonical_json_string(&challenge)?;
+    let executor = Arc::new(RouteChallengeExecutor {
+        coordinator: deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?,
+        raw_challenge_envelopes: Mutex::new(Vec::new()),
+        raw_findings: Mutex::new(Vec::new()),
+        handler_times: Mutex::new(Vec::new()),
+    });
+    let state = challenge_route_state(&deployment, executor.clone());
+
+    let oversized = " ".repeat(1024 * 1024 + 1);
+    let (status, _) = submit_challenge_route(&state, &finding.finding_id, &oversized, true).await?;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+
+    let mut unconfigured = state.clone();
+    unconfigured.finding_challenge_executor = None;
+    let (status, _) =
+        submit_challenge_route(&unconfigured, &finding.finding_id, &raw_challenge, true).await?;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let (status, _) = submit_challenge_route(&state, &hex64('9'), &raw_challenge, true).await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, _) =
+        submit_challenge_route(&state, &finding.finding_id, &raw_challenge, false).await?;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(deployment.rail.charges().is_empty());
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+
+    let (first_status, first_body) =
+        submit_challenge_route(&state, &finding.finding_id, &raw_challenge, true).await?;
+    let first: FindingChallengeSubmissionResponse = serde_json::from_slice(&first_body)?;
+    assert_eq!(first_status, StatusCode::OK);
+    assert_eq!(first.write, FindingChallengeSubmissionWrite::Inserted);
+
+    let (second_status, second_body) =
+        submit_challenge_route(&state, &finding.finding_id, &raw_challenge, true).await?;
+    let second: FindingChallengeSubmissionResponse = serde_json::from_slice(&second_body)?;
+    assert_eq!(second_status, StatusCode::OK);
+    assert_eq!(second.write, FindingChallengeSubmissionWrite::ExistingSame);
+    assert_eq!(second.challenge_id, first.challenge_id);
+    assert_eq!(second.dispute_fee_intent_key, first.dispute_fee_intent_key);
+    assert_eq!(second.dispute_bond_lock_id, first.dispute_bond_lock_id);
+
+    let observed_challenges = executor
+        .raw_challenge_envelopes
+        .lock()
+        .map_err(|_| "route challenge observation lock poisoned")?;
+    assert_eq!(observed_challenges.len(), 2);
+    assert!(observed_challenges
+        .iter()
+        .all(|observed| observed == &raw_challenge));
+    let observed_findings = executor
+        .raw_findings
+        .lock()
+        .map_err(|_| "route finding observation lock poisoned")?;
+    assert_eq!(observed_findings.len(), 2);
+    assert!(observed_findings
+        .iter()
+        .all(|observed| observed == &raw_finding));
+    let handler_times = executor
+        .handler_times
+        .lock()
+        .map_err(|_| "route time observation lock poisoned")?;
+    assert_eq!(handler_times.len(), 2);
+    assert!(handler_times.iter().all(|observed| *observed > 0));
+    drop(handler_times);
+    drop(observed_findings);
+    drop(observed_challenges);
+
+    assert_eq!(deployment.rail.charges().len(), 1);
+    let challenge_record = deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .ok_or("challenge route did not persist the challenge")?;
+    assert_eq!(challenge_record.state, FindingChallengeState::Submitted);
+    let fee_key = first
+        .dispute_fee_intent_key
+        .as_deref()
+        .ok_or("challenge route did not return the dispute-fee intent")?;
+    let fee_intent = deployment
+        .challenges
+        .get_effect_intent(fee_key)?
+        .ok_or("challenge route did not persist the dispute-fee intent")?;
+    assert_eq!(fee_intent.state, FindingEffectIntentState::Confirmed);
+    assert_eq!(fee_intent.attempt_count, 1);
+    let lock = deployment
+        .challenges
+        .get_dispute_lock(&challenge.body.challenge_id)?
+        .ok_or("challenge route did not persist the dispute lock")?;
+    assert_eq!(lock.state, FindingDisputeLockState::Locked);
+    assert_eq!(Some(lock.lock_id), first.dispute_bond_lock_id);
+    Ok(())
+}
 
 #[test]
 fn finding_challenge_buyer_submission_charges_the_challenge_administration_pool() -> TestResult {

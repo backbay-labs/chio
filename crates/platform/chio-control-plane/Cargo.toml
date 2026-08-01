@@ -107,6 +107,7 @@ windows-sys = { version = "0.60.2", features = [
 chio-anchor = { workspace = true }
 chio-finding-verifier = { workspace = true }
 chio-link = { workspace = true }
+chio-store-sqlite = { workspace = true, features = ["cognition-market-test-support"] }
 chio-test-support = { workspace = true }
 proptest = { workspace = true }
 rcgen = "0.13"

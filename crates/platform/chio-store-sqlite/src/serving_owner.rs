@@ -739,6 +739,25 @@ impl SqliteAuthorityStore {
         self.owner.fence.clone()
     }
 
+    /// Verify that this live serving owner is bound to the configured
+    /// authority database path and the provisioned filesystem identity.
+    pub fn verify_database_path(
+        &self,
+        expected_path: impl AsRef<Path>,
+    ) -> Result<(), SqliteServingOwnerError> {
+        let expected_path = fs::canonicalize(expected_path.as_ref())?;
+        let connection = self.connection.lock().map_err(|_| {
+            SqliteServingOwnerError::Invalid(
+                "sqlite authority connection mutex is poisoned".to_string(),
+            )
+        })?;
+        self.owner.verify_authority_anchor(&connection)?;
+        let record = load_provisioning_record(&connection)?.ok_or_else(|| {
+            SqliteServingOwnerError::PartialProvision(expected_path.display().to_string())
+        })?;
+        validate_provisioning_record(&expected_path, Path::new(&record.lock_root), &record)
+    }
+
     #[must_use]
     pub fn budget_store(&self) -> SqliteBudgetStore {
         SqliteBudgetStore::open_alongside(self.connection.clone(), self.owner.clone())

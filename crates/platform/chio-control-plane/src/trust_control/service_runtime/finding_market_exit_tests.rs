@@ -265,6 +265,7 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(rail),
         finding_purchase_executor: None,
+        finding_challenge_executor: None,
     }
 }
 
@@ -431,7 +432,7 @@ fn build_recipe(
 fn build_profile(
     governance: &Keypair,
     log_id: String,
-    runner_manifest_sha256: &str,
+    allowed_runner_manifest: &str,
 ) -> Result<SignedFindingChallengeVerifierProfile, AnyError> {
     let mut profile = FindingChallengeVerifierProfile {
         schema: FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1.to_string(),
@@ -465,7 +466,7 @@ fn build_profile(
             valid_until: WINDOW_EXPIRES_AT,
             revocation_status_ref: "revocations/bbs".to_string(),
         },
-        allowed_runner_manifests: vec![runner_manifest_sha256.to_string()],
+        allowed_runner_manifests: vec![allowed_runner_manifest.to_string()],
         required_receipt_semantics: "chio.mediated_spend.v1".to_string(),
         resolver_policy_ref: "resolver-policy-v1".to_string(),
         retention_policy_ref: "retention-forever-v1".to_string(),
@@ -804,11 +805,10 @@ fn make_signed_report(
     };
     let draft = verify_finding_evidence(inputs.raw_finding, &trust, &bundle)?;
     if !draft.satisfies_required_facets(&trust.profile.body) {
-        return Err(format!(
+        return Err(Box::new(std::io::Error::other(format!(
             "draft does not satisfy the required profile facets: {:?}",
             draft.facets
-        )
-        .into());
+        ))));
     }
     Ok(sign_finding_verifier_report(
         &draft,

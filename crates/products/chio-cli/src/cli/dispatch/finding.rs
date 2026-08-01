@@ -101,6 +101,7 @@ pub(crate) fn dispatch_finding(
             dry_run,
             json_output,
             control_url.as_deref(),
+            control_token.as_deref(),
         ),
     }
 }

@@ -9,8 +9,20 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "cognition-market-experimental")]
-pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliError> {
-    serve_async_inner(config, None).await
+pub(crate) async fn serve_async(
+    config: TrustServiceConfig,
+    injected_joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
+    finding_challenge_executor: Option<
+        Arc<dyn super::super::finding_challenge_handlers::FindingChallengeSubmissionExecutor>,
+    >,
+) -> Result<(), CliError> {
+    serve_async_inner(
+        config,
+        injected_joint_authority_store,
+        None,
+        finding_challenge_executor,
+    )
+    .await
 }
 
 #[cfg(not(feature = "cognition-market-experimental"))]
@@ -23,13 +35,19 @@ pub(crate) async fn serve_async_with_finding_purchase_executor(
     config: TrustServiceConfig,
     executor: super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
 ) -> Result<(), CliError> {
-    serve_async_inner(config, Some(executor)).await
+    serve_async_inner(config, None, Some(executor), None).await
 }
 
 async fn serve_async_inner(
     config: TrustServiceConfig,
+    #[cfg(feature = "cognition-market-experimental")] injected_joint_authority_store: Option<
+        Arc<SqliteAuthorityStore>,
+    >,
     #[cfg(feature = "cognition-market-experimental")] finding_purchase_executor: Option<
         super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    >,
+    #[cfg(feature = "cognition-market-experimental")] finding_challenge_executor: Option<
+        Arc<dyn super::super::finding_challenge_handlers::FindingChallengeSubmissionExecutor>,
     >,
 ) -> Result<(), CliError> {
     config.validate()?;
@@ -39,18 +57,16 @@ async fn serve_async_inner(
     )?;
     let verifier_policy_registry =
         load_verifier_policy_registry(config.verifier_policies_file.as_deref(), "trust_control")?;
-    let joint_authority_store = match config.joint_authority_db_path.as_deref() {
-        Some(path) => {
-            SqliteAuthorityStore::ensure_serving_supported()?;
-            let lock_root = crate::durable_admission_lock_root(path)?;
-            crate::create_private_directory(&lock_root)?;
-            SqliteAuthorityStore::provision(path, &lock_root)?;
-            Some(Arc::new(SqliteAuthorityStore::open_serving(
-                path, &lock_root,
-            )?))
+    #[cfg(feature = "cognition-market-experimental")]
+    let joint_authority_store = match injected_joint_authority_store {
+        Some(store) => {
+            validate_injected_joint_authority_store(&config, &store)?;
+            Some(store)
         }
-        None => None,
+        None => open_configured_joint_authority_store(&config)?,
     };
+    #[cfg(not(feature = "cognition-market-experimental"))]
+    let joint_authority_store = open_configured_joint_authority_store(&config)?;
     let fiscal_runtime = compose_trust_fiscal_runtime(
         joint_authority_store.as_ref(),
         config.fiscal_runtime.as_ref(),
@@ -110,6 +126,8 @@ async fn serve_async_inner(
         finding_rail,
         #[cfg(feature = "cognition-market-experimental")]
         finding_purchase_executor,
+        #[cfg(feature = "cognition-market-experimental")]
+        finding_challenge_executor,
     };
     let controller = ShutdownController::install();
     let cluster_sync_task = state
@@ -188,6 +206,38 @@ async fn serve_async_inner(
     })
 }
 
+#[cfg(feature = "cognition-market-experimental")]
+fn validate_injected_joint_authority_store(
+    config: &TrustServiceConfig,
+    store: &SqliteAuthorityStore,
+) -> Result<(), CliError> {
+    let configured_path = config.joint_authority_db_path.as_deref().ok_or_else(|| {
+        CliError::cli_other_error(
+            "injected finding challenge authority requires a configured joint authority database"
+                .to_string(),
+        )
+    })?;
+    store.verify_database_path(configured_path).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "injected finding challenge authority does not match the configured joint authority database: {error}"
+        ))
+    })
+}
+
+fn open_configured_joint_authority_store(
+    config: &TrustServiceConfig,
+) -> Result<Option<Arc<SqliteAuthorityStore>>, CliError> {
+    let Some(path) = config.joint_authority_db_path.as_deref() else {
+        return Ok(None);
+    };
+    let lock_root = crate::durable_admission_lock_root(path)?;
+    std::fs::create_dir_all(&lock_root)?;
+    SqliteAuthorityStore::provision(path, &lock_root)?;
+    Ok(Some(Arc::new(SqliteAuthorityStore::open_serving(
+        path, &lock_root,
+    )?)))
+}
+
 /// Time budget for the post-drain cluster-loop join: whatever remains of the
 /// drain window once the HTTP drain returns. `elapsed` is measured from the stop
 /// signal, and the HTTP drain returns within `drain_timeout` of that signal, so
@@ -201,7 +251,58 @@ fn cluster_join_budget(drain_timeout: Duration, elapsed_since_signal: Duration) 
 #[cfg(test)]
 mod tests {
     use super::cluster_join_budget;
+    #[cfg(feature = "cognition-market-experimental")]
+    use super::{
+        validate_injected_joint_authority_store, SqliteAuthorityStore, TrustServiceConfig,
+    };
+    #[cfg(feature = "cognition-market-experimental")]
+    use std::collections::BTreeMap;
+    #[cfg(feature = "cognition-market-experimental")]
+    use std::path::{Path, PathBuf};
     use std::time::Duration;
+
+    #[cfg(feature = "cognition-market-experimental")]
+    fn test_config(joint_authority_db_path: PathBuf) -> TrustServiceConfig {
+        TrustServiceConfig {
+            listen: "127.0.0.1:0"
+                .parse()
+                .unwrap_or_else(|error| panic!("fixed loopback address must parse: {error}")),
+            service_token: "service-token".to_string(),
+            tenant_read_tokens: BTreeMap::new(),
+            receipt_db_path: None,
+            revocation_db_path: None,
+            authority_seed_path: None,
+            authority_db_path: None,
+            budget_db_path: None,
+            joint_authority_db_path: Some(joint_authority_db_path),
+            fiscal_runtime: None,
+            enterprise_providers_file: None,
+            federation_policies_file: None,
+            scim_lifecycle_file: None,
+            verifier_policies_file: None,
+            verifier_challenge_db_path: None,
+            passport_statuses_file: None,
+            passport_issuance_offers_file: None,
+            certification_registry_file: None,
+            certification_discovery_file: None,
+            issuance_policy: None,
+            runtime_assurance_policy: None,
+            advertise_url: None,
+            allow_local_peer_urls: true,
+            certification_public_metadata_ttl_seconds: 300,
+            peer_urls: Vec::new(),
+            cluster_sync_interval: Duration::from_millis(25),
+            roster_policy: None,
+            memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+            finding_market: None,
+        }
+    }
+
+    #[cfg(all(feature = "cognition-market-experimental", unix))]
+    fn secure_directory(path: &Path) -> std::io::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+    }
 
     /// The cluster-loop join must not add a second wait on top of the HTTP drain:
     /// for every point at which the drain could return, the drain time already
@@ -220,6 +321,36 @@ mod tests {
                 "teardown at elapsed={elapsed:?} must stay within the drain window"
             );
         }
+    }
+
+    #[cfg(all(feature = "cognition-market-experimental", unix))]
+    #[test]
+    fn injected_challenge_authority_must_match_configured_database(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        secure_directory(temp.path())?;
+        let configured_database = temp.path().join("configured.db");
+        let configured_locks = temp.path().join("configured-locks");
+        let injected_database = temp.path().join("injected.db");
+        let injected_locks = temp.path().join("injected-locks");
+        std::fs::create_dir(&configured_locks)?;
+        secure_directory(&configured_locks)?;
+        std::fs::create_dir(&injected_locks)?;
+        secure_directory(&injected_locks)?;
+        SqliteAuthorityStore::provision(&configured_database, &configured_locks)?;
+        SqliteAuthorityStore::provision(&injected_database, &injected_locks)?;
+        let injected = SqliteAuthorityStore::open_serving(&injected_database, &injected_locks)?;
+
+        let matching = test_config(injected_database);
+        validate_injected_joint_authority_store(&matching, &injected)?;
+
+        let mismatched = test_config(configured_database);
+        let error = match validate_injected_joint_authority_store(&mismatched, &injected) {
+            Ok(()) => panic!("a different configured authority database must fail closed"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("does not match"));
+        Ok(())
     }
 }
 

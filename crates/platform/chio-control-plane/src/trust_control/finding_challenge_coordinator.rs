@@ -67,6 +67,7 @@ use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeEvaluation,
     FindingChallengeEvaluationInput,
 };
+use chio_kernel::admission_operation::StoreMutationFence;
 use chio_open_market::evaluation::{
     OpenMarketPenaltyEvaluation, OpenMarketPenaltyEvaluationRequest,
 };
@@ -689,6 +690,7 @@ pub enum FindingFinalization {
 pub struct FindingChallengeCoordinator {
     challenges: SqliteFindingChallengeStore,
     purchases: SqliteFindingPurchaseStore,
+    market_config: FindingMarketConfig,
     pins: ChallengeRolePins,
     /// Pinned fee-schedule signer set. A schedule reaching the penalty
     /// lane verifies against this roster and nothing else.
@@ -737,6 +739,11 @@ impl FindingChallengeCoordinator {
         config
             .validate()
             .map_err(|error| ChallengeCoordinatorError::Configuration(error.to_string()))?;
+        if challenges.mutation_fence() != purchases.mutation_fence() {
+            return Err(ChallengeCoordinatorError::Configuration(
+                "challenge and purchase stores do not share one serving authority".to_string(),
+            ));
+        }
         let pin = |pin: &super::service_types::FindingAuthorityPin, label: &'static str| {
             pin.key()
                 .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch(label))
@@ -771,6 +778,7 @@ impl FindingChallengeCoordinator {
         Ok(Self {
             challenges,
             purchases,
+            market_config: config.clone(),
             fee_schedule_operators,
             pins: ChallengeRolePins {
                 venue_authority: pin(&config.venue, "venue")?,
@@ -792,6 +800,18 @@ impl FindingChallengeCoordinator {
             status_feed_operator_ref: config.status_feed_operator_ref.clone(),
             failed_challenge_disposition,
         })
+    }
+
+    /// Serving identity shared by the coordinator's durable stores.
+    #[must_use]
+    pub fn mutation_fence(&self) -> StoreMutationFence {
+        self.challenges.mutation_fence()
+    }
+
+    /// Exact validated market configuration this coordinator enforces.
+    #[must_use]
+    pub const fn market_config(&self) -> &FindingMarketConfig {
+        &self.market_config
     }
 
     /// Authenticate and durably record one challenge, charging the

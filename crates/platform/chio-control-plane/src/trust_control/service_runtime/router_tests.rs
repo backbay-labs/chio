@@ -56,6 +56,7 @@ fn metrics_state(service_token: &str) -> TrustServiceState {
         finding_rail: None,
         #[cfg(feature = "cognition-market-experimental")]
         finding_purchase_executor: None,
+        finding_challenge_executor: None,
     }
 }
 
@@ -785,6 +786,10 @@ async fn finding_market_routes_are_absent_by_default() -> Result<(), Box<dyn std
         (
             "GET",
             "/v1/findings/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/admission",
+        ),
+        (
+            "POST",
+            "/v1/findings/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/challenges",
         ),
     ] {
         let request = Request::builder()

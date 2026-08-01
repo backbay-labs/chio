@@ -96,10 +96,9 @@ use chio_open_market::fee_schedule::{
 };
 use chio_open_market::finding_admission::{
     accept_finding_purchase, bid_with_finding_purchase, verify_finding_admission,
-    FindingAdmissionContext, FindingAllocationSnapshot as SeamAllocationSnapshot,
-    FindingAdmissionPenaltyGate, FindingAllocationStatus, FindingConstituentExpiryBounds,
-    FindingFeeScheduleGate,
-    VerifiedFindingAdmission,
+    FindingAdmissionContext, FindingAdmissionPenaltyGate,
+    FindingAllocationSnapshot as SeamAllocationSnapshot, FindingAllocationStatus,
+    FindingConstituentExpiryBounds, FindingFeeScheduleGate, VerifiedFindingAdmission,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
@@ -319,6 +318,7 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(Arc::new(VenueLedgerRailObserver)),
         finding_purchase_executor: None,
+        finding_challenge_executor: None,
     }
 }
 
@@ -2346,6 +2346,14 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| Self::execution_error("reveal payload missing"))?
             .to_owned();
+        self.authority
+            .finding_purchase_store()
+            .register_community_fund_destination(
+                &self.web.allocation_id,
+                COMMUNITY_FUND_DESTINATION,
+                now,
+            )
+            .map_err(Self::execution_error)?;
         let record = coordinator
             .finalize_delivery(
                 &exchange.reservation_id,
@@ -3370,6 +3378,13 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
 
     let now = unix_timestamp_now();
+    lane.authority
+        .finding_purchase_store()
+        .register_community_fund_destination(
+            &lane.deployment.web.allocation_id,
+            COMMUNITY_FUND_DESTINATION,
+            now,
+        )?;
     let purchase_record = lane.coordinator.finalize_delivery(
         &lane.purchase.handshake.reservation_id,
         &response.receipt,
@@ -4101,6 +4116,8 @@ async fn wedge_purchase_reserve_refuses_a_self_minted_ask() -> TestResult {
 /// for a sale the reveal gate would never admit.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_reserve_refuses_a_malformed_purchase_grant() -> TestResult {
+    type MalformedGrantCase = (&'static str, &'static str, fn(&mut ToolGrant));
+
     let fixture = open_reserve_fixture().await?;
     let now = unix_timestamp_now();
     let buyer = keypair(31);
@@ -4122,8 +4139,7 @@ async fn wedge_purchase_reserve_refuses_a_malformed_purchase_grant() -> TestResu
         Ok((signed, signature))
     };
 
-    type GrantMutationCase = (&'static str, &'static str, fn(&mut ToolGrant));
-    let cases: [GrantMutationCase; 8] = [
+    let cases: [MalformedGrantCase; 8] = [
         ("max_invocations", "max_invocations", |grant| {
             grant.max_invocations = Some(2);
         }),
@@ -4548,8 +4564,14 @@ async fn wedge_purchase_settlement_replays_byte_identically_across_clocks() -> T
     let response = lane.reveal("wedge-clock-replay-1", "nonce-clock-replay-1")?;
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
 
+    let purchase_store = lane.authority.finding_purchase_store();
     let reservation_id = lane.purchase.handshake.reservation_id.clone();
     let now = unix_timestamp_now();
+    purchase_store.register_community_fund_destination(
+        &lane.deployment.web.allocation_id,
+        COMMUNITY_FUND_DESTINATION,
+        now,
+    )?;
     let first = lane.coordinator.finalize_delivery(
         &reservation_id,
         &response.receipt,

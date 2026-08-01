@@ -31,6 +31,8 @@ chaos-test-hooks = []
 # finding-market schema and store atop the serving-owner fence, plus
 # the chio-finding artifact types it persists.
 cognition-market-experimental = ["dep:chio-finding"]
+# Test-only helpers used by cross-crate cognition-market integration tests.
+cognition-market-test-support = ["cognition-market-experimental"]
 
 [dependencies]
 chacha20poly1305 = { workspace = true }

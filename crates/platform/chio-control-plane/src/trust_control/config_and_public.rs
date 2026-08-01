@@ -24,6 +24,52 @@ pub struct RevokeCapabilityResponse {
 }
 
 pub fn serve(config: TrustServiceConfig) -> Result<(), CliError> {
+    serve_with_optional_finding_challenge_executor(
+        config,
+        #[cfg(feature = "cognition-market-experimental")]
+        None,
+        #[cfg(feature = "cognition-market-experimental")]
+        None,
+    )
+}
+
+/// Serve trust control with a checked cognition-market challenge runtime.
+/// The ordinary [`serve`] entrypoint supplies no runtime and the challenge
+/// route fails closed. The runtime's already-open authority store takes the
+/// place of reopening `joint_authority_db_path` during startup.
+#[cfg(feature = "cognition-market-experimental")]
+pub fn serve_with_finding_challenge_runtime(
+    config: TrustServiceConfig,
+    runtime: FindingChallengeSubmissionRuntime,
+) -> Result<(), CliError> {
+    if config.joint_authority_db_path.is_none() {
+        return Err(CliError::cli_other_error(
+            "finding challenge runtime requires the configured joint authority database"
+                .to_string(),
+        ));
+    }
+    if config.finding_market.as_ref() != Some(runtime.market_config()) {
+        return Err(CliError::cli_other_error(
+            "finding challenge runtime does not match the configured finding market".to_string(),
+        ));
+    }
+    let (joint_authority_store, executor) = runtime.into_parts();
+    serve_with_optional_finding_challenge_executor(
+        config,
+        Some(joint_authority_store),
+        Some(executor),
+    )
+}
+
+fn serve_with_optional_finding_challenge_executor(
+    config: TrustServiceConfig,
+    #[cfg(feature = "cognition-market-experimental")] joint_authority_store: Option<
+        Arc<SqliteAuthorityStore>,
+    >,
+    #[cfg(feature = "cognition-market-experimental")] executor: Option<
+        Arc<dyn FindingChallengeSubmissionExecutor>,
+    >,
+) -> Result<(), CliError> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         // Liability, credential, and attestation artifacts can be deeply nested
@@ -33,7 +79,16 @@ pub fn serve(config: TrustServiceConfig) -> Result<(), CliError> {
         .map_err(|error| {
             CliError::cli_other_error(format!("failed to start async runtime: {error}"))
         })?;
-    runtime.block_on(async move { service_runtime::serve_async(config).await })
+    runtime.block_on(async move {
+        service_runtime::serve_async(
+            config,
+            #[cfg(feature = "cognition-market-experimental")]
+            joint_authority_store,
+            #[cfg(feature = "cognition-market-experimental")]
+            executor,
+        )
+        .await
+    })
 }
 
 /// Serve trust-control with an explicitly configured cognition-market

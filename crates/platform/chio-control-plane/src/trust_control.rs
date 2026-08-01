@@ -308,6 +308,9 @@ mod credit_and_loss;
 #[path = "trust_control/finding_challenge_coordinator.rs"]
 pub mod finding_challenge_coordinator;
 #[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_challenge_handlers.rs"]
+mod finding_challenge_handlers;
+#[cfg(feature = "cognition-market-experimental")]
 #[path = "trust_control/finding_handlers.rs"]
 mod finding_handlers;
 #[cfg(feature = "cognition-market-experimental")]
@@ -356,6 +359,16 @@ pub(crate) use self::budget_handlers::*;
 pub use self::capital_and_liability::*;
 pub(crate) use self::certification_handlers::*;
 pub(crate) use self::credit_and_loss::*;
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) use self::finding_challenge_handlers::handle_submit_finding_challenge;
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) use self::finding_challenge_handlers::FindingChallengeSubmissionExecutor;
+#[cfg(feature = "cognition-market-experimental")]
+pub use self::finding_challenge_handlers::{
+    FindingChallengeSubmissionAuthorization, FindingChallengeSubmissionRequest,
+    FindingChallengeSubmissionResponse, FindingChallengeSubmissionRuntime,
+    FindingChallengeSubmissionWrite,
+};
 #[cfg(feature = "cognition-market-experimental")]
 pub(crate) use self::finding_handlers::*;
 #[cfg(feature = "cognition-market-experimental")]

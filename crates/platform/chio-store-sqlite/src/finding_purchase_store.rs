@@ -52,7 +52,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chio_core::sha256_hex;
+use chio_core::{sha256_hex, StoreMutationFence};
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use thiserror::Error;
@@ -322,6 +322,12 @@ impl SqliteFindingPurchaseStore {
             connection,
             serving_owner,
         }
+    }
+
+    /// Serving identity shared by every store opened alongside this one.
+    #[must_use]
+    pub fn mutation_fence(&self) -> StoreMutationFence {
+        self.serving_owner.fence.clone()
     }
 
     fn connection(&self) -> Result<MutexGuard<'_, Connection>, FindingPurchaseStoreError> {
