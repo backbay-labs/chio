@@ -160,6 +160,24 @@ pub fn verify_chio_bilateral_dsse_envelope(
     org_a_public_key: &PublicKey,
     org_b_public_key: &PublicKey,
 ) -> Result<DsseStatement, BilateralCoSigningError> {
+    verify_chio_bilateral_dsse_envelope_inner(envelope, org_a_public_key, org_b_public_key, false)
+}
+
+pub(crate) fn verify_chio_bilateral_dsse_envelope_with_frost(
+    envelope: &DsseEnvelope,
+    org_a_public_key: &PublicKey,
+    org_b_public_key: &PublicKey,
+    _authorization: &crate::frost::VerifiedFrostAuthorization,
+) -> Result<DsseStatement, BilateralCoSigningError> {
+    verify_chio_bilateral_dsse_envelope_inner(envelope, org_a_public_key, org_b_public_key, true)
+}
+
+fn verify_chio_bilateral_dsse_envelope_inner(
+    envelope: &DsseEnvelope,
+    org_a_public_key: &PublicKey,
+    org_b_public_key: &PublicKey,
+    allow_n_of_m: bool,
+) -> Result<DsseStatement, BilateralCoSigningError> {
     if envelope.payload_type != PAYLOAD_TYPE_IN_TOTO {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
             "dsse.malformed: payloadType '{}' is not '{}'",
@@ -193,7 +211,7 @@ pub fn verify_chio_bilateral_dsse_envelope(
             statement.predicate_type, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION
         )));
     }
-    validate_chio_predicate(&statement.predicate)?;
+    validate_chio_predicate(&statement.predicate, allow_n_of_m)?;
 
     if statement.subject.len() != 1 {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
@@ -483,7 +501,10 @@ pub(super) fn validate_treaty_receipt_refs(
     Ok(())
 }
 
-fn validate_chio_predicate(pred: &BilateralPredicate) -> Result<(), BilateralCoSigningError> {
+fn validate_chio_predicate(
+    pred: &BilateralPredicate,
+    allow_n_of_m: bool,
+) -> Result<(), BilateralCoSigningError> {
     if pred.schema.is_some() {
         return Err(BilateralCoSigningError::CanonicalJson(
             "predicate.schema_invalid: schema must be absent from strict Chio predicates"
@@ -539,6 +560,7 @@ fn validate_chio_predicate(pred: &BilateralPredicate) -> Result<(), BilateralCoS
     )?)?;
     match pred.co_sign.as_str() {
         "bilateral_required" | "bilateral_if_cross_org" => {}
+        "n_of_m" if allow_n_of_m => {}
         _ => {
             return Err(BilateralCoSigningError::CanonicalJson(format!(
                 "predicate.schema_invalid: co_sign {:?} is not supported",

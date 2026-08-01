@@ -24,11 +24,17 @@ All parameters are optional. Omitting a parameter disables that filter.
 | `until` | u64 | Include only receipts with `timestamp <= until` (Unix seconds, inclusive) |
 | `minCost` | u64 | Include only receipts with `cost_charged >= minCost` (minor units). Receipts without financial metadata are excluded when this filter is set. |
 | `maxCost` | u64 | Include only receipts with `cost_charged <= maxCost` (minor units). Receipts without financial metadata are excluded when this filter is set. |
+| `costCurrency` | string | Exact three-letter uppercase currency for cost filtering. Required with `minCost` or `maxCost`. |
 | `agentSubject` | string | Filter by agent subject public key (hex-encoded Ed25519). Resolved from receipt attribution metadata when present and otherwise through the capability lineage table. |
 | `cursor` | u64 | Pagination cursor: return only receipts with `seq > cursor` (exclusive). |
 | `limit` | usize | Maximum results per page. Capped server-side at `MAX_QUERY_LIMIT` (200). Default: 50. |
 
 The parameter names follow `camelCase` in the HTTP query string (matching the `ReceiptQueryHttpQuery` struct's `serde(rename_all = "camelCase")` attribute).
+
+`minCost` and `maxCost` span the full unsigned 64-bit domain and are interpreted
+as minor units in `costCurrency`. Supplying a bound without `costCurrency`, a
+currency other than three uppercase ASCII letters, or `minCost > maxCost`
+returns `400 Bad Request`.
 
 ### Response Body
 
@@ -306,6 +312,99 @@ Response shape:
 
 This endpoint is the stable operator workflow surface. It packages the existing analytics, cost-attribution, and evidence-export substrate into one response so dashboards and back-office tooling do not need to reconstruct the report client-side.
 
+## Comptroller Surface Endpoint
+
+The trust-control service exposes the unified spend and exposure surface for cross-language consumers:
+
+```
+GET /v1/reports/comptroller-surface
+```
+
+It uses the same Bearer authentication model as the other report endpoints.
+
+The response envelope schema identifier is `chio.comptroller.surface-report.v1`. Every response carries this identifier in the top-level `schema` field so consumers can reject unknown schema versions fail-closed before parsing the body.
+
+### Response Shape
+
+```json
+{
+  "schema": "chio.comptroller.surface-report.v1",
+  "generatedAt": 1700000000,
+  "filters": {},
+  "exposurePositions": [
+    {
+      "currency": "USD",
+      "governedMaxExposureUnits": 10000,
+      "reservedUnits": 1000,
+      "settledUnits": 8500,
+      "pendingUnits": 200,
+      "failedUnits": 0,
+      "provisionalLossUnits": 0,
+      "recoveredUnits": 0,
+      "quotedPremiumUnits": 0,
+      "activeQuotedPremiumUnits": 0
+    }
+  ],
+  "decisionSummary": {
+    "allowCount": 38,
+    "denyCount": 4,
+    "cancelledCount": 0,
+    "incompleteCount": 0
+  },
+  "settlementReconciliation": {
+    "matchingReceipts": 42,
+    "returnedReceipts": 0,
+    "pendingReceipts": 1,
+    "failedReceipts": 0,
+    "actionableReceipts": 1,
+    "reconciledReceipts": 37,
+    "truncated": false
+  },
+  "budgetUtilization": {
+    "matchingGrants": 5,
+    "returnedGrants": 0,
+    "distinctCapabilities": 2,
+    "distinctSubjects": 1,
+    "totalInvocations": 42,
+    "totalCostCharged": 8500,
+    "nearLimitCount": 1,
+    "exhaustedCount": 0,
+    "rowsMissingScope": 0,
+    "rowsMissingLineage": 0,
+    "truncated": false
+  },
+  "sourceRefs": {}
+}
+```
+
+Note: `executionNonceRef` and `holdRef` are omitted from the JSON response when absent or null. They appear only when a specific governed invocation or pre-authorization hold context is supplied.
+
+### Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schema` | string | Always `chio.comptroller.surface-report.v1`. Consumers must reject unknown values fail-closed. |
+| `generatedAt` | integer (Unix seconds) | Epoch timestamp when this report was produced. |
+| `filters` | object | The corpus filters applied to this snapshot (mirrors the request parameters). |
+| `exposurePositions` | array | Per-currency credit-exposure rows (`ExposurePosition`). Fields: `currency`, `governedMaxExposureUnits`, `reservedUnits`, `settledUnits`, `pendingUnits`, `failedUnits`, `provisionalLossUnits`, `recoveredUnits`, `quotedPremiumUnits`, `activeQuotedPremiumUnits`. Positions are never netted across currencies. |
+| `decisionSummary` | object | Aggregate allow/deny/cancelled/incomplete decision counts: `allowCount`, `denyCount`, `cancelledCount`, `incompleteCount`. |
+| `settlementReconciliation` | object | Settlement backlog summary: `matchingReceipts`, `returnedReceipts`, `pendingReceipts`, `failedReceipts`, `actionableReceipts`, `reconciledReceipts`, `truncated`. |
+| `budgetUtilization` | object | Active grant utilization summary: `matchingGrants`, `returnedGrants`, `distinctCapabilities`, `distinctSubjects`, `totalInvocations`, `totalCostCharged`, `nearLimitCount`, `exhaustedCount`, `rowsMissingScope`, `rowsMissingLineage`, `truncated`. |
+| `sourceRefs` | object | Optional provenance anchors. All sub-fields are optional strings: `operatorReportRef`, `exposureLedgerRef`, `riskComptrollerReportRef`. The object is present but may be empty `{}`. |
+| `executionNonceRef` | string (optional) | Reserved. Identifies the execution nonce when this surface is attached to a specific governed invocation. Omitted when not applicable. |
+| `holdRef` | string (optional) | Reserved. Identifies an open pre-authorization hold when the surface is polled mid-execution. Omitted when not applicable. |
+
+The projection implies no fund movement. The surface report is a read-only snapshot of canonical receipt, settlement, and budget truth as of `generatedAt`.
+
+### Schema Governance
+
+The canonical JSON Schema for `chio.comptroller.surface-report.v1` is
+`spec/schemas/chio-comptroller/v1/surface-report.schema.json` in this repository.
+The TypeScript binding at `src/generated/comptroller-surface.ts` is generated
+from that schema and must not be hand-edited. Any shape change requires a schema
+version bump. Out-of-repo consumers must pin to the published schema SHA tracked
+in `spec/schemas/chio-comptroller/v1/`.
+
 ## CLI Usage: chio receipt list
 
 The `chio receipt list` subcommand wraps the HTTP endpoint.
@@ -322,6 +421,7 @@ Options:
   --until <UNIX_SECS>    Filter by maximum timestamp (inclusive)
   --min-cost <UNITS>     Minimum cost in minor currency units
   --max-cost <UNITS>     Maximum cost in minor currency units
+  --cost-currency <CODE> Three-letter uppercase currency for cost filters
   --limit <N>            Page size (default: 50)
   --cursor <SEQ>         Pagination cursor (seq value)
   --tenant <ID>          Strict tenant read boundary (local mode);
@@ -339,6 +439,7 @@ not silently default to admin-all reads across all tenants. Pass either
 `--tenant <id>` to scope output to a single tenant or `--admin-all` to
 read across tenants as a documented operator action. Remote
 `--control-url` reads derive the read boundary from the control token.
+`--min-cost` and `--max-cost` require `--cost-currency`.
 
 Each matching receipt is printed as a JSON object on its own line (NDJSON). Example:
 

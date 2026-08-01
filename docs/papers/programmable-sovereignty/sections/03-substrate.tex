@@ -1,45 +1,59 @@
-\section{The Chio Substrate}
+\section{Receiver-Owned Bilateral Admission}
+\label{sec:design}
 
-Chio is a capability-scoped mediation and evidence system. Signed artifacts use canonical JSON and fail closed on malformed or mismatched hybrid objects. The specification names what is outside scope: no global consensus, no public certification market, no arbitrary plugin trust expansion, and no theorem-prover coverage beyond the named assumptions in §\ref{sec:limits}.
+The protocol separates evidence produced by the sender from authority retained by the receiver. A sender may supply receipts and a DSSE envelope. It may not supply the receiver's expected keys, treaty record, trust bundle, or continuation state. Those objects are resolved by identifier from receiver-owned stores.
 
-\paragraph{Capabilities and attenuation.}
-A capability token names an issuer, subject, scope, expiry, and optional attenuation proof. Scope contains grants over tool servers, tool names, operations, and constraints. Delegation is valid only when the child scope refines the parent; budget splitting is separately constrained by sibling-sum soundness. The protocol maps those claims to proof identifiers such as \thm{proof.delegation_step_allow_requires_attenuation} and \thm{theorem.budget.sibling_sum_soundness}. No polity member can widen a delegated grant by relabeling it as constitutional authority.
+\subsection{Artifacts and bindings}
 
-\paragraph{Receipts.}
-Every mediated call yields a signed receipt body. The body includes the capability id, tool server, tool name, canonical action hash, decision, policy hash, guard evidence, optional metadata, tenant id, trust level, and kernel public key. The protocol binds signed payloads to RFC 8785-style canonical JSON \cite{rfc8785}; Chio's local proof tree contains receipt integrity entries including \thm{proof.receipt_sign_then_verify} and \thm{proof.receipt_immutability}. Receipts become the substrate's state transition facts.
+\paragraph{Receipt.}
+A Chio receipt records the capability identifier, tool server and name, canonical action hash, allow or deny decision, policy hash, evidence, metadata, trust level, and kernel public key. The body is signed over canonical JSON. A valid vendor receipt proves that the corresponding key signed that body; it is not a receiver verdict.
 
-A receipt is a signed statement about an attempted act at a trust boundary, with semantics closer to a court record than to a log line: it records which capability was presented, which tool action was evaluated, which policy hash was in force, which evidence was collected, which decision was made, and which kernel key signed the result. The sovereignty construction uses this property: a polity is a predicate over which signed receipt statements it will admit into its own history.
+\paragraph{Treaty scope and ladder.}
+A \emph{TreatyScope} fixes a treaty identifier, participant kernel identifiers and public keys, hashes of participant ladder manifests, allowed action classes, validity interval, revocation epoch, and trust-bundle digest. Each ladder manifest assigns an enforcement mode and evidence requirement to an action class. The current finite order is observation, guarded, receipt-backed, partition-contingency, and quorum-required. Intersection takes the stricter participant mode and rejects a destructive class below receipt-backed. An unknown class denies.
 
-This framing removes a class of category errors. If a vendor signs a receipt, the receipt is evidence that the vendor's kernel made a decision. It is not evidence that a buyer accepts the decision, that a second vendor accepts the lineage, or that a treaty admits the action. Admission is an additional check performed by the receiving polity (Figure~\ref{fig:admission} sketches the pre-dispatch admission flow). The receiving side may require the sender's receipt, a continuation token, a bilateral invocation statement, a ladder-intersection artifact, selective-disclosure proof, and a public-witness bundle. Each artifact can be valid in isolation and still fail admission if it does not bind to the same receipt graph.
+\paragraph{Continuation and lineage.}
+A \emph{CrossKernelContinuation} links child work to a parent receipt and session anchor, capability, action class, target tool, nonce, source and target kernels, and validity interval. A \emph{ReceiptLineageStatement} binds the parent and child receipt digests to that continuation and to the bilateral invocation. The receiver reserves a continuation during admission, consumes it on the admitted path, and releases it when pre-dispatch execution aborts.
 
-\paragraph{Bilateral DSSE.}
-Cross-organization actions use a strict Chio predicate profile over a DSSE envelope \cite{dsse}. The protocol pins \codepath{PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION} to \codepath{chio.bilateral-cosign-invocation.v1} in \codepath{crates/trust/chio-federation/src/bilateral_dsse.rs:62} and defines a treaty binding reference with treaty id, treaty-scope hash, ladder-intersection hash, admission report hash, continuation hash, request and outcome hashes, local and remote receipt hashes, leases, governance references, and signer kernel ids. The verifier requires exactly two independent signer keys for bilateral mode and rejects noncanonical payloads, wrong predicate types, stale leases, missing governance receipts, and subject-digest mismatch.
+\paragraph{Bilateral predicate.}
+The strict predicate type is \codepath{chio.bilateral-cosign-invocation.v1}. Its treaty reference binds the treaty scope and ladder-intersection digests; admission report; continuation; lineage bundle; action class and consistency model; request and outcome digests; local and remote receipt digests; lease and governance references; and participant kernel identifiers. DSSE signs the canonical statement through its PAE construction \cite{dsse}. The envelope contains exactly two signatures whose key identifiers must be distinct and match the configured public keys.
 
-The protocol is stricter than generic in-toto-style provenance. In-toto records supply-chain steps and materials \cite{torres2019intoto}; SLSA sets provenance levels for build integrity \cite{slsa}. Chio uses those ideas, but the missing primitive for agent federations is joint authorization intent. A bilateral invocation says: two kernels saw the same treaty-bound action, over the same request and outcome digests, under the same continuation and receipt hashes, and both signed that predicate. Without that predicate, a receiver can verify that some party signed something, but cannot distinguish a shared action from two adjacent local logs that happen to name the same workflow.
+Two qualifications are essential. First, both signatures cover the same predicate bytes; two nearby statements do not compose into bilateral evidence. Second, distinct keys do not establish distinct controllers. The verifier enforces the former. Deployment governance must establish the latter.
 
-The subject digest is over the canonical receipt body, not a presentation-specific byte stream. That design means a verifier can reject whitespace, field-order, or envelope rewrites without changing the semantic receipt identity. It also means privacy projections and public-witness records can refer to the same underlying subject without revealing every field. The cost is rigidity: schema evolution must preserve explicit adapters, and noncanonical legacy receipts need migration or rejection rather than informal acceptance.
-
-\paragraph{Trust ladder.}
-The Chio ladder has five ordered modes: observation, guarded, receipt-backed, partition-contingency, and quorum-required. The Rust rank function (\codepath{ladder_mode_rank}) maps those modes to increasing integers in \codepath{crates/kernel/chio-runtime-core/src/treaty.rs:729}. Treaty intersection picks the higher-intensity requirement per action class and rejects destructive actions below the receipt-backed floor. Unknown action classes default to denial rather than routine admission.
-
-The ladder is not a user-interface severity label. It is a join rule for multi-polity admission. If one participant treats an action as ordinary and another participant treats it as quorum-required, the treaty intersection must adopt the stricter requirement or deny. This is why the ladder belongs inside the treaty artifact rather than only in local policy files. The receiver needs to know not just that the sender's local policy allowed the action, but that the joint action class was evaluated at the jointly required mode.
-
-The five modes encode strictly increasing evidence demands. Observation admits read-only telemetry whose action consequences are weak. Guarded requires local policy mediation but no cross-kernel evidence. Receipt-backed requires signed receipt evidence for the action class, and destructive actions are rejected outright below this floor. Partition-contingency reserves explicit reconciliation rules for cases where partitions are expected and the receiver must record a reconciled history. Quorum-required demands multi-party co-signing, with the joint co-sign rank computed against the participant manifests. Ladder stability is proved over this finite ladder; a sixth mode would require coordinated changes to the schema, Rust validators, and proof model rather than a convention on integer ordering (\S\ref{sec:limits}).
-
-\paragraph{Selective disclosure.}
-The selective-disclosure crate projects receipt, workflow, and step records into BBS message vectors. The BBS feature pins a SHA-256 ciphersuite string, signs projections, derives disclosure proofs, and verifies proofs against a verifier-owned issuer registry. The spec keeps Ed25519 over canonical receipt bytes authoritative; BBS is a secondary commitment for disclosure, not a replacement signature \cite{boneh2004bbs,camenisch2001credentials,bbsDraft}.
-
-Selective disclosure makes treaty evidence partial by design. A buyer may prove that a vendor action was receipt-backed, within budget, and under a live treaty scope while withholding tool arguments, tenant identifiers, or unrelated evidence fields; a regulator may require a different projection of the same receipt. Chio's projection model declares which receipt fields are wholesale-only and which can be disclosed selectively, with the verifier pinning issuer keys and projection versions so the proof is not free-form redaction. Bilateral treaty admission across organizational boundaries requires evidence without total surveillance, and the BBS proof carries exactly the predicate the receiving polity needs.
-
-\paragraph{Anchoring.}
-The anchor crate normalizes local inclusion proofs into multi-lane evidence. Its module comment lists EVM root publication, checkpoint-to-Bitcoin super-root aggregation with OpenTimestamps, Solana memo records, and fail-closed proof bundle verification. The Rekor lane verifies signed-entry timestamps against pinned Rekor keys but still labels Merkle inclusion-proof verification as follow-up. The OTS Bitcoin lane parses timestamp evidence but fails closed for load-bearing public-witness policy until trusted Bitcoin header or calendar-backed commitment evidence is in the receipt contract. That limitation is retained in Section~\ref{sec:limits}.
-
-Tile-based transparency-log designs (Trillian Tessera and the transparency.dev witness network) are the substrate the anchor crate's Rekor lane is converging on as inclusion-proof verification moves out of follow-up status \cite{trillianTessera}. Adopting tile-log architecture imports a tile-boundary inclusion-proof attack surface (a witness signing tile~$N$ consistent with two distinct tile-$(N{+}1)$ extensions that share the boundary leaf set), which the present construction does not address; a per-anchor-epoch tile-boundary-consistency proof obligation is left as future work. Anchoring is treated as a witness service, not as an oracle of legal truth. A public witness can make equivocation more expensive by pinning a root outside the polity's local store. It cannot prove that the original policy was wise, that a human contract was valid, or that a third-party court will enforce anything. This is the same discipline applied to the rest of the system: external evidence strengthens auditability only when the verifier states exactly which statement it proves and exactly which residual assumptions remain.
-
-\begin{figure}
+\begin{figure*}[t]
   \centering
-  \resizebox{\linewidth}{!}{\input{figures/admission-hook}}
-  \caption{Pre-dispatch admission. A federated request without valid treaty context is denied before tool invocation.}
-  \Description{Flow from tool call request through Chio context, treaty reference validation, verifier-owned store lookup, admission evaluation, and final allow or deny.}
+  \resizebox{.83\textwidth}{!}{\input{figures/treaty-handshake}}
+  \caption{The bilateral artifact. Participant policy produces a common treaty-bound predicate; two configured keys sign the same DSSE PAE bytes. The receiver then resolves and checks every referenced object from its own trust context.}
+  \Description{Two participant policy inputs lead to a common treaty and predicate. Two distinct signatures cover the predicate. A receiver-owned verifier resolves the treaty, receipts, continuation, lineage, lease, and governance evidence before admission.}
+  \label{fig:treaty}
+\end{figure*}
+
+\subsection{Admission sequence}
+
+Figure~\ref{fig:admission} shows the receiver's control flow.
+
+\begin{enumerate}[noitemsep,topsep=2pt,leftmargin=1.4em]
+  \item The kernel first performs its ordinary capability, scope, revocation, budget, and guard checks.
+  \item Trusted runtime state classifies the request. A local request with no Chio context retains the local path. A request marked federated without a complete treaty context denies.
+  \item The hook parses only identifiers and bindings from request context. Any attempt to carry a trust root, peer directory, signing key, or dynamic trust bundle in request metadata denies.
+  \item Receiver stores resolve the treaty scope, ladder intersection, continuation, lineage, bilateral invocation, receipts, leases, governance material, peer pins, and revocation state.
+  \item Validators check schema, canonical hashes, freshness, participant sets, action class, consistency model, required evidence, continuation origin and target, and cross-artifact equality.
+  \item The strict DSSE verifier checks predicate type, canonical payload bytes, one subject, the embedded receipt, two distinct key identifiers, both signatures, policy agreement, lease and governance requirements, and every treaty binding.
+  \item Admission either returns a named failure before tool invocation or permits dispatch. On the admitted path, the runtime emits bound receipt metadata and assembles buyer-review evidence.
+\end{enumerate}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{\input{figures/admission-hook}}
+  \caption{Receiver-side pre-dispatch admission. Trust material flows from receiver-owned stores, not from the request. Every denial terminal precedes the tool boundary.}
+  \Description{A federated request passes core authorization, receiver-owned evidence resolution, cross-artifact verification, and receiver policy before tool dispatch. Failures terminate at denial nodes before the tool.}
   \label{fig:admission}
 \end{figure}
+
+\paragraph{Receiver-owned policy.}
+The implemented hook currently enforces treaty policy through explicit Rust validators and the strict bilateral verifier. Those checks remain authoritative. This work also introduces a versioned syntactic predicate evaluator over a verified-artifact receipt view (Section~\ref{sec:model}). It is a production counterpart and differential-test target, not yet a replacement policy engine on the hook's allow path. Keeping the explicit checks in place prevents an optional or malformed predicate document from becoming a bypass during migration.
+
+\paragraph{Failure evidence.}
+The negative matrix assigns each adversary capability a stable identifier, enforcement phase, and expected diagnostic. Hook-level denial tests inspect the returned code and, where a dispatch surface exists, the tool invocation counter. Pure envelope-verifier cases have no tool reference and fail before a dispatch-capable kernel API is entered. We do not claim that every internal exception in the wider Chio runtime emits the same durable signed denial artifact; the claim is confined to the named admission and receipt paths.
+
+\paragraph{Receipt-bounded polity.}
+The protocol admits a restrained institutional interpretation. A polity is $P=(T,K)$: $T$ identifies the receipts whose membership is at issue, and $K$ decides admission. Bilateral relations are conjunctions of treaty and participant predicates. This vocabulary describes local control over a receipt namespace. It adds no claim about population, territory, courts, or legal recognition.

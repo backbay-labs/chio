@@ -167,6 +167,7 @@ The primary live release documents. Auditors and operators start here.
 
 - [Delegation migration](migrations/delegation-migration.md)
 - [Async kernel migration](migrations/async-kernel-migration.md)
+- [Kernel embedder surface migration](migrations/kernel-embedder-surface.md)
 - [Attest-verify migration](coordination/attest-verify-migration.md)
 
 ## Custody and weights

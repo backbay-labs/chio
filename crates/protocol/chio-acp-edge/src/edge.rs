@@ -32,7 +32,28 @@ pub struct ChioAcpEdgeCompatibility<'a> {
 }
 
 fn validate_execution_context(execution: &AcpKernelExecutionContext) -> Result<(), AcpEdgeError> {
-    validate_execution_agent_id(&execution.agent_id)
+    validate_execution_agent_id(&execution.agent_id)?;
+    if execution.approval_token.is_some() && !execution.approval_tokens.is_empty() {
+        return Err(AcpEdgeError::InvalidRequest(
+            "ACP execution must not mix singular and threshold approval tokens".to_string(),
+        ));
+    }
+    if execution.approval_tokens.len()
+        > chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS
+    {
+        return Err(AcpEdgeError::InvalidRequest(
+            format!(
+                "ACP threshold approval set exceeds {} tokens",
+                chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS
+            ),
+        ));
+    }
+    if execution.approval_tokens.is_empty() != execution.threshold_approval_proposal.is_none() {
+        return Err(AcpEdgeError::InvalidRequest(
+            "ACP threshold approval tokens and proposal must be supplied together".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_execution_agent_id(agent_id: &str) -> Result<(), AcpEdgeError> {
@@ -52,6 +73,23 @@ fn validate_execution_agent_id(agent_id: &str) -> Result<(), AcpEdgeError> {
         ));
     }
     Ok(())
+}
+
+fn reject_request_bound_artifacts_without_stable_request_id(
+    execution: &AcpKernelExecutionContext,
+) -> Result<(), AcpEdgeError> {
+    if execution.approval_token.is_none()
+        && execution.approval_tokens.is_empty()
+        && execution.supplemental_authorization.is_none()
+        && execution.execution_nonce.is_none()
+    {
+        return Ok(());
+    }
+    Err(AcpEdgeError::InvalidRequest(
+        "ACP request-bound authorization artifacts and execution nonces require \
+         invoke_with_request_id or start_stream_with_request_id"
+            .to_string(),
+    ))
 }
 
 impl ChioAcpEdge {
@@ -167,7 +205,6 @@ impl ChioAcpEdge {
     }
 
     fn build_execution_request(
-        &self,
         capability_id: &str,
         arguments: Value,
         execution: &AcpKernelExecutionContext,
@@ -189,6 +226,9 @@ impl ChioAcpEdge {
             execution_nonce: execution.execution_nonce.clone(),
             governed_intent: execution.governed_intent.clone(),
             approval_token: execution.approval_token.clone(),
+            approval_tokens: execution.approval_tokens.clone(),
+            threshold_approval_proposal: execution.threshold_approval_proposal.clone(),
+            supplemental_authorization: execution.supplemental_authorization.clone(),
             model_metadata: execution.model_metadata.clone(),
         })
     }
@@ -364,9 +404,10 @@ impl ChioAcpEdge {
         execution: &AcpKernelExecutionContext,
     ) -> Result<AcpInvocationResult, AcpEdgeError> {
         validate_execution_context(execution)?;
+        reject_request_bound_artifacts_without_stable_request_id(execution)?;
         let binding = self.capability_binding(capability_id)?;
         let request_suffix = current_unix_timestamp();
-        let request = self.build_execution_request(
+        let request = Self::build_execution_request(
             capability_id,
             arguments,
             execution,
@@ -375,6 +416,32 @@ impl ChioAcpEdge {
             AcpRequestIds {
                 origin_request_id: format!("acp-request-{capability_id}-{request_suffix}"),
                 kernel_request_id: format!("acp-{capability_id}-{request_suffix}"),
+            },
+        )?;
+        let orchestrated = execute_orchestrated_acp_request(kernel, request)?;
+        Ok(acp_invocation_result_from_orchestrated(orchestrated))
+    }
+
+    /// Invoke a capability with the stable request ID bound into threshold approvals.
+    pub fn invoke_with_request_id(
+        &self,
+        request_id: &str,
+        capability_id: &str,
+        arguments: Value,
+        kernel: &ChioKernel,
+        execution: &AcpKernelExecutionContext,
+    ) -> Result<AcpInvocationResult, AcpEdgeError> {
+        validate_execution_context(execution)?;
+        let binding = self.capability_binding(capability_id)?;
+        let request = Self::build_execution_request(
+            capability_id,
+            arguments,
+            execution,
+            &binding,
+            binding.target_protocol,
+            AcpRequestIds {
+                origin_request_id: format!("acp-request-{request_id}"),
+                kernel_request_id: request_id.to_string(),
             },
         )?;
         let orchestrated = execute_orchestrated_acp_request(kernel, request)?;
@@ -396,9 +463,10 @@ impl ChioAcpEdge {
         reason: impl Into<String>,
     ) -> Result<AcpInvocationResult, AcpEdgeError> {
         validate_execution_context(execution)?;
+        reject_request_bound_artifacts_without_stable_request_id(execution)?;
         let binding = self.capability_binding(capability_id)?;
         let request_suffix = current_unix_timestamp();
-        let request = self.build_execution_request(
+        let request = Self::build_execution_request(
             capability_id,
             arguments,
             execution,
@@ -431,9 +499,10 @@ impl ChioAcpEdge {
         execution: &AcpKernelExecutionContext,
     ) -> Result<AcpInvocationResult, AcpEdgeError> {
         validate_execution_context(execution)?;
+        reject_request_bound_artifacts_without_stable_request_id(execution)?;
         let binding = self.capability_binding(capability_id)?;
         let request_suffix = current_unix_timestamp();
-        let request = self.build_execution_request(
+        let request = Self::build_execution_request(
             capability_id,
             arguments,
             execution,
@@ -830,11 +899,41 @@ impl ChioAcpEdge {
         execution: &AcpKernelExecutionContext,
     ) -> Result<AcpInvocationTask, AcpEdgeError> {
         validate_execution_context(execution)?;
+        reject_request_bound_artifacts_without_stable_request_id(execution)?;
+        self.start_stream_task_with_optional_request_id(capability_id, arguments, execution, None)
+    }
+
+    /// Start an authoritative deferred task under the caller's stable request ID.
+    pub fn start_stream_with_request_id(
+        &self,
+        request_id: &str,
+        capability_id: &str,
+        arguments: Value,
+        execution: &AcpKernelExecutionContext,
+    ) -> Result<AcpInvocationTask, AcpEdgeError> {
+        validate_execution_context(execution)?;
+        self.start_stream_task_with_optional_request_id(
+            capability_id,
+            arguments,
+            execution,
+            Some(request_id),
+        )
+    }
+
+    fn start_stream_task_with_optional_request_id(
+        &self,
+        capability_id: &str,
+        arguments: Value,
+        execution: &AcpKernelExecutionContext,
+        request_id: Option<&str>,
+    ) -> Result<AcpInvocationTask, AcpEdgeError> {
         let binding = self.capability_binding(capability_id)?;
         self.ensure_deferred_task_capacity()?;
         let task_id = self.next_task_id();
         let expires_at_ms = current_unix_millis().saturating_add(DEFERRED_ACP_TASK_TTL_MILLIS);
-        let request = self.build_execution_request(
+        let kernel_request_id =
+            request_id.map_or_else(|| format!("acp-stream-{task_id}"), str::to_string);
+        let request = Self::build_execution_request(
             capability_id,
             arguments,
             execution,
@@ -842,7 +941,7 @@ impl ChioAcpEdge {
             binding.target_protocol,
             AcpRequestIds {
                 origin_request_id: task_id.clone(),
-                kernel_request_id: format!("acp-stream-{task_id}"),
+                kernel_request_id,
             },
         )?;
         let task = AcpInvocationTask {

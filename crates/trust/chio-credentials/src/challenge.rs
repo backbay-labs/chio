@@ -149,9 +149,8 @@ pub fn issue_reputation_credential_with_enterprise_identity(
     }
 
     let issuer = DidChio::from_public_key(issuer_keypair.public_key())?;
-    let subject_did = DidChio::from_public_key(chio_core::PublicKey::from_hex(
-        &scorecard.subject_key,
-    )?)?;
+    let subject_did =
+        DidChio::from_public_key(chio_core::PublicKey::from_hex(&scorecard.subject_key)?)?;
     let unsigned = UnsignedReputationCredential {
         context: vec![
             VC_CONTEXT_V1.to_string(),
@@ -206,6 +205,9 @@ pub fn verify_reputation_credential(
     if issuance_date > expiration_date {
         return Err(CredentialError::InvalidCredentialValidityWindow);
     }
+    if now < issuance_date {
+        return Err(CredentialError::CredentialNotYetValid);
+    }
     if now > expiration_date {
         return Err(CredentialError::CredentialExpired);
     }
@@ -253,8 +255,7 @@ pub fn build_agent_passport(
                 .cloned(),
         );
     }
-    let enterprise_identity_provenance =
-        aggregate_enterprise_identity_provenance(&credentials)?;
+    let enterprise_identity_provenance = aggregate_enterprise_identity_provenance(&credentials)?;
 
     Ok(AgentPassport {
         schema: PASSPORT_SCHEMA.to_string(),
@@ -507,10 +508,7 @@ fn validate_challenge_identity_fields(verifier: &str, nonce: &str) -> Result<(),
         return Err(CredentialError::MissingChallengeVerifier);
     }
     let nonce_trimmed = nonce.trim();
-    if nonce_trimmed.is_empty()
-        || nonce_trimmed != nonce
-        || nonce.chars().any(char::is_control)
-    {
+    if nonce_trimmed.is_empty() || nonce_trimmed != nonce || nonce.chars().any(char::is_control) {
         return Err(CredentialError::MissingChallengeNonce);
     }
     Ok(())

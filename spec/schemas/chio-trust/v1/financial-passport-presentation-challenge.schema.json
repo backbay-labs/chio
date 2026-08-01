@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio/agent-passport-presentation-challenge/v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "verifier",
+        "verifierKeyEpoch",
+        "challengeId",
+        "nonce",
+        "issuedAt",
+        "expiresAt",
+        "sourcePassportId",
+        "selectors",
+        "challengeDigest"
+      ],
+      "properties": {
+        "schema": { "const": "chio.financial-agent-passport-presentation-challenge.v1" },
+        "verifier": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/did" },
+        "verifierKeyEpoch": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/positiveIJsonInteger" },
+        "challengeId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "nonce": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "sourcePassportId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/digest" },
+        "selectors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["family", "credentialRefDigest"],
+            "properties": {
+              "family": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/passportCredentialFamily" },
+              "credentialRefDigest": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/digest" }
+            }
+          }
+        },
+        "challengeDigest": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/digest" }
+      }
+    },
+    "signerKey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  }
+}

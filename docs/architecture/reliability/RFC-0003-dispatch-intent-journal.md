@@ -1,790 +1,724 @@
-# RFC-0003: Durable dispatch-intent journal: closing the effect-before-receipt crash window
+# RFC-0003: Durable admission operations for effect-before-receipt recovery
 
-- Status: Draft (proposed, wave-3 reliability program)
+- Status: Draft, corrected 2026-07-12
 - Date: 2026-07-04
-- Extends: ADR-0013 (async receipt durability), ADR-0008 (checkpoint trigger strategy)
-- Depends on: RFC-0006 (storage hot path: bounded append cost and single-writer
-  discipline for the store this journal rides on; RFC-0006 sequences itself before
-  this RFC). Related: RFC-0009 (alert routing for dead-letter incidents), RFC-0013
-  (money-path idempotency contract)
-- Closes findings: F04, F31. Provides groundwork for F70 only, which is owned
-  and closed by RFC-0013 (payment journal and idempotent adapter contract), not
-  this RFC (see ./README.md and the wave-3 readiness review)
+- Extends: ADR-0013, ADR-0008, and the `AdmissionOperation` contract in
+  `docs/superpowers/specs/2026-07-09-protocol-primitives-design.md` section 4.6
+- Depends on: RFC-0006 single-writer discipline
+- Specialized by: RFC-0013 money-path durability and WS3 outcome pricing
+- Correction design:
+  `docs/superpowers/specs/2026-07-12-admission-operation-design.md`
+- Closes findings: F04 and F31; provides the coordinator used by F70
 
 ## Summary
 
-Today a mediated tool call executes its side effect (and, on the money path, moves
-funds at `authorize`) strictly before the kernel signs and durably persists the
-receipt. A crash, OOM kill, or power loss anywhere in that window leaves an
-externally visible effect with no receipt in the append-only log, and recovery has
-nothing to reconcile against: the Merkle-committed log verifies clean while missing
-an action. This RFC adds a durable dispatch-intent journal. Before a side-effecting
-or monetary call dispatches, the kernel writes a small intent row through the
-`ReceiptCommitActor` group-commit path and blocks on its durable commit. The receipt
-append later consumes that intent row in the same writer transaction as the receipt
-insert, so the two either both commit or both do not. Orphaned intents surviving a
-restart are reconciled at boot into explicit "outcome-unknown" incidents (and, for
-monetary intents, a rail-side query), turning a silent audit hole into a loud,
-recoverable operator signal. Read-only calls pay nothing: intent writes are gated on
-side-effect class.
+The kernel can currently execute a tool effect before its signed receipt is
+durable. A crash in that interval can leave an effect absent from the receipt
+log. This RFC extends the already-designed durable `AdmissionOperation` to every
+configured monetary or side-effecting call. The operation commits before the
+first authoritative participant mutation, commits `DispatchCommitted` before
+both top-level and nested tool handoff, and retains a terminal request replay
+tombstone after receipt or incident resolution.
+
+RFC-0003 does not create a separate delete-on-success dispatch-intent journal.
+Budget, payment, approval, nonce, provider acceptance, receipt, observer, and
+obligation state are participants in one fenced saga keyed by `operation_id`.
+Rows that share the receipt database use one composable receipt-side projection
+transaction. Cross-database participants are idempotently reconciled by the saga
+and are not described as atomically committed with the receipt.
 
 ## Motivation
 
-The failure is a durability gap in the core product guarantee ("every mediated side
-effect has a receipt"), grounded in F04, F31, and F70, and read against the
-Ubicloud "PostgreSQL and the OOM Killer" lens: when a component dies mid-operation
-you must know the blast radius and be able to recover, and internal accounting must
-be trustworthy or loudly broken. Here the accounting is silently broken.
+The failure window begins when the kernel first commits a tool handoff and ends
+when the receipt-side projection commits. `PostAdmissionDropGuard` protects
+in-process cancellation only. It cannot survive process death, establish whether
+a remote tool accepted a request, prevent a completed request id from being
+inserted again, or serialize two recovery processes over the same SQLite file.
 
-Blast radius:
+The earlier form of this RFC used a separate `chio_dispatch_intents` row and
+deleted it with receipt insertion. That model is rejected for three reasons:
 
-- Trigger: kernel process death (OOM kill, crash, power loss) in the window between
-  the tool server returning a side effect (or the rail moving money) and
-  `record_chio_receipt` committing the signed receipt.
-- Effect: the effect happened; no receipt exists anywhere. The in-memory local-log
-  copy either died with the process or was never written, because on a store-append
-  failure the local-log append is skipped (the error propagates first). Recovery has
-  no per-call intent record to detect the gap.
-- Who is impacted: auditors and dispute resolution (the log verifies clean while
-  missing an action); on the money path (F70) the payer was charged with no attested
-  record and no local copy of the rail `authorization_id`, so reconciliation requires
-  manual rail-side statement matching.
+1. The protocol-primitives design already owns a durable operation that orders
+   budget, approval, nonce, capture, and dispatch.
+2. Deleting the request-keyed row removes replay protection because generic
+   `ChioReceipt` bodies do not carry `request_id`.
+3. A second intent reconciler cannot atomically or deterministically coordinate
+   the payment and operation participants.
 
-F03 (memory-growth-induced OOM) makes the crash trigger routine rather than rare, so
-this is not a tail concern. The existing `PostAdmissionDropGuard`
-(`crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs:19`) covers only
-in-process future-drop and cancellation; it is memory-only and does not survive
-process death, so it cannot close this window.
+The corrected design makes the existing operation authoritative and retains its
+terminal binding.
 
-## Current behavior (verified 2026-07-04)
+## Scope
 
-Ordering in the async evaluation path
-(`crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`):
+In scope:
 
-1. Pre-dispatch readiness gates run at lines 219-250
-   (`ensure_federated_receipt_persistence_ready`, `ensure_receipt_persistence_ready`).
-   Both are configuration-presence checks only. Verified in
-   `crates/kernel/chio-kernel/src/kernel/construction.rs:244-251`:
+- durable operation identity and request replay namespace;
+- effect-class gating and pre-effect persistence;
+- one dispatch boundary used by top-level and nested evaluation;
+- composable receipt-side finalization;
+- provider-acceptance extension for WS3;
+- deterministic boot recovery and incident binding;
+- exclusive SQLite serving ownership and owner-epoch fencing;
+- health, migration, crash tests, and rollout.
 
-   ```rust
-   pub(crate) fn ensure_receipt_persistence_ready(&self) -> Result<(), KernelError> {
-       if self.receipt_store.is_some() || self.config.allow_ephemeral_receipt_log {
-           return Ok(());
-       }
-       Err(KernelError::Internal(
-           "durable receipt persistence unavailable: no receipt store configured".to_string(),
-       ))
-   }
-   ```
+Out of scope:
 
-   Neither gate consults writer counters, queue depth, `last_error`, or thread
-   liveness, so a saturated queue or wedged writer passes.
+- distributed transactions across stores or payment rails;
+- blind replay of an ambiguous tool call;
+- a production FROST implementation;
+- changing receipt checkpoint counting or Merkle semantics;
+- treating an operational operation row as signed audit evidence.
 
-2. Money moves at `authorize_payment_if_needed`
-   (`async_evaluation_core.rs:469-492`), which is before dispatch. For the in-tree
-   prepaid X402 adapter the real external HTTP call is in `authorize`
-   (`crates/kernel/chio-kernel/src/payment.rs:287-310`) and `capture` is a local
-   no-op returning `Settled` (`payment.rs:312-329`), so for prepaid rails funds
-   move at pre-dispatch authorize. Generic adapters move funds at `capture`
-   (`crates/kernel/chio-kernel/src/kernel/validation.rs:1012-1021`), still before
-   the receipt persists.
+## Existing operation contract
 
-3. The tool side effect executes at `async_evaluation_core.rs:525-527`
-   (`dispatch_tool_call_with_cost_after_nonce_check`), guarded only by the
-   memory-only `PostAdmissionDropGuard` (lines 513-529).
+RFC-0003 reuses the exact protocol-primitives identity:
 
-4. The receipt is built, signed, and only then persisted, strictly afterward
-   (`crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs:57-72`):
-   `build_and_sign_receipt` at 57-70, then `record_chio_receipt_with_federation` at
-   72.
-
-5. `record_chio_receipt` takes the kernel-wide write lock, appends durably, and only
-   on success writes the in-memory local log
-   (`crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs:164-187`):
-
-   ```rust
-   pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
-       {
-           let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
-               KernelError::Internal("receipt store write lock poisoned".to_string())
-           })?;
-           if let Some(seq) = self
-               .with_receipt_store(|store| Ok(store.append_chio_receipt_returning_seq(receipt)?))?
-               .flatten()
-           {
-               if self.should_checkpoint_after_seq(seq) {
-                   self.maybe_trigger_checkpoint_locked(seq)?;
-               }
-           }
-           self.append_chio_receipt_to_local_log(receipt.clone());
-       }
-       let _settlement_status = self.run_settlement_observer(receipt);
-       Ok(())
-   }
-   ```
-
-   The durable append is `SqliteReceiptStore::append_verified_chio_receipt_record`
-   (`crates/platform/chio-store-sqlite/src/receipt_store.rs:553-562`), which hands a
-   single `Append` command to the `ReceiptCommitActor`
-   (`receipt_store.rs:161-200`). The actor group-commits a batch inside one
-   `TransactionBehavior::Immediate` transaction in `append_receipt_batch`
-   (`receipt_store.rs:376-415`), inserting each row via `append_chio_receipt_tx`
-   (`receipt_store.rs:939`), whose statement is:
-
-   ```sql
-   INSERT INTO chio_tool_receipts (receipt_id, timestamp, capability_id, subject_key,
-       issuer_key, grant_index, tool_server, tool_name, decision_kind, policy_hash,
-       content_hash, tenant_id, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-   ON CONFLICT(receipt_id) DO NOTHING RETURNING seq
-   ```
-
-There is no dispatch-intent or write-ahead-intent record anywhere in the store API:
-a grep for `intent` in `receipt_store.rs` returns nothing. The only per-call durable
-precedent that does the "consume in the same transaction as the receipt insert" move
-is `append_chio_receipt_consuming_authorization`
-(`crates/platform/chio-store-sqlite/src/receipt_store.rs:564-597`), which runs
-`consume_authorization_receipt_tx` (`receipt_store.rs:1017`) and `append_chio_receipt_tx`
-inside one `Immediate` transaction. This RFC generalizes exactly that pattern.
-
-Group-commit constants (`receipt_store.rs:121-123`):
-`RECEIPT_GROUP_COMMIT_MAX_BATCH = 64`, `RECEIPT_GROUP_COMMIT_FLUSH_DELAY = 500us`,
-`RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY = 64 * 16 = 1024`.
-
-Health surface today (`receipt_store.rs:614-631`): `healthy = status.healthy &&
-writer_counters().last_error.is_none()`. `ReceiptStoreHealthReport`
-(`crates/kernel/chio-kernel/src/receipt_store.rs:100-117`) has no notion of an
-in-flight or orphaned call. Its only external consumer is the CLI `trust receipt
-health` command (`crates/products/chio-cli/src/cli/trust/receipt/health.rs:60-73`),
-which opens its own store via `open_existing` (`health.rs:43`) and therefore cannot
-observe the serving kernel's writer state.
-
-Parameter hashing is already canonical (RFC 8785) via
-`ToolCallAction::from_parameters`
-(`crates/core/chio-core-types/src/receipt/decision.rs:44-51`):
-`sha256_hex(canonical_json_bytes(&parameters))`. The intent row reuses this exact
-hash so the intent and the eventual receipt bind to the same call.
-
-## Design
-
-### Overview and invariant
-
-Introduce a durable, non-audit operational journal (`chio_dispatch_intents`) that
-sits beside the Merkle-committed `chio_tool_receipts` table. The invariant:
-
-> For any side-effecting or monetary mediated call, a durable intent row exists on
-> disk before the effect is caused, and it is removed in the same transaction that
-> commits the receipt. Therefore, after any crash, `receipt(request_id) XOR
-> open_intent(request_id)` holds: either the receipt is durable, or an intent proves
-> an effect may have occurred without one.
-
-Intents are operational records, not receipts. They are never signed, never added to
-`chio_tool_receipts`, and never advance the checkpoint sequence, so ADR-0008's
-count-based checkpoint semantics and the Merkle tree are untouched.
-
-### Schema (new table)
-
-Added in `crates/platform/chio-store-sqlite/src/receipt_store/bootstrap/open.rs`
-alongside the `chio_tool_receipts` DDL (currently at `open.rs:131-158`):
-
-```sql
-CREATE TABLE IF NOT EXISTS chio_dispatch_intents (
-    request_id            TEXT PRIMARY KEY,
-    capability_id         TEXT NOT NULL,
-    tool_server           TEXT NOT NULL,
-    tool_name             TEXT NOT NULL,
-    parameter_hash        TEXT NOT NULL,
-    side_effect_class     TEXT NOT NULL,          -- 'side_effecting' | 'monetary'
-    monetary              INTEGER NOT NULL,        -- 0 | 1
-    rail                  TEXT,                    -- adapter/rail id, known pre-authorize
-    rail_authorization_id TEXT,                    -- attached post-authorize (money path)
-    tenant_id             TEXT,
-    created_at_unix_ms    INTEGER NOT NULL,
-    state                 TEXT NOT NULL DEFAULT 'open', -- 'open' | 'dead_letter'
-    resolution_detail     TEXT                     -- reconciler outcome annotation
-);
-
-CREATE INDEX IF NOT EXISTS idx_chio_dispatch_intents_state
-    ON chio_dispatch_intents(state);
+```text
+operation_id = SHA256("chio.admission-operation.v1\0" || canonical_json({
+  kind,
+  coordinator_authority_id,
+  request_namespace_digest,
+  request_id,
+  capability_id,
+  authorization_capability_hash,
+  request_binding_hash
+}))
 ```
 
-`request_id` is the primary key: at most one open intent per request. A second write
-for the same `request_id` (a retry that reused the id) collides and is rejected
-fail-closed rather than duplicating an effect record. The row carries no arguments,
-only `parameter_hash`, so it holds no additional sensitive payload beyond what the
-receipt already commits.
+The operation remains:
 
-### New Rust types
+```text
+AdmissionOperationV1 {
+  kind,
+  operation_id,
+  coordinator_authority_id,
+  request_namespace_digest,
+  request_id,
+  capability_id,
+  authorization_capability_hash,
+  request_binding_hash,
+  policy_hash,
+  effect_class,
+  threshold_proposal_hash?,
+  supplemental_authorization_digest?,
+  broker_attempt_id?,
+  budget_hold_id?,
+  approval_set_hash?,
+  execution_nonce_id?,
+  outcome_eligibility_digest?,
+  tool_outcome_id?,
+  terminal_result_id?,
+  terminal_result_digest?,
+  state,
+  dispatch_state,
+  coordinator_lease_epoch,
+  version,
+  last_error?,
+  terminal_receipt_id?,
+  terminal_incident_id?,
+}
+```
 
-In `crates/kernel/chio-kernel/src/receipt_store.rs`, beside
-`AuthorizationReceiptConsumption` (currently at lines 133-149):
+`operation_id` is SHA-256 over the domain-separated RFC 8785 body containing
+`kind`, `coordinator_authority_id`, `request_namespace_digest`, `request_id`,
+`capability_id`, `authorization_capability_hash`, and `request_binding_hash`.
+The authenticated namespace is part of both the operation identity and replay
+unique key, so equal caller identifiers in different tenants cannot collide on
+the global operation primary key.
+
+This RFC adds effect bindings to the immutable canonical request binding:
+
+- authenticated replay-namespace digest;
+- tool server and tool name;
+- RFC 8785 parameter hash from `ToolCallAction::from_parameters`;
+- `SideEffectClass`;
+- governed-intent, pricing, rail-profile, and optional WS3 eligibility digests.
+
+Approval membership, supplemental authorization artifacts, execution nonce
+references, provider acknowledgements, and terminal receipt, incident, or typed
+mutation-result ids/digests are
+not part of operation identity. Each is compare-and-swap attached to its
+previously null participant or terminal field exactly once. All required
+participant evidence is immutable before `ReadyToDispatch`, while terminal
+references are written only by the receipt projection.
+
+`operation_id` is the primary key. The operation store also enforces unique
+`(request_namespace_digest, request_id)`. The namespace digest is SHA-256 over a
+domain-separated RFC 8785 body containing the coordinator authority and the
+authenticated tenant, or the fixed local-system tenant for a non-multitenant
+deployment. Caller input cannot select the authenticated tenant.
+
+A duplicate request is idempotent only when the namespace, `operation_id`, and
+complete binding match. A different body conflicts before any participant
+mutation. A matching terminal request returns its existing receipt or incident
+or its exact typed mutation-result id/digest and bytes, and never dispatches or
+submits again.
+
+## State and invariants
+
+The protocol-primitives saga states remain authoritative. RFC-0003 uses these
+effect-relevant milestones:
+
+```text
+Prepared
+  -> participant reservations
+  -> ReadyToDispatch
+  -> DispatchCommitted
+  -> Finalizing
+  -> Completed
+
+Prepared|ReadyToDispatch -> CompensatedBeforeDispatch
+DispatchCommitted -> NotAcceptedAfterDispatchCommit
+DispatchCommitted|Finalizing -> OutcomeUnknownAfterDispatch
+
+GovernedEconomicMutation:
+Prepared -> MutationReady -> MutationSubmitted
+Prepared|MutationReady|MutationSubmitted -> EconomicMutationNotApplied
+MutationSubmitted -> EconomicMutationApplied
+```
+
+`MutationReady` means every late authorization/agreement binding is attached.
+`MutationSubmitted` commits before the authoritative apply call. The participant
+deduplicates by `operation_id`; recovery queries it first and any identical retry
+returns the retained result without repeating the resource CAS. The two mutation
+terminal projections require kind `GovernedEconomicMutation` and only the source
+states shown above.
+
+The invariants are:
+
+```text
+Prepared is durable before any authoritative participant mutation.
+
+DispatchCommitted is durable before invoke or invoke_stream.
+
+Completed, CompensatedBeforeDispatch, NotAcceptedAfterDispatchCommit, and
+OutcomeUnknownAfterDispatch remain tool-dispatch replay tombstones.
+EconomicMutationApplied and EconomicMutationNotApplied remain governed-mutation
+replay tombstones.
+
+release_monetary_hold(operation_id) implies verified MonetaryReleaseAuthority:
+  NoEffect(VerifiedNoEffectProof)
+  or ContractualZeroCharge(VerifiedContractualZeroCharge).
+
+effect_possible(operation_id) implies no blind redispatch and no automatic
+release of invocation or monetary reservations.
+```
+
+The operation row is never deleted. Compaction may replace terminal detail with
+an authenticated terminal-key index after checkpoint finality, but the namespace,
+request id, operation id, request binding, and terminal receipt or incident id
+or terminal mutation-result id/digest remain queryable for the request-id
+namespace lifetime.
+
+## Rust contracts
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SideEffectClass {
-    /// Pure/read-only: no durable intent is written; TTFRH is unchanged.
     ReadOnly,
-    /// Externally visible effect (file write, message send, non-monetary tool).
     SideEffecting,
-    /// Moves funds on a payment rail; carries a rail reference.
     Monetary,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DispatchIntentRecord {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AdmissionProjectionCapabilities {
+    pub operation_terminal: bool,
+    pub incident_terminal: bool,
+    pub tool_outcome: bool,
+    pub authorization_consumption: bool,
+    pub outcome_eligibility: bool,
+    pub observation_attempt_zero: bool,
+    pub obligation: bool,
+    pub economic_mutation_terminal: bool,
+}
+
+pub struct AdmissionProjectionContext {
+    pub operation_id: String,
     pub request_id: String,
-    pub capability_id: String,
-    pub tool_server: String,
-    pub tool_name: String,
-    pub parameter_hash: String,
-    pub side_effect_class: SideEffectClass,
-    pub monetary: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rail: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rail_authorization_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tenant_id: Option<String>,
-    pub created_at_unix_ms: u64,
+    pub expected_operation_version: u64,
+    pub coordinator_lease_epoch: u64,
 }
 
-/// Key used to consume an intent in the same transaction as the receipt append.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DispatchIntentKey {
-    pub request_id: String,
-    /// Must equal the receipt's action.parameter_hash; a mismatch fails closed.
-    pub parameter_hash: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tenant_id: Option<String>,
+pub struct AdmissionCompletedProjection {
+    pub context: AdmissionProjectionContext,
+    pub receipt: ChioReceipt,
+    pub tool_outcome: Option<ToolOutcomeTerminalEvidence>,
+    pub payment_evidence: Option<PaymentTerminalEvidence>,
+    pub authorization: Option<AuthorizationReceiptConsumption>,
+    pub eligibility: Option<OutcomeEligibilityFinalization>,
+    pub observer_work: Option<ObservationAttemptZero>,
+    pub obligation: Option<ObligationProjection>,
+}
+
+pub enum AdmissionTerminalProjection {
+    Completed(AdmissionCompletedProjection),
+    CompensatedBeforeDispatch {
+        context: AdmissionProjectionContext,
+        proof: VerifiedPreDispatchNoEffect,
+        evidence: AdmissionReceiptOrIncident,
+    },
+    NotAcceptedAfterDispatchCommit {
+        context: AdmissionProjectionContext,
+        proof: VerifiedTransportNotAccepted,
+        evidence: AdmissionReceiptOrIncident,
+    },
+    OutcomeUnknownAfterDispatch {
+        context: AdmissionProjectionContext,
+        incident: AdmissionIncident,
+    },
+    EconomicMutationApplied {
+        context: AdmissionProjectionContext,
+        result: VerifiedEconomicMutationApplied,
+        audit_event: GovernedMutationAuditEvent,
+    },
+    EconomicMutationNotApplied {
+        context: AdmissionProjectionContext,
+        result: VerifiedEconomicMutationNotApplied,
+        audit_event: GovernedMutationAuditEvent,
+    },
 }
 ```
 
-### Store trait additions
-
-In the `ReceiptStore` trait
-(`crates/kernel/chio-kernel/src/receipt_store.rs:187`), add two defaulted methods so
-non-SQLite stores remain compilable and fail closed if used on a side-effecting path:
+`AdmissionOperationStore` supplies the begin, compare-and-swap transition,
+participant-lookup, recovery-claim, and terminal-load operations already required
+by the protocol-primitives design. `ReceiptStore` adds:
 
 ```rust
-fn record_dispatch_intent(
+fn admission_projection_capabilities(&self) -> AdmissionProjectionCapabilities;
+
+fn commit_admission_projection(
     &self,
-    _intent: &DispatchIntentRecord,
-) -> Result<(), ReceiptStoreError> {
-    Err(ReceiptStoreError::Conflict(
-        "durable dispatch-intent journal is not supported by this receipt store".to_string(),
-    ))
-}
-
-fn append_chio_receipt_consuming_intent(
-    &self,
-    _receipt: &ChioReceipt,
-    _intent: &DispatchIntentKey,
-) -> Result<Option<u64>, ReceiptStoreError> {
-    Err(ReceiptStoreError::Conflict(
-        "durable dispatch-intent consumption is not supported by this receipt store".to_string(),
-    ))
-}
+    projection: &AdmissionTerminalProjection,
+) -> Result<AdmissionTerminal, ReceiptStoreError>;
 ```
 
-The SQLite implementations live next to
-`append_chio_receipt_consuming_authorization`
-(`crates/platform/chio-store-sqlite/src/receipt_store.rs:564-597`) and, like
-that method, run inside their own `Immediate` transaction, but both route
-through the `ReceiptCommitActor`'s single writer connection as jobs on the
-existing generic `Write` command rather than opening a connection directly:
-`record_dispatch_intent` queues a metadata-only `Write` job
-(`WriterHandle::run_write`, `receipt_store.rs:798-804`), and
-`append_chio_receipt_consuming_intent` queues a receipt-appending `Write` job
-(`WriterHandle::run_write_receipt`, `receipt_store.rs:810-816`) that performs
-the consume and the receipt insert together. This keeps every journal write on
-the single writer thread that RFC-0006 establishes.
+Default implementations report no capabilities and fail before append. A
+monetary or side-effecting production call cannot use `append_chio_receipt`,
+`append_chio_receipt_with_pending_observation`, or another specialized append
+method to bypass operation finalization.
 
-### Dispatch-intent writer jobs
+## Terminal projection transaction
 
-As shipped, this does not extend `ReceiptCommitCommand`
-(`crates/platform/chio-store-sqlite/src/receipt_store.rs:482-521`) with an
-`Intent` variant, and `ReceiptCommitRequest` (`receipt_store.rs:448-456`) gains
-no `consume_intent` field; both are unchanged from RFC-0006 (`Append`, `Flush`,
-`Write { job, appends_receipts }`, `ReseedHead`, `InstallSigner`, `Rotate`,
-`RetentionRepair`). A heterogeneous Intent+Append group-commit batch was the
-original design sketch, but every dispatch-intent operation instead rides the
-existing `Write` command as its own independent job on the single writer, each
-inside its own transaction:
+For the local SQLite profile, the operation row is co-located with receipt,
+incident, tool-outcome, eligibility, observer, authorization-consumption,
+obligation, and governed-mutation audit/result tables.
+`commit_admission_projection` runs on the RFC-0006 writer actor inside one
+`BEGIN IMMEDIATE` transaction:
 
-- **Insert** (`record_dispatch_intent`, `receipt_store.rs:3276-3284`): a
-  metadata-only `Write` job (`dispatch_intent_insert_job`,
-  `receipt_store/support/dispatch_intent.rs:77-88`) that opens its own
-  `TransactionBehavior::Immediate` transaction, runs `insert_dispatch_intent_tx`
-  (`INSERT ... ON CONFLICT(COALESCE(tenant_id, ''), request_id) DO NOTHING`,
-  mapping `changed == 0` to `ReceiptStoreError::Conflict`, fail-closed; the
-  existing row is left untouched), and commits.
-- **Consume** (`append_chio_receipt_consuming_intent`,
-  `receipt_store.rs:3354-3361`): a receipt-appending `Write` job whose closure
-  (`receipt_store.rs:3413-3422`) opens its own `Immediate` transaction, runs
-  `finalize_dispatch_intent_tx` (a tenant- and parameter-hash-guarded `DELETE`)
-  then `append_chio_receipt_tx` then the lineage statement, and commits once.
-  A `parameter_hash` or tenant mismatch is a `Conflict` raised from inside the
-  transaction and rolls back that job's commit, so the receipt insert and the
-  intent delete either both land or neither does.
-- **Rail-ref attach, clear, timeout sweep, dead-letter resolve, reconcile**:
-  each is its own `Write` (or bounded/detached `Write`) job with its own
-  transaction, guarded on the row's current `state` so a job that arrives
-  after the row already changed state is a no-op `NotFound` rather than a
-  corrupting write (`attach_dispatch_intent_rail_ref`,
-  `clear_dispatch_intent`, `resolve_dead_letter_dispatch_intent`,
-  `receipt_store.rs:3429`, `3461`, `4008`).
+1. Verify the store owner lease and coordinator epoch.
+2. Load the exact `operation_id`, namespace, request id, and expected version.
+3. Match the closed terminal variant and require its legal source state.
+4. Verify its exact tool outcome or mutation result, release authority, receipt
+   or incident, payment evidence, and optional eligibility bindings.
+5. For `Completed`, append the receipt, apply every typed local projection and
+   retain the operation with its receipt id.
+6. For `CompensatedBeforeDispatch`, atomically bind verified no-effect evidence
+   and a denial receipt or incident from a state before `DispatchCommitted`.
+7. For `NotAcceptedAfterDispatchCommit`, require cancellation-fenced
+   `NotAccepted`, retain captured invocation quota, release only reversible
+   monetary exposure, and bind its receipt or incident.
+8. For `OutcomeUnknownAfterDispatch`, insert the incident, freeze participants
+   and retain the operation from `DispatchCommitted` or `Finalizing`.
+9. For `EconomicMutationApplied`, require kind `GovernedEconomicMutation`, bind
+   the exact private-verified applied result id/digest, append its audit event,
+   and retain that terminal state.
+10. For `EconomicMutationNotApplied`, require the same kind and exact
+    private-verified permanently-not-applied result, append its audit event, and
+    retain that terminal state.
+11. Commit once and then fan out the result to the caller.
 
-Because each of these is queued and run as its own job, relative ordering
-between two operations on the same request comes from the writer's FIFO
-queue, not from sharing a batch or a transaction. For example, the
-timeout-path compensating sweep
-(`record_dispatch_intent_with_timeout`, `receipt_store.rs:3299-3348`) is
-enqueued strictly after the insert job it sweeps, so it always observes that
-insert's outcome. There is no heterogeneous Intent+Append batch anywhere in
-the store: cross-operation partial commit is not merely guarded against, it
-is structurally impossible, because no two distinct dispatch-intent
-operations, or an intent operation and an unrelated receipt append, ever
-share a transaction. This is simpler than the group-commit batch originally
-sketched here and gives the same same-transaction-consume guarantee, since
-the only two statements that must be atomic together (the intent DELETE and
-the receipt INSERT) already share one job's one transaction.
+The transaction rejects a missing required projection, an unexpected duplicate,
+a stale version or epoch, a partial pre-existing subset, or any digest mismatch.
+No receipt or incident, terminal operation, tool outcome or mutation-result
+binding, mutation audit event, eligibility event, attempt-zero work,
+authorization consumption, or obligation row becomes visible on failure.
 
-Durability of the pre-dispatch intent write: `record_dispatch_intent` blocks
-on the `Write` job's response channel exactly as a batched `Append` does, and
-the response is sent only after that job's `tx.commit()` returns, so the
-caller observes a durable (WAL-fsynced) commit before it proceeds to dispatch.
-Saturation and a disconnected/dead writer are surfaced through the same typed
-`ReceiptStoreError` variants (`Pool`, `Timeout`, `Sqlite`) every other writer
-job already uses.
+The payment journal and budget hold may live in the budget database. They are
+not mutated inside this receipt transaction. The projection binds verified
+terminal payment evidence, and the saga closes or confirms the payment
+participant idempotently in either crash ordering. Documentation must say
+"one atomic receipt-side projection", not "one atomic money-path commit."
 
-### Kernel control-flow changes
+A separately stored or remote governed-mutation authority is likewise an
+idempotent saga participant. It applies or rejects by `operation_id`, retains a
+versioned signed terminal result, and supports side-effect-free lookup. After an
+ambiguous response, recovery verifies that result and commits the corresponding
+local mutation terminal projection. It never repeats the resource mutation or
+claims that participant state and the local operation committed atomically.
 
-In `async_evaluation_core.rs`, insert one step after the budget increment
-(currently at line 252) and before `authorize_payment_if_needed` (line 469), so the
-intent is durable before the earliest possible effect (prepaid authorize at 469, or
-tool dispatch at 525-527):
+## Outcome, status, and release contracts
 
-```rust
-// Fail-closed: for side-effecting or monetary calls, write and durably commit a
-// dispatch-intent row BEFORE any external effect. On failure we deny here, before
-// the effect, converting the old post-effect ReceiptPersistence error into a safe
-// pre-effect deny. The budget hold (check_and_increment_budget, line 252) is
-// already applied at this point, so a persistence failure must reverse it before
-// returning, exactly as the other pre-dispatch abort arms do; a bare `?` here
-// would leak the hold on a denied-before-dispatch call.
-let dispatch_intent = match self.record_dispatch_intent_if_side_effecting(
-    request, cap, matched_grant_index,
-) {
-    Ok(Some(handle)) => Some(handle),
-    Ok(None) => None, // read-only class: no journal write, TTFRH unchanged
-    Err(error) => {
-        // Reverse the pre-execution hold through the same charge-gated primitive
-        // the authorize/admission abort arms use (RFC-0002). payment auth is None
-        // (authorize runs later, line 469); a non-monetary side-effecting call
-        // holds no charge, so this is a no-op. A reversal error is recorded but
-        // never masks the deny.
-        if let Err(unwind_error) = self.unwind_aborted_monetary_invocation(
-            request, cap, budget_mutation.charge_result(), None,
-        ) {
-            tracing::error!(
-                error = %unwind_error,
-                "failed to reverse budget hold after dispatch-intent persistence failure"
-            );
-        }
-        return Err(error);
-    }
-};
+The 2026-07-12 admission design's canonical `ToolOutcomeRecordV1` is a required
+operation participant. It binds operation/request, dispatch version and fence,
+tool and transport attempt, terminal transport evidence, content-addressed raw
+output digest/blob, reported cost, post-return evaluation id, resolved guarded
+output, post-guard decision, pricing verdict, settlement disposition, writer
+owner epoch and row version.
+The blob is durable before the insert-once row. `record_tool_returned`,
+`resolve_tool_outcome`, and side-effect-free `lookup_by_operation` are owned by
+protocol-primitives Task 6. Receipt finalization verifies the terminal record.
+
+`DispatchStatusProvider` optionally queries an exact operation and handoff
+attempt and returns only verified `NotAccepted`, `Pending`, `Accepted {
+acceptance_ref }`, `Completed { tool_outcome_ref }`, or `Unknown`. Without a
+provider, an ambiguous committed handoff is incident-only: no redispatch and no
+hold release. WS3 and other stronger acceptance/delivery contracts require a
+provider. `Accepted` is usable only with the authenticated acceptance envelope
+and current monotonic external attempt checkpoint. It proves cancellation is no
+longer possible, not completion.
+`Completed` is usable only when the provider also implements authenticated
+`fetch_completed_outcome(ref)`. The private verified response binds the exact
+operation, request, attempt, transport identity/key epoch, bytes/digest, reported
+cost and terminal evidence. The coordinator persists those bytes locally through
+`record_tool_returned` before continuing. A bare ref, failed fetch or binding
+mismatch is outcome-unknown.
+`NotAccepted` is usable only when the provider's external attempt-continuity
+anchor proves the exact slot permanently `Cancelled` at a monotonic
+sequence/version/predecessor. Behind, divergent, unavailable or locally restored
+status is `Unknown` and freezes the hold.
+
+An installed economic effect-slot provider is equivalent only when its external
+`Ready -> NoEffect` CAS is the permanent cancellation fence and competes with the
+only `Ready -> DispatchCommitted` handoff. After local `DispatchCommitted`, a
+cancellation winner constructs `VerifiedTransportNotAccepted` and reaches
+`NotAcceptedAfterDispatchCommit`; a handoff winner cannot cancel. This closes the
+local-operation/effect-slot two-commit gap without misusing pre-dispatch
+compensation.
+
+Post-return guards and pricing use the admission design's durable
+`PostReturnEvaluationRecordV1`. It freezes exact pipeline/policy versions,
+trusted time and every input before evaluation, persists each external/stateful
+result, and permits recovery only through frozen pure evaluation or idempotent
+authenticated participant lookup. Non-replayable ambiguity freezes the hold;
+raw output alone never authorizes a new guard or pricing decision.
+
+Only private-constructor verified types authorize release. The closed
+`VerifiedNoEffectProof` contains either `VerifiedPreDispatchNoEffect`, which
+binds the operation/lease and complete no-handoff/no-final-prepayment participant
+queries, or `VerifiedTransportNotAccepted`, which binds the exact operation,
+attempt, request/dispatch versions, transport identity/key epoch, signed terminal
+status, cancellation fence, time, verifier, and the current authenticated
+monotonic transport-slot checkpoint from outside the provider queue backup
+domain, terminal as `Cancelled` or typed `NoEffect`. A local signed status without
+that continuity cannot authorize release.
+`VerifiedContractualZeroCharge` binds the final outcome record, exact pricing or
+eligibility policy, terminal verdict and zero amount. The closed
+`MonetaryReleaseAuthority` accepts one of those types; caller bytes, age,
+`Authorized`, unavailable status and missing receipts do not qualify.
+
+## Kernel control flow
+
+The kernel extracts one helper used by
+`async_evaluation_core.rs` and `nested_flow_evaluation.rs`:
+
+```text
+prepare_admission_operation
+authorize_participants
+commit_dispatch
+invoke_tool
+record_outcome
+commit_settle_action
+commit_admission_projection
 ```
 
-`record_dispatch_intent_if_side_effecting` (new, on the kernel) computes the
-`SideEffectClass` from the tool manifest annotation and `has_monetary`
-(`budget_mutation.charge_result().is_some()`, verified at
-`async_evaluation_core.rs:512`). The read-only signal is the existing
-`ToolAnnotations::read_only` flag (`crates/core/chio-core-types/src/manifest.rs:126`;
-`read_only == true` maps to `SideEffectClass::ReadOnly`); `has_monetary` promotes to
-`Monetary`, and everything else is `SideEffecting`. Because `read_only` defaults to
-`false` (`#[serde(default)]`), an unannotated or unknown tool fails safe: it is
-treated as side-effecting and gets a durable intent, never silently skipped. The
-sibling `ToolAnnotations::idempotent` flag is the natural input a reconciler consults
-before ever returning `SafeToReplay`. Given a class, the method:
+The detailed order is:
 
-- Returns `Ok(None)` for `ReadOnly` (no write, no latency cost).
-- Otherwise builds a `DispatchIntentRecord` whose `parameter_hash` comes from
-  `ToolCallAction::from_parameters(request.arguments.clone())`
-  (`decision.rs:44`), sets `rail` to the configured adapter id for monetary calls
-  (leaving `rail_authorization_id = None` until authorize returns), and calls
-  `store.record_dispatch_intent(&intent)`. Any error maps to a new fail-closed
-  variant, reverses the already-applied pre-execution budget hold (routed through
-  `unwind_aborted_monetary_invocation`, the same charge-gated reversal the
-  authorize and admission abort arms use, so no hold leaks), and denies before
-  dispatch.
+1. Complete parsing, capability, revocation, DPoP, policy, governed-intent,
+   approval, nonce, guard, and runtime-admission validation without mutating
+   replay or budget state.
+2. Derive the authenticated namespace and canonical request binding. Persist
+   `Prepared` before any reservation or external authorization.
+3. Reserve every budget, payment, approval, nonce, and optional WS3 participant
+   by `operation_id`, recording each acknowledgement through a fenced operation
+   compare-and-swap.
+4. Immediately before tool handoff, capture invocation reservations and persist
+   `DispatchCommitted`. A failure compensates before dispatch and emits a
+   terminal-projection-bound `CompensatedBeforeDispatch` tombstone.
+5. Invoke the top-level or nested transport only after step 4 commits. The
+   `PostAdmissionDropGuard` carries `operation_id` and cannot reverse invocation
+   admission after `DispatchCommitted`.
+6. Durably write the returned output blob and insert-once
+   `ToolOutcomeRecordV1`, then compare-and-swap its guarded output, cost, verdict
+   and settlement disposition. If no return can be proved, build an
+   outcome-unknown incident. For a monetary call, persist the exact capture or
+   release action and amount before calling the rail.
+7. After terminal rail evidence, build the signed receipt and commit the typed
+   completed terminal projection. Return `Allow` only after that commit.
 
-Trust posture of the read-only signal: for a tool reached through the MCP adapter
-(`crates/protocol/chio-mcp-adapter/src/server.rs`, `AdaptedMcpServer::tool_is_read_only`),
-the read-only exemption bottoms out in the upstream MCP server's own
-`readOnlyHint` tool annotation, captured into the manifest once at adapt time
-(`crates/protocol/chio-mcp-adapter/src/manifest.rs`, `infer_has_side_effects`), not
-re-verified per call. The MCP spec treats tool annotations as untrusted hints from
-the server describing itself, so a lying or compromised upstream server can mark
-its own side-effecting tools `readOnlyHint: true` and exempt them from the journal's
-crash-window audit net; policy evaluation, guards, and receipt issuance are
-unaffected; only the pre-dispatch durable intent write is skipped. The parsing is
-conservative in the operator's favor, not the server's: a malformed hint or an
-explicit `destructiveHint: true` overrides a `readOnlyHint: true` and the tool
-still journals (`McpToolSafetyHints::has_side_effects`); only a clean, present
-`readOnlyHint: true` with no destructive hint earns the exemption.
-`DispatchIntentJournalMode::All` is the operator override for a deployment that
-does not trust its upstream servers' self-reported hints.
+No direct `invoke`, `invoke_stream`, or payment call may exist between
+participant reservation and the durable dispatch boundary. A
+constructor-inventory test covers ordinary, nested-flow, restored-session, CLI,
+strict MCP, remote MCP, and hosted conformance construction.
 
-Money path (F70, extended by RFC-0013): after `authorize_payment_if_needed`
-(line 469) returns a `PaymentAuthorization`, attach its `authorization_id` to the
-open intent via `store.attach_dispatch_intent_rail_ref(request_id, authorization_id)`
-(routed through the actor as `DispatchIntentOp::AttachRailRef`). This is
-best-effort-durable: even if it fails, the open intent (with `rail` set) already
-proves a monetary attempt, and boot reconciliation queries the rail. The full
-generic replay-idempotency contract on the `PaymentAdapter` trait
-(`crates/kernel/chio-kernel/src/payment.rs:150-181`, which today requires no
-idempotency) is specified in RFC-0013, not here.
+## WS3 provider acceptance extension
 
-Consume at receipt time: `record_chio_receipt`
-(`receipt_persistence.rs:164-187`) gains a sibling that, when the request carried an
-intent, calls `store.append_chio_receipt_consuming_intent(receipt, &key)` instead of
-`append_chio_receipt_returning_seq`. Note that `ChioReceipt`
-(`crates/core/chio-core-types/src/receipt/body.rs:35-102`) has no `request_id`
-field: its `id` is content-addressed and its only call-binding fields are
-`capability_id`, `tool_server`, `tool_name`, `action`, and `tenant_id`. The
-`DispatchIntentKey` therefore cannot be reconstructed from the receipt alone. Its
-`parameter_hash` and `tenant_id` are taken from `receipt.action.parameter_hash` and
-`receipt.tenant_id`, but its `request_id` must be threaded forward from the
-pre-dispatch dispatch-intent handle (the `dispatch_intent` value produced by
-`record_dispatch_intent_if_side_effecting` and carried on the request), not read off
-the receipt. Concretely, the sibling method takes both the `&ChioReceipt` and the
-already-known `request_id` (or the full `DispatchIntentKey`), so the plumbing from
-`async_evaluation_core` through `allow_responses.rs:72`
-(`record_chio_receipt_with_federation`) into `record_chio_receipt` must carry the
-handle; the receipt is not a sufficient source. The `parameter_hash` binding still
-proves the consumed intent matches the exact call the receipt attests. Placing the
-consume decision at the `record_chio_receipt` level is deliberate: post-dispatch
-deny receipts and terminal records funnel through the same sink
-(`record_chio_receipt_with_federation` is also called from `deny_responses.rs:97`
-and `terminal_responses.rs:48,108`), so whichever receipt kind a journaled call
-ends in, committing that receipt consumes the intent, and an effecting call that
-ends in a post-dispatch deny does not leave a false orphan behind. The existing
-lock scope, checkpoint trigger (`should_checkpoint_after_seq`,
-`receipt_persistence.rs:189-195`), and local-log append are preserved; the only
-change is which store method runs under the lock. Unlike the return type of
-`append_chio_receipt_consuming_authorization` (which returns `Result<(), _>` and
-cannot advance the checkpoint), `append_chio_receipt_consuming_intent` returns
-`Result<Option<u64>, ReceiptStoreError>` precisely so the returned `seq` still drives
-`should_checkpoint_after_seq`.
+WS3 may add a provider-authenticated durable acceptance participant. Its
+eligibility and immutable lifecycle events are keyed by `operation_id` and bind
+the same request namespace, parameter hash, listing, provider, pricing, guard
+policy, and quote digests.
 
-### Boot-time reconciliation
+The accepted lifecycle is:
 
-At kernel startup, after the store opens and before serving, run
-`store.reconcile_dispatch_intents(reconciler)` (invoked from kernel construction,
-immediately after the receipt store is opened and before the kernel accepts
-requests). It selects `WHERE state = 'open'` and, per row:
-
-- Defensive receipt cross-check: receipts carry no `request_id` (see above), so an
-  exact lookup is impossible. If a receipt matching the intent's call-binding tuple
-  (`capability_id`, `tool_server`, `tool_name`, `action.parameter_hash`,
-  `tenant_id`, timestamp at or after `created_at_unix_ms`) exists, the effect is
-  very likely already attested; the same-tx consume should preclude this state. The
-  reconciler still dead-letters the intent (fail-closed: a heuristic match never
-  silently deletes evidence) and records the probable receipt id in
-  `resolution_detail` so the operator can close it in one look.
-- Otherwise the intent is an orphan: an effect may have occurred with no receipt.
-  The kernel cannot safely re-execute a side effect, so the default action is
-  dead-letter, not blind replay. It sets `state = 'dead_letter'` and writes the
-  reconciler's outcome into `resolution_detail`. The dead-letter row itself is the
-  durable, operator-visible incident record: it is counted in
-  `ReceiptStoreHealthReport`, flips `healthy` to false, and is visible to the CLI
-  `trust receipt health` command; alert routing for a nonzero count rides the
-  RFC-0009 observability and alerting wiring.
-- For a monetary orphan with `rail` (and possibly `rail_authorization_id`) set, the
-  reconciler additionally queries the rail via the adapter to determine whether funds
-  actually moved (RFC-0013 supplies the idempotent query/reconcile contract), and
-  annotates the incident with the outcome.
-- Replay is permitted only for operations the reconciler proves idempotent and
-  non-side-effecting; the default posture treats every orphan as dead-letter.
-
-```rust
-pub trait DispatchIntentReconciler: Send + Sync {
-    /// Decide how to resolve an orphaned intent surviving a restart.
-    fn resolve(
-        &self,
-        intent: &DispatchIntentRecord,
-    ) -> Result<DispatchIntentResolution, ReceiptStoreError>;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DispatchIntentResolution {
-    /// Effect could not be confirmed; record an outcome-unknown incident.
-    DeadLetter { detail: String },
-    /// Reconciler proved the effect never occurred and it is safe to retry.
-    SafeToReplay,
-    /// Rail query confirmed a monetary outcome; incident carries the reference.
-    MonetaryReconciled { rail_reference: String },
-}
+```text
+prepared -> dispatch_committed -> dispatch_accepted
+dispatch_accepted -> output_ready -> delivery_started
+delivery_started -> delivery_acknowledged | delivery_cancelled | delivery_unknown
+delivery_acknowledged|delivery_cancelled -> receipt_bound
+delivery_unknown -> incident_bound
+dispatch_accepted -> provider_incident_bound
+prepared|dispatch_committed -> not_accepted
+dispatch_committed -> platform_outcome_unknown
 ```
 
-### Health surface
+`dispatch_committed` is kernel state, not provider SLA evidence. Only a verified
+`chio.outcome.dispatch-acceptance.v1` from a qualified restart-safe queue enters
+`dispatch_accepted`. The provider protocol is `LocalQueuedStaged ->
+DispatchAnchorAccepted -> LocalExecutable`: staged work cannot execute before
+the external attempt slot reaches `Accepted` and a worker wins the external
+`Accepted -> Executing` lease/fence CAS. `Pending -> Cancelled` competes with
+acceptance and permanently disables the staged row; accepted, executing and
+completed slots cannot cancel. Recovery reads the anchor first and reconstructs
+accepted work from its rollback-independent invocation blob. A crash after an
+effect but before anchored completion uses authenticated tool-side status or a
+qualified same-key idempotent invocation; otherwise it remains unknown and does
+not rerun. A lost acknowledgement is resolved through the provider's status
+query by `operation_id`; socket acceptance, in-memory enqueue, and function
+entry do not qualify. Only a receiver-bound acknowledgement over the
+exact final output may reach `delivery_acknowledged` and permit capture; missing
+or ambiguous delivery reaches `delivery_unknown`, freezes the hold, and emits no
+success receipt. Only a private verified receiver nonacceptance proof with a
+permanent cancellation fence may reach `delivery_cancelled` and permit release.
 
-Extend `ReceiptStoreHealthReport`
-(`crates/kernel/chio-kernel/src/receipt_store.rs:100-117`) with two counts and fold
-them into the `healthy` computation at `receipt_store.rs:614-631`:
+The receipt-side projection verifies the stored canonical eligibility,
+acceptance, and delivery envelopes, compare-and-swaps the lifecycle, appends its immutable
+event, and binds the receipt or incident in the same transaction. Eligibility
+rows remain after terminal operation completion because they are denominator
+evidence. They do not substitute for the terminal request tombstone.
+
+## Boot recovery
+
+Only the serving owner may claim recovery work. Recovery first reads the
+operation, then queries any participant whose commit may have preceded the last
+operation update.
+
+| Operation truth | Participant evidence | Recovery action |
+|---|---|---|
+| before `DispatchCommitted` | no participant reports handoff or final prepayment | compensate reversible reservations; retain `CompensatedBeforeDispatch` |
+| before `DispatchCommitted` | final prepayment moved | record proved refund if available; otherwise incident, never hold release |
+| `DispatchCommitted` | `VerifiedNoEffectProof::NotAcceptedAfterDispatch(VerifiedTransportNotAccepted)` | commit `NotAcceptedAfterDispatchCommit`, release reversible hold, retain invocation capture, and never redispatch |
+| `DispatchCommitted` | terminal `ToolOutcomeRecordV1`, or authenticated provider fetch that is first persisted locally | resume journaled guard/pricing evaluation and exact settlement path |
+| `DispatchCommitted` | unknown or unavailable transport | retain `OutcomeUnknownAfterDispatch`; freeze monetary hold |
+| settle action durable | rail query or idempotent replay | complete only the stored action and amount |
+| terminal projection committed | matching tombstone and receipt or incident | finish participant acknowledgements; return existing result |
+
+This table removes the unsafe assumption that an RFC-0013 `Authorized` payment
+row proves the tool did not run. If the operation reached `DispatchCommitted`,
+recovery cannot release merely because `Settling` was not yet recorded.
+
+A participant row without an operation, a receipt without a matching completed
+operation, an impossible state pair, or a stale coordinator epoch is an invariant
+incident. Serving remains fail-closed until recovery or operator review resolves
+the invariant. Missing receipts never prove non-execution.
+
+## SQLite serving ownership
+
+RFC-0006 serving ownership is shared per database, not per store object.
+Production provisioning, running through `chio store provision` or the trusted
+lock broker, atomically initializes the durable UUID and creates/fsyncs its
+protected UUID lock inode. Serving code cannot create or replace that inode.
+
+1. `open_serving` requires an already provisioned database and existing lock,
+   opens it with no-follow semantics, verifies owner/group/mode/link count and
+   recorded device/inode, then locks it and rechecks UUID and database identity.
+   Missing or partial provisioning fails before actors start.
+2. A `BEGIN IMMEDIATE` transaction increments `owner_epoch` and records a random
+   lease id. The resulting shared `SqliteServingOwner` starts one writer and the
+   applicable recovery coordinators. In-process receipt, operation, outcome,
+   budget/payment, obligation, and other stores clone this handle.
+3. Every mutation and recovery claim carries and transactionally checks
+   `StoreMutationFence { store_uuid, lease_id, owner_epoch }`. A stale or
+   cross-database fence returns `Fenced` before mutation.
+4. Separately configured receipt, budget/payment, or obligation database files
+   are separately provisioned and have distinct owner/fence values. The receipt
+   profile co-locates operation and required local projection tables; external
+   payment participants remain an operation-keyed saga.
+5. Another mutable open fails `AlreadyServing`. An explicit read-only open may
+   inspect or verify but cannot start workers or mutate rows.
+
+Existing multi-handle tests over one file use cloned handles or a read-only
+observer. Multi-process serving requires a remote linearizable store and leader
+epochs; SQLite transaction serialization alone does not provide that model.
+
+## Health
+
+The supervised runtime exposes:
+
+- serving lease id and owner epoch;
+- operation writer and recovery-worker liveness;
+- nonterminal counts by state and effect class;
+- oldest `DispatchCommitted` and `OutcomeUnknownAfterDispatch` age;
+- projection rollback, replay-conflict, fencing, and invariant-incident counts;
+- WS3 unresolved acceptance count when that extension is enabled.
+
+Readiness is false when the writer or recovery worker is dead, the serving lease
+is lost, the configured store lacks required projection capabilities, or an
+operation/receipt invariant incident is unresolved. A backlog alone is reported
+and bounded by policy; it is not silently ignored.
+
+## Configuration
 
 ```rust
-#[serde(default)]
-pub open_dispatch_intents: u64,
-#[serde(default)]
-pub dead_letter_dispatch_intents: u64,
-```
-
-```rust
-let healthy = status.healthy
-    && self.receipt_commit_actor.writer_counters().last_error.is_none()
-    && dead_letter_dispatch_intents == 0;
-```
-
-This directly closes the "health lies" gap: an orphaned effect now flips the store to
-unhealthy and appears in the CLI `trust receipt health` output
-(`crates/products/chio-cli/src/cli/trust/receipt/health.rs:60-73`). Note that the
-CLI opening its own store still cannot see a live kernel's in-memory writer counters;
-persistent orphan and dead-letter rows are visible to any reader because they live in
-the database, which is the point of making them durable. `open_existing` now also runs
-the additive migration DDL when the on-disk schema predates the journal (see migration
-notes below), so any connection built through `open` or `open_existing` has the table
-by the time it returns; the counting queries still treat a missing
-`chio_dispatch_intents` table as zero rows as a defensive fallback for a raw connection
-that bypasses both open paths (for example a read-only health sampler). Live
-writer-liveness polling is out of scope here and tracked separately in the wave-3
-program.
-
-The sanctioned remediation for a dead-letter incident is `chio receipt
-resolve-dead-letter --request-id <id> [--tenant <tenant>] --note <note>`, backed by
-`ReceiptStore::resolve_dead_letter_dispatch_intent`. It transitions the row to a
-terminal `resolved` state that stops counting against `dead_letter_dispatch_intents`
-(and therefore `healthy`) while appending the operator's note to the existing
-resolution detail rather than overwriting it, so the row stays on disk as a complete,
-auditable history. It refuses (fail-closed) when the request id does not name an
-intent, or names one that is not currently `dead_letter` (still open, already
-reconciled, or already resolved), so an operator cannot silently resolve the wrong
-incident or resolve one twice. `chio receipt health`'s human output names this command
-whenever `dead_letter_dispatch_intents` is nonzero.
-
-### Config
-
-Add to `KernelConfig`
-(`crates/kernel/chio-kernel/src/kernel/kernel_struct.rs:10`):
-
-```rust
-/// Which call classes must write a durable dispatch intent before dispatch.
-/// Default fails safe: cover every effecting class, exempt read-only.
-pub dispatch_intent_journal: DispatchIntentJournalMode,
-```
-
-```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DispatchIntentJournalMode {
-    /// No intent writes. Reintroduces the F04/F31/F70 window; operator opt-out only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DurableAdmissionMode {
     Off,
-    /// Write intents for SideEffecting and Monetary classes (default).
+    Monetary,
     SideEffecting,
-    /// Write intents for every mediated call, including read-only.
     All,
 }
-
-impl Default for DispatchIntentJournalMode {
-    fn default() -> Self {
-        Self::SideEffecting
-    }
-}
 ```
 
-Every `KernelConfig` construction site pins this field explicitly (Rust has no
-struct-literal defaulting), so the file-config lowering layers are what let an
-operator change it without a code change: the `receipts.dispatch_intent_journal`
-key in a `chio.yaml`-configured deployment, and the `kernel.dispatch_intent_journal`
-key in a policy-file-configured `chio-cli` deployment. Both lowerings default the
-absent key to `Off`, not the enum's own compiled default, so upgrading a binary
-never silently starts journaling for a deployment that has not opted in; a
-present but unrecognized value rejects at config load time.
+Coverage is cumulative:
 
-### Error taxonomy (typed, fail-closed)
+- `Off`: explicit tests and unsafe local development only;
+- `Monetary`: monetary calls;
+- `SideEffecting`: monetary and non-monetary side effects;
+- `All`: all mediated calls, including explicitly read-only calls.
 
-`ReceiptStoreError` (`crates/kernel/chio-kernel/src/receipt_store.rs:151`) already
-carries `Conflict`, `Pool`, `Sqlite`, and `Timeout`, which cover intent insert
-collisions, saturation, disconnect, and commit failure. No new store variant is
-required; reconciliation surfaces its own outcomes through
-`DispatchIntentResolution` and the incident projection.
+The compiled production default is `SideEffecting`. Unannotated tools already
+classify as side-effecting, so a missing manifest annotation cannot bypass the
+journal. `All` is an explicit deployment choice that trades read-only write
+latency for request replay tombstones. A release build with durable receipts
+rejects `Off` unless an unsafe development flag is also set.
 
-`KernelError` (`crates/kernel/chio-kernel/src/kernel/error.rs`) already has
-`ReceiptPersistence(#[from] ReceiptStoreError)` at lines 156-157. Because a second
-`#[from]` from the same source type is not allowed, add a distinct variant and map
-into it explicitly at the intent-write site so a pre-effect deny is
-distinguishable from a post-effect persistence failure:
+## Schema and receipt impact
 
-```rust
-#[error("dispatch intent persistence failed: {0}")]
-DispatchIntentPersistence(String),
-```
+- `AdmissionOperation` storage gains the effect and terminal bindings above.
+- Receipt metadata binds `operation_id`, terminal operation state, and dispatch
+  state. The generic receipt wire body does not need a new `request_id`; the
+  retained operation supplies the authenticated request-to-receipt lookup.
+- WS3 eligibility and acceptance families remain signed artifacts and immutable
+  event rows. Base operation rows remain operational, not signed receipts.
+- Receipt sequence, checkpoint interval, and Merkle leaf semantics are unchanged.
 
-Fail-closed posture: an intent-write failure denies before any effect
-(`build_receipt_persistence_failclosed_deny_response_with_metadata` shape). This is
-strictly safer than today, where the equivalent failure surfaces only after the
-effect has run.
+## Migration
 
-### Crates, dirs, LOC, CI tier
+This RFC is a design correction before RFC-0003 implementation lands. New
+deployments create the operation extension directly and do not create
+`chio_dispatch_intents`.
 
-- `crates/platform/chio-store-sqlite`: table DDL, `insert_dispatch_intent_tx`,
-  `finalize_dispatch_intent_tx`, `reconcile_dispatch_intents`, per-op `Write`
-  writer jobs. ~320 LOC + ~250 LOC tests.
-- `crates/kernel/chio-kernel`: types (`DispatchIntentRecord`, `SideEffectClass`,
-  `DispatchIntentKey`), trait methods, `record_dispatch_intent_if_side_effecting`,
-  consume wiring in `record_chio_receipt`, health fields, config, boot hook. ~260
-  LOC + ~200 LOC tests.
-- No new crate. Unit and property tests run on the PR gate. Crash/kill-injection
-  soak (SIGKILL between authorize/dispatch and receipt commit) runs nightly in the
-  load-chaos program; the full power-loss simulation runs weekly. Honest PR-gate
-  cost: intent unit and property tests add well under a minute; the nightly
-  kill-injection soak is budgeted at roughly 15-20 minutes.
+If an experimental database contains intent rows:
 
-## Wire, schema, and receipt impact
+1. serving remains stopped while migration holds the database lock;
+2. each row maps to one namespaced operation using the canonical existing
+   `operation_id` derivation;
+3. an open row maps to the most conservative recoverable state;
+4. a receipt-resolved row maps to `Completed` and retains the receipt id;
+5. an outcome-unknown row maps to `OutcomeUnknownAfterDispatch`;
+6. any row whose namespace, request binding, or terminal receipt cannot be
+   reconstructed becomes a migration incident and prevents serving;
+7. only after row-count and digest reconciliation does migration retire the old
+   table.
 
-- Signed receipt payloads are unchanged. No new receipt kind. The intent row is never
-  signed and never entered into `chio_tool_receipts` or the Merkle tree, so
-  checkpoint and inclusion-proof semantics (ADR-0008) are untouched.
-- New non-audit SQLite table `chio_dispatch_intents` (schema above), created
-  idempotently by the fresh-create path (`SqliteReceiptStore::open` /
-  `open_with_pool_config`) via `CREATE TABLE IF NOT EXISTS`, and by
-  `open_existing`'s additive migration when the on-disk schema revision
-  predates the journal (the receipt-store schema revision is bumped 0 -> 1 for
-  exactly this table); see migration notes below.
-- `ReceiptStoreHealthReport` gains two `#[serde(default)]` count fields (additive,
-  camelCase, backward compatible with existing JSON consumers).
-- Any serialized intent record or reconciliation report uses RFC 8785 canonical JSON,
-  consistent with `canonical_json_bytes` already used for `parameter_hash`.
+No migration deletes the only replay key for a completed request.
 
-## Migration and compatibility
+## Verification plan
 
-- Backward compatible. The new table is additive, but not silently so for an
-  older binary: the receipt-store schema revision is bumped 0 -> 1 for exactly
-  this table, so an older binary's `FutureSchema` check refuses a database
-  this journal has touched rather than silently serving without reconciling or
-  surfacing rows it does not know about. Both `open` (fresh files, via the
-  unconditional DDL) and `open_existing` (used by the CLI, `health.rs:43`, via
-  the additive migration when the on-disk revision is older) create the table
-  before returning. A raw connection that bypasses both open paths (a
-  read-only sampler) must still treat a missing table as zero rows: a
-  database that never journaled has no orphans, so this is an accurate
-  report, not a fail-open of the invariant.
-- No data migration: there are no historical intents. Existing receipts are
-  unaffected.
-- Staged rollout via `DispatchIntentJournalMode`. Ship defaulting to `Off` in the
-  first release to de-risk latency, enable `SideEffecting` in the second once soak
-  data is in hand, and make `SideEffecting` the compiled default in the third. The
-  money path (F70) can be gated independently: enable intents for `Monetary` first,
-  since that is the highest-consequence class.
-- Operators enable the mode without a code change through the `dispatch_intent_journal`
-  key: `receipts.dispatch_intent_journal` in a `chio.yaml`-configured deployment
-  (`crates/platform/chio-config/src/schema.rs`), or `kernel.dispatch_intent_journal`
-  in a policy-file-configured `chio-cli` deployment
-  (`crates/platform/chio-control-plane/src/policy/types.rs`). Both accept `"off"`,
-  `"side_effecting"`, or `"all"`; an absent key keeps `Off` regardless of the
-  enum's own compiled default, and an unrecognized value rejects at config load
-  time rather than silently falling back to a default.
-- Health `healthy` tightening (dead-letter rows flip unhealthy) is behavior-visible
-  to operators; document it in the release notes so a newly surfaced orphan is read
-  as "recovery working", not "new fault".
-
-## Test and verification plan
-
-- Unit: intent insert collision on duplicate `request_id` fails closed; consume
-  DELETE with mismatched `parameter_hash` aborts the batch and rolls back the receipt
-  insert; read-only class writes no row.
-- Property: for a random interleaving of appends and intents in one batch, after
-  `commit_receipt_batch` every consumed intent is gone and every receipt is present,
-  and no orphan is created for a committed receipt (the `receipt XOR open_intent`
-  invariant).
-- Loom: model the actor channel with concurrent `Intent` and `Append` (consume)
-  commands plus a `Flush`, asserting no lost or double-consumed intent and correct
-  `inflight` accounting, extending the existing writer-counter reasoning at
-  `receipt_store.rs:168-199`.
-- Crash/chaos (load-chaos program): SIGKILL the kernel at three injection points
-  (after prepaid authorize at `async_evaluation_core.rs:469`, after tool dispatch at
-  525-527, and mid-batch inside `append_receipt_batch`), restart, run
-  `reconcile_dispatch_intents`, and assert every killed request resolves to either a
-  durable receipt or a dead-letter incident, never silence. This is the specific test
-  that proves the change: `intent_journal_crash_reconciles_every_effect`.
-- Soak: sustained side-effecting load with periodic kills; assert
-  `open_dispatch_intents` returns to zero after each reconciliation and TTFRH for
-  read-only calls is unchanged within noise.
-- Formal-methods tie-in: the `receipt XOR open_intent` invariant is stated as a state
-  predicate for the receipt-durability model in the formal-methods plan; the loom and
-  property tests are its executable witnesses.
+- Unit: namespace and operation identity are canonical; duplicate equal replay is
+  idempotent; conflicting replay rejects before participant mutation.
+- State machine: every illegal transition, stale version, and stale lease epoch
+  rejects. `DispatchCommitted` cannot compensate invocation quota. Governed
+  mutation recovery queries the exact signed participant result: applied work is
+  never resubmitted, permanently-not-applied work binds its typed terminal result,
+  and unresolved `MutationReady`/`MutationSubmitted` remains pending rather than
+  guessing.
+- Projection: fail each local projection step and assert all rows roll back. A
+  drained observer row is not recreated by terminal replay.
+- Crash matrix: kill before and after every participant call, operation update,
+  tool return, durable outcome blob/row, outcome resolution, settle-action write,
+  post-return evaluation start/result/finalization, rail call, and terminal
+  projection commit. Stateful guard ambiguity without authenticated lookup freezes
+  rather than rerunning against current state.
+- Regression: `crash_after_tool_before_settling_never_releases_hold` leaves an
+  outcome-unknown incident or resumes a queried outcome.
+- Replay: `completed_request_id_remains_non_replayable` covers byte-identical and
+  conflicting requests even though the generic receipt lacks `request_id`.
+- Path parity: top-level and nested evaluation produce the same operation history
+  and recovery behavior.
+- Ownership: privileged provision and partial-provision failures, relative/absolute,
+  symlink, hardlink, rename and copied-same-UUID mutable opens yield one owner;
+  lock replacement fails; stale or cross-database fences cannot mutate receipt,
+  budget/payment, obligation, outcome or operation rows; read-only inspection
+  cannot start workers.
+- Transport status: provider positives and wrong operation/attempt/identity/epoch/
+  fence negatives; completed refs require authenticated fetch and local raw-outcome
+  persistence; bare/unavailable/mismatched refs and provider absence always take
+  incident-only recovery.
+- Provider execution fence: race local stage against external acceptance and
+  cancellation, then race executor claim against cancellation. Only the winner of
+  the current external CAS may execute. Kill after the effect but before terminal
+  outcome persistence and completion CAS; absent authenticated tool-side status
+  or qualified same-key idempotent invocation, recovery remains unknown and does
+  not rerun.
+- Mode: membership is monotonic and production defaults to `SideEffecting`.
+- WS3: lost acceptance acknowledgement is queried; unresolved handoff never enters
+  the provider SLA denominator and blocks corpus completeness. Missing delivery
+  acknowledgement freezes the hold unless a receiver-signed, cancellation-fenced
+  nonacceptance proof verifies.
+- Soak: sustained side-effecting and monetary load with periodic kills leaves no
+  request without exactly one live or terminal operation.
 
 ## Acceptance criteria
 
-- Killing the kernel at any of the three injection points above and restarting yields,
-  for every in-flight side-effecting/monetary request, exactly one of: a durable
-  receipt, or a dead-letter incident with a recorded `request_id`. Never neither.
-- After reconciliation of a clean run, `open_dispatch_intents == 0` and
-  `dead_letter_dispatch_intents == 0`, and `receipt_store_health().healthy == true`.
-- A monetary orphan produces an incident that names the `rail` and, when available,
-  the `rail_authorization_id`, so an operator can reconcile against the rail without
-  guessing the reference.
-- Read-only calls write no intent row and show no measurable TTFRH regression.
-- An intent-write failure denies before dispatch (no effect, no rail call), surfaced
-  as `KernelError::DispatchIntentPersistence`.
+- Every configured effecting request has a durable `Prepared` operation before
+  participant mutation and `DispatchCommitted` before tool handoff.
+- After restart, each operation resolves to `Completed`,
+  `CompensatedBeforeDispatch`, `NotAcceptedAfterDispatchCommit`,
+  `OutcomeUnknownAfterDispatch`, `EconomicMutationApplied`,
+  `EconomicMutationNotApplied`, or an explicitly pending participant state.
+  Pending governed mutations are exactly `MutationReady` or `MutationSubmitted`
+  with participant identity, request digest, expected resource version/fence and
+  typed result lookup truth retained. No effect is absent from both operation and
+  receipt-or-incident-or-terminal-result truth.
+- A completed request cannot dispatch again after receipt success or compaction.
+- The post-tool, pre-settle crash window never releases a hold without terminal
+  outcome or authenticated non-acceptance proof.
+- Receipt, terminal operation, and all required local sidecars are visible
+  together or not at all.
+- Top-level and nested-flow tool calls cross the same durable boundary.
+- One SQLite file has at most one mutable serving owner and stale epochs are
+  fenced.
+- Configuration contains all four modes and the code, migration, roadmap, and
+  rollout use the same default and ordering.
 
 ## Risks and alternatives
 
-- Added latency on effecting paths. Each side-effecting or monetary call pays one
-  extra durable round-trip before dispatch. It group-commits with other intents
-  (same 64/500us batching) and is dwarfed by the external tool or rail call that
-  follows, so relative overhead is small; read-only calls pay nothing. Mitigation:
-  the class gate and `DispatchIntentJournalMode` bound the cost precisely, and the
-  soak measures it before `SideEffecting` becomes default.
-- Write amplification: two extra statements per effecting call (one insert
-  pre-dispatch, one delete at consume). Both are keyed on `request_id` and ride
-  existing transactions; measured impact is expected to be minor and is a soak gate.
-- Reconciler correctness: a wrong `SafeToReplay` decision could re-run a side effect.
-  Mitigation: the default is `DeadLetter`; `SafeToReplay` requires the reconciler to
-  prove idempotence, and monetary calls never replay blindly (rail query only).
-- Alternative considered and rejected: a per-kernel append-only WAL file separate
-  from SQLite. Rejected because ADR-0013 already commits to a WAL-fsync-before-allow
-  model inside the store, and a second write-ahead surface would duplicate durability
-  machinery, complicate recovery ordering, and not give the same-transaction consume
-  guarantee that a shared SQLite transaction gives for free.
-- Alternative considered and rejected: making the intent a real signed receipt kind.
-  Rejected because it would inflate the Merkle-committed log with speculative,
-  frequently-consumed rows and disturb ADR-0008's count-based checkpoint sizing; the
-  intent is operational state, not attestation.
-- Alternative considered and rejected: blind replay of orphaned intents on boot.
-  Rejected because side effects are not generally idempotent; replay could double a
-  payment. Dead-letter-by-default is the fail-closed choice.
+- Every side-effecting call adds durable operation and transition writes. The
+  default excludes explicitly read-only calls, and group commit bounds writer
+  overhead without weakening pre-handoff durability.
+- Mutating participant idempotency is required. An unqueryable transport may use
+  only the explicit incident-only ambiguity contract; it cannot claim restart
+  status, WS3 delivery, redispatch, or automatic hold release.
+- OS locking is local-process exclusion, not distributed consensus. Remote HA
+  deployments require a linearizable operation store with leader fencing.
+- A single database for budget and receipt state was considered. It can simplify
+  a local deployment but is a breaking configuration migration and does not solve
+  external rail atomicity. The persisted saga is the required portable contract.
+- Keeping a separate dispatch-intent row was rejected because it duplicates the
+  operation coordinator and invites divergent recovery.
+- Deleting an intent after receipt was rejected because the generic receipt does
+  not retain request replay identity.
 
 ## Rollout and sequencing
 
-1. RFC-0006 lands first: it bounds the receipt-store append cost and fixes
-   single-writer discipline for the store this journal rides on (RFC-0006 sequences
-   itself ahead of this RFC for exactly that reason). Boot reconciliation and the
-   dead-letter incident record are self-contained in this RFC; alert routing for a
-   nonzero `dead_letter_dispatch_intents` count rides the RFC-0009 observability and
-   alerting wiring.
-2. This RFC (RFC-0003) lands next: schema, per-op dispatch-intent writer jobs, same-transaction
-   consume, kernel wiring, health fields, config defaulting to `Off`, and the
-   operator-facing `dispatch_intent_journal` config key (`receipts.dispatch_intent_journal`
-   in `chio.yaml`, `kernel.dispatch_intent_journal` in a `chio-cli` policy file) so a
-   file-configured deployment can flip the mode without a code change.
-3. Enable `Monetary` then `SideEffecting` via config after nightly kill-injection soak
-   is green; promote `SideEffecting` to compiled default.
-4. RFC-0013 extends the money path: it upgrades `rail_authorization_id` handling into
-   a full payment journal and adds the `PaymentAdapter` capture/release idempotency
-   contract keyed on `(authorization_id, request_id)`, enabling safe rail-side replay
-   during reconciliation. RFC-0003's `rail` / `rail_authorization_id` columns and the
-   `MonetaryReconciled` resolution are the durable substrate it builds on.
+1. Extend the protocol-primitives `AdmissionOperation` plan to every configured
+   monetary and side-effecting call.
+2. Land the operation store, composable receipt projection, terminal retention,
+   serving lock, and epoch fencing behind explicit pre-release configuration.
+3. Route both kernel evaluator paths through the shared coordinator.
+4. Soak `Monetary`, then `SideEffecting`; all crash, replay, projection, and owner
+   gates must be green.
+5. Release with `SideEffecting` as the compiled production default. `All` remains
+   an explicit option; `Off` remains unsafe-development-only.
+6. RFC-0013 registers its payment participant and recovery queries with this
+   coordinator. WS3 registers provider acceptance and eligibility participants.

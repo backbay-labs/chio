@@ -23,8 +23,8 @@ use chio_kernel::operator_report::{
     CHIO_OAUTH_REQUEST_TIME_TRANSACTION_CONTEXT_PARAMETER,
 };
 use chio_kernel::{
-    is_supported_dpop_schema, ChioOAuthAuthorizationProfile, DpopConfig, DpopNonceStore, DpopProof,
-    GovernedAuthorizationDetail, GovernedAuthorizationTransactionContext, KernelError,
+    is_supported_dpop_schema, ChioKernel, ChioOAuthAuthorizationProfile, DpopConfig, DpopNonceStore,
+    DpopProof, GovernedAuthorizationDetail, GovernedAuthorizationTransactionContext, KernelError,
     PeerCapabilities, RevocationStore, ToolServerConnection,
     CHIO_OAUTH_AUTHORIZATION_COMMERCE_DETAIL_TYPE,
     CHIO_OAUTH_AUTHORIZATION_METERED_BILLING_DETAIL_TYPE, CHIO_OAUTH_AUTHORIZATION_PROFILE_ID,
@@ -68,10 +68,14 @@ use chio_control_plane::trust_control::{
 use chio_control_plane::{
     authority_public_key_from_seed_file, build_kernel, configure_budget_store,
     configure_capability_authority, configure_receipt_store, configure_revocation_store,
+    durable_admission_sidecar_path,
     enterprise_federation::{
         EnterpriseProviderKind, EnterpriseProviderRecord, EnterpriseProviderRegistry,
     },
-    issue_default_capabilities, load_or_create_authority_keypair, rotate_authority_keypair,
+    issue_default_capabilities, load_or_create_authority_keypair,
+    open_durable_admission_runtime, require_control_token, rotate_authority_keypair,
+    validate_distinct_database_paths, validate_durable_admission_participant_paths,
+    DurableAdmissionRuntime,
 };
 
 const MCP_ENDPOINT_PATH: &str = "/mcp";
@@ -191,6 +195,7 @@ struct RemoteAppState {
 
 struct RemoteSessionFactory {
     config: RemoteServeHttpConfig,
+    durable_admission: Option<DurableAdmissionRuntime>,
     shared_upstream_owner: Arc<StdMutex<Option<Arc<SharedUpstreamOwner>>>>,
     lifecycle_policy: SessionLifecyclePolicy,
 }

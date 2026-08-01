@@ -16,7 +16,9 @@ use std::path::Path;
 
 use chio_kernel::{
     ApprovalDecision, ApprovalFilter, ApprovalOutcome, ApprovalRequest, ApprovalStore,
-    ApprovalStoreError, ResolvedApproval,
+    ApprovalStoreError, ResolvedApproval, ThresholdApprovalCollectorProposal,
+    ThresholdApprovalCollectorState, ThresholdApprovalCollectorStore,
+    ThresholdApprovalCollectorStoreError,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -31,7 +33,7 @@ pub struct SqliteApprovalStore {
 }
 
 /// Approval-store schema revision. Bump on every schema-affecting change.
-const APPROVAL_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 0;
+const APPROVAL_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 2;
 /// Stable key under which this store records its schema revision in the shared
 /// keyed metadata table. Distinct from the co-located receipt store's key so the
 /// two track their revisions independently in the one sidecar file.
@@ -127,11 +129,11 @@ impl SqliteApprovalStore {
     }
 
     fn run_migrations(&self, anchor_tables: &[&str]) -> Result<(), ApprovalStoreError> {
-        let conn = self
+        let mut conn = self
             .pool
             .get()
             .map_err(|e| ApprovalStoreError::Backend(format!("pool get: {e}")))?;
-        crate::check_schema_version(
+        let on_disk = crate::check_schema_version(
             &conn,
             APPROVAL_STORE_SCHEMA_KEY,
             APPROVAL_STORE_SUPPORTED_SCHEMA_VERSION,
@@ -144,6 +146,67 @@ impl SqliteApprovalStore {
             PRAGMA synchronous = FULL;
             PRAGMA busy_timeout = 5000;
             PRAGMA foreign_keys = ON;
+            "#,
+        )
+        .map_err(|e| ApprovalStoreError::Backend(format!("migration setup: {e}")))?;
+        if on_disk < 2 {
+            let votes_table_exists: bool = conn
+                .query_row(
+                    r#"
+                    SELECT EXISTS(
+                        SELECT 1 FROM sqlite_master
+                        WHERE type = 'table'
+                          AND name = 'chio_threshold_approval_collector_votes'
+                    )
+                    "#,
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|e| ApprovalStoreError::Backend(format!("migration probe: {e}")))?;
+            if votes_table_exists {
+                let transaction = conn
+                    .transaction()
+                    .map_err(|e| ApprovalStoreError::Backend(format!("migration begin: {e}")))?;
+                transaction
+                    .execute_batch(
+                        r#"
+                        ALTER TABLE chio_threshold_approval_collector_votes
+                            RENAME TO chio_threshold_approval_collector_votes_v1;
+                        CREATE TABLE chio_threshold_approval_collector_votes (
+                            proposal_id TEXT NOT NULL,
+                            token_id TEXT NOT NULL,
+                            approver_fingerprint TEXT NOT NULL,
+                            canonical_token_digest TEXT NOT NULL UNIQUE,
+                            token_json BLOB NOT NULL,
+                            received_at INTEGER NOT NULL,
+                            PRIMARY KEY (proposal_id, token_id),
+                            UNIQUE (proposal_id, approver_fingerprint),
+                            UNIQUE (proposal_id, canonical_token_digest),
+                            FOREIGN KEY (proposal_id)
+                                REFERENCES chio_threshold_approval_collectors(proposal_id)
+                        );
+                        INSERT INTO chio_threshold_approval_collector_votes (
+                            proposal_id, token_id, approver_fingerprint,
+                            canonical_token_digest, token_json, received_at
+                        )
+                        SELECT proposal_id, token_id, approver_fingerprint,
+                               canonical_token_digest, token_json, received_at
+                        FROM chio_threshold_approval_collector_votes_v1;
+                        DROP TABLE chio_threshold_approval_collector_votes_v1;
+                        "#,
+                    )
+                    .map_err(|e| {
+                        ApprovalStoreError::Backend(format!(
+                            "threshold vote uniqueness migration: {e}"
+                        ))
+                    })?;
+                transaction
+                    .commit()
+                    .map_err(|e| ApprovalStoreError::Backend(format!("migration commit: {e}")))?;
+            }
+        }
+        conn.execute_batch(
+            r#"
 
             CREATE TABLE IF NOT EXISTS chio_hitl_pending (
                 approval_id TEXT PRIMARY KEY,
@@ -179,6 +242,45 @@ impl SqliteApprovalStore {
                 consumed_at INTEGER NOT NULL,
                 PRIMARY KEY (token_id, parameter_hash)
             );
+
+            CREATE TABLE IF NOT EXISTS chio_threshold_approval_collectors (
+                proposal_id TEXT PRIMARY KEY,
+                request_id TEXT NOT NULL,
+                governed_intent_hash TEXT NOT NULL,
+                subject_fingerprint TEXT NOT NULL,
+                authorizing_capability_digest TEXT NOT NULL,
+                policy_hash TEXT NOT NULL,
+                threshold INTEGER NOT NULL CHECK (threshold > 0),
+                eligible_set_digest TEXT NOT NULL,
+                proposal_created_at INTEGER NOT NULL,
+                proposal_deadline INTEGER NOT NULL,
+                submitter_fingerprint TEXT,
+                require_submitter_separation INTEGER NOT NULL CHECK (
+                    require_submitter_separation IN (0, 1)
+                ),
+                state TEXT NOT NULL CHECK (
+                    state IN ('collecting', 'ready', 'delivered', 'cancelled')
+                ),
+                version INTEGER NOT NULL CHECK (version >= 0),
+                updated_at INTEGER NOT NULL,
+                proposal_json BLOB NOT NULL,
+                requirement_json BLOB NOT NULL,
+                record_json BLOB NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS chio_threshold_approval_collector_votes (
+                proposal_id TEXT NOT NULL,
+                token_id TEXT NOT NULL,
+                approver_fingerprint TEXT NOT NULL,
+                canonical_token_digest TEXT NOT NULL UNIQUE,
+                token_json BLOB NOT NULL,
+                received_at INTEGER NOT NULL,
+                PRIMARY KEY (proposal_id, token_id),
+                UNIQUE (proposal_id, approver_fingerprint),
+                UNIQUE (proposal_id, canonical_token_digest),
+                FOREIGN KEY (proposal_id)
+                    REFERENCES chio_threshold_approval_collectors(proposal_id)
+            );
             "#,
         )
         .map_err(|e| ApprovalStoreError::Backend(format!("migration: {e}")))?;
@@ -190,6 +292,33 @@ impl SqliteApprovalStore {
         .map_err(|error| ApprovalStoreError::Backend(error.to_string()))?;
         Ok(())
     }
+}
+
+fn collector_state_name(state: ThresholdApprovalCollectorState) -> &'static str {
+    match state {
+        ThresholdApprovalCollectorState::Collecting => "collecting",
+        ThresholdApprovalCollectorState::Ready => "ready",
+        ThresholdApprovalCollectorState::Delivered => "delivered",
+        ThresholdApprovalCollectorState::Cancelled => "cancelled",
+    }
+}
+
+fn collector_error(error: impl std::fmt::Display) -> ThresholdApprovalCollectorStoreError {
+    ThresholdApprovalCollectorStoreError::Backend(error.to_string())
+}
+
+fn encode_collector<T: serde::Serialize>(
+    value: &T,
+) -> Result<Vec<u8>, ThresholdApprovalCollectorStoreError> {
+    chio_core::canonical::canonical_json_bytes(value)
+        .map_err(|error| ThresholdApprovalCollectorStoreError::Serialization(error.to_string()))
+}
+
+fn decode_collector(
+    bytes: &[u8],
+) -> Result<ThresholdApprovalCollectorProposal, ThresholdApprovalCollectorStoreError> {
+    serde_json::from_slice(bytes)
+        .map_err(|error| ThresholdApprovalCollectorStoreError::Serialization(error.to_string()))
 }
 
 fn serialize_payload(request: &ApprovalRequest) -> Result<String, ApprovalStoreError> {
@@ -513,11 +642,305 @@ impl ApprovalStore for SqliteApprovalStore {
     }
 }
 
+impl ThresholdApprovalCollectorStore for SqliteApprovalStore {
+    fn create(
+        &self,
+        proposal: &ThresholdApprovalCollectorProposal,
+    ) -> Result<(), ThresholdApprovalCollectorStoreError> {
+        let proposal_json = encode_collector(&proposal.proposal)?;
+        let requirement_json = encode_collector(&proposal.requirement)?;
+        let record_json = encode_collector(proposal)?;
+        let conn = self.pool.get().map_err(collector_error)?;
+        let existing: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT record_json FROM chio_threshold_approval_collectors WHERE proposal_id = ?1",
+                [&proposal.proposal.body.proposal_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(collector_error)?;
+        if let Some(existing) = existing {
+            return if existing == record_json {
+                Ok(())
+            } else {
+                Err(ThresholdApprovalCollectorStoreError::Conflict(
+                    "proposal id already exists with different content".to_string(),
+                ))
+            };
+        }
+        let body = &proposal.proposal.body;
+        conn.execute(
+            r#"
+            INSERT INTO chio_threshold_approval_collectors (
+                proposal_id, request_id, governed_intent_hash, subject_fingerprint,
+                authorizing_capability_digest, policy_hash, threshold,
+                eligible_set_digest, proposal_created_at, proposal_deadline,
+                submitter_fingerprint, require_submitter_separation, state,
+                version, updated_at, proposal_json, requirement_json, record_json
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                ?14, ?15, ?16, ?17, ?18
+            )
+            "#,
+            params![
+                &body.proposal_id,
+                &body.request_id,
+                &body.governed_intent_hash,
+                body.subject.to_hex(),
+                &body.authorizing_capability_digest,
+                &body.policy_hash,
+                i64::from(body.threshold),
+                &body.eligible_set_digest,
+                i64::try_from(body.proposal_created_at).map_err(collector_error)?,
+                i64::try_from(body.proposal_deadline).map_err(collector_error)?,
+                proposal.submitter.as_ref().map(|key| key.to_hex()),
+                i64::from(proposal.require_submitter_separation),
+                collector_state_name(proposal.state),
+                i64::try_from(proposal.version).map_err(collector_error)?,
+                i64::try_from(proposal.updated_at).map_err(collector_error)?,
+                proposal_json,
+                requirement_json,
+                record_json,
+            ],
+        )
+        .map_err(collector_error)?;
+        Ok(())
+    }
+
+    fn get(
+        &self,
+        proposal_id: &str,
+    ) -> Result<Option<ThresholdApprovalCollectorProposal>, ThresholdApprovalCollectorStoreError>
+    {
+        let conn = self.pool.get().map_err(collector_error)?;
+        let record: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT record_json FROM chio_threshold_approval_collectors WHERE proposal_id = ?1",
+                [proposal_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(collector_error)?;
+        record.map(|bytes| decode_collector(&bytes)).transpose()
+    }
+
+    fn append_token(
+        &self,
+        proposal_id: &str,
+        expected_version: u64,
+        token: &chio_core::capability::governance::GovernedApprovalToken,
+        replaced_token_id: Option<&str>,
+        next_state: ThresholdApprovalCollectorState,
+        updated_at: u64,
+    ) -> Result<ThresholdApprovalCollectorProposal, ThresholdApprovalCollectorStoreError> {
+        let mut conn = self.pool.get().map_err(collector_error)?;
+        let transaction = conn.transaction().map_err(collector_error)?;
+        let bytes: Option<Vec<u8>> = transaction
+            .query_row(
+                "SELECT record_json FROM chio_threshold_approval_collectors WHERE proposal_id = ?1",
+                [proposal_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(collector_error)?;
+        let mut record = bytes
+            .as_deref()
+            .map(decode_collector)
+            .transpose()?
+            .ok_or_else(|| ThresholdApprovalCollectorStoreError::NotFound(proposal_id.into()))?;
+        if record.version != expected_version || record.state.is_terminal() {
+            return Err(ThresholdApprovalCollectorStoreError::Conflict(
+                "threshold approval proposal changed concurrently".to_string(),
+            ));
+        }
+        let previous_state = collector_state_name(record.state);
+        let token_digest = token.artifact_digest().map_err(|error| {
+            ThresholdApprovalCollectorStoreError::Serialization(error.to_string())
+        })?;
+        let token_json = encode_collector(token)?;
+        let write_result = if let Some(replaced_token_id) = replaced_token_id {
+            transaction.execute(
+                r#"
+                UPDATE chio_threshold_approval_collector_votes
+                SET token_id = ?1, approver_fingerprint = ?2,
+                    canonical_token_digest = ?3, token_json = ?4, received_at = ?5
+                WHERE proposal_id = ?6 AND token_id = ?7
+                "#,
+                params![
+                    &token.id,
+                    token.approver.to_hex(),
+                    token_digest,
+                    token_json,
+                    i64::try_from(updated_at).map_err(collector_error)?,
+                    proposal_id,
+                    replaced_token_id,
+                ],
+            )
+        } else {
+            transaction.execute(
+                r#"
+                INSERT INTO chio_threshold_approval_collector_votes (
+                    proposal_id, token_id, approver_fingerprint,
+                    canonical_token_digest, token_json, received_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
+                params![
+                    proposal_id,
+                    &token.id,
+                    token.approver.to_hex(),
+                    token_digest,
+                    token_json,
+                    i64::try_from(updated_at).map_err(collector_error)?,
+                ],
+            )
+        };
+        let changed_vote = write_result.map_err(|error| {
+            if matches!(
+                &error,
+                rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error {
+                        code: rusqlite::ErrorCode::ConstraintViolation,
+                        ..
+                    },
+                    _
+                )
+            ) {
+                ThresholdApprovalCollectorStoreError::Conflict(
+                    "threshold approval token id, digest, or signer is not unique".to_string(),
+                )
+            } else {
+                collector_error(error)
+            }
+        })?;
+        if changed_vote != 1 {
+            return Err(ThresholdApprovalCollectorStoreError::Conflict(
+                "threshold approval replacement token disappeared".to_string(),
+            ));
+        }
+        if let Some(replaced_token_id) = replaced_token_id {
+            let existing = record
+                .tokens
+                .iter_mut()
+                .find(|existing| existing.id == replaced_token_id)
+                .ok_or_else(|| {
+                    ThresholdApprovalCollectorStoreError::Conflict(
+                        "threshold approval replacement token disappeared".to_string(),
+                    )
+                })?;
+            *existing = token.clone();
+        } else {
+            record.tokens.push(token.clone());
+        }
+        record.state = next_state;
+        record.version = record.version.checked_add(1).ok_or_else(|| {
+            ThresholdApprovalCollectorStoreError::Conflict("proposal version overflowed".into())
+        })?;
+        record.updated_at = updated_at;
+        let record_json = encode_collector(&record)?;
+        let changed = transaction
+            .execute(
+                r#"
+                UPDATE chio_threshold_approval_collectors
+                SET state = ?1, version = ?2, updated_at = ?3, record_json = ?4
+                WHERE proposal_id = ?5 AND version = ?6 AND state = ?7
+                "#,
+                params![
+                    collector_state_name(next_state),
+                    i64::try_from(record.version).map_err(collector_error)?,
+                    i64::try_from(updated_at).map_err(collector_error)?,
+                    record_json,
+                    proposal_id,
+                    i64::try_from(expected_version).map_err(collector_error)?,
+                    previous_state,
+                ],
+            )
+            .map_err(collector_error)?;
+        if changed != 1 {
+            return Err(ThresholdApprovalCollectorStoreError::Conflict(
+                "threshold approval proposal changed concurrently".to_string(),
+            ));
+        }
+        transaction.commit().map_err(collector_error)?;
+        Ok(record)
+    }
+
+    fn transition(
+        &self,
+        proposal_id: &str,
+        expected_version: u64,
+        next_state: ThresholdApprovalCollectorState,
+        updated_at: u64,
+    ) -> Result<ThresholdApprovalCollectorProposal, ThresholdApprovalCollectorStoreError> {
+        let mut conn = self.pool.get().map_err(collector_error)?;
+        let transaction = conn.transaction().map_err(collector_error)?;
+        let bytes: Option<Vec<u8>> = transaction
+            .query_row(
+                "SELECT record_json FROM chio_threshold_approval_collectors WHERE proposal_id = ?1",
+                [proposal_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(collector_error)?;
+        let mut record = bytes
+            .as_deref()
+            .map(decode_collector)
+            .transpose()?
+            .ok_or_else(|| ThresholdApprovalCollectorStoreError::NotFound(proposal_id.into()))?;
+        if record.version != expected_version || record.state.is_terminal() {
+            return Err(ThresholdApprovalCollectorStoreError::Conflict(
+                "threshold approval proposal changed concurrently".to_string(),
+            ));
+        }
+        let previous_state = collector_state_name(record.state);
+        record.state = next_state;
+        record.version = record.version.checked_add(1).ok_or_else(|| {
+            ThresholdApprovalCollectorStoreError::Conflict("proposal version overflowed".into())
+        })?;
+        record.updated_at = updated_at;
+        let record_json = encode_collector(&record)?;
+        let changed = transaction
+            .execute(
+                r#"
+                UPDATE chio_threshold_approval_collectors
+                SET state = ?1, version = ?2, updated_at = ?3, record_json = ?4
+                WHERE proposal_id = ?5 AND version = ?6 AND state = ?7
+                "#,
+                params![
+                    collector_state_name(next_state),
+                    i64::try_from(record.version).map_err(collector_error)?,
+                    i64::try_from(updated_at).map_err(collector_error)?,
+                    record_json,
+                    proposal_id,
+                    i64::try_from(expected_version).map_err(collector_error)?,
+                    previous_state,
+                ],
+            )
+            .map_err(collector_error)?;
+        if changed != 1 {
+            return Err(ThresholdApprovalCollectorStoreError::Conflict(
+                "threshold approval proposal changed concurrently".to_string(),
+            ));
+        }
+        transaction.commit().map_err(collector_error)?;
+        Ok(record)
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use chio_core::crypto::Keypair;
+    use chio_core::capability::governance::{
+        GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
+        ThresholdApprovalProposal, ThresholdApprovalProposalBody,
+        THRESHOLD_APPROVAL_PROPOSAL_SCHEMA,
+    };
+    use chio_core::capability::threshold_approval::{
+        ThresholdApprovalRequirement, ThresholdApproverIdentity,
+    };
+    use chio_core::crypto::{sha256_hex, Keypair};
+    use chio_kernel::ThresholdApprovalCollector;
+    use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -673,5 +1096,279 @@ mod tests {
         let store = SqliteApprovalStore::open(&path)
             .expect("a genuine approval database must reopen standalone");
         assert!(store.get_pending("reopen-1").unwrap().is_some());
+    }
+
+    #[test]
+    fn open_migrates_v1_threshold_vote_ids_to_proposal_scope() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("approval-v1.sqlite3");
+        drop(SqliteApprovalStore::open(&path).unwrap());
+
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                r#"
+                ALTER TABLE chio_threshold_approval_collector_votes
+                    RENAME TO chio_threshold_approval_collector_votes_v2;
+                CREATE TABLE chio_threshold_approval_collector_votes (
+                    proposal_id TEXT NOT NULL,
+                    token_id TEXT NOT NULL UNIQUE,
+                    approver_fingerprint TEXT NOT NULL,
+                    canonical_token_digest TEXT NOT NULL UNIQUE,
+                    token_json BLOB NOT NULL,
+                    received_at INTEGER NOT NULL,
+                    UNIQUE (proposal_id, approver_fingerprint),
+                    UNIQUE (proposal_id, canonical_token_digest),
+                    FOREIGN KEY (proposal_id)
+                        REFERENCES chio_threshold_approval_collectors(proposal_id)
+                );
+                DROP TABLE chio_threshold_approval_collector_votes_v2;
+                INSERT INTO chio_threshold_approval_collectors (
+                    proposal_id, request_id, governed_intent_hash,
+                    subject_fingerprint, authorizing_capability_digest,
+                    policy_hash, threshold, eligible_set_digest,
+                    proposal_created_at, proposal_deadline, submitter_fingerprint,
+                    require_submitter_separation, state, version, updated_at,
+                    proposal_json, requirement_json, record_json
+                ) VALUES (
+                    'proposal-v1', 'request-v1', 'intent-v1', 'subject-v1',
+                    'capability-v1', 'policy-v1', 1, 'eligible-v1',
+                    100, 200, NULL, 0, 'collecting', 1, 100,
+                    X'01', X'01', X'01'
+                );
+                INSERT INTO chio_threshold_approval_collector_votes (
+                    proposal_id, token_id, approver_fingerprint,
+                    canonical_token_digest, token_json, received_at
+                ) VALUES (
+                    'proposal-v1', 'shared-token', 'approver-v1',
+                    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                    X'01', 101
+                );
+                UPDATE chio_store_schema_versions
+                SET version = 1
+                WHERE store_key = 'approval';
+                "#,
+            )
+            .unwrap();
+        drop(connection);
+
+        let store = SqliteApprovalStore::open(&path).unwrap();
+        let connection = store.pool.get().unwrap();
+        let primary_key_columns: String = connection
+            .query_row(
+                r#"
+                SELECT group_concat(name, ',')
+                FROM (
+                    SELECT name
+                    FROM pragma_table_info('chio_threshold_approval_collector_votes')
+                    WHERE pk > 0
+                    ORDER BY pk
+                )
+                "#,
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let retained_votes: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM chio_threshold_approval_collector_votes",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(primary_key_columns, "proposal_id,token_id");
+        assert_eq!(retained_votes, 1);
+    }
+
+    #[test]
+    fn threshold_collector_recovers_votes_and_persists_delivery_before_return() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("threshold.sqlite3");
+        let authority = Keypair::generate();
+        let alice = Keypair::generate();
+        let bob = Keypair::generate();
+        let subject = Keypair::generate();
+        let policy_hash = sha256_hex(b"threshold-policy");
+        let requirement = ThresholdApprovalRequirement::new(
+            policy_hash.clone(),
+            2,
+            vec![
+                ThresholdApproverIdentity {
+                    identifier: "alice".to_string(),
+                    public_key: alice.public_key(),
+                },
+                ThresholdApproverIdentity {
+                    identifier: "bob".to_string(),
+                    public_key: bob.public_key(),
+                },
+            ],
+            "directory-v1".to_string(),
+            100,
+        )
+        .unwrap();
+        let proposal = ThresholdApprovalProposal::sign(
+            ThresholdApprovalProposalBody {
+                schema: THRESHOLD_APPROVAL_PROPOSAL_SCHEMA.to_string(),
+                proposal_id: "durable-proposal".to_string(),
+                request_id: "durable-request".to_string(),
+                governed_intent_hash: sha256_hex(b"durable-intent"),
+                subject: subject.public_key(),
+                authorizing_capability_digest: sha256_hex(b"durable-capability"),
+                policy_hash: policy_hash.clone(),
+                threshold: 2,
+                eligible_set_digest: requirement.eligible_set_digest.clone(),
+                proposal_created_at: 100,
+                proposal_deadline: 200,
+                policy_authority: authority.public_key(),
+            },
+            &authority,
+        )
+        .unwrap();
+        let second_proposal = ThresholdApprovalProposal::sign(
+            ThresholdApprovalProposalBody {
+                schema: THRESHOLD_APPROVAL_PROPOSAL_SCHEMA.to_string(),
+                proposal_id: "durable-proposal-b".to_string(),
+                request_id: "durable-request-b".to_string(),
+                governed_intent_hash: sha256_hex(b"durable-intent-b"),
+                subject: subject.public_key(),
+                authorizing_capability_digest: sha256_hex(b"durable-capability-b"),
+                policy_hash: policy_hash.clone(),
+                threshold: 2,
+                eligible_set_digest: requirement.eligible_set_digest.clone(),
+                proposal_created_at: 100,
+                proposal_deadline: 200,
+                policy_authority: authority.public_key(),
+            },
+            &authority,
+        )
+        .unwrap();
+        let make_token = |proposal: &ThresholdApprovalProposal,
+                          approver: &Keypair,
+                          id: &str,
+                          expires_at: u64| {
+            GovernedApprovalToken::sign(
+                GovernedApprovalTokenBody {
+                    id: id.to_string(),
+                    approver: approver.public_key(),
+                    subject: proposal.body.subject.clone(),
+                    governed_intent_hash: proposal.body.governed_intent_hash.clone(),
+                    request_id: proposal.body.request_id.clone(),
+                    threshold_proposal_hash: Some(proposal.artifact_digest().unwrap()),
+                    issued_at: 101,
+                    expires_at,
+                    decision: GovernedApprovalDecision::Approved,
+                },
+                approver,
+            )
+            .unwrap()
+        };
+
+        {
+            let store = Arc::new(SqliteApprovalStore::open(&path).unwrap());
+            let collector = ThresholdApprovalCollector::new(
+                store,
+                policy_hash.clone(),
+                vec![authority.public_key()],
+            );
+            collector
+                .create_proposal(proposal.clone(), requirement.clone(), None, false, 100)
+                .unwrap();
+        }
+
+        {
+            let store = Arc::new(SqliteApprovalStore::open(&path).unwrap());
+            let collector = ThresholdApprovalCollector::new(
+                store,
+                policy_hash.clone(),
+                vec![authority.public_key()],
+            );
+            assert!(collector
+                .get_proposal("durable-proposal")
+                .unwrap()
+                .is_some());
+            collector
+                .submit_token(
+                    "durable-proposal",
+                    make_token(&proposal, &alice, "token-alice", 120),
+                    110,
+                )
+                .unwrap();
+        }
+
+        {
+            let store = Arc::new(SqliteApprovalStore::open(&path).unwrap());
+            let collector = ThresholdApprovalCollector::new(
+                store,
+                policy_hash.clone(),
+                vec![authority.public_key()],
+            );
+            let recovered = collector.get_proposal("durable-proposal").unwrap().unwrap();
+            assert_eq!(recovered.tokens.len(), 1);
+            let ready = collector
+                .submit_token(
+                    "durable-proposal",
+                    make_token(&proposal, &bob, "token-bob", 199),
+                    111,
+                )
+                .unwrap();
+            assert_eq!(ready.state, ThresholdApprovalCollectorState::Ready);
+        }
+
+        {
+            let store = Arc::new(SqliteApprovalStore::open(&path).unwrap());
+            let collector = ThresholdApprovalCollector::new(
+                store,
+                policy_hash.clone(),
+                vec![authority.public_key()],
+            );
+            let ready = collector.get_proposal("durable-proposal").unwrap().unwrap();
+            assert_eq!(ready.state, ThresholdApprovalCollectorState::Ready);
+            assert!(collector.deliver("durable-proposal", 150).is_err());
+            let refreshed = collector
+                .submit_token(
+                    "durable-proposal",
+                    make_token(&proposal, &alice, "token-alice-fresh", 199),
+                    150,
+                )
+                .unwrap();
+            assert_eq!(refreshed.state, ThresholdApprovalCollectorState::Ready);
+            assert_eq!(refreshed.tokens.len(), 2);
+            let delivered = collector.deliver("durable-proposal", 151).unwrap();
+            assert_eq!(delivered.tokens.len(), 2);
+            assert!(delivered
+                .tokens
+                .iter()
+                .any(|token| token.id == "token-alice-fresh"));
+        }
+
+        let store = Arc::new(SqliteApprovalStore::open(&path).unwrap());
+        let collector =
+            ThresholdApprovalCollector::new(store, policy_hash, vec![authority.public_key()]);
+        assert_eq!(
+            collector
+                .get_proposal("durable-proposal")
+                .unwrap()
+                .unwrap()
+                .state,
+            ThresholdApprovalCollectorState::Delivered
+        );
+        collector
+            .create_proposal(second_proposal.clone(), requirement, None, false, 100)
+            .unwrap();
+        collector
+            .submit_token(
+                "durable-proposal-b",
+                make_token(&second_proposal, &alice, "token-alice-fresh", 199),
+                110,
+            )
+            .unwrap();
+        let second_ready = collector
+            .submit_token(
+                "durable-proposal-b",
+                make_token(&second_proposal, &bob, "token-bob", 199),
+                111,
+            )
+            .unwrap();
+        assert_eq!(second_ready.state, ThresholdApprovalCollectorState::Ready);
     }
 }

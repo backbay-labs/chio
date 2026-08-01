@@ -160,6 +160,34 @@ lane = "pr"
 
 [[harness]]
 crate = "chio-kernel-core"
+harness = "verify_composite_quota_all_or_nothing"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_quota_maximum_immutable"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_family_binding_preservation"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_threshold_distinct_signers"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
 harness = "verify_delegate_no_widen"
 default_unwind = 8
 timeout_secs = 1800

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/clearing-output-manifest/v1",
+  "title": "Chio Clearing Output Manifest V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "roundCoreDigest",
+        "participantStatementRoot",
+        "participantStatementCount",
+        "settlementIntentRoot",
+        "settlementIntentCount",
+        "atomTransformationRoot",
+        "atomTransformationCount"
+      ],
+      "properties": {
+        "schema": { "const": "chio.clearing.output-manifest.v1" },
+        "roundCoreDigest": { "$ref": "#/$defs/digest" },
+        "participantStatementRoot": { "$ref": "#/$defs/digest" },
+        "participantStatementCount": { "$ref": "#/$defs/positiveInteger" },
+        "settlementIntentRoot": { "$ref": "#/$defs/digest" },
+        "settlementIntentCount": { "$ref": "#/$defs/nonNegativeInteger" },
+        "atomTransformationRoot": { "$ref": "#/$defs/digest" },
+        "atomTransformationCount": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "nonNegativeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 }
+  }
+}

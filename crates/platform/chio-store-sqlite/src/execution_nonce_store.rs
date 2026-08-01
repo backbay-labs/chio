@@ -225,6 +225,31 @@ impl ExecutionNonceStore for SqliteExecutionNonceStore {
         self.try_reserve(nonce_id, now, expires_at)
             .map_err(|e| KernelError::Internal(format!("sqlite execution nonce store: {e}")))
     }
+
+    fn is_consumed(&self, nonce_id: &str) -> Result<bool, KernelError> {
+        let now = now_secs();
+        let conn = self.pool.get().map_err(|error| {
+            KernelError::Internal(format!(
+                "sqlite execution nonce store pool acquire: {error}"
+            ))
+        })?;
+        conn.query_row(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM chio_execution_nonces
+                WHERE nonce_id = ?1 AND expires_at > ?2
+            )
+            "#,
+            params![nonce_id, now],
+            |row| row.get(0),
+        )
+        .map_err(|error| {
+            KernelError::Internal(format!(
+                "sqlite execution nonce store consumed lookup: {error}"
+            ))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -277,16 +302,27 @@ mod tests {
     #[test]
     fn persists_across_reopen() {
         let path = unique_db_path("chio-exec-nonce");
+        let now = now_secs();
+        let expires_at = now.saturating_add(120);
         {
             let store = SqliteExecutionNonceStore::open(&path).unwrap();
             assert!(store
-                .try_reserve("persistent-nonce", 1_000, 1_000_000_000)
+                .try_reserve("persistent-nonce", now, expires_at)
                 .unwrap());
+            assert!(store.is_consumed("persistent-nonce").unwrap());
         }
         let reopened = SqliteExecutionNonceStore::open(&path).unwrap();
+        assert!(reopened.is_consumed("persistent-nonce").unwrap());
         assert!(!reopened
-            .try_reserve("persistent-nonce", 1_001, 1_000_000_000)
+            .try_reserve("persistent-nonce", now, expires_at)
             .unwrap());
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn consumed_lookup_ignores_expired_rows() {
+        let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
+        assert!(store.try_reserve("expired-nonce", 1_000, 1_100).unwrap());
+        assert!(!store.is_consumed("expired-nonce").unwrap());
     }
 }

@@ -1,13 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::time::Duration;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use chacha20poly1305::aead::rand_core::{OsRng, RngCore};
 use chio_core::canonical::{canonical_json_bytes, CanonicalBytes};
 use chio_core::capability::{scope::ChioScope, token::CapabilityToken};
 use chio_core::crypto::{sha256_hex, Keypair, Signature};
@@ -61,9 +60,9 @@ use chio_kernel::receipt_query::{
 };
 use chio_kernel::receipt_store::{ReceiptLineageStatementLink, ReceiptLineageVerification};
 use chio_kernel::{
-    AuthorizationReceiptConsumption, CapabilitySnapshot, CreditBondDisposition,
-    CreditBondLifecycleState, CreditBondListQuery, CreditBondListReport, CreditBondListSummary,
-    CreditBondRow, CreditFacilityDisposition, CreditFacilityLifecycleState,
+    AtomicReceiptProjection, AuthorizationReceiptConsumption, CapabilitySnapshot,
+    CreditBondDisposition, CreditBondLifecycleState, CreditBondListQuery, CreditBondListReport,
+    CreditBondListSummary, CreditBondRow, CreditFacilityDisposition, CreditFacilityLifecycleState,
     CreditFacilityListQuery, CreditFacilityListReport, CreditFacilityListSummary,
     CreditFacilityRow, CreditLossLifecycleEventKind, CreditLossLifecycleListQuery,
     CreditLossLifecycleListReport, CreditLossLifecycleListSummary, CreditLossLifecycleRow,
@@ -76,26 +75,29 @@ use chio_kernel::{
     LiabilityMarketWorkflowSummary, LiabilityProviderLifecycleState, LiabilityProviderListQuery,
     LiabilityProviderListReport, LiabilityProviderListSummary, LiabilityProviderResolutionQuery,
     LiabilityProviderResolutionReport, LiabilityProviderRow, LiabilityQuoteDisposition,
-    ReceiptCheckpointCreateReport, ReceiptCheckpointRange, ReceiptCheckpointStatusReport,
-    ReceiptFlushReport, ReceiptStore, ReceiptStoreError, ReceiptStoreHealthReport,
-    ReceiptWalCheckpointReport, ReceiptWriterCounters, RetentionConfig, SignedCreditBond,
-    SignedCreditFacility, SignedCreditLossLifecycle, SignedLiabilityAutoBindDecision,
-    SignedLiabilityBoundCoverage, SignedLiabilityClaimAdjudication, SignedLiabilityClaimDispute,
-    SignedLiabilityClaimPackage, SignedLiabilityClaimPayoutInstruction,
-    SignedLiabilityClaimPayoutReceipt, SignedLiabilityClaimResponse,
-    SignedLiabilityClaimSettlementInstruction, SignedLiabilityClaimSettlementReceipt,
-    SignedLiabilityPlacement, SignedLiabilityPricingAuthority, SignedLiabilityProvider,
-    SignedLiabilityQuoteRequest, SignedLiabilityQuoteResponse, SignedUnderwritingDecision,
-    StoredChildReceipt, StoredToolReceipt, UnderwritingAppealCreateRequest,
-    UnderwritingAppealRecord, UnderwritingAppealResolution, UnderwritingAppealResolveRequest,
-    UnderwritingAppealStatus, UnderwritingDecisionLifecycleState, UnderwritingDecisionListReport,
+    PendingSettlementObservation, ReceiptCheckpointCreateReport, ReceiptCheckpointRange,
+    ReceiptCheckpointStatusReport, ReceiptFlushReport, ReceiptStore, ReceiptStoreError,
+    ReceiptStoreHealthReport, ReceiptWalCheckpointReport, ReceiptWriterCounters, RetentionConfig,
+    SignedCreditBond, SignedCreditFacility, SignedCreditLossLifecycle,
+    SignedLiabilityAutoBindDecision, SignedLiabilityBoundCoverage,
+    SignedLiabilityClaimAdjudication, SignedLiabilityClaimDispute, SignedLiabilityClaimPackage,
+    SignedLiabilityClaimPayoutInstruction, SignedLiabilityClaimPayoutReceipt,
+    SignedLiabilityClaimResponse, SignedLiabilityClaimSettlementInstruction,
+    SignedLiabilityClaimSettlementReceipt, SignedLiabilityPlacement,
+    SignedLiabilityPricingAuthority, SignedLiabilityProvider, SignedLiabilityQuoteRequest,
+    SignedLiabilityQuoteResponse, SignedUnderwritingDecision, StoredChildReceipt,
+    StoredToolReceipt, UnderwritingAppealCreateRequest, UnderwritingAppealRecord,
+    UnderwritingAppealResolution, UnderwritingAppealResolveRequest, UnderwritingAppealStatus,
+    UnderwritingDecisionLifecycleState, UnderwritingDecisionListReport,
     UnderwritingDecisionOutcome, UnderwritingDecisionQuery, UnderwritingDecisionRow,
     UnderwritingDecisionSummary, CREDIT_BOND_LIST_REPORT_SCHEMA,
     CREDIT_FACILITY_LIST_REPORT_SCHEMA, CREDIT_LOSS_LIFECYCLE_LIST_REPORT_SCHEMA,
     LIABILITY_CLAIM_WORKFLOW_REPORT_SCHEMA, LIABILITY_MARKET_WORKFLOW_REPORT_SCHEMA,
     LIABILITY_PROVIDER_LIST_REPORT_SCHEMA, LIABILITY_PROVIDER_RESOLUTION_REPORT_SCHEMA,
 };
-use chio_supervisor::{HealthLevel, SupervisedOutcome, SupervisedThread, SupervisorConfig};
+use chio_supervisor::{
+    HealthFlag, HealthLevel, SupervisedOutcome, SupervisedThread, SupervisorConfig,
+};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -103,6 +105,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 pub struct SqliteReceiptStore {
     pub(crate) pool: Pool<SqliteConnectionManager>,
     receipt_commit_actor: ReceiptCommitActor,
+    settlement_store_binding: Option<chio_settle::SettlementStoreBinding>,
     /// Multi-tenant receipt isolation: when true, tenant-
     /// scoped queries exclude the pre-multitenant NULL-tagged set. When
     /// false, queries with `tenant_filter = Some(id)` return rows where
@@ -111,165 +114,6 @@ pub struct SqliteReceiptStore {
     pub(crate) strict_tenant_isolation: std::sync::atomic::AtomicBool,
     /// Staged-rollout flag: read-only after open.
     pub(crate) incremental_verification: bool,
-    /// Sidecar advisory locks coordinating sibling writer instances on the
-    /// database file. `None` only for an in-memory database, which has no
-    /// on-disk file for siblings to coordinate on.
-    writer_lifetime_lock: Option<WriterLifetimeLock>,
-    /// Fresh per-open identity stamped on every dispatch intent this
-    /// instance journals. Reconciliation skips rows carrying this token, so
-    /// the pass can run while serving without ever claiming this instance's
-    /// own in-flight work; rows from any other open (a sibling, or this
-    /// process before a restart) are foreign and claimable once their owner
-    /// is provably gone.
-    pub(crate) instance_token: String,
-}
-
-/// Sidecar locks marking this instance as a live writer on a shared database
-/// file and coordinating dispatch-intent reconciliation with its siblings.
-pub(crate) struct WriterLifetimeLock {
-    /// Shared advisory lock held for the store's lifetime, released by the
-    /// OS when the process exits (cleanly or not): its continuous presence
-    /// is what proves this instance live to its siblings. Reconciliation
-    /// converts it to exclusive only to claim rows that name no probeable
-    /// owner, proving no sibling is live at all, and only ever under the
-    /// probe mutex, because flock conversions are not atomic and drop the
-    /// mark for an instant while they resolve.
-    pub(crate) mark: std::fs::File,
-    /// Path of the sidecar mutex serializing sibling reconcile passes.
-    /// Opened and locked per pass; closing the descriptor releases it, so
-    /// an aborted pass can never leave the mutex held.
-    pub(crate) probe_path: std::path::PathBuf,
-    /// Database path the sidecar lock files derive from, kept to derive the
-    /// owner-mark paths of foreign tokens found in the journal.
-    pub(crate) database_path: std::path::PathBuf,
-    /// This instance's own per-owner liveness mark, held (never read) so
-    /// sibling reconcile passes defer exactly this instance's rows while
-    /// it lives.
-    pub(crate) _owner_mark: OwnerLivenessMark,
-}
-
-/// Per-owner liveness mark: an exclusive advisory lock on a sidecar file
-/// derived from one instance's owner token, held from before its first row
-/// is journaled until the store closes, and released by the OS if the
-/// process dies first. Reconciliation judges a foreign row's owner live by
-/// try-locking THAT owner's file (never its own, and never converting a
-/// lock it holds), so a crashed owner's rows surface even while other
-/// siblings stay live. Liveness is the held lock, never the file's
-/// existence: the file itself is only hygiene.
-pub(crate) struct OwnerLivenessMark {
-    /// Held for the advisory lock alone; never read or written.
-    _lock: std::fs::File,
-    /// Path of the mark, kept to remove the file on a clean close.
-    path: std::path::PathBuf,
-}
-
-impl OwnerLivenessMark {
-    pub(crate) fn new(lock: std::fs::File, path: std::path::PathBuf) -> Self {
-        Self { _lock: lock, path }
-    }
-}
-
-impl Drop for OwnerLivenessMark {
-    fn drop(&mut self) {
-        // A clean close removes the file so store opens do not accumulate
-        // one sidecar file each. A crash skips this and the reconcile pass
-        // that claims the crashed owner's rows removes it instead; a
-        // leftover is inert either way, because probes take liveness from
-        // the lock, which dies with this descriptor. Tokens are never
-        // reused, so no prober can confuse a successor file with this
-        // owner.
-        let _ = std::fs::remove_file(&self.path);
-    }
-}
-
-/// Open a sidecar advisory-lock file, creating it if absent. Never
-/// truncates: the file carries no contents, only its locks.
-pub(crate) fn open_sidecar_lock_file(path: &std::path::Path) -> std::io::Result<std::fs::File> {
-    std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path)
-}
-
-/// One foreign owner's liveness as read by a reconcile pass.
-enum OwnerLiveness {
-    /// The owner's mark was acquired, so the owner is gone and its rows are
-    /// claimable. Holds the acquired lock (and the mark's path) until the
-    /// claim lands and the stale file is removed.
-    Gone {
-        mark: std::fs::File,
-        path: std::path::PathBuf,
-    },
-    /// The owner holds its mark: it is live and its rows defer to it.
-    Live,
-}
-
-/// Probe whether the foreign owner named by `token` still lives, by trying
-/// its per-owner mark non-blockingly. Runs only under the probe mutex, so
-/// no two passes ever race one owner's mark or its cleanup, and only on
-/// foreign tokens, so no pass ever touches a lock it itself holds.
-///
-/// The mark is opened with create: a live owner has held its lock since
-/// before it journaled its first row, so an acquirable lock means the owner
-/// is gone whether its file survived a crash or was already cleaned up.
-/// This trusts the sidecar directory exactly as every other advisory lock
-/// here does; deleting lock files out from under a live database breaks
-/// their coordination as a whole, not just this probe.
-fn probe_foreign_owner_liveness(
-    database_path: &std::path::Path,
-    token: &str,
-) -> Result<OwnerLiveness, ReceiptStoreError> {
-    let Some(path) = crate::sqlite_owner_mark_path(database_path, token) else {
-        // Unreachable for a database that coordinates on sidecar files at
-        // all; refuse the claim rather than guess.
-        return Ok(OwnerLiveness::Live);
-    };
-    let mark = open_sidecar_lock_file(&path)?;
-    match mark.try_lock() {
-        Ok(()) => Ok(OwnerLiveness::Gone { mark, path }),
-        Err(std::fs::TryLockError::WouldBlock) => Ok(OwnerLiveness::Live),
-        Err(std::fs::TryLockError::Error(error)) => Err(error.into()),
-    }
-}
-
-/// Scope guard for the exclusive section of a reconcile pass: restores the
-/// shared writer lifetime mark when dropped, so the downgrade happens on
-/// every exit path, including a reconciler panic unwinding through the
-/// pass. The mark descriptor outlives the pass (it lives on the store), so
-/// a mark left exclusive would block every sibling open and defer every
-/// sibling reconcile for the rest of this process's life. The normal path
-/// consumes the guard through `downgrade` so a failed downgrade surfaces
-/// as an error; the drop path downgrades best-effort because it only runs
-/// while an unwind or an early error return is already in flight.
-struct MarkDowngradeGuard<'lock> {
-    /// The exclusively converted mark, or `None` while the pass has not
-    /// converted it (or once it is downgraded).
-    mark: Option<&'lock std::fs::File>,
-}
-
-impl MarkDowngradeGuard<'_> {
-    /// Restore the shared mark now, surfacing the error the drop path
-    /// would have to swallow. A no-op when the mark was never converted.
-    fn downgrade(mut self) -> std::io::Result<()> {
-        match self.mark.take() {
-            Some(mark) => mark.lock_shared(),
-            None => Ok(()),
-        }
-    }
-}
-
-impl Drop for MarkDowngradeGuard<'_> {
-    fn drop(&mut self) {
-        if let Some(mark) = self.mark.take() {
-            // Cannot block: re-sharing waits only on a sibling's exclusive
-            // conversion, and conversions happen only under the probe
-            // mutex, which this pass still holds (the probe descriptor is
-            // declared before this guard, so it is dropped after it).
-            let _ = mark.lock_shared();
-        }
-    }
 }
 
 type FederatedShareSubjectCorpus = (
@@ -282,27 +126,55 @@ pub(crate) type SqliteStoreConnection = PooledConnection<SqliteConnectionManager
 const RECEIPT_GROUP_COMMIT_MAX_BATCH: usize = 64;
 const RECEIPT_GROUP_COMMIT_FLUSH_DELAY: Duration = Duration::from_micros(500);
 const RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY: usize = RECEIPT_GROUP_COMMIT_MAX_BATCH * 16;
+const RECEIPT_APPEND_TIMEOUT_MARKER: &str = "sqlite receipt commit append timed out";
+const RECEIPT_WRITE_TIMEOUT_MARKER: &str = "sqlite receipt commit write timed out";
 
-/// Bound on the dispatch-intent reconciliation resolution write: applying
-/// dead-letter, monetary-reconciled, and replay-release outcomes to the rows
-/// this pass claimed. This runs off the request path (boot attach, or the
-/// background recovery worker's cadence), so it can afford the same order of
-/// magnitude as the hot-path receipt append budget without a request ever
-/// observing it; the bound exists so a wedged-but-alive writer cannot hang
-/// the pass indefinitely while it holds the sidecar reconcile probe mutex
-/// (and, when the batch includes unattributed rows, the writer-lifetime mark
-/// converted to exclusive), which would otherwise block sibling `open()`s and
-/// make `DispatchIntentRecoveryHandle::drop` (which joins the worker thread)
-/// hang kernel shutdown with it.
-const DISPATCH_INTENT_RECONCILE_RESOLUTION_BUDGET: Duration = Duration::from_secs(5);
+fn is_receipt_writer_timeout_marker(message: &str) -> bool {
+    matches!(
+        message,
+        RECEIPT_APPEND_TIMEOUT_MARKER | RECEIPT_WRITE_TIMEOUT_MARKER
+    )
+}
 
 struct ReceiptCommitActor {
     sender: mpsc::SyncSender<ReceiptCommitCommand>,
     health: Arc<ReceiptCommitWriterHealth>,
-    /// Retains the writer thread's join handle and its supervised health flag. The
-    /// flag is TCB-critical: any writer death or degradation trips it, and the kernel
-    /// pre-dispatch gate reads it to fail closed before a tool executes.
-    writer: SupervisedThread,
+    /// Retains the supervised writer until the last store or writer handle drops.
+    /// The sender precedes this field so channel disconnect drains queued work
+    /// before the final owner joins the writer.
+    worker: Arc<ReceiptCommitWorker>,
+}
+
+struct ReceiptCommitWorker {
+    join: Option<SupervisedReceiptWriter>,
+}
+
+struct SupervisedReceiptWriter {
+    supervisor: Option<SupervisedThread>,
+    health: HealthFlag,
+    thread_id: Arc<OnceLock<thread::ThreadId>>,
+}
+
+impl ReceiptCommitWorker {
+    fn health(&self) -> Option<&HealthFlag> {
+        self.join.as_ref().map(|writer| &writer.health)
+    }
+
+    fn writer_dead_error(&self) -> ReceiptStoreError {
+        let Some(health) = self.health() else {
+            return ReceiptStoreError::WriterDead {
+                restarts: 0,
+                last_error: "receipt commit writer channel disconnected".to_string(),
+            };
+        };
+        let snapshot = health.snapshot();
+        ReceiptStoreError::WriterDead {
+            restarts: snapshot.restart_total,
+            last_error: snapshot
+                .reason
+                .unwrap_or_else(|| "receipt commit writer channel disconnected".to_string()),
+        }
+    }
 }
 
 struct ReceiptCommitWriterHealth {
@@ -311,6 +183,11 @@ struct ReceiptCommitWriterHealth {
     failed_total: AtomicU64,
     saturated_total: AtomicU64,
     inflight: AtomicU64,
+    /// Caller-timed-out commands that are still owned by the actor. This is
+    /// command-specific liveness state; terminal outcome counters remain owned
+    /// by the actor and are updated only when each command actually drains.
+    timed_out_inflight: AtomicU64,
+    timed_out_total: AtomicU64,
     /// Commands currently sitting in the commit-actor channel, not yet pulled
     /// for processing. Incremented before every send and decremented when the
     /// actor pulls a command, so it tracks true channel occupancy rather than
@@ -347,6 +224,7 @@ struct ReceiptCommitWriterHealth {
     // pre-dispatch gate, so a tool is never executed against a store that cannot
     // persist its receipt.
     head_poisoned: AtomicBool,
+    critical_write_poisoned: AtomicBool,
 }
 
 impl Default for ReceiptCommitWriterHealth {
@@ -357,6 +235,8 @@ impl Default for ReceiptCommitWriterHealth {
             failed_total: AtomicU64::new(0),
             saturated_total: AtomicU64::new(0),
             inflight: AtomicU64::new(0),
+            timed_out_inflight: AtomicU64::new(0),
+            timed_out_total: AtomicU64::new(0),
             queue_depth: AtomicU64::new(0),
             last_commit_unix_ms: AtomicU64::new(0),
             first_accept_unix_ms: AtomicU64::new(0),
@@ -373,6 +253,7 @@ impl Default for ReceiptCommitWriterHealth {
             // and run a tool before the first append could reject. The seed path
             // clears this the moment it succeeds.
             head_poisoned: AtomicBool::new(true),
+            critical_write_poisoned: AtomicBool::new(false),
         }
     }
 }
@@ -426,6 +307,29 @@ impl ReceiptCommitWriterHealth {
         atomic_saturating_sub(&self.queue_depth, 1);
     }
 
+    fn note_timeout(&self, message: &str) {
+        if let Ok(mut last_error) = self.last_error.lock() {
+            if last_error
+                .as_deref()
+                .is_none_or(is_receipt_writer_timeout_marker)
+            {
+                *last_error = Some(message.to_string());
+            }
+        }
+    }
+
+    fn clear_timeout_error_if_drained(&self) {
+        if let Ok(mut last_error) = self.last_error.lock() {
+            if self.timed_out_inflight.load(Ordering::SeqCst) == 0
+                && last_error
+                    .as_deref()
+                    .is_some_and(is_receipt_writer_timeout_marker)
+            {
+                *last_error = None;
+            }
+        }
+    }
+
     /// Publish whether the writer head is poisoned. Written only by the actor
     /// thread at every head-state transition (seed, post-write resync, reseed)
     /// and read by `writer_serving_closed` from other threads.
@@ -442,6 +346,84 @@ impl ReceiptCommitWriterHealth {
             .store(head.claim_log_count, Ordering::SeqCst);
         self.head_claim_log_max_seq
             .store(head.claim_log_max_seq, Ordering::SeqCst);
+    }
+}
+
+const WRITER_COMMAND_PENDING: u8 = 0;
+const WRITER_COMMAND_TIMED_OUT: u8 = 1;
+const WRITER_COMMAND_COMPLETED: u8 = 2;
+
+struct WriterCommandCompletion {
+    state: Arc<AtomicU8>,
+    health: Arc<ReceiptCommitWriterHealth>,
+}
+
+struct WriterCommandTimeout {
+    state: Arc<AtomicU8>,
+    health: Arc<ReceiptCommitWriterHealth>,
+}
+
+fn writer_command_tracker(
+    health: &Arc<ReceiptCommitWriterHealth>,
+) -> (WriterCommandCompletion, WriterCommandTimeout) {
+    let state = Arc::new(AtomicU8::new(WRITER_COMMAND_PENDING));
+    (
+        WriterCommandCompletion {
+            state: Arc::clone(&state),
+            health: Arc::clone(health),
+        },
+        WriterCommandTimeout {
+            state,
+            health: Arc::clone(health),
+        },
+    )
+}
+
+impl WriterCommandCompletion {
+    fn complete(&mut self) {
+        if self.state.swap(WRITER_COMMAND_COMPLETED, Ordering::SeqCst) == WRITER_COMMAND_TIMED_OUT {
+            atomic_saturating_sub(&self.health.timed_out_inflight, 1);
+            self.health.clear_timeout_error_if_drained();
+        }
+    }
+}
+
+impl Drop for WriterCommandCompletion {
+    fn drop(&mut self) {
+        self.complete();
+    }
+}
+
+impl WriterCommandTimeout {
+    /// Register a caller-visible timeout only while the actor still owns this
+    /// command. Increment-before-CAS prevents actor completion from racing past
+    /// the outstanding count; a completion that won first undoes the increment.
+    fn note_timeout(&self, message: &str) {
+        self.health.timed_out_total.fetch_add(1, Ordering::SeqCst);
+        self.health
+            .timed_out_inflight
+            .fetch_add(1, Ordering::SeqCst);
+        if self
+            .state
+            .compare_exchange(
+                WRITER_COMMAND_PENDING,
+                WRITER_COMMAND_TIMED_OUT,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
+            .is_err()
+        {
+            atomic_saturating_sub(&self.health.timed_out_inflight, 1);
+            self.health.clear_timeout_error_if_drained();
+            return;
+        }
+
+        self.health.note_timeout(message);
+        // Completion may have won immediately after the CAS and cleared the
+        // count before the descriptive marker was published.
+        if self.state.load(Ordering::SeqCst) == WRITER_COMMAND_COMPLETED {
+            self.health.clear_timeout_error_if_drained();
+        }
     }
 }
 
@@ -481,6 +463,10 @@ type WriterClosure = Box<
 
 enum ReceiptCommitCommand {
     Append(Box<ReceiptCommitRequest>),
+    AppendWithTimeout {
+        request: Box<ReceiptCommitRequest>,
+        completion: WriterCommandCompletion,
+    },
     Flush(mpsc::SyncSender<Result<(), ReceiptStoreError>>),
     /// Generic single-writer job. Runs on the writer connection after any
     /// in-flight append batch has committed. The closure receives `Err` when
@@ -495,6 +481,8 @@ enum ReceiptCommitCommand {
     Write {
         job: WriterClosure,
         appends_receipts: bool,
+        fail_closed_on_error: bool,
+        completion: WriterCommandCompletion,
     },
     /// Rerun the full verification on the writer connection and, on success,
     /// adopt the fresh head (clears a poisoned head). Audit-repair path.
@@ -502,6 +490,8 @@ enum ReceiptCommitCommand {
     /// Install (or replace) the background checkpoint signer on the actor
     /// thread. Delivered over the command channel: no shared state, no lock.
     InstallSigner(BackgroundCheckpointSigner),
+    #[cfg(test)]
+    RestartSupervisor,
     /// Run a checkpoint-aligned co-archive-and-delete on the writer connection.
     /// Serialized with appends by the single writer; drains any in-flight
     /// append batch first. Returns the number of tool-receipt rows archived.
@@ -521,11 +511,28 @@ enum ReceiptCommitCommand {
     },
 }
 
+impl ReceiptCommitCommand {
+    fn into_append(
+        self,
+    ) -> Result<(Box<ReceiptCommitRequest>, Option<WriterCommandCompletion>), Self> {
+        match self {
+            Self::Append(request) => Ok((request, None)),
+            Self::AppendWithTimeout {
+                request,
+                completion,
+            } => Ok((request, Some(completion))),
+            other => Err(other),
+        }
+    }
+}
+
 impl ReceiptCommitActor {
     fn start(pool: Pool<SqliteConnectionManager>, incremental_verification: bool) -> Self {
         let (sender, receiver) = receipt_commit_channel();
         let health = Arc::new(ReceiptCommitWriterHealth::default());
         let actor_health = Arc::clone(&health);
+        let thread_id = Arc::new(OnceLock::new());
+        let actor_thread_id = Arc::clone(&thread_id);
         let config = SupervisorConfig {
             name: "chio-receipt-writer",
             // Durable receipt persistence is on the money path: a degraded writer must
@@ -540,21 +547,28 @@ impl ReceiptCommitActor {
         // The loop body borrows the receiver so it survives a restart with the same
         // still-open channel; the caller's sender stays valid across restarts. The
         // pool and health handle are cheap to clone (an Arc bump each) per attempt.
-        let writer = SupervisedThread::spawn(config, move |_shutdown| {
+        let mut checkpoint_signer = None;
+        let supervisor = SupervisedThread::spawn(config, move |_shutdown| {
+            let _ = actor_thread_id.set(thread::current().id());
             receipt_commit_actor_loop(
                 pool.clone(),
                 &receiver,
                 Arc::clone(&actor_health),
                 incremental_verification,
-            );
-            // The loop returns only once every command sender has dropped: an orderly
-            // store shutdown, not a fault. Do not restart or trip the flag.
-            SupervisedOutcome::Shutdown
+                &mut checkpoint_signer,
+            )
         });
+        let supervisor_health = supervisor.health();
         Self {
             sender,
             health,
-            writer,
+            worker: Arc::new(ReceiptCommitWorker {
+                join: Some(SupervisedReceiptWriter {
+                    supervisor: Some(supervisor),
+                    health: supervisor_health,
+                    thread_id,
+                }),
+            }),
         }
     }
 
@@ -562,13 +576,7 @@ impl ReceiptCommitActor {
     /// supervisor's restart count and last recorded reason so the condition is
     /// inspectable rather than an opaque pool-error string.
     fn writer_dead_error(&self) -> ReceiptStoreError {
-        let snapshot = self.writer.health().snapshot();
-        ReceiptStoreError::WriterDead {
-            restarts: snapshot.restart_total,
-            last_error: snapshot
-                .reason
-                .unwrap_or_else(|| "receipt commit writer channel disconnected".to_string()),
-        }
+        self.worker.writer_dead_error()
     }
 
     /// True when durable persistence can no longer be trusted, so the kernel
@@ -577,14 +585,22 @@ impl ReceiptCommitActor {
     /// is alive but every append is rejected with a Conflict until an operator
     /// reseeds, which the thread flag alone cannot see.
     fn writer_serving_closed(&self) -> bool {
-        self.writer.health().is_serving_closed() || self.health.head_poisoned.load(Ordering::SeqCst)
+        self.worker
+            .health()
+            .is_none_or(HealthFlag::is_serving_closed)
+            || self.health.head_poisoned.load(Ordering::SeqCst)
     }
 
     /// The supervised writer's severity and cumulative restart count, for the
     /// health report.
     fn writer_health_summary(&self) -> (HealthLevel, u64) {
-        let snapshot = self.writer.health().snapshot();
-        (snapshot.level, snapshot.restart_total)
+        match self.worker.health() {
+            Some(health) => {
+                let snapshot = health.snapshot();
+                (snapshot.level, snapshot.restart_total)
+            }
+            None => (HealthLevel::Failed, 0),
+        }
     }
 
     fn append(
@@ -647,9 +663,9 @@ impl ReceiptCommitActor {
     /// drains the batch. Decrementing here too would double-count a slow-but-live
     /// append and, under concurrency, could drive `inflight` to zero while work
     /// is still queued, making writer health look drained before the actor
-    /// catches up. The timeout still fails this caller loudly and trips health
-    /// via `failed_total` / `last_error`; a genuinely wedged writer keeps
-    /// `inflight` elevated, which is the honest signal the liveness probe reads.
+    /// catches up. The timeout still fails this caller loudly and records this
+    /// specific command as timed out until the actor drains it. Terminal
+    /// committed/failed counters remain actor-owned and are updated exactly once.
     fn append_with_timeout(
         &self,
         receipt: ChioReceipt,
@@ -658,12 +674,16 @@ impl ReceiptCommitActor {
         timeout: Duration,
     ) -> Result<u64, ReceiptStoreError> {
         let (response, result) = mpsc::sync_channel(1);
-        let command = ReceiptCommitCommand::Append(Box::new(ReceiptCommitRequest {
-            receipt,
-            raw_json,
-            ensure_lineage,
-            response,
-        }));
+        let (completion, timeout_tracker) = writer_command_tracker(&self.health);
+        let command = ReceiptCommitCommand::AppendWithTimeout {
+            request: Box::new(ReceiptCommitRequest {
+                receipt,
+                raw_json,
+                ensure_lineage,
+                response,
+            }),
+            completion,
+        };
         let previous_inflight = self.health.inflight.fetch_add(1, Ordering::SeqCst);
         self.health.note_channel_send();
         match self.sender.try_send(command) {
@@ -687,10 +707,7 @@ impl ReceiptCommitActor {
         match result.recv_timeout(timeout) {
             Ok(result) => result,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                self.health.failed_total.fetch_add(1, Ordering::SeqCst);
-                if let Ok(mut last_error) = self.health.last_error.lock() {
-                    *last_error = Some("sqlite receipt commit append timed out".to_string());
-                }
+                timeout_tracker.note_timeout(RECEIPT_APPEND_TIMEOUT_MARKER);
                 Err(receipt_actor_append_timeout_error(timeout))
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -705,16 +722,16 @@ impl ReceiptCommitActor {
     }
 
     fn flush(&self) -> Result<(), ReceiptStoreError> {
-        let dead = self.writer_dead_error();
-        self.flush_with_receiver(|receiver| receiver.recv().map_err(|_| dead)?)
+        self.flush_with_receiver(|receiver| {
+            receiver.recv().map_err(|_| self.writer_dead_error())?
+        })
     }
 
     fn flush_with_timeout(&self, timeout: Duration) -> Result<(), ReceiptStoreError> {
-        let dead = self.writer_dead_error();
         self.flush_with_receiver(|receiver| match receiver.recv_timeout(timeout) {
             Ok(result) => result,
             Err(mpsc::RecvTimeoutError::Timeout) => Err(receipt_actor_flush_timeout_error(timeout)),
-            Err(mpsc::RecvTimeoutError::Disconnected) => Err(dead),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(self.writer_dead_error()),
         })
     }
 
@@ -740,6 +757,32 @@ impl ReceiptCommitActor {
             }
         }
         receive(result)
+    }
+
+    #[cfg(test)]
+    fn reseed_head(&self) -> Result<(), ReceiptStoreError> {
+        let (response, result) = mpsc::sync_channel(1);
+        match self
+            .sender
+            .try_send(ReceiptCommitCommand::ReseedHead(response))
+        {
+            Ok(()) => {}
+            Err(mpsc::TrySendError::Full(_)) => return Err(receipt_actor_saturated_error()),
+            Err(mpsc::TrySendError::Disconnected(_)) => return Err(self.writer_dead_error()),
+        }
+        result.recv().map_err(|_| self.writer_dead_error())?
+    }
+
+    #[cfg(test)]
+    fn install_signer(&self, signer: BackgroundCheckpointSigner) -> Result<(), ReceiptStoreError> {
+        match self
+            .sender
+            .try_send(ReceiptCommitCommand::InstallSigner(signer))
+        {
+            Ok(()) => Ok(()),
+            Err(mpsc::TrySendError::Full(_)) => Err(receipt_actor_saturated_error()),
+            Err(mpsc::TrySendError::Disconnected(_)) => Err(self.writer_dead_error()),
+        }
     }
 
     /// Wall-clock (unix-ms) at which the current unserviced backlog began, or
@@ -773,10 +816,29 @@ impl ReceiptCommitActor {
             failed_total: self.health.failed_total.load(Ordering::SeqCst),
             saturated_total: self.health.saturated_total.load(Ordering::SeqCst),
             inflight: self.health.inflight.load(Ordering::SeqCst),
+            timed_out_total: self.health.timed_out_total.load(Ordering::SeqCst),
+            timed_out_inflight: self.health.timed_out_inflight.load(Ordering::SeqCst),
             queue_depth: self.health.queue_depth.load(Ordering::SeqCst),
             last_commit_unix_ms,
             first_accept_unix_ms,
             last_error,
+        }
+    }
+}
+
+impl Drop for SupervisedReceiptWriter {
+    fn drop(&mut self) {
+        let Some(supervisor) = self.supervisor.take() else {
+            return;
+        };
+        if self.thread_id.get() == Some(&thread::current().id()) {
+            let _ = thread::Builder::new()
+                .name("chio-receipt-writer-reaper".to_string())
+                .spawn(move || {
+                    let _ = supervisor.join();
+                });
+        } else {
+            let _ = supervisor.join();
         }
     }
 }
@@ -788,9 +850,17 @@ impl ReceiptCommitActor {
 pub(crate) struct WriterHandle {
     sender: mpsc::SyncSender<ReceiptCommitCommand>,
     health: Arc<ReceiptCommitWriterHealth>,
+    worker: Arc<ReceiptCommitWorker>,
+    settlement_store_binding: Option<chio_settle::SettlementStoreBinding>,
 }
 
 impl WriterHandle {
+    pub(crate) const fn settlement_store_binding(
+        &self,
+    ) -> Option<chio_settle::SettlementStoreBinding> {
+        self.settlement_store_binding
+    }
+
     /// Run one write job on the single writer connection and return its
     /// typed result. Fail-closed on saturation or a dead writer. Use for
     /// metadata-only writes (capability, liability, underwriting, IOU,
@@ -800,7 +870,7 @@ impl WriterHandle {
         F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        self.run_write_kind(job, false)
+        self.run_write_kind(job, false, false)
     }
 
     /// Run one receipt-appending write job (child receipts,
@@ -812,7 +882,15 @@ impl WriterHandle {
         F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        self.run_write_kind(job, true)
+        self.run_write_kind(job, true, false)
+    }
+
+    fn run_critical_receipt_write<T, F>(&self, job: F) -> Result<T, ReceiptStoreError>
+    where
+        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        self.run_write_kind(job, true, true)
     }
 
     /// Bounded variant of [`run_write_receipt`]: identical up to the response
@@ -831,7 +909,22 @@ impl WriterHandle {
         F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        self.run_write_kind_with_timeout(job, true, timeout)
+        self.run_write_kind_with_timeout(job, true, false, timeout)
+    }
+
+    /// Bounded variant of a critical receipt write. Transaction failures retain
+    /// the critical poisoning semantics of [`run_critical_receipt_write`], while
+    /// the caller's response wait is capped at `timeout`.
+    fn run_critical_receipt_write_with_timeout<T, F>(
+        &self,
+        job: F,
+        timeout: Duration,
+    ) -> Result<T, ReceiptStoreError>
+    where
+        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        self.run_write_kind_with_timeout(job, true, true, timeout)
     }
 
     /// Bounded variant of [`run_write`]: a metadata-only write (capability
@@ -848,85 +941,26 @@ impl WriterHandle {
         F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        self.run_write_kind_with_timeout(job, false, timeout)
-    }
-
-    /// Bounded metadata write whose queued job must NOT take effect once the
-    /// caller has timed out. On expiry the shared `abandoned` marker is set
-    /// BEFORE reporting the timeout; a cooperating job (see
-    /// `dispatch_intent_insert_job_unless_abandoned`) rechecks the marker
-    /// inside its transaction and refuses to commit once marked. A job that
-    /// finished in the instant between the deadline expiring and the marker
-    /// landing already answered, so that answer is returned instead of a
-    /// timeout for a write that committed.
-    pub(crate) fn run_write_abandoning_on_timeout<T, F>(
-        &self,
-        job: F,
-        timeout: Duration,
-        abandoned: Arc<std::sync::atomic::AtomicBool>,
-    ) -> Result<T, ReceiptStoreError>
-    where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
-        T: Send + 'static,
-    {
-        let result = self.enqueue_write_job(job, false)?;
-        match result.recv_timeout(timeout) {
-            Ok(outcome) => outcome,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                abandoned.store(true, Ordering::SeqCst);
-                if let Ok(outcome) = result.try_recv() {
-                    return outcome;
-                }
-                self.health.failed_total.fetch_add(1, Ordering::SeqCst);
-                if let Ok(mut last_error) = self.health.last_error.lock() {
-                    *last_error = Some("sqlite receipt commit write timed out".to_string());
-                }
-                Err(receipt_actor_write_timeout_error(timeout))
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                atomic_saturating_sub(&self.health.inflight, 1);
-                self.health.failed_total.fetch_add(1, Ordering::SeqCst);
-                if let Ok(mut last_error) = self.health.last_error.lock() {
-                    *last_error = Some("sqlite receipt commit actor is unavailable".to_string());
-                }
-                Err(receipt_actor_unavailable_error())
-            }
-        }
-    }
-
-    /// Enqueue one metadata write job without waiting for its outcome. For
-    /// compensating work whose result the caller cannot act on anyway: the
-    /// job still runs in FIFO order on the single writer with full health
-    /// accounting, but the caller spends no wall-clock on its response. The
-    /// only error surfaced is a refused enqueue (saturated or dead writer).
-    pub(crate) fn run_write_detached<F>(&self, job: F) -> Result<(), ReceiptStoreError>
-    where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<(), ReceiptStoreError> + Send + 'static,
-    {
-        // Dropping the receiver detaches the response; the writer actor
-        // tolerates a gone caller and still reconciles committed/failed for
-        // the job when it drains.
-        self.enqueue_write_job(job, false).map(drop)
+        self.run_write_kind_with_timeout(job, false, false, timeout)
     }
 
     fn run_write_kind_with_timeout<T, F>(
         &self,
         job: F,
         appends_receipts: bool,
+        fail_closed_on_error: bool,
         timeout: Duration,
     ) -> Result<T, ReceiptStoreError>
     where
         F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        let result = self.enqueue_write_job(job, appends_receipts)?;
+        let (result, timeout_tracker) =
+            self.enqueue_write_job(job, appends_receipts, fail_closed_on_error)?;
         match result.recv_timeout(timeout) {
             Ok(outcome) => outcome,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                self.health.failed_total.fetch_add(1, Ordering::SeqCst);
-                if let Ok(mut last_error) = self.health.last_error.lock() {
-                    *last_error = Some("sqlite receipt commit write timed out".to_string());
-                }
+                timeout_tracker.note_timeout(RECEIPT_WRITE_TIMEOUT_MARKER);
                 Err(receipt_actor_write_timeout_error(timeout))
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -938,20 +972,24 @@ impl WriterHandle {
                 // writer with `inflight` compensated and `failed_total` matching
                 // `accepted_total` would sample as Healthy and admit a tool side
                 // effect before receipt persistence fails.
-                if let Ok(mut last_error) = self.health.last_error.lock() {
-                    *last_error = Some("sqlite receipt commit actor is unavailable".to_string());
-                }
-                Err(receipt_actor_unavailable_error())
+                self.health.note_writer_unavailable();
+                Err(self.worker.writer_dead_error())
             }
         }
     }
 
-    fn run_write_kind<T, F>(&self, job: F, appends_receipts: bool) -> Result<T, ReceiptStoreError>
+    fn run_write_kind<T, F>(
+        &self,
+        job: F,
+        appends_receipts: bool,
+        fail_closed_on_error: bool,
+    ) -> Result<T, ReceiptStoreError>
     where
         F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        let result = self.enqueue_write_job(job, appends_receipts)?;
+        let (result, _timeout_tracker) =
+            self.enqueue_write_job(job, appends_receipts, fail_closed_on_error)?;
         match result.recv() {
             Ok(outcome) => outcome,
             Err(_) => {
@@ -971,10 +1009,8 @@ impl WriterHandle {
                 self.health.failed_total.fetch_add(1, Ordering::SeqCst);
                 // Record the writer death so the next liveness sample reports the
                 // writer Dead rather than Healthy (see the bounded-write arm).
-                if let Ok(mut last_error) = self.health.last_error.lock() {
-                    *last_error = Some("sqlite receipt commit actor is unavailable".to_string());
-                }
-                Err(receipt_actor_unavailable_error())
+                self.health.note_writer_unavailable();
+                Err(self.worker.writer_dead_error())
             }
         }
     }
@@ -987,12 +1023,21 @@ impl WriterHandle {
         &self,
         job: F,
         appends_receipts: bool,
-    ) -> Result<mpsc::Receiver<Result<T, ReceiptStoreError>>, ReceiptStoreError>
+        fail_closed_on_error: bool,
+    ) -> Result<
+        (
+            mpsc::Receiver<Result<T, ReceiptStoreError>>,
+            WriterCommandTimeout,
+        ),
+        ReceiptStoreError,
+    >
     where
         F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
         let (response, result) = mpsc::sync_channel(1);
+        let (completion, timeout_tracker) = writer_command_tracker(&self.health);
+        let writer_health = Arc::clone(&self.health);
         let boxed: WriterClosure = Box::new(move |connection| {
             let outcome = match connection {
                 // Panic isolation: `job` is one of the many rerouted write
@@ -1021,6 +1066,17 @@ impl WriterHandle {
                         (Err(job_error), Err(_)) => Err(job_error),
                         (Ok(_), Err(resync_error)) => Err(resync_error),
                     };
+                    if fail_closed_on_error {
+                        if let Err(error) = &final_outcome {
+                            if let Ok(mut last_error) = writer_health.last_error.lock() {
+                                *last_error = Some(error.to_string());
+                            }
+                            writer_health
+                                .critical_write_poisoned
+                                .store(true, Ordering::SeqCst);
+                            writer_health.set_head_poisoned(true);
+                        }
+                    }
                     // Report the resync-adjusted outcome to the actor so it can
                     // reconcile committed/failed for this writer-routed job,
                     // then send the caller's result.
@@ -1039,6 +1095,8 @@ impl WriterHandle {
         match self.sender.try_send(ReceiptCommitCommand::Write {
             job: boxed,
             appends_receipts,
+            fail_closed_on_error,
+            completion,
         }) {
             Ok(()) => {
                 // Count writer-routed writes in health. A successful enqueue
@@ -1063,10 +1121,10 @@ impl WriterHandle {
                 atomic_saturating_sub(&self.health.inflight, 1);
                 self.health.note_channel_send_rejected();
                 self.health.note_writer_unavailable();
-                return Err(receipt_actor_unavailable_error());
+                return Err(self.worker.writer_dead_error());
             }
         }
-        Ok(result)
+        Ok((result, timeout_tracker))
     }
 }
 
@@ -1123,12 +1181,30 @@ fn poisoned_head_error(message: &str) -> ReceiptStoreError {
     ))
 }
 
+fn poison_head_from_writer_error(
+    head_state: &mut WriterHeadState,
+    health: &ReceiptCommitWriterHealth,
+) {
+    health.set_head_poisoned(true);
+    *head_state = WriterHeadState::Poisoned(critical_writer_error_message(health));
+}
+
+fn critical_writer_error_message(health: &ReceiptCommitWriterHealth) -> String {
+    health
+        .last_error
+        .lock()
+        .map(|error| error.clone())
+        .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
+        .unwrap_or_else(|| "critical receipt writer job failed".to_string())
+}
+
 fn receipt_commit_actor_loop(
     pool: Pool<SqliteConnectionManager>,
     receiver: &mpsc::Receiver<ReceiptCommitCommand>,
     health: Arc<ReceiptCommitWriterHealth>,
     incremental_verification: bool,
-) {
+    checkpoint_signer: &mut Option<BackgroundCheckpointSigner>,
+) -> SupervisedOutcome {
     let mut head_state = match pool
         .get()
         .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
@@ -1139,6 +1215,11 @@ fn receipt_commit_actor_loop(
                 seed_head_snapshot(&connection)
             }
         }) {
+        Ok(head) if health.critical_write_poisoned.load(Ordering::SeqCst) => {
+            health.store_head_snapshot(&head);
+            health.set_head_poisoned(true);
+            WriterHeadState::Poisoned(critical_writer_error_message(&health))
+        }
         Ok(head) => {
             health.store_head_snapshot(&head);
             // Seeding is authoritative: clear any poison a prior thread run (a
@@ -1156,15 +1237,15 @@ fn receipt_commit_actor_loop(
     };
 
     let mut pending_flush_error: Option<ReceiptStoreError> = None;
-    let mut checkpoint_signer: Option<BackgroundCheckpointSigner> = None;
     while let Ok(command) = receiver.recv() {
         // The command has left the channel; free its slot for the saturation
         // gate. Every command exits the channel through this recv or the batch
         // drain below, so both decrement exactly once per command.
         health.note_channel_dequeue();
-        match command {
-            ReceiptCommitCommand::Append(request) => {
+        match command.into_append() {
+            Ok((request, completion)) => {
                 let mut requests = vec![*request];
+                let mut completions: Vec<_> = completion.into_iter().collect();
                 let mut flushes = Vec::new();
                 let mut deferred: Option<ReceiptCommitCommand> = None;
                 while requests.len() < RECEIPT_GROUP_COMMIT_MAX_BATCH {
@@ -1173,18 +1254,23 @@ fn receipt_commit_actor_loop(
                         health.note_channel_dequeue();
                     }
                     match next {
-                        Ok(ReceiptCommitCommand::Append(request)) => requests.push(*request),
-                        Ok(ReceiptCommitCommand::Flush(response)) => {
-                            flushes.push(response);
-                            break;
-                        }
-                        Ok(other) => {
-                            // Non-append commands (Write, InstallSigner,
-                            // ReseedHead) execute strictly after the batch
-                            // they interrupted commits.
-                            deferred = Some(other);
-                            break;
-                        }
+                        Ok(command) => match command.into_append() {
+                            Ok((request, completion)) => {
+                                requests.push(*request);
+                                completions.extend(completion);
+                            }
+                            Err(ReceiptCommitCommand::Flush(response)) => {
+                                flushes.push(response);
+                                break;
+                            }
+                            Err(other) => {
+                                // Non-append commands (Write, InstallSigner,
+                                // ReseedHead) execute strictly after the batch
+                                // they interrupted commits.
+                                deferred = Some(other);
+                                break;
+                            }
+                        },
                         Err(mpsc::RecvTimeoutError::Timeout) => break,
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     }
@@ -1210,12 +1296,13 @@ fn receipt_commit_actor_loop(
                 // survive an unwind untouched.
                 pending_flush_error =
                     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        commit_receipt_batch(
+                        commit_receipt_batch_with_completions(
                             &pool,
                             &mut head_state,
                             incremental_verification,
                             requests,
                             &health,
+                            completions,
                         )
                     })) {
                         Ok(flush_error) => flush_error,
@@ -1259,7 +1346,7 @@ fn receipt_commit_actor_loop(
                         if let Some(error) = build_due_checkpoints_and_record(
                             &pool,
                             head,
-                            &checkpoint_signer,
+                            checkpoint_signer,
                             &health,
                         ) {
                             flush_barrier_error = Some(error);
@@ -1277,35 +1364,42 @@ fn receipt_commit_actor_loop(
                     let _ = response.send(result);
                 }
                 if let Some(command) = deferred {
-                    handle_non_append_command(
+                    if let Some(outcome) = handle_non_append_command(
                         &pool,
                         &mut head_state,
                         incremental_verification,
                         &health,
-                        &mut checkpoint_signer,
+                        checkpoint_signer,
                         &mut pending_flush_error,
                         command,
-                    );
+                    ) {
+                        return outcome;
+                    }
                 }
             }
-            ReceiptCommitCommand::Flush(response) => {
+            Err(ReceiptCommitCommand::Flush(response)) => {
                 let result = match &pending_flush_error {
                     Some(error) => Err(receipt_store_error_snapshot(error)),
                     None => Ok(()),
                 };
                 let _ = response.send(result);
             }
-            other => handle_non_append_command(
-                &pool,
-                &mut head_state,
-                incremental_verification,
-                &health,
-                &mut checkpoint_signer,
-                &mut pending_flush_error,
-                other,
-            ),
+            Err(other) => {
+                if let Some(outcome) = handle_non_append_command(
+                    &pool,
+                    &mut head_state,
+                    incremental_verification,
+                    &health,
+                    checkpoint_signer,
+                    &mut pending_flush_error,
+                    other,
+                ) {
+                    return outcome;
+                }
+            }
         }
     }
+    SupervisedOutcome::Shutdown
 }
 
 fn handle_non_append_command(
@@ -1316,11 +1410,13 @@ fn handle_non_append_command(
     checkpoint_signer: &mut Option<BackgroundCheckpointSigner>,
     pending_flush_error: &mut Option<ReceiptStoreError>,
     command: ReceiptCommitCommand,
-) {
+) -> Option<SupervisedOutcome> {
     match command {
         ReceiptCommitCommand::Write {
             job,
             appends_receipts,
+            fail_closed_on_error,
+            mut completion,
         } => {
             // Hold the writer `inflight` count for the DURATION of this Write
             // job rather than releasing it immediately on dequeue, so a health
@@ -1349,8 +1445,13 @@ fn handle_non_append_command(
                     let respond = job(Err(ReceiptStoreError::Pool(error.to_string())));
                     // Decrement before the response reaches the caller.
                     drop(inflight_guard);
-                    record_write_job_outcome(health, respond(Ok(())));
-                    return;
+                    let committed = respond(Ok(()));
+                    record_write_job_outcome(health, committed);
+                    completion.complete();
+                    if fail_closed_on_error && !committed {
+                        poison_head_from_writer_error(head_state, health);
+                    }
+                    return None;
                 }
             };
             match head_state {
@@ -1358,7 +1459,9 @@ fn handle_non_append_command(
                     let respond = job(Err(poisoned_head_error(message)));
                     // Decrement before the response reaches the caller.
                     drop(inflight_guard);
-                    record_write_job_outcome(health, respond(Ok(())));
+                    let committed = respond(Ok(()));
+                    record_write_job_outcome(health, committed);
+                    completion.complete();
                 }
                 WriterHeadState::Verified(head) => {
                     // Pre-check (fail-closed): same predecessor check the
@@ -1398,8 +1501,13 @@ fn handle_non_append_command(
                         let respond = job(Err(error));
                         // Decrement before the response reaches the caller.
                         drop(inflight_guard);
-                        record_write_job_outcome(health, respond(Ok(())));
-                        return;
+                        let committed = respond(Ok(()));
+                        record_write_job_outcome(health, committed);
+                        completion.complete();
+                        if fail_closed_on_error && !committed {
+                            poison_head_from_writer_error(head_state, health);
+                        }
+                        return None;
                     }
                     // Capture the head's checkpoint position BEFORE the job
                     // runs: a writer-routed recovery
@@ -1424,7 +1532,13 @@ fn handle_non_append_command(
                             // caller; the post-response catch-up build below
                             // reads no inflight state.
                             drop(inflight_guard);
-                            record_write_job_outcome(health, respond(Ok(())));
+                            let committed = respond(Ok(()));
+                            record_write_job_outcome(health, committed);
+                            completion.complete();
+                            if fail_closed_on_error && !committed {
+                                poison_head_from_writer_error(head_state, health);
+                                return None;
+                            }
                             health.store_head_snapshot(head);
                             // Clear a stale checkpoint error after a manual
                             // recovery: a writer-routed
@@ -1486,7 +1600,9 @@ fn handle_non_append_command(
                             // failed outcome. Decrement before the response
                             // reaches the caller.
                             drop(inflight_guard);
-                            record_write_job_outcome(health, respond(Err(error)));
+                            let committed = respond(Err(error));
+                            record_write_job_outcome(health, committed);
+                            completion.complete();
                             health.set_head_poisoned(true);
                             *head_state = WriterHeadState::Poisoned(poison_message);
                         }
@@ -1507,13 +1623,13 @@ fn handle_non_append_command(
             // head (mirrors the Write arm) and point at the repair path.
             if let WriterHeadState::Poisoned(message) = head_state {
                 let _ = response.send(Err(poisoned_head_error(message)));
-                return;
+                return None;
             }
             let mut connection = match pool.get() {
                 Ok(connection) => connection,
                 Err(error) => {
                     let _ = response.send(Err(ReceiptStoreError::Pool(error.to_string())));
-                    return;
+                    return None;
                 }
             };
             // Fail-closed: rotation deletes evidence, so it must audit the FULL
@@ -1535,7 +1651,7 @@ fn handle_non_append_command(
                 Ok(latest) => latest,
                 Err(error) => {
                     let _ = response.send(Err(error));
-                    return;
+                    return None;
                 }
             };
             // The claim-log projection audit runs before EVERY rotation,
@@ -1550,7 +1666,7 @@ fn handle_non_append_command(
             // evidence repair needs to recover. Refuse fail-closed instead.
             if let Err(error) = validate_claim_receipt_log_entries(&connection) {
                 let _ = response.send(Err(error));
-                return;
+                return None;
             }
             // In incremental mode the rotation trusts the per-append verified head
             // rather than an O(N) rebuild on the append hot path, but that head can
@@ -1641,28 +1757,35 @@ fn handle_non_append_command(
             }
         }
         ReceiptCommitCommand::ReseedHead(response) => {
-            let outcome = pool
-                .get()
-                .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
-                .and_then(|connection| {
-                    // Reseed always runs the FULL verification. This is the
-                    // `chio receipt audit --repair`
-                    // recovery path: it clears a poisoned head and must establish
-                    // a genuinely CLEAN, fully-verified head, so it runs
-                    // `seed_verified_head` (full claim-log validation +
-                    // checkpoint-chain audit) regardless of the hot-path
-                    // `incremental_verification` mode. Using the cheap
-                    // `seed_head_snapshot` here would let `--repair` clear
-                    // `last_error` and mark the head `Verified` while the on-disk
-                    // log is still corrupt (repair theater). This is the recovery
-                    // path, not per-append, so it is a recovery-path cost. NOTE
-                    // the deliberate difference from the InstallSigner catch-up:
-                    // that path DEFERS in
-                    // `incremental_verification = false` because `seed_head_snapshot`
-                    // leaves the head UNVALIDATED; reseed full-verifies, so it does
-                    // not defer.
-                    seed_verified_head(&connection)
-                });
+            let outcome = if health.critical_write_poisoned.load(Ordering::SeqCst) {
+                Err(ReceiptStoreError::Conflict(format!(
+                    "{}; repair the critical receipt projection and reopen the receipt store",
+                    critical_writer_error_message(health)
+                )))
+            } else {
+                pool.get()
+                    .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
+                    .and_then(|connection| {
+                        support::audit_receipt_cost_projection(&connection)?;
+                        // Reseed always runs the FULL verification. This is the
+                        // `chio receipt audit --repair`
+                        // recovery path: it clears a poisoned head and must establish
+                        // a genuinely CLEAN, fully-verified head, so it runs
+                        // `seed_verified_head` (full claim-log validation +
+                        // checkpoint-chain audit) regardless of the hot-path
+                        // `incremental_verification` mode. Using the cheap
+                        // `seed_head_snapshot` here would let `--repair` clear
+                        // `last_error` and mark the head `Verified` while the on-disk
+                        // log is still corrupt (repair theater). This is the recovery
+                        // path, not per-append, so it is a recovery-path cost. NOTE
+                        // the deliberate difference from the InstallSigner catch-up:
+                        // that path DEFERS in
+                        // `incremental_verification = false` because `seed_head_snapshot`
+                        // leaves the head UNVALIDATED; reseed full-verifies, so it does
+                        // not defer.
+                        seed_verified_head(&connection)
+                    })
+            };
             let result = match outcome {
                 Ok(head) => {
                     health.store_head_snapshot(&head);
@@ -1782,10 +1905,22 @@ fn handle_non_append_command(
                 .response
                 .send(Err(receipt_actor_unavailable_error()));
         }
+        ReceiptCommitCommand::AppendWithTimeout {
+            request,
+            mut completion,
+        } => {
+            completion.complete();
+            let _ = request
+                .response
+                .send(Err(receipt_actor_unavailable_error()));
+        }
         ReceiptCommitCommand::Flush(response) => {
             let _ = response.send(Err(receipt_actor_unavailable_error()));
         }
+        #[cfg(test)]
+        ReceiptCommitCommand::RestartSupervisor => return Some(SupervisedOutcome::Restart),
     }
+    None
 }
 
 /// Build every checkpoint the head owes and, on success, refresh the health
@@ -1959,12 +2094,31 @@ fn resync_head_after_write(
     verify_head_against_latest_checkpoint(connection, head)
 }
 
+#[cfg(test)]
 fn commit_receipt_batch(
     pool: &Pool<SqliteConnectionManager>,
     head_state: &mut WriterHeadState,
     incremental_verification: bool,
     requests: Vec<ReceiptCommitRequest>,
     health: &ReceiptCommitWriterHealth,
+) -> Option<ReceiptStoreError> {
+    commit_receipt_batch_with_completions(
+        pool,
+        head_state,
+        incremental_verification,
+        requests,
+        health,
+        Vec::new(),
+    )
+}
+
+fn commit_receipt_batch_with_completions(
+    pool: &Pool<SqliteConnectionManager>,
+    head_state: &mut WriterHeadState,
+    incremental_verification: bool,
+    requests: Vec<ReceiptCommitRequest>,
+    health: &ReceiptCommitWriterHealth,
+    mut completions: Vec<WriterCommandCompletion>,
 ) -> Option<ReceiptStoreError> {
     let batch_outcome = match head_state {
         WriterHeadState::Verified(head) => {
@@ -2014,8 +2168,15 @@ fn commit_receipt_batch(
         health.failed_total.fetch_add(failed, Ordering::SeqCst);
     }
     atomic_saturating_sub(&health.inflight, results.len() as u64);
-    if let Ok(mut last_error) = health.last_error.lock() {
-        *last_error = flush_error.as_ref().map(ToString::to_string);
+    for completion in &mut completions {
+        completion.complete();
+    }
+    if let Some(error) = &flush_error {
+        if let Ok(mut last_error) = health.last_error.lock() {
+            *last_error = Some(error.to_string());
+        }
+    } else {
+        health.clear_timeout_error_if_drained();
     }
     // APPEND durability responses fan out here (ADR-0013): a durable append
     // response is never delayed by checkpoint construction. The co-drained
@@ -2057,8 +2218,8 @@ fn atomic_saturating_sub(value: &AtomicU64, amount: u64) {
 ///   before its first commit is caught, while a writer resuming after an idle
 ///   period (an old last commit but freshly enqueued work) is measured from that
 ///   fresh work rather than judged wedged the instant it accepts. A timed-out
-///   append leaves `inflight` elevated without advancing `failed_total` past
-///   `accepted_total`, which is exactly the `inflight` signal this reads.
+///   command is tracked separately until that exact command drains, so a
+///   timeout closes liveness immediately without corrupting terminal counters.
 /// - `Saturated`: the commit channel is full right now (`queue_depth` has
 ///   reached the channel capacity), so the next send would be rejected. This
 ///   reads `queue_depth` rather than `inflight` so a drained but still-committing
@@ -2081,19 +2242,7 @@ fn classify_writer_liveness(
     {
         return Liveness::Dead;
     }
-    // A bounded receipt operation that exceeded its budget is direct evidence the
-    // writer did not drain within budget, and it leaves `inflight` elevated. That
-    // is a stronger, earlier signal than the heuristic stall clock, so a still
-    // backlogged writer that has recorded a timeout is wedged immediately rather
-    // than admitted during the window between the operation budget and the stall
-    // threshold. A later successful batch flush clears `last_error`, so this
-    // self-heals once the writer catches up.
-    if counters.inflight > 0
-        && counters
-            .last_error
-            .as_deref()
-            .is_some_and(|error| error.contains("timed out"))
-    {
+    if counters.timed_out_inflight > 0 {
         return Liveness::Wedged;
     }
     let backlogged = counters.inflight > 0
@@ -2155,13 +2304,10 @@ mod writer_liveness_classifier_tests {
 
     #[test]
     fn timed_out_inflight_append_reports_wedged() {
-        // A caller-timed-out append bumps `failed_total` and leaves `inflight`
-        // elevated (the actor still owns the queued command), so `accepted_total`
-        // equals `failed_total`. The naive `accepted > committed + failed`
-        // backlog test misses this; the `inflight` signal must catch it.
+        // A caller timeout is not a terminal failure. The actor still owns the
+        // command, so accepted remains ahead of terminal outcomes until it drains.
         let counters = ReceiptWriterCounters {
             accepted_total: 1,
-            failed_total: 1,
             inflight: 1,
             ..ReceiptWriterCounters::default()
         };
@@ -2172,17 +2318,12 @@ mod writer_liveness_classifier_tests {
     }
 
     #[test]
-    fn recorded_append_timeout_reports_wedged_before_the_stall_threshold() {
-        // A bounded append that exceeded its budget records a "timed out" error
-        // and leaves inflight elevated, but the first accept is only 6s old under
-        // a 10s stall threshold. The stall clock alone would still report this
-        // healthy for the 4s window between the append budget and the stall
-        // threshold; the recorded timeout must deny admission on its own, because
-        // receipts are known not to be committing durably.
+    fn outstanding_timeout_reports_wedged_before_the_stall_threshold() {
         let counters = ReceiptWriterCounters {
             accepted_total: 1,
-            failed_total: 1,
             inflight: 1,
+            timed_out_total: 1,
+            timed_out_inflight: 1,
             last_commit_unix_ms: None,
             last_error: Some("sqlite receipt commit append timed out".to_string()),
             ..ReceiptWriterCounters::default()
@@ -2398,22 +2539,10 @@ fn record_write_job_outcome(health: &ReceiptCommitWriterHealth, committed: bool)
         health
             .last_commit_unix_ms
             .store(current_unix_ms(), Ordering::SeqCst);
-        // A committed write proves the writer drained again, so clear a stale
-        // bounded-timeout marker exactly as a committed append batch resets
-        // `last_error`. A write-dominated store never runs an append batch, so
-        // without this the "timed out" marker left by an earlier bounded write
-        // lingers and the liveness classifier reports every later merely
-        // in-flight write Wedged on that stale marker alone. A genuine writer
-        // fault (poisoned head, checkpoint-build failure) does not carry the
-        // timeout marker and is left untouched.
-        if let Ok(mut last_error) = health.last_error.lock() {
-            if last_error
-                .as_deref()
-                .is_some_and(|error| error.contains("timed out"))
-            {
-                *last_error = None;
-            }
-        }
+        // Clear only a timeout marker whose owning command has drained. A
+        // successful earlier command cannot clear a later queued timeout, and a
+        // genuine writer/head error is never treated as timeout state.
+        health.clear_timeout_error_if_drained();
     } else {
         health.failed_total.fetch_add(1, Ordering::SeqCst);
     }
@@ -2900,6 +3029,11 @@ fn receipt_store_error_snapshot(error: &ReceiptStoreError) -> ReceiptStoreError 
         }
         ReceiptStoreError::Conflict(message) => ReceiptStoreError::Conflict(message.clone()),
         ReceiptStoreError::NotFound(message) => ReceiptStoreError::NotFound(message.clone()),
+        ReceiptStoreError::Unsupported(message) => ReceiptStoreError::Unsupported(message.clone()),
+        ReceiptStoreError::Fenced => ReceiptStoreError::Fenced,
+        ReceiptStoreError::OutcomeUnknown(message) => {
+            ReceiptStoreError::OutcomeUnknown(message.clone())
+        }
         ReceiptStoreError::RetentionArchiveIncomplete {
             table,
             live,
@@ -3059,7 +3193,7 @@ mod liability_market;
 #[path = "receipt_store/reports.rs"]
 mod reports;
 #[path = "receipt_store/support.rs"]
-mod support;
+pub(crate) mod support;
 #[cfg(test)]
 #[path = "receipt_store/tests.rs"]
 mod tests;
@@ -3091,6 +3225,8 @@ impl SqliteReceiptStore {
         WriterHandle {
             sender: self.receipt_commit_actor.sender.clone(),
             health: Arc::clone(&self.receipt_commit_actor.health),
+            worker: Arc::clone(&self.receipt_commit_actor.worker),
+            settlement_store_binding: self.settlement_store_binding,
         }
     }
 
@@ -3270,488 +3406,6 @@ impl SqliteReceiptStore {
         })
     }
 
-    /// Durably write a dispatch intent as a metadata-only single-writer job.
-    /// The response is sent only after `tx.commit()` returns, so the caller
-    /// observes a durable (WAL-fsynced) commit before it proceeds to dispatch.
-    pub fn record_dispatch_intent(
-        &self,
-        intent: &chio_kernel::receipt_store::DispatchIntentRecord,
-    ) -> Result<(), ReceiptStoreError> {
-        self.writer_handle().run_write(dispatch_intent_insert_job(
-            intent,
-            self.instance_token.clone(),
-        ))
-    }
-
-    /// Bounded variant of [`Self::record_dispatch_intent`]: identical up to
-    /// the response wait, which is capped at `budget` so a writer that wedges
-    /// after the pre-dispatch liveness check fails this caller closed instead
-    /// of hanging the evaluation inside the intent write. A timed-out write
-    /// is also ABANDONED: the caller denies before dispatch on timeout, so
-    /// the job still queued on a slow-but-alive writer must not land a stale
-    /// row that would dead-letter at the next boot as a false orphan for a
-    /// call that never executed. Because the marker cannot stop an insert
-    /// that has already passed its final check and is inside its commit when
-    /// the deadline expires, the timeout path also enqueues a sweep behind
-    /// the insert, keyed to this attempt's own commit, so a commit that
-    /// outruns the marker leaves no row behind while a pre-existing intent
-    /// for the same request is never touched.
-    pub fn record_dispatch_intent_with_timeout(
-        &self,
-        intent: &chio_kernel::receipt_store::DispatchIntentRecord,
-        budget: Duration,
-    ) -> Result<(), ReceiptStoreError> {
-        let abandoned = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let landed = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let job = dispatch_intent_insert_job_unless_abandoned(
-            intent,
-            self.instance_token.clone(),
-            Arc::clone(&abandoned),
-            Arc::clone(&landed),
-        );
-        let result = self
-            .writer_handle()
-            .run_write_abandoning_on_timeout(job, budget, abandoned);
-        if matches!(result, Err(ReceiptStoreError::Timeout { .. })) {
-            // The caller is about to deny before dispatch, yet an insert that
-            // was inside its commit when the marker landed may still have
-            // committed. Enqueue a sweep on the same single-writer queue:
-            // FIFO order runs it strictly after the insert job, so it deletes
-            // the row when the straddling commit recorded itself in the
-            // `landed` slot and reports NotFound when the insert refused.
-            // The slot keys the sweep to THIS attempt: a timed-out retry or
-            // concurrent duplicate whose insert collided with a request's
-            // pre-existing open intent must not delete that earlier
-            // invocation's crash marker out from under its in-flight call.
-            // The sweep is enqueued detached: the denial this caller is
-            // about to return does not depend on the sweep's outcome, and a
-            // bounded wait here would stack a second budget on top of the
-            // one the insert already consumed, doubling the pre-dispatch
-            // wall-clock cap on the same stalled writer. The queued sweep
-            // still drains with the writer, so a slow-but-alive writer
-            // cannot leave a row that would dead-letter as a false orphan
-            // for a call that never dispatched. NotFound is the common
-            // outcome (the insert refused via the marker); a refused
-            // enqueue leaves the row for boot reconciliation, which at
-            // worst surfaces an extra operator-visible dead letter rather
-            // than losing a real orphan.
-            let key = chio_kernel::receipt_store::DispatchIntentKey {
-                request_id: intent.request_id.clone(),
-                parameter_hash: intent.parameter_hash.clone(),
-                tenant_id: intent.tenant_id.clone(),
-            };
-            let _ = self
-                .writer_handle()
-                .run_write_detached(dispatch_intent_sweep_landed_job(&key, landed));
-        }
-        result
-    }
-
-    /// Append a receipt and, in the SAME immediate transaction, consume the
-    /// matching dispatch intent: a crash before commit leaves the intent open
-    /// and the receipt absent, and a successful commit removes the intent and
-    /// persists the receipt, so exactly one of the two states survives.
-    pub fn append_chio_receipt_consuming_intent(
-        &self,
-        receipt: &ChioReceipt,
-        key: &chio_kernel::receipt_store::DispatchIntentKey,
-    ) -> Result<Option<u64>, ReceiptStoreError> {
-        self.writer_handle()
-            .run_write_receipt(self.dispatch_intent_consuming_append_job(receipt, key)?)
-    }
-
-    /// Bounded variant of [`Self::append_chio_receipt_consuming_intent`]: the
-    /// response wait is capped at `budget` so a wedged writer cannot pin the
-    /// kernel-wide receipt write lock through the consuming append.
-    pub fn append_chio_receipt_consuming_intent_with_timeout(
-        &self,
-        receipt: &ChioReceipt,
-        key: &chio_kernel::receipt_store::DispatchIntentKey,
-        budget: Duration,
-    ) -> Result<Option<u64>, ReceiptStoreError> {
-        self.writer_handle().run_write_receipt_with_timeout(
-            self.dispatch_intent_consuming_append_job(receipt, key)?,
-            budget,
-        )
-    }
-
-    /// Validate the receipt/key binding and build the writer job that deletes
-    /// the intent and inserts the receipt inside one immediate transaction.
-    fn dispatch_intent_consuming_append_job(
-        &self,
-        receipt: &ChioReceipt,
-        key: &chio_kernel::receipt_store::DispatchIntentKey,
-    ) -> Result<
-        impl FnOnce(&mut SqliteStoreConnection) -> Result<Option<u64>, ReceiptStoreError>
-            + Send
-            + 'static,
-        ReceiptStoreError,
-    > {
-        ensure_chio_receipt_verified(receipt)?;
-        if receipt.action.parameter_hash != key.parameter_hash {
-            return Err(ReceiptStoreError::Conflict(
-                "dispatch intent key parameter_hash does not match appended receipt".to_string(),
-            ));
-        }
-        if receipt.tenant_id.as_deref() != key.tenant_id.as_deref() {
-            return Err(ReceiptStoreError::Conflict(
-                "dispatch intent key tenant id does not match appended receipt".to_string(),
-            ));
-        }
-        sqlite_i64(receipt.timestamp, "receipt timestamp")?;
-        let raw_json = canonical_json_bytes(receipt)
-            .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?;
-        let raw_json = std::str::from_utf8(raw_json.as_slice())
-            .map_err(|error| {
-                ReceiptStoreError::Canonical(format!(
-                    "canonical receipt bytes are not UTF-8: {error}"
-                ))
-            })?
-            .to_string();
-        let receipt = receipt.clone();
-        let key = key.clone();
-        Ok(move |connection: &mut SqliteStoreConnection| {
-            ensure_checkpoint_transparency_guards(connection)?;
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            finalize_dispatch_intent_tx(&tx, &key)?;
-            let seq = append_chio_receipt_tx(&tx, &receipt, &raw_json)?;
-            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt.id)?;
-            tx.commit()?;
-            Ok(Some(seq))
-        })
-    }
-
-    /// Attach a rail authorization id to the open monetary intent for
-    /// `(tenant_id, request_id)`. Best-effort from the caller's perspective
-    /// (`NotFound` when the intent was already consumed or never written),
-    /// but the update itself commits durably on the single writer.
-    pub fn attach_dispatch_intent_rail_ref(
-        &self,
-        request_id: &str,
-        tenant_id: Option<&str>,
-        rail_authorization_id: &str,
-    ) -> Result<(), ReceiptStoreError> {
-        self.writer_handle().run_write(dispatch_intent_rail_ref_job(
-            request_id,
-            tenant_id,
-            rail_authorization_id,
-        ))
-    }
-
-    /// Bounded variant of [`Self::attach_dispatch_intent_rail_ref`], so the
-    /// best-effort post-authorize attach fails closed within budget instead
-    /// of hanging its caller on a wedged writer.
-    pub fn attach_dispatch_intent_rail_ref_with_timeout(
-        &self,
-        request_id: &str,
-        tenant_id: Option<&str>,
-        rail_authorization_id: &str,
-        budget: Duration,
-    ) -> Result<(), ReceiptStoreError> {
-        self.writer_handle().run_write_with_timeout(
-            dispatch_intent_rail_ref_job(request_id, tenant_id, rail_authorization_id),
-            budget,
-        )
-    }
-
-    /// Delete the open intent for a call that returned to its caller without
-    /// dispatching (no effect, no terminal receipt): the row must not
-    /// survive to dead-letter as a false orphan at the next boot.
-    pub fn clear_dispatch_intent(
-        &self,
-        key: &chio_kernel::receipt_store::DispatchIntentKey,
-    ) -> Result<(), ReceiptStoreError> {
-        self.writer_handle()
-            .run_write(dispatch_intent_clear_job(key))
-    }
-
-    /// Bounded variant of [`Self::clear_dispatch_intent`]: the response wait
-    /// is capped at `budget` so the non-dispatch exit cannot hang its caller
-    /// on a wedged writer.
-    pub fn clear_dispatch_intent_with_timeout(
-        &self,
-        key: &chio_kernel::receipt_store::DispatchIntentKey,
-        budget: Duration,
-    ) -> Result<(), ReceiptStoreError> {
-        self.writer_handle()
-            .run_write_with_timeout(dispatch_intent_clear_job(key), budget)
-    }
-
-    /// List the open dispatch intents, oldest first: the operator view of
-    /// work that is either in flight or awaiting boot reconciliation.
-    pub fn open_dispatch_intents(
-        &self,
-    ) -> Result<Vec<chio_kernel::receipt_store::DispatchIntentRecord>, ReceiptStoreError> {
-        let connection = self.connection()?;
-        select_open_dispatch_intents(&connection)
-    }
-
-    /// True when [`Self::reconcile_dispatch_intents`] is worth re-running
-    /// while the store serves: an on-disk database can gain and lose
-    /// sibling writer instances at any time, so a crashed sibling's orphans
-    /// only surface if some survivor re-reconciles. An in-memory database
-    /// can have no siblings; its attach-time pass is complete.
-    pub fn supports_dispatch_intent_recovery(&self) -> bool {
-        self.writer_lifetime_lock.is_some()
-    }
-
-    /// True when a journaled dispatch intent survives a process crash: the
-    /// database is file-backed, so a committed row (WAL, synchronous FULL)
-    /// outlives the process. An in-memory database loses the journal with
-    /// the process and can never honor the crash-marker guarantee the
-    /// journal exists to provide.
-    pub fn supports_durable_dispatch_intent_journal(&self) -> bool {
-        self.writer_lifetime_lock.is_some()
-    }
-
-    /// Resolve every open intent journaled by another store instance (a
-    /// crashed prior incarnation, or a sibling on a shared database file).
-    /// Reads run on the reader pool and the reconciler runs on the calling
-    /// thread (so a rail-querying reconciler never blocks the single
-    /// writer); the resulting annotations are applied in one writer
-    /// transaction.
-    ///
-    /// Safe to run at any time, not only at attach: rows carrying this
-    /// instance's own owner token are its live in-flight work and are never
-    /// candidates, so a serving store can re-run the pass to pick up a
-    /// sibling that crashed after this instance attached.
-    ///
-    /// Claiming an open row asserts its writer is gone, but the database
-    /// file may be shared with live sibling instances whose in-flight calls
-    /// own some of these rows. Liveness is therefore judged per owner,
-    /// serialized under a sidecar probe mutex: every instance holds its own
-    /// owner mark for its open's lifetime, and a foreign row is claimed
-    /// only when a non-blocking probe acquires ITS owner's mark, proving
-    /// that owner gone. A crashed writer's orphans thus surface even while
-    /// other siblings stay live, and a live writer's rows always defer to
-    /// it (reported, never silent). A row naming no probeable owner
-    /// (journaled before owner tokens existed) is claimed only after
-    /// converting this instance's shared lifetime mark to exclusive,
-    /// proving no sibling at all, so a single-instance restart still
-    /// reconciles everything foreign.
-    pub fn reconcile_dispatch_intents(
-        &self,
-        reconciler: &dyn chio_kernel::receipt_store::DispatchIntentReconciler,
-    ) -> Result<chio_kernel::receipt_store::DispatchIntentReconcileReport, ReceiptStoreError> {
-        use chio_kernel::receipt_store::{DispatchIntentReconcileReport, DispatchIntentResolution};
-        // First read without any sidecar traffic: the recovery worker calls
-        // this on a cadence, and an idle store should answer with one
-        // indexed query. The authoritative candidate set is re-read under
-        // the probe mutex below.
-        let foreign_open = {
-            let connection = self.connection()?;
-            select_open_dispatch_intents_excluding_owner(&connection, &self.instance_token)?
-        };
-        let mut report = DispatchIntentReconcileReport {
-            open: foreign_open.len() as u64,
-            ..DispatchIntentReconcileReport::default()
-        };
-        if foreign_open.is_empty() {
-            return Ok(report);
-        }
-        // Declaration order is load-bearing: on an unwind the downgrade
-        // guard and the held owner marks (declared later) drop first, while
-        // the probe mutex is still held, and the probe releases after them.
-        let mut reconcile_probe: Option<std::fs::File> = None;
-        let mut exclusive_mark = MarkDowngradeGuard { mark: None };
-        // Marks of owners proven gone, held (with their paths) until their
-        // rows are claimed and the stale files removed.
-        let mut claimed_owner_marks: Vec<(std::fs::File, std::path::PathBuf)> = Vec::new();
-        let claimable = match &self.writer_lifetime_lock {
-            // An in-memory database cannot be shared with sibling
-            // instances, so every foreign row (a prior open within this
-            // process) is an orphan.
-            None => foreign_open
-                .into_iter()
-                .map(|row| row.record)
-                .collect::<Vec<_>>(),
-            Some(lock) => {
-                // Serialize sibling reconcile passes on a separate sidecar
-                // mutex BEFORE touching any mark. flock conversions are not
-                // atomic: upgrading drops this instance's shared mark for
-                // an instant while the exclusive attempt resolves, so two
-                // instances converting concurrently could each observe the
-                // other markless, win exclusivity in turn, and dead-letter
-                // each other's LIVE in-flight intents. With the probe mutex
-                // held, every sibling's marks are continuously present
-                // (siblings only convert or clean up under this same
-                // mutex). A refused probe means a live sibling is
-                // mid-reconcile: defer to it without disturbing this
-                // instance's own marks.
-                let probe = open_sidecar_lock_file(&lock.probe_path)?;
-                match probe.try_lock() {
-                    Ok(()) => reconcile_probe = Some(probe),
-                    Err(std::fs::TryLockError::WouldBlock) => {
-                        report.deferred_to_live_writer = report.open;
-                        return Ok(report);
-                    }
-                    // An errored probe must neither claim possibly live
-                    // rows nor silently skip: fail closed, refusing the
-                    // pass.
-                    Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
-                }
-                // Re-read the candidates now that no sibling pass can be
-                // mid-claim: the first read may have seen rows a since-
-                // finished pass already resolved, and resolving works from
-                // a set no serialized pass can be mutating.
-                let foreign_open = {
-                    let connection = self.connection()?;
-                    select_open_dispatch_intents_excluding_owner(&connection, &self.instance_token)?
-                };
-                report.open = foreign_open.len() as u64;
-                if foreign_open.is_empty() {
-                    return Ok(report);
-                }
-                // Judge liveness per owner: a row whose token can name a
-                // mark file probes THAT owner's mark, so a crashed owner's
-                // rows surface even while other siblings stay live, and no
-                // pass ever converts a lock it holds itself. Rows naming no
-                // probeable owner (journaled before owner tokens existed,
-                // or carrying a token this code never generated) fall back
-                // to whole-file exclusivity.
-                let mut per_owner = std::collections::BTreeMap::<String, Vec<_>>::new();
-                let mut unattributed = Vec::new();
-                for row in foreign_open {
-                    match row
-                        .owner_token
-                        .filter(|token| crate::is_owner_token_shaped(token))
-                    {
-                        Some(token) => per_owner.entry(token).or_default().push(row.record),
-                        None => unattributed.push(row.record),
-                    }
-                }
-                let mut rows = Vec::new();
-                let mut deferred = 0u64;
-                for (token, group) in per_owner {
-                    match probe_foreign_owner_liveness(&lock.database_path, &token)? {
-                        OwnerLiveness::Gone { mark, path } => {
-                            claimed_owner_marks.push((mark, path));
-                            rows.extend(group);
-                        }
-                        OwnerLiveness::Live => deferred += group.len() as u64,
-                    }
-                }
-                if !unattributed.is_empty() {
-                    match lock.mark.try_lock() {
-                        Ok(()) => {
-                            exclusive_mark.mark = Some(&lock.mark);
-                            rows.extend(unattributed);
-                        }
-                        Err(std::fs::TryLockError::WouldBlock) => {
-                            // The refused conversion may have dropped the
-                            // shared mark; restore it before deferring so
-                            // this instance stays visible as a live writer.
-                            // Only the probe holder converts, so no sibling
-                            // can misread this instance as gone during the
-                            // gap.
-                            lock.mark.lock_shared()?;
-                            deferred += unattributed.len() as u64;
-                        }
-                        // An errored exclusivity check must neither claim
-                        // possibly live rows nor silently skip: fail
-                        // closed, refusing the pass.
-                        Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
-                    }
-                }
-                report.deferred_to_live_writer = deferred;
-                if rows.is_empty() {
-                    // Every candidate deferred: the downgrade guard is
-                    // unarmed (the conversion only happens when it yields
-                    // rows) and the probe releases on return.
-                    return Ok(report);
-                }
-                rows
-            }
-        };
-        let claim = (|| {
-            let mut dead_letters: Vec<(String, Option<String>, String)> = Vec::new();
-            let mut reconciled: Vec<(String, Option<String>, String)> = Vec::new();
-            let mut replayable: Vec<(String, Option<String>)> = Vec::new();
-            for intent in &claimable {
-                match reconciler.resolve(intent)? {
-                    DispatchIntentResolution::DeadLetter { detail } => {
-                        report.dead_lettered += 1;
-                        dead_letters.push((
-                            intent.request_id.clone(),
-                            intent.tenant_id.clone(),
-                            detail,
-                        ));
-                    }
-                    DispatchIntentResolution::MonetaryReconciled { rail_reference } => {
-                        // A rail-proven outcome gets its own terminal state:
-                        // it is resolved work, not an outcome-unknown
-                        // incident, so it must not dead-letter (which flips
-                        // health until an operator intervenes).
-                        report.monetary_reconciled += 1;
-                        reconciled.push((
-                            intent.request_id.clone(),
-                            intent.tenant_id.clone(),
-                            format!("monetary reconciled; rail_reference={rail_reference}"),
-                        ));
-                    }
-                    DispatchIntentResolution::SafeToReplay => {
-                        // The reconciler proved the effect never ran, so the
-                        // resolution is to run the request again. The replay
-                        // journals its own intent under the same (tenant,
-                        // request id) identity, so the row must be released
-                        // outright: any survivor would refuse the replay's
-                        // pre-dispatch insert and fail the request before
-                        // the tool runs.
-                        report.replayed += 1;
-                        replayable.push((intent.request_id.clone(), intent.tenant_id.clone()));
-                    }
-                }
-            }
-            // Every resolution write is keyed on the claimed row's (tenant,
-            // request id) identity so a live tenant's intent sharing the
-            // request id is never resolved alongside the orphan. Bounded and
-            // abandon-checked (see `dispatch_intent_resolution_batch_job`):
-            // a wedged-but-alive writer must not hang this pass indefinitely
-            // while it holds the reconcile probe mutex (and, when the batch
-            // claimed unattributed rows, the exclusive writer-lifetime mark).
-            // A timeout here releases cleanly through the same cleanup below
-            // and leaves every claimed row untouched for the next recovery
-            // pass to re-claim.
-            let abandoned = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let job = dispatch_intent_resolution_batch_job(
-                dead_letters,
-                reconciled,
-                replayable,
-                Arc::clone(&abandoned),
-            );
-            self.writer_handle().run_write_abandoning_on_timeout(
-                job,
-                DISPATCH_INTENT_RECONCILE_RESOLUTION_BUDGET,
-                abandoned,
-            )
-        })();
-        // Return to the shared mark even when the claim failed: holding the
-        // exclusive lock past this pass would block sibling opens for the
-        // store's whole lifetime. The claim error outranks a downgrade error
-        // (both refuse the pass); a reconciler panic unwinding through the
-        // claim downgrades through the guard's drop instead.
-        let downgrade = exclusive_mark.downgrade().map_err(ReceiptStoreError::from);
-        if claim.is_ok() {
-            // The claimed owners' rows are terminal, so their mark files
-            // are stale: remove them while still holding both their locks
-            // and the probe mutex, so no concurrent pass can be probing
-            // them. Best-effort, because a leftover file is inert (liveness
-            // is the lock, and a dead owner's lock stays acquirable). A
-            // failed claim keeps the files for the retrying pass instead.
-            for (_mark, path) in &claimed_owner_marks {
-                let _ = std::fs::remove_file(path);
-            }
-        }
-        drop(claimed_owner_marks);
-        // Release the probe mutex only after the mark is shared again, so no
-        // sibling's probe can ever overlap this pass's conversion gaps.
-        drop(reconcile_probe);
-        claim?;
-        downgrade?;
-        Ok(report)
-    }
-
     pub fn flush_receipt_writes(&self) -> Result<ReceiptFlushReport, ReceiptStoreError> {
         self.receipt_commit_actor.flush()?;
         let wal_checkpoint = Some(self.wal_checkpoint_passive()?);
@@ -3807,6 +3461,11 @@ impl SqliteReceiptStore {
                 Err(receipt_actor_unavailable_error())
             }
         }
+    }
+
+    pub fn audit_receipt_cost_projection(&self) -> Result<(), ReceiptStoreError> {
+        let connection = self.connection()?;
+        support::audit_receipt_cost_projection(&connection)
     }
 
     /// Rerun the one-time full verification on the writer connection and
@@ -3945,25 +3604,13 @@ impl SqliteReceiptStore {
         // Healthy and no batch recorded a `last_error` yet every append is already
         // rejected. A persistently failing background retention rotation also
         // forces unhealthy so a silently unenforced retention policy is not masked.
-        let (open_dispatch_intents, dead_letter_dispatch_intents) = {
-            let connection = self.connection()?;
-            (
-                open_dispatch_intent_count_query(&connection)?,
-                dead_letter_dispatch_intent_count_query(&connection)?,
-            )
-        };
-        // A dead-letter intent means an effect may have occurred with no
-        // receipt: the store must read loudly unhealthy until an operator
-        // resolves the incident. Open intents alone are in-flight work, not
-        // incidents, and do not affect health.
         let healthy = receipt_store_healthy(
             status.healthy,
             writer_counters.last_error.as_deref(),
             writer_liveness,
         ) && !self.receipt_commit_actor.writer_serving_closed()
             && matches!(writer_level, HealthLevel::Healthy)
-            && retention_error.is_none()
-            && dead_letter_dispatch_intents == 0;
+            && retention_error.is_none();
         let (uncheckpointed_start_seq, uncheckpointed_end_seq) = uncheckpointed_range(
             status.latest_checkpointed_entry_seq,
             status.latest_committed_entry_seq,
@@ -3983,43 +3630,6 @@ impl SqliteReceiptStore {
             retention_error,
             writer_level,
             writer_restart_total,
-            open_dispatch_intents,
-            dead_letter_dispatch_intents,
-        })
-    }
-
-    /// Count of open (in-flight or unreconciled) dispatch intents.
-    pub fn open_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
-        let connection = self.connection()?;
-        open_dispatch_intent_count_query(&connection)
-    }
-
-    /// Count of dead-letter (orphaned, outcome-unknown) dispatch intents.
-    pub fn dead_letter_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
-        let connection = self.connection()?;
-        dead_letter_dispatch_intent_count_query(&connection)
-    }
-
-    /// Resolve a specific dead-letter dispatch intent: the sanctioned
-    /// operator remediation for the incident a nonzero
-    /// `dead_letter_dispatch_intents` count flags in health. See
-    /// [`resolve_dead_letter_dispatch_intent_tx`] for the fail-closed
-    /// state check and the auditable append-only note.
-    pub fn resolve_dead_letter_dispatch_intent(
-        &self,
-        request_id: &str,
-        tenant_id: Option<&str>,
-        note: &str,
-    ) -> Result<(), ReceiptStoreError> {
-        let request_id = request_id.to_string();
-        let tenant_id = tenant_id.map(str::to_string);
-        let note = note.to_string();
-        self.writer_handle().run_write(move |connection| {
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            resolve_dead_letter_dispatch_intent_tx(&tx, &request_id, tenant_id.as_deref(), &note)?;
-            tx.commit()?;
-            Ok(())
         })
     }
 
@@ -4083,11 +3693,6 @@ impl SqliteReceiptStore {
         // emits a large-backlog gauge (checkpointed defaults to 0 -> the
         // uncheckpointed range spans the whole committed log) with the
         // checkpoint_error attached.
-        //
-        // Dead-letter intents are durable rows, so this read-only observer
-        // sees them and folds them into health exactly like the owning store.
-        let open_dispatch_intents = open_dispatch_intent_count_query(&connection)?;
-        let dead_letter_dispatch_intents = dead_letter_dispatch_intent_count_query(&connection)?;
         match verify_checkpoint_chain_integrity(&connection) {
             Ok(latest) => {
                 let latest_checkpoint_seq = latest
@@ -4099,8 +3704,7 @@ impl SqliteReceiptStore {
                 let (uncheckpointed_start_seq, uncheckpointed_end_seq) =
                     uncheckpointed_range(latest_checkpointed_entry_seq, latest_committed_entry_seq);
                 Ok(ReceiptStoreHealthReport {
-                    healthy: latest_committed_entry_seq >= latest_checkpointed_entry_seq
-                        && dead_letter_dispatch_intents == 0,
+                    healthy: latest_committed_entry_seq >= latest_checkpointed_entry_seq,
                     writer: ReceiptWriterCounters::default(),
                     // A read-only observer cannot see the owning writer's
                     // in-memory liveness, so it is reported as unknown.
@@ -4122,8 +3726,6 @@ impl SqliteReceiptStore {
                     // A read-only observer cannot see the owning writer's supervisor.
                     writer_level: HealthLevel::default(),
                     writer_restart_total: 0,
-                    open_dispatch_intents,
-                    dead_letter_dispatch_intents,
                 })
             }
             Err(error) => {
@@ -4146,8 +3748,6 @@ impl SqliteReceiptStore {
                     retention_error: None,
                     writer_level: HealthLevel::default(),
                     writer_restart_total: 0,
-                    open_dispatch_intents,
-                    dead_letter_dispatch_intents,
                 })
             }
         }
@@ -4567,6 +4167,15 @@ fn append_chio_receipt_tx(
     receipt: &ChioReceipt,
     raw_json: &str,
 ) -> Result<u64, ReceiptStoreError> {
+    append_chio_receipt_tx_with_insert_status(tx, receipt, raw_json).map(|(seq, _)| seq)
+}
+
+fn append_chio_receipt_tx_with_insert_status(
+    tx: &rusqlite::Transaction<'_>,
+    receipt: &ChioReceipt,
+    raw_json: &str,
+) -> Result<(u64, bool), ReceiptStoreError> {
+    let (cost_currency, cost_charged_be) = receipt_cost_projection(receipt)?;
     let attribution = extract_receipt_attribution(receipt);
     let mut subject_key = attribution.subject_key;
     let mut issuer_key = attribution.issuer_key;
@@ -4595,7 +4204,7 @@ fn append_chio_receipt_tx(
     let source_seq = tx
         .query_row(
             r#"
-        INSERT INTO chio_tool_receipts (receipt_id, timestamp, capability_id, subject_key, issuer_key, grant_index, tool_server, tool_name, decision_kind, policy_hash, content_hash, tenant_id, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(receipt_id) DO NOTHING RETURNING seq
+        INSERT INTO chio_tool_receipts (receipt_id, timestamp, capability_id, subject_key, issuer_key, grant_index, tool_server, tool_name, decision_kind, policy_hash, content_hash, tenant_id, raw_json, cost_currency, cost_charged_be) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(receipt_id) DO NOTHING RETURNING seq
         "#,
             params![
                 receipt.id.as_str(),
@@ -4611,15 +4220,24 @@ fn append_chio_receipt_tx(
                 receipt.content_hash.as_str(),
                 receipt.tenant_id.as_deref(),
                 raw_json,
+                cost_currency.as_deref(),
+                cost_charged_be.as_deref(),
             ],
             |row| row.get::<_, i64>(0),
         )
         .optional()?;
     let Some(source_seq) = source_seq else {
-        let (existing_source_seq, existing_raw_json) = tx.query_row(
-            "SELECT seq, raw_json FROM chio_tool_receipts WHERE receipt_id = ?1",
+        let (existing_source_seq, existing_raw_json, existing_currency, existing_key) = tx.query_row(
+            "SELECT seq, raw_json, cost_currency, cost_charged_be FROM chio_tool_receipts WHERE receipt_id = ?1",
             params![receipt.id.as_str()],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<Vec<u8>>>(3)?,
+                ))
+            },
         )?;
         let existing_source_seq =
             sqlite_positive_u64(existing_source_seq, "tool receipt source_seq")?;
@@ -4629,15 +4247,22 @@ fn append_chio_receipt_tx(
                 receipt.id
             )));
         }
+        if existing_currency != cost_currency || existing_key != cost_charged_be {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "tool receipt `{}` already exists with different cost projection",
+                receipt.id
+            )));
+        }
         decode_verified_chio_receipt(
             &existing_raw_json,
             "persisted duplicate tool receipt",
             Some(existing_source_seq),
         )?;
-        return claim_log_entry_seq_for_source_tx(tx, "tool_receipt", existing_source_seq);
+        return claim_log_entry_seq_for_source_tx(tx, "tool_receipt", existing_source_seq)
+            .map(|seq| (seq, false));
     };
     let source_seq = sqlite_positive_u64(source_seq, "tool receipt source_seq")?;
-    claim_log_entry_seq_for_source_tx(tx, "tool_receipt", source_seq)
+    claim_log_entry_seq_for_source_tx(tx, "tool_receipt", source_seq).map(|seq| (seq, true))
 }
 
 fn consume_authorization_receipt_tx(
@@ -4744,7 +4369,6 @@ fn canonical_receipt_json(canonical: &CanonicalBytes) -> Result<&str, ReceiptSto
         ReceiptStoreError::Canonical(format!("canonical receipt bytes are not UTF-8: {error}"))
     })
 }
-
 #[cfg(test)]
 mod receipt_commit_actor_tests {
     use super::*;
@@ -4765,25 +4389,8 @@ mod receipt_commit_actor_tests {
         );
     }
 
-    /// A supervised writer that parks until shutdown, for actor send-path tests that
-    /// drive the channel directly and do not need a real commit loop consuming it.
-    fn idle_writer() -> SupervisedThread {
-        SupervisedThread::spawn(
-            SupervisorConfig {
-                name: "test-idle-writer",
-                tcb_critical: true,
-                trip_after: 1,
-                max_restarts: 1,
-                base_backoff: Duration::from_millis(1),
-                max_backoff: Duration::from_millis(1),
-            },
-            |shutdown| {
-                while !shutdown.load(Ordering::SeqCst) {
-                    std::thread::sleep(Duration::from_millis(1));
-                }
-                SupervisedOutcome::Shutdown
-            },
-        )
+    fn idle_worker() -> Arc<ReceiptCommitWorker> {
+        Arc::new(ReceiptCommitWorker { join: None })
     }
 
     fn actor_test_receipt() -> Result<ChioReceipt, ReceiptStoreError> {
@@ -4850,7 +4457,7 @@ mod receipt_commit_actor_tests {
         let actor = ReceiptCommitActor {
             sender,
             health,
-            writer: idle_writer(),
+            worker: idle_worker(),
         };
 
         let error = actor.append(actor_test_receipt()?, "{}".to_string(), false);
@@ -4870,7 +4477,7 @@ mod receipt_commit_actor_tests {
         let actor = ReceiptCommitActor {
             sender,
             health,
-            writer: idle_writer(),
+            worker: idle_worker(),
         };
 
         let error = actor.flush_with_timeout(Duration::from_millis(1));
@@ -4902,7 +4509,7 @@ mod receipt_commit_actor_tests {
         let actor = ReceiptCommitActor {
             sender,
             health,
-            writer: idle_writer(),
+            worker: idle_worker(),
         };
         let inflight_before = actor.health.inflight.load(Ordering::SeqCst);
 
@@ -4931,7 +4538,9 @@ mod receipt_commit_actor_tests {
             actor.health.inflight.load(Ordering::SeqCst),
             inflight_before + 1
         );
-        assert!(actor.health.failed_total.load(Ordering::SeqCst) >= 1);
+        assert_eq!(actor.health.failed_total.load(Ordering::SeqCst), 0);
+        assert_eq!(actor.health.timed_out_inflight.load(Ordering::SeqCst), 1);
+        assert_eq!(actor.health.timed_out_total.load(Ordering::SeqCst), 1);
         Ok(())
     }
 
@@ -4949,7 +4558,7 @@ mod receipt_commit_actor_tests {
         let actor = ReceiptCommitActor {
             sender,
             health,
-            writer: idle_writer(),
+            worker: idle_worker(),
         };
 
         let error = actor.append_with_timeout(
@@ -5018,24 +4627,80 @@ mod receipt_commit_actor_tests {
     }
 
     #[test]
-    fn committed_write_clears_a_stale_bounded_timeout_marker() {
+    fn timeout_tracker_attributes_timeout_until_its_actor_token_completes() {
+        let health = Arc::new(ReceiptCommitWriterHealth::default());
+        let (mut completion, timeout) = writer_command_tracker(&health);
+
+        timeout.note_timeout("sqlite receipt commit write timed out");
+        assert_eq!(health.timed_out_inflight.load(Ordering::SeqCst), 1);
+        assert_eq!(health.timed_out_total.load(Ordering::SeqCst), 1);
+        assert!(health.last_error.lock().is_ok_and(|error| error
+            .as_deref()
+            .is_some_and(|message| message.contains("timed out"))));
+
+        completion.complete();
+        assert_eq!(health.timed_out_inflight.load(Ordering::SeqCst), 0);
+        assert_eq!(health.timed_out_total.load(Ordering::SeqCst), 1);
+        assert!(health.last_error.lock().is_ok_and(|error| error.is_none()));
+    }
+
+    #[test]
+    fn timeout_tracker_undoes_registration_when_actor_completed_first() {
+        let health = Arc::new(ReceiptCommitWriterHealth::default());
+        let (mut completion, timeout) = writer_command_tracker(&health);
+
+        completion.complete();
+        timeout.note_timeout("sqlite receipt commit write timed out");
+
+        assert_eq!(health.timed_out_inflight.load(Ordering::SeqCst), 0);
+        assert_eq!(health.timed_out_total.load(Ordering::SeqCst), 1);
+        assert!(health.last_error.lock().is_ok_and(|error| error.is_none()));
+    }
+
+    #[test]
+    fn timeout_tracker_preserves_a_genuine_error_containing_timeout_words() {
+        let health = Arc::new(ReceiptCommitWriterHealth::default());
+        if let Ok(mut last_error) = health.last_error.lock() {
+            *last_error = Some("database lock timed out".to_string());
+        }
+        let (mut completion, timeout) = writer_command_tracker(&health);
+
+        timeout.note_timeout(RECEIPT_WRITE_TIMEOUT_MARKER);
+        completion.complete();
+
+        assert_eq!(health.timed_out_total.load(Ordering::SeqCst), 1);
+        assert_eq!(health.timed_out_inflight.load(Ordering::SeqCst), 0);
+        assert!(health
+            .last_error
+            .lock()
+            .is_ok_and(|error| { error.as_deref() == Some("database lock timed out") }));
+    }
+
+    #[test]
+    fn unrelated_commit_preserves_an_outstanding_timeout_marker() {
         let health = ReceiptCommitWriterHealth::default();
-        // An earlier bounded writer-routed op timed out and left the marker set
-        // while its work was still in flight.
+        health.timed_out_inflight.store(1, Ordering::SeqCst);
         if let Ok(mut last_error) = health.last_error.lock() {
             *last_error = Some("sqlite receipt commit write timed out".to_string());
         }
-        // The writer catches up and a later write commits.
+        // A completed command that was ahead of the timed-out command cannot
+        // clear its marker while that specific command remains queued/running.
         record_write_job_outcome(&health, true);
-        let cleared = match health.last_error.lock() {
-            Ok(guard) => guard.is_none(),
+        let preserved = match health.last_error.lock() {
+            Ok(guard) => guard
+                .as_deref()
+                .is_some_and(|error| error.contains("timed out")),
             Err(_) => false,
         };
         assert!(
-            cleared,
-            "a committed write must clear the stale timeout marker so a later merely in-flight write is not misclassified Wedged"
+            preserved,
+            "an unrelated earlier commit must not clear a queued command's timeout marker"
         );
         assert_eq!(health.committed_total.load(Ordering::SeqCst), 1);
+
+        atomic_saturating_sub(&health.timed_out_inflight, 1);
+        health.clear_timeout_error_if_drained();
+        assert!(health.last_error.lock().is_ok_and(|error| error.is_none()));
     }
 
     #[test]
@@ -5068,6 +4733,8 @@ mod receipt_commit_actor_tests {
         let handle = WriterHandle {
             sender,
             health: Arc::clone(&health),
+            worker: idle_worker(),
+            settlement_store_binding: None,
         };
         let inflight_before = health.inflight.load(Ordering::SeqCst);
 
@@ -5089,7 +4756,181 @@ mod receipt_commit_actor_tests {
         // Ownership of the queued job stays with the actor, so the timeout side
         // must leave inflight elevated (the honest wedged-writer signal).
         assert_eq!(health.inflight.load(Ordering::SeqCst), inflight_before + 1);
-        assert!(health.failed_total.load(Ordering::SeqCst) >= 1);
+        assert_eq!(health.failed_total.load(Ordering::SeqCst), 0);
+        assert_eq!(health.timed_out_inflight.load(Ordering::SeqCst), 1);
+        assert_eq!(health.timed_out_total.load(Ordering::SeqCst), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn earlier_success_does_not_clear_a_later_queued_timeout(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(format!(
+            "chio-write-timeout-ordering-{}-{}.sqlite3",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        let store = SqliteReceiptStore::open(&path)?;
+        let baseline = store.receipt_commit_actor.writer_counters();
+        let writer_a = store.writer_handle();
+        let writer_b = store.writer_handle();
+        let (a_started_tx, a_started_rx) = mpsc::sync_channel(1);
+        let (a_release_tx, a_release_rx) = mpsc::sync_channel(1);
+        let a = std::thread::spawn(move || {
+            writer_a.run_write(move |_connection| {
+                let _ = a_started_tx.send(());
+                let _ = a_release_rx.recv();
+                Ok(())
+            })
+        });
+        a_started_rx.recv()?;
+
+        let (b_started_tx, b_started_rx) = mpsc::sync_channel(1);
+        let (b_release_tx, b_release_rx) = mpsc::sync_channel(1);
+        let b_error = writer_b
+            .run_write_with_timeout(
+                move |_connection| {
+                    let _ = b_started_tx.send(());
+                    let _ = b_release_rx.recv();
+                    Ok(())
+                },
+                Duration::from_millis(25),
+            )
+            .err()
+            .ok_or("B must time out while queued behind A")?;
+        assert!(matches!(b_error, ReceiptStoreError::Timeout { .. }));
+        assert_eq!(
+            store
+                .receipt_commit_actor
+                .health
+                .timed_out_inflight
+                .load(Ordering::SeqCst),
+            1
+        );
+        assert_eq!(
+            store.writer_liveness(Duration::from_secs(60)),
+            chio_kernel::ReceiptWriterLiveness::Wedged
+        );
+
+        a_release_tx.send(())?;
+        a.join().map_err(|_| "A writer thread panicked")??;
+        b_started_rx.recv()?;
+        let after_a = store.receipt_commit_actor.writer_counters();
+        assert_eq!(after_a.accepted_total, baseline.accepted_total + 2);
+        assert_eq!(after_a.committed_total, baseline.committed_total + 1);
+        assert_eq!(after_a.failed_total, baseline.failed_total);
+        assert_eq!(after_a.timed_out_total, baseline.timed_out_total + 1);
+        assert_eq!(after_a.timed_out_inflight, 1);
+        assert_eq!(
+            store
+                .receipt_commit_actor
+                .health
+                .timed_out_inflight
+                .load(Ordering::SeqCst),
+            1,
+            "A's success must not clear B's outstanding timeout"
+        );
+        assert!(after_a
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("timed out")));
+        assert_eq!(
+            store.writer_liveness(Duration::from_secs(60)),
+            chio_kernel::ReceiptWriterLiveness::Wedged
+        );
+
+        b_release_tx.send(())?;
+        assert!(wait_until(|| {
+            store
+                .receipt_commit_actor
+                .health
+                .timed_out_inflight
+                .load(Ordering::SeqCst)
+                == 0
+                && store
+                    .receipt_commit_actor
+                    .health
+                    .committed_total
+                    .load(Ordering::SeqCst)
+                    == baseline.committed_total + 2
+        }));
+        let drained = store.receipt_commit_actor.writer_counters();
+        assert_eq!(drained.failed_total, baseline.failed_total);
+        assert_eq!(drained.timed_out_total, baseline.timed_out_total + 1);
+        assert_eq!(drained.timed_out_inflight, 0);
+        assert_eq!(
+            drained.accepted_total,
+            drained.committed_total + drained.failed_total
+        );
+        assert!(drained.last_error.is_none());
+        assert_eq!(
+            store.writer_liveness(Duration::from_secs(60)),
+            chio_kernel::ReceiptWriterLiveness::Healthy
+        );
+
+        drop(store);
+        let _ = fs::remove_file(path);
+        Ok(())
+    }
+
+    #[test]
+    fn critical_write_timeout_keeps_inflight_and_late_failure_poisoning(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (sender, receiver) = receipt_commit_channel();
+        let health = Arc::new(ReceiptCommitWriterHealth::default());
+        let handle = WriterHandle {
+            sender,
+            health: Arc::clone(&health),
+            worker: idle_worker(),
+            settlement_store_binding: None,
+        };
+        let inflight_before = health.inflight.load(Ordering::SeqCst);
+
+        let error = handle
+            .run_critical_receipt_write_with_timeout(
+                |_connection| Ok(()),
+                Duration::from_millis(10),
+            )
+            .err()
+            .ok_or("expected critical write timeout")?;
+        assert!(matches!(error, ReceiptStoreError::Timeout { .. }));
+        assert_eq!(health.inflight.load(Ordering::SeqCst), inflight_before + 1);
+        assert_eq!(health.failed_total.load(Ordering::SeqCst), 0);
+        assert_eq!(health.timed_out_inflight.load(Ordering::SeqCst), 1);
+        assert_eq!(health.timed_out_total.load(Ordering::SeqCst), 1);
+        assert!(!health.critical_write_poisoned.load(Ordering::SeqCst));
+
+        match receiver.recv()? {
+            ReceiptCommitCommand::Write {
+                job,
+                appends_receipts,
+                fail_closed_on_error,
+                mut completion,
+            } => {
+                assert!(appends_receipts);
+                assert!(fail_closed_on_error);
+                health.note_channel_dequeue();
+                let respond = job(Err(ReceiptStoreError::Conflict(
+                    "late critical write failure".to_string(),
+                )));
+                atomic_saturating_sub(&health.inflight, 1);
+                let committed = respond(Ok(()));
+                assert!(!committed);
+                record_write_job_outcome(&health, committed);
+                completion.complete();
+            }
+            _ => return Err("expected queued critical Write command".into()),
+        }
+        assert!(health.critical_write_poisoned.load(Ordering::SeqCst));
+        assert!(health.head_poisoned.load(Ordering::SeqCst));
+        assert_eq!(health.timed_out_inflight.load(Ordering::SeqCst), 0);
+        assert_eq!(health.timed_out_total.load(Ordering::SeqCst), 1);
+        assert_eq!(health.accepted_total.load(Ordering::SeqCst), 1);
+        assert_eq!(health.committed_total.load(Ordering::SeqCst), 0);
+        assert_eq!(health.failed_total.load(Ordering::SeqCst), 1);
         Ok(())
     }
 
@@ -5104,6 +4945,8 @@ mod receipt_commit_actor_tests {
         let handle = WriterHandle {
             sender,
             health: Arc::clone(&health),
+            worker: idle_worker(),
+            settlement_store_binding: None,
         };
         let inflight_before = health.inflight.load(Ordering::SeqCst);
 
@@ -5124,7 +4967,9 @@ mod receipt_commit_actor_tests {
         // Ownership of the queued job stays with the actor, so the timeout side
         // must leave inflight elevated (the honest wedged-writer signal).
         assert_eq!(health.inflight.load(Ordering::SeqCst), inflight_before + 1);
-        assert!(health.failed_total.load(Ordering::SeqCst) >= 1);
+        assert_eq!(health.failed_total.load(Ordering::SeqCst), 0);
+        assert_eq!(health.timed_out_inflight.load(Ordering::SeqCst), 1);
+        assert_eq!(health.timed_out_total.load(Ordering::SeqCst), 1);
         Ok(())
     }
 
@@ -5142,6 +4987,8 @@ mod receipt_commit_actor_tests {
         let handle = WriterHandle {
             sender,
             health: Arc::clone(&health),
+            worker: idle_worker(),
+            settlement_store_binding: None,
         };
         // Actor thread: take the one queued command and drop it (die mid-flight),
         // which drops the deferred responder and disconnects the caller.
@@ -5160,7 +5007,7 @@ mod receipt_commit_actor_tests {
         let counters = ReceiptCommitActor {
             sender: receipt_commit_channel().0,
             health: Arc::clone(&health),
-            writer: idle_writer(),
+            worker: idle_worker(),
         }
         .writer_counters();
         assert!(
@@ -5208,7 +5055,7 @@ mod receipt_commit_actor_tests {
         store.receipt_commit_actor = ReceiptCommitActor {
             sender,
             health: Arc::new(ReceiptCommitWriterHealth::default()),
-            writer: idle_writer(),
+            worker: idle_worker(),
         };
 
         let error = match store.reseed_verified_head() {
@@ -5287,6 +5134,8 @@ mod receipt_commit_actor_tests {
         let handle = WriterHandle {
             sender,
             health: Arc::clone(&health),
+            worker: idle_worker(),
+            settlement_store_binding: None,
         };
 
         let error = handle.run_write(|_connection| Ok(()));

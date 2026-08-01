@@ -56,7 +56,6 @@ fn make_nonce_kernel() -> ChioKernel {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(NonceEchoServer));
@@ -109,6 +108,10 @@ fn make_bridge_nonce_request(kernel: &ChioKernel, agent: &Keypair) -> BridgeMcpT
         agent_id: agent.public_key().to_hex(),
         execution_nonce: None,
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         route_selection_metadata: None,
         peer_supports_chio_tool_streaming: false,
@@ -233,7 +236,7 @@ fn tools_call_round_trips_execution_nonce_through_meta() {
     let allowed = edge
         .handle_jsonrpc(json!({
             "jsonrpc": "2.0",
-            "id": 3,
+            "id": 2,
             "method": "tools/call",
             "params": {
                 "name": "read_file",
@@ -244,12 +247,12 @@ fn tools_call_round_trips_execution_nonce_through_meta() {
             }
         }))
         .unwrap();
-    assert_eq!(allowed["result"]["isError"], false);
+    assert_eq!(allowed["result"]["isError"], false, "{allowed}");
 
     let replay = edge
         .handle_jsonrpc(json!({
             "jsonrpc": "2.0",
-            "id": 4,
+            "id": 2,
             "method": "tools/call",
             "params": {
                 "name": "read_file",

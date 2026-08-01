@@ -7,6 +7,37 @@ struct FailingMonetaryServer {
     id: String,
 }
 
+/// A monetary tool server that dispatches a pass-through but reports that it
+/// does not measure realized cost, mirroring the sidecar mediated route's
+/// pre-execution authorization gate.
+struct UnmeasuredCostServer {
+    id: String,
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for UnmeasuredCostServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["compute".to_string()]
+    }
+
+    fn measures_realized_cost(&self) -> bool {
+        false
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Ok(serde_json::json!({ "upstream": "https://example.test" }))
+    }
+}
+
 struct CountingMonetaryServer {
     id: String,
     invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -15,6 +46,7 @@ struct CountingMonetaryServer {
 struct PendingMonetaryServer {
     id: String,
     started: std::sync::Arc<tokio::sync::Notify>,
+    invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 struct StaticPriceOracle {
@@ -192,7 +224,9 @@ impl ToolServerConnection for PendingMonetaryServer {
         _arguments: serde_json::Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<serde_json::Value, KernelError> {
-        self.started.notify_waiters();
+        self.invocations
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.started.notify_one();
         std::future::pending::<Result<serde_json::Value, KernelError>>().await
     }
 
@@ -251,7 +285,6 @@ fn make_monetary_config() -> KernelConfig {
         retention_config: None,
         memory_budget: crate::MemoryBudgetConfig::defaults(),
         deadlines: crate::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: crate::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -284,7 +317,9 @@ fn make_sibling_sum_monetary_fixture(prefix: &str) -> SiblingSumMonetaryFixture 
         .record_capability_snapshot(&parent, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
     kernel
         .register_budget_parent(parent.id.clone(), 5_000)
         .unwrap();
@@ -363,7 +398,9 @@ fn make_sibling_sum_invocation_fixture(prefix: &str) -> SiblingSumInvocationFixt
         .record_capability_snapshot(&parent, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
     kernel
         .register_budget_parent(parent.id.clone(), 5_000)
         .unwrap();
@@ -581,6 +618,7 @@ fn make_governed_intent(
             "invoice_id": "inv-1001",
             "operator": "finance-ops",
         })),
+        body: Default::default(),
     }
 }
 
@@ -591,6 +629,7 @@ struct GovernedAcpIntentFixture<'a> {
     purpose: &'a str,
     seller: &'a str,
     shared_payment_token_id: &'a str,
+    settlement_destination_ref: Option<&'a str>,
     units: u64,
     currency: &'a str,
 }
@@ -608,6 +647,7 @@ fn make_governed_acp_intent(fixture: GovernedAcpIntentFixture<'_>) -> GovernedTr
         commerce: Some(chio_core::capability::governance::GovernedCommerceContext {
             seller: fixture.seller.to_string(),
             shared_payment_token_id: fixture.shared_payment_token_id.to_string(),
+            settlement_destination_ref: fixture.settlement_destination_ref.map(str::to_string),
         }),
         metered_billing: None,
         runtime_attestation: None,
@@ -617,6 +657,7 @@ fn make_governed_acp_intent(fixture: GovernedAcpIntentFixture<'_>) -> GovernedTr
             "invoice_id": "inv-2002",
             "operator": "commerce-ops",
         })),
+        body: Default::default(),
     }
 }
 
@@ -633,8 +674,10 @@ fn make_runtime_attestation(
         evidence_sha256: format!("digest-{tier:?}"),
         runtime_identity: Some("spiffe://chio/runtime/test".to_string()),
         workload_identity: Some(
-            chio_core::capability::workload_identity::WorkloadIdentity::parse_spiffe_uri("spiffe://chio/runtime/test")
-                .expect("parse runtime workload identity"),
+            chio_core::capability::workload_identity::WorkloadIdentity::parse_spiffe_uri(
+                "spiffe://chio/runtime/test",
+            )
+            .expect("parse runtime workload identity"),
         ),
         claims: Some(serde_json::json!({
             "enterpriseVerifier": {
@@ -647,7 +690,8 @@ fn make_runtime_attestation(
     }
 }
 
-fn make_trusted_azure_runtime_attestation() -> chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
+fn make_trusted_azure_runtime_attestation(
+) -> chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
     let now = current_unix_timestamp();
     chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
         schema: "chio.runtime-attestation.azure-maa.jwt.v1".to_string(),
@@ -666,7 +710,8 @@ fn make_trusted_azure_runtime_attestation() -> chio_core::capability::runtime_at
     }
 }
 
-fn make_trusted_google_runtime_attestation() -> chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
+fn make_trusted_google_runtime_attestation(
+) -> chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
     let now = current_unix_timestamp();
     chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
         schema: "chio.runtime-attestation.google-confidential-vm.jwt.v1".to_string(),
@@ -689,7 +734,8 @@ fn make_trusted_google_runtime_attestation() -> chio_core::capability::runtime_a
     }
 }
 
-fn make_trusted_nitro_runtime_attestation() -> chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
+fn make_trusted_nitro_runtime_attestation(
+) -> chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
     let now = current_unix_timestamp();
     chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
         schema: "chio.runtime-attestation.aws-nitro-attestation.v1".to_string(),
@@ -755,7 +801,8 @@ fn make_attestation_trust_policy() -> chio_core::capability::trust_policy::Attes
     }
 }
 
-fn make_attested_attestation_trust_policy() -> chio_core::capability::trust_policy::AttestationTrustPolicy {
+fn make_attested_attestation_trust_policy(
+) -> chio_core::capability::trust_policy::AttestationTrustPolicy {
     chio_core::capability::trust_policy::AttestationTrustPolicy {
         rules: vec![chio_core::capability::trust_policy::AttestationTrustRule {
             name: "azure-contoso-attested".to_string(),
@@ -792,6 +839,7 @@ fn make_metered_billing_context(
             expires_at: Some(now + 300),
         },
         max_billed_units: Some(units + 4),
+        verified_outcome: None,
     }
 }
 
@@ -863,7 +911,8 @@ fn make_governed_call_chain_continuation_token(
     let now = current_unix_timestamp();
     CallChainContinuationToken::sign(
         CallChainContinuationTokenBody {
-            schema: chio_core::capability::governance::CHIO_CALL_CHAIN_CONTINUATION_SCHEMA.to_string(),
+            schema: chio_core::capability::governance::CHIO_CALL_CHAIN_CONTINUATION_SCHEMA
+                .to_string(),
             token_id: "continuation-token-1".to_string(),
             signer: fixture.signer.public_key(),
             subject: fixture.subject.clone(),
@@ -1016,6 +1065,7 @@ fn make_governed_approval_token(
             subject: subject.clone(),
             governed_intent_hash: intent.binding_hash().unwrap(),
             request_id: request_id.to_string(),
+            threshold_proposal_hash: None,
             issued_at: now.saturating_sub(1),
             expires_at: now + 300,
             decision: GovernedApprovalDecision::Approved,
@@ -1030,6 +1080,7 @@ fn make_governed_approval_token(
 #[derive(Clone)]
 struct TrackingPaymentAdapter {
     authorized: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    captured: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     released: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     refunded: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
@@ -1038,6 +1089,7 @@ impl TrackingPaymentAdapter {
     fn new() -> Self {
         Self {
             authorized: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            captured: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             released: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             refunded: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
@@ -1053,7 +1105,7 @@ impl PaymentAdapter for TrackingPaymentAdapter {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(PaymentAuthorization {
             authorization_id: "auth_tracking".to_string(),
-            settled: false,
+            state: PaymentAuthorizationState::Held,
             metadata: serde_json::json!({ "adapter": "tracking" }),
         })
     }
@@ -1065,6 +1117,8 @@ impl PaymentAdapter for TrackingPaymentAdapter {
         _currency: &str,
         _reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
+        self.captured
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(PaymentResult {
             transaction_id: authorization_id.to_string(),
             settlement_status: RailSettlementStatus::Settled,
@@ -1103,91 +1157,8 @@ impl PaymentAdapter for TrackingPaymentAdapter {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn dropping_async_evaluate_after_monetary_admission_unwinds_budget_payment_and_receipt() {
-    let started = std::sync::Arc::new(tokio::sync::Notify::new());
-    let payment = TrackingPaymentAdapter::new();
-    let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
-    kernel.register_tool_server(Box::new(PendingMonetaryServer {
-        id: "cost-srv".to_string(),
-        started: std::sync::Arc::clone(&started),
-    }));
-
-    struct AbortEvidenceGuard;
-    impl Guard for AbortEvidenceGuard {
-        fn name(&self) -> &str {
-            "abort-evidence"
-        }
-
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
-            Ok(GuardDecision::allow_with_evidence(vec![GuardEvidence {
-                guard_name: "abort-evidence".to_string(),
-                verdict: true,
-                details: Some("pre-invocation evidence recorded before abort".to_string()),
-            }]))
-        }
-    }
-    kernel.add_guard(Box::new(AbortEvidenceGuard));
-
-    let agent_kp = Keypair::generate();
-    let grant = make_monetary_grant("cost-srv", "compute", 100, 1000, "USD");
-    let cap = kernel
-        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
-        .unwrap();
-    let request = ToolCallRequest {
-        request_id: "req-drop-after-admission".to_string(),
-        capability: cap.clone(),
-        tool_name: "compute".to_string(),
-        server_id: "cost-srv".to_string(),
-        agent_id: agent_kp.public_key().to_hex(),
-        arguments: serde_json::json!({}),
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: None,
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-
-    let kernel = std::sync::Arc::new(kernel);
-    let eval = {
-        let kernel = std::sync::Arc::clone(&kernel);
-        tokio::spawn(async move { kernel.evaluate_tool_call(&request).await })
-    };
-
-    tokio::time::timeout(Duration::from_secs(1), started.notified())
-        .await
-        .expect("pending monetary tool should be invoked before abort");
-    eval.abort();
-    let join = eval.await.expect_err("aborted evaluation should not complete");
-    assert!(join.is_cancelled());
-
-    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
-    assert_eq!(usage.invocation_count, 0);
-    assert_eq!(usage.committed_cost_units().unwrap(), 0);
-    assert_eq!(
-        payment
-            .authorized
-            .load(std::sync::atomic::Ordering::SeqCst),
-        1
-    );
-    assert_eq!(
-        payment.released.load(std::sync::atomic::Ordering::SeqCst),
-        1
-    );
-    assert_eq!(
-        payment.refunded.load(std::sync::atomic::Ordering::SeqCst),
-        0
-    );
-
-    let receipt_log = kernel.receipt_log();
-    assert_eq!(receipt_log.len(), 1);
-    let receipt = receipt_log.get(0).unwrap();
-    assert!(receipt.is_cancelled());
-    assert_eq!(receipt.evidence.len(), 1);
-    assert_eq!(receipt.evidence[0].guard_name, "abort-evidence");
-}
+#[path = "support_monetary_durability.rs"]
+mod support_monetary_durability;
 
 fn make_dpop_grant(server: &str, tool: &str) -> ToolGrant {
     ToolGrant {
@@ -1225,7 +1196,6 @@ fn make_dpop_kernel_and_cap(
         retention_config: None,
         memory_budget: crate::MemoryBudgetConfig::defaults(),
         deadlines: crate::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: crate::DispatchIntentJournalMode::Off,
     };
     let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(EchoServer::new(server, vec![tool])));
@@ -1268,4 +1238,196 @@ fn make_dpop_proof(
         agent_key: agent_kp.public_key(),
     };
     dpop::DpopProof::sign(body, agent_kp).expect("DPoP sign failed")
+}
+
+/// A budget store spy that authorizes holds normally but returns `Err` on every
+/// reverse. Used to exercise the drop-guard pending-reversal escalation path.
+struct ReverseFailingBudgetStore {
+    inner: InMemoryBudgetStore,
+}
+
+impl ReverseFailingBudgetStore {
+    fn new() -> Self {
+        Self {
+            inner: InMemoryBudgetStore::new(),
+        }
+    }
+}
+
+impl BudgetStore for ReverseFailingBudgetStore {
+    fn try_increment(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.inner
+            .try_increment(capability_id, grant_index, max_invocations)
+    }
+
+    fn try_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.inner.try_charge_cost(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+        )
+    }
+
+    fn reverse_charge_cost(
+        &self,
+        _capability_id: &str,
+        _grant_index: usize,
+        _cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        Err(BudgetStoreError::Invariant(
+            "reverse store unreachable".to_string(),
+        ))
+    }
+
+    fn reduce_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        self.inner
+            .reduce_charge_cost(capability_id, grant_index, cost_units)
+    }
+
+    fn settle_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        exposed_cost_units: u64,
+        realized_cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        self.inner.settle_charge_cost(
+            capability_id,
+            grant_index,
+            exposed_cost_units,
+            realized_cost_units,
+        )
+    }
+
+    fn try_charge_cost_with_ids_and_authority(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&crate::budget_store::BudgetEventAuthority>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.inner.try_charge_cost_with_ids_and_authority(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )
+    }
+
+    fn reverse_charge_cost_with_ids_and_authority(
+        &self,
+        _capability_id: &str,
+        _grant_index: usize,
+        _cost_units: u64,
+        _hold_id: Option<&str>,
+        _event_id: Option<&str>,
+        _authority: Option<&crate::budget_store::BudgetEventAuthority>,
+    ) -> Result<(), BudgetStoreError> {
+        Err(BudgetStoreError::Invariant(
+            "reverse store unreachable".to_string(),
+        ))
+    }
+
+    fn reduce_charge_cost_with_ids_and_authority(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&crate::budget_store::BudgetEventAuthority>,
+    ) -> Result<(), BudgetStoreError> {
+        self.inner.reduce_charge_cost_with_ids_and_authority(
+            capability_id,
+            grant_index,
+            cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )
+    }
+
+    fn settle_charge_cost_with_ids_and_authority(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        exposed_cost_units: u64,
+        realized_cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&crate::budget_store::BudgetEventAuthority>,
+    ) -> Result<(), BudgetStoreError> {
+        self.inner.settle_charge_cost_with_ids_and_authority(
+            capability_id,
+            grant_index,
+            exposed_cost_units,
+            realized_cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )
+    }
+
+    fn list_usages(
+        &self,
+        limit: usize,
+        capability_id: Option<&str>,
+    ) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
+        self.inner.list_usages(limit, capability_id)
+    }
+
+    fn get_usage(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+    ) -> Result<Option<BudgetUsageRecord>, BudgetStoreError> {
+        self.inner.get_usage(capability_id, grant_index)
+    }
+
+    fn authorize_budget_hold(
+        &self,
+        request: crate::budget_store::BudgetAuthorizeHoldRequest,
+    ) -> Result<crate::budget_store::BudgetAuthorizeHoldDecision, BudgetStoreError> {
+        self.inner.authorize_budget_hold(request)
+    }
+
+    fn reverse_budget_hold(
+        &self,
+        _request: crate::budget_store::BudgetReverseHoldRequest,
+    ) -> Result<crate::budget_store::BudgetReverseHoldDecision, BudgetStoreError> {
+        Err(BudgetStoreError::Invariant(
+            "reverse store unreachable".to_string(),
+        ))
+    }
 }

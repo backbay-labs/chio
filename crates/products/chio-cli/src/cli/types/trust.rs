@@ -78,9 +78,61 @@ pub(crate) enum TrustCommands {
         #[arg(long)]
         certification_discovery_file: Option<PathBuf>,
 
+        /// Pinned fiscal genesis policy JSON loaded before the service binds.
+        #[arg(
+            long,
+            requires_all = [
+                "fiscal_anchor_url",
+                "fiscal_anchor_token",
+                "fiscal_admission_signing_seed"
+            ]
+        )]
+        fiscal_genesis_policy: Option<PathBuf>,
+
+        /// Independent HTTPS fiscal continuity anchor base URL.
+        #[arg(long, requires_all = ["fiscal_genesis_policy", "fiscal_anchor_token"])]
+        fiscal_anchor_url: Option<String>,
+
+        /// Bearer token for the independent fiscal continuity anchor.
+        #[arg(
+            long,
+            env = "CHIO_FISCAL_ANCHOR_TOKEN",
+            hide_env_values = true,
+            requires_all = ["fiscal_genesis_policy", "fiscal_anchor_url"]
+        )]
+        fiscal_anchor_token: Option<String>,
+
+        /// Stable identifier for the local durable fiscal admission authority.
+        #[arg(long, default_value = "fiscal-admission")]
+        fiscal_admission_authority_id: String,
+
+        /// Monotonic key epoch for the fiscal admission signing key.
+        #[arg(long, default_value_t = 1)]
+        fiscal_admission_signer_key_epoch: u64,
+
+        /// Existing private seed file used to sign durable fiscal admissions.
+        #[arg(
+            long,
+            requires_all = [
+                "fiscal_genesis_policy",
+                "fiscal_anchor_url",
+                "fiscal_anchor_token"
+            ]
+        )]
+        fiscal_admission_signing_seed: Option<PathBuf>,
+
+        /// Fiscal continuity anchor request timeout in seconds.
+        #[arg(long, default_value_t = 5)]
+        fiscal_anchor_timeout_seconds: u64,
+
         /// Public certification metadata TTL in seconds.
         #[arg(long, default_value_t = 3600)]
         certification_public_metadata_ttl_seconds: u64,
+
+        /// JSON file containing the operator roster policy (roster, allowed decision rules,
+        /// roster anchor) for liability adjudication enforcement.
+        #[arg(long)]
+        roster_policy_file: Option<PathBuf>,
     },
 
     /// Manage enterprise federation provider-admin records.
@@ -1160,6 +1212,10 @@ pub(crate) enum TrustLiabilityMarketCommands {
         /// JSON or YAML adjudication input file.
         #[arg(long)]
         input_file: PathBuf,
+        /// JSON file containing the operator roster policy (roster, allowed decision rules,
+        /// roster anchor). Required when --control-url is not set.
+        #[arg(long)]
+        roster_policy_file: Option<PathBuf>,
     },
 
     /// Issue and persist a signed liability claim payout instruction from JSON or YAML input.
@@ -1167,6 +1223,9 @@ pub(crate) enum TrustLiabilityMarketCommands {
         /// JSON or YAML claim payout instruction input file.
         #[arg(long)]
         input_file: PathBuf,
+        /// JSON file containing the operator roster policy. Required when --control-url is not set.
+        #[arg(long)]
+        roster_policy_file: Option<PathBuf>,
     },
 
     /// Issue and persist a signed liability claim payout receipt from JSON or YAML input.
@@ -1181,6 +1240,9 @@ pub(crate) enum TrustLiabilityMarketCommands {
         /// JSON or YAML claim settlement instruction input file.
         #[arg(long)]
         input_file: PathBuf,
+        /// JSON file containing the operator roster policy. Required when --control-url is not set.
+        #[arg(long)]
+        roster_policy_file: Option<PathBuf>,
     },
 
     /// Issue and persist a signed liability claim settlement receipt from JSON or YAML input.

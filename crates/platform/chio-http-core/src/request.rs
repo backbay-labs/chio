@@ -73,6 +73,28 @@ pub struct ChioHttpRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_metadata: Option<ModelMetadata>,
 
+    /// Governed intent is not supported by the HTTP authority projection.
+    /// It is retained here so the boundary can reject it instead of silently
+    /// ignoring a security-sensitive field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governed_intent: Option<serde_json::Value>,
+
+    /// Singular governed approval is unsupported on this projection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_token: Option<serde_json::Value>,
+
+    /// Threshold governed approvals are unsupported on this projection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_tokens: Option<serde_json::Value>,
+
+    /// Threshold proposal is unsupported on this projection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_approval_proposal: Option<serde_json::Value>,
+
+    /// Supplemental authorization is unsupported on this projection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supplemental_authorization: Option<serde_json::Value>,
+
     /// Optional signed nonce presented to complete a strict nonce preflight.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_nonce: Option<SignedExecutionNonce>,
@@ -108,9 +130,36 @@ impl ChioHttpRequest {
             tool_name: None,
             arguments: None,
             model_metadata: None,
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: None,
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             execution_nonce: None,
             timestamp: now,
         }
+    }
+
+    /// Return the first authorization extension this HTTP projection cannot
+    /// enforce. Callers use this to deny explicitly at the authority boundary.
+    #[must_use]
+    pub fn unsupported_authorization_extension(&self) -> Option<&'static str> {
+        if self.governed_intent.is_some() {
+            return Some("governed_intent");
+        }
+        if self.approval_token.is_some() {
+            return Some("approval_token");
+        }
+        if self.approval_tokens.is_some() {
+            return Some("approval_tokens");
+        }
+        if self.threshold_approval_proposal.is_some() {
+            return Some("threshold_approval_proposal");
+        }
+        if self.supplemental_authorization.is_some() {
+            return Some("supplemental_authorization");
+        }
+        None
     }
 
     /// Compute a content hash binding this request to a receipt.
@@ -193,6 +242,30 @@ mod tests {
         assert_eq!(back.method, HttpMethod::Put);
         assert_eq!(back.query.get("verbose").map(|s| s.as_str()), Some("true"));
         assert_eq!(back.body_hash.as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn serde_retains_unsupported_authorization_extensions_for_rejection() {
+        let mut req = ChioHttpRequest::new(
+            "req-auth-extension".to_string(),
+            HttpMethod::Post,
+            "/chio/evaluate".to_string(),
+            "/chio/evaluate".to_string(),
+            CallerIdentity::anonymous(),
+        );
+        req.approval_tokens = Some(serde_json::json!([
+            { "id": "approval-a" },
+            { "id": "approval-b" }
+        ]));
+
+        let json = serde_json::to_string(&req).test_unwrap();
+        let back: ChioHttpRequest = serde_json::from_str(&json).test_unwrap();
+
+        assert_eq!(
+            back.unsupported_authorization_extension(),
+            Some("approval_tokens")
+        );
+        assert_eq!(back.approval_tokens, req.approval_tokens);
     }
 
     #[test]

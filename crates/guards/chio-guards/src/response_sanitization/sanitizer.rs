@@ -56,6 +56,17 @@ impl Clone for OutputSanitizer {
 }
 
 impl OutputSanitizer {
+    pub(crate) fn uses_tokenization(&self) -> Result<bool, &'static str> {
+        Ok(self
+            .config
+            .redaction_strategies
+            .values()
+            .any(|strategy| matches!(strategy, RedactionStrategy::Tokenize))
+            || compiled_patterns()?
+                .iter()
+                .any(|pattern| matches!(pattern.recommended, RedactionStrategy::Tokenize)))
+    }
+
     fn build_default_or_fail_closed() -> Self {
         Self::with_config(OutputSanitizerConfig::default()).unwrap_or_else(|_| Self {
             config: OutputSanitizerConfig::default(),

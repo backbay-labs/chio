@@ -27,12 +27,15 @@ cargo_target_dir="target/qualify-comptroller-operator-surfaces-build"
 rm -rf "${output_root}"
 mkdir -p "${log_root}"
 
-run_and_log() {
-  local name="$1"
-  shift
-  local log_path="${log_root}/${name}.log"
-  echo "==> ${name}"
-  "$@" 2>&1 | tee "${log_path}"
+run_surface_test() {
+  local binary="$1" name="$2"
+  local out
+  out="$(cargo test -p chio-cli --test "$binary" "$name" -- --exact 2>&1)"
+  echo "$out"
+  if ! grep -Eq "test result: ok\. [1-9][0-9]* passed" <<<"$out"; then
+    echo "FAIL: $binary::$name did not run a nonzero passing test count (false-green guard)" >&2
+    exit 1
+  fi
 }
 
 python3 -m json.tool "${profile_src}" >/dev/null
@@ -41,20 +44,14 @@ cp "${runbook_src}" "${runbook_snapshot}"
 
 export CARGO_TARGET_DIR="${cargo_target_dir}"
 
-run_and_log operator-report \
-  cargo test -p chio-cli --test receipt_query test_operator_report_endpoint -- --exact
-run_and_log settlement-reconciliation \
-  cargo test -p chio-cli --test receipt_query test_settlement_reconciliation_report_and_action_endpoint -- --exact
-run_and_log metered-billing \
-  cargo test -p chio-cli --test receipt_query test_metered_billing_reconciliation_report_and_action_endpoint -- --exact
-run_and_log authorization-context \
-  cargo test -p chio-cli --test receipt_query test_authorization_context_report_and_cli -- --exact
-run_and_log underwriting-surface \
-  cargo test -p chio-cli --test receipt_query test_underwriting_decision_issue_and_list_surfaces -- --exact
-run_and_log credit-surface \
-  cargo test -p chio-cli --test receipt_query test_credit_facility_report_issue_and_list_surfaces -- --exact
-run_and_log capital-surface \
-  cargo test -p chio-cli --test receipt_query test_capital_book_report_export_surfaces -- --exact
+run_surface_test receipt_query_export        test_operator_report_endpoint
+run_surface_test receipt_query_export        test_settlement_reconciliation_report_and_action_endpoint
+run_surface_test receipt_query_export        test_metered_billing_reconciliation_report_and_action_endpoint
+run_surface_test receipt_query_authorization test_authorization_context_report_and_cli
+run_surface_test receipt_query_underwriting  test_underwriting_decision_issue_and_list_surfaces
+run_surface_test receipt_query_credit_exposure test_credit_facility_report_issue_and_list_surfaces
+run_surface_test receipt_query_capital       test_capital_book_report_export_surfaces
+run_surface_test receipt_query_export        test_comptroller_surface_report_endpoint
 
 cat >"${report_path}" <<'EOF'
 # Comptroller Operator-Surface Qualification
@@ -68,7 +65,7 @@ Decision:
 - Chio qualifies locally for operator-facing economic control surfaces.
 - The trust-control service exposes report and action endpoints over governed
   operator evidence, settlement reconciliation, metered billing
-  reconciliation, and authorization-context review.
+  reconciliation, authorization-context review, and comptroller surface.
 - Signed underwriting, credit, capital, and liability artifacts are available
   through explicit trust-control issuance surfaces.
 
@@ -79,13 +76,14 @@ Still not proved:
 
 Executed command set:
 
-- `cargo test -p chio-cli --test receipt_query test_operator_report_endpoint -- --exact`
-- `cargo test -p chio-cli --test receipt_query test_settlement_reconciliation_report_and_action_endpoint -- --exact`
-- `cargo test -p chio-cli --test receipt_query test_metered_billing_reconciliation_report_and_action_endpoint -- --exact`
-- `cargo test -p chio-cli --test receipt_query test_authorization_context_report_and_cli -- --exact`
-- `cargo test -p chio-cli --test receipt_query test_underwriting_decision_issue_and_list_surfaces -- --exact`
-- `cargo test -p chio-cli --test receipt_query test_credit_facility_report_issue_and_list_surfaces -- --exact`
-- `cargo test -p chio-cli --test receipt_query test_capital_book_report_export_surfaces -- --exact`
+- `cargo test -p chio-cli --test receipt_query_export test_operator_report_endpoint -- --exact`
+- `cargo test -p chio-cli --test receipt_query_export test_settlement_reconciliation_report_and_action_endpoint -- --exact`
+- `cargo test -p chio-cli --test receipt_query_export test_metered_billing_reconciliation_report_and_action_endpoint -- --exact`
+- `cargo test -p chio-cli --test receipt_query_authorization test_authorization_context_report_and_cli -- --exact`
+- `cargo test -p chio-cli --test receipt_query_underwriting test_underwriting_decision_issue_and_list_surfaces -- --exact`
+- `cargo test -p chio-cli --test receipt_query_credit_exposure test_credit_facility_report_issue_and_list_surfaces -- --exact`
+- `cargo test -p chio-cli --test receipt_query_capital test_capital_book_report_export_surfaces -- --exact`
+- `cargo test -p chio-cli --test receipt_query_export test_comptroller_surface_report_endpoint -- --exact`
 
 Supporting documents:
 

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/credit-iou-envelope/v2",
+  "title": "Signed Chio Credit IOU Envelope V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "algorithm", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "iouId",
+        "operationId",
+        "obligationId",
+        "obligationAtomDigest",
+        "receiptId",
+        "receiptDigest",
+        "receiptTimestampUnixSeconds",
+        "issuedAtUnixMs",
+        "toolServer",
+        "toolName",
+        "capabilityId",
+        "receiptContentHash",
+        "receiptPolicyHash",
+        "debtorId",
+        "originalCreditorId",
+        "originalSettlementDestinationRef",
+        "payeeBindingDigest",
+        "amount",
+        "currentDispositionDigest",
+        "dueAtUnixMs",
+        "facilityId",
+        "creditAuthorityDigest",
+        "creditFacilityBind",
+        "issuerId",
+        "issuerKeyEpoch"
+      ],
+      "properties": {
+        "schema": { "const": "chio.credit.receivable-iou-envelope.v1" },
+        "iouId": { "$ref": "#/$defs/digest" },
+        "operationId": { "$ref": "#/$defs/digest" },
+        "obligationId": { "$ref": "#/$defs/digest" },
+        "obligationAtomDigest": { "$ref": "#/$defs/digest" },
+        "receiptId": { "$ref": "#/$defs/text" },
+        "receiptDigest": { "$ref": "#/$defs/digest" },
+        "receiptTimestampUnixSeconds": { "$ref": "#/$defs/positiveInteger" },
+        "issuedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "tenantId": { "$ref": "#/$defs/text" },
+        "toolServer": { "$ref": "#/$defs/text" },
+        "toolName": { "$ref": "#/$defs/text" },
+        "capabilityId": { "$ref": "#/$defs/text" },
+        "receiptContentHash": { "$ref": "#/$defs/digest" },
+        "receiptPolicyHash": { "$ref": "#/$defs/digest" },
+        "debtorId": { "$ref": "#/$defs/text" },
+        "originalCreditorId": { "$ref": "#/$defs/text" },
+        "originalSettlementDestinationRef": { "$ref": "#/$defs/text" },
+        "payeeBindingDigest": { "$ref": "#/$defs/digest" },
+        "amount": { "$ref": "#/$defs/amount" },
+        "currentDispositionDigest": { "$ref": "#/$defs/digest" },
+        "dueAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "facilityId": { "$ref": "#/$defs/text" },
+        "creditAuthorityDigest": { "$ref": "#/$defs/digest" },
+        "creditFacilityBind": {
+          "$ref": "https://chio-protocol.dev/schemas/chio-economy/credit-facility-bind/v1"
+        },
+        "issuerId": { "$ref": "#/$defs/text" },
+        "issuerKeyEpoch": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "algorithm": { "enum": ["ed25519", "p256", "p384", "hybrid"] },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "amount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "units"],
+      "properties": {
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "units": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "cryptoMaterial": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16384,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    }
+  }
+}

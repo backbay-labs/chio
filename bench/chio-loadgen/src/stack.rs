@@ -260,7 +260,6 @@ fn kernel_config(keypair: Keypair, deadlines: HotPathDeadlineConfig) -> KernelCo
         // the store attaches with no background signer.
         checkpoint_batch_size: 0,
         retention_config: None,
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines,
     }

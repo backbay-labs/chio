@@ -4,11 +4,16 @@ use std::sync::Mutex;
 
 use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::SolValue;
+use chio_core::capability::governance::{GovernedApprovalDecision, GovernedApprovalToken};
+use chio_core::capability::scope::MonetaryAmount;
 use chio_core::hashing::sha256;
 use chio_core::web3::settlement::Web3SettlementDispatchArtifact;
 use serde::{Deserialize, Serialize};
 
 use crate::SettlementError;
+
+#[path = "payments_approval.rs"]
+mod approval_binding;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -115,11 +120,13 @@ pub struct PreparedPaymasterCompatibility {
 
 pub fn build_x402_payment_requirements(
     dispatch: &Web3SettlementDispatchArtifact,
+    approval_binding: &ApprovalBinding,
     facilitator_url: &str,
     resource: &str,
     accepted_tokens: Vec<String>,
     settlement_mode: X402SettlementMode,
 ) -> Result<X402PaymentRequirements, SettlementError> {
+    approval_binding.assert_dispatch("x402", dispatch)?;
     validate_x402_field("facilitator URL", facilitator_url)?;
     validate_x402_field("resource", resource)?;
     if accepted_tokens.is_empty() {
@@ -129,6 +136,16 @@ pub fn build_x402_payment_requirements(
     }
     for (index, token) in accepted_tokens.iter().enumerate() {
         validate_x402_field(&format!("accepted token {index}"), token)?;
+    }
+    if !accepted_tokens.iter().any(|token| {
+        token
+            .trim()
+            .eq_ignore_ascii_case(approval_binding.token_symbol.trim())
+    }) {
+        return Err(SettlementError::InvalidBinding(format!(
+            "x402 accepted tokens do not include the approval-bound token {:?}",
+            approval_binding.token_symbol
+        )));
     }
     Ok(X402PaymentRequirements {
         version: "x402".to_string(),
@@ -229,34 +246,6 @@ pub struct ApprovalBinding {
     /// authorization window to the approval window so a captured signature
     /// cannot be broadcast after the approval that governs it has expired.
     pub approval_expires_at: u64,
-}
-
-impl ApprovalBinding {
-    /// Assert that a lane's token symbol matches the approval-bound token.
-    ///
-    /// Comparison is case-insensitive after trimming so `"usdc"`, `" USDC "`,
-    /// and `"USDC"` are treated as the same token. Used by lanes that
-    /// identify their token by symbol rather than by contract address (the
-    /// x402 accepted-token list and the Circle token symbol). Fails closed
-    /// on any mismatch so a captured authorization for one token cannot be
-    /// redirected to a different token the approval never authorized.
-    pub fn assert_token_symbol(
-        &self,
-        lane: &str,
-        lane_token_symbol: &str,
-    ) -> Result<(), SettlementError> {
-        if !lane_token_symbol
-            .trim()
-            .eq_ignore_ascii_case(self.token_symbol.trim())
-        {
-            return Err(SettlementError::InvalidBinding(format!(
-                "{lane} token mismatch: lane token {lane_token_symbol:?} is not the \
-                 approval-bound token {:?}",
-                self.token_symbol
-            )));
-        }
-        Ok(())
-    }
 }
 
 /// Outcome of a [`Eip3009NonceStore::record_if_fresh`] call.
@@ -366,11 +355,9 @@ fn canonicalize_nonce_key_component(value: &str) -> String {
 /// Process-local single-use EIP-3009 nonce store.
 ///
 /// Backed by `Mutex<Eip3009NonceMap>`. Suitable for tests and
-/// single-process deployments; replay state is lost on restart. Durable
-/// deployments back the [`Eip3009NonceStore`] trait with
-/// `chio_store_sqlite::SqliteEip3009NonceStore`, which persists nonces
-/// across restarts and cannot wedge at capacity (its caller drives
-/// `gc_expired` explicitly).
+/// explicitly ephemeral single-process deployments. No durable implementation
+/// is provided in-tree; production callers must supply durable replay protection
+/// before broadcast.
 pub struct InMemoryEip3009NonceStore {
     inner: Mutex<Eip3009NonceMap>,
     max_entries: usize,
@@ -624,15 +611,6 @@ pub fn prepare_transfer_with_authorization(
         canonical_contract,
         hex::encode(nonce.as_slice())
     );
-    // Caller-driven GC: pruning stays out of the record path by contract,
-    // so this now-bearing verify path sweeps expired entries when the store
-    // nears capacity, using the same clock it already validated the
-    // authorization window against.
-    if let Ok(len) = nonce_store.len() {
-        if len >= (DEFAULT_MAX_EIP3009_NONCE_ENTRIES / 8) * 7 {
-            let _ = nonce_store.gc_expired(now_unix_seconds);
-        }
-    }
     match nonce_store.record_if_fresh(
         &canonical_from,
         &canonical_nonce,
@@ -689,13 +667,204 @@ pub fn prepare_transfer_with_authorization(
     })
 }
 
+/// Resolved EVM rail parameters sourced from operator config.
+///
+/// Carries the on-chain identity of a seller's payment rail (chain, token
+/// contract, payee address) as resolved by the CLI/control-plane layer from
+/// the operator-configured seller-to-rail table. The kernel adapter stays
+/// rail-agnostic; the caller resolves and validates the rail before bridging
+/// to [`ApprovalBinding`] via [`approval_binding_from_governed`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RailBinding {
+    /// EVM chain id for the target payment rail.
+    pub chain_id: u64,
+    /// Token contract address for the stablecoin on this rail (e.g. USDC).
+    pub token_contract: String,
+    /// Payee (seller) address that receives the transfer on this rail.
+    pub payee_address: String,
+    /// Token decimal precision (informational; not asserted at the binding layer).
+    pub token_decimals: u8,
+    /// Token symbol (e.g. `"USDC"`). Asserted case-insensitively by the
+    /// token-symbol binding check on the approval.
+    pub token_symbol: String,
+}
+
+/// Bridge a verified [`GovernedApprovalToken`] and a resolved [`RailBinding`]
+/// into an [`ApprovalBinding`] suitable for [`prepare_transfer_with_authorization`].
+///
+/// The caller is the trust boundary: it resolves the rail from the operator
+/// config and independently supplies the amount and approval expiry that the
+/// verified token authorizes. The token is consulted for its `decision` and
+/// its `expires_at`; the discrete rail fields (chain, token contract, payee,
+/// symbol) come from the operator-configured [`RailBinding`] the caller
+/// resolved and the caller-supplied `amount_minor_units` and
+/// `approval_expires_at`.
+///
+/// The effective binding expiry is clamped to `min(approval_expires_at,
+/// token.expires_at)`. The signed approval cannot justify any spend after it
+/// lapses, so the binding must never outlive `token.expires_at`. A caller may
+/// legitimately request a tighter (shorter) window for a specific dispatch and
+/// that shorter value is preserved; a value later than the token's own expiry
+/// is narrowed to the token expiry. Clamping only shrinks the window, so no
+/// caller input can produce a binding whose
+/// [`ApprovalBinding::approval_expires_at`] outlives the approval token, and
+/// the invariant [`prepare_transfer_with_authorization`] enforces
+/// (`validBefore <= approval_expires_at`) holds structurally at this bridge.
+///
+/// Fails closed when:
+/// - `token.decision` is not [`GovernedApprovalDecision::Approved`].
+/// - Any required rail field is empty.
+/// - `amount_minor_units` is zero.
+pub fn approval_binding_from_governed(
+    token: &GovernedApprovalToken,
+    rail: &RailBinding,
+    amount_minor_units: u128,
+    approval_expires_at: u64,
+) -> Result<ApprovalBinding, SettlementError> {
+    if token.decision != GovernedApprovalDecision::Approved {
+        return Err(SettlementError::InvalidBinding(
+            "governed approval token is not approved".to_string(),
+        ));
+    }
+    if rail.token_contract.trim().is_empty() {
+        return Err(SettlementError::InvalidInput(
+            "rail binding requires a non-empty token contract".to_string(),
+        ));
+    }
+    if rail.payee_address.trim().is_empty() {
+        return Err(SettlementError::InvalidInput(
+            "rail binding requires a non-empty payee address".to_string(),
+        ));
+    }
+    if rail.token_symbol.trim().is_empty() {
+        return Err(SettlementError::InvalidInput(
+            "rail binding requires a non-empty token symbol".to_string(),
+        ));
+    }
+    if amount_minor_units == 0 {
+        return Err(SettlementError::InvalidInput(
+            "rail binding requires a non-zero amount".to_string(),
+        ));
+    }
+    Ok(ApprovalBinding {
+        chain_id: rail.chain_id,
+        payee_address: rail.payee_address.clone(),
+        amount_minor_units,
+        token_symbol: rail.token_symbol.clone(),
+        token_contract: Some(rail.token_contract.clone()),
+        // Clamp to the token's own expiry: the signed approval cannot justify
+        // any spend after it lapses, so the effective binding window must never
+        // outlive `token.expires_at`. A shorter caller value is a legitimately
+        // tighter window and is preserved; a later value is narrowed to the
+        // token's expiry. Clamping only shrinks the window, so no caller input
+        // can produce a binding that outlives the approval that justified it.
+        approval_expires_at: approval_expires_at.min(token.expires_at),
+    })
+}
+
+/// Versioned schema identifier for off-chain settlement receipts.
+pub const CHIO_OFFCHAIN_SETTLEMENT_RECEIPT_SCHEMA: &str = "chio.settle.offchain_receipt.v1";
+
+/// Prepare-only off-chain settlement receipt binding the EIP-3009
+/// authorization digest to a governed receipt.
+///
+/// Minted after a successful [`prepare_transfer_with_authorization`] call.
+/// This off-chain EIP-3009 preparation lane does not broadcast: the artifact
+/// records that an authorization was prepared and binds it to the governed
+/// receipt that authorized the spend. The `execution_nonce_ref` and `hold_ref`
+/// fields are reserved linkage fields for the comptroller surface and are
+/// `None` until the corresponding on-chain execution stage is implemented.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct OffchainSettlementReceiptArtifact {
+    /// Schema identifier. Must equal [`CHIO_OFFCHAIN_SETTLEMENT_RECEIPT_SCHEMA`].
+    pub schema: String,
+    /// Stable unique identifier for this off-chain settlement receipt.
+    pub settlement_receipt_id: String,
+    /// Unix timestamp (seconds) when this receipt was issued.
+    pub issued_at: u64,
+    /// EIP-712 digest from the prepared `transferWithAuthorization` call.
+    /// Binds the off-chain authorization to this receipt.
+    pub authorization_digest: String,
+    /// Receipt id of the governed tool-call receipt that authorized this
+    /// spend. Binds the settlement back to the governed receipt so a
+    /// captured digest cannot be redirected to a different tool-call receipt.
+    pub governed_receipt_id: String,
+    /// Settled monetary amount.
+    pub settled_amount: MonetaryAmount,
+    /// Reserved linkage to the on-chain execution nonce reference used by the
+    /// comptroller surface. `None` until on-chain execution is implemented.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_nonce_ref: Option<String>,
+    /// Reserved linkage to the budget hold that backs this settlement.
+    /// `None` until the comptroller hold-linkage stage is implemented.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold_ref: Option<String>,
+    /// Optional human-readable note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// Validate an [`OffchainSettlementReceiptArtifact`] for structural integrity.
+///
+/// Fails closed when:
+/// - Any of `schema`, `settlement_receipt_id`, `authorization_digest`, or
+///   `governed_receipt_id` is empty.
+/// - `settled_amount.units` is zero.
+/// - `settled_amount.units` is positive but `settled_amount.currency` is blank
+///   (empty or whitespace-only), leaving the paid amount without a denomination.
+///
+/// `execution_nonce_ref` and `hold_ref` are optional reserved linkage fields
+/// and are not validated here.
+pub fn validate_offchain_settlement_receipt(
+    receipt: &OffchainSettlementReceiptArtifact,
+) -> Result<(), SettlementError> {
+    if receipt.schema != CHIO_OFFCHAIN_SETTLEMENT_RECEIPT_SCHEMA {
+        return Err(SettlementError::InvalidInput(format!(
+            "off-chain settlement receipt schema must be \"{CHIO_OFFCHAIN_SETTLEMENT_RECEIPT_SCHEMA}\", got \"{}\"",
+            receipt.schema,
+        )));
+    }
+    if receipt.settlement_receipt_id.trim().is_empty() {
+        return Err(SettlementError::InvalidInput(
+            "off-chain settlement receipt requires a non-empty settlement_receipt_id".to_string(),
+        ));
+    }
+    if receipt.authorization_digest.trim().is_empty() {
+        return Err(SettlementError::InvalidInput(
+            "off-chain settlement receipt requires a non-empty authorization_digest".to_string(),
+        ));
+    }
+    if receipt.governed_receipt_id.trim().is_empty() {
+        return Err(SettlementError::InvalidInput(
+            "off-chain settlement receipt requires a non-empty governed_receipt_id".to_string(),
+        ));
+    }
+    if receipt.settled_amount.units == 0 {
+        return Err(SettlementError::InvalidInput(
+            "off-chain settlement receipt requires a positive settled_amount".to_string(),
+        ));
+    }
+    // A settled amount with positive units but no denomination cannot be
+    // reconciled: downstream ledgers and dashboards cannot tell what was paid.
+    if receipt.settled_amount.currency.trim().is_empty() {
+        return Err(SettlementError::InvalidInput(
+            "off-chain settlement receipt requires a non-empty settled_amount.currency".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn evaluate_circle_nanopayment(
     dispatch: &Web3SettlementDispatchArtifact,
+    approval_binding: &ApprovalBinding,
     policy: &CircleNanopaymentPolicy,
 ) -> Result<Option<PreparedCircleNanopayment>, SettlementError> {
     if !policy.enabled {
         return Ok(None);
     }
+    approval_binding.assert_dispatch("circle", dispatch)?;
     if !policy.operator_managed_custody_explicit {
         return Err(SettlementError::InvalidInput(
             "Circle nanopayment policy must keep operator-managed custody explicit".to_string(),
@@ -786,12 +955,19 @@ pub fn prepare_paymaster_compatibility(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_x402_payment_requirements, evaluate_circle_nanopayment,
-        prepare_paymaster_compatibility, prepare_transfer_with_authorization, ApprovalBinding,
+        approval_binding_from_governed, build_x402_payment_requirements,
+        evaluate_circle_nanopayment, prepare_paymaster_compatibility,
+        prepare_transfer_with_authorization, validate_offchain_settlement_receipt, ApprovalBinding,
         CircleNanopaymentPolicy, Eip3009Domain, Eip3009NonceStore, Erc4337PaymasterPolicy,
-        InMemoryEip3009NonceStore, NonceOutcome, TransferWithAuthorizationInput,
-        X402SettlementMode,
+        InMemoryEip3009NonceStore, NonceOutcome, OffchainSettlementReceiptArtifact, RailBinding,
+        SettlementError, TransferWithAuthorizationInput, X402SettlementMode,
+        CHIO_OFFCHAIN_SETTLEMENT_RECEIPT_SCHEMA,
     };
+    use chio_core::capability::governance::{
+        GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
+    };
+    use chio_core::capability::scope::MonetaryAmount;
+    use chio_core::crypto::Keypair;
     use chio_core::web3::settlement::Web3SettlementDispatchArtifact;
 
     use chio_test_support::prelude::*;
@@ -850,14 +1026,27 @@ mod tests {
         }
     }
 
+    fn binding_for_dispatch(dispatch: &Web3SettlementDispatchArtifact) -> ApprovalBinding {
+        ApprovalBinding {
+            chain_id: 8453,
+            payee_address: dispatch.beneficiary_address.clone(),
+            amount_minor_units: u128::from(dispatch.settlement_amount.units),
+            token_symbol: dispatch.settlement_amount.currency.clone(),
+            token_contract: None,
+            approval_expires_at: SAMPLE_VALID_BEFORE,
+        }
+    }
+
     #[test]
     fn builds_x402_requirements() {
         let dispatch = sample_dispatch();
+        let binding = binding_for_dispatch(&dispatch);
         let requirements = build_x402_payment_requirements(
             &dispatch,
+            &binding,
             "https://facilitator.example/x402",
             "https://tool.example/v1/run",
-            vec!["USDC".to_string(), "EURC".to_string()],
+            vec!["USD".to_string(), "EURC".to_string()],
             X402SettlementMode::PrepaidAuthorization,
         )
         .test_unwrap();
@@ -869,12 +1058,14 @@ mod tests {
     #[test]
     fn x402_requirements_reject_blank_accepted_tokens() {
         let dispatch = sample_dispatch();
+        let binding = binding_for_dispatch(&dispatch);
 
         let error = build_x402_payment_requirements(
             &dispatch,
+            &binding,
             "https://facilitator.example/x402",
             "https://tool.example/v1/run",
-            vec!["USDC".to_string(), " ".to_string()],
+            vec!["USD".to_string(), " ".to_string()],
             X402SettlementMode::PrepaidAuthorization,
         )
         .test_unwrap_err();
@@ -1371,8 +1562,10 @@ mod tests {
     #[test]
     fn evaluates_circle_nanopayment_candidate() {
         let dispatch = sample_dispatch();
+        let binding = binding_for_dispatch(&dispatch);
         let prepared = evaluate_circle_nanopayment(
             &dispatch,
+            &binding,
             &CircleNanopaymentPolicy {
                 enabled: true,
                 managed_balance_id: "bal_123".to_string(),
@@ -1386,6 +1579,25 @@ mod tests {
         .test_unwrap();
 
         assert_eq!(prepared.dispatch_id, dispatch.dispatch_id);
+    }
+
+    #[test]
+    fn settlement_compatibility_lanes_reject_mismatched_approval_binding() {
+        let dispatch = sample_dispatch();
+        let mut binding = binding_for_dispatch(&dispatch);
+        binding.amount_minor_units += 1;
+
+        let error = build_x402_payment_requirements(
+            &dispatch,
+            &binding,
+            "https://facilitator.example/x402",
+            "https://tool.example/v1/run",
+            vec!["USD".to_string()],
+            X402SettlementMode::PrepaidAuthorization,
+        )
+        .test_unwrap_err();
+
+        assert!(error.to_string().contains("amount mismatch"));
     }
 
     #[test]
@@ -1409,5 +1621,339 @@ mod tests {
 
         assert!(prepared.allowed);
         assert!(prepared.rejection_reason.is_none());
+    }
+
+    fn sample_verified_approval_token() -> GovernedApprovalToken {
+        let kp = Keypair::generate();
+        GovernedApprovalToken::sign(
+            GovernedApprovalTokenBody {
+                id: "test-approval-bridge-1".to_string(),
+                approver: kp.public_key(),
+                subject: kp.public_key(),
+                governed_intent_hash: "test-intent-hash".to_string(),
+                request_id: "test-req-1".to_string(),
+                threshold_proposal_hash: None,
+                issued_at: SAMPLE_VALID_AFTER,
+                expires_at: SAMPLE_VALID_BEFORE,
+                decision: GovernedApprovalDecision::Approved,
+            },
+            &kp,
+        )
+        .test_unwrap()
+    }
+
+    fn sample_denied_approval_token() -> GovernedApprovalToken {
+        let kp = Keypair::generate();
+        GovernedApprovalToken::sign(
+            GovernedApprovalTokenBody {
+                id: "test-approval-bridge-denied".to_string(),
+                approver: kp.public_key(),
+                subject: kp.public_key(),
+                governed_intent_hash: "test-intent-hash".to_string(),
+                request_id: "test-req-denied".to_string(),
+                threshold_proposal_hash: None,
+                issued_at: SAMPLE_VALID_AFTER,
+                expires_at: SAMPLE_VALID_BEFORE,
+                decision: GovernedApprovalDecision::Denied,
+            },
+            &kp,
+        )
+        .test_unwrap()
+    }
+
+    fn sample_rail() -> RailBinding {
+        RailBinding {
+            chain_id: SAMPLE_CHAIN_ID,
+            token_contract: SAMPLE_TOKEN_CONTRACT.to_string(),
+            payee_address: SAMPLE_PAYEE.to_string(),
+            token_decimals: 6,
+            token_symbol: SAMPLE_TOKEN_SYMBOL.to_string(),
+        }
+    }
+
+    fn sample_authorization_input(binding: &ApprovalBinding) -> TransferWithAuthorizationInput {
+        TransferWithAuthorizationInput {
+            from_address: "0x1000000000000000000000000000000000000001".to_string(),
+            to_address: binding.payee_address.clone(),
+            value_minor_units: binding.amount_minor_units,
+            valid_after: SAMPLE_VALID_AFTER,
+            valid_before: binding.approval_expires_at,
+            nonce: SAMPLE_NONCE.to_string(),
+        }
+    }
+
+    fn sample_authorization_input_with_wrong_payee() -> TransferWithAuthorizationInput {
+        TransferWithAuthorizationInput {
+            from_address: "0x1000000000000000000000000000000000000001".to_string(),
+            to_address: "0x9999999999999999999999999999999999999999".to_string(),
+            value_minor_units: SAMPLE_VALUE,
+            valid_after: SAMPLE_VALID_AFTER,
+            valid_before: SAMPLE_VALID_BEFORE,
+            nonce: SAMPLE_NONCE.to_string(),
+        }
+    }
+
+    fn sample_nonce_store() -> InMemoryEip3009NonceStore {
+        InMemoryEip3009NonceStore::new()
+    }
+
+    #[test]
+    fn bridge_builds_binding_prepare_accepts_happy_path() {
+        let token = sample_verified_approval_token();
+        let rail = sample_rail();
+        let binding = approval_binding_from_governed(&token, &rail, 1_000_000, token.expires_at)
+            .test_unwrap();
+        let prepared = prepare_transfer_with_authorization(
+            sample_domain(),
+            sample_authorization_input(&binding),
+            &binding,
+            token.issued_at + 1,
+            &sample_nonce_store(),
+        )
+        .test_unwrap();
+        assert!(!prepared.authorization_digest.is_empty());
+    }
+
+    #[test]
+    fn approval_binding_from_governed_rejects_denied_decision() {
+        let token = sample_denied_approval_token();
+        let error =
+            approval_binding_from_governed(&token, &sample_rail(), 1_000_000, SAMPLE_VALID_BEFORE)
+                .test_unwrap_err();
+        assert!(
+            matches!(error, SettlementError::InvalidBinding(_)),
+            "a Denied token must produce InvalidBinding, got: {error}"
+        );
+    }
+
+    #[test]
+    fn approval_binding_from_governed_rejects_empty_payee_address() {
+        let token = sample_verified_approval_token();
+        let mut rail = sample_rail();
+        rail.payee_address = String::new();
+        let error = approval_binding_from_governed(&token, &rail, 1_000_000, SAMPLE_VALID_BEFORE)
+            .test_unwrap_err();
+        assert!(
+            matches!(error, SettlementError::InvalidInput(_)),
+            "an empty payee_address must produce InvalidInput, got: {error}"
+        );
+    }
+
+    #[test]
+    fn approval_binding_from_governed_rejects_zero_amount() {
+        let token = sample_verified_approval_token();
+        let error = approval_binding_from_governed(&token, &sample_rail(), 0, SAMPLE_VALID_BEFORE)
+            .test_unwrap_err();
+        assert!(
+            matches!(error, SettlementError::InvalidInput(_)),
+            "a zero amount must produce InvalidInput, got: {error}"
+        );
+    }
+
+    #[test]
+    fn bridge_prepare_rejects_payee_mismatch() {
+        // Use a `now` inside the valid time window so the time-window gate
+        // passes and the payee check is actually exercised.
+        let error = prepare_transfer_with_authorization(
+            sample_domain(),
+            sample_authorization_input_with_wrong_payee(),
+            &sample_binding(),
+            SAMPLE_NOW,
+            &sample_nonce_store(),
+        )
+        .test_expect_err("payee mismatch must fail closed");
+        assert!(
+            matches!(error, SettlementError::InvalidBinding(_)),
+            "payee mismatch must produce InvalidBinding"
+        );
+        assert!(
+            error.to_string().contains("payee mismatch"),
+            "error must identify the payee mismatch, got: {error}"
+        );
+    }
+
+    fn sample_offchain_receipt() -> OffchainSettlementReceiptArtifact {
+        OffchainSettlementReceiptArtifact {
+            schema: CHIO_OFFCHAIN_SETTLEMENT_RECEIPT_SCHEMA.to_string(),
+            settlement_receipt_id: "osr-1".to_string(),
+            issued_at: 1_700_000_000,
+            authorization_digest: "0xdigest".to_string(),
+            governed_receipt_id: "rc-1".to_string(),
+            settled_amount: MonetaryAmount {
+                units: 1_000_000,
+                currency: "USDC".to_string(),
+            },
+            execution_nonce_ref: None,
+            hold_ref: None,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn offchain_receipt_validate_binds_digest_to_governed_receipt() {
+        let receipt = sample_offchain_receipt();
+        validate_offchain_settlement_receipt(&receipt).test_unwrap();
+        let mut bad = receipt.clone();
+        bad.governed_receipt_id = String::new();
+        let error = validate_offchain_settlement_receipt(&bad)
+            .test_expect_err("empty governed_receipt_id must fail");
+        assert!(matches!(error, SettlementError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn offchain_receipt_schema_constant_is_pinned() {
+        assert_eq!(
+            CHIO_OFFCHAIN_SETTLEMENT_RECEIPT_SCHEMA,
+            "chio.settle.offchain_receipt.v1"
+        );
+    }
+
+    #[test]
+    fn validate_offchain_settlement_receipt_rejects_wrong_schema() {
+        let mut receipt = sample_offchain_receipt();
+        receipt.schema = "chio.settle.offchain_receipt.v9".to_string();
+        let error = validate_offchain_settlement_receipt(&receipt)
+            .test_expect_err("wrong schema version must fail");
+        assert!(
+            matches!(error, SettlementError::InvalidInput(_)),
+            "wrong schema must produce InvalidInput, got: {error}"
+        );
+
+        let mut empty_schema = sample_offchain_receipt();
+        empty_schema.schema = String::new();
+        let error = validate_offchain_settlement_receipt(&empty_schema)
+            .test_expect_err("empty schema must fail");
+        assert!(
+            matches!(error, SettlementError::InvalidInput(_)),
+            "empty schema must produce InvalidInput, got: {error}"
+        );
+    }
+
+    #[test]
+    fn validate_offchain_settlement_receipt_rejects_blank_currency_on_positive_units() {
+        // A settled amount with positive units but no denomination cannot be
+        // reconciled: dashboards and ledgers cannot tell what was paid.
+        let valid = sample_offchain_receipt();
+        validate_offchain_settlement_receipt(&valid).test_unwrap();
+
+        let mut empty_currency = sample_offchain_receipt();
+        empty_currency.settled_amount.currency = String::new();
+        let error = validate_offchain_settlement_receipt(&empty_currency)
+            .test_expect_err("empty currency with positive units must fail");
+        assert!(
+            matches!(error, SettlementError::InvalidInput(_)),
+            "empty currency must produce InvalidInput, got: {error}"
+        );
+
+        let mut whitespace_currency = sample_offchain_receipt();
+        whitespace_currency.settled_amount.currency = "   ".to_string();
+        let error = validate_offchain_settlement_receipt(&whitespace_currency)
+            .test_expect_err("whitespace currency with positive units must fail");
+        assert!(
+            matches!(error, SettlementError::InvalidInput(_)),
+            "whitespace currency must produce InvalidInput, got: {error}"
+        );
+    }
+
+    #[test]
+    fn offchain_receipt_reserved_linkage_fields_are_present_and_optional() {
+        // Pins the wire names of both reserved comptroller-surface linkage
+        // fields. A present field must round-trip; absent fields must not
+        // appear in serialized JSON (skip_serializing_if = "Option::is_none").
+        let with_refs: OffchainSettlementReceiptArtifact = serde_json::from_str(
+            r#"{
+                "schema": "chio.settle.offchain_receipt.v1",
+                "settlement_receipt_id": "osr-pin-1",
+                "issued_at": 1700000000,
+                "authorization_digest": "0xdigest",
+                "governed_receipt_id": "rc-pin-1",
+                "settled_amount": { "units": 1, "currency": "USDC" },
+                "execution_nonce_ref": "nonce-ref-abc",
+                "hold_ref": "hold-ref-xyz"
+            }"#,
+        )
+        .test_unwrap();
+        assert_eq!(
+            with_refs.execution_nonce_ref.as_deref(),
+            Some("nonce-ref-abc"),
+            "execution_nonce_ref must deserialize from the wire field name"
+        );
+        assert_eq!(
+            with_refs.hold_ref.as_deref(),
+            Some("hold-ref-xyz"),
+            "hold_ref must deserialize from the wire field name"
+        );
+
+        // Absent fields must not appear in serialized output.
+        let absent = sample_offchain_receipt();
+        let json = serde_json::to_string(&absent).test_unwrap();
+        assert!(
+            !json.contains("execution_nonce_ref"),
+            "absent execution_nonce_ref must be omitted from JSON: {json}"
+        );
+        assert!(
+            !json.contains("hold_ref"),
+            "absent hold_ref must be omitted from JSON: {json}"
+        );
+    }
+
+    #[test]
+    fn approval_binding_from_governed_rejects_empty_token_contract() {
+        let token = sample_verified_approval_token();
+        let mut rail = sample_rail();
+        rail.token_contract = String::new();
+        let error = approval_binding_from_governed(&token, &rail, 1_000_000, SAMPLE_VALID_BEFORE)
+            .test_unwrap_err();
+        assert!(
+            matches!(error, SettlementError::InvalidInput(_)),
+            "an empty token_contract must produce InvalidInput, got: {error}"
+        );
+    }
+
+    #[test]
+    fn approval_binding_from_governed_rejects_empty_token_symbol() {
+        let token = sample_verified_approval_token();
+        let mut rail = sample_rail();
+        rail.token_symbol = String::new();
+        let error = approval_binding_from_governed(&token, &rail, 1_000_000, SAMPLE_VALID_BEFORE)
+            .test_unwrap_err();
+        assert!(
+            matches!(error, SettlementError::InvalidInput(_)),
+            "an empty token_symbol must produce InvalidInput, got: {error}"
+        );
+    }
+
+    #[test]
+    fn approval_binding_from_governed_clamps_expiry_to_token_expiry() {
+        // A caller-supplied approval_expires_at LATER than the token's own
+        // expiry cannot be honored: the token does not authorize a window
+        // longer than its own life. The effective binding expiry must clamp
+        // to token.expires_at so a prepared transfer can never stay valid
+        // after the approval that justified it has lapsed.
+        let token = sample_verified_approval_token();
+        let rail = sample_rail();
+        let binding =
+            approval_binding_from_governed(&token, &rail, 1_000_000, token.expires_at + 3_600)
+                .test_unwrap();
+        assert_eq!(
+            binding.approval_expires_at, token.expires_at,
+            "an approval_expires_at later than the token must clamp to token.expires_at"
+        );
+    }
+
+    #[test]
+    fn approval_binding_from_governed_preserves_shorter_expiry() {
+        // A caller may bind a tighter (shorter) window than the token's own
+        // expiry for a specific dispatch. That shorter expiry must be
+        // preserved, never widened to the token's expiry.
+        let token = sample_verified_approval_token();
+        let rail = sample_rail();
+        let shorter = token.expires_at - 100;
+        let binding =
+            approval_binding_from_governed(&token, &rail, 1_000_000, shorter).test_unwrap();
+        assert_eq!(
+            binding.approval_expires_at, shorter,
+            "a shorter approval_expires_at must be preserved, not widened to token.expires_at"
+        );
     }
 }

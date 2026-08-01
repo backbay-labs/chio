@@ -12,8 +12,8 @@ from typing import Any
 import asyncpg
 from neo4j import AsyncGraphDatabase
 
-POSTGRES_URL = os.environ.get(
-    "POSTGRES_URL", "postgres://cocoindex:cocoindex@localhost:55432/chio_kb"
+POSTGRES_URL = os.environ.get("POSTGRES_URL") or os.environ.get("DATABASE_URL") or (
+    "postgres://cocoindex:cocoindex@localhost:55432/chio_kb"
 )
 NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")

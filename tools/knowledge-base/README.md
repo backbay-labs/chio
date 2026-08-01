@@ -84,18 +84,20 @@ The Chio KB MCP gateway exposes:
 
 - `kb_search_code(query, limit, filters)`
 - `kb_search_docs(query, limit, filters)`
+- `kb_manifest()`
 - `kb_find_tests(path_or_symbol, limit)`
 - `kb_find_docs(path_or_crate, limit)`
 - `kb_neighbors(entity, depth, limit)`
+- `kb_subgraph(entity, depth, node_limit, edge_limit)`
 - `kb_context(entity, limit)`
 - `kb_impact(path_or_crate, limit)`
 - `kb_brief_feature(feature_or_task, focus_paths, limit, include_memory, intent)`
 - `kb_eval(category, format, suite)`
 - `kb_add_episode(name, body, source_description)`
 
-Useful filters for `kb_search_code`: `file_path`, `normalized_path`, `source_root`, `language`, `crate`, `package`, `kind`, `symbol_hint`, `canonicality`.
+Useful filters for `kb_search_code`: `file_path`, `normalized_path`, `source_root`, `language`, `crate`, `package`, `kind`, `symbol_hint`, `canonicality`, `is_generated`.
 
-Useful filters for `kb_search_docs`: `file_path`, `normalized_path`, `source_root`, `doc_type`, `title`, `section`, `canonicality`.
+Useful filters for `kb_search_docs`: `file_path`, `normalized_path`, `source_root`, `doc_type`, `title`, `section`, `canonicality`, `is_generated`.
 
 Search responses include `normalized_path`, `canonicality`, `validation_command`, `why`, and `rank_components` so agents can explain why a result was returned and immediately choose a focused local validation gate.
 

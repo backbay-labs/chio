@@ -224,20 +224,20 @@ pub(crate) fn dispatch_runtime_available() -> bool {
 /// On a current-thread runtime there is no spare worker to promote, and with no
 /// timer driver the timeout wrapper would panic, so the call runs inline: under
 /// the timeout when a timer is present, and directly otherwise.
-pub(crate) async fn dispatch_nested_call_within_budget<F>(
+pub(crate) async fn dispatch_nested_call_within_budget<F, T>(
     call: F,
     budget: std::time::Duration,
-) -> Result<ToolServerOutput, KernelError>
+) -> Result<T, KernelError>
 where
-    F: std::future::Future<Output = Result<ToolServerOutput, KernelError>>,
+    F: std::future::Future<Output = Result<T, KernelError>>,
 {
-    async fn bounded<F>(
+    async fn bounded<F, T>(
         call: F,
         budget: std::time::Duration,
         timer_available: bool,
-    ) -> Result<ToolServerOutput, KernelError>
+    ) -> Result<T, KernelError>
     where
-        F: std::future::Future<Output = Result<ToolServerOutput, KernelError>>,
+        F: std::future::Future<Output = Result<T, KernelError>>,
     {
         if timer_available {
             match tokio::time::timeout(budget, call).await {
@@ -278,6 +278,9 @@ impl ChioKernel {
     }
 
     pub(crate) fn has_local_receipt_id(&self, receipt_id: &str) -> Result<bool, KernelError> {
+        if self.load_durable_admission_receipt(receipt_id)?.is_some() {
+            return Ok(true);
+        }
         // Store-authoritative: a durable store is a point lookup by id, not an
         // O(n) mirror scan. On a store MISS fall back to the local mirror below: a
         // store may implement append without point loads (for example an
@@ -335,6 +338,9 @@ impl ChioKernel {
         &self,
         receipt_id: &str,
     ) -> Result<Option<LocalReceiptArtifact>, KernelError> {
+        if let Some(receipt) = self.load_durable_admission_receipt(receipt_id)? {
+            return Ok(Some(LocalReceiptArtifact::Tool(Box::new(receipt))));
+        }
         // Consult the durable store first; on a MISS fall back to the local
         // mirror (append-only / remote stores may not implement point loads, so
         // a receipt appended and mirrored locally must still resolve). A store
@@ -409,41 +415,69 @@ impl ChioKernel {
             .any(|candidate| candidate == *signer)
     }
 
-    pub(crate) fn unwind_aborted_monetary_invocation(
+    pub(crate) fn unwind_pre_dispatch_monetary_invocation(
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
         charge_result: Option<&BudgetChargeResult>,
         payment_authorization: Option<&PaymentAuthorization>,
     ) -> Result<Option<BudgetReverseHoldDecision>, KernelError> {
-        let Some(charge) = charge_result else {
-            return Ok(None);
-        };
-
         if let Some(authorization) = payment_authorization {
             let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
                 KernelError::Internal(
                     "payment authorization present without configured adapter".to_string(),
                 )
             })?;
-            let unwind_result = if authorization.settled {
-                adapter.refund(
-                    &authorization.authorization_id,
-                    charge.cost_charged,
-                    &charge.currency,
-                    &request.request_id,
+            let refund_amount = ChioKernel::mustprepay_quoted_amount(request).or_else(|| {
+                charge_result.map(|charge| (charge.cost_charged, charge.currency.clone()))
+            });
+            let (unwind_result, expected_status) = if authorization.state.is_final() {
+                let (amount_units, currency) = refund_amount.ok_or_else(|| {
+                    KernelError::Internal(
+                        "final payment authorization omitted a refundable amount".to_string(),
+                    )
+                })?;
+                (
+                    adapter.refund(
+                        &authorization.authorization_id,
+                        amount_units,
+                        &currency,
+                        &request.request_id,
+                    ),
+                    RailSettlementStatus::Refunded,
                 )
             } else {
-                adapter.release(&authorization.authorization_id, &request.request_id)
+                (
+                    adapter.release(&authorization.authorization_id, &request.request_id),
+                    RailSettlementStatus::Released,
+                )
             };
-            if let Err(error) = unwind_result {
-                return Err(KernelError::Internal(format!(
-                    "failed to unwind payment after aborted tool invocation: {error}"
-                )));
+            match unwind_result {
+                Ok(result) if result.settlement_status == expected_status => {}
+                Ok(_) => {
+                    return Err(KernelError::Internal(
+                        "payment unwind returned an unconfirmed status".to_string(),
+                    ));
+                }
+                Err(_) => {
+                    return Err(KernelError::Internal(
+                        "payment unwind acknowledgement was not confirmed".to_string(),
+                    ));
+                }
             }
         }
 
-        Ok(Some(self.reverse_budget_charge(&cap.id, charge)?))
+        let Some(charge) = charge_result else {
+            return Ok(None);
+        };
+
+        if charge.invocation_capture.is_some() {
+            Ok(Some(self.cancel_captured_monetary_before_dispatch(
+                &cap.id, charge,
+            )?))
+        } else {
+            Ok(Some(self.reverse_budget_charge(&cap.id, charge)?))
+        }
     }
 
     pub(crate) fn record_observed_capability_snapshot(
@@ -901,29 +935,33 @@ impl ChioKernel {
     pub(crate) fn release_runtime_admission_reservations_for_pre_dispatch_denial(
         &self,
         metadata: Option<serde_json::Value>,
-    ) -> Option<serde_json::Value> {
-        let metadata_value = metadata?;
+    ) -> (Option<serde_json::Value>, bool) {
+        let Some(metadata_value) = metadata else {
+            return (None, true);
+        };
         let Some(hook) = self.runtime_admission_hook.as_ref() else {
-            return Some(metadata_value);
+            return (Some(metadata_value), true);
         };
 
         match hook.release_reserved(&metadata_value) {
-            Ok(()) => Some(metadata_value),
+            Ok(()) => (Some(metadata_value), true),
             Err(error) => {
-                let reason = error.to_string();
                 warn!(
                     hook = hook.name(),
-                    reason = %redacted!(&reason),
+                    reason = %redacted!(&error),
                     "runtime admission reservation release failed on pre-dispatch denial"
                 );
-                merge_metadata_objects(
-                    Some(metadata_value),
-                    Some(serde_json::json!({
-                        "chio_runtime": {
-                            "reservation_release_failed": true,
-                            "reservation_release_failure_reason": reason
-                        }
-                    })),
+                (
+                    merge_metadata_objects(
+                        Some(metadata_value),
+                        Some(serde_json::json!({
+                            "chio_runtime": {
+                                "reservation_release_failed": true,
+                                "reservation_retained": true
+                            }
+                        })),
+                    ),
+                    false,
                 )
             }
         }
@@ -934,12 +972,29 @@ impl ChioKernel {
     /// dispatch entry point (`ToolEvaluator::dispatch`), so a custom evaluator or
     /// phase-level caller cannot bypass the deadline and hang indefinitely on a
     /// wedged tool server; it matches the budget the full evaluate path enforces.
+    #[cfg(test)]
     pub(crate) async fn dispatch_tool_call_with_cost(
         &self,
         request: &ToolCallRequest,
         has_monetary_grant: bool,
     ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
-        self.require_presented_execution_nonce(request, &request.capability)?;
+        self.validate_required_execution_nonce(request, &request.capability)?;
+        let request_has_monetary_grant = resolve_required_matching_grants(
+            &request.capability,
+            &request.tool_name,
+            &request.server_id,
+            &request.arguments,
+            request.model_metadata.as_ref(),
+        )?
+        .iter()
+        .any(|matching| {
+            matching.grant.max_cost_per_invocation.is_some()
+                || matching.grant.max_total_cost.is_some()
+        });
+        if has_monetary_grant || request_has_monetary_grant {
+            return Err(KernelError::DirectDispatchUnavailable);
+        }
+        self.reserve_presented_execution_nonce(request)?;
         self.dispatch_within_budget(request, has_monetary_grant)
             .await
     }
@@ -962,8 +1017,29 @@ impl ChioKernel {
     /// limit). With no runtime at all it runs inline without a timeout (there is
     /// no async transport to hang on, and the timeout wrapper would panic without
     /// a timer driver).
+    #[cfg(test)]
     pub(crate) async fn dispatch_within_budget(
         &self,
+        request: &ToolCallRequest,
+        has_monetary_grant: bool,
+    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
+        let server = self
+            .tool_servers
+            .get(&request.server_id)
+            .cloned()
+            .ok_or_else(|| {
+                KernelError::ToolNotRegistered(format!(
+                    "server \"{}\" / tool \"{}\"",
+                    request.server_id, request.tool_name
+                ))
+            })?;
+        self.dispatch_resolved_server_within_budget(server, request, has_monetary_grant)
+            .await
+    }
+
+    pub(crate) async fn dispatch_resolved_server_within_budget(
+        &self,
+        server: Arc<dyn ToolServerConnection>,
         request: &ToolCallRequest,
         has_monetary_grant: bool,
     ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
@@ -972,9 +1048,13 @@ impl ChioKernel {
             .deadlines
             .dispatch_budget_for(&request.server_id)
         else {
-            return self
-                .dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary_grant)
-                .await;
+            return Self::invoke_resolved_server(
+                server,
+                request.tool_name.clone(),
+                request.arguments.clone(),
+                has_monetary_grant,
+            )
+            .await;
         };
 
         let timer_available = dispatch_timer_available();
@@ -983,8 +1063,12 @@ impl ChioKernel {
             Ok(tokio::runtime::RuntimeFlavor::MultiThread)
         );
         if !multi_thread {
-            let call =
-                self.dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary_grant);
+            let call = Self::invoke_resolved_server(
+                server,
+                request.tool_name.clone(),
+                request.arguments.clone(),
+                has_monetary_grant,
+            );
             if timer_available {
                 return match tokio::time::timeout(budget, call).await {
                     Ok(result) => result,
@@ -994,15 +1078,6 @@ impl ChioKernel {
             return call.await;
         }
 
-        let server = match self.tool_servers.get(&request.server_id) {
-            Some(server) => Arc::clone(server),
-            None => {
-                return Err(KernelError::ToolNotRegistered(format!(
-                    "server \"{}\" / tool \"{}\"",
-                    request.server_id, request.tool_name
-                )));
-            }
-        };
         let tool_name = request.tool_name.clone();
         let arguments = request.arguments.clone();
         let handle = tokio::runtime::Handle::current();
@@ -1059,26 +1134,6 @@ impl ChioKernel {
                 ))),
             }
         }
-    }
-
-    pub(crate) async fn dispatch_tool_call_with_cost_after_nonce_check(
-        &self,
-        request: &ToolCallRequest,
-        has_monetary_grant: bool,
-    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
-        let server = self.tool_servers.get(&request.server_id).ok_or_else(|| {
-            KernelError::ToolNotRegistered(format!(
-                "server \"{}\" / tool \"{}\"",
-                request.server_id, request.tool_name
-            ))
-        })?;
-        Self::invoke_resolved_server(
-            Arc::clone(server),
-            request.tool_name.clone(),
-            request.arguments.clone(),
-            has_monetary_grant,
-        )
-        .await
     }
 
     /// Drive one already-resolved tool-server invocation to completion. Taken

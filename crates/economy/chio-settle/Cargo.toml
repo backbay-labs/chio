@@ -19,6 +19,7 @@ web3 = [
     "dep:chio-egress-contract",
     "dep:chio-core",
     "dep:chio-credit",
+    "dep:chio-federation",
     "dep:chio-web3",
     "dep:chio-web3-bindings",
     "dep:bs58",
@@ -30,11 +31,13 @@ web3 = [
     "dep:sha2",
     "dep:thiserror",
     "dep:tokio",
+    "dep:zeroize",
 ]
 
 [dependencies]
 chio-core = { workspace = true, optional = true }
 chio-credit = { workspace = true, optional = true }
+chio-federation = { workspace = true, optional = true }
 chio-egress-contract = { workspace = true, features = ["reqwest-egress"], optional = true }
 chio-web3 = { workspace = true, optional = true }
 chio-web3-bindings = { path = "../chio-web3-bindings", default-features = false, features = ["web3"], optional = true }
@@ -49,12 +52,14 @@ serde_json = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
+zeroize = { workspace = true, optional = true }
 
 [dev-dependencies]
 chio-anchor = { workspace = true }
 chio-link = { workspace = true }
 chio-test-support = { workspace = true }
 chio-kernel = { workspace = true }
+chio-spec-validate = { workspace = true }
 
 [lints]
 workspace = true

@@ -27,8 +27,10 @@
     "@chio-protocol/wasm-core": "0.1.0"
   },
   "scripts": {
+    "prebuild": "tsc -p ../wasm-core/tsconfig.json",
     "build": "npm run build:wasm && tsc -p tsconfig.json",
     "build:wasm": "../../scripts/build-wasm.sh --target web",
+    "pretypecheck": "../../scripts/build-wasm.sh --target web && tsc -p ../wasm-core/tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build"
   },

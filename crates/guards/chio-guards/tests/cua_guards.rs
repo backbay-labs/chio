@@ -39,6 +39,7 @@ fn signed_cap(kp: &Keypair, scope: &ChioScope) -> CapabilityToken {
         issued_at: 0,
         expires_at: u64::MAX,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, kp).expect("sign cap")
 }
@@ -62,6 +63,9 @@ fn make_request(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };

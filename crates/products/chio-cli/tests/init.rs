@@ -96,4 +96,5 @@ fn scaffolded_demo_runs_governed_hello_flow() {
     assert!(stdout.contains("Hello, Ada! This call was mediated by Chio."));
     assert!(stdout.contains("latest receipt:"));
     assert!(project_dir.join(".chio/receipts.db").exists());
+    assert!(project_dir.join(".chio/session.db").exists());
 }

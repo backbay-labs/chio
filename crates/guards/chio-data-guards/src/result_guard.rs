@@ -59,7 +59,7 @@ use tracing::warn;
 
 use chio_core::capability::scope::{ChioScope, Constraint};
 use chio_guards::post_invocation::{
-    PostInvocationContext, PostInvocationHook, PostInvocationVerdict,
+    PostInvocationContext, PostInvocationHook, PostInvocationHookIdentity, PostInvocationVerdict,
 };
 use chio_kernel::{GuardContext, GuardDecision, KernelError};
 
@@ -300,6 +300,10 @@ impl<'a> PostInvocationHook for QueryResultHook<'a> {
             PostInvocationVerdict::Redact(redacted)
         }
     }
+
+    fn durable_identity(&self) -> Result<Option<PostInvocationHookIdentity>, String> {
+        query_result_hook_identity(&self.guard.config, &self.scope).map(Some)
+    }
 }
 
 /// Owned `PostInvocationHook` adapter around a [`QueryResultGuard`] +
@@ -325,6 +329,22 @@ impl PostInvocationHook for OwnedQueryResultHook {
             PostInvocationVerdict::Redact(redacted)
         }
     }
+
+    fn durable_identity(&self) -> Result<Option<PostInvocationHookIdentity>, String> {
+        query_result_hook_identity(&self.guard.config, &self.scope).map(Some)
+    }
+}
+
+fn query_result_hook_identity(
+    config: &QueryResultGuardConfig,
+    fallback_scope: &ChioScope,
+) -> Result<PostInvocationHookIdentity, String> {
+    PostInvocationHookIdentity::from_canonical_config(
+        "chio.query-result-guard",
+        "1",
+        "chio-data-guards.query-result.v1",
+        &(config, fallback_scope),
+    )
 }
 
 impl chio_kernel::Guard for QueryResultGuard {
@@ -759,6 +779,36 @@ mod tests {
             PostInvocationVerdict::Allow => {}
             other => panic!("expected Allow, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn durable_identity_binds_effective_config_and_fallback_scope() {
+        let base_scope = scope(vec![]);
+        let base_guard = QueryResultGuard::new(QueryResultGuardConfig::default()).unwrap();
+        let base = base_guard
+            .as_hook(base_scope.clone())
+            .durable_identity()
+            .unwrap()
+            .unwrap();
+
+        let configured_guard = QueryResultGuard::new(QueryResultGuardConfig {
+            redaction_marker: "[FILTERED]".to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+        let configured = configured_guard
+            .as_hook(base_scope)
+            .durable_identity()
+            .unwrap()
+            .unwrap();
+        let scoped = base_guard
+            .as_hook(scope(vec![Constraint::MaxRowsReturned(1)]))
+            .durable_identity()
+            .unwrap()
+            .unwrap();
+
+        assert_ne!(base, configured);
+        assert_ne!(base, scoped);
     }
 
     #[test]

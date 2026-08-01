@@ -245,6 +245,90 @@ fn unlimited_grant_guard_denial_does_not_reverse_budget_store() {
             )
         }
 
+        fn try_charge_cost_with_ids_and_authority(
+            &self,
+            capability_id: &str,
+            grant_index: usize,
+            max_invocations: Option<u32>,
+            cost_units: u64,
+            max_cost_per_invocation: Option<u64>,
+            max_total_cost_units: Option<u64>,
+            hold_id: Option<&str>,
+            event_id: Option<&str>,
+            authority: Option<&crate::budget_store::BudgetEventAuthority>,
+        ) -> Result<bool, BudgetStoreError> {
+            self.inner.try_charge_cost_with_ids_and_authority(
+                capability_id,
+                grant_index,
+                max_invocations,
+                cost_units,
+                max_cost_per_invocation,
+                max_total_cost_units,
+                hold_id,
+                event_id,
+                authority,
+            )
+        }
+
+        fn reverse_charge_cost_with_ids_and_authority(
+            &self,
+            capability_id: &str,
+            grant_index: usize,
+            cost_units: u64,
+            hold_id: Option<&str>,
+            event_id: Option<&str>,
+            authority: Option<&crate::budget_store::BudgetEventAuthority>,
+        ) -> Result<(), BudgetStoreError> {
+            self.inner.reverse_charge_cost_with_ids_and_authority(
+                capability_id,
+                grant_index,
+                cost_units,
+                hold_id,
+                event_id,
+                authority,
+            )
+        }
+
+        fn reduce_charge_cost_with_ids_and_authority(
+            &self,
+            capability_id: &str,
+            grant_index: usize,
+            cost_units: u64,
+            hold_id: Option<&str>,
+            event_id: Option<&str>,
+            authority: Option<&crate::budget_store::BudgetEventAuthority>,
+        ) -> Result<(), BudgetStoreError> {
+            self.inner.reduce_charge_cost_with_ids_and_authority(
+                capability_id,
+                grant_index,
+                cost_units,
+                hold_id,
+                event_id,
+                authority,
+            )
+        }
+
+        fn settle_charge_cost_with_ids_and_authority(
+            &self,
+            capability_id: &str,
+            grant_index: usize,
+            exposed_cost_units: u64,
+            realized_cost_units: u64,
+            hold_id: Option<&str>,
+            event_id: Option<&str>,
+            authority: Option<&crate::budget_store::BudgetEventAuthority>,
+        ) -> Result<(), BudgetStoreError> {
+            self.inner.settle_charge_cost_with_ids_and_authority(
+                capability_id,
+                grant_index,
+                exposed_cost_units,
+                realized_cost_units,
+                hold_id,
+                event_id,
+                authority,
+            )
+        }
+
         fn list_usages(
             &self,
             limit: usize,
@@ -416,6 +500,9 @@ fn matched_grant_index_populated_in_guard_context() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -485,6 +572,9 @@ fn velocity_guard_denial_produces_signed_deny_receipt_no_panic() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -518,9 +608,7 @@ fn sync_bridge_current_thread_diagnostic_only_advertises_multithread_runtime() {
     let report = KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime.report();
 
     assert_eq!(report.code, "CHIO-KERNEL-SYNC-BRIDGE-INCOMPATIBLE");
-    assert!(report
-        .message
-        .contains("multi-thread Tokio runtime"));
+    assert!(report.message.contains("multi-thread Tokio runtime"));
     assert!(!report.message.contains("evaluate_tool_call"));
     assert!(report.suggested_fix.contains("multi-thread Tokio runtime"));
     assert!(!report.suggested_fix.contains("API directly"));
@@ -538,7 +626,11 @@ fn async_evaluate_current_thread_runtime_bypasses_sync_bridge() {
         let agent_kp = Keypair::generate();
         kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
         let cap = kernel
-            .issue_capability(&agent_kp.public_key(), make_scope(vec![make_grant("srv", "echo")]), 3600)
+            .issue_capability(
+                &agent_kp.public_key(),
+                make_scope(vec![make_grant("srv", "echo")]),
+                3600,
+            )
             .unwrap();
         let request = make_request("req-async-current-thread", &cap, "echo", "srv");
 
@@ -561,7 +653,11 @@ fn blocking_evaluate_current_thread_runtime_fails_before_receipt_side_effects() 
         let agent_kp = Keypair::generate();
         kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
         let cap = kernel
-            .issue_capability(&agent_kp.public_key(), make_scope(vec![make_grant("srv", "echo")]), 3600)
+            .issue_capability(
+                &agent_kp.public_key(),
+                make_scope(vec![make_grant("srv", "echo")]),
+                3600,
+            )
             .unwrap();
         let request = make_request("req-blocking-current-thread", &cap, "echo", "srv");
 
@@ -629,15 +725,22 @@ fn sync_tool_server_event_queue_current_thread_returns_error_not_empty_success()
             "events",
             vec![ToolServerEvent::ResourcesListChanged],
         )));
-        let session_id = kernel.open_session("agent".to_string(), Vec::new()).unwrap();
+        let session_id = kernel
+            .open_session("agent".to_string(), Vec::new())
+            .unwrap();
         kernel.activate_session(&session_id).unwrap();
 
-        let error = kernel.queue_session_tool_server_events(&session_id).unwrap_err();
+        let error = kernel
+            .queue_session_tool_server_events(&session_id)
+            .unwrap_err();
 
         assert!(matches!(
             error,
             KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime
         ));
-        assert!(kernel.drain_session_late_events(&session_id).unwrap().is_empty());
+        assert!(kernel
+            .drain_session_late_events(&session_id)
+            .unwrap()
+            .is_empty());
     });
 }

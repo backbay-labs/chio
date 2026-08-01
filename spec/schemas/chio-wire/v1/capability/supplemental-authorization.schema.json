@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/supplemental-authorization.schema.json",
+  "title": "Chio Opaque Supplemental Authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["signed_extension"],
+  "properties": {
+    "signed_extension": {
+      "type": "string",
+      "contentEncoding": "base64",
+      "minLength": 4,
+      "maxLength": 87384,
+      "description": "Opaque authenticated extension bytes. Adapters must not interpret these bytes as quota authority."
+    }
+  }
+}

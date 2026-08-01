@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 
 use chio_core::capability::{
-    governance::{GovernedApprovalToken, GovernedTransactionIntent},
+    governance::{GovernedApprovalToken, GovernedTransactionIntent, ThresholdApprovalProposal},
     scope::ModelMetadata,
     token::CapabilityToken,
 };
@@ -180,6 +180,13 @@ pub struct OpenAiExecutionContext {
     pub governed_intent: Option<GovernedTransactionIntent>,
     /// Optional governed approval token.
     pub approval_token: Option<GovernedApprovalToken>,
+    /// Optional threshold approval tokens.
+    pub approval_tokens: Vec<GovernedApprovalToken>,
+    /// Signed threshold proposal binding `approval_tokens`.
+    pub threshold_approval_proposal: Option<ThresholdApprovalProposal>,
+    /// Opaque authenticated extension forwarded without interpretation.
+    pub supplemental_authorization:
+        Option<chio_core::capability::supplemental_authorization::OpaqueSupplementalAuthorization>,
     /// Optional originating model metadata for model-constrained grants.
     pub model_metadata: Option<ModelMetadata>,
 }
@@ -288,6 +295,30 @@ impl ChioOpenAiAdapter {
         kernel: &ChioKernel,
         execution: &OpenAiExecutionContext,
     ) -> ToolCallResult {
+        if execution.approval_token.is_some() && !execution.approval_tokens.is_empty() {
+            return denied_tool_call_result(
+                tool_call,
+                "Error: singular and threshold approval tokens must not be mixed".to_string(),
+            );
+        }
+        if execution.approval_tokens.len()
+            > chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS
+        {
+            return denied_tool_call_result(
+                tool_call,
+                format!(
+                    "Error: threshold approval set exceeds {} tokens",
+                    chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS
+                ),
+            );
+        }
+        if execution.approval_tokens.is_empty() != execution.threshold_approval_proposal.is_none() {
+            return denied_tool_call_result(
+                tool_call,
+                "Error: threshold approval tokens and proposal must be supplied together"
+                    .to_string(),
+            );
+        }
         let (server_id, tool_name) = {
             let binding = self.function_bindings.get(&tool_call.function.name);
             match binding {
@@ -322,6 +353,9 @@ impl ChioOpenAiAdapter {
             execution_nonce: execution.execution_nonces.get(&tool_call.id).cloned(),
             governed_intent: execution.governed_intent.clone(),
             approval_token: execution.approval_token.clone(),
+            approval_tokens: execution.approval_tokens.clone(),
+            threshold_approval_proposal: execution.threshold_approval_proposal.clone(),
+            supplemental_authorization: execution.supplemental_authorization.clone(),
             model_metadata: execution.model_metadata.clone(),
             federated_origin_kernel_id: None,
         };
@@ -384,6 +418,23 @@ impl ChioOpenAiAdapter {
         kernel: &ChioKernel,
         execution: &OpenAiExecutionContext,
     ) -> Vec<ToolCallResult> {
+        if tool_calls.len() > 1
+            && (execution.approval_token.is_some()
+                || !execution.approval_tokens.is_empty()
+                || execution.threshold_approval_proposal.is_some()
+                || execution.supplemental_authorization.is_some())
+        {
+            return tool_calls
+                .iter()
+                .map(|tool_call| {
+                    denied_tool_call_result(
+                        tool_call,
+                        "Error: request-bound authorization artifacts require a single OpenAI tool call"
+                            .to_string(),
+                    )
+                })
+                .collect();
+        }
         tool_calls
             .iter()
             .map(|tc| self.execute_tool_call(tc, kernel, execution))

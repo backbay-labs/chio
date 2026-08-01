@@ -18,6 +18,7 @@ pub use chio_core_types::capability::scope::MonetaryAmount;
 pub use chio_core_types::{canonical_json_bytes, crypto, receipt};
 
 pub mod discovery;
+pub mod outcome;
 pub use discovery::{
     compare, provider_signing_key, resolve_admissible_listing, search, Listing, ListingComparison,
     ListingComparisonRow, ListingPricingHint, ListingQuery, ListingSearchResponse, ListingSla,

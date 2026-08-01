@@ -109,6 +109,7 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
             PostAdmissionReceiptContext {
                 extra_metadata,
                 pre_invocation_guard_evidence: Vec::new(),
+                verified_payee_binding: None,
             },
             // Root cap (no delegation parent): the child-budget release is a
             // no-op regardless, so the newly-inserted gate does not alter this

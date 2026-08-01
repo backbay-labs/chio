@@ -46,7 +46,7 @@ fn buyer_packet_without_hydrated_dsse_is_unresolved() -> Result<(), Box<dyn std:
         continuation_sha256: continuation_sha256.clone(),
         lineage_statement_sha256: "00".repeat(32),
         action_class_id: continuation.action_class_id.clone(),
-        consistency_model: "totally_ordered".to_string(),
+        consistency_model: "totally-ordered".to_string(),
         capability_id: continuation.capability_id.clone(),
         request_sha256: "55".repeat(32),
         outcome_sha256: "66".repeat(32),
@@ -71,6 +71,7 @@ fn buyer_packet_without_hydrated_dsse_is_unresolved() -> Result<(), Box<dyn std:
         mode: "receipt_backed".to_string(),
         consistency_model: bilateral.consistency_model.clone(),
         co_sign: "bilateral_required".to_string(),
+        co_sign_quorum: None,
         required_evidence: vec![
             "receipt_lineage".to_string(),
             "bilateral_invocation".to_string(),
@@ -172,7 +173,7 @@ fn chio_buyer_packet_schema_emits_chio_report_schema() -> Result<(), Box<dyn std
         continuation_sha256: continuation_sha256.clone(),
         lineage_statement_sha256: "00".repeat(32),
         action_class_id: continuation.action_class_id.clone(),
-        consistency_model: "totally_ordered".to_string(),
+        consistency_model: "totally-ordered".to_string(),
         capability_id: continuation.capability_id.clone(),
         request_sha256: "55".repeat(32),
         outcome_sha256: "66".repeat(32),
@@ -196,6 +197,7 @@ fn chio_buyer_packet_schema_emits_chio_report_schema() -> Result<(), Box<dyn std
         mode: "receipt_backed".to_string(),
         consistency_model: bilateral.consistency_model.clone(),
         co_sign: "bilateral_required".to_string(),
+        co_sign_quorum: None,
         required_evidence: vec![
             "receipt_lineage".to_string(),
             "bilateral_invocation".to_string(),

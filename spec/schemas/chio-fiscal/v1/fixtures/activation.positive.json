@@ -1,0 +1,54 @@
+{
+  "body": {
+    "activatedAt": 70,
+    "activationId": "94a9ce0b9a77d592df6635b5b872119fd32cc147230361eee0cc4a9c625e77cc",
+    "activationNotBefore": 65,
+    "admissionDigest": "2ac9732e96d4dcc023cba39a22a10fb8273b13073e0fe1267b99319d5cccd749",
+    "admissionId": "3177026c3d1447014dfab0af08d835ddf6a868b1fb862c40d30959687cd5536b",
+    "approvalSetDigest": "f010d3ed2c28b10dd5263d682be7e614d390b81ab76318031711cc9eb2090f86",
+    "approvals": [
+      {
+        "body": {
+          "admissionDigest": "2ac9732e96d4dcc023cba39a22a10fb8273b13073e0fe1267b99319d5cccd749",
+          "admissionId": "3177026c3d1447014dfab0af08d835ddf6a868b1fb862c40d30959687cd5536b",
+          "approvalExpiresAt": 106,
+          "approvalId": "06514e13bb7db67a228248c6289a873dacf167d1a92fe5a56024f3051bf5d518",
+          "approvedAt": 56,
+          "proposalDigest": "ed03dcf3996ff36fd140f4dfad63f9e2d72dde84d1517ca456f7f9febcc2186e",
+          "proposalId": "e11c99b30195166a6747b8c6a66a7fde2a0931ae82aea900d2a228a21d36f4a0",
+          "schema": "chio.fiscal.approval.v1",
+          "signerKeyId": "34750f98bd59fcfc946da45aaabe933be154a4b5094e1c4abf42866505f3c97e"
+        },
+        "signature": "a9faf1ebf4edcae31ddc3d448006f0d8c2b286388bed4394eff06575e2da1f7d38850703f117f65add060168c65e79a43a218e18c8bf551f0f706acf69747207",
+        "signerKey": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+      },
+      {
+        "body": {
+          "admissionDigest": "2ac9732e96d4dcc023cba39a22a10fb8273b13073e0fe1267b99319d5cccd749",
+          "admissionId": "3177026c3d1447014dfab0af08d835ddf6a868b1fb862c40d30959687cd5536b",
+          "approvalExpiresAt": 106,
+          "approvalId": "576ff9ce98081895dc7df632d3049794466aacd6b884af609916ef116b040086",
+          "approvedAt": 56,
+          "proposalDigest": "ed03dcf3996ff36fd140f4dfad63f9e2d72dde84d1517ca456f7f9febcc2186e",
+          "proposalId": "e11c99b30195166a6747b8c6a66a7fde2a0931ae82aea900d2a228a21d36f4a0",
+          "schema": "chio.fiscal.approval.v1",
+          "signerKeyId": "6a3803d5f059902a1c6dafbc9ba4729212f7caac08634cc3ae76b27529f03827"
+        },
+        "signature": "c44c36461d1561b00b7c8b0ff284e78ed8eaa3a045fdce78d4f9402973465ebc40f855c7528d2a2608f89ed35970eb1fabfa6b424799687cfbeea0f4283ccc0a",
+        "signerKey": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+      }
+    ],
+    "charterDigest": "a79930cdbd1c5d68208e437f8b8851dcd0f66114b5d34c25cb48a670bf2a22fa",
+    "charterId": "8e486b91278e696d27603e62e2192af0667d5417891379a354b4113be30bb375",
+    "issuedBy": "34750f98bd59fcfc946da45aaabe933be154a4b5094e1c4abf42866505f3c97e",
+    "proposalDigest": "ed03dcf3996ff36fd140f4dfad63f9e2d72dde84d1517ca456f7f9febcc2186e",
+    "proposalId": "e11c99b30195166a6747b8c6a66a7fde2a0931ae82aea900d2a228a21d36f4a0",
+    "schema": "chio.fiscal.activation.v1",
+    "target": {
+      "kind": "schedule",
+      "scheduleId": "4f49e92187f7c116b66d028a22e1498a8a8fc8c72fb9b42f50fb4df7b464a6a7"
+    }
+  },
+  "signature": "02ed43edf791c8c3c760fd0e514f02d493adc9d370b779031746d3355a5f6d9a40b64649a91be56f0f8229decf924eede8cb25341c9f8d6c2b05d37b32a77f0f",
+  "signerKey": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+}

@@ -8,7 +8,10 @@ use chio_core_types::{
         token::{CapabilityToken, CapabilityTokenBody},
     },
     crypto::Keypair,
-    message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult},
+    message::{
+        AgentMessage, ExecutionNonce, KernelMessage, NonceBinding, SignedExecutionNonce,
+        ToolCallError, ToolCallResult,
+    },
     receipt::{
         body::{ChioReceipt, ChioReceiptBody},
         decision::{Decision, ToolCallAction},
@@ -75,7 +78,108 @@ fn assert_schema_rejects(relative_path: &str, instance: &Value) {
     );
 }
 
+#[test]
+fn protocol_primitives_shared_fixtures_match_authoritative_schemas() {
+    let corpus_path = repo_root().join("tests/bindings/fixtures/protocol-primitives-v1.json");
+    let corpus: Value = serde_json::from_str(
+        &fs::read_to_string(corpus_path).expect("protocol-primitives fixture corpus exists"),
+    )
+    .expect("protocol-primitives fixture corpus parses");
+    let cases = corpus["cases"]
+        .as_array()
+        .expect("fixture cases are an array");
+
+    for case in cases {
+        let schema_file = case["schema_file"]
+            .as_str()
+            .expect("fixture schema_file is a string");
+        let instance = &case["instance"];
+        if case["valid"].as_bool().expect("fixture valid is a boolean") {
+            assert_schema_accepts(schema_file, instance);
+        } else {
+            assert_schema_rejects(schema_file, instance);
+        }
+    }
+}
+
+#[test]
+fn protocol_primitives_schema_conditions_fail_closed() {
+    let corpus_path = repo_root().join("tests/bindings/fixtures/protocol-primitives-v1.json");
+    let corpus: Value = serde_json::from_str(
+        &fs::read_to_string(corpus_path).expect("protocol-primitives fixture corpus exists"),
+    )
+    .expect("protocol-primitives fixture corpus parses");
+    let cases = corpus["cases"]
+        .as_array()
+        .expect("fixture cases are an array");
+    let fixture = |name: &str| {
+        cases
+            .iter()
+            .find(|case| case["name"] == name)
+            .unwrap_or_else(|| panic!("fixture `{name}` exists"))["instance"]
+            .clone()
+    };
+
+    assert_schema_rejects(
+        "capability/aggregate-invocation-budget.schema.json",
+        &json!({
+            "scope": "delegation_family",
+            "max_invocations": 3
+        }),
+    );
+    assert_schema_rejects(
+        "capability/aggregate-invocation-budget.schema.json",
+        &json!({
+            "scope": "capability",
+            "max_invocations": 3,
+            "root_binding": {}
+        }),
+    );
+
+    let mut direct = fixture("capability-with-direct-cumulative-approval");
+    direct["scope"]["grants"][0]["constraints"][0]["value"]["cumulative_approval_root_binding"] =
+        json!({});
+    assert_schema_rejects("capability/token.schema.json", &direct);
+
+    let mut delegable = fixture("capability-with-direct-cumulative-approval");
+    delegable["scope"]["grants"][0]["operations"] = json!(["invoke", "delegate"]);
+    assert_schema_rejects("capability/token.schema.json", &delegable);
+
+    let approval = fixture("governed-approval-token");
+    let request = json!({
+        "type": "tool_call_request",
+        "id": "request-1",
+        "capability_token": fixture("capability-with-aggregate-budget"),
+        "server_id": "server-1",
+        "tool": "tool-1",
+        "params": {},
+        "threshold_approval_proposal": fixture("threshold-proposal"),
+        "approval_tokens": vec![approval; 33]
+    });
+    assert_schema_rejects("agent/tool_call_request.schema.json", &request);
+}
+
 fn validator_for_schema(schema_path: &std::path::Path, schema: &Value) -> jsonschema::Validator {
+    fn add_schema_resources(directory: &std::path::Path, resources: &mut Vec<(String, Value)>) {
+        for entry in fs::read_dir(directory).expect("schema directory is readable") {
+            let path = entry.expect("schema directory entry is readable").path();
+            if path.is_dir() {
+                add_schema_resources(&path, resources);
+            } else if path
+                .extension()
+                .is_some_and(|extension| extension == "json")
+            {
+                let value: Value = serde_json::from_str(
+                    &fs::read_to_string(&path).expect("schema resource is readable"),
+                )
+                .expect("schema resource parses");
+                if let Some(id) = value["$id"].as_str() {
+                    resources.push((id.to_string(), value));
+                }
+            }
+        }
+    }
+
     let base_uri = schema_path
         .parent()
         .and_then(|parent| parent.canonicalize().ok())
@@ -90,7 +194,17 @@ fn validator_for_schema(schema_path: &std::path::Path, schema: &Value) -> jsonsc
             format!("file://{path}")
         })
         .expect("schema parent canonicalizes");
+    let mut resources = Vec::new();
+    add_schema_resources(&schema_root(), &mut resources);
+    let mut registry = jsonschema::Registry::new();
+    for (uri, resource) in &resources {
+        registry = registry
+            .add(uri.as_str(), resource)
+            .expect("schema resource registers");
+    }
+    let registry = registry.prepare().expect("schema registry prepares");
     jsonschema::options()
+        .with_registry(&registry)
         .with_base_uri(base_uri)
         .build(schema)
         .expect("schema compiles")
@@ -131,6 +245,7 @@ fn make_token(kp: &Keypair) -> CapabilityToken {
             issued_at: 1_710_000_000,
             expires_at: 1_710_000_600,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         kp,
     )
@@ -166,6 +281,7 @@ fn make_hybrid_token() -> CapabilityToken {
             issued_at: 1_710_000_000,
             expires_at: 1_710_000_600,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         &backend,
     )
@@ -233,6 +349,29 @@ fn make_receipt_body(kp: &Keypair, decision: Decision) -> ChioReceiptBody {
     }
 }
 
+fn make_execution_nonce(kp: &Keypair) -> SignedExecutionNonce {
+    SignedExecutionNonce {
+        nonce: ExecutionNonce {
+            schema: "chio.execution_nonce.v1".to_string(),
+            nonce_id: "nonce-wire-001".to_string(),
+            issued_at: 1_000,
+            expires_at: 1_030,
+            bound_to: NonceBinding {
+                subject_id: "agent-wire-001".to_string(),
+                request_id: "req-wire-001".to_string(),
+                capability_id: "cap-wire-001".to_string(),
+                tool_server: "srv".to_string(),
+                tool_name: "echo".to_string(),
+                parameter_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .to_string(),
+            },
+            reserved_hold_id: None,
+            reserving_request_id: None,
+        },
+        signature: kp.sign(b"wire-execution-nonce"),
+    }
+}
+
 #[test]
 fn wire_protocol_schema_cases_validate_live_serialization() {
     let kp = Keypair::from_seed(&[7; 32]);
@@ -243,7 +382,13 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
         capability_token: Box::new(token.clone()),
         server_id: "srv".to_string(),
         tool: "echo".to_string(),
-        params: json!({"message": "hello"}),
+        params: Box::new(json!({"message": "hello"})),
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        execution_nonce: Some(Box::new(make_execution_nonce(&kp))),
     };
 
     let result_ok = ToolCallResult::Ok {
@@ -307,6 +452,7 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
                 id: "req-wire-001".to_string(),
                 result: result_ok.clone(),
                 receipt: Box::new(make_receipt(&kp, Decision::Allow)),
+                execution_nonce: Some(Box::new(make_execution_nonce(&kp))),
             }),
         ),
         (
@@ -315,6 +461,7 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
                 id: "req-wire-002".to_string(),
                 result: result_stream_complete.clone(),
                 receipt: Box::new(make_receipt(&kp, Decision::Allow)),
+                execution_nonce: None,
             }),
         ),
         (
@@ -328,6 +475,7 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
                         reason: "operator cancelled".to_string(),
                     },
                 )),
+                execution_nonce: None,
             }),
         ),
         (
@@ -341,6 +489,7 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
                         reason: "upstream stream interrupted".to_string(),
                     },
                 )),
+                execution_nonce: None,
             }),
         ),
         (
@@ -355,6 +504,7 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
                         reason: "signature mismatch".to_string(),
                     },
                 )),
+                execution_nonce: None,
             }),
         ),
         (
@@ -369,6 +519,7 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
                         reason: "capability expired".to_string(),
                     },
                 )),
+                execution_nonce: None,
             }),
         ),
         (
@@ -383,6 +534,7 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
                         reason: "capability revoked".to_string(),
                     },
                 )),
+                execution_nonce: None,
             }),
         ),
         (
@@ -397,6 +549,7 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
                         reason: "path is forbidden".to_string(),
                     },
                 )),
+                execution_nonce: None,
             }),
         ),
         (
@@ -411,6 +564,7 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
                         reason: "upstream 500".to_string(),
                     },
                 )),
+                execution_nonce: None,
             }),
         ),
         (
@@ -425,6 +579,7 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
                         reason: "receipt signing failed".to_string(),
                     },
                 )),
+                execution_nonce: None,
             }),
         ),
         (
@@ -540,6 +695,7 @@ fn tool_call_response_schema_rejects_allow_shaped_trace_receipts() {
             chunks_received: 0,
         },
         receipt: Box::new(make_receipt(&kp, Decision::Allow)),
+        execution_nonce: None,
     });
 
     {

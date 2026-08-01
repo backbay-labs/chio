@@ -8,6 +8,7 @@ use chio_metering::{
     AggregateSpend, BudgetDecision, BudgetDenyReason, BudgetError, BudgetLimits, BudgetNode,
     BudgetNodeId, BudgetTree, BudgetWindow, PerWindowSpend, SpendSnapshot,
 };
+use proptest::prelude::*;
 
 fn org(id: &str, limits: BudgetLimits, window: BudgetWindow) -> BudgetNode {
     BudgetNode::new(id, window).with_limits(limits)
@@ -35,7 +36,7 @@ fn tokens(n: u64) -> BudgetLimits {
 }
 
 fn snapshot_for(id: &str, spent: AggregateSpend) -> SpendSnapshot {
-    let mut snap = SpendSnapshot::new();
+    let mut snap = SpendSnapshot::new(0);
     snap.set(
         BudgetNodeId::from(id),
         PerWindowSpend {
@@ -144,7 +145,7 @@ fn single_node_evaluate_allows_within_cap_denies_over() {
     let id = BudgetNodeId::from("org/solo");
 
     // Within cap.
-    let snap = SpendSnapshot::new();
+    let snap = SpendSnapshot::new(0);
     assert!(matches!(
         tree.evaluate(&id, AggregateSpend::with_tokens(500), &snap),
         BudgetDecision::Allow
@@ -195,7 +196,7 @@ fn parent_cap_denies_even_when_child_has_room() {
     // tip team over the 10k cap even though the per-agent window may be
     // cheap. Model this by pre-loading the team with 10k and the agent
     // with 2k; a new 1k draft should be denied with team as the offender.
-    let mut snap = SpendSnapshot::new();
+    let mut snap = SpendSnapshot::new(0);
     snap.set(
         BudgetNodeId::from("team/alpha"),
         PerWindowSpend {
@@ -272,10 +273,18 @@ fn multiple_dimensions_evaluated_independently() {
     let id = BudgetNodeId::from("org/multi");
 
     // Drafts exceeding each dimension in isolation.
-    let snap = SpendSnapshot::new();
+    let snap = SpendSnapshot::new(0);
 
     // Tokens over.
-    let dec = tree.evaluate(&id, AggregateSpend::with_tokens(100_001), &snap);
+    let dec = tree.evaluate(
+        &id,
+        AggregateSpend {
+            currency: Some("USD".to_string()),
+            tokens: 100_001,
+            ..AggregateSpend::default()
+        },
+        &snap,
+    );
     let BudgetDecision::Deny { reason } = dec else {
         panic!("expected deny");
     };
@@ -285,7 +294,15 @@ fn multiple_dimensions_evaluated_independently() {
     ));
 
     // Requests over.
-    let dec = tree.evaluate(&id, AggregateSpend::with_requests(51), &snap);
+    let dec = tree.evaluate(
+        &id,
+        AggregateSpend {
+            currency: Some("USD".to_string()),
+            requests: 51,
+            ..AggregateSpend::default()
+        },
+        &snap,
+    );
     let BudgetDecision::Deny { reason } = dec else {
         panic!("expected deny");
     };
@@ -297,7 +314,11 @@ fn multiple_dimensions_evaluated_independently() {
     // Warehouse bytes over.
     let dec = tree.evaluate(
         &id,
-        AggregateSpend::with_warehouse_bytes((1 << 20) + 1),
+        AggregateSpend {
+            currency: Some("USD".to_string()),
+            warehouse_bytes: (1 << 20) + 1,
+            ..AggregateSpend::default()
+        },
         &snap,
     );
     let BudgetDecision::Deny { reason } = dec else {
@@ -342,7 +363,7 @@ fn disabled_node_denies_with_node_disabled_reason() {
     )
     .expect("disabled");
     let id = BudgetNodeId::from("team/disabled");
-    let snap = SpendSnapshot::new();
+    let snap = SpendSnapshot::new(0);
     let dec = tree.evaluate(&id, AggregateSpend::with_tokens(1), &snap);
     let BudgetDecision::Deny { reason } = dec else {
         panic!("expected deny");
@@ -426,7 +447,7 @@ fn unknown_node_id_yields_unknown_error_not_panic() {
     let dec = tree.evaluate(
         &BudgetNodeId::from("ghost"),
         AggregateSpend::with_tokens(1),
-        &SpendSnapshot::new(),
+        &SpendSnapshot::new(0),
     );
     let BudgetDecision::Deny { reason } = dec else {
         panic!("expected deny");
@@ -457,7 +478,7 @@ fn parent_and_child_both_in_bounds_allows() {
     ))
     .expect("agent");
 
-    let mut snap = SpendSnapshot::new();
+    let mut snap = SpendSnapshot::new(0);
     snap.set(
         BudgetNodeId::from("org/a"),
         PerWindowSpend {
@@ -507,7 +528,7 @@ fn disabled_ancestor_propagates_to_leaf() {
     ))
     .expect("team");
 
-    let snap = SpendSnapshot::new();
+    let snap = SpendSnapshot::new(0);
     let dec = tree.evaluate(
         &BudgetNodeId::from("team/x"),
         AggregateSpend::with_tokens(1),
@@ -523,62 +544,478 @@ fn disabled_ancestor_propagates_to_leaf() {
 }
 
 #[test]
-fn spend_dimension_denies_on_currency_mismatch() {
-    // A currency-denominated cap fails closed on a positive spend it
-    // cannot compare: an EUR draft against a USD cap is denied with a
-    // typed reason, not silently skipped. A zero-spend draft carries no
-    // money and passes.
+fn budget_tree_allows_matching_currency() {
     let mut tree = BudgetTree::new();
-    tree.insert(org("org/usd", usd(1_000), BudgetWindow::Daily))
-        .expect("org");
+    assert!(tree
+        .insert(org("org/usd", usd(1_000), BudgetWindow::Daily))
+        .is_ok());
 
     let id = BudgetNodeId::from("org/usd");
-    let snap = SpendSnapshot::new();
+    let snap = SpendSnapshot::new(0);
 
-    // Matching currency over cap denies on the spend dimension.
-    let dec = tree.evaluate(&id, AggregateSpend::with_spend(2_000, "USD"), &snap);
     assert!(matches!(
-        dec,
-        BudgetDecision::Deny {
-            reason: BudgetDenyReason::DimensionExceeded { .. }
-        }
+        tree.evaluate(&id, AggregateSpend::with_spend(1_000, "USD"), &snap),
+        BudgetDecision::Allow
     ));
-
-    // An EUR draft denies as uncomparable, even under the numeric cap.
-    let dec = tree.evaluate(&id, AggregateSpend::with_spend(500, "EUR"), &snap);
-    assert!(matches!(
-        dec,
-        BudgetDecision::Deny {
-            reason: BudgetDenyReason::CurrencyMismatch { .. }
-        }
-    ));
-
-    // Matching currency under cap allows.
-    let dec = tree.evaluate(&id, AggregateSpend::with_spend(500, "USD"), &snap);
-    assert!(matches!(dec, BudgetDecision::Allow));
-
-    // Zero-spend draft (tokens only, no currency) carries no money and passes.
-    let dec = tree.evaluate(&id, AggregateSpend::with_tokens(10), &snap);
-    assert!(matches!(dec, BudgetDecision::Allow));
 }
 
 #[test]
-fn spend_dimension_denies_on_projection_overflow() {
-    // The recorded spend already sits at u64::MAX; adding any further draft
-    // cannot be represented in u64. Checked arithmetic denies rather than
-    // saturating to a value that would compare incorrectly against the cap.
+fn budget_tree_denies_mismatched_currency() {
     let mut tree = BudgetTree::new();
-    tree.insert(org("org/usd", usd(1_000), BudgetWindow::Daily))
-        .expect("org");
+    assert!(tree
+        .insert(org("org/usd", usd(1_000), BudgetWindow::Daily))
+        .is_ok());
 
-    let id = BudgetNodeId::from("org/usd");
-    let snap = snapshot_for("org/usd", AggregateSpend::with_spend(u64::MAX, "USD"));
+    let decision = tree.evaluate(
+        &BudgetNodeId::from("org/usd"),
+        AggregateSpend::with_spend(1, "EUR"),
+        &SpendSnapshot::new(0),
+    );
 
-    let dec = tree.evaluate(&id, AggregateSpend::with_spend(1, "USD"), &snap);
     assert!(matches!(
-        dec,
+        decision,
         BudgetDecision::Deny {
-            reason: BudgetDenyReason::ProjectionOverflow { .. }
+            reason: BudgetDenyReason::CurrencyMismatch {
+                ref node,
+                node_currency: Some(ref node_currency),
+                current_currency: None,
+                draft_currency: Some(ref draft_currency),
+            },
+        } if node.as_str() == "org/usd"
+            && node_currency == "USD"
+            && draft_currency == "EUR"
+    ));
+}
+
+#[test]
+fn budget_tree_allows_zero_spend_without_currency() {
+    let mut tree = BudgetTree::new();
+    assert!(tree
+        .insert(org(
+            "org/usd",
+            BudgetLimits {
+                max_spend_units: Some(1_000),
+                currency: Some("USD".to_string()),
+                max_tokens: Some(10),
+                ..BudgetLimits::default()
+            },
+            BudgetWindow::Daily,
+        ))
+        .is_ok());
+
+    let decision = tree.evaluate(
+        &BudgetNodeId::from("org/usd"),
+        AggregateSpend::with_tokens(1),
+        &SpendSnapshot::new(0),
+    );
+
+    assert_eq!(decision, BudgetDecision::Allow);
+}
+
+#[test]
+fn budget_tree_denies_mismatched_snapshot_currency() {
+    let mut tree = BudgetTree::new();
+    assert!(tree
+        .insert(org("org/usd", usd(1_000), BudgetWindow::Daily))
+        .is_ok());
+    let snapshot = snapshot_for("org/usd", AggregateSpend::with_spend(1, "EUR"));
+
+    let decision = tree.evaluate(
+        &BudgetNodeId::from("org/usd"),
+        AggregateSpend::with_spend(1, "USD"),
+        &snapshot,
+    );
+
+    assert!(matches!(
+        decision,
+        BudgetDecision::Deny {
+            reason: BudgetDenyReason::CurrencyMismatch {
+                current_currency: Some(ref currency),
+                ..
+            },
+        } if currency == "EUR"
+    ));
+}
+
+#[test]
+fn budget_tree_denies_zero_snapshot_with_mismatched_currency() {
+    let mut tree = BudgetTree::new();
+    assert!(tree
+        .insert(org("org/usd", usd(1_000), BudgetWindow::Daily))
+        .is_ok());
+    let snapshot = snapshot_for("org/usd", AggregateSpend::with_spend(0, "EUR"));
+
+    let decision = tree.evaluate(
+        &BudgetNodeId::from("org/usd"),
+        AggregateSpend::with_spend(1, "USD"),
+        &snapshot,
+    );
+
+    assert!(matches!(
+        decision,
+        BudgetDecision::Deny {
+            reason: BudgetDenyReason::CurrencyMismatch {
+                current_currency: Some(ref currency),
+                ..
+            },
+        } if currency == "EUR"
+    ));
+}
+
+#[test]
+fn budget_tree_denies_missing_nonzero_snapshot_currency() {
+    let mut tree = BudgetTree::new();
+    assert!(tree
+        .insert(org("org/usd", usd(1_000), BudgetWindow::Daily))
+        .is_ok());
+    let snapshot = snapshot_for(
+        "org/usd",
+        AggregateSpend {
+            spend_units: 1,
+            ..AggregateSpend::default()
+        },
+    );
+
+    let decision = tree.evaluate(
+        &BudgetNodeId::from("org/usd"),
+        AggregateSpend::with_spend(1, "USD"),
+        &snapshot,
+    );
+
+    assert!(matches!(
+        decision,
+        BudgetDecision::Deny {
+            reason: BudgetDenyReason::CurrencyMismatch {
+                current_currency: None,
+                ..
+            },
         }
     ));
+}
+
+#[test]
+fn budget_tree_currency_mismatch_precedes_same_node_dimension() {
+    let mut tree = BudgetTree::new();
+    assert!(tree
+        .insert(org(
+            "org/usd",
+            BudgetLimits {
+                max_spend_units: Some(1_000),
+                currency: Some("USD".to_string()),
+                max_tokens: Some(1),
+                ..BudgetLimits::default()
+            },
+            BudgetWindow::Daily,
+        ))
+        .is_ok());
+
+    let decision = tree.evaluate(
+        &BudgetNodeId::from("org/usd"),
+        AggregateSpend {
+            spend_units: 1,
+            currency: Some("EUR".to_string()),
+            tokens: 2,
+            ..AggregateSpend::default()
+        },
+        &SpendSnapshot::new(0),
+    );
+
+    assert!(matches!(
+        decision,
+        BudgetDecision::Deny {
+            reason: BudgetDenyReason::CurrencyMismatch { .. },
+        }
+    ));
+}
+
+#[test]
+fn budget_tree_allows_zero_snapshot_without_currency() {
+    let mut tree = BudgetTree::new();
+    assert!(tree
+        .insert(org("org/usd", usd(1_000), BudgetWindow::Daily))
+        .is_ok());
+    let snapshot = snapshot_for("org/usd", AggregateSpend::default());
+
+    assert!(matches!(
+        tree.evaluate(
+            &BudgetNodeId::from("org/usd"),
+            AggregateSpend::with_spend(1, "USD"),
+            &snapshot,
+        ),
+        BudgetDecision::Allow
+    ));
+}
+
+#[test]
+fn budget_tree_ignores_currency_without_spend_cap() {
+    let mut tree = BudgetTree::new();
+    assert!(tree
+        .insert(org("org/tokens", tokens(10), BudgetWindow::Daily))
+        .is_ok());
+
+    assert!(matches!(
+        tree.evaluate(
+            &BudgetNodeId::from("org/tokens"),
+            AggregateSpend::with_tokens(1),
+            &SpendSnapshot::new(0),
+        ),
+        BudgetDecision::Allow
+    ));
+}
+
+#[test]
+fn budget_tree_denies_uncomparable_ancestor() {
+    let mut tree = BudgetTree::new();
+    assert!(tree
+        .insert(org("org/usd", usd(1_000), BudgetWindow::Daily))
+        .is_ok());
+    assert!(tree
+        .insert(child(
+            "team/eur",
+            "org/usd",
+            BudgetLimits {
+                max_spend_units: Some(1_000),
+                currency: Some("EUR".to_string()),
+                ..BudgetLimits::default()
+            },
+            BudgetWindow::Daily,
+        ))
+        .is_ok());
+
+    let decision = tree.evaluate(
+        &BudgetNodeId::from("team/eur"),
+        AggregateSpend::with_spend(1, "USD"),
+        &SpendSnapshot::new(0),
+    );
+
+    assert!(matches!(
+        decision,
+        BudgetDecision::Deny {
+            reason: BudgetDenyReason::CurrencyMismatch { ref node, .. },
+        } if node.as_str() == "team/eur"
+    ));
+}
+
+#[test]
+fn budget_tree_denies_spend_overflow() {
+    let mut tree = BudgetTree::new();
+    assert!(tree
+        .insert(org("org/usd", usd(u64::MAX), BudgetWindow::Daily))
+        .is_ok());
+    let snapshot = snapshot_for("org/usd", AggregateSpend::with_spend(u64::MAX, "USD"));
+
+    let decision = tree.evaluate(
+        &BudgetNodeId::from("org/usd"),
+        AggregateSpend::with_spend(1, "USD"),
+        &snapshot,
+    );
+
+    assert!(matches!(
+        decision,
+        BudgetDecision::Deny {
+            reason: BudgetDenyReason::ArithmeticOverflow {
+                ref node,
+                ref dimension,
+            },
+        } if node.as_str() == "org/usd" && dimension == "spend"
+    ));
+}
+
+#[test]
+fn budget_tree_denies_non_monetary_overflow() {
+    let cases = [
+        (
+            "tokens",
+            BudgetLimits {
+                max_tokens: Some(u64::MAX),
+                ..BudgetLimits::default()
+            },
+            AggregateSpend::with_tokens(u64::MAX),
+            AggregateSpend::with_tokens(1),
+        ),
+        (
+            "requests",
+            BudgetLimits {
+                max_requests: Some(u64::MAX),
+                ..BudgetLimits::default()
+            },
+            AggregateSpend::with_requests(u64::MAX),
+            AggregateSpend::with_requests(1),
+        ),
+        (
+            "warehouse_bytes",
+            BudgetLimits {
+                max_warehouse_bytes: Some(u64::MAX),
+                ..BudgetLimits::default()
+            },
+            AggregateSpend::with_warehouse_bytes(u64::MAX),
+            AggregateSpend::with_warehouse_bytes(1),
+        ),
+    ];
+
+    for (dimension, limits, current, draft) in cases {
+        let mut tree = BudgetTree::new();
+        assert!(tree
+            .insert(org("org/overflow", limits, BudgetWindow::Daily))
+            .is_ok());
+        let snapshot = snapshot_for("org/overflow", current);
+        let decision = tree.evaluate(&BudgetNodeId::from("org/overflow"), draft, &snapshot);
+
+        assert!(matches!(
+            decision,
+            BudgetDecision::Deny {
+                reason: BudgetDenyReason::ArithmeticOverflow {
+                    ref node,
+                    dimension: ref actual_dimension,
+                },
+            } if node.as_str() == "org/overflow" && actual_dimension == dimension
+        ));
+    }
+}
+
+#[test]
+fn budget_tree_denies_stale_or_undated_snapshots() {
+    let mut tree = BudgetTree::new();
+    assert!(tree
+        .insert(org("org/daily", tokens(10), BudgetWindow::Daily))
+        .is_ok());
+    let mut stale = SpendSnapshot::new(86_400);
+    stale.set(
+        BudgetNodeId::from("org/daily"),
+        PerWindowSpend {
+            window_start: 0,
+            current: AggregateSpend::default(),
+        },
+    );
+
+    for snapshot in [stale, SpendSnapshot::default()] {
+        assert!(matches!(
+            tree.evaluate(
+                &BudgetNodeId::from("org/daily"),
+                AggregateSpend::with_tokens(1),
+                &snapshot,
+            ),
+            BudgetDecision::Deny {
+                reason: BudgetDenyReason::WindowExpired { ref node },
+            } if node.as_str() == "org/daily"
+        ));
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 256,
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn budget_tree_never_allows_uncomparable_capped_path(
+        depth in 1_usize..6,
+        offender_seed in any::<usize>(),
+        currency_case in 0_u8..4,
+        current_units in 0_u64..=2_000,
+        draft_units in 0_u64..=2_000,
+    ) {
+        let offender = offender_seed % depth;
+        let mut tree = BudgetTree::new();
+        for index in 0..depth {
+            let id = format!("node/{index}");
+            let node = if index == 0 {
+                org(&id, usd(4_000), BudgetWindow::Daily)
+            } else {
+                let parent = format!("node/{}", index - 1);
+                child(&id, &parent, usd(4_000), BudgetWindow::Daily)
+            };
+            prop_assert!(tree.insert(node).is_ok());
+        }
+
+        let mut snapshot = SpendSnapshot::new(0);
+        if currency_case == 2 {
+            snapshot.set(
+                BudgetNodeId::from(format!("node/{offender}")),
+                PerWindowSpend {
+                    window_start: 0,
+                    current: AggregateSpend {
+                        spend_units: current_units.max(1),
+                        ..AggregateSpend::default()
+                    },
+                },
+            );
+        } else if currency_case == 3 {
+            snapshot.set(
+                BudgetNodeId::from(format!("node/{offender}")),
+                PerWindowSpend {
+                    window_start: 0,
+                    current: AggregateSpend::with_spend(current_units, "EUR"),
+                },
+            );
+        }
+
+        let draft = match currency_case {
+            0 => AggregateSpend {
+                spend_units: draft_units,
+                ..AggregateSpend::default()
+            },
+            1 => AggregateSpend::with_spend(draft_units, "EUR"),
+            _ => AggregateSpend::with_spend(draft_units, "USD"),
+        };
+        let decision = tree.evaluate(
+            &BudgetNodeId::from(format!("node/{}", depth - 1)),
+            draft,
+            &snapshot,
+        );
+
+        let denied_for_currency = matches!(
+            decision,
+            BudgetDecision::Deny {
+                reason: BudgetDenyReason::CurrencyMismatch { .. },
+            }
+        );
+        let should_deny_for_currency = currency_case != 0 || draft_units > 0;
+        prop_assert_eq!(denied_for_currency, should_deny_for_currency);
+    }
+
+    #[test]
+    fn budget_tree_matching_currency_respects_cap_across_path(
+        depth in 1_usize..6,
+        cap in 2_u64..=10_000,
+        position in 0_u8..3,
+        draft_units in 0_u64..=1,
+    ) {
+        let current_units = match position {
+            0 => cap - 1,
+            1 => cap,
+            _ => cap + 1,
+        };
+        let mut tree = BudgetTree::new();
+        let mut snapshot = SpendSnapshot::new(0);
+        for index in 0..depth {
+            let id = format!("node/{index}");
+            let node = if index == 0 {
+                org(&id, usd(cap), BudgetWindow::Daily)
+            } else {
+                let parent = format!("node/{}", index - 1);
+                child(&id, &parent, usd(cap), BudgetWindow::Daily)
+            };
+            prop_assert!(tree.insert(node).is_ok());
+            snapshot.set(
+                BudgetNodeId::from(id),
+                PerWindowSpend {
+                    window_start: 0,
+                    current: AggregateSpend::with_spend(current_units, "USD"),
+                },
+            );
+        }
+
+        let decision = tree.evaluate(
+            &BudgetNodeId::from(format!("node/{}", depth - 1)),
+            AggregateSpend::with_spend(draft_units, "USD"),
+            &snapshot,
+        );
+        let should_allow = current_units
+            .checked_add(draft_units)
+            .is_some_and(|projected| projected <= cap);
+
+        prop_assert_eq!(matches!(decision, BudgetDecision::Allow), should_allow);
+    }
 }

@@ -182,7 +182,7 @@ pub(crate) async fn handle_scim_delete_user(
         return scim_json_response(StatusCode::OK, &record.scim_user);
     }
     let now = unix_timestamp_now();
-    let revocation_store = match open_revocation_store(&state.config) {
+    let revocation_store = match state.revocation_store() {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -451,7 +451,7 @@ pub(crate) async fn handle_list_revocations(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    let store = match open_revocation_store(&state.config) {
+    let store = match state.revocation_store() {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -494,7 +494,7 @@ pub(crate) async fn handle_revoke_capability(
         Ok(None) => {}
         Err(response) => return response,
     }
-    let store = match open_revocation_store(&state.config) {
+    let store = match state.revocation_store() {
         Ok(store) => store,
         Err(response) => return response,
     };

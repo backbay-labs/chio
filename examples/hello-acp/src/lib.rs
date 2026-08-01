@@ -95,7 +95,6 @@ fn kernel_config() -> KernelConfig {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -160,6 +159,9 @@ pub fn build_demo_state() -> HelloAcpResult<HelloAcpDemoState> {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
     };
 

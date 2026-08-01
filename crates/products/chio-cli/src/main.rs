@@ -41,10 +41,11 @@ mod settle;
 pub use chio_control_plane::{
     authority_public_key_from_seed_file, build_kernel, certify, configure_budget_store,
     configure_capability_authority, configure_receipt_store, configure_revocation_store,
-    enterprise_federation, evidence_export, federation_policy, issuance,
-    issue_default_capabilities, load_or_create_authority_keypair, passport_verifier, policy,
-    reputation, require_control_token, rotate_authority_keypair, scim_lifecycle, trust_control,
-    CliError,
+    durable_admission_sidecar_path, enterprise_federation, evidence_export, federation_policy,
+    issuance, issue_default_capabilities, load_or_create_authority_keypair,
+    open_durable_admission_runtime, passport_verifier, policy, reputation, require_control_token,
+    rotate_authority_keypair, scim_lifecycle, trust_control, validate_distinct_database_paths,
+    validate_durable_admission_participant_paths, CliError, DurableAdmissionRuntime,
 };
 pub use chio_mcp_remote as remote_mcp;
 
@@ -90,8 +91,7 @@ use crate::policy::load_policy;
 mod types_cli;
 #[allow(unused_imports)]
 pub(crate) use types_cli::{
-    ApiCommands, ArenaCommands, BudgetCommands, BudgetHoldsCommands, CertCommands,
-    CertifyCommands, CertifyRegistryCommands, CheckMode,
+    ApiCommands, ArenaCommands, CertCommands, CertifyCommands, CertifyRegistryCommands, CheckMode,
     ChioAttestCommands, ChioBuyerCommands, ChioFederationCommands, ChioRuntimeQuoteCommands,
     ChioSupplyChainCommands, Cli, Commands, CommerceCommands, ConformanceCommands, DidCommands,
     EvidenceCommands, EvidenceFederationPolicyCommands, GuardBlocklistCommands, GuardCommands,
@@ -150,10 +150,11 @@ mod runtime_cli;
 pub(crate) use runtime_cli::{
     cli_normalized_url_authority, cmd_api_protect, cmd_check, cmd_mcp_serve, cmd_mcp_serve_http,
     cmd_run, cmd_start, cmd_trust_revoke, cmd_trust_serve, cmd_trust_status,
-    is_cli_ipv6_unicast_link_local, is_cli_ipv6_unique_local, optional_secret_with_env_fallback,
-    parse_tenant_read_tokens, parse_trusted_capability_issuers_from_env,
-    remote_mcp_auth_egress_contract, require_receipt_db_path, require_revocation_db_path,
-    verdict_label, CHIO_START_NO_UPSTREAM_URL, CHIO_START_SIDECAR_OPENAPI_SPEC,
+    is_cli_ipv6_unicast_link_local, is_cli_ipv6_unique_local, load_roster_policy,
+    optional_secret_with_env_fallback, parse_tenant_read_tokens,
+    parse_trusted_capability_issuers_from_env, remote_mcp_auth_egress_contract,
+    require_receipt_db_path, require_revocation_db_path, verdict_label,
+    CHIO_START_NO_UPSTREAM_URL, CHIO_START_SIDECAR_OPENAPI_SPEC,
 };
 #[path = "cli/runtime/trust_reports.rs"]
 mod runtime_trust_reports;
@@ -167,7 +168,7 @@ pub(crate) use trust_commands_cli::{
     bilateral_field, build_underwriting_policy_input_query, cmd_receipt_audit,
     cmd_receipt_checkpoint_create, cmd_receipt_checkpoint_status, cmd_receipt_checkpoint_verify,
     cmd_receipt_explain, cmd_receipt_flush, cmd_receipt_health, cmd_receipt_list,
-    cmd_receipt_resolve_dead_letter, cmd_receipt_retention_repair, cmd_trust_credit_backtest_export,
+    cmd_receipt_retention_repair, cmd_trust_credit_backtest_export,
     cmd_trust_credit_loss_lifecycle_evaluate, cmd_trust_credit_loss_lifecycle_issue,
     cmd_trust_credit_loss_lifecycle_list, cmd_trust_liability_auto_bind_issue,
     cmd_trust_liability_bound_coverage_issue, cmd_trust_liability_claim_adjudication_issue,
@@ -245,7 +246,8 @@ pub(crate) use conformance_cli::{
 mod mcp_cli;
 #[allow(unused_imports)]
 pub(crate) use mcp_cli::{
-    cmd_mcp_wrap, cmd_mcp_wrap_e2e_fixture, cmd_mcp_wrap_run, load_tools_fixture, McpWrapArgs,
+    cmd_mcp_governed_sim, cmd_mcp_wrap, cmd_mcp_wrap_e2e_fixture, cmd_mcp_wrap_run,
+    load_tools_fixture, GovernedSimArgs, McpWrapArgs,
 };
 #[path = "cli/replay.rs"]
 mod replay_cli;

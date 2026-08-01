@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-parametric/v1/defs.schema.json",
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "unsignedInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "$ref": "#/$defs/unsignedInteger" },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "publicKey": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+      "maxLength": 16384
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
+      "maxLength": 16384
+    },
+    "triggerMagnitudeUnit": {
+      "enum": ["count", "basis_points"]
+    },
+    "triggerPredicate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "minEvents", "thresholdBps"],
+          "properties": {
+            "kind": { "const": "guard_denial_rate" },
+            "minEvents": { "$ref": "#/$defs/positiveInteger" },
+            "thresholdBps": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "minCritical"],
+          "properties": {
+            "kind": { "const": "drift_severity" },
+            "minCritical": { "$ref": "#/$defs/positiveInteger" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "minFailures"],
+          "properties": {
+            "kind": { "const": "settlement_failure_count" },
+            "minFailures": { "$ref": "#/$defs/positiveInteger" }
+          }
+        }
+      ]
+    },
+    "payoutSchedule": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "amount"],
+          "properties": {
+            "kind": { "const": "fixed" },
+            "amount": { "$ref": "#/$defs/money" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "base", "perUnitMinor", "magnitudeUnit"],
+          "properties": {
+            "kind": { "const": "linear" },
+            "base": { "$ref": "#/$defs/money" },
+            "perUnitMinor": { "$ref": "#/$defs/positiveInteger" },
+            "magnitudeUnit": { "$ref": "#/$defs/triggerMagnitudeUnit" }
+          }
+        }
+      ]
+    },
+    "payoutMode": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "automatic" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "windowSeconds"],
+          "properties": {
+            "kind": { "const": "contestable" },
+            "windowSeconds": { "$ref": "#/$defs/positiveInteger" }
+          }
+        }
+      ]
+    },
+    "payoutRail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "railId", "destinationAccountDigest"],
+      "properties": {
+        "kind": {
+          "enum": ["manual", "api", "ach", "wire", "ledger", "sandbox", "web3"]
+        },
+        "railId": { "$ref": "#/$defs/text" },
+        "destinationAccountDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "evaluatorAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorityId", "keyId", "keyEpoch"],
+      "properties": {
+        "authorityId": { "$ref": "#/$defs/text" },
+        "keyId": { "$ref": "#/$defs/text" },
+        "keyEpoch": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "parametricPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "issuedAt",
+        "subjectKey",
+        "boundCoverageBodyDigest",
+        "boundCoverageEnvelopeDigest",
+        "coverageAuthorityId",
+        "payerId",
+        "beneficiaryId",
+        "fundingFacilityId",
+        "preActionAuthorityDigest",
+        "coverageAmount",
+        "effectiveFrom",
+        "effectiveUntil",
+        "windowAnchor",
+        "windowSeconds",
+        "maxCheckpointLagSeconds",
+        "predicate",
+        "payoutSchedule",
+        "payoutMode",
+        "payoutRail",
+        "evaluatorAuthority"
+      ],
+      "properties": {
+        "schema": { "const": "chio.parametric.policy.v1" },
+        "issuedAt": { "$ref": "#/$defs/unsignedInteger" },
+        "subjectKey": { "$ref": "#/$defs/text" },
+        "boundCoverageBodyDigest": { "$ref": "#/$defs/digest" },
+        "boundCoverageEnvelopeDigest": { "$ref": "#/$defs/digest" },
+        "coverageAuthorityId": { "$ref": "#/$defs/text" },
+        "payerId": { "$ref": "#/$defs/text" },
+        "beneficiaryId": { "$ref": "#/$defs/text" },
+        "fundingFacilityId": { "$ref": "#/$defs/text" },
+        "preActionAuthorityDigest": { "$ref": "#/$defs/digest" },
+        "coverageAmount": { "$ref": "#/$defs/money" },
+        "effectiveFrom": { "$ref": "#/$defs/unsignedInteger" },
+        "effectiveUntil": { "$ref": "#/$defs/positiveInteger" },
+        "windowAnchor": { "$ref": "#/$defs/unsignedInteger" },
+        "windowSeconds": { "$ref": "#/$defs/positiveInteger" },
+        "maxCheckpointLagSeconds": { "$ref": "#/$defs/positiveInteger" },
+        "predicate": { "$ref": "#/$defs/triggerPredicate" },
+        "payoutSchedule": { "$ref": "#/$defs/payoutSchedule" },
+        "payoutMode": { "$ref": "#/$defs/payoutMode" },
+        "payoutRail": { "$ref": "#/$defs/payoutRail" },
+        "evaluatorAuthority": { "$ref": "#/$defs/evaluatorAuthority" }
+      }
+    },
+    "signedParametricPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signerKey", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/parametricPolicy" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "triggerWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startAt", "endAt"],
+      "properties": {
+        "startAt": { "$ref": "#/$defs/unsignedInteger" },
+        "endAt": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "sequenceRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["first", "last"],
+      "properties": {
+        "first": { "$ref": "#/$defs/unsignedInteger" },
+        "last": { "$ref": "#/$defs/unsignedInteger" }
+      }
+    },
+    "evidenceSourceRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceKind",
+        "sourceId",
+        "indexNamespace",
+        "subjectKey",
+        "window",
+        "sequenceRange",
+        "expectedCount",
+        "sourcePrefixCutoff",
+        "selectedMemberRoot",
+        "anchorEpoch",
+        "signerKeyEpoch",
+        "checkpointId",
+        "checkpointRoot",
+        "checkpointAt",
+        "queryIndexRoot",
+        "rangeProofDigest"
+      ],
+      "properties": {
+        "sourceKind": {
+          "enum": ["receipt_store", "drift_reports", "settlement_reconciliations"]
+        },
+        "sourceId": { "$ref": "#/$defs/text" },
+        "indexNamespace": { "$ref": "#/$defs/text" },
+        "subjectKey": { "$ref": "#/$defs/text" },
+        "window": { "$ref": "#/$defs/triggerWindow" },
+        "sequenceRange": {
+          "oneOf": [
+            { "$ref": "#/$defs/sequenceRange" },
+            { "type": "null" }
+          ]
+        },
+        "expectedCount": { "$ref": "#/$defs/unsignedInteger" },
+        "sourcePrefixCutoff": { "$ref": "#/$defs/unsignedInteger" },
+        "selectedMemberRoot": { "$ref": "#/$defs/digest" },
+        "anchorEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "signerKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "checkpointId": { "$ref": "#/$defs/text" },
+        "checkpointRoot": { "$ref": "#/$defs/digest" },
+        "checkpointAt": { "$ref": "#/$defs/unsignedInteger" },
+        "queryIndexRoot": { "$ref": "#/$defs/digest" },
+        "rangeProofDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "evidenceCorpusManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ranges"],
+      "properties": {
+        "ranges": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/evidenceSourceRange" }
+        }
+      }
+    },
+    "triggerInstanceKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parametricPolicyBodyDigest",
+        "boundCoverageBodyDigest",
+        "subjectKey",
+        "triggerPredicateBodyDigest",
+        "windowStart",
+        "windowEnd",
+        "evidenceRangeDigest"
+      ],
+      "properties": {
+        "parametricPolicyBodyDigest": { "$ref": "#/$defs/digest" },
+        "boundCoverageBodyDigest": { "$ref": "#/$defs/digest" },
+        "subjectKey": { "$ref": "#/$defs/text" },
+        "triggerPredicateBodyDigest": { "$ref": "#/$defs/digest" },
+        "windowStart": { "$ref": "#/$defs/unsignedInteger" },
+        "windowEnd": { "$ref": "#/$defs/positiveInteger" },
+        "evidenceRangeDigest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

@@ -2837,6 +2837,115 @@
           "ref": "scripts/tests/check-http-egress-contract.test.sh"
         }
       ]
+    },
+    {
+      "id": "manifest.fincred.credit_scorecard.verified_projection_bound",
+      "claim_ref": "claim.fincred.credit_scorecard.verified_projection_bound",
+      "introduced_by": "financial-credentials-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-credit/src/financial_credentials/tests.rs::unresolved_signed_sources_cannot_overclaim_assurance"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-trust/v1/financial-credit-scorecard.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.fincred.exposure_history.complete_window_bound",
+      "claim_ref": "claim.fincred.exposure_history.complete_window_bound",
+      "introduced_by": "financial-credentials-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-credit/src/financial_credentials/tests.rs::exposure_completeness_rejects_summary_counts_that_do_not_match_rows"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-trust/v1/financial-exposure-history.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.fincred.premium_history.complete_window_bound",
+      "claim_ref": "claim.fincred.premium_history.complete_window_bound",
+      "introduced_by": "financial-credentials-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-credit/src/financial_credentials/tests.rs::premium_history_rejects_an_omitted_oldest_member_inside_the_declared_window"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-trust/v1/financial-premium-history.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.fincred.loss_history.complete_window_bound",
+      "claim_ref": "claim.fincred.loss_history.complete_window_bound",
+      "introduced_by": "financial-credentials-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-credit/src/financial_credentials/tests.rs::loss_history_rejects_an_omitted_newest_member_inside_the_declared_window"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-trust/v1/financial-loss-history.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.fincred.settlement_reliability.fail_closed",
+      "claim_ref": "claim.fincred.settlement_reliability.fail_closed",
+      "introduced_by": "financial-credentials-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-credentials/src/financial/tests.rs::signed_reliability_credential_is_explicitly_rejected"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-trust/v1/financial-settlement-reliability.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.fincred.source_manifest.credential_set_bound",
+      "claim_ref": "claim.fincred.source_manifest.credential_set_bound",
+      "introduced_by": "financial-credentials-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-credentials/tests/financial_passport_v2.rs::validated_v2_builder_binds_manifest_credentials_and_schema_first_admission"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-credentials/tests/financial_passport_v2.rs::manifest_present_passport_rejects_outer_metadata_tampering_and_addition"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-trust/v1/financial-agent-passport-source-manifest.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.fincred.presentation_challenge.signed_exact",
+      "claim_ref": "claim.fincred.presentation_challenge.signed_exact",
+      "introduced_by": "financial-credentials-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-credentials/tests/financial_passport_v2.rs::signed_v2_challenge_rejects_digest_signature_and_unknown_field_tampering"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-trust/v1/financial-passport-presentation-challenge.schema.json"
+        }
+      ]
     }
   ],
   "proposed_manifests": [

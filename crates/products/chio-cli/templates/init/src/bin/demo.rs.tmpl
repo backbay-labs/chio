@@ -25,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let demo_name = env::args().nth(1).unwrap_or_else(|| "Chio".to_string());
     let receipt_db = project_root.join(".chio").join("receipts.db");
+    let session_db = project_root.join(".chio").join("session.db");
     let target_dir = env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| project_root.join(".chio").join("target"));
@@ -32,7 +33,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&target_dir)?;
 
     let chio_bin = env::var("CHIO_BIN").unwrap_or_else(|_| "chio".to_string());
-    let mut edge = spawn_chio_edge(&chio_bin, &project_root, &receipt_db, &target_dir)?;
+    let mut edge = spawn_chio_edge(
+        &chio_bin,
+        &project_root,
+        &receipt_db,
+        &session_db,
+        &target_dir,
+    )?;
 
     send_json(
         &mut edge.stdin,
@@ -134,11 +141,14 @@ fn spawn_chio_edge(
     chio_bin: &str,
     project_root: &Path,
     receipt_db: &Path,
+    session_db: &Path,
     target_dir: &Path,
 ) -> Result<ChioEdge, Box<dyn std::error::Error>> {
     let mut child = Command::new(chio_bin)
         .arg("--receipt-db")
         .arg(receipt_db)
+        .arg("--session-db")
+        .arg(session_db)
         .arg("mcp")
         .arg("serve")
         .arg("--policy")

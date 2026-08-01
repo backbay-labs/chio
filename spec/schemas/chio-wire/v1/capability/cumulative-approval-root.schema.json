@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/cumulative-approval-root.schema.json",
+  "title": "Chio Cumulative Approval Root Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "signer_key_epoch",
+        "root_capability_id",
+        "root_capability_hash",
+        "root_issuer",
+        "root_subject",
+        "root_scope_hash",
+        "root_grant_hash",
+        "approval_budget_id",
+        "approval_budget_epoch",
+        "threshold",
+        "root_expires_at"
+      ],
+      "properties": {
+        "schema": { "const": "chio.cumulative-approval-root.v1" },
+        "signer_key_epoch": { "type": "integer", "minimum": 0 },
+        "root_capability_id": { "type": "string", "minLength": 1 },
+        "root_capability_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "root_issuer": { "$ref": "#/$defs/cumulativeRootPublicKey" },
+        "root_subject": { "$ref": "#/$defs/cumulativeRootPublicKey" },
+        "root_scope_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "root_grant_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "approval_budget_id": { "type": "string", "minLength": 1 },
+        "approval_budget_epoch": { "type": "integer", "minimum": 0 },
+        "threshold": { "$ref": "#/$defs/cumulativeRootMonetaryAmount" },
+        "root_expires_at": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "algorithm": { "$ref": "#/$defs/cumulativeRootSigningAlgorithm" },
+    "signature": { "$ref": "#/$defs/cumulativeRootSignature" }
+  },
+  "$defs": {
+    "cumulativeRootMonetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "type": "integer", "minimum": 0 },
+        "currency": { "type": "string", "minLength": 1 }
+      }
+    },
+    "cumulativeRootPublicKey": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+    },
+    "cumulativeRootSigningAlgorithm": { "enum": ["ed25519", "p256", "p384", "hybrid"] },
+    "cumulativeRootSignature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
+    }
+  }
+}

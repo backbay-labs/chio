@@ -120,6 +120,7 @@ fn guard_evaluate_denies_args_with_pii() {
         issued_at: 0,
         expires_at: u64::MAX,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let cap = chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
@@ -134,6 +135,9 @@ fn guard_evaluate_denies_args_with_pii() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -167,6 +171,7 @@ fn guard_evaluate_allows_clean_args() {
         issued_at: 0,
         expires_at: u64::MAX,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let cap = chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
@@ -181,6 +186,9 @@ fn guard_evaluate_allows_clean_args() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };

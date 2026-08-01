@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio/agent-passport/v2.schema.json",
+  "$defs": {
+    "reputationCredential": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "@context",
+        "type",
+        "issuer",
+        "issuanceDate",
+        "expirationDate",
+        "credentialSubject",
+        "evidence",
+        "proof"
+      ],
+      "properties": {
+        "@context": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "type": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "issuer": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/did" },
+        "issuanceDate": { "type": "string", "format": "date-time" },
+        "expirationDate": { "type": "string", "format": "date-time" },
+        "credentialSubject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "metrics"],
+          "properties": {
+            "id": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/did" },
+            "metrics": { "type": "object" }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "query",
+            "receiptCount",
+            "receiptIds",
+            "checkpointRoots",
+            "lineageRecords",
+            "uncheckpointedReceipts"
+          ],
+          "properties": {
+            "query": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["until"],
+              "properties": {
+                "since": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "until": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+              }
+            },
+            "receiptCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "receiptIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "minLength": 1 } },
+            "checkpointRoots": { "type": "array", "maxItems": 256, "items": { "type": "string", "minLength": 1 } },
+            "receiptLogUrls": { "type": "array", "maxItems": 256, "items": { "type": "string", "minLength": 1 } },
+            "lineageRecords": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "uncheckpointedReceipts": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "runtimeAttestation": { "type": "object" }
+          }
+        },
+        "enterpriseIdentityProvenance": { "$ref": "#/$defs/enterpriseIdentityProvenance" },
+        "proof": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "created", "proofPurpose", "verificationMethod", "proofValue"],
+          "properties": {
+            "type": { "type": "string", "minLength": 1 },
+            "created": { "type": "string", "format": "date-time" },
+            "proofPurpose": { "type": "string", "minLength": 1 },
+            "verificationMethod": { "type": "string", "minLength": 1 },
+            "proofValue": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "passportCredential": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "credential"],
+          "properties": {
+            "kind": { "const": "reputation" },
+            "credential": { "$ref": "#/$defs/reputationCredential" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "credential"],
+          "properties": {
+            "kind": { "const": "financial" },
+            "credential": {
+              "oneOf": [
+                { "$ref": "https://chio.world/schemas/chio/fincred/credit-scorecard/v1.schema.json" },
+                { "$ref": "https://chio.world/schemas/chio/fincred/exposure-history/v1.schema.json" },
+                { "$ref": "https://chio.world/schemas/chio/fincred/settlement-reliability/v1.schema.json" },
+                { "$ref": "https://chio.world/schemas/chio/fincred/premium-history/v1.schema.json" },
+                { "$ref": "https://chio.world/schemas/chio/fincred/loss-history/v1.schema.json" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "enterpriseIdentityProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerId",
+        "providerKind",
+        "federationMethod",
+        "principal",
+        "subjectKey"
+      ],
+      "properties": {
+        "providerId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "providerRecordId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "providerKind": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "federationMethod": { "enum": ["jwt", "introspection", "scim", "saml"] },
+        "principal": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "subjectKey": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "clientId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "objectId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "tenantId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "organizationId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "groups": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" }
+        },
+        "roles": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" }
+        },
+        "sourceSubject": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "attributeSources": {
+          "type": "object",
+          "maxProperties": 256,
+          "additionalProperties": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" }
+        },
+        "trustMaterialRef": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "subject",
+    "credentials",
+    "merkleRoots",
+    "issuedAt",
+    "validUntil"
+  ],
+  "properties": {
+    "schema": { "const": "chio.financial-agent-passport.v1" },
+    "subject": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/did" },
+    "credentials": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/passportCredential" }
+    },
+    "merkleRoots": {
+      "type": "array",
+      "maxItems": 256,
+      "items": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" }
+    },
+    "enterpriseIdentityProvenance": {
+      "type": "array",
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/enterpriseIdentityProvenance" }
+    },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "validUntil": { "type": "string", "format": "date-time" },
+    "trustTier": { "enum": ["unverified", "attested", "verified", "premier"] },
+    "sourceManifest": { "$ref": "https://chio.world/schemas/chio/agent-passport/source-manifest/v2.schema.json" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "credentials": {
+            "contains": {
+              "type": "object",
+              "required": ["kind"],
+              "properties": { "kind": { "const": "financial" } }
+            }
+          }
+        }
+      },
+      "then": { "required": ["sourceManifest"] }
+    }
+  ]
+}

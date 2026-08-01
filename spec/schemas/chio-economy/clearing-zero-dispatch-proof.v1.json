@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/clearing-zero-dispatch-proof/v1",
+  "title": "Chio Clearing Zero Dispatch Proof V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "roundId",
+        "roundCoreDigest",
+        "settlementIntentRoot",
+        "settlementIntentCount",
+        "sourceLifecycleHeadDigest",
+        "sourceLifecycleVersion",
+        "sourceLifecycleFence",
+        "admissionStoreId",
+        "admissionCommitSequence",
+        "admissionCommitDigest",
+        "dispatchStatusRoot",
+        "dispatchStatusCount",
+        "dispatchStatuses",
+        "authorityId",
+        "authorityKeyEpoch",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.clearing.zero-dispatch-proof.v1" },
+        "roundId": { "$ref": "#/$defs/text" },
+        "roundCoreDigest": { "$ref": "#/$defs/digest" },
+        "outputManifestDigest": { "$ref": "#/$defs/digest" },
+        "settlementIntentRoot": { "$ref": "#/$defs/digest" },
+        "settlementIntentCount": { "$ref": "#/$defs/boundedCount" },
+        "sourceLifecycleHeadDigest": { "$ref": "#/$defs/digest" },
+        "sourceLifecycleVersion": { "$ref": "#/$defs/positiveInteger" },
+        "sourceLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "admissionStoreId": { "$ref": "#/$defs/text" },
+        "admissionCommitSequence": { "$ref": "#/$defs/nonNegativeInteger" },
+        "admissionCommitDigest": { "$ref": "#/$defs/digest" },
+        "dispatchStatusRoot": { "$ref": "#/$defs/digest" },
+        "dispatchStatusCount": { "$ref": "#/$defs/boundedCount" },
+        "dispatchStatuses": {
+          "type": "array",
+          "maxItems": 126,
+          "items": { "$ref": "#/$defs/dispatchStatus" }
+        },
+        "authorityId": { "$ref": "#/$defs/text" },
+        "authorityKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "issuedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "expiresAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "nonNegativeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "boundedCount": { "type": "integer", "minimum": 0, "maximum": 126 },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 },
+    "disposition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "absent" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "operation_id",
+            "operation_version",
+            "coordinator_lease_epoch",
+            "terminal_evidence_digest"
+          ],
+          "properties": {
+            "kind": { "const": "compensated_before_dispatch" },
+            "operation_id": { "$ref": "#/$defs/digest" },
+            "operation_version": { "$ref": "#/$defs/positiveInteger" },
+            "coordinator_lease_epoch": { "$ref": "#/$defs/positiveInteger" },
+            "terminal_evidence_digest": { "$ref": "#/$defs/digest" }
+          }
+        }
+      ]
+    },
+    "dispatchStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intentId", "intentDigest", "dispatchIdempotencyKey", "disposition"],
+      "properties": {
+        "intentId": { "$ref": "#/$defs/digest" },
+        "intentDigest": { "$ref": "#/$defs/digest" },
+        "dispatchIdempotencyKey": { "$ref": "#/$defs/digest" },
+        "disposition": { "$ref": "#/$defs/disposition" }
+      }
+    }
+  }
+}

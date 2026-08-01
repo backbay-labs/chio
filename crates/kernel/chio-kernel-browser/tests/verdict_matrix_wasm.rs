@@ -363,12 +363,18 @@ fn evaluate_browser_scenario(scenario: &VerdictScenario) -> DriverOutcome {
             server_id: MATRIX_SERVER_ID.to_string(),
             agent_id: subject.public_key().to_hex(),
             arguments,
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
         },
         capability,
         trusted_issuers_hex: vec![issuer.public_key().to_hex()],
         clock_override_unix_secs: Some(ISSUED_AT + 1),
         session_filesystem_roots: None,
         peer_capabilities: None,
+        direct_root_capability: None,
         capability_trust_roots: Default::default(),
         parent_budget_snapshots: Vec::new(),
     };
@@ -454,6 +460,7 @@ fn make_capability(
         issued_at: ISSUED_AT,
         expires_at: EXPIRES_AT,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, issuer).map_err(|error| error.to_string())
 }

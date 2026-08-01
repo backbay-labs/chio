@@ -110,6 +110,7 @@ fn signed_root_cap(
         issued_at,
         expires_at,
         delegation_chain: Vec::new(),
+        aggregate_invocation_budget: None,
     };
     match CapabilityToken::sign(body, issuer) {
         Ok(token) => token,

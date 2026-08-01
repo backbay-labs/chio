@@ -1,0 +1,43 @@
+{
+  "body": {
+    "anchorId": "fiscal-anchor",
+    "anchorNamespace": "fiscal-main",
+    "checkpointId": "2763aee9f3c7974e79cd64f19c35cca3bd4af8cd62cc2bfb4774dc384556c00f",
+    "continuitySequence": 0,
+    "domains": [
+      {
+        "domain": "tier_limits",
+        "everActivated": false
+      },
+      {
+        "domain": "marketplace_discount_per_hundred",
+        "everActivated": false
+      },
+      {
+        "domain": "decision_premium_basis_points",
+        "everActivated": false
+      },
+      {
+        "domain": "insurance_premium_schedule",
+        "everActivated": false
+      },
+      {
+        "domain": "open_market_fee_and_bond_schedule",
+        "everActivated": false
+      }
+    ],
+    "genesisPolicyDigest": "7d6c9a8d34ef5ce9e662043fb168e4dd824f41763b82558ec68aa6e4b3e4d30e",
+    "genesisPolicyId": "4b98f64e78f6ec56310ad17a180d36d5a9f3d8a8c621d1a9cc45449c173cd9b7",
+    "governingOperatorId": "operator.example",
+    "pinnedCharterDigest": "a79930cdbd1c5d68208e437f8b8851dcd0f66114b5d34c25cb48a670bf2a22fa",
+    "pinnedCharterId": "8e486b91278e696d27603e62e2192af0667d5417891379a354b4113be30bb375",
+    "pinnedCharterSequence": 1,
+    "runtimeReadinessDigest": "5df1acf7b95203e09f06522ba5756fbacedbbf03ade8b61cba3865078384709e",
+    "schema": "chio.fiscal.continuity-checkpoint.v1",
+    "signerKeyEpoch": 1,
+    "signerKeyId": "5c29b78f10a35a49a6231d08ee840a04bcc3a37a4f9d46df327dec56b8a9b7c9",
+    "trustedClockHighWater": 55
+  },
+  "signature": "cbcd18d58819195fbd6362025f543c9ef35f2f6ba4de40a6459f2cf3a2629a7e0c146b80ad3bad01e40f007543445aa620ed0d65128469ac874910fead1d830b",
+  "signerKey": "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca"
+}

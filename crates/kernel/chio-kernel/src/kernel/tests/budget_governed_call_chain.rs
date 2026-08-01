@@ -37,6 +37,9 @@ fn governed_monetary_allow_receipt_contains_approval_metadata() {
             execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -112,6 +115,9 @@ fn governed_monetary_allow_receipt_preserves_metered_billing_quote_context() {
             execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -187,6 +193,9 @@ fn governed_request_rejects_empty_metered_billing_provider() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -198,14 +207,7 @@ fn governed_request_rejects_empty_metered_billing_provider() {
         .as_deref()
         .is_some_and(|reason| reason.contains("metered billing provider must not be empty")));
 
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
-    assert_eq!(usage.invocation_count, 0);
-    assert_eq!(usage.committed_cost_units().unwrap(), 0);
+    assert!(kernel.budget_store.get_usage(&cap.id, 0).unwrap().is_none());
 }
 
 #[test]
@@ -251,6 +253,9 @@ fn governed_monetary_allow_receipt_preserves_call_chain_context() {
             execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -317,6 +322,7 @@ fn governed_call_chain_receipt_observes_local_parent_receipt_linkage() {
         }),
         autonomy: None,
         context: None,
+        body: Default::default(),
     };
 
     let response = kernel
@@ -331,6 +337,9 @@ fn governed_call_chain_receipt_observes_local_parent_receipt_linkage() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -420,8 +429,12 @@ fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
                 }),
                 autonomy: None,
                 context: None,
+                body: Default::default(),
             }),
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -503,6 +516,7 @@ fn governed_call_chain_receipt_verifies_signed_upstream_delegator_proof() {
         call_chain: Some(call_chain.clone()),
         autonomy: None,
         context: Some(serde_json::json!({ "workflow": "delegated-proof" })),
+        body: Default::default(),
     };
     let upstream_proof =
         make_governed_upstream_call_chain_proof(&root_kp, &child_kp.public_key(), &call_chain);
@@ -520,6 +534,9 @@ fn governed_call_chain_receipt_verifies_signed_upstream_delegator_proof() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -593,8 +610,12 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
                 )),
                 autonomy: None,
                 context: None,
+                body: Default::default(),
             }),
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -655,8 +676,12 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
                 }),
                 autonomy: None,
                 context: None,
+                body: Default::default(),
             }),
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -738,6 +763,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
         call_chain: Some(call_chain.clone()),
         autonomy: None,
         context: None,
+        body: Default::default(),
     };
     let upstream_proof =
         make_governed_upstream_call_chain_proof(&root_kp, &child_kp.public_key(), &call_chain);
@@ -755,6 +781,9 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
             execution_nonce: None,
             governed_intent: Some(verified_intent),
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -844,6 +873,7 @@ fn governed_request_rejects_upstream_call_chain_proof_subject_mismatch() {
         call_chain: Some(call_chain.clone()),
         autonomy: None,
         context: Some(serde_json::json!({ "workflow": "delegated-proof" })),
+        body: Default::default(),
     };
     let upstream_proof =
         make_governed_upstream_call_chain_proof(&root_kp, &wrong_subject.public_key(), &call_chain);
@@ -861,6 +891,9 @@ fn governed_request_rejects_upstream_call_chain_proof_subject_mismatch() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -944,8 +977,12 @@ fn governed_request_rejects_call_chain_delegator_subject_that_conflicts_with_cap
                 }),
                 autonomy: None,
                 context: None,
+                body: Default::default(),
             }),
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1029,8 +1066,12 @@ fn governed_call_chain_receipt_observes_session_parent_request_lineage() {
                     }),
                     autonomy: None,
                     context: None,
+                    body: Default::default(),
                 }),
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             },
@@ -1146,6 +1187,7 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
         call_chain: Some(call_chain.clone()),
         autonomy: None,
         context: None,
+        body: Default::default(),
     };
     let continuation_token =
         make_governed_call_chain_continuation_token(GovernedCallChainContinuationTokenFixture {
@@ -1172,6 +1214,9 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1244,6 +1289,9 @@ fn governed_request_rejects_self_referential_call_chain_parent_request() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1297,6 +1345,9 @@ fn governed_request_rejects_empty_call_chain_chain_id() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1310,13 +1361,9 @@ fn governed_request_rejects_empty_call_chain_chain_id() {
 }
 
 #[test]
-fn governed_call_chain_evidence_store_error_reverses_pre_execution_budget() {
-    // A receipt-store READ error while resolving the parent call-chain receipt
-    // fails closed, but check_and_increment_budget has already consumed the
-    // invocation count and monetary hold. The error must be routed through the same
-    // reversal + deny path the governed/guard denials use, never propagated raw, so
-    // a transient store failure never burns quota or holds funds for a call that
-    // never dispatches.
+fn governed_call_chain_evidence_store_error_consumes_no_budget() {
+    // A receipt-store read error while resolving the parent call-chain receipt
+    // fails closed before budget authorization and is returned as a signed deny.
     let mut kernel = make_kernel(make_monetary_config());
     // Appends fine (so the request's own receipt persists) but errors on every
     // point load; the governed call-chain evidence lookup is the first (and
@@ -1364,6 +1411,9 @@ fn governed_call_chain_evidence_store_error_reverses_pre_execution_budget() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1373,34 +1423,19 @@ fn governed_call_chain_evidence_store_error_reverses_pre_execution_budget() {
 
     assert_eq!(response.verdict, Verdict::Deny);
 
-    // The pre-execution budget mutation must have been reversed: neither the
-    // invocation count nor the committed monetary cost may survive a call that
-    // never dispatched.
-    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
-    assert_eq!(
-        usage.invocation_count, 0,
-        "invocation budget must be reversed on an evidence-lookup store error"
-    );
-    assert_eq!(
-        usage.committed_cost_units().unwrap(),
-        0,
-        "monetary hold must be released on an evidence-lookup store error"
-    );
+    assert!(kernel.budget_store.get_usage(&cap.id, 0).unwrap().is_none());
 }
 
 #[test]
-fn nested_governed_call_chain_evidence_store_error_reverses_pre_execution_budget() {
-    // The nested-flow admission path has the same evidence-lookup `?` as the
-    // top-level evaluate. A store read error there must reverse the pre-execution
-    // budget before denying, on the nested arm too, so a transient store failure
-    // never burns invocation quota.
+fn nested_governed_call_chain_evidence_store_error_consumes_no_budget() {
+    // The nested-flow admission path performs the evidence lookup before budget
+    // authorization, so a transient store failure never burns invocation quota.
     let mut kernel = make_kernel(make_config());
     kernel.set_receipt_store(Box::new(ErroringReceiptStore)).unwrap();
     let agent_kp = make_keypair();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
 
-    // An invocation-limited grant so the budget store tracks (and can reverse)
-    // an invocation count.
+    // An invocation-limited grant proves the denial never creates usage state.
     let grant = make_invocation_limited_grant("srv-echo", "delegate", 5);
     let capability = make_capability(&kernel, &agent_kp, make_scope(vec![grant]), 300);
     let cap_id = capability.id.clone();
@@ -1468,8 +1503,12 @@ fn nested_governed_call_chain_evidence_store_error_reverses_pre_execution_budget
                     }),
                     autonomy: None,
                     context: None,
+                    body: Default::default(),
                 }),
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             },
@@ -1492,12 +1531,11 @@ fn nested_governed_call_chain_evidence_store_error_reverses_pre_execution_budget
         response.reason
     );
 
-    let usage = kernel.budget_store.get_usage(&cap_id, 0).unwrap();
-    // The invocation reservation must have been released on the nested arm too.
-    assert!(
-        usage.as_ref().map_or(0, |usage| usage.invocation_count) == 0,
-        "nested evidence-lookup store error must reverse the invocation reservation, got {usage:?}"
-    );
+    assert!(kernel
+        .budget_store
+        .get_usage(&cap_id, 0)
+        .unwrap()
+        .is_none());
 }
 
 #[test]
@@ -1560,6 +1598,9 @@ fn nested_missing_session_roots_lookup_reverses_pre_execution_budget() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             },
@@ -1589,4 +1630,100 @@ fn nested_missing_session_roots_lookup_reverses_pre_execution_budget() {
         usage.as_ref().map_or(0, |usage| usage.invocation_count) == 0,
         "missing-session roots lookup must reverse the invocation reservation, got {usage:?}"
     );
+}
+
+#[test]
+fn missing_approval_replay_store_denies_before_dispatch_and_reverses_monetary_admission(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let payment = TrackingPaymentAdapter::new();
+    let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.set_payment_adapter(Box::new(payment.clone()));
+    kernel.register_tool_server(Box::new(CountingMonetaryServer {
+        id: "cost-srv".to_string(),
+        invocations: std::sync::Arc::clone(&invocations),
+    }));
+
+    let agent_kp = Keypair::generate();
+    let grant = make_governed_monetary_grant("cost-srv", "compute", 100, 1_000, "USD", 50);
+    let capability = kernel.issue_capability(
+        &agent_kp.public_key(),
+        make_scope(vec![grant]),
+        3_600,
+    )?;
+    let request_id = "req-governed-missing-replay-store";
+    let intent = make_governed_intent(
+        "intent-governed-missing-replay-store",
+        "cost-srv",
+        "compute",
+        "execute governed compute",
+        100,
+        "USD",
+    );
+    let approval_token = make_governed_approval_token(
+        &kernel.config.keypair,
+        &agent_kp.public_key(),
+        &intent,
+        request_id,
+    );
+    kernel.approval_replay_store = None;
+
+    let response = kernel.evaluate_tool_call_blocking(&ToolCallRequest {
+        request_id: request_id.to_string(),
+        capability: capability.clone(),
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: agent_kp.public_key().to_hex(),
+        arguments: serde_json::json!({ "work": "governed" }),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: Some(intent),
+        approval_token: Some(approval_token),
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    })?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(
+        response
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("approval replay store not configured")),
+        "unexpected denial reason: {:?}",
+        response.reason
+    );
+    assert_eq!(
+        invocations.load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+    assert_eq!(
+        payment
+            .authorized
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+    assert_eq!(
+        payment.released.load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+    assert_eq!(
+        payment.refunded.load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+
+    let usage = kernel.budget_store.get_usage(&capability.id, 0)?;
+    assert_eq!(
+        usage.as_ref().map_or(0, |usage| usage.invocation_count),
+        0
+    );
+    let committed_cost = match usage.as_ref() {
+        Some(usage) => usage.committed_cost_units()?,
+        None => 0,
+    };
+    assert_eq!(committed_cost, 0);
+
+    Ok(())
 }

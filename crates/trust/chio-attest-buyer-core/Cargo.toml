@@ -21,5 +21,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "buyer_verify"
+harness = false
+
 [lints]
 workspace = true

@@ -31,6 +31,8 @@ root_modules = [
   "formal/lean4/Chio/Chio/Capability/Delegation.lean",
   "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
   "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+  "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+  "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
   "formal/lean4/Chio/Chio/Treaty/BilateralAccept.lean",
 ]
 
@@ -71,6 +73,10 @@ covered_rust_symbols = [
   "chio_kernel_core::receipts::sign_receipt",
   "chio_kernel_core::formal_core::classify_time_window",
   "chio_kernel_core::formal_core::budget_commit",
+  "chio_kernel_core::formal_core::composite_quota_authorize",
+  "chio_kernel_core::formal_core::quota_maximum_compatible",
+  "chio_kernel_core::formal_core::family_binding_preserved",
+  "chio_kernel_core::formal_core::threshold_distinct_eligible_signers",
   "chio_kernel_core::formal_core::dpop_admits",
   "chio_kernel_core::formal_core::guard_pipeline_allows",
   "chio_kernel_core::formal_core::receipt_fields_coupled",
@@ -138,6 +144,8 @@ allowed_open_modules = [
   "Chio.Core",
   "Chio.Proofs",
   "Chio.Spec",
+  "Chio.Treaty.IntersectionSyntactic",
+  "Chio.Treaty.PredicateLang",
   "Lake",
   "DSL",
 ]

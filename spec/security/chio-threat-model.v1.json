@@ -87,6 +87,8 @@
         "crates/core/chio-adversarial-suite/cases/future_dated/future-dated-005.json",
         "crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-001.json",
         "crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-002.json",
+        "crates/core/chio-adversarial-suite/cases/authority_binding_mutation/threshold-proposal-mutations-001.json",
+        "crates/tooling/chio-conformance/tests/protocol_primitives_authority_bindings.rs",
         "crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json",
         "crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json",
         "crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json",
@@ -229,6 +231,8 @@
         "crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-002.json",
         "crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-004.json",
         "crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-005.json",
+        "crates/core/chio-adversarial-suite/cases/authority_binding_mutation/aggregate-root-binding-mutations-001.json",
+        "crates/tooling/chio-conformance/tests/protocol_primitives_authority_bindings.rs",
         "crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-001.json",
         "crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-002.json",
         "crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-004.json"

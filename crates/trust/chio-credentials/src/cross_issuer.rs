@@ -276,6 +276,7 @@ pub fn create_signed_cross_issuer_trust_pack(
 pub fn verify_signed_cross_issuer_trust_pack(
     pack: &SignedCrossIssuerTrustPack,
     now: u64,
+    trust: &CrossIssuerTrustRegistryV2,
 ) -> Result<(), CredentialError> {
     verify_signed_cross_issuer_trust_pack_body(&pack.body)?;
     if now < pack.body.created_at {
@@ -290,10 +291,15 @@ pub fn verify_signed_cross_issuer_trust_pack(
             pack.body.pack_id
         )));
     }
-    let signed = pack
-        .body
-        .signer_public_key
-        .verify(&canonical_json_bytes(&pack.body)?, &pack.signature);
+    let trusted_key = trust
+        .legacy_verifier_key(&pack.body.verifier, &pack.body.signer_public_key)
+        .map_err(|_| {
+            CredentialError::InvalidCrossIssuerTrustPack(format!(
+                "cross-issuer trust pack `{}` signer is not locally trusted",
+                pack.body.pack_id
+            ))
+        })?;
+    let signed = trusted_key.verify(&canonical_json_bytes(&pack.body)?, &pack.signature);
     if !signed {
         return Err(CredentialError::InvalidCrossIssuerTrustPack(format!(
             "cross-issuer trust pack `{}` signature verification failed",
@@ -330,10 +336,7 @@ pub fn verify_cross_issuer_portfolio(
         .iter()
         .map(|migration| {
             verify_signed_cross_issuer_migration(migration, now)?;
-            Ok((
-                migration.body.migration_id.clone(),
-                migration.body.clone(),
-            ))
+            Ok((migration.body.migration_id.clone(), migration.body.clone()))
         })
         .collect::<Result<BTreeMap<_, _>, CredentialError>>()?;
     if migration_map.len() != portfolio.migrations.len() {
@@ -447,147 +450,11 @@ pub fn verify_cross_issuer_portfolio(
 }
 
 pub fn evaluate_cross_issuer_portfolio(
-    portfolio: &CrossIssuerPortfolio,
-    now: u64,
-    trust_pack: &SignedCrossIssuerTrustPack,
+    _portfolio: &CrossIssuerPortfolio,
+    _now: u64,
+    _trust_pack: &SignedCrossIssuerTrustPack,
 ) -> Result<CrossIssuerPortfolioEvaluation, CredentialError> {
-    let verification = verify_cross_issuer_portfolio(portfolio, now)?;
-    verify_signed_cross_issuer_trust_pack(trust_pack, now)?;
-
-    let mut activated_entry_ids = Vec::new();
-    let mut activated_issuers = BTreeSet::new();
-    let entry_results = verification
-        .entry_results
-        .iter()
-        .map(|entry| {
-            let mut reasons = Vec::new();
-            let policy = &trust_pack.body.policy;
-
-            if !policy.allowed_profile_families.is_empty()
-                && !policy.allowed_profile_families.contains(&entry.profile_family)
-            {
-                reasons.push(format!(
-                    "profile family {} is not activated by the trust pack",
-                    entry.profile_family
-                ));
-            }
-            if !policy.allowed_entry_kinds.is_empty()
-                && !policy.allowed_entry_kinds.contains(&entry.source_kind)
-            {
-                reasons.push(format!(
-                    "entry kind {} is not activated by the trust pack",
-                    cross_issuer_entry_kind_label(entry.source_kind)
-                ));
-            }
-            if !policy.allowed_issuers.is_empty() {
-                let disallowed_issuers = entry
-                    .issuers
-                    .iter()
-                    .filter(|issuer| !policy.allowed_issuers.contains(*issuer))
-                    .cloned()
-                    .collect::<Vec<_>>();
-                if !disallowed_issuers.is_empty() {
-                    reasons.push(format!(
-                        "entry issuers are outside the trust pack allowlist: {}",
-                        disallowed_issuers.join(", ")
-                    ));
-                }
-            }
-            if policy.require_active_lifecycle {
-                match entry.lifecycle_state {
-                    Some(PassportLifecycleState::Active) => {}
-                    Some(state) => reasons.push(format!(
-                        "entry lifecycle state {} is not active",
-                        state.label()
-                    )),
-                    None => reasons.push(
-                        "entry does not include an active lifecycle record required by the trust pack"
-                            .to_string(),
-                    ),
-                }
-            }
-            if entry.subject != portfolio.subject {
-                match entry.migration_id.as_ref() {
-                    Some(migration_id) => {
-                        if !policy.allowed_migration_ids.is_empty()
-                            && !policy.allowed_migration_ids.contains(migration_id)
-                        {
-                            reasons.push(format!(
-                                "migration {} is not activated by the trust pack",
-                                migration_id
-                            ));
-                        }
-                    }
-                    None => reasons.push(
-                        "entry subject differs from the portfolio subject without an explicit migration"
-                            .to_string(),
-                    ),
-                }
-            }
-            if !policy.allowed_certification_refs.is_empty() {
-                match portfolio
-                    .entries
-                    .iter()
-                    .find(|candidate| candidate.entry_id == entry.entry_id)
-                {
-                    Some(portfolio_entry) => {
-                        let matched_ref = portfolio_entry
-                            .certification_refs
-                            .iter()
-                            .any(|reference| policy.allowed_certification_refs.contains(reference));
-                        if !matched_ref {
-                            reasons.push(
-                                "entry does not include a certification reference activated by the trust pack"
-                                    .to_string(),
-                            );
-                        }
-                    }
-                    None => reasons.push(
-                        "verified entry is missing from the source portfolio".to_string(),
-                    ),
-                }
-            }
-
-            let accepted = reasons.is_empty();
-            if accepted {
-                activated_entry_ids.push(entry.entry_id.clone());
-                activated_issuers.extend(entry.issuers.iter().cloned());
-            }
-
-            CrossIssuerPortfolioEntryEvaluation {
-                entry_id: entry.entry_id.clone(),
-                passport_id: entry.passport_id.clone(),
-                accepted,
-                subject: entry.subject.clone(),
-                profile_family: entry.profile_family.clone(),
-                source_kind: entry.source_kind,
-                issuers: entry.issuers.clone(),
-                migration_id: entry.migration_id.clone(),
-                lifecycle_state: entry.lifecycle_state,
-                reasons,
-            }
-        })
-        .collect::<Vec<_>>();
-    let accepted = !activated_entry_ids.is_empty();
-    let portfolio_reasons = if accepted {
-        Vec::new()
-    } else {
-        vec!["no portfolio entry satisfied the activated trust-pack policy".to_string()]
-    };
-
-    Ok(CrossIssuerPortfolioEvaluation {
-        schema: CROSS_ISSUER_PORTFOLIO_EVALUATION_SCHEMA.to_string(),
-        portfolio_id: portfolio.portfolio_id.clone(),
-        subject: portfolio.subject.clone(),
-        trust_pack_id: trust_pack.body.pack_id.clone(),
-        verifier: trust_pack.body.verifier.clone(),
-        accepted,
-        activated_entry_ids,
-        activated_issuers: activated_issuers.into_iter().collect(),
-        portfolio_reasons,
-        evaluated_at: now,
-        entry_results,
-    })
+    Err(CredentialError::UnsupportedLegacyCrossIssuerV1)
 }
 
 fn validate_cross_issuer_portfolio_entry(
@@ -781,14 +648,6 @@ impl CrossIssuerTrustPackPolicy {
             pack_id,
             CredentialError::InvalidCrossIssuerTrustPack,
         )
-    }
-}
-
-fn cross_issuer_entry_kind_label(kind: CrossIssuerPortfolioEntryKind) -> &'static str {
-    match kind {
-        CrossIssuerPortfolioEntryKind::Native => "native",
-        CrossIssuerPortfolioEntryKind::Imported => "imported",
-        CrossIssuerPortfolioEntryKind::Migrated => "migrated",
     }
 }
 

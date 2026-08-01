@@ -180,6 +180,9 @@
     },
     "receipt": {
       "$ref": "../receipt/record.schema.json"
+    },
+    "execution_nonce": {
+      "$ref": "execution_nonce.schema.json"
     }
   }
 }

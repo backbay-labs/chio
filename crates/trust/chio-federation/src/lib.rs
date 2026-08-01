@@ -19,6 +19,7 @@ pub mod bilateral_verifier;
 #[cfg(any(test, feature = "demo"))]
 pub mod demo;
 pub mod error;
+pub mod frost;
 pub mod metrics;
 pub mod open_admission;
 pub mod pheromone_gossip;

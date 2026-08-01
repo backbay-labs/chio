@@ -74,8 +74,14 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
     ) -> Result<ToolCallResponse, KernelError> {
-        self.evaluate_tool_call_async_with_session_context(request, None, None, None)
-            .await
+        self.evaluate_tool_call_async_with_session_context(
+            request,
+            None,
+            None,
+            None,
+            PreflightHoldDisposition::ReverseForRetry,
+        )
+        .await
     }
 
     pub async fn evaluate_tool_call_with_metadata(
@@ -83,8 +89,14 @@ impl ChioKernel {
         request: &ToolCallRequest,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
-        self.evaluate_tool_call_async_with_session_context(request, None, extra_metadata, None)
-            .await
+        self.evaluate_tool_call_async_with_session_context(
+            request,
+            None,
+            extra_metadata,
+            None,
+            PreflightHoldDisposition::ReverseForRetry,
+        )
+        .await
     }
 
     pub fn sign_planned_deny_response(
@@ -305,6 +317,9 @@ impl ChioKernel {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: step.model_metadata.clone(),
             federated_origin_kernel_id: None,
         };

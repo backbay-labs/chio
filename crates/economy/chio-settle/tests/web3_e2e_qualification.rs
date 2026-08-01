@@ -52,7 +52,7 @@ use chio_settle::{
     prepare_erc20_approval, prepare_escrow_refund, prepare_web3_escrow_dispatch,
     project_escrow_execution_receipt, submit_call, BondLockRequest, DualSignReleaseInput,
     EscrowDispatchRequest, ExecutionProjectionInput, LocalDevnetDeployment, PreparedBondProofRoot,
-    SettlementFinalityStatus, SettlementRecoveryAction,
+    PreparedEvmCall, SettlementChainConfig, SettlementFinalityStatus, SettlementRecoveryAction,
 };
 use reqwest::Client;
 use serde::Serialize;
@@ -266,6 +266,34 @@ async fn rpc_call(
     body.get("result")
         .cloned()
         .ok_or_else(|| "rpc result missing".into())
+}
+
+async fn submit_devnet_call(
+    config: &SettlementChainConfig,
+    call: &PreparedEvmCall,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let gas_limit = match call.gas_limit {
+        Some(gas_limit) => gas_limit,
+        None => estimate_call_gas(config, call)
+            .await?
+            .saturating_mul(12)
+            .saturating_div(10)
+            .saturating_add(50_000),
+    };
+    rpc_call(
+        &config.rpc_url,
+        "eth_sendTransaction",
+        json!([{
+            "from": call.from_address,
+            "to": call.to_address,
+            "data": call.data,
+            "gas": format!("0x{gas_limit:x}"),
+        }]),
+    )
+    .await?
+    .as_str()
+    .map(ToOwned::to_owned)
+    .ok_or_else(|| "eth_sendTransaction result is not a string".into())
 }
 
 async fn latest_block_timestamp(rpc_url: &str) -> Result<u64, Box<dyn std::error::Error>> {
@@ -761,7 +789,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     )?;
     let dual_approval_tx = e2e_step(
         "submit dual approval",
-        submit_call(&config, &dual_approval.call).await,
+        submit_call(&config, &dual_approval).await,
     )?;
     e2e_step(
         "confirm dual approval",
@@ -795,7 +823,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     .await?;
     let dual_create_tx = e2e_step(
         "submit dual escrow create",
-        submit_call(&config, &dual_dispatch.call).await,
+        submit_call(&config, &dual_dispatch).await,
     )?;
     let dual_create_receipt = e2e_step(
         "confirm dual escrow create",
@@ -813,10 +841,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &config,
         &dual_dispatch.dispatch,
         &dual_receipt,
-        &DualSignReleaseInput {
-            operator_private_key_hex: OPERATOR_PRIVATE_KEY.to_string(),
-            observed_amount: dual_amount.clone(),
-        },
+        &DualSignReleaseInput::new(OPERATOR_PRIVATE_KEY, dual_amount.clone()),
     )
     .await?;
     assert_eq!(
@@ -835,10 +860,10 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     );
     assert!(dual_release.identity_registry_evidence.block_number > 0);
     assert!(dual_release.identity_registry_evidence.active);
-    let gas_estimate = estimate_call_gas(&config, &dual_release.call).await?;
+    let gas_estimate = estimate_call_gas(&config, dual_release.call()).await?;
     let dual_release_tx = e2e_step(
         "submit dual escrow release",
-        submit_call(&config, &dual_release.call).await,
+        submit_devnet_call(&config, dual_release.call()).await,
     )?;
     let dual_release_receipt = e2e_step(
         "confirm dual escrow release",
@@ -923,7 +948,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     )?;
     let refund_approval_tx = e2e_step(
         "submit refund approval",
-        submit_call(&config, &refund_approval.call).await,
+        submit_call(&config, &refund_approval).await,
     )?;
     e2e_step(
         "confirm refund approval",
@@ -958,7 +983,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     .await?;
     let refund_create_tx = e2e_step(
         "submit refund escrow create",
-        submit_call(&config, &refund_dispatch.call).await,
+        submit_call(&config, &refund_dispatch).await,
     )?;
     let refund_create_receipt = e2e_step(
         "confirm refund escrow create",
@@ -970,7 +995,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         prepare_escrow_refund(&config, &refund_dispatch.dispatch, &accounts.outsider)?;
     let refund_tx = e2e_step(
         "submit refund",
-        submit_call(&config, &refund_call.call).await,
+        submit_devnet_call(&config, refund_call.call()).await,
     )?;
     let refund_receipt = e2e_step(
         "confirm refund",
@@ -1030,7 +1055,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     )?;
     let reorg_approval_tx = e2e_step(
         "submit reorg approval",
-        submit_call(&config, &reorg_approval.call).await,
+        submit_call(&config, &reorg_approval).await,
     )?;
     e2e_step(
         "confirm reorg approval",
@@ -1066,7 +1091,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     .await?;
     let reorg_tx = e2e_step(
         "submit reorg escrow create",
-        submit_call(&config, &reorg_dispatch.call).await,
+        submit_call(&config, &reorg_dispatch).await,
     )?;
     let reorg_receipt = e2e_step(
         "confirm reorg escrow create",
@@ -1123,7 +1148,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     )?;
     let impair_approval_tx = e2e_step(
         "submit impair approval",
-        submit_call(&config, &impair_approval.call).await,
+        submit_call(&config, &impair_approval).await,
     )?;
     e2e_step(
         "confirm impair approval",
@@ -1131,7 +1156,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     )?;
     let impair_lock_tx = e2e_step(
         "submit impair bond lock",
-        submit_call(&config, &impair_lock.call).await,
+        submit_call(&config, &impair_lock).await,
     )?;
     let impair_lock_receipt = e2e_step(
         "confirm impair bond lock",
@@ -1163,7 +1188,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     )?;
     let impair_root_tx = e2e_step(
         "submit impair proof root",
-        submit_call(&config, &impair_root_call).await,
+        submit_devnet_call(&config, impair_root_call.call()).await,
     )?;
     let impair_root_receipt = e2e_step(
         "confirm impair proof root",
@@ -1174,7 +1199,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     }
     let impair_tx = e2e_step(
         "submit bond impair",
-        submit_call(&config, &impair_call.call).await,
+        submit_devnet_call(&config, impair_call.call()).await,
     )?;
     e2e_step(
         "confirm bond impair",
@@ -1235,7 +1260,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     )?;
     let expiry_approval_tx = e2e_step(
         "submit expiry approval",
-        submit_call(&config, &expiry_approval.call).await,
+        submit_call(&config, &expiry_approval).await,
     )?;
     e2e_step(
         "confirm expiry approval",
@@ -1243,7 +1268,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     )?;
     let expiry_lock_tx = e2e_step(
         "submit expiry bond lock",
-        submit_call(&config, &expiry_lock.call).await,
+        submit_call(&config, &expiry_lock).await,
     )?;
     let expiry_lock_receipt = e2e_step(
         "confirm expiry bond lock",
@@ -1254,7 +1279,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     let expiry_call = prepare_bond_expiry(&config, &expiry_lock.vault_id, &accounts.outsider)?;
     let expiry_tx = e2e_step(
         "submit bond expiry",
-        submit_call(&config, &expiry_call.call).await,
+        submit_devnet_call(&config, expiry_call.call()).await,
     )?;
     e2e_step(
         "confirm bond expiry",

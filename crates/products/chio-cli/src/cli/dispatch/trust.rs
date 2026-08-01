@@ -50,7 +50,15 @@ pub(crate) fn dispatch_trust(
                 passport_issuance_offers_file,
                 certification_registry_file,
                 certification_discovery_file,
+                fiscal_genesis_policy,
+                fiscal_anchor_url,
+                fiscal_anchor_token,
+                fiscal_admission_authority_id,
+                fiscal_admission_signer_key_epoch,
+                fiscal_admission_signing_seed,
+                fiscal_anchor_timeout_seconds,
                 certification_public_metadata_ttl_seconds,
+                roster_policy_file,
             } => cmd_trust_serve(
                 listen,
                 &service_token,
@@ -65,6 +73,13 @@ pub(crate) fn dispatch_trust(
                 passport_issuance_offers_file.as_deref(),
                 certification_registry_file.as_deref(),
                 certification_discovery_file.as_deref(),
+                fiscal_genesis_policy.as_deref(),
+                fiscal_anchor_url.as_deref(),
+                fiscal_anchor_token.as_deref(),
+                &fiscal_admission_authority_id,
+                fiscal_admission_signer_key_epoch,
+                fiscal_admission_signing_seed.as_deref(),
+                fiscal_anchor_timeout_seconds,
                 receipt_db.as_deref(),
                 revocation_db.as_deref(),
                 authority_seed_file.as_deref(),
@@ -76,6 +91,7 @@ pub(crate) fn dispatch_trust(
                 certification_public_metadata_ttl_seconds,
                 &peer_urls,
                 cluster_sync_interval_ms,
+                roster_policy_file.as_deref(),
             ),
             TrustCommands::Provider { command } => match command {
                 TrustProviderCommands::List {
@@ -992,24 +1008,32 @@ pub(crate) fn dispatch_trust(
                         control_token.as_deref(),
                     )
                 }
-                TrustLiabilityMarketCommands::AdjudicationIssue { input_file } => {
+                TrustLiabilityMarketCommands::AdjudicationIssue {
+                    input_file,
+                    roster_policy_file,
+                } => {
                     cmd_trust_liability_claim_adjudication_issue(
                         &input_file,
                         json_output,
                         receipt_db.as_deref(),
                         authority_seed_file.as_deref(),
                         authority_db.as_deref(),
+                        roster_policy_file.as_deref(),
                         control_url.as_deref(),
                         control_token.as_deref(),
                     )
                 }
-                TrustLiabilityMarketCommands::ClaimPayoutInstructionIssue { input_file } => {
+                TrustLiabilityMarketCommands::ClaimPayoutInstructionIssue {
+                    input_file,
+                    roster_policy_file,
+                } => {
                     cmd_trust_liability_claim_payout_instruction_issue(
                         &input_file,
                         json_output,
                         receipt_db.as_deref(),
                         authority_seed_file.as_deref(),
                         authority_db.as_deref(),
+                        roster_policy_file.as_deref(),
                         control_url.as_deref(),
                         control_token.as_deref(),
                     )
@@ -1025,13 +1049,17 @@ pub(crate) fn dispatch_trust(
                         control_token.as_deref(),
                     )
                 }
-                TrustLiabilityMarketCommands::ClaimSettlementInstructionIssue { input_file } => {
+                TrustLiabilityMarketCommands::ClaimSettlementInstructionIssue {
+                    input_file,
+                    roster_policy_file,
+                } => {
                     cmd_trust_liability_claim_settlement_instruction_issue(
                         &input_file,
                         json_output,
                         receipt_db.as_deref(),
                         authority_seed_file.as_deref(),
                         authority_db.as_deref(),
+                        roster_policy_file.as_deref(),
                         control_url.as_deref(),
                         control_token.as_deref(),
                     )

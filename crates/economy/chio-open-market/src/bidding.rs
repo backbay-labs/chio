@@ -415,6 +415,7 @@ pub fn bid(
         issued_at,
         expires_at,
         delegation_chain: Vec::new(),
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign(token_body, context.issuer_keypair)
         .map_err(|error| invalid_request(error.to_string()))?;

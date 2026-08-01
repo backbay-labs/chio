@@ -103,6 +103,7 @@ fn serving_closed_store_denies_before_an_early_capability_rejection() {
         issued_at: current_unix_timestamp(),
         expires_at: current_unix_timestamp() + 300,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let cap = CapabilityToken::sign(body, &rogue_kp).unwrap();
     let request = make_request("req-rogue-serving-closed", &cap, "read_file", "srv-a");
@@ -178,7 +179,9 @@ fn dead_commit_writer_denies_before_the_capability_lineage_write() {
 fn kernel_persists_tool_receipts_to_sqlite_store() {
     let path = unique_receipt_db_path("chio-kernel-tool-receipts");
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -188,7 +191,8 @@ fn kernel_persists_tool_receipts_to_sqlite_store() {
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
     assert_eq!(
-        response.verdict, Verdict::Allow,
+        response.verdict,
+        Verdict::Allow,
         "unexpected deny reason: {:?}",
         response.reason
     );
@@ -318,7 +322,9 @@ fn store_miss_falls_back_to_local_mirror() {
     // store, like RemoteReceiptStore) must not disable the local mirror. A receipt
     // appended and mirrored locally has to resolve on a store miss.
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore)).unwrap();
+    kernel
+        .set_receipt_store(Box::new(AppendOnlyReceiptStore))
+        .unwrap();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -336,7 +342,10 @@ fn store_miss_falls_back_to_local_mirror() {
         "store miss must fall back to the local mirror"
     );
     assert!(
-        kernel.local_receipt_artifact(&receipt_id).unwrap().is_some(),
+        kernel
+            .local_receipt_artifact(&receipt_id)
+            .unwrap()
+            .is_some(),
         "store miss must return the mirrored artifact"
     );
 }
@@ -349,7 +358,9 @@ fn store_read_error_propagates_and_is_not_mirror_served() {
     // the receipt) but errors on every point load, so both lookups must PROPAGATE
     // the error, not serve the mirror copy.
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(ErroringReceiptStore)).unwrap();
+    kernel
+        .set_receipt_store(Box::new(ErroringReceiptStore))
+        .unwrap();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -557,7 +568,9 @@ fn kernel_persists_child_receipts_to_sqlite_store() {
     let mut config = make_config();
     config.allow_sampling = true;
     let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
     kernel.register_tool_server(Box::new(NestedFlowServer {
         id: "nested".to_string(),
     }));
@@ -569,7 +582,9 @@ fn kernel_persists_child_receipts_to_sqlite_store() {
         make_scope(vec![make_grant("nested", "sample_via_client")]),
         300,
     );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]).unwrap();
+    let session_id = kernel
+        .open_session(agent_kp.public_key().to_hex(), vec![capability.clone()])
+        .unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .set_session_peer_capabilities(
@@ -620,9 +635,13 @@ fn kernel_persists_child_receipts_to_sqlite_store() {
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
-                extra_metadata: None,
+        extra_metadata: None,
     };
 
     let response = kernel
@@ -716,14 +735,21 @@ fn nested_admission_denied_while_rss_shedding() {
         resource_updates: Vec::new(),
         resources_list_changed_count: 0,
     };
-    let context =
-        make_operation_context(&session_id, "nested-rss-shed", &agent_kp.public_key().to_hex());
+    let context = make_operation_context(
+        &session_id,
+        "nested-rss-shed",
+        &agent_kp.public_key().to_hex(),
+    );
     let operation = ToolCallOperation {
         capability,
         server_id: "nested".to_string(),
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
         extra_metadata: None,
@@ -857,7 +883,9 @@ fn session_tool_call_records_incomplete_terminal_state() {
         make_scope(vec![make_grant("broken", "drop_stream")]),
         300,
     );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]).unwrap();
+    let session_id = kernel
+        .open_session(agent_kp.public_key().to_hex(), vec![capability.clone()])
+        .unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let context = make_operation_context(
@@ -871,9 +899,13 @@ fn session_tool_call_records_incomplete_terminal_state() {
         tool_name: "drop_stream".to_string(),
         arguments: serde_json::json!({}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
-                extra_metadata: None,
+        extra_metadata: None,
     }));
 
     let response = session_tool_call(
@@ -1065,12 +1097,13 @@ fn redaction_reapplies_stream_chunk_cap() {
     }));
 
     let response = kernel
-        .finalize_tool_output_with_metadata(
+        .finalize_tool_output_with_metadata_and_payee_binding(
             &request,
             output,
             std::time::Duration::from_secs(0),
             100,
             0,
+            None,
             None,
         )
         .unwrap();
@@ -1205,6 +1238,9 @@ fn checkpoint_triggers_at_100_receipts() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
@@ -1270,6 +1306,9 @@ fn concurrent_receipt_checkpointing_keeps_contiguous_batches() {
                         execution_nonce: None,
                         governed_intent: None,
                         approval_token: None,
+                        approval_tokens: Vec::new(),
+                        threshold_approval_proposal: None,
+                        supplemental_authorization: None,
                         model_metadata: None,
                         federated_origin_kernel_id: None,
                     })
@@ -1293,7 +1332,10 @@ fn concurrent_receipt_checkpointing_keeps_contiguous_batches() {
             .unwrap()
             .unwrap_or_else(|| panic!("checkpoint {checkpoint_seq} should exist"));
         assert_eq!(checkpoint.body.checkpoint_seq, checkpoint_seq);
-        assert_eq!(checkpoint.body.batch_start_seq, (checkpoint_seq - 1) * 2 + 1);
+        assert_eq!(
+            checkpoint.body.batch_start_seq,
+            (checkpoint_seq - 1) * 2 + 1
+        );
         assert_eq!(checkpoint.body.batch_end_seq, checkpoint_seq * 2);
     }
     assert!(store2.load_checkpoint_by_seq(7).unwrap().is_none());
@@ -1316,7 +1358,9 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
     let grant = make_grant("srv", "echo");
     let mut first_kernel = make_kernel(first_config);
     first_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
-    first_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    first_kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
     let cap = first_kernel
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
         .unwrap();
@@ -1335,6 +1379,9 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
@@ -1347,7 +1394,9 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
 
     let mut restarted_kernel = make_kernel(second_config);
     restarted_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
-    restarted_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    restarted_kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
     assert_eq!(
         restarted_kernel
             .checkpoint_seq_counter
@@ -1374,6 +1423,9 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
@@ -1418,8 +1470,12 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
     let mut second_kernel = make_kernel(second_config);
     first_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
     second_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
-    first_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
-    second_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    first_kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
+    second_kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
 
     let cap = first_kernel
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
@@ -1438,6 +1494,9 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1457,6 +1516,9 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1485,10 +1547,8 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
 #[test]
 fn receipt_store_install_fails_closed_on_checkpoint_hydration_error() {
     let mut kernel = make_kernel(make_monetary_config());
-    let result =
-        kernel.try_set_receipt_store_handle(std::sync::Arc::new(
-            FailingCheckpointHydrationReceiptStore,
-        ));
+    let result = kernel
+        .try_set_receipt_store_handle(std::sync::Arc::new(FailingCheckpointHydrationReceiptStore));
 
     assert!(result.is_err());
     assert!(kernel.receipt_store.is_none());
@@ -1537,6 +1597,9 @@ fn inclusion_proof_verifies_against_stored_checkpoint() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
@@ -1579,7 +1642,9 @@ fn background_checkpoints_are_installed_at_store_attach_and_fire_off_the_request
     let mut kernel = make_kernel(config);
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
 
     let grant = make_grant("srv", "echo");
     let cap = kernel
@@ -1598,6 +1663,9 @@ fn background_checkpoints_are_installed_at_store_attach_and_fire_off_the_request
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
@@ -1711,7 +1779,9 @@ fn attach_requires_checkpoint_install_when_supported() {
     let mut kernel = make_kernel(config);
     let error = kernel
         .set_receipt_store(Box::new(CheckpointCapableWithoutBackgroundStore))
-        .expect_err("store claiming checkpoint support without an installed signer must fail closed");
+        .expect_err(
+            "store claiming checkpoint support without an installed signer must fail closed",
+        );
     match error {
         KernelError::Internal(message) => assert!(
             message.contains("did not install a background checkpoint signer"),

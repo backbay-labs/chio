@@ -58,6 +58,8 @@ pub(crate) fn dispatch_reputation(
 pub(crate) fn dispatch_guard(
     command: GuardCommands,
     json_output: bool,
+    control_url: Option<String>,
+    control_token: Option<String>,
 ) -> Result<(), CliError> {
     match command {
             GuardCommands::New { name } => guard::cmd_guard_new(&name),
@@ -138,7 +140,15 @@ pub(crate) fn dispatch_guard(
                     tier,
                     currency,
                     json,
-                } => cmd_market_list(&catalog, &tenant, &tier, &currency, json || json_output),
+                } => cmd_market_list(
+                    &catalog,
+                    &tenant,
+                    &tier,
+                    &currency,
+                    json || json_output,
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                ),
                 GuardMarketCommands::Info {
                     catalog,
                     reference,
@@ -155,6 +165,8 @@ pub(crate) fn dispatch_guard(
                     &currency,
                     publisher_revoked,
                     json || json_output,
+                    control_url.as_deref(),
+                    control_token.as_deref(),
                 ),
                 GuardMarketCommands::Install {
                     catalog,
@@ -174,6 +186,8 @@ pub(crate) fn dispatch_guard(
                     &currency,
                     publisher_revoked,
                     json || json_output,
+                    control_url.as_deref(),
+                    control_token.as_deref(),
                 ),
             },
     }

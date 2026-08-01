@@ -14,6 +14,11 @@ name = "chio_listing"
 [dependencies]
 chio-core-types = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+chio-spec-validate = { workspace = true }
 
 [lints]
 workspace = true

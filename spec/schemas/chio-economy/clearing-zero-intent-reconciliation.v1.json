@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/clearing-zero-intent-reconciliation/v1",
+  "title": "Chio Clearing Zero Intent Reconciliation V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "roundId",
+        "roundCoreDigest",
+        "outputManifestDigest",
+        "finalizationDigest",
+        "emptyIntentRoot",
+        "settlementIntentCount",
+        "reservationRoot",
+        "reservationCount",
+        "atomBindings",
+        "outcome",
+        "sourceLifecycleHeadDigest",
+        "sourceLifecycleVersion",
+        "sourceLifecycleFence",
+        "nextLifecycleVersion",
+        "nextLifecycleFence",
+        "authorityDigest",
+        "dispositionAuthorityId",
+        "dispositionAuthorityKeyEpoch",
+        "reconciledAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.clearing.zero-intent-reconciliation.v1" },
+        "roundId": { "$ref": "#/$defs/text" },
+        "roundCoreDigest": { "$ref": "#/$defs/digest" },
+        "outputManifestDigest": { "$ref": "#/$defs/digest" },
+        "finalizationDigest": { "$ref": "#/$defs/digest" },
+        "emptyIntentRoot": { "$ref": "#/$defs/digest" },
+        "settlementIntentCount": { "const": 0 },
+        "reservationRoot": { "$ref": "#/$defs/digest" },
+        "reservationCount": { "type": "integer", "minimum": 1, "maximum": 126 },
+        "atomBindings": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 126,
+          "items": { "$ref": "#/$defs/atomBinding" }
+        },
+        "outcome": { "const": "netted_without_rail" },
+        "sourceLifecycleHeadDigest": { "$ref": "#/$defs/digest" },
+        "sourceLifecycleVersion": { "$ref": "#/$defs/positiveInteger" },
+        "sourceLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "nextLifecycleVersion": { "$ref": "#/$defs/positiveInteger" },
+        "nextLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "authorityDigest": { "$ref": "#/$defs/digest" },
+        "dispositionAuthorityId": { "$ref": "#/$defs/text" },
+        "dispositionAuthorityKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "reconciledAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 },
+    "atomBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceSequence",
+        "obligationId",
+        "expectedHeadDigest",
+        "expectedResourceVersion",
+        "expectedLifecycleFence"
+      ],
+      "properties": {
+        "sourceSequence": { "$ref": "#/$defs/positiveInteger" },
+        "obligationId": { "$ref": "#/$defs/digest" },
+        "expectedHeadDigest": { "$ref": "#/$defs/digest" },
+        "expectedResourceVersion": { "$ref": "#/$defs/positiveInteger" },
+        "expectedLifecycleFence": { "$ref": "#/$defs/positiveInteger" }
+      }
+    }
+  }
+}

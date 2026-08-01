@@ -75,7 +75,8 @@ jobs:
     name: changed-target-sampling
     needs: budget-check
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The 25-target full sweep has a 50-minute fuzz budget before build time.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:

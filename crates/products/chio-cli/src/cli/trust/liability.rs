@@ -598,25 +598,38 @@ pub(crate) fn cmd_trust_liability_claim_adjudication_issue(
     receipt_db_path: Option<&Path>,
     authority_seed_path: Option<&Path>,
     authority_db_path: Option<&Path>,
+    roster_policy_file: Option<&Path>,
     control_url: Option<&str>,
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
     let request = load_liability_claim_adjudication_issue_request(input_file)?;
     let adjudication = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_claim_adjudication(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_claim_adjudication(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
-                "liability claim adjudication issuance requires --receipt-db <path> when --control-url is not set"
+                "liability claim adjudication issuance requires --receipt-db <path> when \
+                 --control-url is not set"
                     .to_string(),
             )
         })?;
+        let policy = roster_policy_file
+            .ok_or_else(|| {
+                CliError::cli_other_error(
+                    "liability claim adjudication issuance requires --roster-policy-file <path> \
+                     when --control-url is not set"
+                        .to_string(),
+                )
+            })
+            .and_then(load_roster_policy)?;
         trust_control::issue_signed_liability_claim_adjudication(
             receipt_db_path,
             authority_seed_path,
             authority_db_path,
             &request,
+            &policy,
         )?
     };
 
@@ -643,6 +656,7 @@ pub(crate) fn cmd_trust_liability_claim_payout_instruction_issue(
     receipt_db_path: Option<&Path>,
     authority_seed_path: Option<&Path>,
     authority_db_path: Option<&Path>,
+    roster_policy_file: Option<&Path>,
     control_url: Option<&str>,
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
@@ -654,15 +668,26 @@ pub(crate) fn cmd_trust_liability_claim_payout_instruction_issue(
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
-                "liability claim payout instruction issuance requires --receipt-db <path> when --control-url is not set"
+                "liability claim payout instruction issuance requires --receipt-db <path> when \
+                 --control-url is not set"
                     .to_string(),
             )
         })?;
+        let policy = roster_policy_file
+            .ok_or_else(|| {
+                CliError::cli_other_error(
+                    "liability claim payout instruction issuance requires --roster-policy-file \
+                     <path> when --control-url is not set"
+                        .to_string(),
+                )
+            })
+            .and_then(load_roster_policy)?;
         trust_control::issue_signed_liability_claim_payout_instruction(
             receipt_db_path,
             authority_seed_path,
             authority_db_path,
             &request,
+            &policy,
         )?
     };
 
@@ -748,6 +773,7 @@ pub(crate) fn cmd_trust_liability_claim_settlement_instruction_issue(
     receipt_db_path: Option<&Path>,
     authority_seed_path: Option<&Path>,
     authority_db_path: Option<&Path>,
+    roster_policy_file: Option<&Path>,
     control_url: Option<&str>,
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
@@ -759,15 +785,26 @@ pub(crate) fn cmd_trust_liability_claim_settlement_instruction_issue(
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
-                "liability claim settlement instruction issuance requires --receipt-db <path> when --control-url is not set"
+                "liability claim settlement instruction issuance requires --receipt-db <path> \
+                 when --control-url is not set"
                     .to_string(),
             )
         })?;
+        let policy = roster_policy_file
+            .ok_or_else(|| {
+                CliError::cli_other_error(
+                    "liability claim settlement instruction issuance requires \
+                     --roster-policy-file <path> when --control-url is not set"
+                        .to_string(),
+                )
+            })
+            .and_then(load_roster_policy)?;
         trust_control::issue_signed_liability_claim_settlement_instruction(
             receipt_db_path,
             authority_seed_path,
             authority_db_path,
             &request,
+            &policy,
         )?
     };
 

@@ -17,7 +17,7 @@ impl ChioMcpEdge {
             }
         }
 
-        let child_request_id = RequestId::new(self.next_request_id());
+        let child_request_id = RequestId::new(self.next_child_request_id(parent_context)?);
         let child_context = self
             .kernel
             .begin_child_request(
@@ -273,9 +273,29 @@ impl ChioMcpEdge {
         }
     }
 
-    pub(super) fn next_request_id(&mut self) -> String {
-        self.request_counter += 1;
-        format!("mcp-edge-req-{}", self.request_counter)
+    pub(super) fn next_child_request_id(
+        &mut self,
+        parent_context: &OperationContext,
+    ) -> Result<String, AdapterError> {
+        #[derive(Serialize)]
+        struct ChildRequestIdentity<'a> {
+            domain: &'static str,
+            parent_request_id: &'a str,
+            sequence: u64,
+        }
+
+        self.child_request_counter += 1;
+        let identity = ChildRequestIdentity {
+            domain: "CHIO-MCP-CHILD-REQUEST-ID-V1",
+            parent_request_id: parent_context.request_id.as_str(),
+            sequence: self.child_request_counter,
+        };
+        let canonical = canonical_json_bytes(&identity).map_err(|error| {
+            AdapterError::ParseError(format!(
+                "failed to canonicalize MCP child request identity: {error}"
+            ))
+        })?;
+        Ok(format!("mcp-edge-child-{}", sha256_hex(&canonical)))
     }
 
     pub(super) fn visible_tools(&self) -> Vec<&ExposedToolBinding> {

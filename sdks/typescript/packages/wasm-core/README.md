@@ -4,9 +4,9 @@ Shared, dependency-free helpers used by the Chio runtime SDKs
 (`@chio-protocol/workers`, `@chio-protocol/edge`, `@chio-protocol/deno`, and
 `@chio-protocol/browser`).
 
-The package intentionally ships its TypeScript source as the entry point so it can
-be consumed from every runtime target (Cloudflare Workers, Vercel Edge, Deno, and
-the browser) and bundled by the consumer without a separate build artifact.
+The package ships ESM JavaScript and TypeScript declarations so it can be consumed
+directly by Node.js and bundled for Cloudflare Workers, Vercel Edge, Deno, and the
+browser.
 
 ## API
 

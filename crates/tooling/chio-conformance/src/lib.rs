@@ -4,6 +4,7 @@
 //! cross-peer conformance harnesses, tracks peer language locks, and generates
 //! Markdown compatibility reports.
 
+pub mod econsim;
 mod load;
 mod model;
 mod native_suite;

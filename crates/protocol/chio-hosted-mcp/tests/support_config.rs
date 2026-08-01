@@ -75,10 +75,7 @@ fn base_remote_config_carries_wrapped_server_defaults() {
         config.receipt_db_path,
         Some(dir.join("remote-receipts.sqlite3"))
     );
-    assert_eq!(
-        config.revocation_db_path,
-        Some(dir.join("remote-revocations.sqlite3"))
-    );
+    assert_eq!(config.revocation_db_path, None);
     assert_eq!(
         config.authority_seed_path,
         Some(dir.join("remote-authority.seed"))

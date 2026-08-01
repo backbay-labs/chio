@@ -6,7 +6,11 @@ use super::*;
 pub(crate) fn dispatch_api(
     command: ApiCommands,
     receipt_db: Option<PathBuf>,
+    revocation_db: Option<PathBuf>,
     authority_seed_file: Option<PathBuf>,
+    budget_db: Option<PathBuf>,
+    control_url: Option<String>,
+    control_token: Option<String>,
 ) -> Result<(), CliError> {
     match command {
             ApiCommands::Protect {
@@ -22,6 +26,10 @@ pub(crate) fn dispatch_api(
                 &listen,
                 receipt_store.as_deref().or(receipt_db.as_deref()),
                 authority_seed_file.as_deref(),
+                budget_db.as_deref(),
+                revocation_db.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
                 allow_ephemeral_receipts,
                 upstream_timeout_secs,
             ),
@@ -42,6 +50,7 @@ pub(crate) fn dispatch_mcp(
 ) -> Result<(), CliError> {
     match command {
             McpCommands::Wrap(args) => cmd_mcp_wrap(&args),
+            McpCommands::GovernedSim(args) => cmd_mcp_governed_sim(&args),
             McpCommands::Serve {
                 policy,
                 preset,

@@ -12,6 +12,10 @@ pub struct BridgeMcpToolCallRequest {
     pub agent_id: String,
     pub execution_nonce: Option<SignedExecutionNonce>,
     pub governed_intent: Option<GovernedTransactionIntent>,
+    pub approval_token: Option<GovernedApprovalToken>,
+    pub approval_tokens: Vec<GovernedApprovalToken>,
+    pub threshold_approval_proposal: Option<ThresholdApprovalProposal>,
+    pub supplemental_authorization: Option<OpaqueSupplementalAuthorization>,
     pub model_metadata: Option<ModelMetadata>,
     pub route_selection_metadata: Option<Value>,
     pub peer_supports_chio_tool_streaming: bool,
@@ -66,20 +70,7 @@ impl TargetProtocolExecutor for McpTargetExecutor {
         let response = request
             .kernel
             .evaluate_tool_call_blocking_with_metadata(
-                &ToolCallRequest {
-                    request_id: request.execution.kernel_request_id.clone(),
-                    capability: request.execution.capability.clone(),
-                    tool_name: request.execution.target_tool_name.clone(),
-                    server_id: request.execution.target_server_id.clone(),
-                    agent_id: request.execution.agent_id.clone(),
-                    arguments: request.execution.arguments.clone(),
-                    dpop_proof: request.execution.dpop_proof.clone(),
-                    execution_nonce: request.execution.execution_nonce.clone(),
-                    governed_intent: request.execution.governed_intent.clone(),
-                    approval_token: request.execution.approval_token.clone(),
-                    model_metadata: request.execution.model_metadata.clone(),
-                    federated_origin_kernel_id: None,
-                },
+                &kernel_tool_call_request(request.execution),
                 Some(route_metadata),
             )
             .map_err(BridgeError::Kernel)?;
@@ -125,6 +116,10 @@ pub async fn execute_bridge_mcp_tool_call_async(
         agent_id,
         execution_nonce,
         governed_intent,
+        approval_token,
+        approval_tokens,
+        threshold_approval_proposal,
+        supplemental_authorization,
         model_metadata,
         route_selection_metadata,
         peer_supports_chio_tool_streaming,
@@ -139,7 +134,10 @@ pub async fn execute_bridge_mcp_tool_call_async(
         dpop_proof: None,
         execution_nonce,
         governed_intent,
-        approval_token: None,
+        approval_token,
+        approval_tokens,
+        threshold_approval_proposal,
+        supplemental_authorization,
         model_metadata,
         federated_origin_kernel_id: None,
     };
@@ -182,7 +180,10 @@ pub fn execute_bridge_mcp_tool_call(
                 dpop_proof: None,
                 execution_nonce: request.execution_nonce.clone(),
                 governed_intent: request.governed_intent.clone(),
-                approval_token: None,
+                approval_token: request.approval_token.clone(),
+                approval_tokens: request.approval_tokens.clone(),
+                threshold_approval_proposal: request.threshold_approval_proposal.clone(),
+                supplemental_authorization: request.supplemental_authorization.clone(),
                 model_metadata: request.model_metadata.clone(),
                 federated_origin_kernel_id: None,
             };
@@ -295,9 +296,26 @@ impl ChioMcpEdge {
             .get("arguments")
             .cloned()
             .unwrap_or_else(|| json!({}));
+        let stable_request_id = parse_request_stable_request_id(id, params)?;
         let model_metadata = parse_request_model_metadata(id, params)?;
         let execution_nonce = parse_request_execution_nonce(id, params)?;
         let governed_intent = parse_request_governed_intent(id, params)?;
+        let (approval_token, approval_tokens, threshold_approval_proposal) =
+            parse_request_approval_artifacts(id, params)?;
+        let supplemental_authorization = parse_request_supplemental_authorization(id, params)?;
+        if stable_request_id.is_none()
+            && (approval_token.is_some()
+                || !approval_tokens.is_empty()
+                || threshold_approval_proposal.is_some()
+                || supplemental_authorization.is_some())
+        {
+            return Err(jsonrpc_error(
+                id.clone(),
+                JSONRPC_INVALID_PARAMS,
+                "MCP approval artifacts and supplemental authorization require \
+                 _meta.chioRequestId",
+            ));
+        }
         let extra_metadata = parse_request_extra_metadata(id, params)?;
 
         let Some(&tool_index) = self.tool_index.get(tool_name) else {
@@ -334,9 +352,27 @@ impl ChioMcpEdge {
             }
         };
 
-        let request_id = self.next_request_id();
-        let context =
-            build_operation_context(id, session_id.clone(), request_id, &self.agent_id, params)?;
+        let nonce_bound_request_id = execution_nonce
+            .as_ref()
+            .map(|nonce| nonce.nonce.bound_to.request_id.as_str());
+        let context = build_operation_context_for_retry(
+            id,
+            session_id.clone(),
+            &self.agent_id,
+            "tools/call",
+            params,
+            nonce_bound_request_id,
+        )?;
+        let execution_nonce = execution_nonce
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|error| {
+                jsonrpc_error(
+                    id.clone(),
+                    JSONRPC_INVALID_REQUEST,
+                    &format!("failed to serialize execution nonce: {error}"),
+                )
+            })?;
 
         Ok((
             session_id,
@@ -347,6 +383,10 @@ impl ChioMcpEdge {
                 tool_name: binding.tool_name,
                 arguments,
                 governed_intent,
+                approval_token,
+                approval_tokens,
+                threshold_approval_proposal,
+                supplemental_authorization,
                 execution_nonce,
                 model_metadata,
                 extra_metadata,

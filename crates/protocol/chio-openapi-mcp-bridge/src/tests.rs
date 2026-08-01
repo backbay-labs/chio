@@ -38,7 +38,6 @@ fn test_kernel_config() -> KernelConfig {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -327,26 +326,6 @@ fn bridge_mcp_tools_list_entries() {
 }
 
 #[test]
-fn bridge_tool_servers_report_read_only_from_operation_annotations() {
-    use chio_kernel::ToolServerConnection;
-
-    // Safe GET operations read as read-only; mutating operations and
-    // unknown names stay side-effecting.
-    let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
-    let server = bridge.as_tool_server();
-    assert!(server.tool_is_read_only("listPets"));
-    assert!(server.tool_is_read_only("getPet"));
-    assert!(!server.tool_is_read_only("createPet"));
-    assert!(!server.tool_is_read_only("deletePet"));
-    assert!(!server.tool_is_read_only("unknownTool"));
-
-    // The owned registration wrapper reports the same annotations.
-    let owned = OwnedBridgeToolServer::from_bridge(bridge);
-    assert!(owned.tool_is_read_only("listPets"));
-    assert!(!owned.tool_is_read_only("createPet"));
-}
-
-#[test]
 fn bridge_without_dispatcher_fails_closed() {
     let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
     let error = bridge
@@ -587,6 +566,9 @@ async fn bridge_invocation_runtime_admission_denies_before_http_dispatch() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1050,4 +1032,26 @@ fn bridge_delete_operation_has_side_effects() {
         .find(|t| t.name == "deletePet")
         .expect("deletePet tool");
     assert!(delete_pet.has_side_effects);
+}
+
+#[test]
+fn bridge_tool_server_reports_read_only_classification() {
+    let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
+    let server = bridge.as_tool_server();
+    assert!(server.tool_is_read_only("listPets"));
+    assert!(!server.tool_is_read_only("createPet"));
+    assert!(!server.tool_is_read_only("deletePet"));
+    // Unknown tools stay side-effecting so an unmatched name cannot skip
+    // durable side-effect admission.
+    assert!(!server.tool_is_read_only("unknownTool"));
+}
+
+#[test]
+fn owned_bridge_tool_server_reports_read_only_classification() {
+    let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
+    let server = OwnedBridgeToolServer::from_bridge(bridge);
+    assert!(server.tool_is_read_only("listPets"));
+    assert!(!server.tool_is_read_only("createPet"));
+    assert!(!server.tool_is_read_only("deletePet"));
+    assert!(!server.tool_is_read_only("unknownTool"));
 }

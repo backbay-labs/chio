@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/channel-transition-replay/v1",
+  "title": "Chio Channel Transition Replay Descriptor V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "body", "descriptorDigest"],
+  "properties": {
+    "format": { "const": "chio.channel.transition-replay.v1" },
+    "version": { "const": 1 },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorityPins",
+        "authorityPinsDigest",
+        "openArtifacts",
+        "reservationContext",
+        "currentView",
+        "baseCheckpointSequence",
+        "baseCheckpointDigest",
+        "descriptorKey",
+        "operationId",
+        "request",
+        "sourceBindings",
+        "issuedAt",
+        "expectedBatchDigest",
+        "evidence"
+      ],
+      "properties": {
+        "authorityPins": { "$ref": "#/$defs/authorityPins" },
+        "authorityPinsDigest": { "$ref": "#/$defs/digest" },
+        "openArtifacts": { "$ref": "#/$defs/openArtifacts" },
+        "reservationContext": { "$ref": "#/$defs/reservationContext" },
+        "currentView": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/anchor-view/v1" },
+        "baseCheckpointSequence": { "$ref": "#/$defs/positiveInteger" },
+        "baseCheckpointDigest": { "$ref": "#/$defs/digest" },
+        "descriptorKey": {
+          "type": "string",
+          "pattern": "^(reservation|dispatch|terminal|cancellation):[0-9a-f]{64}$"
+        },
+        "operationId": { "$ref": "#/$defs/digest" },
+        "request": { "$ref": "#/$defs/request" },
+        "sourceBindings": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/sourceBinding" }
+        },
+        "issuedAt": { "$ref": "#/$defs/positiveInteger" },
+        "notAfterUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "expectedBatchDigest": { "$ref": "#/$defs/digest" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "descriptorDigest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "identifier": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "publicKey": { "type": "string", "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "resourceKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceFamily", "scopeId", "resourceId"],
+      "properties": {
+        "resourceFamily": { "$ref": "#/$defs/identifier" },
+        "scopeId": { "$ref": "#/$defs/identifier" },
+        "resourceId": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestNamespaceDigest", "requestId", "requestBindingDigest"],
+      "properties": {
+        "requestNamespaceDigest": { "$ref": "#/$defs/digest" },
+        "requestId": { "$ref": "#/$defs/identifier" },
+        "requestBindingDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "sourceBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceKey"],
+      "properties": {
+        "resourceKey": { "$ref": "#/$defs/resourceKey" },
+        "expectedHeadDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "anchorPins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchorId", "namespace", "signerKeyId", "signerKeyEpoch", "signerPublicKey"],
+      "properties": {
+        "anchorId": { "$ref": "#/$defs/identifier" },
+        "namespace": { "$ref": "#/$defs/identifier" },
+        "signerKeyId": { "$ref": "#/$defs/identifier" },
+        "signerKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "signerPublicKey": { "$ref": "#/$defs/publicKey" }
+      }
+    },
+    "authorityPins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["openTrust", "fundingAuthority", "reservationAuthority", "anchor"],
+      "properties": {
+        "openTrust": { "type": "object" },
+        "fundingAuthority": { "type": "object" },
+        "reservationAuthority": { "type": "object" },
+        "trustedKernelKey": { "$ref": "#/$defs/publicKey" },
+        "anchor": { "$ref": "#/$defs/anchorPins" }
+      }
+    },
+    "openArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fundingEvidence", "fundingAcknowledgement", "disputePolicy"],
+      "properties": {
+        "fundingEvidence": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/channel-funding-evidence/v1" },
+        "fundingAcknowledgement": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/channel-funding-acknowledgement/v1" },
+        "disputePolicy": { "type": "object" }
+      }
+    },
+    "reservationContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prepared", "signedReservation", "preparedBaseView"],
+      "properties": {
+        "prepared": { "type": "object" },
+        "signedReservation": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/channel-reservation/v1" },
+        "preparedBaseView": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/anchor-view/v1" }
+      }
+    },
+    "evidence": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "reservation" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "dispatch" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "reservation_view"],
+          "properties": {
+            "kind": { "const": "cancellation" },
+            "reservation_view": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/anchor-view/v1" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "reservation_view", "signed_receipt", "signed_next_state", "terminal_outcome"],
+          "properties": {
+            "kind": { "const": "terminal" },
+            "reservation_view": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/anchor-view/v1" },
+            "signed_receipt": { "type": "object" },
+            "obligation": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/obligation-atom/v1" },
+            "signed_next_state": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/channel-state/v1" },
+            "terminal_outcome": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/channel-terminal-outcome-commitment/v1" }
+          }
+        }
+      ]
+    }
+  }
+}

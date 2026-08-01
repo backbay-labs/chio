@@ -14,6 +14,23 @@ pub(crate) fn validate_execution_request_boundary(
     validate_request_identity_field("target_server_id", &request.target_server_id)?;
     validate_request_identity_field("target_tool_name", &request.target_tool_name)?;
     validate_request_identity_field("agent_id", &request.agent_id)?;
+    if request.approval_token.is_some() && !request.approval_tokens.is_empty() {
+        return Err(BridgeError::InvalidRequest(
+            "cross-protocol execution must not mix singular and threshold approval tokens"
+                .to_string(),
+        ));
+    }
+    if request.approval_tokens.len() > 32 {
+        return Err(BridgeError::InvalidRequest(
+            "cross-protocol threshold approval set exceeds 32 tokens".to_string(),
+        ));
+    }
+    if request.approval_tokens.is_empty() != request.threshold_approval_proposal.is_none() {
+        return Err(BridgeError::InvalidRequest(
+            "cross-protocol threshold approval tokens and proposal must be supplied together"
+                .to_string(),
+        ));
+    }
     Ok(())
 }
 

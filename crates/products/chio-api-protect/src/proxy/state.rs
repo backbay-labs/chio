@@ -3,12 +3,70 @@ use super::*;
 use chio_http_serve::{
     apply_server_hygiene, run_until_drained, ServeError, ServeHygieneConfig, ShutdownController,
 };
+use std::fs;
+use std::path::PathBuf;
 use std::time::Duration;
+
+/// Interval between reserved-hold reaper sweeps. A hold reserved on
+/// `/v1/evaluate` but never reconciled is released once its execution-nonce TTL
+/// lapses; sweeping on this cadence bounds how long abandoned budget stays held.
+const RESERVED_HOLD_REAP_INTERVAL_SECS: u64 = 30;
+
+/// Spawn the reserved-hold reaper and retain its `JoinHandle` on the shared
+/// state so the task can be aborted when the server stops. Dropping a
+/// `JoinHandle` only detaches the task (it keeps running); retaining it is what
+/// binds the reaper's lifetime to the server's. A no-op without a mediation
+/// kernel, since nothing reserves holds there.
+pub(crate) async fn spawn_reserved_hold_reaper(state: &Arc<ProxyState>) {
+    if state.mediation_kernel.is_none() {
+        return;
+    }
+    let reaper_state = Arc::clone(state);
+    let handle = tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(
+            RESERVED_HOLD_REAP_INTERVAL_SECS,
+        ));
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            let now = chrono::Utc::now().timestamp();
+            match reap_expired_reserved_holds_once(&reaper_state, now).await {
+                Ok(0) => {}
+                Ok(released) => {
+                    info!(released, "reaped expired reserved budget holds");
+                }
+                Err(error) => {
+                    warn!("reserved-hold reaper failed: {error}");
+                }
+            }
+        }
+    });
+    *state.reaper_handle.lock().await = Some(handle);
+}
 
 /// Extra window the drain holds open beyond the upstream hop ceiling so a hop
 /// that trips its own deadline still has time to record its receipt before the
 /// forced drain closes the connection.
 const PROXY_DRAIN_MARGIN: Duration = Duration::from_secs(5);
+
+fn authority_sibling_paths(receipt_path: &str) -> (PathBuf, PathBuf) {
+    let base = chio_store_sqlite::sqlite_filesystem_path(receipt_path);
+    let mut lock_root = base.as_os_str().to_os_string();
+    lock_root.push(".authority-locks");
+    let lock_root = PathBuf::from(lock_root);
+    (lock_root.join("authority.db"), lock_root)
+}
+
+fn prepare_authority_lock_root(path: &std::path::Path) -> Result<(), ProtectError> {
+    fs::create_dir_all(path).map_err(|error| ProtectError::Config(error.to_string()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .map_err(|error| ProtectError::Config(error.to_string()))?;
+    }
+    Ok(())
+}
 
 /// Drain window for the proxy serve site, derived from the configured upstream
 /// hop ceiling.
@@ -220,6 +278,60 @@ impl SqliteReceiptStore {
     }
 }
 
+/// Bounded, TTL-keyed set of request ids claimed for a live reservation window.
+///
+/// A request id must be unique only for the lifetime of the reservation it
+/// backs: the kernel derives the durable budget-hold identity from it, so a
+/// reused id inside the window would collapse into an idempotent authorize with
+/// no fresh reservation and defeat the over-subscription guard. Once the
+/// execution-nonce TTL lapses the hold is reconciled or reaped, so the id may be
+/// reused. Each entry carries that expiry and is pruned lazily on every
+/// mutation, bounding the set to the reservations opened within one TTL window
+/// instead of growing without limit.
+pub(crate) struct MintedRequestIdWindow {
+    ttl_secs: i64,
+    expiries: HashMap<String, i64>,
+}
+
+impl MintedRequestIdWindow {
+    pub(crate) fn new(ttl_secs: u64) -> Self {
+        Self {
+            ttl_secs: ttl_secs as i64,
+            expiries: HashMap::new(),
+        }
+    }
+
+    /// Claim `request_id` for a reservation opening at `now`. Prunes expired
+    /// entries first, then admits the id only when it is not already live inside
+    /// its window. Returns `false` for a reuse inside a live window, which the
+    /// caller maps to a fail-closed 409.
+    pub(crate) fn claim(&mut self, request_id: &str, now: i64) -> bool {
+        self.prune(now);
+        if self.expiries.contains_key(request_id) {
+            return false;
+        }
+        self.expiries
+            .insert(request_id.to_string(), now.saturating_add(self.ttl_secs));
+        true
+    }
+
+    /// Release a claimed id. Called when the authorization placed no durable
+    /// hold (denied, pending, or errored) so a failed attempt does not
+    /// permanently burn the id.
+    pub(crate) fn release(&mut self, request_id: &str) {
+        self.expiries.remove(request_id);
+    }
+
+    fn prune(&mut self, now: i64) {
+        self.expiries.retain(|_, expiry| *expiry > now);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.expiries.len()
+    }
+}
+
 /// Shared proxy state.
 pub(crate) struct ProxyState {
     pub(crate) evaluator: RequestEvaluator,
@@ -242,6 +354,36 @@ pub(crate) struct ProxyState {
     pub(crate) trusted_capability_issuers: Vec<PublicKey>,
     pub(crate) trusted_receipt_signers: Vec<PublicKey>,
     pub(crate) sidecar_control_token: Option<String>,
+    pub(crate) budget_store: Option<Arc<dyn chio_kernel::budget_store::BudgetStore>>,
+    /// Whether the configured `budget_store` implements the pre-execution hold
+    /// APIs the mediated reservation path depends on. `true` for the local SQLite
+    /// store, `false` for the remote control-plane store (which forwards only
+    /// charge/reverse/reconcile and cannot persist a durable reserved hold). The
+    /// mediated `/v1/evaluate` and `/v1/reconcile` routes reject fail-closed when
+    /// this is `false`, rather than mint a reserved nonce that can never be
+    /// reconciled by nonce or reclaimed by the TTL reaper.
+    pub(crate) mediation_hold_capable: bool,
+    /// The process-lifetime kernel-mediation authority, built once when a budget
+    /// store is configured. Held behind a `Mutex` because admitting the
+    /// caller-named tool server (registration) needs `&mut self`, and reused
+    /// across requests so the approval-token and DPoP replay stores stay
+    /// authoritative, and so the nonce it mints on `/v1/evaluate` is the one it
+    /// verifies and consumes on `/v1/reconcile`.
+    pub(crate) mediation_kernel: Option<Mutex<chio_kernel::ChioKernel>>,
+    /// Request ids claimed for a live reservation window on `/v1/evaluate`. The
+    /// kernel derives the durable budget hold identity from the request id, so
+    /// each id is admitted at most once inside its window; a reuse is rejected
+    /// fail-closed (409) to preserve the over-subscription guard. Entries expire
+    /// with the reservation (execution-nonce) TTL and are pruned lazily, so the
+    /// set stays bounded rather than growing on every request.
+    pub(crate) minted_request_ids: Mutex<MintedRequestIdWindow>,
+    /// Retained `JoinHandle` for the reserved-hold reaper task. Held so the
+    /// reaper can be aborted when the server stops accepting; a dropped
+    /// `JoinHandle` only detaches the task (it keeps running) rather than
+    /// aborting it. `None` until the reaper is spawned (and when no mediation
+    /// kernel is configured, since nothing reserves holds).
+    pub(crate) reaper_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    pub(crate) allow_advisory: bool,
     pub(crate) receipt_backend: &'static str,
     pub(crate) revocation_backend: &'static str,
 }
@@ -297,11 +439,35 @@ impl ProxyState {
 /// The protect proxy.
 pub struct ProtectProxy {
     config: ProtectConfig,
+    /// Operator-configured payment rail for the kernel-mediated authorization
+    /// path. Installed on the mediation kernel so a governed `MustPrepay`
+    /// (x402/ACP) quote is authorized before a reserved nonce is minted. `None`
+    /// by default, which keeps governed `MustPrepay` denied fail-closed: only a
+    /// configured adapter enables prepayment.
+    payment_adapter: Option<Box<dyn chio_kernel::PaymentAdapter>>,
 }
 
 impl ProtectProxy {
     pub fn new(config: ProtectConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            payment_adapter: None,
+        }
+    }
+
+    /// Install the operator's payment adapter for the kernel-mediated route.
+    ///
+    /// The sidecar CLI resolves this from the operator's payment configuration
+    /// and threads it here before `run`. With an adapter installed, an approved
+    /// governed `MustPrepay`/x402 request authorizes (the quote is prepaid before
+    /// a reserved nonce is minted); with `None` it stays denied fail-closed.
+    #[must_use]
+    pub fn with_payment_adapter(
+        mut self,
+        payment_adapter: Option<Box<dyn chio_kernel::PaymentAdapter>>,
+    ) -> Self {
+        self.payment_adapter = payment_adapter;
+        self
     }
 
     async fn load_spec_content(&self) -> Result<String, ProtectError> {
@@ -426,6 +592,20 @@ impl ProtectProxy {
         } else {
             Arc::new(InMemoryApprovalStore::new())
         };
+        let threshold_collector_store: Arc<dyn ThresholdApprovalCollectorStore> =
+            if let Some(path) = durable_receipt_db {
+                Arc::new(
+                    SqliteApprovalStore::open_colocated_with_receipt_store(path)
+                        .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?,
+                )
+            } else {
+                Arc::new(InMemoryThresholdApprovalCollectorStore::new())
+            };
+        let threshold_collector = ThresholdApprovalCollector::new(
+            threshold_collector_store,
+            policy_hash.clone(),
+            vec![keypair.public_key()],
+        );
 
         let mut trusted_capability_issuers = self.config.trusted_capability_issuers.clone();
         let signer_public_key = keypair.public_key();
@@ -449,7 +629,25 @@ impl ProtectProxy {
                 None => Some(Arc::new(chio_kernel::InMemoryRevocationStore::new())),
             };
 
-        let evaluator = RequestEvaluator::new_with_durable_stores(
+        let durable_admission = match durable_receipt_db {
+            Some(path) => {
+                let (database, lock_root) = authority_sibling_paths(path);
+                prepare_authority_lock_root(&lock_root)?;
+                chio_store_sqlite::SqliteAuthorityStore::provision(&database, &lock_root)
+                    .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?;
+                let authority =
+                    chio_store_sqlite::SqliteAuthorityStore::open_serving(&database, &lock_root)
+                        .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?;
+                Some(DurableAdmissionStores {
+                    store: Arc::new(authority.admission_operation_store()),
+                    outcome_store: Arc::new(authority.tool_outcome_store()),
+                    fence: authority.mutation_fence(),
+                })
+            }
+            None => None,
+        };
+
+        let evaluator = RequestEvaluator::new_with_durable_stores_and_admission(
             routes,
             keypair.clone(),
             policy_hash,
@@ -457,13 +655,14 @@ impl ProtectProxy {
             self.config.trusted_capability_issuers.clone(),
             durable_receipt_store,
             revocation_store.clone(),
+            durable_admission.clone(),
             self.config.allow_ephemeral_receipts,
         )
         .map_err(|error| ProtectError::Config(error.to_string()))?;
         let receipt_backend = evaluator.receipt_backend();
         let revocation_backend = evaluator.revocation_backend();
 
-        let (receipt_log, tool_receipt_log, receipt_store, revoked_capability_ids) =
+        let (receipt_log, tool_receipt_log, receipt_store, mut revoked_capability_ids) =
             if let Some(path) = &self.config.receipt_db {
                 let store = SqliteReceiptStore::open(path)?;
                 let receipts = store.load_receipts()?;
@@ -490,17 +689,94 @@ impl ProtectProxy {
                 )
             };
 
+        // Enforce operator revocations recorded through the durable revocation
+        // store that `chio trust revoke --revocation-db <path>` writes. Merging
+        // them into the shared revoked set covers every path that consults it
+        // (mediated `/v1/evaluate`, validate, proxy, advisory) uniformly. This
+        // load is fail-closed: `load_revocation_db_ids` returns an error and the
+        // sidecar refuses to start if the configured store cannot be read.
+        if let Some(path) = self.config.revocation_db.as_deref() {
+            let durable = load_revocation_db_ids(&self.config)?;
+            let loaded = durable.len();
+            revoked_capability_ids.extend(durable);
+            info!(
+                revocation_db = path,
+                loaded,
+                enforced = revoked_capability_ids.len(),
+                "chio api protect: loaded durable revocations from --revocation-db; \
+                 enforced on /v1/evaluate and every revoked-capability path. \
+                 Revocations recorded after startup are not observed here: they \
+                 require a sidecar restart or the in-process \
+                 /v1/capabilities/release (or --control-url) channel"
+            );
+        }
+
         let egress_contract = default_upstream_egress_contract(&self.config.upstream)?;
         let http_client = client_builder_with_contract(&egress_contract)
             .timeout(self.config.upstream_request_timeout)
             .build()?;
+        let configured_budget_store = build_budget_store(&self.config)?;
+        let mediation_hold_capable = configured_budget_store
+            .as_ref()
+            .map(|configured| configured.hold_capable)
+            .unwrap_or(false);
+        let budget_store = configured_budget_store.map(|configured| configured.store);
+
+        // Automatic reconcile/reverse of open holds requires the durable receipt
+        // log (ADR-0013) to build the realized-spend arbitration map. Without
+        // that map, calling reap_orphaned_holds with an empty map would reverse
+        // every open hold, enabling double-spend: a hold left open by a crash
+        // after the spend but before reconcile represents real spent budget.
+        // Holds are left reserved (fail-closed) until receipt-log arbitration
+        // is wired at this startup point. Use reap_orphaned_holds via the
+        // control plane with a realized-spend map from the durable receipt log
+        // to reconcile crash-orphaned holds.
+        if let Some(store) = budget_store.as_ref() {
+            match store.count_open_holds() {
+                Ok(0) => {}
+                Ok(count) => {
+                    warn!(
+                        count,
+                        "startup: open budget hold(s) left reserved pending \
+                         receipt-log arbitration; automatic reconcile requires \
+                         the durable receipt log (ADR-0013) arbitration map"
+                    );
+                }
+                Err(error) => {
+                    warn!("startup: failed to count open budget holds: {error}");
+                }
+            }
+        }
+
+        // Build the kernel-mediation authority once, for the process lifetime, so
+        // the approval-token and DPoP replay stores it carries stay authoritative
+        // across `/v1/evaluate` requests and the nonce it mints is the one it
+        // verifies and consumes on `/v1/reconcile`. It exists exactly when a
+        // budget store is configured; without one, `/v1/evaluate` and
+        // `/v1/reconcile` deny fail-closed.
+        let payment_adapter = self.payment_adapter;
+        let mediation_kernel = match budget_store.as_ref() {
+            Some(store) => Some(Mutex::new(build_mediation_kernel(
+                &keypair,
+                Arc::clone(store),
+                &trusted_capability_issuers,
+                Vec::new(),
+                payment_adapter,
+                durable_admission,
+            )?)),
+            None => None,
+        };
+
         let state = Arc::new(ProxyState {
             evaluator,
             signer_keypair: keypair,
             upstream: self.config.upstream.clone(),
             http_client,
             egress_contract,
-            approval_admin: ApprovalAdmin::new(approval_store),
+            approval_admin: ApprovalAdmin::with_threshold_collector(
+                approval_store,
+                threshold_collector,
+            ),
             receipt_log: Mutex::new(receipt_log),
             tool_receipt_log: Mutex::new(tool_receipt_log),
             receipt_store,
@@ -509,9 +785,24 @@ impl ProtectProxy {
             trusted_capability_issuers,
             trusted_receipt_signers,
             sidecar_control_token: self.config.sidecar_control_token.clone(),
+            budget_store,
+            mediation_hold_capable,
+            mediation_kernel,
+            minted_request_ids: Mutex::new(MintedRequestIdWindow::new(
+                chio_kernel::DEFAULT_EXECUTION_NONCE_TTL_SECS,
+            )),
+            reaper_handle: Mutex::new(None),
+            allow_advisory: self.config.allow_advisory,
             receipt_backend,
             revocation_backend,
         });
+
+        // Release expired, unreconciled reserved budget holds on an interval so a
+        // caller that authorizes but never reconciles does not permanently burn
+        // budget. The reaper's JoinHandle is retained on the shared state and
+        // aborted once the server stops accepting (below), bounding the task's
+        // lifetime to the server's.
+        spawn_reserved_hold_reaper(&state).await;
 
         let app = build_app(Arc::clone(&state));
 
@@ -525,6 +816,10 @@ impl ProtectProxy {
             ProtectError::Config(format!("cannot resolve bound address: {error}"))
         })?;
 
+        info!(
+            has_budget_store = state.budget_store.is_some(),
+            "chio api protect: mediation layer ready"
+        );
         info!(
             "chio api protect: proxying {} routes to {} on {}",
             route_count, self.config.upstream, local_addr
@@ -562,7 +857,7 @@ impl ProtectProxy {
         // Every proxied call writes its receipt synchronously inside the request
         // handler, so completing the in-flight requests during the drain is the
         // whole durability guarantee: there is nothing queued to flush afterward.
-        run_until_drained(
+        let serve_result = run_until_drained(
             server,
             controller.subscribe(),
             hygiene.drain_timeout,
@@ -570,7 +865,16 @@ impl ProtectProxy {
         )
         .await
         .map(|_outcome| ())
-        .map_err(protect_serve_error)?;
+        .map_err(protect_serve_error);
+
+        // The reaper holds a clone of the shared state; abort it now the server
+        // has stopped so the task does not outlive the serving lifetime (a
+        // dropped JoinHandle would only detach it, leaving it running).
+        if let Some(handle) = state.reaper_handle.lock().await.take() {
+            handle.abort();
+        }
+
+        serve_result?;
 
         Ok(())
     }
@@ -578,6 +882,53 @@ impl ProtectProxy {
     /// Build routes from spec content for testing.
     pub fn routes_from_spec(spec_content: &str) -> Result<Vec<RouteEntry>, ProtectError> {
         Self::build_routes(spec_content)
+    }
+}
+
+#[cfg(test)]
+mod proxy_builder_tests {
+    use super::*;
+
+    fn minimal_config() -> ProtectConfig {
+        ProtectConfig {
+            upstream: "http://127.0.0.1:1".to_string(),
+            spec_content: Some("{}".to_string()),
+            spec_path: None,
+            listen_addr: "127.0.0.1:0".to_string(),
+            receipt_db: None,
+            allow_ephemeral_receipts: true,
+            sidecar_control_token: None,
+            signer_seed_hex: None,
+            trusted_capability_issuers: Vec::new(),
+            control_url: None,
+            control_token: None,
+            budget_db: None,
+            revocation_db: None,
+            require_nonce: false,
+            allow_advisory: false,
+            upstream_request_timeout: crate::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+        }
+    }
+
+    #[test]
+    fn with_payment_adapter_threads_adapter_and_defaults_none() {
+        // The sidecar CLI threads the operator's resolved payment adapter here so
+        // the proxy installs it on the mediation kernel and governed MustPrepay
+        // can be prepaid. Absent the builder call the adapter defaults to `None`,
+        // which keeps governed MustPrepay denied fail-closed.
+        let default = ProtectProxy::new(minimal_config());
+        assert!(
+            default.payment_adapter.is_none(),
+            "a proxy defaults to no payment adapter, keeping governed MustPrepay denied"
+        );
+
+        let configured = ProtectProxy::new(minimal_config()).with_payment_adapter(Some(Box::new(
+            chio_kernel::payment::SimPaymentAdapter::new(),
+        )));
+        assert!(
+            configured.payment_adapter.is_some(),
+            "with_payment_adapter must thread the configured adapter into the proxy"
+        );
     }
 }
 
@@ -590,7 +941,7 @@ fn protect_serve_error(error: ServeError) -> ProtectError {
 
 #[cfg(test)]
 mod durability_tests {
-    use super::{revocation_sibling_path, SqliteReceiptStore};
+    use super::{authority_sibling_paths, revocation_sibling_path, SqliteReceiptStore};
     use chio_test_support::prelude::*;
 
     #[test]
@@ -609,6 +960,20 @@ mod durability_tests {
         assert_eq!(
             revocation_sibling_path("file:/var/lib/chio/receipts.db?mode=rwc"),
             "file:/var/lib/chio/receipts.db.revocations?mode=rwc"
+        );
+    }
+
+    #[test]
+    fn authority_sibling_paths_resolve_the_receipt_uri_to_filesystem_paths() {
+        let (database, lock_root) =
+            authority_sibling_paths("file:/var/lib/chio/receipts.db?mode=rwc");
+        assert_eq!(
+            database,
+            std::path::Path::new("/var/lib/chio/receipts.db.authority-locks/authority.db")
+        );
+        assert_eq!(
+            lock_root,
+            std::path::Path::new("/var/lib/chio/receipts.db.authority-locks")
         );
     }
 

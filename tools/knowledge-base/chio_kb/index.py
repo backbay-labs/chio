@@ -29,8 +29,8 @@ DOC_TABLE_NAME = "doc_chunks"
 EMBED_MODEL = os.environ.get(
     "CHIO_KB_EMBED_MODEL", "text-embedding-3-small"
 )
-POSTGRES_URL = os.environ.get(
-    "POSTGRES_URL", "postgres://cocoindex:cocoindex@localhost:55432/chio_kb"
+POSTGRES_URL = os.environ.get("POSTGRES_URL") or os.environ.get("DATABASE_URL") or (
+    "postgres://cocoindex:cocoindex@localhost:55432/chio_kb"
 )
 REPO_ROOT = repo_model.repo_root_from_env()
 MAX_FILE_CHARS = int(os.environ.get("CHIO_KB_MAX_FILE_CHARS", "1000000"))

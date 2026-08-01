@@ -9,6 +9,13 @@ use std::sync::Mutex;
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
+use chio_fiscal::{
+    FiscalActivationHistory, FiscalAuthorityState, FiscalBootstrapState, FiscalCharterRegistry,
+    FiscalContinuitySnapshot, FiscalGenesisPolicy, FiscalResolver, FiscalRuntimeAdapter,
+    FiscalRuntimeAdapterRegistry, SignedFiscalCharter, SignedFiscalContinuityCheckpoint,
+    SignedFiscalRuntimeReadiness, VerifiedFiscalCharter, VerifiedFiscalContinuityCheckpoint,
+    VerifiedFiscalRuntimeReadiness, FISCAL_RUNTIME_ADAPTER_COUNT,
+};
 use chio_market::{
     quote_and_bind, BoundPolicy, ClaimDecision, ClaimDenialReason, ClaimEvidence,
     ClaimSettlementRequest, ClaimSettlementSink, InsuranceFlowError, PolicyStatus,
@@ -22,6 +29,67 @@ fn window() -> LookbackWindow {
 
 fn static_source(score: u32) -> StaticPremiumSource {
     StaticPremiumSource::new(PremiumInputs::new(Some(score), None, 1_000, "USD"))
+}
+
+fn with_fiscal<T>(run: impl FnOnce(&FiscalResolver<'_>) -> T) -> T {
+    let fixture = |name: &str| {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "../../../spec/schemas/chio-fiscal/v1/fixtures/{name}.positive.json"
+        ));
+        std::fs::read(path).expect("read fiscal fixture")
+    };
+    let policy: FiscalGenesisPolicy =
+        serde_json::from_slice(&fixture("genesis-policy")).expect("genesis policy");
+    let charter = VerifiedFiscalCharter::verify(
+        serde_json::from_slice::<SignedFiscalCharter>(&fixture("charter")).expect("charter"),
+    )
+    .expect("verified charter");
+    let charters = FiscalCharterRegistry::new(vec![charter.signed().clone()])
+        .expect("fiscal charter registry");
+    let registry = FiscalRuntimeAdapterRegistry::new(
+        "build-1".to_owned(),
+        "chio.fiscal.runtime.v1".to_owned(),
+        (0..FISCAL_RUNTIME_ADAPTER_COUNT)
+            .map(|index| {
+                FiscalRuntimeAdapter::new(format!("adapter-{index}"), format!("1.{index}"))
+                    .expect("runtime adapter")
+            })
+            .collect(),
+    )
+    .expect("runtime registry");
+    let readiness = VerifiedFiscalRuntimeReadiness::verify(
+        serde_json::from_slice::<SignedFiscalRuntimeReadiness>(&fixture("consumer-readiness"))
+            .expect("consumer readiness"),
+        &policy,
+        registry,
+    )
+    .expect("verified consumer readiness");
+    let checkpoint = VerifiedFiscalContinuityCheckpoint::verify(
+        serde_json::from_slice::<SignedFiscalContinuityCheckpoint>(&fixture(
+            "continuity-checkpoint",
+        ))
+        .expect("continuity checkpoint"),
+        &policy,
+        &charters,
+    )
+    .expect("verified continuity checkpoint");
+    let authority = FiscalAuthorityState::from_checkpoint(
+        &policy,
+        &checkpoint,
+        FiscalBootstrapState::CharterPinned,
+    )
+    .expect("fiscal authority state");
+    let history = FiscalActivationHistory::new(Vec::new()).expect("empty activation history");
+    run(&FiscalResolver {
+        continuity: FiscalContinuitySnapshot::Verified(&checkpoint),
+        policy: &policy,
+        readiness: &readiness,
+        activation_history: &history,
+        authority: &authority,
+        charters: &charters,
+        schedules: &[],
+        verify_at: checkpoint.body().trusted_clock_high_water,
+    })
 }
 
 struct InMemoryReceipts {
@@ -88,14 +156,17 @@ fn make_receipt(
 #[test]
 fn bind_then_file_claim_reaches_settlement_flow() {
     let keypair = Keypair::generate();
-    let policy: BoundPolicy = quote_and_bind(
-        "agent-clean",
-        "tool:exec",
-        window(),
-        &static_source(950),
-        1_000_600,
-        60 * 60 * 24 * 30,
-    )
+    let policy: BoundPolicy = with_fiscal(|resolver| {
+        quote_and_bind(
+            "agent-clean",
+            "tool:exec",
+            window(),
+            &static_source(950),
+            resolver,
+            1_000_600,
+            60 * 60 * 24 * 30,
+        )
+    })
     .expect("clean agent should receive a quote and bind");
     assert_eq!(policy.status, PolicyStatus::Active);
 
@@ -143,14 +214,17 @@ fn bind_then_file_claim_reaches_settlement_flow() {
 
 #[test]
 fn claim_without_receipts_is_denied_and_settlement_is_not_called() {
-    let policy = quote_and_bind(
-        "agent-clean",
-        "tool:exec",
-        window(),
-        &static_source(950),
-        1_000_600,
-        60 * 60 * 24 * 30,
-    )
+    let policy = with_fiscal(|resolver| {
+        quote_and_bind(
+            "agent-clean",
+            "tool:exec",
+            window(),
+            &static_source(950),
+            resolver,
+            1_000_600,
+            60 * 60 * 24 * 30,
+        )
+    })
     .expect("clean agent binds");
     let receipts = InMemoryReceipts {
         entries: BTreeMap::new(),
@@ -181,14 +255,17 @@ fn claim_without_receipts_is_denied_and_settlement_is_not_called() {
 
 #[test]
 fn denied_premium_prevents_binding() {
-    let err = quote_and_bind(
-        "agent-denials",
-        "tool:exec",
-        window(),
-        &static_source(300),
-        1_000_600,
-        60 * 60 * 24 * 30,
-    )
+    let err = with_fiscal(|resolver| {
+        quote_and_bind(
+            "agent-denials",
+            "tool:exec",
+            window(),
+            &static_source(300),
+            resolver,
+            1_000_600,
+            60 * 60 * 24 * 30,
+        )
+    })
     .expect_err("score below floor should produce a decline");
     assert!(matches!(err, InsuranceFlowError::PremiumDeclined(_)));
 }

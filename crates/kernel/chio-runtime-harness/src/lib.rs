@@ -24,6 +24,9 @@ use proof_assembly::{
 };
 use scenario::{normalize_runtime_loopback_steps, RuntimeLoopbackScenario};
 
+const RUNTIME_LOOPBACK_AUTHORITY_STORE_UUID: &str = "018bcfe5-6800-7000-8000-000000000001";
+const RUNTIME_LOOPBACK_AUTHORITY_LEASE_ID: &str = "018bcfe5-6800-7000-8000-000000000002";
+
 pub use evidence_io::runtime_loopback_capability_window;
 
 #[derive(Debug, thiserror::Error)]
@@ -125,8 +128,54 @@ fn run_runtime_loopback_scenario_with_static_baseline(
                 "Chio runtime loopback admission store open: {error}"
             ))
         })?;
+    let authority_path = store_dir.join("kernel-authority.sqlite3");
+    let authority_lock_root = store_dir.join("kernel-authority-locks");
+    fs::create_dir_all(&authority_lock_root).map_err(|error| {
+        RuntimeLoopbackError::message(format!(
+            "failed to create Chio runtime authority lock directory {}: {error}",
+            authority_lock_root.display()
+        ))
+    })?;
+    let authority = {
+        let _identity_scope = chio_store_sqlite::scope_fixed_authority_ids_for_current_thread(
+            RUNTIME_LOOPBACK_AUTHORITY_STORE_UUID,
+            [RUNTIME_LOOPBACK_AUTHORITY_LEASE_ID.to_string()],
+        )
+        .map_err(|error| {
+            RuntimeLoopbackError::message(format!(
+                "Chio runtime loopback authority identity: {error}"
+            ))
+        })?;
+        chio_store_sqlite::SqliteAuthorityStore::provision(&authority_path, &authority_lock_root)
+            .map_err(|error| {
+            RuntimeLoopbackError::message(format!(
+                "Chio runtime loopback authority provision: {error}"
+            ))
+        })?;
+        chio_store_sqlite::SqliteAuthorityStore::open_serving(&authority_path, &authority_lock_root)
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chio runtime loopback authority open: {error}"
+                ))
+            })?
+    };
+    let receipt_store = std::sync::Arc::new(
+        chio_store_sqlite::SqliteReceiptStore::open(store_dir.join("kernel-receipts.sqlite3"))
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chio runtime loopback receipt store open: {error}"
+                ))
+            })?,
+    );
 
-    let admission = execute_runtime_admission_loop(&steps, &store, now_unix_ms, out_dir)?;
+    let admission = execute_runtime_admission_loop(
+        &steps,
+        &store,
+        &authority,
+        &receipt_store,
+        now_unix_ms,
+        out_dir,
+    )?;
     assemble_runtime_loopback_outputs(
         &run_id,
         &steps,
@@ -141,7 +190,6 @@ fn run_runtime_loopback_scenario_with_static_baseline(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod tests {
     use super::{
         run_runtime_loopback_scenario, runtime_admission_report_sha256_for_workflow,
@@ -293,6 +341,14 @@ mod tests {
                 "localKernelId".to_string(),
                 serde_json::Value::String(host_kernel_ids[index].to_string()),
             );
+            profile.insert(
+                "issuedAtUnixMs".to_string(),
+                serde_json::Value::from(1_700_000_000_000_u64),
+            );
+            profile.insert(
+                "expiresAtUnixMs".to_string(),
+                serde_json::Value::from(1_900_000_000_000_u64),
+            );
         }
         let scenario_text = serde_json::to_string_pretty(&scenario).map_err(|error| {
             crate::RuntimeLoopbackError::message(format!(
@@ -387,11 +443,17 @@ mod tests {
         write_executable_scenario(&fixture_scenario, &scenario)?;
 
         let error =
-            run_runtime_loopback_scenario(&scenario, &store_dir, 1_800_000_001_000, &out_dir)
-                .expect_err("runtime package drift from static fixture must fail closed");
-        assert!(error
-            .to_string()
-            .contains("runtime_proof_semantic_parity_mismatch"));
+            match run_runtime_loopback_scenario(&scenario, &store_dir, 1_800_000_001_000, &out_dir)
+            {
+                Ok(_) => panic!("runtime package drift from static fixture must fail closed"),
+                Err(error) => error,
+            };
+        assert!(
+            error
+                .to_string()
+                .contains("runtime_proof_semantic_parity_mismatch"),
+            "{error}"
+        );
 
         assert_eq!(
             read_json(&out_dir.join("buyer-attestation-packet.json"))?
@@ -451,11 +513,17 @@ mod tests {
         write_executable_scenario(&fixture_scenario, &scenario)?;
 
         let error =
-            run_runtime_loopback_scenario(&scenario, &store_dir, 1_800_000_001_000, &out_dir)
-                .expect_err("runtime package drift from static fixture must fail closed");
-        assert!(error
-            .to_string()
-            .contains("runtime_proof_semantic_parity_mismatch"));
+            match run_runtime_loopback_scenario(&scenario, &store_dir, 1_800_000_001_000, &out_dir)
+            {
+                Ok(_) => panic!("runtime package drift from static fixture must fail closed"),
+                Err(error) => error,
+            };
+        assert!(
+            error
+                .to_string()
+                .contains("runtime_proof_semantic_parity_mismatch"),
+            "{error}"
+        );
 
         let parity_report = read_json(&out_dir.join("runtime-proof-parity-report.json"))?;
         assert_eq!(
@@ -498,6 +566,46 @@ mod tests {
                 root.display()
             ))
         })?;
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_loopback_proof_package_is_semantically_deterministic(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let root = temp_root("runtime-determinism")?;
+        std::fs::create_dir_all(&root).map_err(|error| {
+            crate::RuntimeLoopbackError::message(format!(
+                "failed to create runtime loopback temp root {}: {error}",
+                root.display()
+            ))
+        })?;
+        let fixture_scenario = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../examples/chio-3vendor/fixtures/runtime-spine/scenario.json");
+        let scenario = root.join("scenario.json");
+        write_executable_scenario(&fixture_scenario, &scenario)?;
+
+        for suffix in ["a", "b"] {
+            run_runtime_loopback_scenario(
+                &scenario,
+                &root.join(format!("store-{suffix}")),
+                1_766_000_001_000,
+                &root.join(format!("out-{suffix}")),
+            )?;
+        }
+
+        let mut first = read_json(&root.join("out-a/proof-package.json"))?;
+        let mut second = read_json(&root.join("out-b/proof-package.json"))?;
+        for package in [&mut first, &mut second] {
+            let proof_bytes = package
+                .pointer_mut("/selectiveDisclosureProof/proof_bytes_hex")
+                .ok_or_else(|| {
+                    crate::RuntimeLoopbackError::message(
+                        "runtime proof package omitted BBS proof bytes",
+                    )
+                })?;
+            *proof_bytes = serde_json::Value::Null;
+        }
+        assert_eq!(first, second);
         Ok(())
     }
 }

@@ -13,7 +13,7 @@ name = "chio_attest_verify"
 
 [dependencies]
 chio-core-types = { workspace = true }
-sigstore = { version = "0.13", default-features = false, features = [
+sigstore = { version = "0.14", default-features = false, features = [
     "cosign",
     "rustls-tls",
     "sigstore-trust-root",
@@ -33,7 +33,7 @@ pki-types = { version = "1.11", default-features = false, package = "rustls-pki-
 webpki = { version = "0.103", default-features = false, features = ["std", "aws-lc-rs"], package = "rustls-webpki" }
 const-oid = "0.9"
 sigstore_protobuf_specs = { version = "0.5", default-features = false }
-tough = "0.21"
+tough = "0.22"
 url = "2"
 fips204 = { workspace = true, optional = true }
 sev = { workspace = true, optional = true }

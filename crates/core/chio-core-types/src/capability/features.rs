@@ -18,6 +18,18 @@ pub const ACCEPTS_HYBRID_SIGNATURES: &str = "accepts_hybrid_signatures";
 /// Peers enforce delegation-chain binding for attenuated capability tokens.
 pub const DELEGATION_CHAIN_BINDING: &str = "delegation_chain_binding";
 
+/// Peers can verify and enforce aggregate invocation budgets.
+pub const AGGREGATE_INVOCATION_BUDGET: &str = "aggregate_invocation_budget";
+
+/// Peers can verify and enforce cumulative approval budgets.
+pub const CUMULATIVE_APPROVAL_BUDGET: &str = "cumulative_approval_budget";
+
+/// Peers can verify policy-bound threshold governed approval sets.
+pub const THRESHOLD_GOVERNED_APPROVALS: &str = "threshold_governed_approvals";
+
+/// Peers can verify protocol-owned active-response plan intents.
+pub const GOVERNED_ACTIVE_RESPONSE_PLAN: &str = "governed_active_response_plan";
+
 fn capabilities_schema() -> String {
     CHIO_CAPABILITIES_SCHEMA.to_string()
 }
@@ -69,6 +81,8 @@ impl CapabilityNegotiation {
         let mut features = BTreeMap::new();
         features.insert(ACCEPTS_ANCHOR_BATCH_V1.to_string(), true);
         features.insert(DELEGATION_CHAIN_BINDING.to_string(), true);
+        features.insert(THRESHOLD_GOVERNED_APPROVALS.to_string(), true);
+        features.insert(GOVERNED_ACTIVE_RESPONSE_PLAN.to_string(), true);
         Self {
             schema: CHIO_CAPABILITIES_SCHEMA.to_string(),
             features,

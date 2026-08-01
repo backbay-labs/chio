@@ -50,6 +50,11 @@ pub struct AgUiProxyConfig {
     #[serde(default)]
     pub capability_trust_roots: BTreeMap<String, ScopeHash>,
 
+    /// Signed direct-root tokens keyed by capability id for delegated
+    /// negotiated family features.
+    #[serde(default)]
+    pub capability_family_roots: BTreeMap<String, chio_core::capability::token::CapabilityToken>,
+
     /// Parent-budget snapshots used to seed sibling-sum enforcement for
     /// delegated restricted events.
     #[serde(default)]
@@ -105,6 +110,7 @@ impl Default for AgUiProxyConfig {
             revoked_capability_ids: Vec::new(),
             peer_capabilities: default_proxy_peer_capabilities(),
             capability_trust_roots: BTreeMap::new(),
+            capability_family_roots: BTreeMap::new(),
             parent_budget_snapshots: Vec::new(),
         }
     }

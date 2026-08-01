@@ -15,7 +15,7 @@ pub mod fuzz;
 use std::fmt;
 use std::str::FromStr;
 
-use chio_core::{crypto::SigningAlgorithm, PublicKey};
+use chio_core_types::{crypto::SigningAlgorithm, PublicKey};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -259,7 +259,7 @@ pub fn resolve_did_arc(value: &str, options: &ResolveOptions) -> Result<DidDocum
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_core::Keypair;
+    use chio_core_types::Keypair;
 
     fn fixed_did() -> DidChio {
         let seed = [7u8; 32];

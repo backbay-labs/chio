@@ -1,5 +1,11 @@
 // Mirror of API response shapes from the Chio receipt query and lineage endpoints.
 
+// Comptroller surface shapes are generated from the published JSON Schema; do not hand-mirror them.
+export type {
+  ChioComptrollerSurfaceReport,
+  ChioComptrollerSurfaceReport as ComptrollerSurfaceReport,
+} from './generated/comptroller-surface'
+
 export type DecisionKind = 'allow' | 'deny' | 'cancelled' | 'incomplete'
 
 export interface FinancialMetadata {

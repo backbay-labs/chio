@@ -469,7 +469,9 @@ Signed ChioReceipt
 ### 2.3 Metering and Accumulation
 
 ```
-Receipt Store (indexed by cost_currency, cost_charged)
+Receipt Store
+    |-- tenant index: tenant_id, cost_currency, cost_charged_be, seq
+    |-- global index: cost_currency, cost_charged_be, seq
     |
     |-- chio-metering: CostQuery by session/agent/tool/time-range
     |-- chio-metering: BillingExport for downstream invoicing

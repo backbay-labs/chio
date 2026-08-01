@@ -1,0 +1,30 @@
+kernel:
+  max_capability_ttl: 3600
+  delegation_depth_limit: 5
+  durable_admission_mode: monetary
+
+guards:
+  forbidden_path:
+    enabled: true
+  shell_command:
+    enabled: true
+  egress_allowlist:
+    enabled: true
+    allowed_domains:
+      - "*.github.com"
+      - "*.openai.com"
+      - "api.anthropic.com"
+      - "*.npmjs.org"
+      - "registry.npmjs.org"
+      - "pypi.org"
+      - "crates.io"
+  internal_network:
+    enabled: true
+
+capabilities:
+  default:
+    tools:
+      - server: "*"
+        tool: "*"
+        operations: [invoke]
+        ttl: 300

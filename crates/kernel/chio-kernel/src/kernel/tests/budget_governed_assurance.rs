@@ -1,5 +1,5 @@
 #[test]
-fn governed_monetary_denial_without_required_runtime_assurance_releases_budget() {
+fn governed_monetary_denial_without_required_runtime_assurance_consumes_no_budget() {
     let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
@@ -27,7 +27,6 @@ fn governed_monetary_denial_without_required_runtime_assurance_releases_budget()
         &intent,
         request_id,
     );
-
     let response = kernel
         .evaluate_tool_call_blocking(&ToolCallRequest {
             request_id: request_id.to_string(),
@@ -40,6 +39,9 @@ fn governed_monetary_denial_without_required_runtime_assurance_releases_budget()
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -60,13 +62,7 @@ fn governed_monetary_denial_without_required_runtime_assurance_releases_budget()
         .and_then(|metadata| metadata.get("financial"))
         .expect("deny receipt should carry financial metadata");
     assert_eq!(financial["budget_remaining"].as_u64(), Some(1000));
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
-    assert_eq!(usage.committed_cost_units().unwrap(), 0);
+    assert!(kernel.budget_store.get_usage(&cap.id, 0).unwrap().is_none());
 }
 
 #[test]
@@ -112,6 +108,9 @@ fn governed_request_denies_unverified_attestation_when_runtime_assurance_is_requ
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -167,6 +166,9 @@ fn governed_monetary_allow_omits_unverified_runtime_assurance_metadata_when_opti
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -206,30 +208,33 @@ fn governed_request_denies_conflicting_workload_identity_binding() {
         100,
         "USD",
     );
-    intent.runtime_attestation = Some(chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
-        schema: "chio.runtime-attestation.enterprise-verifier.json.v1".to_string(),
-        verifier: "https://attest.chio.example".to_string(),
-        tier: RuntimeAssuranceTier::Attested,
-        issued_at: current_unix_timestamp().saturating_sub(1),
-        expires_at: current_unix_timestamp() + 300,
-        evidence_sha256: "digest-invalid-workload".to_string(),
-        runtime_identity: Some("spiffe://chio/runtime/test".to_string()),
-        workload_identity: Some(chio_core::capability::workload_identity::WorkloadIdentity {
-            scheme: chio_core::capability::workload_identity::WorkloadIdentityScheme::Spiffe,
-            credential_kind: chio_core::capability::workload_identity::WorkloadCredentialKind::X509Svid,
-            uri: "spiffe://other/runtime/test".to_string(),
-            trust_domain: "other".to_string(),
-            path: "/runtime/test".to_string(),
-        }),
-        claims: Some(serde_json::json!({
-            "enterpriseVerifier": {
-                "attestationType": "enterprise_confidential_vm",
-                "hardwareModel": "AMD_SEV_SNP",
-                "secureBoot": "enabled",
-                "digest": "sha384:digest-invalid-workload"
-            }
-        })),
-    });
+    intent.runtime_attestation = Some(
+        chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
+            schema: "chio.runtime-attestation.enterprise-verifier.json.v1".to_string(),
+            verifier: "https://attest.chio.example".to_string(),
+            tier: RuntimeAssuranceTier::Attested,
+            issued_at: current_unix_timestamp().saturating_sub(1),
+            expires_at: current_unix_timestamp() + 300,
+            evidence_sha256: "digest-invalid-workload".to_string(),
+            runtime_identity: Some("spiffe://chio/runtime/test".to_string()),
+            workload_identity: Some(chio_core::capability::workload_identity::WorkloadIdentity {
+                scheme: chio_core::capability::workload_identity::WorkloadIdentityScheme::Spiffe,
+                credential_kind:
+                    chio_core::capability::workload_identity::WorkloadCredentialKind::X509Svid,
+                uri: "spiffe://other/runtime/test".to_string(),
+                trust_domain: "other".to_string(),
+                path: "/runtime/test".to_string(),
+            }),
+            claims: Some(serde_json::json!({
+                "enterpriseVerifier": {
+                    "attestationType": "enterprise_confidential_vm",
+                    "hardwareModel": "AMD_SEV_SNP",
+                    "secureBoot": "enabled",
+                    "digest": "sha384:digest-invalid-workload"
+                }
+            })),
+        },
+    );
     let approval_token = make_governed_approval_token(
         &kernel.config.keypair,
         &agent_kp.public_key(),
@@ -249,6 +254,9 @@ fn governed_request_denies_conflicting_workload_identity_binding() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -308,6 +316,9 @@ fn governed_monetary_allow_rebinds_trusted_attestation_to_verified() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -375,6 +386,9 @@ fn governed_request_denies_untrusted_attestation_when_trust_policy_is_configured
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -434,6 +448,9 @@ fn governed_monetary_allow_rebinds_google_attestation_to_verified() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -497,6 +514,9 @@ fn governed_monetary_allow_rebinds_nitro_attestation_to_verified() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -573,6 +593,9 @@ fn governed_request_denies_delegated_autonomy_without_bond_attachment() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -637,6 +660,9 @@ fn governed_request_denies_autonomous_tier_with_weak_runtime_assurance() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -718,6 +744,9 @@ fn governed_request_denies_delegated_autonomy_with_expired_bond() {
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -799,6 +828,9 @@ fn governed_request_allows_delegated_autonomy_with_active_bond_and_receipt_metad
             execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -817,7 +849,7 @@ fn governed_request_allows_delegated_autonomy_with_active_bond_and_receipt_metad
 }
 
 #[test]
-fn governed_monetary_denial_without_approval_releases_budget_and_records_intent() {
+fn governed_monetary_denial_without_approval_consumes_no_budget_and_records_intent() {
     let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
@@ -848,6 +880,9 @@ fn governed_monetary_denial_without_approval_releases_budget_and_records_intent(
             execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -881,14 +916,7 @@ fn governed_monetary_denial_without_approval_releases_budget_and_records_intent(
     assert_eq!(financial["budget_remaining"].as_u64(), Some(1000));
     assert_eq!(financial["settlement_status"], "not_applicable");
 
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
-    assert_eq!(usage.invocation_count, 0);
-    assert_eq!(usage.committed_cost_units().unwrap(), 0);
+    assert!(kernel.budget_store.get_usage(&cap.id, 0).unwrap().is_none());
 }
 
 #[test]
@@ -936,6 +964,9 @@ fn governed_monetary_incomplete_receipt_keeps_financial_and_governed_metadata() 
             execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -998,7 +1029,7 @@ fn governed_x402_prepaid_flow_records_governed_authorization_and_receipt_metadat
         X402PaymentAdapter::new(url)
             .with_bearer_token("bridge-token")
             .with_timeout(Duration::from_secs(2)),
-    )).expect("install payment adapter");
+    ));
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
         invocations: invocations.clone(),
@@ -1025,6 +1056,9 @@ fn governed_x402_prepaid_flow_records_governed_authorization_and_receipt_metadat
         &intent,
         request_id,
     );
+    let expected_approval_digest = approval_token
+        .artifact_digest()
+        .expect("approval token should hash");
 
     let response = kernel
         .evaluate_tool_call_blocking(&ToolCallRequest {
@@ -1038,6 +1072,9 @@ fn governed_x402_prepaid_flow_records_governed_authorization_and_receipt_metadat
             execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token.clone()),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1088,6 +1125,10 @@ fn governed_x402_prepaid_flow_records_governed_authorization_and_receipt_metadat
         .expect("allow receipt should carry governed transaction metadata");
     assert_eq!(governed["intent_id"], intent.id);
     assert_eq!(governed["approval"]["token_id"], approval_token.id);
+    assert_eq!(
+        governed["approval"]["approval_artifact_digest"],
+        expected_approval_digest
+    );
 
     handle.join().expect("server thread should exit cleanly");
 }
@@ -1105,7 +1146,7 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
     let mut kernel = make_kernel(make_monetary_config());
     kernel.set_payment_adapter(Box::new(
         X402PaymentAdapter::new(url).with_timeout(Duration::from_secs(2)),
-    )).expect("install payment adapter");
+    ));
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
         invocations: invocations.clone(),
@@ -1145,6 +1186,9 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
             execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1185,12 +1229,7 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
         .expect("deny receipt should carry governed transaction metadata");
     assert_eq!(governed["intent_id"], intent.id);
 
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.invocation_count, 0);
     assert_eq!(usage.committed_cost_units().unwrap(), 0);
 
@@ -1218,7 +1257,7 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
             .with_authorize_path("/commerce/authorize")
             .with_bearer_token("acp-token")
             .with_timeout(Duration::from_secs(2)),
-    )).expect("install payment adapter");
+    ));
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "commerce-srv".to_string(),
         invocations: invocations.clone(),
@@ -1246,6 +1285,7 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
         purpose: "purchase seller-bound result",
         seller: "merchant.example",
         shared_payment_token_id: "spt_live_governed",
+        settlement_destination_ref: Some("acct:merchant-primary"),
         units: 100,
         currency: "USD",
     });
@@ -1268,6 +1308,9 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
             execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token.clone()),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1284,8 +1327,25 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
     assert!(request.starts_with("POST /commerce/authorize HTTP/1.1"));
     assert!(request.contains("Authorization: Bearer acp-token"));
     assert!(request.contains("\"commerce\":{"));
+    assert!(request.contains("\"payee\":\"merchant.example\""));
     assert!(request.contains("\"seller\":\"merchant.example\""));
     assert!(request.contains("\"sharedPaymentTokenId\":\"spt_live_governed\""));
+    assert!(request.contains("\"settlementDestinationRef\":\"acct:merchant-primary\""));
+    let expected_payee_binding_digest =
+        chio_credit::obligation::derive_obligation_payee_binding_digest(
+            "merchant.example",
+            "acct:merchant-primary",
+        )
+        .expect("payee binding should hash");
+    let expected_approval_digest = approval_token
+        .artifact_digest()
+        .expect("approval token should hash");
+    assert!(request.contains(&format!(
+        "\"payeeBindingDigest\":\"{expected_payee_binding_digest}\""
+    )));
+    assert!(request.contains(&format!(
+        "\"preActionAuthorityDigest\":\"{expected_approval_digest}\""
+    )));
 
     let metadata = response
         .receipt
@@ -1320,6 +1380,34 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
         "spt_live_governed"
     );
     assert_eq!(governed["approval"]["token_id"], approval_token.id);
+    assert_eq!(
+        governed["commerce"]["settlement_destination_ref"],
+        "acct:merchant-primary"
+    );
+    assert_eq!(
+        governed["economic_authorization"]["economic_intent_digest"],
+        intent.binding_hash().expect("intent should hash")
+    );
+    assert_eq!(
+        governed["economic_authorization"]["payee_binding_digest"],
+        expected_payee_binding_digest
+    );
+    assert_eq!(
+        governed["economic_authorization"]["pre_action_authority_digest"],
+        expected_approval_digest
+    );
+    assert_eq!(
+        governed["economic_authorization"]["payee"]["beneficiary_id"],
+        "merchant.example"
+    );
+    assert_eq!(
+        governed["economic_authorization"]["payee"]["settlement_destination_ref"],
+        "acct:merchant-primary"
+    );
+    assert_ne!(
+        governed["economic_authorization"]["payee"]["settlement_destination_ref"],
+        financial["payment_reference"]
+    );
 
     handle.join().expect("server thread should exit cleanly");
 }
@@ -1330,7 +1418,7 @@ fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
     let mut kernel = make_kernel(make_monetary_config());
     kernel.set_payment_adapter(Box::new(
         AcpPaymentAdapter::new("http://127.0.0.1:1").with_timeout(Duration::from_millis(50)),
-    )).expect("install payment adapter");
+    ));
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "commerce-srv".to_string(),
         invocations: invocations.clone(),
@@ -1358,6 +1446,7 @@ fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
         purpose: "attempt purchase for wrong seller",
         seller: "wrong-merchant.example",
         shared_payment_token_id: "spt_live_wrong",
+        settlement_destination_ref: Some("acct:wrong-merchant"),
         units: 100,
         currency: "USD",
     });
@@ -1380,6 +1469,9 @@ fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
             execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1417,12 +1509,103 @@ fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
     assert_eq!(governed["intent_id"], intent.id);
     assert_eq!(governed["commerce"]["seller"], "wrong-merchant.example");
 
-    let usage = kernel
+    assert!(kernel.budget_store.get_usage(&cap.id, 0).unwrap().is_none());
+}
 
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
-    assert_eq!(usage.invocation_count, 0);
-    assert_eq!(usage.committed_cost_units().unwrap(), 0);
+#[test]
+fn governed_acp_value_requires_signed_destination_authority() {
+    for (request_id, destination, approval_threshold, include_approval, expected_reason) in [
+        (
+            "req-governed-acp-missing-destination",
+            None,
+            50,
+            true,
+            "settlement destination",
+        ),
+        (
+            "req-governed-acp-missing-approval",
+            Some("acct:merchant-primary"),
+            1_000,
+            false,
+            "approval token required",
+        ),
+    ] {
+        let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut kernel = make_kernel(make_monetary_config());
+        kernel.set_payment_adapter(Box::new(
+            AcpPaymentAdapter::new("http://127.0.0.1:1").with_timeout(Duration::from_millis(50)),
+        ));
+        kernel.register_tool_server(Box::new(CountingMonetaryServer {
+            id: "commerce-srv".to_string(),
+            invocations: invocations.clone(),
+        }));
+
+        let agent_kp = Keypair::generate();
+        let grant = make_governed_acp_monetary_grant(
+            "commerce-srv",
+            "compute",
+            "merchant.example",
+            100,
+            1000,
+            "USD",
+            approval_threshold,
+        );
+        let cap = kernel
+            .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+            .unwrap();
+        let intent = make_governed_acp_intent(GovernedAcpIntentFixture {
+            id: request_id,
+            server: "commerce-srv",
+            tool: "compute",
+            purpose: "purchase seller-bound result",
+            seller: "merchant.example",
+            shared_payment_token_id: "spt_live_governed",
+            settlement_destination_ref: destination,
+            units: 100,
+            currency: "USD",
+        });
+        let approval_token = include_approval.then(|| {
+            make_governed_approval_token(
+                &kernel.config.keypair,
+                &agent_kp.public_key(),
+                &intent,
+                request_id,
+            )
+        });
+
+        let response = kernel
+            .evaluate_tool_call_blocking(&ToolCallRequest {
+                request_id: request_id.to_string(),
+                capability: cap,
+                tool_name: "compute".to_string(),
+                server_id: "commerce-srv".to_string(),
+                agent_id: agent_kp.public_key().to_hex(),
+                arguments: serde_json::json!({ "sku": "merchant-result-pro" }),
+                dpop_proof: None,
+                execution_nonce: None,
+                governed_intent: Some(intent),
+                approval_token,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
+                model_metadata: None,
+                federated_origin_kernel_id: None,
+            })
+            .unwrap();
+
+        assert_eq!(response.verdict, Verdict::Deny);
+        assert!(
+            response
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains(expected_reason)),
+            "unexpected denial reason: {:?}",
+            response.reason
+        );
+        assert_eq!(
+            invocations.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "tool should not run without signed destination authority"
+        );
+    }
 }

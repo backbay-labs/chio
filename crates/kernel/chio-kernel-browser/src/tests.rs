@@ -1,15 +1,18 @@
 use super::*;
+use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use chio_core_types::capability::{
     attenuation::{
-        compute_attenuation_witness, scope_hash, AttenuationProof, DelegationLink,
+        compute_attenuation_witness, delegate, scope_hash, AttenuationProof, DelegationLink,
         DelegationLinkBody, ScopeHash,
     },
-    scope::{ChioScope, Operation, ToolGrant},
+    features::{CapabilityNegotiation, AGGREGATE_INVOCATION_BUDGET, CUMULATIVE_APPROVAL_BUDGET},
+    scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
+use chio_core_types::delegation_receipt::ScopeAttenuation;
 use chio_core_types::receipt::{
     body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::BoundaryClass,
     kinds::ReceiptKind, kinds::RedactionMode, kinds::ToolOrigin, kinds::TrustLevel,
@@ -18,6 +21,8 @@ use chio_kernel_core::FixedClock;
 
 const ISSUED_AT: u64 = 1_700_000_000;
 const EXPIRES_AT: u64 = 1_700_100_000;
+
+type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 fn make_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
     CapabilityToken::sign(make_capability_body("cap-1", subject, issuer), issuer).unwrap()
@@ -39,6 +44,8 @@ fn make_delegated_capability(
             attenuations: std::vec![],
             timestamp: ISSUED_AT,
             scope_hash: Some(parent_scope_hash.clone()),
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         issuer,
     )
@@ -111,6 +118,127 @@ fn make_capability_body(id: &str, subject: &Keypair, issuer: &Keypair) -> Capabi
         issued_at: ISSUED_AT,
         expires_at: EXPIRES_AT,
         delegation_chain: std::vec![],
+        aggregate_invocation_budget: None,
+    }
+}
+
+fn aggregate_peer() -> CapabilityNegotiation {
+    let mut peer = CapabilityNegotiation::v1_default();
+    peer.features
+        .insert(AGGREGATE_INVOCATION_BUDGET.to_string(), true);
+    peer
+}
+
+fn cumulative_peer() -> CapabilityNegotiation {
+    let mut peer = CapabilityNegotiation::v1_default();
+    peer.features
+        .insert(CUMULATIVE_APPROVAL_BUDGET.to_string(), true);
+    peer
+}
+
+fn aggregate_family_fixture() -> TestResult<(
+    Keypair,
+    Keypair,
+    CapabilityToken,
+    CapabilityToken,
+    CapabilityToken,
+)> {
+    let issuer = Keypair::generate();
+    let root_subject = Keypair::generate();
+    let delegatee = Keypair::generate();
+    let mut root_body = make_capability_body("cap-aggregate-root", &root_subject, &issuer);
+    root_body
+        .scope
+        .grants
+        .first_mut()
+        .ok_or_else(|| std::io::Error::other("aggregate root grant missing"))?
+        .operations
+        .push(Operation::Delegate);
+    let root = CapabilityToken::sign_aggregate_family_root(root_body.clone(), 4, &issuer)?;
+    let child_body = make_capability_body("cap-aggregate-child", &delegatee, &issuer);
+    let receipt = delegate(
+        &root,
+        &child_body.scope,
+        &root_subject,
+        &delegatee.public_key(),
+        ScopeAttenuation::empty(),
+        ISSUED_AT + 1,
+        [7_u8; 16],
+    )?;
+    let mut child_body = child_body;
+    child_body.issued_at = ISSUED_AT + 1;
+    child_body.delegation_chain = receipt.complete_chain();
+    child_body.aggregate_invocation_budget = root.aggregate_invocation_budget.clone();
+    let child = CapabilityToken::sign(child_body, &issuer)?;
+
+    root_body.id = "cap-aggregate-wrong-root".to_string();
+    root_body.subject = Keypair::generate().public_key();
+    let wrong_root = CapabilityToken::sign_aggregate_family_root(root_body, 4, &issuer)?;
+    Ok((issuer, delegatee, root, child, wrong_root))
+}
+
+fn cumulative_family_fixture(
+) -> TestResult<(Keypair, CapabilityToken, CapabilityToken, CapabilityToken)> {
+    let issuer = Keypair::generate();
+    let root_subject = Keypair::generate();
+    let delegatee = Keypair::generate();
+    let mut root_body = make_capability_body("cap-cumulative-root", &root_subject, &issuer);
+    let root_grant = root_body
+        .scope
+        .grants
+        .first_mut()
+        .ok_or_else(|| std::io::Error::other("cumulative root grant missing"))?;
+    root_grant.operations.push(Operation::Delegate);
+    root_grant
+        .constraints
+        .push(cumulative_constraint(100, None));
+    let root = CapabilityToken::sign_cumulative_approval_family_root(root_body.clone(), &issuer)?;
+    let binding = root
+        .scope
+        .grants
+        .first()
+        .and_then(|grant| grant.constraints.first())
+        .and_then(Constraint::cumulative_approval_root_binding)
+        .cloned()
+        .ok_or_else(|| std::io::Error::other("cumulative root binding missing"))?;
+
+    let mut child_body = make_capability_body("cap-cumulative-child", &delegatee, &issuer);
+    child_body.scope.grants[0]
+        .constraints
+        .push(cumulative_constraint(80, Some(binding)));
+    let receipt = delegate(
+        &root,
+        &child_body.scope,
+        &root_subject,
+        &delegatee.public_key(),
+        ScopeAttenuation::empty(),
+        ISSUED_AT + 1,
+        [8_u8; 16],
+    )?;
+    child_body.issued_at = ISSUED_AT + 1;
+    child_body.delegation_chain = receipt.complete_chain();
+    let child = CapabilityToken::sign(child_body, &issuer)?;
+
+    root_body.id = "cap-cumulative-wrong-root".to_string();
+    root_body.subject = Keypair::generate().public_key();
+    let wrong_root = CapabilityToken::sign_cumulative_approval_family_root(root_body, &issuer)?;
+    Ok((issuer, root, child, wrong_root))
+}
+
+fn cumulative_constraint(
+    threshold_units: u64,
+    root_binding: Option<
+        chio_core_types::capability::cumulative_approval::CumulativeApprovalRootBinding,
+    >,
+) -> Constraint {
+    Constraint::RequireCumulativeApprovalAbove {
+        threshold: MonetaryAmount {
+            units: threshold_units,
+            currency: "USD".to_string(),
+        },
+        approval_budget_id: "budget-1".to_string(),
+        approval_budget_epoch: 1,
+        cumulative_approval_root_binding: root_binding.map(Box::new),
     }
 }
 
@@ -142,6 +270,11 @@ fn make_request_json(subject: &Keypair) -> ToolCallRequestJson {
         server_id: "srv-a".to_string(),
         agent_id: subject.public_key().to_hex(),
         arguments: serde_json::json!({"msg": "hello"}),
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: std::vec::Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
     }
 }
 
@@ -159,6 +292,7 @@ fn evaluate_pure_allow_path() {
         clock_override_unix_secs: Some(ISSUED_AT + 1),
         session_filesystem_roots: None,
         peer_capabilities: None,
+        direct_root_capability: None,
         capability_trust_roots: BTreeMap::new(),
         parent_budget_snapshots: std::vec![],
     };
@@ -182,6 +316,33 @@ fn evaluate_pure_allow_path() {
 }
 
 #[test]
+fn evaluate_pure_rejects_unsupported_authorization_extensions() {
+    let subject = Keypair::generate();
+    let issuer = Keypair::generate();
+    let capability = make_capability(&subject, &issuer);
+    let mut request = make_request_json(&subject);
+    request.supplemental_authorization = Some(serde_json::json!({
+        "signed_extension": "b3BhcXVl"
+    }));
+    let input = EvaluateRequestJson {
+        request,
+        capability,
+        trusted_issuers_hex: std::vec![issuer.public_key().to_hex()],
+        clock_override_unix_secs: Some(ISSUED_AT + 1),
+        session_filesystem_roots: None,
+        peer_capabilities: None,
+        direct_root_capability: None,
+        capability_trust_roots: BTreeMap::new(),
+        parent_budget_snapshots: std::vec![],
+    };
+
+    let error = evaluate_pure(input, &FixedClock::new(ISSUED_AT + 1))
+        .expect_err("unsupported authorization extension must fail closed");
+
+    assert_eq!(error.code, "unsupported_authorization_extension");
+}
+
+#[test]
 fn evaluate_pure_deny_on_expired_capability() {
     let subject = Keypair::generate();
     let issuer = Keypair::generate();
@@ -195,6 +356,7 @@ fn evaluate_pure_deny_on_expired_capability() {
         clock_override_unix_secs: Some(EXPIRES_AT + 1),
         session_filesystem_roots: None,
         peer_capabilities: None,
+        direct_root_capability: None,
         capability_trust_roots: BTreeMap::new(),
         parent_budget_snapshots: std::vec![],
     };
@@ -223,6 +385,7 @@ fn evaluate_pure_v2_without_trust_root_fails_closed() {
         clock_override_unix_secs: Some(ISSUED_AT + 1),
         session_filesystem_roots: None,
         peer_capabilities: None,
+        direct_root_capability: None,
         capability_trust_roots: BTreeMap::new(),
         parent_budget_snapshots: std::vec![],
     };
@@ -252,6 +415,7 @@ fn evaluate_pure_allows_delegated_token_with_parent_budget_snapshot() {
         clock_override_unix_secs: Some(ISSUED_AT + 1),
         session_filesystem_roots: None,
         peer_capabilities: None,
+        direct_root_capability: None,
         capability_trust_roots,
         parent_budget_snapshots: std::vec![parent_budget_snapshot("cap-parent")],
     };
@@ -280,6 +444,7 @@ fn evaluate_pure_rejects_oversubscribed_delegated_sibling() {
         clock_override_unix_secs: Some(ISSUED_AT + 1),
         session_filesystem_roots: None,
         peer_capabilities: None,
+        direct_root_capability: None,
         capability_trust_roots,
         parent_budget_snapshots: std::vec![oversubscribed_budget_snapshot("cap-parent")],
     };
@@ -307,6 +472,7 @@ fn verify_capability_pure_untrusted() {
         trusted_issuers_hex: std::vec![other.public_key().to_hex()],
         clock_override_unix_secs: Some(ISSUED_AT + 1),
         peer_capabilities: None,
+        direct_root_capability: None,
         capability_trust_roots: BTreeMap::new(),
         parent_budget_snapshots: std::vec![],
     };
@@ -329,6 +495,7 @@ fn verify_capability_pure_allows_delegated_token_with_parent_budget_snapshot() {
         trusted_issuers_hex: std::vec![issuer.public_key().to_hex()],
         clock_override_unix_secs: Some(ISSUED_AT + 1),
         peer_capabilities: None,
+        direct_root_capability: None,
         capability_trust_roots,
         parent_budget_snapshots: std::vec![parent_budget_snapshot("cap-parent")],
     };
@@ -351,6 +518,7 @@ fn verify_capability_pure_rejects_oversubscribed_delegated_sibling() {
         trusted_issuers_hex: std::vec![issuer.public_key().to_hex()],
         clock_override_unix_secs: Some(ISSUED_AT + 1),
         peer_capabilities: None,
+        direct_root_capability: None,
         capability_trust_roots,
         parent_budget_snapshots: std::vec![oversubscribed_budget_snapshot("cap-parent")],
     };
@@ -361,6 +529,160 @@ fn verify_capability_pure_rejects_oversubscribed_delegated_sibling() {
 
     assert_eq!(err.code, "capability_verification_failed");
     assert!(err.message.contains("sibling-sum budget split"));
+}
+
+#[test]
+fn negotiated_aggregate_family_requires_matching_root_and_evaluation_denies() -> TestResult {
+    let (issuer, subject, root, child, wrong_root) = aggregate_family_fixture()?;
+    let clock = FixedClock::new(ISSUED_AT + 2);
+    let verify_input = |direct_root_capability| VerifyCapabilityRequestJson {
+        token: child.clone(),
+        trusted_issuers_hex: std::vec![issuer.public_key().to_hex()],
+        clock_override_unix_secs: Some(ISSUED_AT + 2),
+        peer_capabilities: Some(aggregate_peer()),
+        direct_root_capability,
+        capability_trust_roots: BTreeMap::new(),
+        parent_budget_snapshots: std::vec![parent_budget_snapshot(&root.id)],
+    };
+
+    let verified = verify_capability_pure(verify_input(Some(root.clone())), &clock)
+        .map_err(|error| std::io::Error::other(error.message))?;
+    assert_eq!(verified.id, child.id);
+
+    let missing = match verify_capability_pure(verify_input(None), &clock) {
+        Err(error) => error,
+        Ok(_) => {
+            return Err(std::io::Error::other(
+                "delegated aggregate budget accepted without its direct root",
+            )
+            .into());
+        }
+    };
+    assert!(missing.message.contains("direct-root"));
+
+    let mismatch = match verify_capability_pure(verify_input(Some(wrong_root)), &clock) {
+        Err(error) => error,
+        Ok(_) => {
+            return Err(std::io::Error::other(
+                "delegated aggregate budget accepted the wrong root",
+            )
+            .into());
+        }
+    };
+    assert!(mismatch
+        .message
+        .contains("does not originate from the authenticated root"));
+
+    let verdict = evaluate_pure(
+        EvaluateRequestJson {
+            request: make_request_json(&subject),
+            capability: child,
+            trusted_issuers_hex: std::vec![issuer.public_key().to_hex()],
+            clock_override_unix_secs: Some(ISSUED_AT + 2),
+            session_filesystem_roots: None,
+            peer_capabilities: Some(aggregate_peer()),
+            direct_root_capability: Some(root.clone()),
+            capability_trust_roots: BTreeMap::new(),
+            parent_budget_snapshots: std::vec![parent_budget_snapshot(&root.id)],
+        },
+        &clock,
+    )
+    .map_err(|error| std::io::Error::other(error.message))?;
+    assert_eq!(verdict.verdict, "deny");
+    assert!(
+        verdict
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains(
+                "capability feature unsupported on this runtime: aggregate invocation enforcement"
+            )),
+        "unexpected aggregate denial: {:?}",
+        verdict.reason
+    );
+    Ok(())
+}
+
+#[test]
+fn negotiated_cumulative_family_requires_matching_root_in_verify_and_evaluate() -> TestResult {
+    let (issuer, root, child, wrong_root) = cumulative_family_fixture()?;
+    let clock = FixedClock::new(ISSUED_AT + 2);
+    let verify_input = |direct_root_capability| VerifyCapabilityRequestJson {
+        token: child.clone(),
+        trusted_issuers_hex: std::vec![issuer.public_key().to_hex()],
+        clock_override_unix_secs: Some(ISSUED_AT + 2),
+        peer_capabilities: Some(cumulative_peer()),
+        direct_root_capability,
+        capability_trust_roots: BTreeMap::new(),
+        parent_budget_snapshots: std::vec![parent_budget_snapshot(&root.id)],
+    };
+
+    let verified = verify_capability_pure(verify_input(Some(root.clone())), &clock)
+        .map_err(|error| std::io::Error::other(error.message))?;
+    assert_eq!(verified.id, child.id);
+
+    for (supplied_root, expected) in [
+        (None, "direct-root"),
+        (
+            Some(wrong_root.clone()),
+            "does not originate from the authenticated root",
+        ),
+    ] {
+        let error = match verify_capability_pure(verify_input(supplied_root), &clock) {
+            Err(error) => error,
+            Ok(_) => {
+                return Err(std::io::Error::other(
+                    "delegated cumulative approval accepted invalid root evidence",
+                )
+                .into());
+            }
+        };
+        assert!(error.message.contains(expected), "{}", error.message);
+    }
+
+    for (name, supplied_root, expected) in [
+        (
+            "valid",
+            Some(root.clone()),
+            "capability feature unsupported on this runtime: cumulative approval enforcement",
+        ),
+        ("missing", None, "direct-root"),
+        (
+            "mismatched",
+            Some(wrong_root),
+            "does not originate from the authenticated root",
+        ),
+    ] {
+        let verdict = evaluate_pure(
+            EvaluateRequestJson {
+                request: ToolCallRequestJson {
+                    request_id: std::format!("req-cumulative-{name}"),
+                    tool_name: "echo".to_string(),
+                    server_id: "srv-a".to_string(),
+                    agent_id: child.subject.to_hex(),
+                    arguments: serde_json::json!({"msg": "hello"}),
+                    governed_intent: None,
+                    approval_token: None,
+                    approval_tokens: std::vec::Vec::new(),
+                    threshold_approval_proposal: None,
+                    supplemental_authorization: None,
+                },
+                capability: child.clone(),
+                trusted_issuers_hex: std::vec![issuer.public_key().to_hex()],
+                clock_override_unix_secs: Some(ISSUED_AT + 2),
+                session_filesystem_roots: None,
+                peer_capabilities: Some(cumulative_peer()),
+                direct_root_capability: supplied_root,
+                capability_trust_roots: BTreeMap::new(),
+                parent_budget_snapshots: std::vec![parent_budget_snapshot(&root.id)],
+            },
+            &clock,
+        )
+        .map_err(|error| std::io::Error::other(error.message))?;
+        assert_eq!(verdict.verdict, "deny", "{name}");
+        let reason = verdict.reason.as_deref().unwrap_or_default();
+        assert!(reason.contains(expected), "{name}: {reason}");
+    }
+    Ok(())
 }
 
 #[test]

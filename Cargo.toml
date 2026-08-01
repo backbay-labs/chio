@@ -61,6 +61,8 @@ members = [
     "crates/economy/chio-appraisal",
     "crates/economy/chio-autonomy",
     "crates/economy/chio-credit",
+    "crates/economy/chio-fincred",
+    "crates/economy/chio-fiscal",
     "crates/economy/chio-link",
     "crates/economy/chio-listing",
     "crates/economy/chio-market",
@@ -291,6 +293,8 @@ miette = { version = "7.6.0", features = ["fancy"] }
 chrono = "0.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 fips204 = { version = "0.4.6", default-features = false, features = ["ml-dsa-65"] }
+frost-ed25519 = { version = "3.0.0", default-features = false, features = ["serialization"] }
+frost-core = { version = "3.0.0", default-features = false, features = ["serialization"] }
 sev = { version = "7.1.0", default-features = false, features = ["snp", "crypto_nossl"] }
 coset = { version = "0.4.2", default-features = false }
 x509-parser = "0.16"
@@ -378,6 +382,8 @@ chio-core = { path = "crates/core/chio-core" }
 chio-core-types = { path = "crates/core/chio-core-types" }
 chio-credentials = { path = "crates/trust/chio-credentials" }
 chio-credit = { path = "crates/economy/chio-credit" }
+chio-fincred = { path = "crates/economy/chio-fincred" }
+chio-fiscal = { path = "crates/economy/chio-fiscal" }
 chio-cross-protocol = { path = "crates/protocol/chio-cross-protocol" }
 # `default-features = false` at the workspace root so consumers can opt out of
 # the `default = ["passkey", "sqlite-store"]` graph (e.g. mobile staticlib and

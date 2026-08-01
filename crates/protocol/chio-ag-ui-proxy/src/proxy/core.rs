@@ -6,8 +6,8 @@ use chio_core::capability::{
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_kernel_core::scope::{resolve_capability_grants, ScopeMatchError};
 use chio_kernel_core::{
-    verify_capability_full, BudgetRegistry, BudgetSplitError, InMemoryBudgetRegistry,
-    NoopBudgetRegistry, MAX_BUDGET_SHARE_BPS,
+    verify_capability_full_with_root, BudgetRegistry, BudgetSplitError, CapabilityFeatureContext,
+    InMemoryBudgetRegistry, NoopBudgetRegistry, MAX_BUDGET_SHARE_BPS,
 };
 use tracing::{debug, warn};
 
@@ -180,14 +180,15 @@ impl AgUiProxy {
         event: &AgUiEvent,
         capability: &CapabilityToken,
     ) -> ProxyDecision {
-        if self
-            .config
-            .revoked_capability_ids
-            .iter()
-            .any(|revoked_id| revoked_id == &capability.id)
+        let revoked = &self.config.revoked_capability_ids;
+        if revoked.contains(&capability.id)
+            || capability
+                .delegation_chain
+                .iter()
+                .any(|link| revoked.contains(&link.capability_id))
         {
             return ProxyDecision::Block {
-                reason: "capability has been revoked".to_string(),
+                reason: "capability or delegation ancestor has been revoked".to_string(),
             };
         }
 
@@ -199,12 +200,19 @@ impl AgUiProxy {
             trust_roots.get(&issuer.to_hex()).cloned()
         };
         let mut verify_only_budgets = NoopBudgetRegistry;
-        if let Err(error) = verify_capability_full(
+        let direct_root = capability
+            .delegation_chain
+            .first()
+            .and_then(|link| self.config.capability_family_roots.get(&link.capability_id));
+        if let Err(error) = verify_capability_full_with_root(
             capability,
             &self.config.trusted_issuers,
             &clock,
             CapabilityCryptoFloor::AllowClassical,
-            &self.config.peer_capabilities,
+            CapabilityFeatureContext {
+                peer: &self.config.peer_capabilities,
+                direct_root,
+            },
             &trust_resolver,
             &mut verify_only_budgets,
         ) {
@@ -213,6 +221,16 @@ impl AgUiProxy {
                     "capability verification failed: {}",
                     capability_error_message(&error)
                 ),
+            };
+        }
+        if capability.aggregate_invocation_budget.is_some() {
+            return ProxyDecision::Block {
+                reason: "aggregate invocation enforcement is unavailable".to_string(),
+            };
+        }
+        if capability.scope.has_cumulative_approval() {
+            return ProxyDecision::Block {
+                reason: "cumulative approval enforcement is unavailable".to_string(),
             };
         }
 

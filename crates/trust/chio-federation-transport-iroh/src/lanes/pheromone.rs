@@ -1630,12 +1630,9 @@ mod tests {
         // verdict instead of re-running the receiver (which would re-enter the runtime
         // replay window and reject the already-accepted deposits).
         //
-        // This asserts the store-level premise only. The end-to-end Some-branch of the
-        // re-read (winning, then finding a recorded verdict) cannot be exercised in this
-        // crate: seeding a durable verdict needs `record_inbox(.., &PheromoneReceiveReport)`
-        // and chio-pheromone-runtime is not a (dev-)dependency here, so that report type is
-        // not nameable (the same limitation the loopback-QUIC tests document). The recorded-
-        // verdict short-circuit itself is covered by chio-pheromone-relay's store tests.
+        // This isolates the store-level premise. The end-to-end winner-path re-read and
+        // durable verdict adoption are covered by
+        // `winner_path_adopts_durable_verdict_after_commit_before_mark_crash` below.
         let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
         let nonce = "iroh-pheromone-batch:win-after-release";
         // Winner: reserve -> commit -> release, exactly as handle()'s record-Ok path does.
@@ -2521,19 +2518,10 @@ mod tests {
 
     // -- Driving the REAL per-frame verifier over loopback QUIC --
     //
-    // The `CannedReportHandler` above proves the wire path and the accept-time
-    // gate, but (like a stub) it never runs the verifier. Wiring the actual
-    // `PheromoneBatchHandler` is not possible here without a Cargo.toml change:
-    // `RelayBatchReceiver::receive_batch` returns
-    // `chio_pheromone_runtime::PheromoneReceiveReport`, and chio-pheromone-runtime
-    // is neither a (dev-)dependency of this crate nor re-exported by any current
-    // dependency, so no `RelayBatchReceiver` double (real OR recording) can even
-    // name its return type. So instead this handler resolves the sender through
-    // the REAL admission gate (exactly as `PheromoneBatchHandler::handle` does)
-    // and feeds that gate-resolved kernel_id - never an attacker value - into the
-    // REAL `verify_pheromone_gossip_batch` (pheromone_gossip.rs:236/244), the same
-    // per-frame verifier the production handler runs behind the receiver seam.
-    // This drives the verifier the canned stub skips, over genuine QUIC.
+    // `CannedReportHandler` isolates handshake rejection. The focused handler below
+    // binds the gate-resolved sender to per-frame verification over QUIC. The
+    // `PheromoneBatchHandler` receive, persistence, and recovery paths are exercised
+    // by the preceding loopback tests.
 
     #[derive(Debug, Clone)]
     struct VerifyingBatchHandler {

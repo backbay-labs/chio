@@ -8,8 +8,9 @@ export interface ReceiptQueryParams {
   outcome?: string;
   since?: number;
   until?: number;
-  minCost?: number;
-  maxCost?: number;
+  minCost?: bigint;
+  maxCost?: bigint;
+  costCurrency?: string;
   agentSubject?: string;
   cursor?: number;
   limit?: number;

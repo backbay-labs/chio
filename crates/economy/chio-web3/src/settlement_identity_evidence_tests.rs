@@ -70,9 +70,11 @@ fn dual_sign_settlement_receipt_accepts_registry_evidence() {
     validate_web3_settlement_execution_receipt(&receipt).unwrap();
 }
 
+type RegistryBindingMutation = fn(&mut Web3SettlementIdentityRegistryEvidenceBinding);
+
 #[test]
 fn dual_sign_settlement_receipt_rejects_registry_binding_mismatches() {
-    let cases: [(&str, fn(&mut Web3SettlementIdentityRegistryEvidenceBinding)); 3] = [
+    let cases: [(&str, RegistryBindingMutation); 3] = [
         (
             "contract",
             |binding: &mut Web3SettlementIdentityRegistryEvidenceBinding| {

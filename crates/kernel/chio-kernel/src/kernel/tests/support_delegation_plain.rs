@@ -15,6 +15,7 @@ fn make_chain_bound_plain_capability(
             issued_at,
             expires_at: issued_at.saturating_add(120),
             delegation_chain,
+            aggregate_invocation_budget: None,
         },
         &kernel.config.keypair,
     )

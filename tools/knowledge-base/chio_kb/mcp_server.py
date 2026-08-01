@@ -8,9 +8,11 @@ import json
 import os
 from typing import Any
 
+import httpx
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+from neo4j.exceptions import ServiceUnavailable, SessionExpired
 
 from chio_kb import query
 
@@ -18,6 +20,10 @@ app = FastAPI(title="Chio KB MCP", version="0.1.0")
 
 
 TOOLS: dict[str, dict[str, Any]] = {
+    "kb_manifest": {
+        "description": "Return repository identity, index freshness, counts, evaluation, and capabilities.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
     "kb_search_code": {
         "description": "Semantic search over indexed Chio code chunks.",
         "inputSchema": {
@@ -72,6 +78,19 @@ TOOLS: dict[str, dict[str, Any]] = {
                 "entity": {"type": "string"},
                 "depth": {"type": "integer", "minimum": 1, "maximum": 4},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+            },
+            "required": ["entity"],
+        },
+    },
+    "kb_subgraph": {
+        "description": "Return a bounded subgraph with stable node IDs and reconstructable typed edges.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "entity": {"type": "string"},
+                "depth": {"type": "integer", "minimum": 1, "maximum": 4},
+                "node_limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                "edge_limit": {"type": "integer", "minimum": 1, "maximum": 400},
             },
             "required": ["entity"],
         },
@@ -158,9 +177,17 @@ def _rpc_result(request_id: Any, result: Any) -> JSONResponse:
     return JSONResponse({"jsonrpc": "2.0", "id": request_id, "result": result})
 
 
-def _rpc_error(request_id: Any, code: int, message: str) -> JSONResponse:
+def _rpc_error(
+    request_id: Any,
+    code: int,
+    message: str,
+    data: dict[str, Any] | None = None,
+) -> JSONResponse:
+    error: dict[str, Any] = {"code": code, "message": message}
+    if data:
+        error["data"] = data
     return JSONResponse(
-        {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}},
+        {"jsonrpc": "2.0", "id": request_id, "error": error},
         status_code=200,
     )
 
@@ -175,10 +202,16 @@ def _rpc_result_or_notification(is_notification: bool, request_id: Any, result: 
     return _rpc_result(request_id, result)
 
 
-def _rpc_error_or_notification(is_notification: bool, request_id: Any, code: int, message: str) -> Response:
+def _rpc_error_or_notification(
+    is_notification: bool,
+    request_id: Any,
+    code: int,
+    message: str,
+    data: dict[str, Any] | None = None,
+) -> Response:
     if is_notification:
         return _notification_accepted()
-    return _rpc_error(request_id, code, message)
+    return _rpc_error(request_id, code, message, data)
 
 
 def _client_is_loopback(request: Request) -> bool:
@@ -207,6 +240,8 @@ def _tool_list() -> list[dict[str, Any]]:
 
 
 async def _call_tool(name: str, arguments: dict[str, Any]) -> Any:
+    if name == "kb_manifest":
+        return await query.manifest()
     if name == "kb_search_code":
         return await query.search_code(
             arguments["query"],
@@ -228,6 +263,13 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> Any:
             arguments["entity"],
             depth=arguments.get("depth", 2),
             limit=arguments.get("limit", 50),
+        )
+    if name == "kb_subgraph":
+        return await query.subgraph(
+            arguments["entity"],
+            depth=arguments.get("depth", 2),
+            node_limit=arguments.get("node_limit", 80),
+            edge_limit=arguments.get("edge_limit", 160),
         )
     if name == "kb_context":
         return await query.context(arguments["entity"], limit=arguments.get("limit", 50))
@@ -338,8 +380,20 @@ async def mcp(request: Request) -> Response:
             )
     except KeyError as exc:
         return _rpc_error_or_notification(is_notification, request_id, -32602, f"Missing required argument: {exc}")
+    except ValueError as exc:
+        return _rpc_error_or_notification(is_notification, request_id, -32602, str(exc))
+    except (TimeoutError, httpx.TimeoutException) as exc:
+        return _rpc_error_or_notification(
+            is_notification, request_id, -32002, str(exc), {"kind": "timeout"}
+        )
+    except (ConnectionError, OSError, httpx.TransportError, ServiceUnavailable, SessionExpired) as exc:
+        return _rpc_error_or_notification(
+            is_notification, request_id, -32003, str(exc), {"kind": "unavailable"}
+        )
     except Exception as exc:
-        return _rpc_error_or_notification(is_notification, request_id, -32000, str(exc))
+        return _rpc_error_or_notification(
+            is_notification, request_id, -32000, str(exc), {"kind": "internal"}
+        )
 
     return _rpc_error_or_notification(is_notification, request_id, -32601, f"Unknown method: {method}")
 

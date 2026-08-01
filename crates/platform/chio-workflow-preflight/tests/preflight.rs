@@ -93,8 +93,9 @@ fn workflow_preflight_rejects_blank_child_action() -> Result<(), Box<dyn Error>>
     let mut plan = load_plan("valid-child-scope")?;
     plan.child_tasks[0].requested_scope.actions = vec!["".to_string()];
 
-    let error = evaluate_workflow_preflight(&plan)
-        .expect_err("blank child action must reject preflight shape");
+    let Err(error) = evaluate_workflow_preflight(&plan) else {
+        panic!("blank child action must reject preflight shape");
+    };
 
     assert!(matches!(
         error,
@@ -109,8 +110,9 @@ fn workflow_preflight_rejects_blank_child_resource() -> Result<(), Box<dyn Error
     let mut plan = load_plan("valid-child-scope")?;
     plan.child_tasks[0].requested_scope.resources = vec!["".to_string()];
 
-    let error = evaluate_workflow_preflight(&plan)
-        .expect_err("blank child resource must reject preflight shape");
+    let Err(error) = evaluate_workflow_preflight(&plan) else {
+        panic!("blank child resource must reject preflight shape");
+    };
 
     assert!(matches!(
         error,

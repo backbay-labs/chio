@@ -248,7 +248,8 @@ fn kernel_capability_checker_supports_wildcard_terminal_grants() {
 }
 
 #[test]
-fn kernel_capability_checker_requires_and_forwards_execution_nonce_in_strict_mode() {
+fn kernel_capability_checker_requires_and_forwards_execution_nonce_in_strict_mode(
+) -> Result<(), Box<dyn std::error::Error>> {
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
     let now = now_secs();
@@ -272,32 +273,6 @@ fn kernel_capability_checker_requires_and_forwards_execution_nonce_in_strict_mod
         now.saturating_sub(30),
         now + 3600,
     );
-    let operation_payload = json!({
-        "sessionId": "session-strict",
-        "toolCallId": "call-strict-checker",
-        "path": "/workspace/src/lib.rs"
-    });
-    let arguments = json!({
-        "path": "/workspace/src/lib.rs",
-        "authorization_parameter_hash": "test-authorization-parameter-hash",
-        "operation_payload": operation_payload
-    });
-    let parameter_hash = ToolCallAction::from_parameters(arguments)
-        .expect("ACP checker arguments should hash")
-        .parameter_hash;
-    let nonce = mint_execution_nonce(
-        &issuer,
-        NonceBinding {
-            subject_id: subject.public_key().to_hex(),
-            capability_id: token.id.clone(),
-            tool_server: "proxy-server".to_string(),
-            tool_name: "fs/read_text_file".to_string(),
-            parameter_hash,
-        },
-        &cfg,
-        i64::try_from(now).unwrap_or(i64::MAX),
-    )
-    .expect("execution nonce should mint");
     let mut request = AcpCapabilityRequest {
         session_id: "session-strict".to_string(),
         tool_call_id: Some("call-strict-checker".to_string()),
@@ -311,26 +286,24 @@ fn kernel_capability_checker_requires_and_forwards_execution_nonce_in_strict_mod
             "path": "/workspace/src/lib.rs"
         }),
         execution_nonce: None,
-        token: Some(serde_json::to_string(&token).expect("token should serialize")),
+        token: Some(serde_json::to_string(&token)?),
     };
 
-    let missing = checker
-        .check_access(&request)
-        .expect("missing nonce check should return a verdict");
+    let missing = checker.check_access(&request)?;
     assert!(!missing.allowed);
     assert!(missing.reason.contains("execution nonce"));
+    let nonce = missing
+        .execution_nonce
+        .ok_or_else(|| std::io::Error::other("strict preflight execution nonce missing"))?;
 
     request.execution_nonce = Some(nonce);
-    let allowed = checker
-        .check_access(&request)
-        .expect("presented nonce should authorize once");
+    let allowed = checker.check_access(&request)?;
     assert!(allowed.allowed, "expected allow, got {:?}", allowed);
 
-    let replay = checker
-        .check_access(&request)
-        .expect("replayed nonce should return a verdict");
+    let replay = checker.check_access(&request)?;
     assert!(!replay.allowed);
     assert!(replay.reason.contains("execution nonce") || replay.reason.contains("replay"));
+    Ok(())
 }
 
 #[test]

@@ -8,6 +8,7 @@ python3 - "$REGISTRY" <<'PY'
 import json
 import hashlib
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -18,6 +19,13 @@ registry = json.loads(registry_path.read_text(encoding="utf-8"))
 errors = []
 manifest = {}
 manifest_paths = []
+
+def is_schema_inventory_path(path):
+    return path.endswith(".schema.json") or (
+        path.startswith("spec/schemas/chio-economy/")
+        and re.search(r"\.v[1-9][0-9]*\.json\Z", path) is not None
+    )
+
 manifest_text = manifest_path.read_text(encoding="utf-8")
 for line_number, line in enumerate(manifest_text.splitlines(), 1):
     if not line.strip():
@@ -58,7 +66,7 @@ try:
     expected_manifest_paths = sorted(
         path
         for path in tracked_schema_inventory.stdout.decode("utf-8").split("\0")
-        if path.endswith(".schema.json")
+        if is_schema_inventory_path(path)
         or path in {manifest_rel, registry_rel, "spec/schemas/VERSION"}
     )
 except (OSError, subprocess.CalledProcessError) as error:
@@ -123,10 +131,13 @@ checked_chio_schema_roots = (
     "spec/schemas/chio-agent-web/",
     "spec/schemas/chio-attest/",
     "spec/schemas/chio-commerce/",
+    "spec/schemas/chio-comptroller/",
     "spec/schemas/chio-crypto/",
     "spec/schemas/chio-disclosure/",
+    "spec/schemas/chio-economy/",
     "spec/schemas/chio-enterprise/",
     "spec/schemas/chio-federation/",
+    "spec/schemas/chio-frost/",
     "spec/schemas/chio-lineage/",
     "spec/schemas/chio-oracle/",
     "spec/schemas/chio-pheromone/",
@@ -164,7 +175,7 @@ try:
     tracked_schema_paths = {
         path
         for path in tracked.stdout.decode("utf-8").split("\0")
-        if path.endswith(".schema.json")
+        if is_schema_inventory_path(path)
     }
 except (OSError, subprocess.CalledProcessError) as error:
     tracked_schema_paths = set()
@@ -191,7 +202,7 @@ try:
     tracked_active_schema_paths = {
         path
         for path in tracked_active.stdout.decode("utf-8").split("\0")
-        if path.endswith(".schema.json")
+        if is_schema_inventory_path(path)
     }
 except (OSError, subprocess.CalledProcessError) as error:
     tracked_active_schema_paths = set()
@@ -216,8 +227,10 @@ for entry in registry.get("artifacts", []):
             errors.append(f"{schema_id} has stale or absent MANIFEST.sha256 entry for {schema_file}")
 
 for schema_root in checked_chio_schema_roots:
-    for schema_path in sorted((root / schema_root).glob("**/*.schema.json")):
+    for schema_path in sorted((root / schema_root).glob("**/*.json")):
         rel = str(schema_path.relative_to(root))
+        if not is_schema_inventory_path(rel):
+            continue
         if rel not in tracked_schema_paths:
             errors.append(f"Chio schema {rel} is not tracked by git")
         if rel not in registered_paths:
@@ -229,8 +242,10 @@ for schema_root in checked_chio_schema_roots:
             errors.append(f"Chio schema {rel} references inactive chio schema paths")
 
 for schema_root in checked_active_chio_schema_text_roots:
-    for schema_path in sorted((root / schema_root).glob("**/*.schema.json")):
+    for schema_path in sorted((root / schema_root).glob("**/*.json")):
         rel = str(schema_path.relative_to(root))
+        if not is_schema_inventory_path(rel):
+            continue
         if schema_root not in checked_chio_schema_roots and rel not in tracked_active_schema_paths:
             errors.append(f"Active Chio schema {rel} is not tracked by git")
         if (

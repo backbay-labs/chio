@@ -456,6 +456,7 @@ fn signed_token_with_monetary_grant_roundtrip() {
         issued_at: 1_000_000,
         expires_at: 2_000_000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
 
     let token = CapabilityToken::sign(body, &kp).unwrap();

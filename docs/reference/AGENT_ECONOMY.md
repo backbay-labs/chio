@@ -553,19 +553,30 @@ evidence in one receipt document.
 
 #### 3.5.3 Receipt Store Indexing
 
-Add columns to `chio_tool_receipts` in `crates/kernel/chio-kernel/src/receipt_store.rs`:
+The SQLite receipt store derives an order-preserving cost projection from the
+signed financial metadata:
 
 ```sql
 ALTER TABLE chio_tool_receipts
-    ADD COLUMN cost_charged INTEGER;
-ALTER TABLE chio_tool_receipts
     ADD COLUMN cost_currency TEXT;
+ALTER TABLE chio_tool_receipts
+    ADD COLUMN cost_charged_be BLOB;
 
 CREATE INDEX IF NOT EXISTS idx_chio_tool_receipts_cost
-    ON chio_tool_receipts(cost_currency, cost_charged);
+    ON chio_tool_receipts(tenant_id, cost_currency, cost_charged_be, seq);
+
+CREATE INDEX IF NOT EXISTS idx_chio_tool_receipts_cost_global
+    ON chio_tool_receipts(cost_currency, cost_charged_be, seq);
 ```
 
-The `SqliteReceiptStore::append_chio_receipt` method extracts `financial.cost_charged` and `financial.currency` from the receipt metadata at insert time. This enables efficient billing queries without full-JSON scanning.
+`cost_charged_be` is exactly eight big-endian bytes, so lexicographic BLOB order
+matches the complete `u64` numeric domain. Append compares the projection on
+duplicate receipt IDs. Migration reconciles every row transactionally; current
+schema opens verify only the fixed columns, indexes, and immutability-guard
+manifest. `chio receipt audit` performs the explicit full row reconciliation.
+Cost-range queries require an exact three-letter uppercase currency and execute
+their page and count in one reader transaction. Tenant-scoped queries use the
+tenant-leading index; admin-all queries use the global index.
 
 ### 3.6 Payment Rail Integration
 
@@ -1211,6 +1222,35 @@ Operational guides for current v1 features:
 - [DPOP_INTEGRATION_GUIDE.md](DPOP_INTEGRATION_GUIDE.md): DPoP proof-of-possession setup and verification
 - [RECEIPT_QUERY_API.md](RECEIPT_QUERY_API.md): `GET /v1/receipts/query` filters, pagination, and CLI usage
 
+### Out-of-Repo Consumption Model
+
+External consumers that need the unified spend and exposure surface should poll
+`GET /v1/reports/comptroller-surface` and validate the response against the
+published schema before parsing:
+
+```
+spec/schemas/chio-comptroller/v1/surface-report.schema.json
+```
+
+The response carries `"schema": "chio.comptroller.surface-report.v1"` as the
+top-level identifier. Consumers must reject any response where this field is
+absent or does not match the pinned version -- this is the fail-closed contract.
+
+**Schema-governed HTTP polling** is the primary integration pattern. The
+endpoint is read-only, requires a Bearer token, and returns a snapshot as of
+`generatedAt` (integer Unix seconds). Consumers should not merge or cache across
+multiple snapshots without comparing `generatedAt` values to detect stale reads.
+
+**Optional signed offline export** (`SignedComptrollerSurfaceReport`) is
+available for consumers that need to verify surface state offline or carry it to
+an external system. The signed export wraps the same `chio.comptroller.surface-report.v1`
+body with a kernel Ed25519 signature over canonical bytes. Consumers must verify
+the signature before trusting the body.
+
+Both paths are pinned to the same `spec/schemas/chio-comptroller/v1/surface-report.schema.json`
+schema. The projection is custody-neutral and implies no fund movement; it is a
+read-only snapshot of canonical receipt, settlement, and budget truth.
+
 ### Economic Primitives -- Implemented In Current V1
 
 These deliverables are implemented in the current pre-release v1 branch:
@@ -1224,7 +1264,7 @@ These deliverables are implemented in the current pre-release v1 branch:
 - `ToolInvocationCost` struct and `invoke_with_cost` default method on `ToolServerConnection`.
 - Kernel cost verification in `evaluate_tool_call_with_session_roots`.
 - `FinancialReceiptMetadata` populated into receipt `metadata` field, including `grant_index`, `cost_charged`, `currency`, `budget_remaining`, `budget_total`, `delegation_depth`, `root_budget_holder`, and `settlement_status`.
-- Receipt store cost indexing columns (`cost_charged`, `cost_currency`).
+- Receipt store cost indexing columns (`cost_charged_be`, `cost_currency`).
 - `VelocityGuard` token-bucket rate limiting in `crates/guards/chio-guards/src/velocity.rs`.
 - Unit and integration tests for all of the above.
 

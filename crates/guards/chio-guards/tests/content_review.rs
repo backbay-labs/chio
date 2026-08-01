@@ -27,6 +27,7 @@ fn signed_cap(kp: &Keypair, scope: &ChioScope) -> CapabilityToken {
         issued_at: 0,
         expires_at: u64::MAX,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, kp).expect("sign cap")
 }
@@ -51,6 +52,9 @@ fn make_request_with_scope(
         execution_nonce: None,
         governed_intent: intent,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -182,6 +186,7 @@ fn stripe_charge_via_governed_intent_also_triggers_pending_approval() {
         call_chain: None,
         autonomy: None,
         context: None,
+        body: Default::default(),
     };
     let v = eval_with(
         &guard,

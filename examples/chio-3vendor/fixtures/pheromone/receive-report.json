@@ -4,7 +4,7 @@
   "batchOutcome": "accepted",
   "acceptedFrameCount": 1,
   "rejectedFrameCount": 0,
-  "batchSha256": "b5254933d1f624849eb1258951a9d7db04ab7100de31d64e8afd54fcd65ba4db",
+  "batchSha256": "eb033295335aa956f46b6140487ec2d8d518544eb322264dfc11541e1495951b",
   "recipientKernelId": "did:chio:dataco",
   "authenticatedSenderKernelId": "did:chio:buyer-kernel",
   "receivedAtUnixMs": 1766000000500,

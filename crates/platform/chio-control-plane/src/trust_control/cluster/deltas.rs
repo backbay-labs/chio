@@ -32,7 +32,7 @@ pub(crate) async fn handle_internal_revocations_delta(
     {
         return response;
     }
-    let store = match open_revocation_store(&state.config) {
+    let store = match state.revocation_store() {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -136,7 +136,7 @@ pub(crate) async fn handle_internal_budgets_delta(
     {
         return response;
     }
-    let store = match open_budget_store(&state.config) {
+    let store = match state.budget_store() {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -157,7 +157,7 @@ pub(crate) async fn handle_internal_budgets_delta(
             Ok(records) => records,
             Err(error) => {
                 return internal_cluster_http_error(
-                    "failed to collect budget projection deltas",
+                    "failed to collect exact budget usage projections",
                     &error,
                 );
             }
@@ -533,10 +533,12 @@ fn sync_peer_revocations(
     peer_url: &str,
     round: &mut PullRoundBudget,
 ) -> Result<u64, PullError> {
-    let Some(path) = state.config.revocation_db_path.as_deref() else {
+    let Some(store) = state
+        .optional_revocation_store()
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?
+    else {
         return Ok(0);
     };
-    let store = SqliteRevocationStore::open(path).map_err(CliError::from)?;
     let mut applied = 0u64;
     loop {
         // Check the shared round budget BEFORE the next blocking fetch so an
@@ -696,13 +698,15 @@ fn sync_peer_budgets(
     peer_url: &str,
     round: &mut PullRoundBudget,
 ) -> Result<u64, PullError> {
-    let Some(path) = state.config.budget_db_path.as_deref() else {
+    let Some(store) = state
+        .optional_budget_store()
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?
+    else {
         return Ok(0);
     };
-    let mut store = SqliteBudgetStore::open(path).map_err(CliError::from)?;
     let cursor = peer_budget_cursor(state, peer_url);
     drain_budget_delta_pages(
-        &mut store,
+        &store,
         round,
         cursor,
         |after_seq, limit| {
@@ -742,7 +746,7 @@ fn sync_peer_budgets(
 /// range that is still gap-free from the cursor. Shrinking only reduces how MUCH of
 /// the contiguous stream one page carries, never which seqs are trusted as filled.
 fn drain_budget_delta_pages<Fetch, Commit>(
-    store: &mut SqliteBudgetStore,
+    store: &SqliteBudgetStore,
     round: &mut PullRoundBudget,
     mut cursor: Option<BudgetCursor>,
     mut fetch: Fetch,
@@ -801,11 +805,18 @@ pub(crate) struct BudgetDeltaImportOutcome {
 }
 
 pub(crate) fn import_budget_delta_response(
-    store: &mut SqliteBudgetStore,
+    store: &SqliteBudgetStore,
     response: &BudgetDeltaResponse,
     current_cursor: Option<BudgetCursor>,
     round: &mut PullRoundBudget,
 ) -> Result<BudgetDeltaImportOutcome, PullError> {
+    if response.mutation_events.is_empty() && !response.abandoned_seqs.is_empty() {
+        return Err(PullError::Protocol(
+            PeerProtocolError::AbandonedWithoutMutationEvents {
+                abandoned_count: response.abandoned_seqs.len(),
+            },
+        ));
+    }
     if response.records.is_empty() && response.mutation_events.is_empty() {
         return Ok(BudgetDeltaImportOutcome {
             applied_count: 0,
@@ -826,6 +837,32 @@ pub(crate) fn import_budget_delta_response(
                 record_count: response.records.len(),
             },
         ));
+    }
+    let previous_cursor_seq = current_cursor
+        .as_ref()
+        .map(|cursor| cursor.seq)
+        .unwrap_or(0);
+    let page_max_seq = response
+        .mutation_events
+        .iter()
+        .map(|event| event.event_seq)
+        .max()
+        .unwrap_or(previous_cursor_seq);
+    let mut previous_abandoned = previous_cursor_seq;
+    for &seq in &response.abandoned_seqs {
+        if seq <= previous_cursor_seq
+            || seq > page_max_seq
+            || seq <= previous_abandoned
+            || response
+                .mutation_events
+                .iter()
+                .any(|event| event.event_seq == seq)
+        {
+            return Err(PullError::Protocol(
+                PeerProtocolError::InvalidAbandonedSequence { seq },
+            ));
+        }
+        previous_abandoned = seq;
     }
     let record_count = response
         .records
@@ -863,11 +900,6 @@ pub(crate) fn import_budget_delta_response(
             should_continue: false,
         });
     }
-
-    let previous_cursor_seq = current_cursor
-        .as_ref()
-        .map(|cursor| cursor.seq)
-        .unwrap_or(0);
 
     // Budget mutation events are a single STORE-WIDE, dense append-only
     // event_seq stream: every allocation yields exactly one event, so each
@@ -932,15 +964,8 @@ pub(crate) fn import_budget_delta_response(
         // model to Byzantine would require signed, independently-verifiable
         // abandonment proofs here, which this deployment does not assume.
         let mut filled = event_seqs;
-        filled.extend(
-            response
-                .abandoned_seqs
-                .iter()
-                .copied()
-                .filter(|&seq| seq > previous_cursor_seq),
-        );
+        filled.extend(response.abandoned_seqs.iter().copied());
         filled.sort_unstable();
-        filled.dedup();
         require_contiguous_page(previous_cursor_seq.saturating_add(1), &filled)?;
     }
 
@@ -955,7 +980,7 @@ pub(crate) fn import_budget_delta_response(
         .map(budget_mutation_record_from_view)
         .collect::<Result<Vec<_>, CliError>>()?;
     store
-        .import_snapshot_records(&usage_records, &mutation_records)
+        .import_delta_records(&usage_records, &mutation_records)
         .map_err(CliError::from)?;
     // Record the page's abandoned slots so this follower's contiguous ack head
     // treats them as filled even if it never held (and so never deleted) the
@@ -1057,17 +1082,17 @@ fn sync_peer_lineage(
 
 fn budget_authorize_compensation_event_id(
     payload: &TryChargeCostRequest,
-    budget_seq: u64,
+    authorize_event_seq: u64,
 ) -> String {
     if let Some(event_id) = payload.event_id.as_deref() {
-        return format!("{event_id}:rollback:{budget_seq}");
+        return format!("{event_id}:rollback:{authorize_event_seq}");
     }
     if let Some(hold_id) = payload.hold_id.as_deref() {
-        return format!("{hold_id}:rollback:{budget_seq}");
+        return format!("{hold_id}:rollback:{authorize_event_seq}");
     }
     format!(
         "rollback:{}:{}:{}",
-        payload.capability_id, payload.grant_index, budget_seq
+        payload.capability_id, payload.grant_index, authorize_event_seq
     )
 }
 
@@ -1075,21 +1100,15 @@ pub(crate) fn rollback_budget_authorize_exposure(
     state: &TrustServiceState,
     payload: &TryChargeCostRequest,
     authority: Option<&BudgetEventAuthority>,
+    authorize_event_seq: u64,
 ) -> Result<(), BudgetStoreError> {
-    let store = open_budget_store(&state.config).map_err(|response| {
+    let store = state.budget_store().map_err(|response| {
         BudgetStoreError::Invariant(format!(
-            "failed to reopen budget store for compensation: {}",
+            "failed to access budget store for compensation: {}",
             response.status()
         ))
     })?;
-    let usage = store.get_usage(&payload.capability_id, payload.grant_index)?;
-    let Some(usage) = usage else {
-        return Ok(());
-    };
-    if usage.total_cost_exposed == 0 {
-        return Ok(());
-    }
-    let rollback_event_id = budget_authorize_compensation_event_id(payload, usage.seq);
+    let rollback_event_id = budget_authorize_compensation_event_id(payload, authorize_event_seq);
     store.reverse_charge_cost_with_ids_and_authority(
         &payload.capability_id,
         payload.grant_index,
@@ -1196,7 +1215,7 @@ fn budget_write_quorum_commit_view_locked(
     // the write's term with a different leader would mint a lease_id for an
     // authority that never wrote the event. The write
     // token already carries origin_id; fall back to the consensus leader only for
-    // a placeholder (unclustered) token that has no origin.
+    // an unclustered token that has no origin.
     let authority_id = if write.origin_id.is_empty() {
         consensus
             .leader_url
@@ -1398,11 +1417,11 @@ pub(crate) fn collect_budget_mutation_event_views_after_seq(
     after_seq: u64,
     limit: usize,
 ) -> Result<Vec<BudgetMutationEventView>, CliError> {
-    Ok(store
+    store
         .list_mutation_events_after_seq(limit, after_seq)?
         .into_iter()
         .map(budget_mutation_event_view)
-        .collect())
+        .collect()
 }
 
 fn collect_budget_projection_views_for_events(
@@ -1411,7 +1430,7 @@ fn collect_budget_projection_views_for_events(
 ) -> Result<Vec<BudgetUsageView>, CliError> {
     let mut latest = BTreeMap::<(String, u32), BudgetUsageView>::new();
     for event in events {
-        let Some(usage) = store.get_usage(&event.capability_id, event.grant_index as usize)? else {
+        let Some(usage) = store.usage_projection_for_event_id(&event.event_id)? else {
             continue;
         };
         latest.insert(
@@ -1430,14 +1449,37 @@ fn collect_budget_projection_views_for_events(
     Ok(latest.into_values().collect())
 }
 
-pub(crate) fn budget_mutation_event_view(record: BudgetMutationRecord) -> BudgetMutationEventView {
-    BudgetMutationEventView {
+/// `BudgetMutationEventView` has no fields for the structured projection, so
+/// lowering a composite event into one would drop the quota and cumulative-approval
+/// state that admission enforcement and audit depend on. Peers cannot detect the
+/// loss either, because the rebuilt record reports no composite state at all.
+fn carries_composite_projection(record: &BudgetMutationRecord) -> bool {
+    record.admission_binding.is_some()
+        || !record.invocation_quota_usages.is_empty()
+        || !record.invocation_quota_mutations.is_empty()
+        || record.cumulative_approval.is_some()
+        || record.cumulative_approval_mutation.is_some()
+        || record.cumulative_approval_set_digest.is_some()
+}
+
+pub(crate) fn budget_mutation_event_view(
+    record: BudgetMutationRecord,
+) -> Result<BudgetMutationEventView, CliError> {
+    if carries_composite_projection(&record) {
+        return Err(CliError::cli_other_error(format!(
+            "budget mutation event `{}` carries composite projection state that cluster replication cannot represent",
+            record.event_id
+        )));
+    }
+    let lifecycle = BudgetMutationLifecycleView::from_record(&record);
+    Ok(BudgetMutationEventView {
         event_id: record.event_id,
         hold_id: record.hold_id,
         capability_id: record.capability_id,
         grant_index: record.grant_index,
         kind: record.kind.as_str().to_string(),
         allowed: record.allowed,
+        lifecycle,
         recorded_at: record.recorded_at,
         event_seq: record.event_seq,
         usage_seq: record.usage_seq,
@@ -1456,7 +1498,7 @@ pub(crate) fn budget_mutation_event_view(record: BudgetMutationRecord) -> Budget
                 lease_id: authority.lease_id,
                 lease_epoch: authority.lease_epoch,
             }),
-    }
+    })
 }
 
 pub(crate) fn budget_usage_record_from_view(
@@ -1517,14 +1559,30 @@ pub(crate) fn budget_mutation_record_from_view(
             event.kind
         ))
     })?;
+    let lifecycle = event
+        .lifecycle
+        .resolve(
+            kind,
+            event.allowed,
+            event.hold_id.is_some(),
+            event.exposure_units,
+            event.realized_spend_units,
+        )
+        .map_err(CliError::cli_other_error)?;
 
     Ok(BudgetMutationRecord {
         event_id: event.event_id.clone(),
         hold_id: event.hold_id.clone(),
+        admission_binding: None,
         capability_id: event.capability_id.clone(),
         grant_index: event.grant_index,
         kind,
         allowed: event.allowed,
+        authorization_outcome: lifecycle.authorization_outcome,
+        invocation_state_before: lifecycle.invocation_state_before,
+        invocation_state_after: lifecycle.invocation_state_after,
+        monetary_state_before: lifecycle.monetary_state_before,
+        monetary_state_after: lifecycle.monetary_state_after,
         recorded_at: event.recorded_at,
         event_seq: event.event_seq,
         usage_seq: event.usage_seq,
@@ -1534,6 +1592,11 @@ pub(crate) fn budget_mutation_record_from_view(
         max_cost_per_invocation: event.max_cost_per_invocation,
         max_total_cost_units: event.max_total_cost_units,
         invocation_count_after: event.invocation_count_after,
+        invocation_quota_usages: Vec::new(),
+        invocation_quota_mutations: Vec::new(),
+        cumulative_approval: None,
+        cumulative_approval_mutation: None,
+        cumulative_approval_set_digest: None,
         total_cost_exposed_after: event.total_cost_exposed_after,
         total_cost_realized_spend_after: event.total_cost_realized_spend_after,
         authority: event
@@ -1544,281 +1607,5 @@ pub(crate) fn budget_mutation_record_from_view(
 }
 
 #[cfg(test)]
-mod capability_revocation_lag_tests {
-    use super::observe_capability_revocation_lag;
-
-    fn lag_count() -> u64 {
-        let mut rendered = String::new();
-        chio_metrics_spec::runtime::families::CAPABILITY_REVOCATION_LAG.render(&mut rendered);
-        rendered
-            .lines()
-            .find(|line| {
-                line.starts_with(
-                    "chio_capability_revocation_lag_seconds_count{authority=\"control_plane\"}",
-                )
-            })
-            .and_then(|line| line.rsplit(' ').next())
-            .and_then(|value| value.parse::<u64>().ok())
-            .unwrap_or(0)
-    }
-
-    /// A capability revoke path observes the capability-revocation lag family, so
-    /// a backdated (propagated) revoke advances the SLO histogram.
-    #[test]
-    fn capability_revoke_observes_revocation_lag() {
-        let before = lag_count();
-        // Backdate the revoke instant by 45 seconds relative to now.
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_secs() as i64)
-            .unwrap_or(0);
-        observe_capability_revocation_lag(now.saturating_sub(45));
-        assert!(
-            lag_count() > before,
-            "a capability revoke must observe a capability-revocation lag sample"
-        );
-    }
-}
-
-#[cfg(test)]
-mod deltas_tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn peer_round_stops_visiting_when_shutdown_fires_midround() {
-        // A stop signal that lands while a sync round is partway through its peers
-        // must halt the round at the current peer rather than dialing every
-        // remaining peer (each up to CONTROL_HTTP_TIMEOUT) before the loop can
-        // observe shutdown and exit.
-        let (tx, rx) = tokio::sync::watch::channel(false);
-        let peers = vec![
-            "a".to_string(),
-            "b".to_string(),
-            "c".to_string(),
-            "d".to_string(),
-        ];
-        let mut visited = Vec::new();
-        visit_peers_until_shutdown(&peers, &rx, |peer_url| {
-            visited.push(peer_url.to_string());
-            if visited.len() == 2 {
-                let _ = tx.send(true);
-            }
-        });
-        assert_eq!(
-            visited,
-            vec!["a".to_string(), "b".to_string()],
-            "the round must stop at the peer where shutdown fired, not finish the peer list"
-        );
-    }
-
-    #[test]
-    fn budget_pull_is_prioritized_first() {
-        // Budget replication is pulled FIRST so a receipt/lineage backlog cannot
-        // spend the shared round budget and starve the quorum-critical budget pull.
-        assert_eq!(
-            peer_pullers()[0] as usize,
-            sync_peer_budgets as Puller as usize,
-            "the budget pull must run first in the per-peer pull order"
-        );
-    }
-
-    #[test]
-    fn revocations_are_not_in_the_shared_budget_round() {
-        // Revocations must replicate on their OWN round budget in sync_peer, NOT
-        // share the budget/receipt round. If they were in this shared list a
-        // sustained budget backlog (shared-round exhaustion) or a broken budget
-        // endpoint could starve security-critical revocation propagation. Budget
-        // stays first here.
-        let shared = peer_pullers();
-        assert_eq!(
-            shared[0] as usize, sync_peer_budgets as Puller as usize,
-            "budget remains first in the shared round"
-        );
-        assert!(
-            !shared
-                .iter()
-                .any(|puller| *puller as usize == sync_peer_revocations as Puller as usize),
-            "revocations must be pulled on an independent round budget, not the shared one"
-        );
-    }
-
-    #[test]
-    fn quorum_commit_timeout_covers_full_per_peer_sync_and_is_bounded() {
-        // The wait must outlast a FULL serial sync_peer visit for every peer
-        // preceding the quorum peer, not just one CONTROL_HTTP_TIMEOUT per peer. A
-        // full visit is the three fixed blocking stages plus the two
-        // wall-clock-bounded delta rounds.
-        let interval = Duration::from_millis(25);
-        let per_peer_sync =
-            CONTROL_HTTP_TIMEOUT * 3 + PEER_ROUND_WALL_CLOCK_BUDGET + PEER_ROUND_WALL_CLOCK_BUDGET;
-
-        assert!(budget_write_quorum_commit_timeout(interval, 0) >= Duration::from_secs(5));
-
-        // One preceding peer must be budgeted a full sync_peer visit. A bound of one
-        // CONTROL_HTTP_TIMEOUT per peer would give only 30s here, far short of it.
-        let one = budget_write_quorum_commit_timeout(interval, 1);
-        assert!(
-            one >= per_peer_sync,
-            "one preceding peer must allow a full serial sync_peer visit, got {one:?}"
-        );
-
-        // Still bounded by a fixed ceiling so a misconfigured huge peer list cannot
-        // make the wait unbounded.
-        assert!(budget_write_quorum_commit_timeout(interval, 10_000) <= Duration::from_secs(300));
-    }
-
-    fn storm_event(seq: u64) -> BudgetMutationEventView {
-        BudgetMutationEventView {
-            event_id: format!("evt-{seq}"),
-            hold_id: None,
-            capability_id: "cap-page".to_string(),
-            grant_index: 0,
-            kind: "authorize_exposure".to_string(),
-            allowed: Some(true),
-            recorded_at: seq as i64,
-            event_seq: seq,
-            usage_seq: Some(seq),
-            exposure_units: 1,
-            realized_spend_units: 0,
-            max_invocations: None,
-            max_cost_per_invocation: None,
-            max_total_cost_units: None,
-            invocation_count_after: 1,
-            total_cost_exposed_after: 1,
-            total_cost_realized_spend_after: 0,
-            authority: Some(BudgetMutationAuthorityView {
-                authority_id: "http://origin-page".to_string(),
-                lease_id: "http://origin-page#term-1".to_string(),
-                lease_epoch: 1,
-            }),
-        }
-    }
-
-    fn temp_budget_db(tag: &str) -> std::path::PathBuf {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_nanos())
-            .unwrap_or(0);
-        std::env::temp_dir().join(format!("chio-{tag}-{nonce}.sqlite3"))
-    }
-
-    #[test]
-    fn oversized_budget_page_retries_smaller_before_snapshotting() {
-        // A page can exceed BUDGET_DELTA_MAX_RECORDS just because we asked for a full
-        // MAX_LIST_LIMIT window (events + their usages + abandoned seqs). Such a
-        // large-but-PAGEABLE window must be delivered incrementally via a SMALLER
-        // event limit, not routed straight to a full snapshot: the drain refetches
-        // the SAME cursor with a smaller limit and imports the window (still
-        // contiguity-checked, so no skip / no over-count).
-        use chio_test_support::prelude::*;
-        let db = temp_budget_db("retry-smaller-budget-page");
-        let mut store = SqliteBudgetStore::open(&db).test_unwrap();
-
-        // The oversized first page: MAX_LIST_LIMIT events plus a dense abandoned burst,
-        // so record_count > BUDGET_DELTA_MAX_RECORDS. It carries MANY events, so it is
-        // reducible: a smaller event window would fit under the cap.
-        let over_cap = || BudgetDeltaResponse {
-            records: Vec::new(),
-            mutation_events: (1..=MAX_LIST_LIMIT as u64).map(storm_event).collect(),
-            abandoned_seqs: ((MAX_LIST_LIMIT as u64 + 1)..=(BUDGET_DELTA_MAX_RECORDS as u64 + 1))
-                .collect(),
-        };
-        // The smaller retry page: a short contiguous run that imports cleanly.
-        let small = || BudgetDeltaResponse {
-            records: Vec::new(),
-            mutation_events: (1..=3).map(storm_event).collect(),
-            abandoned_seqs: Vec::new(),
-        };
-
-        let calls = std::cell::RefCell::new(Vec::<(Option<u64>, usize)>::new());
-        let result = drain_budget_delta_pages(
-            &mut store,
-            &mut PullRoundBudget::new(),
-            None,
-            |after_seq, limit| {
-                calls.borrow_mut().push((after_seq, limit));
-                Ok(match (after_seq, limit) {
-                    // First fetch: full limit from the head -> the oversized window.
-                    (None, l) if l >= MAX_LIST_LIMIT => over_cap(),
-                    // Retry from the SAME head at a reduced limit -> the pageable window.
-                    (None, _) => small(),
-                    // Cursor advanced past the imported window -> the stream is drained.
-                    _ => BudgetDeltaResponse {
-                        records: Vec::new(),
-                        mutation_events: Vec::new(),
-                        abandoned_seqs: Vec::new(),
-                    },
-                })
-            },
-            |_cursor| {},
-        );
-
-        // The window drained incrementally; no ForceSnapshot escaped the drain.
-        let applied = match result {
-            Ok(applied) => applied,
-            Err(other) => {
-                panic!("a large-but-pageable window must drain, not force-snapshot: {other:?}")
-            }
-        };
-        assert_eq!(applied, 3, "the smaller page's events were imported");
-        // The drain retried the same cursor with a limit strictly below
-        // MAX_LIST_LIMIT before ever force-snapshotting.
-        let calls = calls.into_inner();
-        assert!(
-            calls
-                .iter()
-                .any(|(after, limit)| after.is_none() && *limit < MAX_LIST_LIMIT),
-            "the drain must retry the SAME cursor with a smaller event limit before snapshotting, got {calls:?}"
-        );
-        // The follower actually holds the imported events (contiguity preserved).
-        assert_eq!(store.max_mutation_event_seq().test_unwrap(), 3);
-
-        let _ = std::fs::remove_file(&db);
-    }
-
-    #[test]
-    fn unpageable_single_event_budget_page_still_force_snapshots() {
-        // A GENUINELY unpageable window - a single live event preceded by a dense
-        // rollback burst of abandoned seqs that alone exceeds the record cap -
-        // cannot be split smaller, so the drain must still route the peer to full
-        // snapshot recovery (ForceSnapshot) rather than shrink-looping forever.
-        use chio_test_support::prelude::*;
-        let db = temp_budget_db("unpageable-budget-page");
-        let mut store = SqliteBudgetStore::open(&db).test_unwrap();
-
-        let fetches = std::cell::RefCell::new(0usize);
-        let result = drain_budget_delta_pages(
-            &mut store,
-            &mut PullRoundBudget::new(),
-            None,
-            |_after_seq, _limit| {
-                *fetches.borrow_mut() += 1;
-                Ok(BudgetDeltaResponse {
-                    records: Vec::new(),
-                    // ONE event; the abandoned burst ALONE exceeds the record cap, so
-                    // no smaller event page can bring the count under the cap.
-                    mutation_events: vec![storm_event(1)],
-                    abandoned_seqs: (2..=(BUDGET_DELTA_MAX_RECORDS as u64 + 2)).collect(),
-                })
-            },
-            |_cursor| {},
-        );
-
-        match result {
-            Err(PullError::ForceSnapshot(_)) => {}
-            other => {
-                panic!("a minimal one-event over-cap page must force-snapshot, got {other:?}")
-            }
-        }
-        // A single-event page is not reducible, so it force-snapshots after exactly
-        // ONE fetch: no unbounded shrink-retry loop.
-        assert_eq!(
-            fetches.into_inner(),
-            1,
-            "no shrink-retry for an unpageable single-event page"
-        );
-
-        let _ = std::fs::remove_file(&db);
-    }
-}
+#[path = "deltas_tests.rs"]
+mod tests;

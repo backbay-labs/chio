@@ -196,10 +196,10 @@ mod tests {
     }
 
     fn sample_dsse(id: &str) -> DsseEnvelope {
-        let encoded = format!("payload-{id}");
+        let fixture_text = format!("payload-{id}");
         DsseEnvelope {
             payload_type: "application/vnd.in-toto+json".to_string(),
-            payload: encoded,
+            payload: fixture_text,
             signatures: vec![DsseSignature {
                 keyid: format!("keyid-{id}"),
                 sig: "sig".to_string(),

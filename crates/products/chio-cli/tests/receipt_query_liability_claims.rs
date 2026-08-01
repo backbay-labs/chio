@@ -438,6 +438,18 @@ fn test_liability_claim_workflow_surfaces_inner() {
         .verify_signature()
         .expect("verify dispute signature"));
 
+    let roster_policy_path = dir.join("roster-policy.json");
+    std::fs::write(
+        &roster_policy_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "roster": ["arbiter@example.com"],
+            "allowed_decision_rules": ["rule.auto-settle.v1"],
+            "roster_anchor": "integration-test-roster-anchor-1"
+        }))
+        .expect("serialize roster policy"),
+    )
+    .expect("write roster policy file");
+
     let adjudication_input_path = dir.join("liability-adjudication.json");
     std::fs::write(
         &adjudication_input_path,
@@ -446,6 +458,7 @@ fn test_liability_claim_workflow_surfaces_inner() {
             "adjudicator": "arbiter@example.com",
             "outcome": "partial_settlement",
             "awardedAmount": { "units": 18000, "currency": "USD" },
+            "decisionRuleRef": "rule.auto-settle.v1",
             "note": "additional evidence supports a larger settlement"
         }))
         .expect("serialize adjudication input"),
@@ -469,6 +482,8 @@ fn test_liability_claim_workflow_surfaces_inner() {
             adjudication_input_path
                 .to_str()
                 .expect("adjudication input path"),
+            "--roster-policy-file",
+            roster_policy_path.to_str().expect("roster policy path"),
         ])
         .output()
         .expect("run liability adjudication CLI");
@@ -605,6 +620,8 @@ fn test_liability_claim_workflow_surfaces_inner() {
             payout_instruction_input_path
                 .to_str()
                 .expect("payout instruction input path"),
+            "--roster-policy-file",
+            roster_policy_path.to_str().expect("roster policy path"),
         ])
         .output()
         .expect("run payout instruction CLI");
@@ -695,6 +712,8 @@ fn test_liability_claim_workflow_surfaces_inner() {
             stale_settlement_instruction_input_path
                 .to_str()
                 .expect("stale settlement instruction input path"),
+            "--roster-policy-file",
+            roster_policy_path.to_str().expect("roster policy path"),
         ])
         .output()
         .expect("run stale settlement instruction CLI");
@@ -747,6 +766,8 @@ fn test_liability_claim_workflow_surfaces_inner() {
             settlement_instruction_input_path
                 .to_str()
                 .expect("settlement instruction input path"),
+            "--roster-policy-file",
+            roster_policy_path.to_str().expect("roster policy path"),
         ])
         .output()
         .expect("run settlement instruction CLI");

@@ -31,6 +31,8 @@ use chio_reputation::{
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
+pub use chio_fincred::*;
+
 const VC_CONTEXT_V1: &str = "https://www.w3.org/2018/credentials/v1";
 const CHIO_CREDENTIAL_CONTEXT_V1: &str = "https://chio.world/credentials/v1";
 const VC_TYPE: &str = "VerifiableCredential";
@@ -43,7 +45,6 @@ const PASSPORT_PRESENTATION_RESPONSE_SCHEMA: &str = "chio.agent-passport-present
 const CROSS_ISSUER_PORTFOLIO_SCHEMA: &str = "chio.cross-issuer-portfolio.v1";
 const CROSS_ISSUER_TRUST_PACK_SCHEMA: &str = "chio.cross-issuer-trust-pack.v1";
 const CROSS_ISSUER_MIGRATION_SCHEMA: &str = "chio.cross-issuer-migration.v1";
-const CROSS_ISSUER_PORTFOLIO_EVALUATION_SCHEMA: &str = "chio.cross-issuer-portfolio-evaluation.v1";
 const PROOF_TYPE: &str = "Ed25519Signature2020";
 const PROOF_PURPOSE: &str = "assertionMethod";
 const PRESENTATION_PROOF_PURPOSE: &str = "authentication";
@@ -77,6 +78,7 @@ pub mod fuzz;
 
 include!("artifact.rs");
 include!("passport.rs");
+include!("financial.rs");
 include!("cross_issuer.rs");
 include!("portable_sd_jwt.rs");
 include!("portable_jwt_vc.rs");

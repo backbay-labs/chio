@@ -42,7 +42,7 @@ impl ChioKernel {
                 grant_index: mg.index as u32,
                 cost_charged: 0,
                 currency,
-                budget_remaining: 0,
+                budget_remaining: budget_total,
                 budget_total,
                 delegation_depth,
                 root_budget_holder,
@@ -112,7 +112,7 @@ impl ChioKernel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn build_pre_execution_monetary_deny_response_with_metadata(
+    pub(crate) fn build_pre_execution_monetary_deny_response_with_metadata_and_payee_binding(
         &self,
         request: &ToolCallRequest,
         reason: &str,
@@ -121,6 +121,7 @@ impl ChioKernel {
         committed_cost_after_release: u64,
         cap: &CapabilityToken,
         extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
     ) -> Result<ToolCallResponse, KernelError> {
         self.build_pre_execution_monetary_deny_response_with_recording(
             request,
@@ -130,30 +131,8 @@ impl ChioKernel {
             committed_cost_after_release,
             cap,
             extra_metadata,
+            verified_payee_binding,
             ReceiptRecordMode::WithFederation,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn build_runtime_admission_pre_execution_monetary_deny_response_with_metadata(
-        &self,
-        request: &ToolCallRequest,
-        reason: &str,
-        timestamp: u64,
-        charge: &BudgetChargeResult,
-        committed_cost_after_release: u64,
-        cap: &CapabilityToken,
-        extra_metadata: Option<serde_json::Value>,
-    ) -> Result<ToolCallResponse, KernelError> {
-        self.build_pre_execution_monetary_deny_response_with_recording(
-            request,
-            reason,
-            timestamp,
-            charge,
-            committed_cost_after_release,
-            cap,
-            extra_metadata,
-            ReceiptRecordMode::LocalOnly,
         )
     }
 
@@ -167,6 +146,7 @@ impl ChioKernel {
         committed_cost_after_release: u64,
         cap: &CapabilityToken,
         extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
         record_mode: ReceiptRecordMode,
     ) -> Result<ToolCallResponse, KernelError> {
         let delegation_depth = cap.delegation_chain.len() as u32;
@@ -194,11 +174,12 @@ impl ChioKernel {
         let financial_metadata = Some(serde_json::json!({ "financial": financial_meta }));
         let deny_extra_metadata =
             merge_metadata_objects(financial_metadata.clone(), extra_metadata.clone());
-        let request_metadata = request_receipt_metadata(
+        let request_metadata = request_receipt_metadata_with_payee_binding(
             request,
             self.attestation_trust_policy.as_ref(),
             timestamp,
             deny_extra_metadata.as_ref(),
+            verified_payee_binding,
         )?;
 
         let receipt_content = receipt_content_for_output(None, None)?;
@@ -441,6 +422,28 @@ impl ChioKernel {
             timestamp,
             matched_grant_index,
             extra_metadata,
+            None,
+            ReceiptRecordMode::WithFederation,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_deny_response_with_metadata_and_payee_binding(
+        &self,
+        request: &ToolCallRequest,
+        reason: &str,
+        timestamp: u64,
+        matched_grant_index: Option<usize>,
+        extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        self.build_deny_response_with_recording(
+            request,
+            reason,
+            timestamp,
+            matched_grant_index,
+            extra_metadata,
+            verified_payee_binding,
             ReceiptRecordMode::WithFederation,
         )
     }
@@ -459,10 +462,12 @@ impl ChioKernel {
             timestamp,
             matched_grant_index,
             extra_metadata,
+            None,
             ReceiptRecordMode::LocalOnly,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_deny_response_with_recording(
         &self,
         request: &ToolCallRequest,
@@ -470,6 +475,7 @@ impl ChioKernel {
         timestamp: u64,
         matched_grant_index: Option<usize>,
         extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
         record_mode: ReceiptRecordMode,
     ) -> Result<ToolCallResponse, KernelError> {
         let cap = &request.capability;
@@ -478,11 +484,12 @@ impl ChioKernel {
         let action = ToolCallAction::from_parameters(request.arguments.clone()).map_err(|e| {
             KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
         })?;
-        let request_metadata = request_receipt_metadata(
+        let request_metadata = request_receipt_metadata_with_payee_binding(
             request,
             self.attestation_trust_policy.as_ref(),
             timestamp,
             extra_metadata.as_ref(),
+            verified_payee_binding,
         )?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {

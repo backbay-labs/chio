@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/obligation-status-proof/v1",
+  "title": "Signed Chio Obligation Status Proof V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "proofId",
+        "obligationId",
+        "obligationAtomDigest",
+        "debtorId",
+        "originalCreditorId",
+        "currentCreditorId",
+        "currentSettlementDestinationRef",
+        "disposition",
+        "dispositionDigest",
+        "dispositionVersion",
+        "dispositionLifecycleFence",
+        "settlementState",
+        "settlementLifecycleDigest",
+        "settlementLifecycleVersion",
+        "settlementLifecycleFence",
+        "snapshotVersion",
+        "resourceFence",
+        "dueAtUnixMs",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs",
+        "authorityId",
+        "authorityKeyEpoch"
+      ],
+      "properties": {
+        "schema": { "const": "chio.obligation.status-proof.v1" },
+        "proofId": { "$ref": "#/$defs/digest" },
+        "obligationId": { "$ref": "#/$defs/digest" },
+        "obligationAtomDigest": { "$ref": "#/$defs/digest" },
+        "debtorId": { "$ref": "#/$defs/text" },
+        "originalCreditorId": { "$ref": "#/$defs/text" },
+        "currentCreditorId": { "$ref": "#/$defs/text" },
+        "currentSettlementDestinationRef": { "$ref": "#/$defs/text" },
+        "disposition": {
+          "$ref": "https://chio-protocol.dev/schemas/chio-economy/obligation-disposition/v1#/$defs/disposition"
+        },
+        "dispositionDigest": { "$ref": "#/$defs/digest" },
+        "dispositionVersion": { "$ref": "#/$defs/positiveInteger" },
+        "dispositionLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "settlementState": {
+          "$ref": "https://chio-protocol.dev/schemas/chio-economy/obligation-settlement-lifecycle/v1#/$defs/state"
+        },
+        "settlementLifecycleDigest": { "$ref": "#/$defs/digest" },
+        "settlementLifecycleVersion": { "$ref": "#/$defs/positiveInteger" },
+        "settlementLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "snapshotVersion": { "$ref": "#/$defs/positiveInteger" },
+        "resourceFence": { "$ref": "#/$defs/positiveInteger" },
+        "dueAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "issuedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "expiresAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "authorityId": { "$ref": "#/$defs/text" },
+        "authorityKeyEpoch": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 }
+  }
+}

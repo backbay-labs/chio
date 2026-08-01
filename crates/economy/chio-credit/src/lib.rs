@@ -20,13 +20,24 @@ pub use chio_appraisal as appraisal;
 pub use chio_core_types::{capability, crypto, receipt};
 pub use chio_underwriting as underwriting;
 
+pub mod clearing;
+pub mod factor;
+pub mod financial_credentials;
 pub mod hook;
+pub mod iou_v2;
 pub mod local_account;
+pub mod obligation;
 pub mod risk_reports;
 pub mod store_binding;
 
 pub use hook::{
     CreditEvaluatorError, CreditEvaluatorHook, IouEnvelope, IouEnvelopeBody, IOU_ENVELOPE_SCHEMA,
+};
+pub use iou_v2::{
+    verify_iou_envelope_v2, IouEnvelopeBodyV2, IouEnvelopeCryptoFloorV2, IouEnvelopeIssuerTrustV2,
+    IouEnvelopeMintContextV2, IouEnvelopeReceiptTrustV2, IouEnvelopeV2Error,
+    IouEnvelopeVerificationContextV2, SignedIouEnvelopeV2, VerifiedIouEnvelopeV2,
+    CHIO_RECEIVABLE_IOU_ENVELOPE_V1_SCHEMA, RECEIVABLE_IOU_ENVELOPE_V1_SCHEMA,
 };
 pub use local_account::LocalCreditAccount;
 pub use risk_reports::{

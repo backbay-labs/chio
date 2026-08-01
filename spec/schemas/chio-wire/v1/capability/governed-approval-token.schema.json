@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/governed-approval-token.schema.json",
+  "title": "Chio Governed Approval Token",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "approver",
+    "subject",
+    "governed_intent_hash",
+    "request_id",
+    "issued_at",
+    "expires_at",
+    "decision",
+    "signature"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "approver": { "$ref": "#/$defs/governedApprovalPublicKey" },
+    "subject": { "$ref": "#/$defs/governedApprovalPublicKey" },
+    "governed_intent_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "request_id": { "type": "string", "minLength": 1 },
+    "threshold_proposal_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "issued_at": { "type": "integer", "minimum": 0 },
+    "expires_at": { "type": "integer", "minimum": 0 },
+    "decision": { "enum": ["approved", "denied"] },
+    "algorithm": { "enum": ["ed25519", "p256", "p384", "hybrid"] },
+    "signature": { "$ref": "#/$defs/governedApprovalSignature" }
+  },
+  "$defs": {
+    "governedApprovalPublicKey": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+    },
+    "governedApprovalSignature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
+    }
+  }
+}

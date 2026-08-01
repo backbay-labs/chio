@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio/fincred/source-completeness-attestation/v1.schema.json",
+  "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/signedSourceCompletenessAttestation"
+}

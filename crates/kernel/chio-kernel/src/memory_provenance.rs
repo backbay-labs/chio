@@ -208,6 +208,8 @@ pub enum MemoryProvenanceError {
 /// 3. Keep the chain insertion order total: `append` followed by
 ///    `latest_for_key` / `chain_digest` must observe the freshly written
 ///    entry.
+/// 4. Treat a byte-equivalent replay with the same `receipt_id` as idempotent
+///    and reject reuse of that receipt id for different provenance.
 pub trait MemoryProvenanceStore: Send + Sync {
     /// Append a new entry, computing the chain linkage atomically.
     fn append(
@@ -331,6 +333,21 @@ impl MemoryProvenanceStore for InMemoryMemoryProvenanceStore {
             .entries
             .lock()
             .map_err(|_| MemoryProvenanceError::Backend("entries mutex poisoned".to_string()))?;
+        if let Some(existing) = guard
+            .iter()
+            .find(|entry| entry.receipt_id == input.receipt_id)
+        {
+            if existing.store == input.store
+                && existing.key == input.key
+                && existing.capability_id == input.capability_id
+                && existing.written_at == input.written_at
+            {
+                return Ok(existing.clone());
+            }
+            return Err(MemoryProvenanceError::Backend(
+                "memory provenance receipt id was reused with different fields".to_string(),
+            ));
+        }
         let prev_hash = guard
             .last()
             .map(|entry| entry.hash.clone())
@@ -550,6 +567,31 @@ mod tests {
         assert_eq!(entry.prev_hash, MEMORY_PROVENANCE_GENESIS_PREV_HASH);
         assert_eq!(entry.hash.len(), 64);
         assert!(entry.hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn append_is_idempotent_by_receipt_id() {
+        let store = InMemoryMemoryProvenanceStore::new();
+        let input = MemoryProvenanceAppend {
+            store: "vector:rag-notes".into(),
+            key: "doc-1".into(),
+            capability_id: "cap-1".into(),
+            receipt_id: "rcpt-1".into(),
+            written_at: 100,
+        };
+        let first = store.append(input.clone()).expect("first append succeeds");
+        let replay = store.append(input).expect("replay succeeds");
+
+        assert_eq!(replay, first);
+        assert!(store
+            .append(MemoryProvenanceAppend {
+                store: "vector:rag-notes".into(),
+                key: "doc-2".into(),
+                capability_id: "cap-1".into(),
+                receipt_id: "rcpt-1".into(),
+                written_at: 100,
+            })
+            .is_err());
     }
 
     #[test]

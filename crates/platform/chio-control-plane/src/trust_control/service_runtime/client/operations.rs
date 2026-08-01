@@ -5,6 +5,30 @@ use super::{
 };
 
 impl TrustControlClient {
+    pub fn fiscal_marketplace_price(
+        &self,
+        base: &chio_appraisal::MarketplaceBasePrice,
+        context: &chio_appraisal::MarketplacePricingContext,
+    ) -> Result<chio_appraisal::MarketplaceInvocationPrice, CliError> {
+        self.post_json(
+            FISCAL_MARKETPLACE_PRICE_PATH,
+            &json!({"base": base, "context": context}),
+        )
+    }
+
+    pub fn fiscal_marketplace_credit_limit(
+        &self,
+        request: &chio_underwriting::MarketplaceCreditLimitRequest,
+    ) -> Result<chio_underwriting::MarketplaceCreditLimitDecision, CliError> {
+        self.post_json(
+            FISCAL_MARKETPLACE_CREDIT_LIMIT_PATH,
+            &json!({
+                "tenant_id": request.tenant_id,
+                "currency": request.currency,
+            }),
+        )
+    }
+
     pub fn authority_status(&self) -> Result<TrustAuthorityStatus, CliError> {
         self.get_json(AUTHORITY_PATH)
     }
@@ -543,6 +567,16 @@ impl TrustControlClient {
     #[allow(dead_code)]
     pub fn operator_report(&self, query: &OperatorReportQuery) -> Result<OperatorReport, CliError> {
         self.get_json_with_query(OPERATOR_REPORT_PATH, query)
+    }
+
+    // Kept for API parity with the trust-control service surface even though
+    // the current CLI command set does not invoke it directly.
+    #[allow(dead_code)]
+    pub fn comptroller_surface(
+        &self,
+        query: &OperatorReportQuery,
+    ) -> Result<ComptrollerSurfaceReport, CliError> {
+        self.get_json_with_query(COMPTROLLER_SURFACE_PATH, query)
     }
 
     pub fn behavioral_feed(

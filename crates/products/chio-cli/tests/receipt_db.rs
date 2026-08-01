@@ -8,20 +8,16 @@ use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_d
 use reqwest::blocking::Client;
 use rusqlite::Connection;
 
-fn unique_receipt_db_path(prefix: &str) -> PathBuf {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time before unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!("{prefix}-{nonce}.sqlite3"))
-}
-
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
         .expect("workspace root")
         .to_path_buf()
+}
+
+fn receipt_db_policy() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/receipt-db-policy.yaml")
 }
 
 fn unique_dir(prefix: &str) -> PathBuf {
@@ -47,21 +43,20 @@ fn spawn_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
     receipt_db_path: &Path,
-    revocation_db_path: &Path,
     authority_db_path: &Path,
-    budget_db_path: &Path,
+    joint_authority_db_path: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([
             "--receipt-db",
             receipt_db_path.to_str().expect("receipt db path"),
-            "--revocation-db",
-            revocation_db_path.to_str().expect("revocation db path"),
             "--authority-db",
             authority_db_path.to_str().expect("authority db path"),
-            "--budget-db",
-            budget_db_path.to_str().expect("budget db path"),
+            "--session-db",
+            joint_authority_db_path
+                .to_str()
+                .expect("joint authority db path"),
             "trust",
             "serve",
             "--listen",
@@ -89,15 +84,19 @@ fn wait_for_trust_service(client: &Client, base_url: &str) {
 
 #[test]
 fn check_command_persists_receipt_to_sqlite() {
-    let db_path = unique_receipt_db_path("chio-cli-check-receipts");
+    let dir = tempfile::tempdir().expect("private store directory");
+    let db_path = dir.path().join("receipts.sqlite3");
+    let session_db_path = dir.path().join("sessions.sqlite3");
     let output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([
             "--receipt-db",
             db_path.to_str().expect("utf-8 path"),
+            "--session-db",
+            session_db_path.to_str().expect("utf-8 session path"),
             "check",
             "--policy",
-            "examples/policies/default.yaml",
+            receipt_db_policy().to_str().expect("policy path"),
             "--tool",
             "bash",
             "--server",
@@ -147,18 +146,17 @@ fn check_command_persists_receipt_via_control_service() {
     let dir = unique_dir("chio-cli-check-control");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
-    let revocation_db_path = dir.join("revocations.sqlite3");
     let authority_db_path = dir.join("authority.sqlite3");
-    let budget_db_path = dir.join("budgets.sqlite3");
+    let joint_authority_db_path = dir.join("joint-authority.sqlite3");
+    let session_db_path = dir.join("sessions.sqlite3");
     let listen = reserve_listen_addr();
     let service_token = "control-secret";
     let _service = spawn_trust_service(
         listen,
         service_token,
         &receipt_db_path,
-        &revocation_db_path,
         &authority_db_path,
-        &budget_db_path,
+        &joint_authority_db_path,
     );
     let client = Client::builder().build().expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -171,9 +169,11 @@ fn check_command_persists_receipt_via_control_service() {
             &base_url,
             "--control-token",
             service_token,
+            "--session-db",
+            session_db_path.to_str().expect("session db path"),
             "check",
             "--policy",
-            "examples/policies/default.yaml",
+            receipt_db_policy().to_str().expect("policy path"),
             "--tool",
             "bash",
             "--server",

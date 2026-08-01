@@ -1,13 +1,42 @@
 use super::*;
 
+pub(crate) enum ReservedHoldStamp<'a> {
+    Monetary {
+        charge: &'a BudgetChargeResult,
+        payment_reference: Option<String>,
+    },
+    Invocation {
+        hold_id: String,
+        grant_index: usize,
+    },
+}
+
+impl ReservedHoldStamp<'_> {
+    fn hold_id(&self) -> &str {
+        match self {
+            Self::Monetary { charge, .. } => charge.budget_hold_id.as_str(),
+            Self::Invocation { hold_id, .. } => hold_id.as_str(),
+        }
+    }
+}
+
+pub(crate) enum AllowResponseNonce {
+    Preminted(Box<crate::execution_nonce::SignedExecutionNonce>),
+    MintForAllow,
+    Suppressed,
+}
+
 impl ChioKernel {
-    pub(crate) fn build_allow_response_with_metadata(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_allow_response_with_metadata_and_payee_binding(
         &self,
         request: &ToolCallRequest,
         output: ToolCallOutput,
         timestamp: u64,
         matched_grant_index: Option<usize>,
         extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
+        nonce: AllowResponseNonce,
     ) -> Result<ToolCallResponse, KernelError> {
         let cap = &request.capability;
         let expected_chunks = match &output {
@@ -31,11 +60,12 @@ impl ChioKernel {
             }
             _ => None,
         };
-        let request_metadata = request_receipt_metadata(
+        let request_metadata = request_receipt_metadata_with_payee_binding(
             request,
             self.attestation_trust_policy.as_ref(),
             timestamp,
             extra_metadata.as_ref(),
+            verified_payee_binding,
         )?;
 
         // Merge extra_metadata (e.g. "financial") into receipt_content.metadata.
@@ -97,7 +127,13 @@ impl ChioKernel {
         // Mint a short-lived, single-use execution nonce for allow responses
         // that did not already present one. A request that consumed a nonce
         // to execute must not chain-mint a replacement for the same call.
-        let execution_nonce = self.mint_execution_nonce_for_allow(request, cap, &receipt)?;
+        let execution_nonce = match nonce {
+            AllowResponseNonce::Preminted(nonce) => Some(nonce),
+            AllowResponseNonce::MintForAllow => {
+                self.mint_execution_nonce_for_allow(request, cap, &receipt)?
+            }
+            AllowResponseNonce::Suppressed => None,
+        };
 
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
@@ -116,6 +152,8 @@ impl ChioKernel {
         timestamp: u64,
         matched_grant_index: Option<usize>,
         extra_metadata: Option<serde_json::Value>,
+        incomplete_reason: &str,
+        reserved_hold: Option<ReservedHoldStamp<'_>>,
     ) -> Result<ToolCallResponse, KernelError> {
         let cap = &request.capability;
         let receipt_content = receipt_content_for_output(None, None)?;
@@ -143,7 +181,7 @@ impl ChioKernel {
             tool_name: &request.tool_name,
             server_id: &request.server_id,
             decision: Decision::Incomplete {
-                reason: "execution nonce preflight requires retry with presented nonce".to_string(),
+                reason: incomplete_reason.to_string(),
             },
             action,
             content_hash: receipt_content.content_hash,
@@ -154,8 +192,80 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        self.record_chio_receipt_with_federation(request, &receipt)?;
-        let execution_nonce = self.mint_execution_nonce_for_allow(request, cap, &receipt)?;
+        let execution_nonce = self.mint_execution_nonce_for_allow_reserving(
+            request,
+            cap,
+            &receipt,
+            reserved_hold.as_ref().map(ReservedHoldStamp::hold_id),
+        )?;
+
+        if let (Some(stamp), Some(nonce)) = (reserved_hold.as_ref(), execution_nonce.as_ref()) {
+            let reserved_until = nonce.expires_at();
+            match stamp {
+                ReservedHoldStamp::Monetary {
+                    charge,
+                    payment_reference,
+                } => {
+                    let envelope = crate::budget_store::ReservedHoldEnvelope {
+                        budget_total: Some(charge.budget_total),
+                        delegation_depth: cap.delegation_chain.len() as u32,
+                        root_budget_holder: cap.issuer.to_hex(),
+                    };
+                    if let Err(error) = self.with_budget_store(|store| {
+                        Ok(store.mark_hold_reserved(
+                            charge.budget_hold_id.as_str(),
+                            reserved_until,
+                            charge.currency.as_str(),
+                            payment_reference.as_deref(),
+                            &envelope,
+                        )?)
+                    }) {
+                        self.reverse_budget_charge(&cap.id, charge)?;
+                        self.release_admitted_capability_budget(cap)
+                            .map_err(KernelError::DelegationInvalid)?;
+                        return Err(error);
+                    }
+                    self.record_reserved_sibling_share(charge.budget_hold_id.as_str(), cap);
+                }
+                ReservedHoldStamp::Invocation {
+                    hold_id,
+                    grant_index,
+                } => {
+                    let envelope = crate::budget_store::ReservedHoldEnvelope {
+                        budget_total: None,
+                        delegation_depth: cap.delegation_chain.len() as u32,
+                        root_budget_holder: cap.issuer.to_hex(),
+                    };
+                    if let Err(error) = self.with_budget_store(|store| {
+                        Ok(store.reserve_invocation_hold(
+                            hold_id,
+                            &cap.id,
+                            *grant_index,
+                            reserved_until,
+                            &envelope,
+                        )?)
+                    }) {
+                        self.with_budget_store(|store| {
+                            Ok(store.reverse_charge_cost(&cap.id, *grant_index, 0)?)
+                        })?;
+                        self.release_admitted_capability_budget(cap)
+                            .map_err(KernelError::DelegationInvalid)?;
+                        return Err(error);
+                    }
+                    self.record_reserved_sibling_share(hold_id, cap);
+                }
+            }
+        }
+
+        if let Err(error) = self.record_chio_receipt_with_federation(request, &receipt) {
+            warn!(
+                request_id = %request.request_id,
+                hold_id = reserved_hold.as_ref().map(ReservedHoldStamp::hold_id),
+                receipt_id = %receipt.id,
+                reason = %redacted!(&error),
+                "durable receipt persistence failed for a stamped reservation"
+            );
+        }
 
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
@@ -163,7 +273,7 @@ impl ChioKernel {
             output: None,
             reason: None,
             terminal_state: OperationTerminalState::Incomplete {
-                reason: "execution nonce preflight requires retry with presented nonce".to_string(),
+                reason: incomplete_reason.to_string(),
             },
             receipt,
             execution_nonce,
@@ -179,7 +289,7 @@ impl ChioKernel {
     /// entry OR the chain is tampered / unavailable. This is the
     /// fail-closed signal: the receipt explicitly records that the
     /// memory read was not backed by a provenance record.
-    fn resolve_memory_read_provenance_metadata(
+    pub(crate) fn resolve_memory_read_provenance_metadata(
         &self,
         store: &str,
         key: &str,
@@ -255,7 +365,7 @@ impl ChioKernel {
 
     /// Append a provenance entry for a governed memory write once the allow
     /// receipt is signed. Fails closed on chain-store errors.
-    fn append_memory_provenance_for_write(
+    pub(crate) fn append_memory_provenance_for_write(
         &self,
         store: &str,
         key: &str,

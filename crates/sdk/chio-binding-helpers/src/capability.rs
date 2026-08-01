@@ -103,6 +103,7 @@ mod tests {
                 issued_at: 1710000200,
                 expires_at: 1710000800,
                 delegation_chain: vec![],
+                aggregate_invocation_budget: None,
             },
             &issuer,
         )?)

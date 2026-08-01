@@ -573,7 +573,7 @@ fn loom_emergency_stop_arcswap() {
 
 #[cfg(any(loom, chio_kernel_loom))]
 #[test]
-fn loom_budget_atomic_decrement() {
+fn protocol_primitives_last_unit_contention() {
     loom::model(|| {
         #[derive(Debug)]
         struct TenantBudget {
@@ -637,6 +637,358 @@ fn loom_budget_atomic_decrement() {
             0,
             "budget must not go below zero"
         );
+    });
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[derive(Debug, Default)]
+struct CompositeQuotaModel {
+    reserved: [u8; 4],
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+impl CompositeQuotaModel {
+    fn authorize(&mut self, keys: [usize; 3]) -> bool {
+        if keys.iter().any(|key| self.reserved[*key] >= 1) {
+            return false;
+        }
+        for key in keys {
+            self.reserved[key] += 1;
+        }
+        true
+    }
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[test]
+fn protocol_primitives_three_key_all_or_nothing_admission() {
+    loom::model(|| {
+        let quotas = Arc::new(Mutex::new(CompositeQuotaModel::default()));
+        let allowed_a = Arc::new(AtomicBool::new(false));
+        let allowed_b = Arc::new(AtomicBool::new(false));
+
+        let quotas_a = Arc::clone(&quotas);
+        let result_a = Arc::clone(&allowed_a);
+        let a = thread::spawn(move || {
+            result_a.store(
+                lock_mutex(&quotas_a).authorize([0, 1, 2]),
+                Ordering::Release,
+            );
+        });
+
+        let quotas_b = Arc::clone(&quotas);
+        let result_b = Arc::clone(&allowed_b);
+        let b = thread::spawn(move || {
+            result_b.store(
+                lock_mutex(&quotas_b).authorize([1, 2, 3]),
+                Ordering::Release,
+            );
+        });
+
+        join_ok(a);
+        join_ok(b);
+
+        assert_ne!(
+            allowed_a.load(Ordering::Acquire),
+            allowed_b.load(Ordering::Acquire),
+            "exactly one overlapping composite hold must succeed"
+        );
+        let quotas = lock_mutex(&quotas);
+        assert_eq!(quotas.reserved[1], 1, "shared quota must be reserved once");
+        assert_eq!(quotas.reserved[2], 1, "shared quota must be reserved once");
+        assert_eq!(
+            quotas.reserved[0] + quotas.reserved[3],
+            1,
+            "the denied hold must not reserve its private quota"
+        );
+    });
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[derive(Debug, Default)]
+struct ImmutableMaximumModel {
+    maximum: Option<u8>,
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+impl ImmutableMaximumModel {
+    fn define(&mut self, maximum: u8) -> bool {
+        match self.maximum {
+            Some(existing) => existing == maximum,
+            None => {
+                self.maximum = Some(maximum);
+                true
+            }
+        }
+    }
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[test]
+fn protocol_primitives_immutable_maximum_race() {
+    loom::model(|| {
+        let quota = Arc::new(Mutex::new(ImmutableMaximumModel::default()));
+        let accepted = Arc::new(AtomicUsize::new(0));
+
+        let quota_a = Arc::clone(&quota);
+        let accepted_a = Arc::clone(&accepted);
+        let a = thread::spawn(move || {
+            if lock_mutex(&quota_a).define(1) {
+                accepted_a.fetch_add(1, Ordering::AcqRel);
+            }
+        });
+
+        let quota_b = Arc::clone(&quota);
+        let accepted_b = Arc::clone(&accepted);
+        let b = thread::spawn(move || {
+            if lock_mutex(&quota_b).define(2) {
+                accepted_b.fetch_add(1, Ordering::AcqRel);
+            }
+        });
+
+        join_ok(a);
+        join_ok(b);
+
+        assert_eq!(accepted.load(Ordering::Acquire), 1);
+        assert!(matches!(lock_mutex(&quota).maximum, Some(1 | 2)));
+    });
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[derive(Debug, Default)]
+struct CumulativeApprovalModel {
+    reserved_units: u64,
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+impl CumulativeApprovalModel {
+    fn reserve(&mut self, units: u64, threshold: u64) -> bool {
+        let prospective = self.reserved_units + units;
+        self.reserved_units = prospective;
+        prospective < threshold
+    }
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[test]
+fn loom_cumulative_approval_serializes_concurrent_threshold_crossing() {
+    loom::model(|| {
+        let account = Arc::new(Mutex::new(CumulativeApprovalModel::default()));
+        let authorized = Arc::new(AtomicUsize::new(0));
+        let approval_required = Arc::new(AtomicUsize::new(0));
+
+        let spawn_reservation =
+            |account: Arc<Mutex<CumulativeApprovalModel>>,
+             authorized: Arc<AtomicUsize>,
+             approval_required: Arc<AtomicUsize>| {
+                thread::spawn(move || {
+                    if lock_mutex(&account).reserve(60, 100) {
+                        authorized.fetch_add(1, Ordering::AcqRel);
+                    } else {
+                        approval_required.fetch_add(1, Ordering::AcqRel);
+                    }
+                })
+            };
+
+        let a = spawn_reservation(
+            Arc::clone(&account),
+            Arc::clone(&authorized),
+            Arc::clone(&approval_required),
+        );
+        let b = spawn_reservation(
+            Arc::clone(&account),
+            Arc::clone(&authorized),
+            Arc::clone(&approval_required),
+        );
+
+        join_ok(a);
+        join_ok(b);
+
+        assert_eq!(authorized.load(Ordering::Acquire), 1);
+        assert_eq!(approval_required.load(Ordering::Acquire), 1);
+        assert_eq!(lock_mutex(&account).reserved_units, 120);
+    });
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReservationState {
+    Authorized,
+    Captured,
+    Reversed,
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[derive(Debug)]
+struct ReservationTransitionModel {
+    state: ReservationState,
+    reserved: u8,
+    captured: u8,
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+impl ReservationTransitionModel {
+    fn capture(&mut self) -> bool {
+        if self.state != ReservationState::Authorized {
+            return false;
+        }
+        self.reserved -= 1;
+        self.captured += 1;
+        self.state = ReservationState::Captured;
+        true
+    }
+
+    fn reverse(&mut self) -> bool {
+        if self.state != ReservationState::Authorized {
+            return false;
+        }
+        self.reserved -= 1;
+        self.state = ReservationState::Reversed;
+        true
+    }
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[test]
+fn protocol_primitives_capture_versus_reverse() {
+    loom::model(|| {
+        let reservation = Arc::new(Mutex::new(ReservationTransitionModel {
+            state: ReservationState::Authorized,
+            reserved: 1,
+            captured: 0,
+        }));
+        let captured = Arc::new(AtomicBool::new(false));
+        let reversed = Arc::new(AtomicBool::new(false));
+
+        let capture_reservation = Arc::clone(&reservation);
+        let capture_result = Arc::clone(&captured);
+        let capture = thread::spawn(move || {
+            capture_result.store(
+                lock_mutex(&capture_reservation).capture(),
+                Ordering::Release,
+            );
+        });
+
+        let reverse_reservation = Arc::clone(&reservation);
+        let reverse_result = Arc::clone(&reversed);
+        let reverse = thread::spawn(move || {
+            reverse_result.store(
+                lock_mutex(&reverse_reservation).reverse(),
+                Ordering::Release,
+            );
+        });
+
+        join_ok(capture);
+        join_ok(reverse);
+
+        assert_ne!(
+            captured.load(Ordering::Acquire),
+            reversed.load(Ordering::Acquire)
+        );
+        let reservation = lock_mutex(&reservation);
+        assert_eq!(reservation.reserved, 0);
+        assert_eq!(
+            reservation.captured,
+            u8::from(reservation.state == ReservationState::Captured)
+        );
+    });
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[test]
+fn protocol_primitives_idempotent_compensation() {
+    loom::model(|| {
+        let reservation = Arc::new(Mutex::new(ReservationTransitionModel {
+            state: ReservationState::Authorized,
+            reserved: 1,
+            captured: 0,
+        }));
+        let applied = Arc::new(AtomicUsize::new(0));
+
+        let reservation_a = Arc::clone(&reservation);
+        let applied_a = Arc::clone(&applied);
+        let a = thread::spawn(move || {
+            if lock_mutex(&reservation_a).reverse() {
+                applied_a.fetch_add(1, Ordering::AcqRel);
+            }
+        });
+
+        let reservation_b = Arc::clone(&reservation);
+        let applied_b = Arc::clone(&applied);
+        let b = thread::spawn(move || {
+            if lock_mutex(&reservation_b).reverse() {
+                applied_b.fetch_add(1, Ordering::AcqRel);
+            }
+        });
+
+        join_ok(a);
+        join_ok(b);
+
+        let reservation = lock_mutex(&reservation);
+        assert_eq!(applied.load(Ordering::Acquire), 1);
+        assert_eq!(reservation.state, ReservationState::Reversed);
+        assert_eq!(reservation.reserved, 0);
+        assert_eq!(reservation.captured, 0);
+    });
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApprovalState {
+    Pending,
+    Authorized,
+    Reversed,
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+fn transition_pending_approval(state: &mut ApprovalState, target: ApprovalState) -> bool {
+    if *state != ApprovalState::Pending {
+        return false;
+    }
+    *state = target;
+    true
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[test]
+fn loom_approval_attachment_and_pending_reverse_have_one_winner() {
+    loom::model(|| {
+        let state = Arc::new(Mutex::new(ApprovalState::Pending));
+        let attached = Arc::new(AtomicBool::new(false));
+        let reversed = Arc::new(AtomicBool::new(false));
+
+        let attach_state = Arc::clone(&state);
+        let attach_result = Arc::clone(&attached);
+        let attach = thread::spawn(move || {
+            attach_result.store(
+                transition_pending_approval(
+                    &mut lock_mutex(&attach_state),
+                    ApprovalState::Authorized,
+                ),
+                Ordering::Release,
+            );
+        });
+
+        let reverse_state = Arc::clone(&state);
+        let reverse_result = Arc::clone(&reversed);
+        let reverse = thread::spawn(move || {
+            reverse_result.store(
+                transition_pending_approval(
+                    &mut lock_mutex(&reverse_state),
+                    ApprovalState::Reversed,
+                ),
+                Ordering::Release,
+            );
+        });
+
+        join_ok(attach);
+        join_ok(reverse);
+
+        assert_ne!(
+            attached.load(Ordering::Acquire),
+            reversed.load(Ordering::Acquire)
+        );
+        assert_ne!(*lock_mutex(&state), ApprovalState::Pending);
     });
 }
 

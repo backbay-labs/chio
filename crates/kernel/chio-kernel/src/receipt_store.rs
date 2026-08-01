@@ -130,109 +130,6 @@ impl Drop for RetentionMaintenanceHandle {
     }
 }
 
-/// Cadence of the background dispatch-intent recovery worker. Each pass is
-/// one indexed read when nothing foreign is open, so the interval trades
-/// only how long a crashed sibling's orphans stay invisible.
-pub(crate) const DISPATCH_INTENT_RECOVERY_INTERVAL: std::time::Duration =
-    std::time::Duration::from_secs(30);
-
-/// Owns the dispatch-intent recovery worker thread; signals stop and joins
-/// on drop. Spawned by [`crate::kernel::ChioKernel::try_set_receipt_store_handle`]
-/// for stores that support sibling-writer recovery.
-///
-/// The attach-time reconcile pass correctly defers rows owned by live
-/// sibling writers, but a sibling that crashes AFTER this kernel attaches
-/// leaves open, outcome-unknown rows that no later attach may ever revisit
-/// (the survivor can stay up indefinitely). This worker re-runs
-/// reconciliation on a fixed cadence: each pass claims only rows whose
-/// owner is provably gone and never touches this instance's own in-flight
-/// intents, so a live writer is never harmed while a crashed writer's
-/// orphans surface as durable incidents even while other writers stay up.
-///
-/// The worker thread NEVER PANICS: each pass is wrapped in `catch_unwind`
-/// so a panic inside the store's reconcile path is caught, logged, and
-/// retried on the next interval rather than silently and permanently
-/// stopping recovery.
-pub struct DispatchIntentRecoveryHandle {
-    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    join: Option<std::thread::JoinHandle<()>>,
-}
-
-impl DispatchIntentRecoveryHandle {
-    /// Spawn the recovery worker. `store` is a dedicated `Arc` clone held by
-    /// the worker thread for its lifetime, independent of the kernel's own
-    /// `receipt_store` handle.
-    pub(crate) fn spawn(
-        store: std::sync::Arc<dyn ReceiptStore>,
-        interval: std::time::Duration,
-    ) -> Self {
-        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let worker_stop = std::sync::Arc::clone(&stop);
-        let join = std::thread::spawn(move || {
-            while !worker_stop.load(std::sync::atomic::Ordering::SeqCst) {
-                // Sleep in short slices so shutdown is responsive.
-                let mut waited = std::time::Duration::ZERO;
-                let slice = std::time::Duration::from_millis(200);
-                while waited < interval && !worker_stop.load(std::sync::atomic::Ordering::SeqCst) {
-                    std::thread::sleep(slice);
-                    waited += slice;
-                }
-                if worker_stop.load(std::sync::atomic::Ordering::SeqCst) {
-                    break;
-                }
-                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    store.reconcile_dispatch_intents(&crate::DefaultDispatchIntentReconciler)
-                }));
-                match outcome {
-                    Ok(Ok(report)) => {
-                        if report.dead_lettered > 0
-                            || report.monetary_reconciled > 0
-                            || report.replayed > 0
-                        {
-                            // Mirror the attach-time log so a mid-serve
-                            // recovery is as visible as a boot one.
-                            tracing::warn!(
-                                target: "chio::dispatch_intent",
-                                dead_lettered = report.dead_lettered,
-                                monetary_reconciled = report.monetary_reconciled,
-                                replayed = report.replayed,
-                                "recovered dispatch intents orphaned by a crashed sibling \
-                                 writer; incidents recorded for operator review"
-                            );
-                        }
-                    }
-                    Ok(Err(error)) => {
-                        tracing::warn!(
-                            target: "chio::dispatch_intent",
-                            error = %redacted!(&error),
-                            "dispatch intent recovery pass failed; will retry next interval"
-                        );
-                    }
-                    Err(_panic) => {
-                        tracing::warn!(
-                            target: "chio::dispatch_intent",
-                            "dispatch intent recovery pass panicked; will retry next interval"
-                        );
-                    }
-                }
-            }
-        });
-        Self {
-            stop,
-            join: Some(join),
-        }
-    }
-}
-
-impl Drop for DispatchIntentRecoveryHandle {
-    fn drop(&mut self) {
-        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
-        if let Some(join) = self.join.take() {
-            let _ = join.join();
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReceiptWriterCounters {
@@ -241,6 +138,13 @@ pub struct ReceiptWriterCounters {
     pub failed_total: u64,
     pub saturated_total: u64,
     pub inflight: u64,
+    /// Caller-visible writer deadlines exceeded. This is separate from
+    /// `failed_total`, which counts only the actor's terminal failed outcomes.
+    #[serde(default)]
+    pub timed_out_total: u64,
+    /// Timed-out commands that are still queued or running on the actor.
+    #[serde(default)]
+    pub timed_out_inflight: u64,
     /// Commands still queued in the commit-actor channel, not yet pulled for
     /// processing. Unlike `inflight`, this excludes work the actor has already
     /// drained and is committing, so it is the honest saturation signal: the
@@ -355,16 +259,6 @@ pub struct ReceiptStoreHealthReport {
     /// writer fault, even once the writer recovers.
     #[serde(default)]
     pub writer_restart_total: u64,
-    /// Dispatch intents still open in the journal: calls in flight, or orphans
-    /// awaiting boot reconciliation. Persistent rows, so visible to any reader
-    /// of the database, not only the serving kernel.
-    #[serde(default)]
-    pub open_dispatch_intents: u64,
-    /// Orphaned dispatch intents reconciled into outcome-unknown incidents. A
-    /// nonzero count means an effect may have occurred with no receipt;
-    /// `healthy` is `false` while any remain unresolved.
-    #[serde(default)]
-    pub dead_letter_dispatch_intents: u64,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -397,120 +291,6 @@ pub struct AuthorizationReceiptConsumption {
     pub tenant_id: Option<String>,
     pub parameter_hash: String,
     pub consumed_at_unix_ms: u64,
-}
-
-/// Side-effect classification that gates the durable dispatch-intent write.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SideEffectClass {
-    /// Pure/read-only: no durable intent is written; time to first response
-    /// is unchanged.
-    ReadOnly,
-    /// Externally visible effect (file write, message send, non-monetary tool).
-    SideEffecting,
-    /// Moves funds on a payment rail; carries a rail reference.
-    Monetary,
-}
-
-/// Which call classes must write a durable dispatch intent before dispatch.
-/// The compiled default covers every effecting class and exempts read-only;
-/// `KernelConfig` construction sites choose the deployment posture.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DispatchIntentJournalMode {
-    /// No intent writes: an effect that crashes before its receipt commits
-    /// leaves no durable trace. Operator opt-out only.
-    Off,
-    /// Write intents for the SideEffecting and Monetary classes.
-    #[default]
-    SideEffecting,
-    /// Write intents for every mediated call, including read-only.
-    All,
-}
-
-/// A durable operational record proving a side-effecting or monetary call was
-/// about to dispatch. Never signed, never entered into the receipt log, and
-/// never advances the checkpoint sequence.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DispatchIntentRecord {
-    pub request_id: String,
-    pub capability_id: String,
-    pub tool_server: String,
-    pub tool_name: String,
-    pub parameter_hash: String,
-    pub side_effect_class: SideEffectClass,
-    pub monetary: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rail: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rail_authorization_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tenant_id: Option<String>,
-    pub created_at_unix_ms: u64,
-}
-
-/// Key used to consume an intent in the same transaction as the receipt
-/// append.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DispatchIntentKey {
-    pub request_id: String,
-    /// Must equal the receipt's `action.parameter_hash`; a mismatch fails
-    /// closed so a consumed intent always matches the exact call the receipt
-    /// attests.
-    pub parameter_hash: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tenant_id: Option<String>,
-}
-
-/// Threaded from the pre-dispatch intent write to the terminal receipt sink
-/// so the receipt-append transaction consumes the matching intent. Receipts
-/// carry no request id, so the binding must travel with the evaluation.
-#[derive(Debug, Clone)]
-pub struct DispatchIntentHandle {
-    pub request_id: String,
-    pub parameter_hash: String,
-    pub tenant_id: Option<String>,
-}
-
-/// Outcome of reconciling one orphaned intent surviving a restart.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DispatchIntentResolution {
-    /// Effect could not be confirmed; record an outcome-unknown incident.
-    DeadLetter { detail: String },
-    /// Reconciler proved the effect never occurred and it is safe to retry.
-    SafeToReplay,
-    /// Rail query confirmed a monetary outcome; the incident carries the
-    /// reference.
-    MonetaryReconciled { rail_reference: String },
-}
-
-/// Decides how to resolve an orphaned dispatch intent at boot. The default
-/// kernel reconciler dead-letters every orphan (a side effect is never
-/// blindly replayed); a rail-querying reconciler can prove a monetary
-/// outcome instead.
-pub trait DispatchIntentReconciler: Send + Sync {
-    fn resolve(
-        &self,
-        intent: &DispatchIntentRecord,
-    ) -> Result<DispatchIntentResolution, ReceiptStoreError>;
-}
-
-/// Summary of one boot reconciliation pass over surviving intents.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DispatchIntentReconcileReport {
-    pub open: u64,
-    pub dead_lettered: u64,
-    pub replayed: u64,
-    pub monetary_reconciled: u64,
-    /// Open intents left unclaimed because a live sibling writer instance
-    /// shares the store: they mark that writer's in-flight calls, not
-    /// restart orphans, and only their owner (or a later attach that holds
-    /// the store exclusively) may resolve them.
-    #[serde(default)]
-    pub deferred_to_live_writer: u64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -548,6 +328,15 @@ pub enum ReceiptStoreError {
     #[error("not found: {0}")]
     NotFound(String),
 
+    #[error("unsupported receipt-store operation: {0}")]
+    Unsupported(String),
+
+    #[error("receipt-store mutation was fenced")]
+    Fenced,
+
+    #[error("receipt-store durable outcome is unknown: {0}")]
+    OutcomeUnknown(String),
+
     #[error("retention co-archival incomplete for {table}: {live} live rows, {archived} archived; aborting delete to preserve inclusion-proof integrity")]
     RetentionArchiveIncomplete {
         table: &'static str,
@@ -568,6 +357,22 @@ pub enum ReceiptStoreError {
 
     #[error("receipt commit writer is not serving after {restarts} restart(s): {last_error}")]
     WriterDead { restarts: u64, last_error: String },
+}
+
+/// Atomic sidecar projections supported by a receipt store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtomicReceiptProjection {
+    /// The store cannot atomically append a receipt and settlement observation.
+    Unsupported,
+    /// The store supports the first settlement-observation projection.
+    SettlementObservationV1,
+}
+
+/// Initial settlement work committed with a receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PendingSettlementObservation {
+    /// Earliest time at which a worker may claim the observation.
+    pub next_visible_at_ms: u64,
 }
 
 /// Point-in-time liveness of a receipt store's commit writer. `Unknown` keeps
@@ -609,6 +414,61 @@ fn receipt_writer_liveness_unknown_label() -> String {
 
 pub trait ReceiptStore: Send + Sync {
     fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError>;
+    fn admission_projection_capabilities(
+        &self,
+    ) -> crate::admission_operation::AdmissionProjectionCapabilities {
+        crate::admission_operation::AdmissionProjectionCapabilities::default()
+    }
+    fn commit_admission_projection(
+        &self,
+        _projection: &crate::admission_operation::AdmissionTerminalProjection,
+    ) -> Result<crate::admission_operation::AdmissionTerminal, ReceiptStoreError> {
+        Err(ReceiptStoreError::Unsupported(
+            "atomic admission terminal projection".to_string(),
+        ))
+    }
+    /// Identify the durable writer shared with a settlement outcome store.
+    fn settlement_store_binding(&self) -> Option<chio_settle::SettlementStoreBinding> {
+        None
+    }
+    /// Report the atomic receipt-sidecar projection implemented by this store.
+    fn atomic_receipt_projection(&self) -> AtomicReceiptProjection {
+        AtomicReceiptProjection::Unsupported
+    }
+    /// Whether the atomic receipt projection also honors the supplied append
+    /// deadline. Settlement runtime installation requires this capability so a
+    /// legacy atomic-only store cannot reintroduce an unbounded writer wait.
+    fn supports_atomic_receipt_projection_with_timeout(&self) -> bool {
+        false
+    }
+    /// Atomically append a receipt and its initial settlement observation.
+    ///
+    /// The default fails without appending either record.
+    fn append_chio_receipt_with_pending_observation(
+        &self,
+        _receipt: &ChioReceipt,
+        _pending: &PendingSettlementObservation,
+    ) -> Result<(), ReceiptStoreError> {
+        Err(ReceiptStoreError::Unsupported(
+            "atomic settlement observation projection".to_string(),
+        ))
+    }
+    /// Atomically append a receipt and its initial settlement observation while
+    /// honoring the receipt-append deadline on stores with an async writer.
+    ///
+    /// The default fails without invoking the legacy unbounded atomic method.
+    /// Stores that advertise `supports_atomic_receipt_projection_with_timeout`
+    /// must override this method and enforce `budget`.
+    fn append_chio_receipt_with_pending_observation_and_timeout(
+        &self,
+        _receipt: &ChioReceipt,
+        _pending: &PendingSettlementObservation,
+        _budget: std::time::Duration,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        Err(ReceiptStoreError::Unsupported(
+            "timeout-aware atomic settlement observation projection".to_string(),
+        ))
+    }
     /// Load a chio receipt by id. The provided default returns `None`; a store
     /// backing a store-authoritative deployment MUST override this (and
     /// `load_child_receipt`) with a real point lookup.
@@ -680,167 +540,6 @@ pub trait ReceiptStore: Send + Sync {
         Err(ReceiptStoreError::Conflict(
             "durable authorization receipt consumption is not supported by this receipt store"
                 .to_string(),
-        ))
-    }
-    /// Durably write a dispatch intent before a side-effecting or monetary
-    /// call dispatches. Fails closed on any store that does not support the
-    /// journal: the caller denies before the effect rather than dispatching
-    /// without a durable trace.
-    fn record_dispatch_intent(
-        &self,
-        _intent: &DispatchIntentRecord,
-    ) -> Result<(), ReceiptStoreError> {
-        Err(ReceiptStoreError::Conflict(
-            "durable dispatch-intent journal is not supported by this receipt store".to_string(),
-        ))
-    }
-    /// Bounded variant of `record_dispatch_intent`, failing closed with
-    /// `ReceiptStoreError::Timeout` if the writer round trip exceeds `budget`.
-    /// The default ignores the budget (the unbounded default already fails
-    /// closed); a store with an async commit writer overrides this so a
-    /// writer that stalls after the pre-dispatch liveness check cannot hang
-    /// the evaluation inside the intent write.
-    fn record_dispatch_intent_with_timeout(
-        &self,
-        intent: &DispatchIntentRecord,
-        _budget: std::time::Duration,
-    ) -> Result<(), ReceiptStoreError> {
-        self.record_dispatch_intent(intent)
-    }
-    /// Append a receipt and, in the SAME transaction, consume the matching
-    /// dispatch intent. A `parameter_hash` mismatch or missing intent aborts
-    /// the whole transaction: neither the receipt nor the delete commits.
-    fn append_chio_receipt_consuming_intent(
-        &self,
-        _receipt: &ChioReceipt,
-        _intent: &DispatchIntentKey,
-    ) -> Result<Option<u64>, ReceiptStoreError> {
-        Err(ReceiptStoreError::Conflict(
-            "durable dispatch-intent consumption is not supported by this receipt store"
-                .to_string(),
-        ))
-    }
-    /// Bounded variant of `append_chio_receipt_consuming_intent`, failing
-    /// closed with `ReceiptStoreError::Timeout` if the commit round trip
-    /// exceeds `budget`, so a wedged writer cannot pin the kernel-wide
-    /// receipt write lock through the consuming append.
-    fn append_chio_receipt_consuming_intent_with_timeout(
-        &self,
-        receipt: &ChioReceipt,
-        intent: &DispatchIntentKey,
-        _budget: std::time::Duration,
-    ) -> Result<Option<u64>, ReceiptStoreError> {
-        self.append_chio_receipt_consuming_intent(receipt, intent)
-    }
-    /// Best-effort attach of a rail authorization id to an open monetary
-    /// intent, so a monetary orphan names the exact reference an operator
-    /// reconciles against. Keyed on the intent's (tenant, request id)
-    /// identity: request ids are only unique within a tenant, so the tenant
-    /// travels with the attach to keep it off another tenant's row.
-    fn attach_dispatch_intent_rail_ref(
-        &self,
-        _request_id: &str,
-        _tenant_id: Option<&str>,
-        _rail_authorization_id: &str,
-    ) -> Result<(), ReceiptStoreError> {
-        Err(ReceiptStoreError::Conflict(
-            "dispatch-intent rail reference attach is not supported by this receipt store"
-                .to_string(),
-        ))
-    }
-    /// Bounded variant of `attach_dispatch_intent_rail_ref`, failing closed
-    /// with `ReceiptStoreError::Timeout` past `budget` so the best-effort
-    /// post-authorize attach can never hang an evaluation on a wedged writer.
-    fn attach_dispatch_intent_rail_ref_with_timeout(
-        &self,
-        request_id: &str,
-        tenant_id: Option<&str>,
-        rail_authorization_id: &str,
-        _budget: std::time::Duration,
-    ) -> Result<(), ReceiptStoreError> {
-        self.attach_dispatch_intent_rail_ref(request_id, tenant_id, rail_authorization_id)
-    }
-    /// Delete the open intent matching `key` for an evaluation that exits
-    /// WITHOUT dispatching the tool and without a terminal receipt (a URL
-    /// elicitation returned to the caller): no effect ran, so the intent
-    /// must not survive to dead-letter as a false orphan at the next boot.
-    /// The key match mirrors the consuming append, so a mismatched or
-    /// already-consumed intent is reported rather than silently ignored.
-    fn clear_dispatch_intent(&self, _key: &DispatchIntentKey) -> Result<(), ReceiptStoreError> {
-        Err(ReceiptStoreError::Conflict(
-            "dispatch-intent clearing is not supported by this receipt store".to_string(),
-        ))
-    }
-    /// Bounded variant of `clear_dispatch_intent`, failing closed with
-    /// `ReceiptStoreError::Timeout` past `budget` so the non-dispatch exit
-    /// can never hang an evaluation on a wedged writer.
-    fn clear_dispatch_intent_with_timeout(
-        &self,
-        key: &DispatchIntentKey,
-        _budget: std::time::Duration,
-    ) -> Result<(), ReceiptStoreError> {
-        self.clear_dispatch_intent(key)
-    }
-    /// Reconcile every open intent whose writer is gone. Called once at
-    /// store attach and, for stores reporting
-    /// [`Self::supports_dispatch_intent_recovery`], again on a background
-    /// cadence while serving; an implementation must therefore never claim
-    /// a live writer's rows, including the calling instance's own in-flight
-    /// intents. Default: a no-op empty report, because a store without the
-    /// journal has no orphans.
-    fn reconcile_dispatch_intents(
-        &self,
-        _reconciler: &dyn DispatchIntentReconciler,
-    ) -> Result<DispatchIntentReconcileReport, ReceiptStoreError> {
-        Ok(DispatchIntentReconcileReport::default())
-    }
-    /// True when `reconcile_dispatch_intents` is safe and worthwhile to
-    /// re-run while the store serves (a store whose file can be shared with
-    /// sibling writer instances that may crash at any time). The kernel
-    /// spawns the background dispatch-intent recovery worker only for such
-    /// stores. Default false: a store without sibling writers has nothing
-    /// to recover after its attach-time pass.
-    fn supports_dispatch_intent_recovery(&self) -> bool {
-        false
-    }
-    /// True when a journaled dispatch intent survives a process crash. The
-    /// journal exists to leave a durable marker for an effect whose
-    /// terminal receipt never committed, so the kernel refuses to journal
-    /// into a store that would lose the row with the process (an in-memory
-    /// database): such a write "succeeds" and still vanishes exactly when
-    /// reconciliation needs it. Default false, so a store must positively
-    /// claim crash durability before side-effecting dispatch trusts it.
-    fn supports_durable_dispatch_intent_journal(&self) -> bool {
-        false
-    }
-    /// Count of open (in-flight or orphaned-but-unreconciled) dispatch
-    /// intents. Default 0 for stores without the journal.
-    fn open_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
-        Ok(0)
-    }
-    /// Count of dead-letter (orphaned, outcome-unknown) dispatch intents.
-    /// Default 0 for stores without the journal.
-    fn dead_letter_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
-        Ok(0)
-    }
-    /// Resolve a specific dead-letter dispatch intent: the sanctioned
-    /// operator remediation for the incident a nonzero
-    /// `dead_letter_dispatch_intents` count flags in health. Transitions the
-    /// row to a terminal `resolved` state that stops counting against
-    /// health, appending the operator's note to the existing resolution
-    /// detail rather than overwriting it, so the row stays auditable end to
-    /// end. Refuses (fail-closed) when no intent matches `request_id` and
-    /// `tenant_id`, or when it exists but is not currently in `dead_letter`
-    /// state, so an operator cannot silently resolve the wrong incident or
-    /// resolve one twice.
-    fn resolve_dead_letter_dispatch_intent(
-        &self,
-        _request_id: &str,
-        _tenant_id: Option<&str>,
-        _note: &str,
-    ) -> Result<(), ReceiptStoreError> {
-        Err(ReceiptStoreError::Conflict(
-            "dead-letter resolution is not supported by this receipt store".to_string(),
         ))
     }
     fn append_child_receipt(&self, receipt: &ChildRequestReceipt) -> Result<(), ReceiptStoreError>;
@@ -1002,7 +701,7 @@ pub trait ReceiptStore: Send + Sync {
 
     /// Whether this store actually implements retention rotation
     /// (`rotate_receipts`). Default `false`: the default `rotate_receipts` is a
-    /// fail-closed stub, so a kernel configured with `retention_config` uses
+    /// fail-closed default, so a kernel configured with `retention_config` uses
     /// this to refuse attaching a store that cannot rotate, rather than serving
     /// traffic under a retention policy whose background worker would only log
     /// "not supported" on every interval and never archive.
@@ -1148,9 +847,326 @@ pub trait ReceiptStore: Send + Sync {
     }
 }
 
+/// Store authority qualified to coordinate admission state and atomically
+/// publish every terminal receipt projection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdmissionBudgetAuthorization {
+    pub decision: crate::budget_store::BudgetAuthorizeHoldDecision,
+    pub operation: crate::admission_operation::AdmissionOperationV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdmissionBudgetCapture {
+    pub decision: crate::budget_store::BudgetInvocationCaptureDecision,
+    pub operation: crate::admission_operation::AdmissionOperationV1,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AdmissionPaymentJournalAdvance<'a> {
+    pub operation: &'a crate::admission_operation::AdmissionOperationV1,
+    pub recovery_lease: &'a crate::admission_operation::AdmissionRecoveryLease,
+    pub expected: &'a crate::payment::PaymentJournalRecord,
+    pub transition: &'a crate::payment::PaymentJournalTransition,
+    pub release_evidence: Option<&'a crate::tool_outcome::MonetaryReleaseEvidenceV1>,
+    pub active_fence: &'a crate::admission_operation::StoreMutationFence,
+    pub trusted_now_unix_ms: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AdmissionPaymentSettlementBegin<'a> {
+    pub operation: &'a crate::admission_operation::AdmissionOperationV1,
+    pub recovery_lease: &'a crate::admission_operation::AdmissionRecoveryLease,
+    pub expected: &'a crate::payment::PaymentJournalRecord,
+    pub transition: Option<&'a crate::payment::PaymentJournalTransition>,
+    pub release_evidence: Option<&'a crate::tool_outcome::MonetaryReleaseEvidenceV1>,
+    pub budget_reconcile: crate::budget_store::BudgetReconcileHoldRequest,
+    pub active_fence: &'a crate::admission_operation::StoreMutationFence,
+    pub trusted_now_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdmissionPaymentSettlement {
+    pub journal: crate::payment::PaymentJournalRecord,
+    pub budget: crate::budget_store::BudgetReconcileHoldDecision,
+    pub budget_already_reconciled: bool,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AdmissionBudgetAuthorizationError {
+    #[error("combined admission budget authorization is unavailable: {0}")]
+    Unavailable(String),
+    #[error("combined admission budget authorization was fenced")]
+    Fenced,
+    #[error("combined admission budget authorization durable outcome is unknown: {0}")]
+    OutcomeUnknown(String),
+    #[error("combined admission budget authorization invariant failed: {0}")]
+    Invariant(String),
+    #[error(transparent)]
+    Operation(#[from] crate::admission_operation::AdmissionOperationError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AdmissionPaymentJournalError {
+    #[error("qualified payment journal is unavailable: {0}")]
+    Unavailable(String),
+    #[error("qualified payment journal mutation was fenced")]
+    Fenced,
+    #[error("qualified payment journal compare-and-set conflicted: {0}")]
+    Conflict(String),
+    #[error("qualified payment journal durable outcome is unknown: {0}")]
+    OutcomeUnknown(String),
+    #[error("qualified payment journal invariant failed: {0}")]
+    Invariant(String),
+}
+
+pub const ADMISSION_TERMINAL_PROJECTION_DESCRIPTOR_KIND: &str =
+    "chio.admission.terminal-projection.v1";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThresholdApprovalReplayReservationV1 {
+    proposal: chio_core::capability::governance::ThresholdApprovalProposal,
+    tokens: Vec<chio_core::capability::governance::GovernedApprovalToken>,
+    verified_set: chio_core::capability::governance::VerifiedApprovalSetBody,
+}
+
+impl ThresholdApprovalReplayReservationV1 {
+    pub fn new(
+        proposal: chio_core::capability::governance::ThresholdApprovalProposal,
+        mut tokens: Vec<chio_core::capability::governance::GovernedApprovalToken>,
+        verified_set: chio_core::capability::governance::VerifiedApprovalSetBody,
+    ) -> Result<Self, crate::admission_operation::AdmissionOperationStoreError> {
+        use std::collections::HashSet;
+
+        if tokens.is_empty()
+            || tokens.len()
+                > chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS
+        {
+            return Err(
+                crate::admission_operation::AdmissionOperationStoreError::Invariant(format!(
+                    "threshold approval replay reservation must contain between 1 and {} tokens",
+                    chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS
+                )),
+            );
+        }
+        if !proposal.verify_signature().map_err(|error| {
+            crate::admission_operation::AdmissionOperationStoreError::Invariant(error.to_string())
+        })? {
+            return Err(
+                crate::admission_operation::AdmissionOperationStoreError::Invariant(
+                    "threshold approval replay proposal signature is invalid".to_owned(),
+                ),
+            );
+        }
+        let proposal_hash = proposal.artifact_digest().map_err(|error| {
+            crate::admission_operation::AdmissionOperationStoreError::Invariant(error.to_string())
+        })?;
+        let mut token_ids = HashSet::new();
+        let mut approvers = HashSet::new();
+        let mut tokens_with_digests = Vec::with_capacity(tokens.len());
+        for token in tokens.drain(..) {
+            if token.id.is_empty()
+                || token.id.trim() != token.id
+                || token.threshold_proposal_hash.as_deref() != Some(proposal_hash.as_str())
+                || token.request_id != proposal.body.request_id
+                || token.governed_intent_hash != proposal.body.governed_intent_hash
+                || token.subject != proposal.body.subject
+                || token.decision
+                    != chio_core::capability::governance::GovernedApprovalDecision::Approved
+                || token.issued_at < proposal.body.proposal_created_at
+                || token.issued_at >= proposal.body.proposal_deadline
+                || token.expires_at > proposal.body.proposal_deadline
+                || !token_ids.insert(token.id.clone())
+                || !approvers.insert(token.approver.to_hex())
+            {
+                return Err(
+                    crate::admission_operation::AdmissionOperationStoreError::Invariant(
+                        "threshold approval replay tokens do not form a distinct proposal set"
+                            .to_owned(),
+                    ),
+                );
+            }
+            if !token.verify_signature().map_err(|error| {
+                crate::admission_operation::AdmissionOperationStoreError::Invariant(
+                    error.to_string(),
+                )
+            })? {
+                return Err(
+                    crate::admission_operation::AdmissionOperationStoreError::Invariant(
+                        "threshold approval replay token signature is invalid".to_owned(),
+                    ),
+                );
+            }
+            let digest = token.artifact_digest().map_err(|error| {
+                crate::admission_operation::AdmissionOperationStoreError::Invariant(
+                    error.to_string(),
+                )
+            })?;
+            tokens_with_digests.push((digest, token));
+        }
+        tokens_with_digests.sort_by(|left, right| left.0.cmp(&right.0));
+        if tokens_with_digests
+            .windows(2)
+            .any(|pair| pair[0].0 == pair[1].0)
+            || tokens_with_digests
+                .iter()
+                .map(|(digest, _)| digest)
+                .ne(verified_set.token_digests.iter())
+        {
+            return Err(
+                crate::admission_operation::AdmissionOperationStoreError::Invariant(
+                    "threshold approval replay token digests do not match the verified set"
+                        .to_owned(),
+                ),
+            );
+        }
+        let reconstructed = chio_core::capability::governance::VerifiedApprovalSetBody::new(
+            verified_set.token_digests.clone(),
+            &proposal,
+        )
+        .map_err(|error| {
+            crate::admission_operation::AdmissionOperationStoreError::Invariant(error.to_string())
+        })?;
+        if reconstructed != verified_set {
+            return Err(
+                crate::admission_operation::AdmissionOperationStoreError::Invariant(
+                    "threshold approval replay set does not match its signed proposal".to_owned(),
+                ),
+            );
+        }
+        Ok(Self {
+            proposal,
+            tokens: tokens_with_digests
+                .into_iter()
+                .map(|(_, token)| token)
+                .collect(),
+            verified_set,
+        })
+    }
+
+    #[must_use]
+    pub const fn proposal(&self) -> &chio_core::capability::governance::ThresholdApprovalProposal {
+        &self.proposal
+    }
+
+    #[must_use]
+    pub fn tokens(&self) -> &[chio_core::capability::governance::GovernedApprovalToken] {
+        &self.tokens
+    }
+
+    #[must_use]
+    pub const fn verified_set(
+        &self,
+    ) -> &chio_core::capability::governance::VerifiedApprovalSetBody {
+        &self.verified_set
+    }
+}
+
+pub trait QualifiedAdmissionProjectionStore:
+    ReceiptStore + crate::admission_operation::QualifiedAdmissionOperationStore
+{
+    fn load_payment_journal(
+        &self,
+        operation_id: &str,
+        active_fence: &crate::admission_operation::StoreMutationFence,
+    ) -> Result<Option<crate::payment::PaymentJournalRecord>, AdmissionPaymentJournalError>;
+
+    fn advance_payment_journal(
+        &self,
+        advance: AdmissionPaymentJournalAdvance<'_>,
+    ) -> Result<crate::payment::PaymentJournalRecord, AdmissionPaymentJournalError>;
+
+    fn begin_payment_settlement(
+        &self,
+        begin: AdmissionPaymentSettlementBegin<'_>,
+    ) -> Result<AdmissionPaymentSettlement, AdmissionPaymentJournalError>;
+
+    #[allow(clippy::too_many_arguments)]
+    fn authorize_budget_and_commit_admission(
+        &self,
+        operation: &crate::admission_operation::AdmissionOperationV1,
+        recovery_lease: &crate::admission_operation::AdmissionRecoveryLease,
+        request: crate::budget_store::BudgetAuthorizeHoldRequest,
+        payment_journal: Option<crate::payment::PaymentJournalRecord>,
+        credit_exposure: Option<chio_credit::obligation::CreditExposureReservationRequest>,
+        active_fence: &crate::admission_operation::StoreMutationFence,
+        trusted_now_unix_ms: u64,
+    ) -> Result<AdmissionBudgetAuthorization, AdmissionBudgetAuthorizationError>;
+
+    fn capture_invocation_and_commit_dispatch(
+        &self,
+        operation: &crate::admission_operation::AdmissionOperationV1,
+        recovery_lease: &crate::admission_operation::AdmissionRecoveryLease,
+        request: crate::budget_store::BudgetCaptureInvocationRequest,
+        active_fence: &crate::admission_operation::StoreMutationFence,
+        trusted_now_unix_ms: u64,
+    ) -> Result<AdmissionBudgetCapture, crate::admission_operation::AdmissionCaptureError>;
+
+    fn reserve_threshold_approval_and_commit_admission(
+        &self,
+        _command: &crate::admission_operation::AdmissionOperationCommand,
+        _reservation: &ThresholdApprovalReplayReservationV1,
+        _trusted_now_unix_ms: u64,
+    ) -> Result<
+        crate::admission_operation::AdmissionCommandResult,
+        crate::admission_operation::AdmissionOperationStoreError,
+    > {
+        Err(
+            crate::admission_operation::AdmissionOperationStoreError::Unavailable(
+                "durable threshold approval replay reservation is unsupported".to_owned(),
+            ),
+        )
+    }
+
+    fn list_admission_receipts_after(
+        &self,
+        after_receipt_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<ChioReceipt>, ReceiptStoreError>;
+}
+
+pub trait AnchoredAdmissionProjectionStore: QualifiedAdmissionProjectionStore {
+    fn stage_anchored_terminal_projection(
+        &self,
+        advance: &chio_core::economic_continuity::VerifiedEconomicStateBatchAdvance,
+        recovery_lease: &crate::admission_operation::AdmissionRecoveryLease,
+        envelope: &crate::admission_operation::SignedAdmissionTerminalProjectionV1,
+        active_fence: &crate::admission_operation::StoreMutationFence,
+        trusted_now_unix_ms: u64,
+    ) -> Result<(), ReceiptStoreError>;
+
+    fn qualify_anchored_terminal_projection(
+        &self,
+        batch_id: &str,
+        active_fence: &crate::admission_operation::StoreMutationFence,
+        trusted_now_unix_ms: u64,
+    ) -> Result<(), ReceiptStoreError>;
+
+    fn record_anchored_terminal_projection(
+        &self,
+        advance: &chio_core::economic_continuity::VerifiedEconomicStateBatchAdvance,
+        committed: &chio_core::economic_continuity::VerifiedEconomicStateView,
+        pins: &chio_core::economic_continuity::EconomicStateAnchorPins,
+        active_fence: &crate::admission_operation::StoreMutationFence,
+        trusted_now_unix_ms: u64,
+    ) -> Result<(), ReceiptStoreError>;
+
+    fn commit_anchored_terminal_projection(
+        &self,
+        batch_id: &str,
+        active_fence: &crate::admission_operation::StoreMutationFence,
+        trusted_now_unix_ms: u64,
+    ) -> Result<crate::admission_operation::AdmissionTerminal, ReceiptStoreError>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use chio_core::receipt::{
+        body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+    };
 
     struct AppendOnlyStore;
 
@@ -1165,6 +1181,146 @@ mod tests {
         ) -> Result<(), ReceiptStoreError> {
             Ok(())
         }
+    }
+
+    struct CountingAppendStore {
+        append_calls: AtomicUsize,
+    }
+
+    impl ReceiptStore for CountingAppendStore {
+        fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+            self.append_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn append_child_receipt(
+            &self,
+            _receipt: &ChildRequestReceipt,
+        ) -> Result<(), ReceiptStoreError> {
+            Ok(())
+        }
+    }
+
+    struct LegacyAtomicOnlyStore {
+        atomic_append_calls: AtomicUsize,
+    }
+
+    impl ReceiptStore for LegacyAtomicOnlyStore {
+        fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+            Ok(())
+        }
+
+        fn atomic_receipt_projection(&self) -> AtomicReceiptProjection {
+            AtomicReceiptProjection::SettlementObservationV1
+        }
+
+        fn append_chio_receipt_with_pending_observation(
+            &self,
+            _receipt: &ChioReceipt,
+            _pending: &PendingSettlementObservation,
+        ) -> Result<(), ReceiptStoreError> {
+            self.atomic_append_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn append_child_receipt(
+            &self,
+            _receipt: &ChildRequestReceipt,
+        ) -> Result<(), ReceiptStoreError> {
+            Ok(())
+        }
+    }
+
+    fn signed_receipt() -> ChioReceipt {
+        let keypair = Keypair::generate();
+        let action = match ToolCallAction::from_parameters(serde_json::json!({})) {
+            Ok(action) => action,
+            Err(error) => panic!("test action construction failed: {error}"),
+        };
+        let body = ChioReceiptBody {
+            id: "receipt-1".to_string(),
+            timestamp: 1,
+            capability_id: "capability-1".to_string(),
+            tool_server: "server".to_string(),
+            tool_name: "tool".to_string(),
+            action,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            content_hash: "content".to_string(),
+            policy_hash: "policy".to_string(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: TrustLevel::default(),
+            tenant_id: None,
+            kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
+        };
+        match ChioReceipt::sign(body, &keypair) {
+            Ok(receipt) => receipt,
+            Err(error) => panic!("test receipt signing failed: {error}"),
+        }
+    }
+
+    #[test]
+    fn unsupported_atomic_projection_never_falls_back_to_receipt_only_append() {
+        let store = CountingAppendStore {
+            append_calls: AtomicUsize::new(0),
+        };
+        let receipt = signed_receipt();
+
+        assert_eq!(
+            store.atomic_receipt_projection(),
+            AtomicReceiptProjection::Unsupported
+        );
+        assert!(!store.supports_atomic_receipt_projection_with_timeout());
+        assert_eq!(store.settlement_store_binding(), None);
+        let pending = PendingSettlementObservation {
+            next_visible_at_ms: 1,
+        };
+        assert!(matches!(
+            store.append_chio_receipt_with_pending_observation(&receipt, &pending),
+            Err(ReceiptStoreError::Unsupported(_))
+        ));
+        assert!(matches!(
+            store.append_chio_receipt_with_pending_observation_and_timeout(
+                &receipt,
+                &pending,
+                std::time::Duration::from_millis(1),
+            ),
+            Err(ReceiptStoreError::Unsupported(_))
+        ));
+        assert_eq!(store.append_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn timed_atomic_default_never_calls_the_legacy_unbounded_projection() {
+        let store = LegacyAtomicOnlyStore {
+            atomic_append_calls: AtomicUsize::new(0),
+        };
+        let receipt = signed_receipt();
+        let pending = PendingSettlementObservation {
+            next_visible_at_ms: 1,
+        };
+
+        assert_eq!(
+            store.atomic_receipt_projection(),
+            AtomicReceiptProjection::SettlementObservationV1
+        );
+        assert!(!store.supports_atomic_receipt_projection_with_timeout());
+        assert!(matches!(
+            store.append_chio_receipt_with_pending_observation_and_timeout(
+                &receipt,
+                &pending,
+                std::time::Duration::from_millis(1),
+            ),
+            Err(ReceiptStoreError::Unsupported(_))
+        ));
+        assert_eq!(store.atomic_append_calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]

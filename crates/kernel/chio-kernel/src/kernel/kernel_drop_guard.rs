@@ -2,11 +2,13 @@ use chio_core::receipt::metadata::GuardEvidence;
 use chio_log_redact::redacted;
 use tracing::warn;
 
+use crate::admission_operation::AdmissionOperationV1;
 use crate::{CapabilityToken, ChildRequestReceipt, PaymentAuthorization, ToolCallRequest};
 
 use super::{
-    current_unix_timestamp, merge_metadata_objects, scope_pre_invocation_guard_evidence,
-    ChioKernel, KernelError, PreExecutionBudgetMutation,
+    current_unix_timestamp, current_unix_timestamp_ms, merge_metadata_objects,
+    scope_pre_invocation_guard_evidence, ChioKernel, KernelError, PreExecutionBudgetMutation,
+    VerifiedGovernedPayeeBinding,
 };
 
 const POST_ADMISSION_DROP_REASON: &str = "tool evaluation future dropped after admission";
@@ -16,6 +18,7 @@ const PRE_DISPATCH_CLEANUP_FAULT_REASON: &str =
 pub(crate) struct PostAdmissionReceiptContext {
     pub(crate) extra_metadata: Option<serde_json::Value>,
     pub(crate) pre_invocation_guard_evidence: Vec<GuardEvidence>,
+    pub(crate) verified_payee_binding: Option<VerifiedGovernedPayeeBinding>,
 }
 
 /// A single pre-dispatch cleanup step that failed. Collected so a signed fault
@@ -77,6 +80,7 @@ pub(crate) struct PostAdmissionDropGuard<'a> {
     /// overlapping evaluation that still holds it keeps its share protected.
     /// Gates the step-4 child-budget release in `handle_pre_dispatch_drop`.
     budget_lease_acquired: bool,
+    durable_operation: Option<&'a AdmissionOperationV1>,
     armed: bool,
     dispatch_started: bool,
 }
@@ -103,9 +107,18 @@ impl<'a> PostAdmissionDropGuard<'a> {
             receipt_context,
             child_receipts: Vec::new(),
             budget_lease_acquired,
+            durable_operation: None,
             armed: true,
             dispatch_started: false,
         }
+    }
+
+    pub(crate) fn with_durable_operation(
+        mut self,
+        operation: Option<&'a AdmissionOperationV1>,
+    ) -> Self {
+        self.durable_operation = operation;
+        self
     }
 
     /// Borrow the buffered child-receipt sink so the nested-flow bridge can push
@@ -143,39 +156,6 @@ impl<'a> PostAdmissionDropGuard<'a> {
         self.armed = false;
     }
 
-    /// Reverse the pre-execution monetary hold, if any, and fold the
-    /// reversal into the receipt metadata. Charge-gated: a `None`
-    /// charge_result (every non-monetary grant) returns the base metadata
-    /// unchanged. Errors are logged; a Drop impl cannot surface them.
-    fn unwind_charge_from_drop(&self) -> Option<serde_json::Value> {
-        let base = self.receipt_context.extra_metadata.clone();
-        let Some(charge) = self.budget_mutation.charge_result() else {
-            return base;
-        };
-        let unwind = self.kernel.unwind_aborted_monetary_invocation(
-            self.request,
-            self.cap,
-            self.budget_mutation.charge_result(),
-            self.payment_authorization,
-        );
-        match &unwind {
-            Ok(Some(reverse)) => self.kernel.merge_budget_receipt_metadata(
-                base,
-                self.kernel
-                    .budget_execution_receipt_metadata(charge, Some(("reversed", reverse))),
-            ),
-            Ok(None) => base,
-            Err(error) => {
-                warn!(
-                    request_id = %self.request.request_id,
-                    reason = %redacted!(error),
-                    "failed to unwind dropped post-admission monetary invocation"
-                );
-                base
-            }
-        }
-    }
-
     /// Fully unwind a future dropped BEFORE tool-server dispatch. No side
     /// effect is possible, so every pre-execution mutation is reversed: the
     /// monetary hold, an invocation-only budget increment,
@@ -190,33 +170,33 @@ impl<'a> PostAdmissionDropGuard<'a> {
 
         // 1. Monetary hold reversal (budget charge + payment release/refund).
         if self.budget_mutation.charge_result().is_some() {
-            if let Err(error) = self.kernel.unwind_aborted_monetary_invocation(
+            match self.kernel.unwind_pre_dispatch_monetary_invocation(
                 self.request,
                 self.cap,
                 self.budget_mutation.charge_result(),
                 self.payment_authorization,
             ) {
-                let reason = redacted!(&error).to_string();
-                warn!(
-                    request_id = %self.request.request_id,
-                    reason = %redacted!(&error),
-                    "failed to unwind dropped pre-dispatch monetary invocation"
-                );
-                // Name the budget hold (and payment authorization, if any) the
-                // failed reversal was unwinding so an operator can locate the
-                // possibly-stuck monetary hold from the fault entry alone.
-                let mut hold_ids = Vec::new();
-                if let Some(charge) = self.budget_mutation.charge_result() {
-                    hold_ids.push(charge.budget_hold_id.clone());
+                Ok(_) => {}
+                Err(error) => {
+                    let reason = redacted!(&error).to_string();
+                    warn!(
+                        request_id = %self.request.request_id,
+                        reason = %redacted!(&error),
+                        "failed to unwind dropped pre-dispatch monetary invocation"
+                    );
+                    let mut hold_ids = Vec::new();
+                    if let Some(charge) = self.budget_mutation.charge_result() {
+                        hold_ids.push(charge.budget_hold_id.clone());
+                    }
+                    if let Some(authorization) = self.payment_authorization {
+                        hold_ids.push(authorization.authorization_id.clone());
+                    }
+                    faults.push(PreDispatchCleanupFault {
+                        step: "monetary_unwind",
+                        reason,
+                        hold_ids,
+                    });
                 }
-                if let Some(authorization) = self.payment_authorization {
-                    hold_ids.push(authorization.authorization_id.clone());
-                }
-                faults.push(PreDispatchCleanupFault {
-                    step: "monetary_unwind",
-                    reason,
-                    hold_ids,
-                });
             }
         }
 
@@ -229,24 +209,29 @@ impl<'a> PostAdmissionDropGuard<'a> {
         if matches!(
             self.budget_mutation,
             PreExecutionBudgetMutation::Invocation { .. }
+                | PreExecutionBudgetMutation::InvocationHold(_)
         ) {
-            if let Err(error) = self
+            match self
                 .kernel
                 .reverse_pre_execution_budget_mutation(self.cap, self.budget_mutation)
             {
-                let reason = redacted!(&error).to_string();
-                warn!(
-                    request_id = %self.request.request_id,
-                    reason = %redacted!(&error),
-                    "failed to reverse dropped pre-dispatch invocation budget"
-                );
-                faults.push(PreDispatchCleanupFault {
-                    step: "invocation_reversal",
-                    reason,
-                    // The invocation slot is keyed by the capability id; name it
-                    // so the stuck slot is locatable from the fault entry.
-                    hold_ids: vec![self.cap.id.clone()],
-                });
+                Ok(_) => {}
+                Err(error) => {
+                    let reason = redacted!(&error).to_string();
+                    warn!(
+                        request_id = %self.request.request_id,
+                        reason = %redacted!(&error),
+                        "failed to reverse dropped pre-dispatch invocation budget"
+                    );
+                    faults.push(PreDispatchCleanupFault {
+                        step: "invocation_reversal",
+                        reason,
+                        hold_ids: self.budget_mutation.durable_hold_result().map_or_else(
+                            || vec![self.cap.id.clone()],
+                            |hold| vec![hold.budget_hold_id.clone()],
+                        ),
+                    });
+                }
             }
         }
 
@@ -305,6 +290,31 @@ impl<'a> PostAdmissionDropGuard<'a> {
                     reason,
                     hold_ids,
                 });
+            }
+        }
+
+        if faults.is_empty() {
+            if let Some(operation) = self.durable_operation {
+                if let Err(error) = self
+                    .kernel
+                    .compensate_durable_admission_after_pre_dispatch_cleanup(
+                        Some(operation),
+                        None,
+                        self.payment_authorization,
+                    )
+                {
+                    let reason = redacted!(&error).to_string();
+                    warn!(
+                        request_id = %self.request.request_id,
+                        reason = %redacted!(&error),
+                        "failed to terminalize dropped pre-dispatch admission"
+                    );
+                    faults.push(PreDispatchCleanupFault {
+                        step: "durable_admission_compensation",
+                        reason,
+                        hold_ids: vec![operation.binding().operation_id().as_str().to_owned()],
+                    });
+                }
             }
         }
 
@@ -369,13 +379,17 @@ impl<'a> PostAdmissionDropGuard<'a> {
         let _guard_evidence_scope = scope_pre_invocation_guard_evidence(
             self.receipt_context.pre_invocation_guard_evidence.clone(),
         );
-        if let Err(error) = self.kernel.build_cancelled_response_with_metadata(
-            self.request,
-            PRE_DISPATCH_CLEANUP_FAULT_REASON,
-            current_unix_timestamp(),
-            self.matched_grant_index,
-            metadata,
-        ) {
+        if let Err(error) = self
+            .kernel
+            .build_cancelled_response_with_metadata_and_payee_binding(
+                self.request,
+                PRE_DISPATCH_CLEANUP_FAULT_REASON,
+                current_unix_timestamp(),
+                self.matched_grant_index,
+                metadata,
+                self.receipt_context.verified_payee_binding.as_ref(),
+            )
+        {
             warn!(
                 request_id = %self.request.request_id,
                 reason = %redacted!(&error),
@@ -410,12 +424,6 @@ impl Drop for PostAdmissionDropGuard<'_> {
         // completed child requests off the log and breaking receipt-completeness.
         self.flush_buffered_child_receipts_from_drop();
 
-        // Charge-gated section: reverse the pre-execution monetary hold, if
-        // any, folding the reversal into the post-dispatch receipt metadata.
-        // Best-effort from a Drop context; a non-monetary grant returns the
-        // base metadata unchanged.
-        let reversed_metadata = self.unwind_charge_from_drop();
-
         // Post-dispatch drop. The tool-server invoke was in flight; a side
         // effect MAY have executed. Fail closed: retain the runtime-
         // admission reservations (releasing a single-use destructive lease
@@ -423,20 +431,26 @@ impl Drop for PostAdmissionDropGuard<'_> {
         // receipt so the executed-or-not side effect is on the append-only
         // log. The retained reservations are marked in the receipt metadata
         // so the burned lease is auditable and operator-recoverable.
-        let receipt_metadata = self
-            .kernel
-            .mark_runtime_admission_reservations_retained_fail_closed(reversed_metadata);
+        let receipt_metadata = self.kernel.ambiguous_dispatch_receipt_metadata(
+            self.budget_mutation,
+            self.payment_authorization,
+            self.receipt_context.extra_metadata.clone(),
+        );
 
         let _guard_evidence_scope = scope_pre_invocation_guard_evidence(
             self.receipt_context.pre_invocation_guard_evidence.clone(),
         );
-        if let Err(error) = self.kernel.build_cancelled_response_with_metadata(
-            self.request,
-            POST_ADMISSION_DROP_REASON,
-            current_unix_timestamp(),
-            self.matched_grant_index,
-            receipt_metadata,
-        ) {
+        if let Err(error) = self
+            .kernel
+            .build_cancelled_response_with_metadata_and_payee_binding(
+                self.request,
+                POST_ADMISSION_DROP_REASON,
+                current_unix_timestamp(),
+                self.matched_grant_index,
+                receipt_metadata,
+                self.receipt_context.verified_payee_binding.as_ref(),
+            )
+        {
             warn!(
                 request_id = %self.request.request_id,
                 reason = %redacted!(&error),
@@ -444,12 +458,23 @@ impl Drop for PostAdmissionDropGuard<'_> {
                 "failed to record cancellation receipt for dropped post-admission invocation"
             );
         }
-    }
-}
 
-pub(crate) fn dispatch_error_precedes_tool_side_effect(error: &KernelError) -> bool {
-    matches!(
-        error,
-        KernelError::ToolNotRegistered(_) | KernelError::UrlElicitationsRequired { .. }
-    )
+        // The dispatch commit landed but the return never did, so the operation
+        // would stay non-terminal and reject every replay of this request id
+        // until the next startup sweep. Terminalizing here refuses if a durable
+        // outcome exists, so it cannot overwrite a return that did complete.
+        if let Some(operation) = self.durable_operation {
+            if let Err(error) = self
+                .kernel
+                .terminalize_dispatch_committed_admission(operation, current_unix_timestamp_ms())
+            {
+                warn!(
+                    request_id = %self.request.request_id,
+                    reason = %redacted!(&error),
+                    audit_fault = "post_admission_drop_admission_unterminalized",
+                    "failed to terminalize dropped post-dispatch admission"
+                );
+            }
+        }
+    }
 }

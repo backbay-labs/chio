@@ -74,6 +74,7 @@ pub use self::types::{
     PREDICATE_TYPE_BILATERAL, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION,
     RECEIPT_SUBJECT_NAME_PREFIX, STATEMENT_TYPE_V1, VALID_CROSS_ORG_VISIBILITY,
 };
+pub(crate) use self::verify::verify_chio_bilateral_dsse_envelope_with_frost;
 pub use self::verify::{verify_chio_bilateral_dsse_envelope, verify_dsse_envelope};
 
 use self::types::PAE_PREFIX;

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-frost/v1/roster.schema.json",
+  "title": "Chio FROST Roster",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "rosterId",
+    "rosterDigest",
+    "authorityScope",
+    "scopeId",
+    "allowedDomains",
+    "keyEpoch",
+    "threshold",
+    "participantCount",
+    "participants",
+    "groupPublicKey",
+    "suiteId",
+    "keyOrigin",
+    "ceremonyTranscriptDigest",
+    "validFrom",
+    "validUntil",
+    "rosterAuthorityKeyId",
+    "rosterAuthoritySignature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.frost.roster.v1" },
+    "rosterId": { "$ref": "#/$defs/digest" },
+    "rosterDigest": { "$ref": "#/$defs/digest" },
+    "authorityScope": { "$ref": "#/$defs/identifier" },
+    "scopeId": { "$ref": "#/$defs/identifier" },
+    "allowedDomains": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/domain" }
+    },
+    "keyEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "threshold": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "participantCount": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "participants": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["participantId", "verificationShare"],
+        "properties": {
+          "participantId": { "$ref": "#/$defs/identifier" },
+          "verificationShare": { "$ref": "#/$defs/key" }
+        }
+      }
+    },
+    "groupPublicKey": { "$ref": "#/$defs/key" },
+    "suiteId": { "const": "FROST-ED25519-SHA512-v1" },
+    "keyOrigin": { "enum": ["distributed_dkg", "dealer_fixture"] },
+    "ceremonyTranscriptDigest": { "$ref": "#/$defs/digest" },
+    "predecessorRosterDigest": { "$ref": "#/$defs/digest" },
+    "validFrom": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "validUntil": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "rosterAuthorityKeyId": { "$ref": "#/$defs/identifier" },
+    "rosterAuthoritySignature": { "$ref": "#/$defs/signature" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "keyEpoch": { "const": 1 } }, "required": ["keyEpoch"] },
+      "then": { "not": { "required": ["predecessorRosterDigest"] } },
+      "else": { "required": ["predecessorRosterDigest"] }
+    }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "key": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" },
+    "identifier": { "type": "string", "pattern": "^[!-~]+$" },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "chio.frost.channel-close.v1",
+        "chio.frost.clearing-round-finalize.v1",
+        "chio.frost.credentials-passport-revoke.v1",
+        "chio.frost.governance-case-enforce-sanction.v1",
+        "chio.frost.pouncer-revoke-credential.v1",
+        "chio.frost.roster-rotate.v1",
+        "chio.frost.settle-commitment.v1"
+      ]
+    }
+  }
+}

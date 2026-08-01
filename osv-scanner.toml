@@ -14,17 +14,21 @@
 # full workspace install.
 
 [[IgnoredVulns]]
-id = "GHSA-q3j6-qgpj-74h6"
-reason = "fast-uri (transitive via fastify in TS SDK example/conformance); path traversal; bump tracked for the dependency-refresh pass"
-
-[[IgnoredVulns]]
-id = "GHSA-v39h-62p7-jpjc"
-reason = "fast-uri (transitive via fastify in TS SDK example/conformance); host confusion; bump tracked for the dependency-refresh pass"
-
-[[IgnoredVulns]]
-id = "GHSA-q8mj-m7cp-5q26"
-reason = "qs (transitive via express in TS SDK example/conformance); prototype-pollution DoS; bump tracked for the dependency-refresh pass"
-
-[[IgnoredVulns]]
 id = "GHSA-866g-f22w-33x8"
 reason = "@ai-sdk/provider-utils (dev-only peer test lock for ai-sdk wrapper); patched provider-utils line requires ai@6 while package peer range remains <6; track for peer-range upgrade"
+
+[[IgnoredVulns]]
+id = "GHSA-f88m-g3jw-g9cj"
+reason = "sharp is pinned below 0.35 by dev-only miniflare and Next SDK test/build tooling; no shipped runtime processes untrusted images; remove when upstream adopts sharp >=0.35"
+
+[[IgnoredVulns]]
+id = "GHSA-qx2v-qp2m-jg93"
+reason = "postcss 8.4.31 is an exact nested dependency of patched Next 15.5.21 in the dev-only Next SDK peer test lock; no shipped runtime processes untrusted CSS; remove when Next updates postcss"
+
+[[IgnoredVulns]]
+id = "GHSA-6g55-p6wh-862q"
+reason = "postcss 8.4.31 is an exact nested dependency of patched Next 15.5.21 in the dev-only Next SDK peer test lock; no shipped runtime processes untrusted CSS; remove when Next updates postcss"
+
+[[IgnoredVulns]]
+id = "GHSA-r28c-9q8g-f849"
+reason = "postcss 8.4.31 is an exact nested dependency of patched Next 15.5.21 in the dev-only Next SDK peer test lock; no shipped runtime processes untrusted CSS; remove when Next updates postcss"

@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
+    attenuation::{DelegationLink, DelegationLinkBody},
     scope::{ChioScope, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenBody},
 };
@@ -44,8 +45,39 @@ fn capability(id: &str, subject: &Keypair) -> CapabilityToken {
         issued_at: 1,
         expires_at: 100,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, &issuer).test_unwrap()
+}
+
+fn delegated_capability(
+    id: &str,
+    subject: &Keypair,
+    delegator: &Keypair,
+    parent: &CapabilityToken,
+) -> CapabilityToken {
+    let mut body = parent.body();
+    body.id = id.to_string();
+    body.issuer = delegator.public_key();
+    body.subject = subject.public_key();
+    body.issued_at = body.issued_at.saturating_add(1);
+    body.delegation_chain.push(
+        DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: parent.id.clone(),
+                delegator: delegator.public_key(),
+                delegatee: subject.public_key(),
+                attenuations: Vec::new(),
+                timestamp: body.issued_at,
+                scope_hash: None,
+                aggregate_budget: None,
+                cumulative_approval: None,
+            },
+            delegator,
+        )
+        .test_unwrap(),
+    );
+    CapabilityToken::sign(body, delegator).test_unwrap()
 }
 
 fn receipt(id: &str, capability_id: &str) -> ChioReceipt {
@@ -165,7 +197,7 @@ fn sqlite_lineage_projection_preserves_root_first_chain() {
     let store = SqliteReceiptStore::open(&path).test_unwrap();
     let subject = Keypair::generate();
     let root = capability("cap-root", &subject);
-    let child = capability("cap-child", &subject);
+    let child = delegated_capability("cap-child", &subject, &subject, &root);
 
     store.record_capability_snapshot(&root, None).test_unwrap();
     store

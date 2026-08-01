@@ -379,6 +379,16 @@ pub(crate) async fn handle_issue_liability_claim_adjudication(
         return response;
     }
 
+    let roster_policy = match state.config.roster_policy.as_ref() {
+        Some(policy) => policy,
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "liability claim adjudication issuance requires a roster policy configured on the trust-control service",
+            );
+        }
+    };
+
     let receipt_db_path = match state.config.receipt_db_path.as_deref() {
         Some(path) => path,
         None => {
@@ -394,6 +404,7 @@ pub(crate) async fn handle_issue_liability_claim_adjudication(
         state.config.authority_seed_path.as_deref(),
         state.config.authority_db_path.as_deref(),
         &request,
+        roster_policy,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimAdjudication>(artifact).into_response(),
         Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
@@ -410,6 +421,16 @@ pub(crate) async fn handle_issue_liability_claim_payout_instruction(
         return response;
     }
 
+    let roster_policy = match state.config.roster_policy.as_ref() {
+        Some(policy) => policy,
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "liability claim payout instruction issuance requires a roster policy configured on the trust-control service",
+            );
+        }
+    };
+
     let receipt_db_path = match state.config.receipt_db_path.as_deref() {
         Some(path) => path,
         None => {
@@ -425,6 +446,7 @@ pub(crate) async fn handle_issue_liability_claim_payout_instruction(
         state.config.authority_seed_path.as_deref(),
         state.config.authority_db_path.as_deref(),
         &request,
+        roster_policy,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimPayoutInstruction>(artifact).into_response(),
         Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
@@ -472,6 +494,16 @@ pub(crate) async fn handle_issue_liability_claim_settlement_instruction(
         return response;
     }
 
+    let roster_policy = match state.config.roster_policy.as_ref() {
+        Some(policy) => policy,
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "liability claim settlement instruction issuance requires a roster policy configured on the trust-control service",
+            );
+        }
+    };
+
     let receipt_db_path = match state.config.receipt_db_path.as_deref() {
         Some(path) => path,
         None => {
@@ -487,6 +519,7 @@ pub(crate) async fn handle_issue_liability_claim_settlement_instruction(
         state.config.authority_seed_path.as_deref(),
         state.config.authority_db_path.as_deref(),
         &request,
+        roster_policy,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimSettlementInstruction>(artifact).into_response(),
         Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),

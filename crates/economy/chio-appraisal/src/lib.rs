@@ -24,9 +24,11 @@ pub use chio_core_types::{canonical, capability, crypto, error, receipt, Error};
 pub mod marketplace_pricing;
 
 pub use marketplace_pricing::{
-    compute_checked_marketplace_invocation_price, compute_marketplace_invocation_price,
-    MarketplaceBasePrice, MarketplaceInvocationPrice, MarketplacePricingContext,
-    MarketplacePricingError, MarketplaceReputationTier, TIER_DISCOUNT_PER_HUNDRED,
+    compute_checked_marketplace_invocation_price, compute_fiscal_marketplace_invocation_price,
+    compute_marketplace_invocation_price, self_test_fiscal_marketplace_discount_adapter,
+    FiscalMarketplaceDiscounts, FiscalMarketplacePricingError, MarketplaceBasePrice,
+    MarketplaceInvocationPrice, MarketplacePricingContext, MarketplacePricingError,
+    MarketplaceReputationTier, TIER_DISCOUNT_PER_HUNDRED,
 };
 
 pub use chio_core_types::runtime_attestation::AttestationVerifierFamily;

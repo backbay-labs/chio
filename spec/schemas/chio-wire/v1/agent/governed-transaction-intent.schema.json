@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/agent/governed-transaction-intent.schema.json",
+  "title": "Chio Governed Transaction Intent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "server_id", "tool_name", "purpose"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "server_id": { "type": "string", "minLength": 1 },
+    "tool_name": { "type": "string", "minLength": 1 },
+    "purpose": { "type": "string" },
+    "max_amount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "type": "integer", "minimum": 0 },
+        "currency": { "type": "string", "minLength": 1 }
+      }
+    },
+    "commerce": { "type": "object" },
+    "metered_billing": { "type": "object" },
+    "runtime_attestation": { "type": "object" },
+    "call_chain": { "type": "object" },
+    "autonomy": { "type": "object" },
+    "context": true,
+    "body": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "tool_invocation" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "active_response_plan" },
+            "value": { "$ref": "active-response-governed-intent.schema.json" }
+          }
+        }
+      ]
+    }
+  }
+}

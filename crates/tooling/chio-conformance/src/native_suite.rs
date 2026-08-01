@@ -299,13 +299,14 @@ pub fn fixture_messages_for_request(request: &AgentMessage) -> Vec<KernelMessage
                     "rcpt-revoked-001",
                     &capability_token.id,
                     tool,
-                    params.clone(),
+                    params.as_ref().clone(),
                     Decision::Deny {
                         reason: "capability revoked".to_string(),
                         guard: "revocation_store".to_string(),
                     },
                     None,
                 )),
+                execution_nonce: None,
             }]
         }
         AgentMessage::ToolCallRequest {
@@ -348,10 +349,11 @@ pub fn fixture_messages_for_request(request: &AgentMessage) -> Vec<KernelMessage
                     "rcpt-governed-001",
                     &capability_token.id,
                     tool,
-                    params.clone(),
+                    params.as_ref().clone(),
                     Decision::Allow,
                     metadata,
                 )),
+                execution_nonce: None,
             }]
         }
         AgentMessage::ToolCallRequest {
@@ -374,10 +376,11 @@ pub fn fixture_messages_for_request(request: &AgentMessage) -> Vec<KernelMessage
                     "rcpt-ok-001",
                     &capability_token.id,
                     tool,
-                    params.clone(),
+                    params.as_ref().clone(),
                     Decision::Allow,
                     None,
                 )),
+                execution_nonce: None,
             }]
         }
     }
@@ -1142,6 +1145,7 @@ fn build_capability(
             issued_at: 1_700_000_000,
             expires_at: 1_800_000_000,
             delegation_chain,
+            aggregate_invocation_budget: None,
         },
         &authority_keypair(),
     )
@@ -1209,6 +1213,8 @@ fn build_delegation_pair() -> (CapabilityToken, CapabilityToken) {
             ],
             timestamp: 1_700_000_100,
             scope_hash: Some(child_scope_hash),
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         &parent_subject,
     )
@@ -1240,6 +1246,7 @@ fn build_governed_intent() -> GovernedTransactionIntent {
             "currency": "USD",
             "seller": "supplier-001"
         })),
+        body: Default::default(),
     }
 }
 
@@ -1258,11 +1265,17 @@ fn build_governed_request() -> AgentMessage {
         )),
         server_id: "conformance".to_string(),
         tool: "governed_transfer".to_string(),
-        params: serde_json::json!({
+        params: Box::new(serde_json::json!({
             "amount": 1250,
             "currency": "USD",
             "seller": "supplier-001"
-        }),
+        })),
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        execution_nonce: None,
     }
 }
 
@@ -1277,7 +1290,13 @@ fn build_revoked_request() -> AgentMessage {
         )),
         server_id: "conformance".to_string(),
         tool: "echo".to_string(),
-        params: serde_json::json!({"text": "hello"}),
+        params: Box::new(serde_json::json!({"text": "hello"})),
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        execution_nonce: None,
     }
 }
 

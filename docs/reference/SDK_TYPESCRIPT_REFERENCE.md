@@ -130,8 +130,9 @@ interface ReceiptQueryParams {
   outcome?: string;
   since?: number;
   until?: number;
-  minCost?: number;
-  maxCost?: number;
+  minCost?: bigint;
+  maxCost?: bigint;
+  costCurrency?: string;
   cursor?: number;
   limit?: number;
 }
@@ -146,6 +147,10 @@ async query(params?: ReceiptQueryParams): Promise<ReceiptQueryResponse>
 ```
 
 Parameters map to the HTTP query string camelCase names documented in `docs/RECEIPT_QUERY_API.md`. All are optional.
+
+Cost bounds use `bigint` so values through `18446744073709551615n` are encoded
+without JavaScript number rounding. Either bound requires a three-letter
+uppercase `costCurrency`.
 
 Throws `QueryError` (with `status` set to the HTTP status code) on non-2xx responses. Throws `TransportError` on network-level failures.
 

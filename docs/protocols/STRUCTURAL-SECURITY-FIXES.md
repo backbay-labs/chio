@@ -66,6 +66,8 @@ pub struct ExecutionNonce {
     pub nonce_id: String,
     /// The verdict/receipt ID this nonce is bound to.
     pub verdict_id: String,
+    /// Stable idempotency identity of the evaluated request.
+    pub request_id: String,
     /// Tool name that was evaluated.
     pub tool_name: String,
     /// Tool server that was evaluated.
@@ -87,6 +89,7 @@ pub struct ExecutionNonceBody {
     pub schema: String,
     pub nonce_id: String,
     pub verdict_id: String,
+    pub request_id: String,
     pub tool_name: String,
     pub server_id: String,
     pub argument_hash: String,

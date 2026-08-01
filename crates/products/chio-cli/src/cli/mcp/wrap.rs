@@ -23,6 +23,7 @@ use super::*;
 use super::attestation::attach_chio_verified_header;
 use super::ide::IdeTarget;
 use super::manifest::load_manifest_allowlist;
+use super::payment_config::PaymentAdapterConfig;
 
 const MCP_WRAP_PROTOCOL_VERSION: &str = "2025-11-25";
 const MAX_MCP_WRAP_FRAME_BYTES: usize = 1024 * 1024;
@@ -317,8 +318,14 @@ impl KernelMediatedMcpTransport {
             retention_config: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-            dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         });
+        let payment_adapter_config = PaymentAdapterConfig::from_env()
+            .map_err(CliError::cli_other_error)?
+            .unwrap_or_else(PaymentAdapterConfig::default_safe);
+        payment_adapter_config
+            .validate()
+            .map_err(CliError::cli_other_error)?;
+        kernel.set_payment_adapter(payment_adapter_config.build_adapter());
         let nonce_config = chio_kernel::ExecutionNonceConfig {
             nonce_ttl_secs: chio_kernel::DEFAULT_EXECUTION_NONCE_TTL_SECS,
             nonce_store_capacity: chio_kernel::DEFAULT_EXECUTION_NONCE_STORE_CAPACITY,
@@ -451,6 +458,9 @@ impl chio_mcp_adapter::edge::McpTransport for KernelMediatedMcpTransport {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         };

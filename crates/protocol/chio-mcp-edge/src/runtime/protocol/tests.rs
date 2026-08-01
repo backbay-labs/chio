@@ -2,6 +2,141 @@ use std::io::{self, Read};
 use std::time::Duration;
 
 use super::*;
+use chio_core::capability::governance::{
+    GovernedApprovalDecision, GovernedApprovalTokenBody, ThresholdApprovalProposalBody,
+    THRESHOLD_APPROVAL_PROPOSAL_SCHEMA,
+};
+use chio_core::Keypair;
+
+fn threshold_approval_artifacts() -> (Vec<GovernedApprovalToken>, ThresholdApprovalProposal) {
+    let subject = Keypair::generate();
+    let policy_authority = Keypair::generate();
+    let approver_a = Keypair::generate();
+    let approver_b = Keypair::generate();
+    let proposal = ThresholdApprovalProposal::sign(
+        ThresholdApprovalProposalBody {
+            schema: THRESHOLD_APPROVAL_PROPOSAL_SCHEMA.to_string(),
+            proposal_id: "proposal-mcp-001".to_string(),
+            request_id: "request-mcp-001".to_string(),
+            governed_intent_hash: "a".repeat(64),
+            subject: subject.public_key(),
+            authorizing_capability_digest: "b".repeat(64),
+            policy_hash: "c".repeat(64),
+            threshold: 2,
+            eligible_set_digest: "d".repeat(64),
+            proposal_created_at: 100,
+            proposal_deadline: 200,
+            policy_authority: policy_authority.public_key(),
+        },
+        &policy_authority,
+    )
+    .unwrap_or_else(|error| panic!("proposal must sign: {error}"));
+    let proposal_hash = proposal
+        .artifact_digest()
+        .unwrap_or_else(|error| panic!("proposal must hash: {error}"));
+    let tokens = [&approver_a, &approver_b]
+        .into_iter()
+        .enumerate()
+        .map(|(index, approver)| {
+            GovernedApprovalToken::sign(
+                GovernedApprovalTokenBody {
+                    id: format!("approval-mcp-{index}"),
+                    approver: approver.public_key(),
+                    subject: subject.public_key(),
+                    governed_intent_hash: "a".repeat(64),
+                    request_id: "request-mcp-001".to_string(),
+                    threshold_proposal_hash: Some(proposal_hash.clone()),
+                    issued_at: 100,
+                    expires_at: 200,
+                    decision: GovernedApprovalDecision::Approved,
+                },
+                approver,
+            )
+            .unwrap_or_else(|error| panic!("approval must sign: {error}"))
+        })
+        .collect();
+    (tokens, proposal)
+}
+
+#[test]
+fn mcp_meta_preserves_complete_threshold_approval_set() {
+    let (tokens, proposal) = threshold_approval_artifacts();
+    let params = json!({
+        "_meta": {
+            "chioApprovalTokens": tokens,
+            "chioThresholdApprovalProposal": proposal,
+        }
+    });
+
+    let (singular, parsed_tokens, parsed_proposal) =
+        parse_request_approval_artifacts(&json!("request-mcp-001"), &params)
+            .unwrap_or_else(|error| panic!("approval metadata must parse: {error:?}"));
+
+    assert!(singular.is_none());
+    assert_eq!(parsed_tokens, tokens);
+    assert_eq!(parsed_proposal, Some(proposal));
+}
+
+#[test]
+fn mcp_meta_rejects_mixed_singular_and_threshold_approvals() {
+    let (tokens, proposal) = threshold_approval_artifacts();
+    let params = json!({
+        "_meta": {
+            "chioApprovalToken": tokens[0],
+            "chioApprovalTokens": tokens,
+            "chioThresholdApprovalProposal": proposal,
+        }
+    });
+
+    let Err(error) = parse_request_approval_artifacts(&json!("request-mcp-001"), &params) else {
+        panic!("mixed approval forms must fail closed");
+    };
+
+    assert_eq!(error["error"]["code"], JSONRPC_INVALID_PARAMS);
+    assert_eq!(
+        error["error"]["message"],
+        "singular and threshold approval tokens must not be mixed"
+    );
+}
+
+#[test]
+fn mcp_meta_keeps_supplemental_authorization_opaque() {
+    let params = json!({
+        "_meta": {
+            "chioSupplementalAuthorization": {
+                "signed_extension": "b3BhcXVl"
+            }
+        }
+    });
+
+    let authorization =
+        parse_request_supplemental_authorization(&json!("request-mcp-opaque"), &params)
+            .unwrap_or_else(|error| panic!("opaque authorization must parse: {error:?}"));
+
+    assert_eq!(
+        authorization.map(|value| value.signed_extension),
+        Some("b3BhcXVl".to_string())
+    );
+}
+
+#[test]
+fn mcp_meta_rejects_caller_supplied_supplemental_claim_fields() {
+    let params = json!({
+        "_meta": {
+            "chioSupplementalAuthorization": {
+                "signed_extension": "b3BhcXVl",
+                "max_invocations": 1000
+            }
+        }
+    });
+
+    let Err(error) = parse_request_supplemental_authorization(&json!("request-mcp-claim"), &params)
+    else {
+        panic!("caller-built supplemental claim must fail closed");
+    };
+
+    assert_eq!(error["error"]["code"], JSONRPC_INVALID_PARAMS);
+}
 
 #[test]
 fn parse_jsonrpc_envelope_preserves_id_method_and_default_params() {

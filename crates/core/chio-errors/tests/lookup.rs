@@ -186,8 +186,9 @@ fn duplicate_string_codes_are_not_silently_first_matched() {
 
 #[test]
 fn transaction_artifact_hash_mismatch_is_registered() {
-    let spec = lookup_error_code("urn:chio:error:transaction:artifact-hash-mismatch")
-        .expect("transaction artifact hash mismatch code is registered");
+    let Some(spec) = lookup_error_code("urn:chio:error:transaction:artifact-hash-mismatch") else {
+        panic!("transaction artifact hash mismatch code is registered");
+    };
 
     assert_eq!(spec.domain.as_str(), "transaction");
     assert_eq!(spec.severity, Severity::Error);

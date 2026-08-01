@@ -20,6 +20,29 @@ pub struct ToolCallRequestJson {
     pub server_id: String,
     pub agent_id: String,
     pub arguments: serde_json::Value,
+    /// Governed execution artifacts are not supported by the portable browser
+    /// evaluator. They remain explicit so callers receive a denial instead of
+    /// having authenticated fields silently discarded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governed_intent: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_token: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub approval_tokens: Vec<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_approval_proposal: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supplemental_authorization: Option<serde_json::Value>,
+}
+
+impl ToolCallRequestJson {
+    pub(crate) fn has_unsupported_authorization_extensions(&self) -> bool {
+        self.governed_intent.is_some()
+            || self.approval_token.is_some()
+            || !self.approval_tokens.is_empty()
+            || self.threshold_approval_proposal.is_some()
+            || self.supplemental_authorization.is_some()
+    }
 }
 
 impl From<ToolCallRequestJson> for PortableToolCallRequest {
@@ -56,6 +79,9 @@ pub struct EvaluateRequestJson {
     /// the browser kernel evaluates against `CapabilityNegotiation::t1_default()`.
     #[serde(default)]
     pub peer_capabilities: Option<CapabilityNegotiation>,
+    /// Authenticated direct-root token for delegated negotiated family features.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_root_capability: Option<CapabilityToken>,
     /// Optional chain-binding trust roots, keyed by issuer hex. Tokens with
     /// attenuation, budget sharing, scope attenuation, or delegation require an
     /// issuer entry; absent issuers fail closed.
@@ -210,6 +236,9 @@ pub struct VerifyCapabilityRequestJson {
     /// the browser kernel evaluates against `CapabilityNegotiation::t1_default()`.
     #[serde(default)]
     pub peer_capabilities: Option<CapabilityNegotiation>,
+    /// Authenticated direct-root token for delegated negotiated family features.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_root_capability: Option<CapabilityToken>,
     /// Optional chain-binding trust roots, keyed by issuer hex. Attenuated or
     /// delegated tokens require an entry for their issuer; absent issuers
     /// fail-closed.

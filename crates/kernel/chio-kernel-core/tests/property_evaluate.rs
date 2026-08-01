@@ -119,6 +119,7 @@ fn signed_capability(
         issued_at,
         expires_at,
         delegation_chain: Vec::new(),
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, issuer_kp).ok()
 }

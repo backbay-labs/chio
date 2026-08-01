@@ -1299,6 +1299,8 @@ mod config_and_public_tests {
             authority_seed_path: None,
             authority_db_path: None,
             budget_db_path: None,
+            joint_authority_db_path: None,
+            fiscal_runtime: None,
             enterprise_providers_file: None,
             federation_policies_file: None,
             scim_lifecycle_file: None,
@@ -1315,6 +1317,7 @@ mod config_and_public_tests {
             certification_public_metadata_ttl_seconds: 900,
             peer_urls: Vec::new(),
             cluster_sync_interval: Duration::from_millis(200),
+            roster_policy: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         }
     }

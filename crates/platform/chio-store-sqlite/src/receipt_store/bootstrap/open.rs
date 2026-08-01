@@ -1,20 +1,5 @@
 use super::*;
 
-/// Receipt-store schema revision. Bump on every schema-affecting change so an
-/// older binary refuses to open a database it cannot fully interpret.
-///
-/// Revision history:
-/// - 0: initial stamped schema.
-/// - 1: adds the `chio_dispatch_intents` journal table. An older binary must
-///   refuse a database that may carry open intent rows, because it would
-///   serve without reconciling them or surfacing them in health.
-const RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 1;
-
-/// Stable key under which this store records its schema revision in the shared
-/// keyed metadata table. Distinct from the co-located approval store's key so the
-/// two track their revisions independently in the one sidecar file.
-const RECEIPT_STORE_SCHEMA_KEY: &str = "receipt";
-
 /// Tables that identify a database this receipt store may open, all of them the
 /// store's own: `chio_tool_receipts` is the current anchor (also the table the
 /// store shipped before schema stamping existed) and `http_receipts` /
@@ -38,49 +23,6 @@ const RECEIPT_STORE_LEGACY_ANCHOR_TABLES: &[&str] =
 /// foreign file, so each must also carry a receipt payload column before it is
 /// accepted. The Chio-specific `chio_tool_receipts` anchor needs no such check.
 const RECEIPT_STORE_GENERIC_LEGACY_ANCHOR_TABLES: &[&str] = &["http_receipts", "tool_receipts"];
-
-/// Non-audit operational journal: one durable row per in-flight
-/// side-effecting or monetary dispatch, written before the effect and
-/// consumed in the same transaction as the receipt append. Never signed,
-/// never entered into chio_tool_receipts, and never counted by checkpoints
-/// or retention. Shared by the create path and the `open_existing` additive
-/// migration from schema revision 0, so both produce identical DDL.
-///
-/// `owner_token` names the store instance that journaled the row (one fresh
-/// token per open, never reused across restarts). Reconciliation skips rows
-/// carrying the reconciling instance's own token, which is what makes the
-/// pass safe to re-run while serving: liveness comes from the sidecar
-/// writer mark, identity from the token, and neither involves a clock (a
-/// paused-but-live writer keeps both).
-///
-/// A row's identity is (tenant, request id): request ids are caller-supplied
-/// and only unique within a tenant, so tenant-scoped uniqueness keeps one
-/// tenant's open or dead-letter intent from blocking an unrelated tenant's
-/// request that reuses the id. The unique index folds a NULL tenant to ''
-/// (a nullable column in a plain UNIQUE constraint would admit duplicate
-/// NULLs), so tenantless rows still conflict with each other.
-const DISPATCH_INTENT_JOURNAL_DDL: &str = r#"
-    CREATE TABLE IF NOT EXISTS chio_dispatch_intents (
-        request_id            TEXT NOT NULL,
-        capability_id         TEXT NOT NULL,
-        tool_server           TEXT NOT NULL,
-        tool_name             TEXT NOT NULL,
-        parameter_hash        TEXT NOT NULL,
-        side_effect_class     TEXT NOT NULL,
-        monetary              INTEGER NOT NULL,
-        rail                  TEXT,
-        rail_authorization_id TEXT,
-        tenant_id             TEXT,
-        created_at_unix_ms    INTEGER NOT NULL,
-        state                 TEXT NOT NULL DEFAULT 'open',
-        resolution_detail     TEXT,
-        owner_token           TEXT
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_chio_dispatch_intents_tenant_request
-        ON chio_dispatch_intents(COALESCE(tenant_id, ''), request_id);
-    CREATE INDEX IF NOT EXISTS idx_chio_dispatch_intents_state
-        ON chio_dispatch_intents(state);
-"#;
 
 fn configure_sqlite_connection(
     connection: &mut Connection,
@@ -153,9 +95,92 @@ fn assert_sqlite_durability_pragmas(connection: &Connection) -> Result<(), Recei
     Ok(())
 }
 
+fn settlement_store_binding_if_ready(
+    connection: &Connection,
+) -> Result<Option<chio_settle::SettlementStoreBinding>, ReceiptStoreError> {
+    if !settlement_projection_schema_is_installed(connection)? {
+        return Ok(None);
+    }
+    let mut digest = [0u8; 32];
+    OsRng.try_fill_bytes(&mut digest).map_err(|error| {
+        ReceiptStoreError::Io(std::io::Error::other(format!(
+            "failed to generate settlement store binding: {error}"
+        )))
+    })?;
+    Ok(Some(chio_settle::SettlementStoreBinding::from_digest(
+        digest,
+    )))
+}
+
+fn settlement_projection_schema_is_installed(
+    connection: &Connection,
+) -> Result<bool, ReceiptStoreError> {
+    let reference = Connection::open_in_memory()?;
+    reference.execute_batch(crate::dead_letters::SETTLE_DEAD_LETTERS_MIGRATION)?;
+    reference.execute_batch(crate::settle_attempts::SETTLE_ATTEMPTS_MIGRATION)?;
+    Ok(settlement_schema_manifest(connection)? == settlement_schema_manifest(&reference)?)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct SettlementSchemaObject {
+    object_type: String,
+    name: String,
+    table_name: String,
+    sql: String,
+}
+
+fn settlement_schema_manifest(
+    connection: &Connection,
+) -> Result<Vec<SettlementSchemaObject>, ReceiptStoreError> {
+    let mut statement = connection.prepare(
+        "SELECT type, name, tbl_name, sql FROM sqlite_master \
+         WHERE name IN (\
+             'settle_attempts', \
+             'idx_settle_attempts_visible', \
+             'settle_dead_letters', \
+             'idx_settle_dead_letters_finalized_at', \
+             'trg_settle_attempts_reject_terminal_insert', \
+             'trg_settle_dead_letters_reject_attempt_insert'\
+         ) OR (\
+             type = 'trigger' AND \
+             tbl_name IN ('settle_attempts', 'settle_dead_letters')\
+         ) ORDER BY type ASC, name ASC",
+    )?;
+    let manifest = statement
+        .query_map([], |row| {
+            Ok(SettlementSchemaObject {
+                object_type: row.get(0)?,
+                name: row.get(1)?,
+                table_name: row.get(2)?,
+                sql: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ReceiptStoreError::from)?;
+    Ok(manifest)
+}
+
 impl SqliteReceiptStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ReceiptStoreError> {
         Self::open_with_pool_config(path, crate::SqlitePoolConfig::default())
+    }
+
+    /// Wait until the commit actor has seeded its durable head before a host
+    /// advertises readiness. The flush barrier is processed only after actor
+    /// initialization, and the serving check preserves a poisoned-head failure.
+    pub fn wait_for_writer_ready(&self, timeout: Duration) -> Result<(), ReceiptStoreError> {
+        self.receipt_commit_actor.flush_with_timeout(timeout)?;
+        if !self.writer_serving_closed() {
+            return Ok(());
+        }
+        let detail = self
+            .receipt_commit_actor
+            .writer_counters()
+            .last_error
+            .unwrap_or_else(|| "durable receipt head is unavailable".to_string());
+        Err(ReceiptStoreError::Conflict(format!(
+            "receipt commit writer failed startup readiness: {detail}"
+        )))
     }
 
     pub fn open_existing(path: impl AsRef<Path>) -> Result<Self, ReceiptStoreError> {
@@ -241,30 +266,22 @@ impl SqliteReceiptStore {
             // Validate provenance before configuring pragmas: a foreign or
             // future database must be refused before any write touches its
             // header, so a mistargeted path is never mutated into WAL mode.
-            let on_disk_version = crate::check_schema_version(
+            let on_disk_schema_version = crate::check_schema_version(
                 &connection,
                 RECEIPT_STORE_SCHEMA_KEY,
                 RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION,
                 RECEIPT_STORE_LEGACY_ANCHOR_TABLES,
             )
             .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
-            configure_sqlite_connection(&mut connection, options.pool.max_page_count)?;
-            if on_disk_version < RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION {
-                // Additive migration up to the supported revision (currently
-                // only the dispatch-intent journal table), then stamp it:
-                // once this binary may write intent rows into the file, an
-                // older binary must refuse to open it rather than serve
-                // without reconciling those rows or surfacing them in
-                // health.
-                connection.execute_batch(DISPATCH_INTENT_JOURNAL_DDL)?;
-                crate::stamp_schema_version(
-                    &connection,
-                    RECEIPT_STORE_SCHEMA_KEY,
-                    RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION,
-                )
-                .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
+            if on_disk_schema_version < RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "receipt database schema version {on_disk_schema_version} requires writable migration to version {RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION}; reopen it with SqliteReceiptStore::open"
+                )));
             }
+            configure_sqlite_connection(&mut connection, options.pool.max_page_count)?;
             super::support::ensure_transparency_projection_guards(&connection)?;
+            verify_receipt_cost_projection(&connection)?;
+            let settlement_store_binding = settlement_store_binding_if_ready(&connection)?;
             drop(connection);
 
             let reader_pool = build_receipt_pool(
@@ -282,18 +299,15 @@ impl SqliteReceiptStore {
                 options.pool.max_page_count,
             )?;
 
-            let instance_token = fresh_instance_token();
-            let writer_lifetime_lock = acquire_writer_lifetime_lock(path, &instance_token)?;
             return Ok(Self {
                 receipt_commit_actor: ReceiptCommitActor::start(
                     writer_pool,
                     options.incremental_verification,
                 ),
                 pool: reader_pool,
+                settlement_store_binding,
                 strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
                 incremental_verification: options.incremental_verification,
-                writer_lifetime_lock,
-                instance_token,
             });
         }
 
@@ -304,7 +318,7 @@ impl SqliteReceiptStore {
         // name alone, so first reject one whose generic anchor lacks the receipt
         // shape, keeping a foreign file that merely reuses the name out.
         reject_foreign_legacy_receipt_anchor(&connection)?;
-        crate::check_schema_version(
+        let on_disk_schema_version = crate::check_schema_version(
             &connection,
             RECEIPT_STORE_SCHEMA_KEY,
             RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION,
@@ -312,7 +326,9 @@ impl SqliteReceiptStore {
         )
         .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
         configure_sqlite_connection(&mut connection, options.pool.max_page_count)?;
-        connection.execute_batch(
+        let schema_migration =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        schema_migration.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS chio_tool_receipts (
                 seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -327,7 +343,22 @@ impl SqliteReceiptStore {
                 decision_kind TEXT NOT NULL,
                 policy_hash TEXT NOT NULL,
                 content_hash TEXT NOT NULL,
-                raw_json TEXT NOT NULL
+                raw_json TEXT NOT NULL,
+                cost_currency TEXT CHECK (
+                    cost_currency IS NULL OR (
+                        typeof(cost_currency) = 'text' AND
+                        length(cost_currency) = 3 AND
+                        cost_currency NOT GLOB '*[^A-Z]*'
+                    )
+                ),
+                cost_charged_be BLOB CHECK (
+                    (cost_currency IS NULL AND cost_charged_be IS NULL) OR
+                    (
+                        cost_currency IS NOT NULL AND
+                        typeof(cost_charged_be) = 'blob' AND
+                        length(cost_charged_be) = 8
+                    )
+                )
             );
 
             CREATE INDEX IF NOT EXISTS idx_chio_tool_receipts_timestamp
@@ -1149,7 +1180,11 @@ impl SqliteReceiptStore {
                 expires_at           INTEGER NOT NULL,
                 grants_json          TEXT NOT NULL,
                 delegation_depth     INTEGER NOT NULL DEFAULT 0,
-                parent_capability_id TEXT REFERENCES capability_lineage(capability_id)
+                parent_capability_id TEXT REFERENCES capability_lineage(capability_id),
+                federated_parent_capability_id TEXT,
+                provenance TEXT NOT NULL DEFAULT 'legacy_projection'
+                    CHECK (provenance IN ('signed_token', 'synthetic_anchor', 'legacy_projection')),
+                signed_capability_json TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_capability_lineage_subject
                 ON capability_lineage(subject_key);
@@ -1159,7 +1194,6 @@ impl SqliteReceiptStore {
                 ON capability_lineage(issued_at);
             CREATE INDEX IF NOT EXISTS idx_capability_lineage_parent
                 ON capability_lineage(parent_capability_id);
-
             CREATE TABLE IF NOT EXISTS federated_lineage_bridges (
                 local_capability_id TEXT PRIMARY KEY REFERENCES capability_lineage(capability_id) ON DELETE CASCADE,
                 parent_capability_id TEXT NOT NULL,
@@ -1209,6 +1243,10 @@ impl SqliteReceiptStore {
                 grants_json TEXT NOT NULL,
                 delegation_depth INTEGER NOT NULL DEFAULT 0,
                 parent_capability_id TEXT,
+                federated_parent_capability_id TEXT,
+                provenance TEXT NOT NULL DEFAULT 'legacy_projection'
+                    CHECK (provenance IN ('signed_token', 'synthetic_anchor', 'legacy_projection')),
+                signed_capability_json TEXT,
                 PRIMARY KEY (share_id, capability_id)
             );
             CREATE INDEX IF NOT EXISTS idx_federated_share_lineage_capability
@@ -1227,8 +1265,10 @@ impl SqliteReceiptStore {
 
             "#,
         )?;
-        connection.execute_batch(DISPATCH_INTENT_JOURNAL_DDL)?;
+        schema_migration.commit()?;
         connection.execute_batch(crate::IOU_ENVELOPE_MIGRATION)?;
+        connection.execute_batch(crate::dead_letters::SETTLE_DEAD_LETTERS_MIGRATION)?;
+        connection.execute_batch(crate::settle_attempts::SETTLE_ATTEMPTS_MIGRATION)?;
         ensure_tool_receipt_attribution_columns(&connection)?;
         super::support::ensure_receipt_lineage_statement_columns(&connection)?;
         super::support::drop_transparency_projection_guards(&connection)?;
@@ -1239,6 +1279,12 @@ impl SqliteReceiptStore {
             super::support::backfill_provenance_lineage_tables(&mut connection)?;
             super::support::backfill_claim_receipt_log_entries(&mut connection)?;
             super::support::backfill_checkpoint_transparency_projections(&mut connection)?;
+            if on_disk_schema_version < RECEIPT_COST_PROJECTION_SCHEMA_VERSION {
+                let migration = connection
+                    .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+                migrate_receipt_cost_projection(&migration)?;
+                migration.commit()?;
+            }
             Ok(())
         })();
         let guard_result = super::support::ensure_transparency_projection_guards(&connection);
@@ -1252,13 +1298,20 @@ impl SqliteReceiptStore {
                 )));
             }
         }
+        verify_receipt_cost_projection(&connection)?;
 
+        let migration =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        ensure_capability_lineage_provenance_columns(&migration)?;
         crate::stamp_schema_version(
-            &connection,
+            &migration,
             RECEIPT_STORE_SCHEMA_KEY,
             RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION,
         )
         .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
+        migration.commit()?;
+
+        let settlement_store_binding = settlement_store_binding_if_ready(&connection)?;
 
         drop(connection);
 
@@ -1277,18 +1330,15 @@ impl SqliteReceiptStore {
             options.pool.max_page_count,
         )?;
 
-        let instance_token = fresh_instance_token();
-        let writer_lifetime_lock = acquire_writer_lifetime_lock(path, &instance_token)?;
         Ok(Self {
             receipt_commit_actor: ReceiptCommitActor::start(
                 writer_pool,
                 options.incremental_verification,
             ),
             pool: reader_pool,
+            settlement_store_binding,
             strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
             incremental_verification: options.incremental_verification,
-            writer_lifetime_lock,
-            instance_token,
         })
     }
 
@@ -1306,66 +1356,6 @@ impl SqliteReceiptStore {
             },
         )
     }
-}
-
-/// Identity of one store instance for the rows it journals, distinct across
-/// every open of every process (a fresh UUID, never persisted or reused).
-/// Reconciliation treats a row carrying a different token as another
-/// instance's work, so nothing about the token needs to survive a restart:
-/// a restarted instance's previous rows are foreign to it by construction,
-/// exactly as a crashed sibling's are.
-fn fresh_instance_token() -> String {
-    uuid::Uuid::now_v7().to_string()
-}
-
-/// Mark this instance as a live writer on the database file: a shared
-/// advisory lock on a sidecar file, plus an exclusive lock on a per-owner
-/// mark named by `instance_token`, both held for the store's lifetime and
-/// released by the OS when the process exits, cleanly or not.
-/// Dispatch-intent reconciliation reads liveness from these marks before
-/// claiming open intents as orphans: a foreign row's owner is probed
-/// through its own per-owner mark, and a row naming no probeable owner is
-/// claimed only after converting the shared mark to exclusive, proving no
-/// sibling writer instance at all. Probes and conversions happen only
-/// under the sibling-serializing probe mutex at `probe_path` (see
-/// `WriterLifetimeLock`). Taking the shared mark blocks only while a
-/// sibling holds the exclusive conversion for the duration of its bounded
-/// reconcile pass. In-memory databases have no on-disk file to coordinate
-/// on and take no locks.
-fn acquire_writer_lifetime_lock(
-    path: &Path,
-    instance_token: &str,
-) -> Result<Option<WriterLifetimeLock>, ReceiptStoreError> {
-    let (Some(lock_path), Some(probe_path), Some(owner_mark_path)) = (
-        crate::sqlite_writer_lock_path(path),
-        crate::sqlite_reconcile_lock_path(path),
-        crate::sqlite_owner_mark_path(path, instance_token),
-    ) else {
-        return Ok(None);
-    };
-    let mark = open_sidecar_lock_file(&lock_path)?;
-    mark.lock_shared()?;
-    // The owner mark is held before the store can journal a single row, so
-    // a reconcile probe that acquires it is proof this owner journals
-    // nothing further. A fresh UUID cannot be contended; refuse rather
-    // than share.
-    let owner_lock = open_sidecar_lock_file(&owner_mark_path)?;
-    match owner_lock.try_lock() {
-        Ok(()) => {}
-        Err(std::fs::TryLockError::WouldBlock) => {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "owner liveness mark for a fresh store open is already held: {}",
-                owner_mark_path.display()
-            )));
-        }
-        Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
-    }
-    Ok(Some(WriterLifetimeLock {
-        mark,
-        probe_path,
-        database_path: path.to_path_buf(),
-        _owner_mark: OwnerLivenessMark::new(owner_lock, owner_mark_path),
-    }))
 }
 
 fn build_receipt_pool(
@@ -1480,6 +1470,126 @@ fn table_has_receipt_payload_column(
     while let Some(row) = rows.next()? {
         let column: String = row.get(1)?;
         if column.eq_ignore_ascii_case("raw_json") || column.eq_ignore_ascii_case("receipt_json") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn ensure_capability_lineage_provenance_columns(
+    connection: &Connection,
+) -> Result<(), ReceiptStoreError> {
+    for table in ["capability_lineage", "federated_share_capability_lineage"] {
+        if !table_has_column(connection, table, "signed_capability_json")? {
+            connection.execute(
+                &format!("ALTER TABLE {table} ADD COLUMN signed_capability_json TEXT"),
+                [],
+            )?;
+        }
+        if !table_has_column(connection, table, "federated_parent_capability_id")? {
+            connection.execute(
+                &format!("ALTER TABLE {table} ADD COLUMN federated_parent_capability_id TEXT"),
+                [],
+            )?;
+        }
+        if !table_has_column(connection, table, "provenance")? {
+            connection.execute(
+                &format!(
+                    "ALTER TABLE {table} ADD COLUMN provenance TEXT NOT NULL DEFAULT \
+                     'legacy_projection' CHECK (provenance IN ('signed_token', \
+                     'synthetic_anchor', 'legacy_projection'))"
+                ),
+                [],
+            )?;
+        }
+        connection.execute(
+            &format!(
+                "UPDATE {table} SET provenance = 'signed_token' \
+                 WHERE provenance = 'legacy_projection' \
+                   AND signed_capability_json IS NOT NULL"
+            ),
+            [],
+        )?;
+    }
+
+    let conflicting_bridge: bool = connection.query_row(
+        r#"
+        SELECT EXISTS(
+            SELECT 1
+            FROM capability_lineage c
+            INNER JOIN federated_lineage_bridges b
+                ON b.local_capability_id = c.capability_id
+            WHERE c.federated_parent_capability_id IS NOT NULL
+              AND c.federated_parent_capability_id != b.parent_capability_id
+        )
+        "#,
+        [],
+        |row| row.get(0),
+    )?;
+    if conflicting_bridge {
+        return Err(ReceiptStoreError::Conflict(
+            "capability lineage federation metadata conflicts with its persisted bridge"
+                .to_string(),
+        ));
+    }
+    let bridges_to_backfill = {
+        let mut statement = connection.prepare(
+            r#"
+            SELECT b.local_capability_id, b.parent_capability_id
+            FROM federated_lineage_bridges b
+            INNER JOIN capability_lineage c
+                ON c.capability_id = b.local_capability_id
+            WHERE c.federated_parent_capability_id IS NULL
+            ORDER BY c.rowid
+            "#,
+        )?;
+        let bridges = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        bridges
+    };
+    let mut next_rowid: i64 = connection.query_row(
+        "SELECT COALESCE(MAX(rowid), 0) FROM capability_lineage",
+        [],
+        |row| row.get(0),
+    )?;
+    for (local_capability_id, parent_capability_id) in bridges_to_backfill {
+        next_rowid = next_rowid.checked_add(1).ok_or_else(|| {
+            ReceiptStoreError::Conflict(
+                "capability lineage replication sequence is exhausted".to_string(),
+            )
+        })?;
+        connection.execute(
+            r#"
+            UPDATE capability_lineage
+            SET federated_parent_capability_id = ?2,
+                rowid = ?3
+            WHERE capability_id = ?1
+              AND federated_parent_capability_id IS NULL
+            "#,
+            params![local_capability_id, parent_capability_id, next_rowid],
+        )?;
+    }
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_capability_lineage_federated_parent \
+         ON capability_lineage(federated_parent_capability_id)",
+        [],
+    )?;
+    Ok(())
+}
+
+fn table_has_column(
+    connection: &Connection,
+    table: &str,
+    expected_column: &str,
+) -> Result<bool, ReceiptStoreError> {
+    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        let column: String = row.get(1)?;
+        if column.eq_ignore_ascii_case(expected_column) {
             return Ok(true);
         }
     }

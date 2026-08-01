@@ -123,6 +123,119 @@ impl ReceiptStore for WedgedLivenessStore {
     }
 }
 
+/// A healthy store whose first bounded receipt append consumes the supplied
+/// budget and times out. The second append succeeds immediately, proving the
+/// first timeout released the kernel-wide receipt write lock.
+struct FirstReceiptAppendTimesOutStore {
+    calls: Arc<AtomicU64>,
+    unbounded_calls: Arc<AtomicU64>,
+    first_entered: mpsc::Sender<()>,
+}
+
+impl ReceiptStore for FirstReceiptAppendTimesOutStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        self.unbounded_calls.fetch_add(1, Ordering::SeqCst);
+        Err(ReceiptStoreError::Conflict(
+            "unbounded receipt append must not run".to_string(),
+        ))
+    }
+
+    fn append_chio_receipt_with_timeout(
+        &self,
+        _receipt: &ChioReceipt,
+        budget: std::time::Duration,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        if call == 0 {
+            let _ = self.first_entered.send(());
+            std::thread::sleep(budget);
+            return Err(ReceiptStoreError::Timeout {
+                operation: "test receipt append".to_string(),
+                timeout_ms: budget.as_millis().min(u128::from(u64::MAX)) as u64,
+            });
+        }
+        Ok(Some(call + 1))
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn writer_liveness(&self, _stall_threshold: std::time::Duration) -> ReceiptWriterLiveness {
+        ReceiptWriterLiveness::Healthy
+    }
+}
+
+#[test]
+fn receipt_append_timeout_releases_write_lock_within_budget() {
+    let calls = Arc::new(AtomicU64::new(0));
+    let unbounded_calls = Arc::new(AtomicU64::new(0));
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let mut config = make_config();
+    config.checkpoint_batch_size = 0;
+    config.deadlines.receipt_append_budget_ms = MIN_RECEIPT_APPEND_BUDGET_MS;
+    let keypair = config.keypair.clone();
+    let mut kernel = make_kernel(config);
+    kernel
+        .set_receipt_store(Box::new(FirstReceiptAppendTimesOutStore {
+            calls: Arc::clone(&calls),
+            unbounded_calls: Arc::clone(&unbounded_calls),
+            first_entered: entered_tx,
+        }))
+        .expect("install timeout store");
+    let kernel = Arc::new(kernel);
+    let first_receipt = make_signed_receipt(&keypair, "timeout-first");
+    let first_id = first_receipt.id.clone();
+    let second_receipt = make_signed_receipt(&keypair, "timeout-second");
+    let second_id = second_receipt.id.clone();
+
+    let first_kernel = Arc::clone(&kernel);
+    let started = std::time::Instant::now();
+    let first = thread::spawn(move || first_kernel.record_chio_receipt(&first_receipt));
+    entered_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("bounded receipt append did not start");
+
+    let (second_tx, second_rx) = mpsc::channel();
+    let second_kernel = Arc::clone(&kernel);
+    let second = thread::spawn(move || {
+        let _ = second_tx.send(second_kernel.record_chio_receipt(&second_receipt));
+    });
+
+    let first_result = first.join().expect("first receipt thread panicked");
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "receipt append timeout did not return near its configured budget"
+    );
+    assert!(matches!(
+        first_result,
+        Err(KernelError::ReceiptPersistence(
+            ReceiptStoreError::Timeout {
+                timeout_ms: MIN_RECEIPT_APPEND_BUDGET_MS,
+                ..
+            }
+        ))
+    ));
+    assert!(matches!(
+        second_rx.recv_timeout(Duration::from_secs(1)),
+        Ok(Ok(()))
+    ));
+    second.join().expect("second receipt thread panicked");
+
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(unbounded_calls.load(Ordering::SeqCst), 0);
+    let receipt_ids: Vec<String> = kernel
+        .receipt_log()
+        .iter()
+        .map(|receipt| receipt.id.clone())
+        .collect();
+    assert!(!receipt_ids.contains(&first_id));
+    assert!(receipt_ids.contains(&second_id));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn guard_pipeline_budget_denies_hung_guard_and_frees_worker(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -194,8 +307,7 @@ async fn per_guard_budget_bounds_single_guard_not_pipeline(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn pipeline_budget_bounds_the_per_guard_loop(
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn pipeline_budget_bounds_the_per_guard_loop() -> Result<(), Box<dyn std::error::Error>> {
     // With per-guard budgets configured, the whole guard loop must still honor
     // the pipeline budget. A single guard whose own budget is generous but whose
     // work exceeds the pipeline budget must trip the pipeline deadline rather
@@ -277,8 +389,8 @@ async fn dispatch_budget_expiry_runs_full_unwind_and_emits_cancelled_receipt(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn wedged_writer_watchdog_denies_before_side_effect(
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn wedged_writer_watchdog_denies_before_side_effect() -> Result<(), Box<dyn std::error::Error>>
+{
     let invocations = Arc::new(AtomicU64::new(0));
     let mut kernel = make_kernel(make_config());
     kernel.set_receipt_store(Box::new(WedgedLivenessStore))?;
@@ -511,18 +623,12 @@ async fn healthy_writer_records_capability_snapshot_through_the_bounded_path(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn phase_dispatch_honors_the_configured_dispatch_budget(
+async fn phase_dispatch_requires_the_full_evaluation_pipeline(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // The `ToolEvaluator::dispatch` phase entry point is reachable by custom
-    // evaluators independently of the full evaluate path. With a dispatch budget
-    // configured it must enforce the deadline too, so a wedged tool server fails
-    // closed within budget rather than hanging the caller indefinitely.
     use crate::kernel::evaluator::{BlockingToolEvaluator, ToolEvaluator};
 
     let invocations = Arc::new(AtomicU64::new(0));
-    let mut config = make_config();
-    config.deadlines.dispatch_budget_ms = 200;
-    let mut kernel = make_kernel(config);
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(HangingToolServer {
         id: "srv-phase-hang".to_string(),
         tools: vec!["noop".to_string()],
@@ -538,21 +644,14 @@ async fn phase_dispatch_honors_the_configured_dispatch_budget(
     let request = make_request("req-phase-dispatch", &cap, "noop", "srv-phase-hang");
     let kernel = Arc::new(kernel);
 
-    let start = std::time::Instant::now();
     let result = BlockingToolEvaluator
         .dispatch(&kernel, &request, false)
         .await;
-    assert!(
-        start.elapsed() < Duration::from_secs(1),
-        "the phase dispatch deadline must fire near 200ms, well before a hung server"
-    );
-    assert_eq!(invocations.load(Ordering::SeqCst), 1, "dispatch did start");
-    match result {
-        Err(KernelError::HotPathDeadlineExceeded { stage, .. }) => {
-            assert_eq!(stage, HotPathStage::Dispatch);
-        }
-        other => panic!("expected a dispatch deadline error, got {other:?}"),
-    }
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    assert!(matches!(
+        result,
+        Err(KernelError::DirectDispatchUnavailable)
+    ));
     Ok(())
 }
 
@@ -658,7 +757,10 @@ fn always_offload_moves_guards_off_the_async_worker_without_a_timer(
             .run_guards_within_budget(&request, &scope, None, None)
             .await;
         assert!(outcome.is_ok(), "the recording guard allows");
-        let guard = guard_thread.lock().expect("read guard thread").expect("guard ran");
+        let guard = guard_thread
+            .lock()
+            .expect("read guard thread")
+            .expect("guard ran");
         assert_ne!(
             guard, worker,
             "always_offload must move the guard off the async worker even without a timer"
@@ -743,12 +845,8 @@ fn always_offload_runs_guards_inline_without_a_tokio_runtime(
     let scope = make_scope(vec![make_grant("srv-offload", "noop")]);
 
     // Drive the future with the futures executor: no Tokio runtime is entered.
-    let outcome = futures::executor::block_on(kernel.run_guards_within_budget(
-        &request,
-        &scope,
-        None,
-        None,
-    ));
+    let outcome =
+        futures::executor::block_on(kernel.run_guards_within_budget(&request, &scope, None, None));
 
     assert!(
         outcome.is_ok(),
@@ -817,7 +915,8 @@ fn nested_dispatch_isolates_a_synchronously_blocking_call_from_the_async_pool(
             std::thread::sleep(block);
             Ok::<_, KernelError>(ToolServerOutput::Value(serde_json::json!({ "ok": true })))
         };
-        let output = crate::kernel::dispatch::dispatch_nested_call_within_budget(call, budget).await;
+        let output =
+            crate::kernel::dispatch::dispatch_nested_call_within_budget(call, budget).await;
         assert!(
             matches!(output, Ok(ToolServerOutput::Value(_))),
             "the blocking nested call completes through the helper"

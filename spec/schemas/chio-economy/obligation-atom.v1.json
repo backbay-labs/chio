@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/obligation-atom/v1",
+  "title": "Chio Obligation Atom V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "obligationId",
+    "claimIndex",
+    "economicIntentDigest",
+    "sourceReceiptId",
+    "sourceReceiptDigest",
+    "debtorId",
+    "originalCreditorId",
+    "originalSettlementDestinationRef",
+    "payeeBindingDigest",
+    "amount",
+    "creditElection",
+    "preActionAuthorityDigest",
+    "createdAtUnixMs",
+    "dueAtUnixMs"
+  ],
+  "properties": {
+    "schema": { "const": "chio.obligation.atom.v1" },
+    "obligationId": { "$ref": "#/$defs/digest" },
+    "claimIndex": { "const": 0 },
+    "economicIntentDigest": { "$ref": "#/$defs/digest" },
+    "sourceReceiptId": { "$ref": "#/$defs/text" },
+    "sourceReceiptDigest": { "$ref": "#/$defs/digest" },
+    "debtorId": { "$ref": "#/$defs/text" },
+    "originalCreditorId": { "$ref": "#/$defs/text" },
+    "originalSettlementDestinationRef": { "$ref": "#/$defs/text" },
+    "payeeBindingDigest": { "$ref": "#/$defs/digest" },
+    "amount": { "$ref": "#/$defs/amount" },
+    "creditElection": { "$ref": "#/$defs/creditElection" },
+    "preActionAuthorityDigest": { "$ref": "#/$defs/digest" },
+    "createdAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+    "dueAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "amount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "units"],
+      "properties": {
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "units": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "creditElection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "not_credit" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "facility_id", "authority_digest"],
+          "properties": {
+            "kind": { "const": "credit_facility" },
+            "facility_id": { "$ref": "#/$defs/text" },
+            "authority_digest": { "$ref": "#/$defs/digest" }
+          }
+        }
+      ]
+    }
+  }
+}

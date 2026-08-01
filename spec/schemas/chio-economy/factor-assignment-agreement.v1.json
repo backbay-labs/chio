@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/factor-assignment-agreement/v1",
+  "title": "Signed Chio Factor Assignment Agreement V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "sellerSignature", "buyerSignature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "agreementId",
+        "operationId",
+        "normalizedRequestDigest",
+        "obligationId",
+        "obligationAtomDigest",
+        "claimId",
+        "claimDigest",
+        "offerId",
+        "offerDigest",
+        "sellerId",
+        "buyerId",
+        "buyerSettlementDestinationRef",
+        "agreedDiscountBps",
+        "agreedPrice",
+        "assignmentAuthorityDigest",
+        "expectedDispositionVersion",
+        "expectedDispositionLifecycleFence",
+        "expectedSettlementLifecycleVersion",
+        "expectedSettlementLifecycleFence",
+        "effectiveAtUnixMs",
+        "dueAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.factor.assignment-agreement.v1" },
+        "agreementId": { "$ref": "#/$defs/text" },
+        "operationId": { "$ref": "#/$defs/digest" },
+        "normalizedRequestDigest": { "$ref": "#/$defs/digest" },
+        "obligationId": { "$ref": "#/$defs/digest" },
+        "obligationAtomDigest": { "$ref": "#/$defs/digest" },
+        "claimId": { "$ref": "#/$defs/digest" },
+        "claimDigest": { "$ref": "#/$defs/digest" },
+        "offerId": { "$ref": "#/$defs/digest" },
+        "offerDigest": { "$ref": "#/$defs/digest" },
+        "sellerId": { "$ref": "#/$defs/text" },
+        "buyerId": { "$ref": "#/$defs/text" },
+        "buyerSettlementDestinationRef": { "$ref": "#/$defs/text" },
+        "agreedDiscountBps": { "$ref": "#/$defs/basisPoints" },
+        "agreedPrice": { "$ref": "#/$defs/amount" },
+        "assignmentAuthorityDigest": { "$ref": "#/$defs/digest" },
+        "expectedDispositionVersion": { "$ref": "#/$defs/positiveInteger" },
+        "expectedDispositionLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "expectedSettlementLifecycleVersion": { "$ref": "#/$defs/positiveInteger" },
+        "expectedSettlementLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "effectiveAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "dueAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "sellerSignature": { "$ref": "#/$defs/partySignature" },
+    "buyerSignature": { "$ref": "#/$defs/partySignature" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "safeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "basisPoints": { "type": "integer", "minimum": 0, "maximum": 10000 },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 },
+    "amount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "$ref": "#/$defs/safeInteger" },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      }
+    },
+    "partySignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partyId", "partyKeyEpoch", "signerKey", "signature"],
+      "properties": {
+        "partyId": { "$ref": "#/$defs/text" },
+        "partyKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+        "signature": { "$ref": "#/$defs/cryptoMaterial" }
+      }
+    }
+  }
+}

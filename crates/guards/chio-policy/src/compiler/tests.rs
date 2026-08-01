@@ -7,8 +7,54 @@ use super::*;
 use crate::models::{DetectionLevel, HushSpec, JailbreakDetection};
 use chio_core::capability::runtime_attestation::RuntimeAssuranceTier;
 use chio_core::capability::scope::Constraint;
+use chio_core::crypto::{Keypair, PublicKey};
 use chio_guards::computer_use::EnforcementMode;
+use chio_kernel::threshold_approval::{ApproverDirectory, ResolvedApproverIdentity};
 use std::path::PathBuf;
+
+struct TestApproverDirectory {
+    entries: std::collections::BTreeMap<String, PublicKey>,
+}
+
+impl ApproverDirectory for TestApproverDirectory {
+    fn resolve_approver(&self, identifier: &str) -> Result<ResolvedApproverIdentity, String> {
+        let public_key = self
+            .entries
+            .get(identifier)
+            .cloned()
+            .ok_or_else(|| "unknown approver".to_string())?;
+        Ok(ResolvedApproverIdentity {
+            identifier: identifier.to_string(),
+            public_key,
+            directory_version: "directory-v7".to_string(),
+        })
+    }
+}
+
+fn threshold_policy(approvers: &str, timeout: &str) -> HushSpec {
+    HushSpec::parse(&format!(
+        r#"
+hushspec: "0.1.0"
+extensions:
+  chio:
+    human_in_loop:
+      approvers:
+        n: 2
+        of: {approvers}
+{timeout}
+"#
+    ))
+    .unwrap()
+}
+
+fn test_approver_directory() -> TestApproverDirectory {
+    TestApproverDirectory {
+        entries: ["alice", "bob", "carol"]
+            .into_iter()
+            .map(|identifier| (identifier.to_string(), Keypair::generate().public_key()))
+            .collect(),
+    }
+}
 
 fn sample_threat_intel_pattern_db() -> &'static str {
     r#"
@@ -47,6 +93,59 @@ name: empty
     assert!(compiled.guard_names.is_empty());
     assert_eq!(compiled.default_scope.grants.len(), 1);
     assert_eq!(compiled.default_scope.grants[0].tool_name, "*");
+}
+
+#[test]
+fn threshold_approval_requires_an_authenticated_directory() {
+    let spec = threshold_policy("[\"alice\", \"bob\"]", "");
+    let error = compile_policy(&spec).err().expect("directory is required");
+    assert!(error
+        .to_string()
+        .contains("authenticated approver directory"));
+}
+
+#[test]
+fn threshold_approval_compiles_canonical_identity_set() {
+    let directory = test_approver_directory();
+    let first = compile_policy_with_approver_directory(
+        &threshold_policy("[\"carol\", \"alice\", \"bob\"]", ""),
+        &directory,
+    )
+    .unwrap()
+    .threshold_approval
+    .expect("threshold requirement");
+    let reordered = compile_policy_with_approver_directory(
+        &threshold_policy("[\"bob\", \"carol\", \"alice\"]", ""),
+        &directory,
+    )
+    .unwrap()
+    .threshold_approval
+    .expect("reordered threshold requirement");
+
+    assert_eq!(first.eligible_set_digest, reordered.eligible_set_digest);
+    assert_eq!(first.timeout_seconds, 900);
+    assert_eq!(first.directory_version, "directory-v7");
+    first.validate().unwrap();
+}
+
+#[test]
+fn threshold_approval_rejects_invalid_quorum_and_timeout() {
+    let directory = test_approver_directory();
+    let invalid_quorum = HushSpec::parse(
+        r#"
+hushspec: "0.1.0"
+extensions:
+  chio:
+    human_in_loop:
+      approvers:
+        n: 3
+        of: ["alice", "bob"]
+"#,
+    )
+    .unwrap();
+    assert!(compile_policy_with_approver_directory(&invalid_quorum, &directory).is_err());
+    let invalid_timeout = threshold_policy("[\"alice\", \"bob\"]", "        timeout_seconds: 3601");
+    assert!(compile_policy_with_approver_directory(&invalid_timeout, &directory).is_err());
 }
 
 #[test]

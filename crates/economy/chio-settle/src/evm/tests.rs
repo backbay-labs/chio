@@ -29,6 +29,30 @@ use std::sync::{Arc, Mutex};
 
 use chio_test_support::prelude::*;
 
+macro_rules! assert_not_prepared_evm_submission {
+    ($type:ty) => {
+        const _: fn() = || {
+            trait AmbiguousIfPrepared<A> {
+                fn marker() {}
+            }
+            impl<T: ?Sized> AmbiguousIfPrepared<()> for T {}
+            struct Invalid;
+            impl<T: ?Sized + PreparedEvmSubmission> AmbiguousIfPrepared<Invalid> for T {}
+            let _ = <$type as AmbiguousIfPrepared<_>>::marker;
+        };
+    };
+}
+
+assert_not_prepared_evm_submission!(PreparedEvmCall);
+assert_not_prepared_evm_submission!(PreparedAuthorizedChannelMerkleReleaseV1);
+assert_not_prepared_evm_submission!(PreparedRootPublication);
+assert_not_prepared_evm_submission!(PreparedMerkleRelease);
+assert_not_prepared_evm_submission!(PreparedDualSignRelease);
+assert_not_prepared_evm_submission!(PreparedEscrowRefund);
+assert_not_prepared_evm_submission!(PreparedBondRelease);
+assert_not_prepared_evm_submission!(PreparedBondImpair);
+assert_not_prepared_evm_submission!(PreparedBondExpiry);
+
 fn sample_config() -> SettlementChainConfig {
     sample_config_with_rpc_url("http://127.0.0.1:8545".to_string())
 }
@@ -50,6 +74,16 @@ fn sample_config_with_rpc_url(rpc_url: String) -> SettlementChainConfig {
         oracle: crate::SettlementOracleConfig::default(),
         evidence_substrate: crate::SettlementEvidenceConfig::default(),
         policy: SettlementPolicyConfig::default(),
+    }
+}
+
+fn test_submission(call: PreparedEvmCall) -> PreparedErc20Approval {
+    PreparedErc20Approval {
+        owner_address: call.from_address.clone(),
+        token_address: "0x1000000000000000000000000000000000000003".to_owned(),
+        spender_address: call.to_address.clone(),
+        amount_minor_units: 1,
+        call,
     }
 }
 
@@ -827,14 +861,15 @@ async fn rpc_helpers_cover_static_validation_gas_estimation_and_submission() {
         data: "0xdeadbeef".to_string(),
         gas_limit: None,
     };
+    let prepared = test_submission(call);
 
-    let validation = static_validate_call(&config, &call)
+    let validation = static_validate_call(&config, prepared.call())
         .await
         .test_expect("eth_call should succeed");
-    let estimated = estimate_call_gas(&config, &call)
+    let estimated = estimate_call_gas(&config, prepared.call())
         .await
         .test_expect("gas estimate should succeed");
-    let tx_hash = submit_call(&config, &call)
+    let tx_hash = submit_call(&config, &prepared)
         .await
         .test_expect("submission should succeed");
 
@@ -877,8 +912,9 @@ async fn submit_call_respects_explicit_gas_limit() {
         data: "0xdeadbeef".to_string(),
         gas_limit: Some(50_000),
     };
+    let prepared = test_submission(call);
 
-    let tx_hash = submit_call(&config, &call)
+    let tx_hash = submit_call(&config, &prepared)
         .await
         .test_expect("submission should succeed");
 
@@ -895,6 +931,30 @@ async fn submit_call_respects_explicit_gas_limit() {
 }
 
 #[tokio::test]
+async fn submit_call_rejects_money_exit_selectors_before_rpc() {
+    let config = sample_config();
+    for selector in prepare::GUARDED_MONEY_EXIT_SELECTORS {
+        let prepared = PreparedErc20Approval {
+            owner_address: config.operator_address.clone(),
+            token_address: config.settlement_token_address.clone(),
+            spender_address: config.escrow_contract.clone(),
+            amount_minor_units: 1,
+            call: PreparedEvmCall {
+                from_address: config.operator_address.clone(),
+                to_address: config.escrow_contract.clone(),
+                data: format!("0x{}", hex::encode(selector)),
+                gas_limit: Some(50_000),
+            },
+        };
+
+        let error = submit_call(&config, &prepared)
+            .await
+            .test_expect_err("money-exit selector must be rejected before RPC");
+        assert!(matches!(error, SettlementError::Unsupported(_)));
+    }
+}
+
+#[tokio::test]
 async fn submit_call_rejects_rpc_redirects() {
     let server = MockRawHttpServer::spawn(
             "HTTP/1.1 302 Found\r\nLocation: /redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
@@ -907,8 +967,9 @@ async fn submit_call_rejects_rpc_redirects() {
         data: "0xdeadbeef".to_string(),
         gas_limit: Some(50_000),
     };
+    let prepared = test_submission(call);
 
-    let error = submit_call(&config, &call)
+    let error = submit_call(&config, &prepared)
         .await
         .test_expect_err("submission RPC redirect should fail");
     let message = error.to_string();
@@ -933,8 +994,9 @@ async fn submit_call_rejects_oversized_rpc_responses() {
         data: "0xdeadbeef".to_string(),
         gas_limit: Some(50_000),
     };
+    let prepared = test_submission(call);
 
-    let error = submit_call(&config, &call)
+    let error = submit_call(&config, &prepared)
         .await
         .test_expect_err("oversized submission RPC response should fail");
     let message = error.to_string();
@@ -1328,8 +1390,14 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         .contains("content hash"));
     let root_publication = prepare_merkle_release_root_publication(&config, &dispatch, &full, 2, 2)
         .test_expect("typed settlement root publication should prepare");
-    assert_eq!(root_publication.from_address, config.operator_address);
-    assert_eq!(root_publication.to_address, config.root_registry_contract);
+    assert_eq!(
+        root_publication.call().from_address,
+        config.operator_address
+    );
+    assert_eq!(
+        root_publication.call().to_address,
+        config.root_registry_contract
+    );
 
     let mut forged_root_release = full.clone();
     forged_root_release.merkle_root =
@@ -1544,10 +1612,10 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &dual_config,
         &dual_dispatch,
         &receipt,
-        &DualSignReleaseInput {
-            operator_private_key_hex: operator_private_key.to_string(),
-            observed_amount: dual_dispatch.settlement_amount.clone(),
-        },
+        &DualSignReleaseInput::new(
+            operator_private_key,
+            dual_dispatch.settlement_amount.clone(),
+        ),
     )
     .await
     .test_expect("dual-sign release should prepare");
@@ -1626,10 +1694,10 @@ async fn dual_sign_release_rejects_identity_registry_key_hash_mismatch() {
         &config,
         &dual_dispatch,
         &receipt,
-        &DualSignReleaseInput {
-            operator_private_key_hex: operator_private_key.to_string(),
-            observed_amount: dual_dispatch.settlement_amount.clone(),
-        },
+        &DualSignReleaseInput::new(
+            operator_private_key,
+            dual_dispatch.settlement_amount.clone(),
+        ),
     )
     .await
     .test_expect_err("registry key hash mismatch should block dual-sign prep");
@@ -1659,10 +1727,10 @@ async fn dual_sign_release_rejects_unpinned_registry_block() {
         &config,
         &dual_dispatch,
         &receipt,
-        &DualSignReleaseInput {
-            operator_private_key_hex: operator_private_key.to_string(),
-            observed_amount: dual_dispatch.settlement_amount.clone(),
-        },
+        &DualSignReleaseInput::new(
+            operator_private_key,
+            dual_dispatch.settlement_amount.clone(),
+        ),
     )
     .await
     .test_expect_err("missing registry block hash should block dual-sign prep");
@@ -1827,10 +1895,17 @@ async fn prepare_bond_lock_release_and_impair_cover_positive_paths() {
         2,
     )
     .test_expect("bond proof root publication should prepare");
-    assert_eq!(root_publication.from_address, config.operator_address);
-    assert_eq!(root_publication.to_address, config.root_registry_contract);
+    assert_eq!(
+        root_publication.call().from_address,
+        config.operator_address
+    );
+    assert_eq!(
+        root_publication.call().to_address,
+        config.root_registry_contract
+    );
     let publish_call = IChioRootRegistry::publishRootCall::abi_decode(
-        &decode_hex_bytes(&root_publication.data).test_expect("publish root calldata decodes"),
+        &decode_hex_bytes(&root_publication.call().data)
+            .test_expect("publish root calldata decodes"),
     )
     .test_expect("publish root call decodes");
     assert_eq!(

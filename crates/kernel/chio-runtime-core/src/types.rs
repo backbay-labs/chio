@@ -176,9 +176,19 @@ pub struct GovernanceLadderActionClass {
     pub destructive: bool,
     pub consistency_model: String,
     pub co_sign: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub co_sign_quorum: Option<GovernanceLadderQuorum>,
     pub evidence_required: Vec<String>,
     #[serde(default)]
     pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GovernanceLadderQuorum {
+    pub n: u16,
+    pub m: u16,
+    pub scope: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -219,6 +229,8 @@ pub struct LadderIntersectionActionClass {
     pub destructive: bool,
     pub consistency_model: String,
     pub co_sign: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub co_sign_quorum: Option<GovernanceLadderQuorum>,
     pub evidence_required: Vec<String>,
     pub participant_modes: BTreeMap<String, String>,
 }
@@ -279,6 +291,8 @@ pub struct CrossBoundaryAdmissionReport {
     pub mode: String,
     pub consistency_model: String,
     pub co_sign: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub co_sign_quorum: Option<GovernanceLadderQuorum>,
     pub required_evidence: Vec<String>,
     pub present_evidence: Vec<String>,
     #[serde(default)]

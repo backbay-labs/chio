@@ -212,3 +212,114 @@ pub fn receipt_fields_coupled(
         evidence_class_matches,
     )
 }
+
+/// Result of a bounded three-key composite quota authorization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompositeQuotaResult {
+    pub accepted: bool,
+    pub captured: [u8; 3],
+}
+
+/// Authorize one invocation against every applicable quota or none.
+#[must_use]
+pub fn composite_quota_authorize(
+    captured: [u8; 3],
+    maximum: [u8; 3],
+    applicable: [bool; 3],
+) -> CompositeQuotaResult {
+    let mut next = captured;
+    for index in 0..3 {
+        if !applicable[index] {
+            continue;
+        }
+        let Some(value) = captured[index].checked_add(1) else {
+            return CompositeQuotaResult {
+                accepted: false,
+                captured,
+            };
+        };
+        if value > maximum[index] {
+            return CompositeQuotaResult {
+                accepted: false,
+                captured,
+            };
+        }
+        next[index] = value;
+    }
+    CompositeQuotaResult {
+        accepted: true,
+        captured: next,
+    }
+}
+
+/// Existing quota keys preserve the maximum established on first use.
+#[must_use]
+pub const fn quota_maximum_compatible(
+    initialized: bool,
+    existing_maximum: u8,
+    presented_maximum: u8,
+) -> bool {
+    !initialized || existing_maximum == presented_maximum
+}
+
+/// Projection of the signed family-binding preservation predicate.
+#[must_use]
+pub const fn family_binding_preserved(
+    fields_match: [bool; 8],
+    root_maximum: u8,
+    descendant_maximum: u8,
+) -> bool {
+    fields_match[0]
+        && fields_match[1]
+        && fields_match[2]
+        && fields_match[3]
+        && fields_match[4]
+        && fields_match[5]
+        && fields_match[6]
+        && fields_match[7]
+        && root_maximum == descendant_maximum
+}
+
+/// Count distinct eligible signer IDs in a bounded three-token approval set.
+#[must_use]
+pub fn threshold_distinct_eligible_signers(
+    signer_ids: [u8; 3],
+    present: [bool; 3],
+    eligible: [bool; 3],
+) -> u8 {
+    let mut seen = [false; 3];
+    let mut count = 0_u8;
+    for index in 0..3 {
+        if !present[index] {
+            continue;
+        }
+        let signer = usize::from(signer_ids[index]);
+        if signer >= eligible.len() || !eligible[signer] || seen[signer] {
+            continue;
+        }
+        seen[signer] = true;
+        count += 1;
+    }
+    count
+}
+
+#[cfg(test)]
+mod protocol_primitive_tests {
+    use super::*;
+
+    #[test]
+    fn composite_quota_failure_preserves_every_member() {
+        let before = [0, 1, 0];
+        let result = composite_quota_authorize(before, [1, 1, 1], [true; 3]);
+        assert!(!result.accepted);
+        assert_eq!(result.captured, before);
+    }
+
+    #[test]
+    fn duplicate_approval_signer_counts_once() {
+        assert_eq!(
+            threshold_distinct_eligible_signers([0, 0, 1], [true; 3], [true; 3]),
+            2
+        );
+    }
+}

@@ -267,6 +267,7 @@ impl EvidenceExportQuery {
             until: self.until,
             min_cost: None,
             max_cost: None,
+            cost_currency: None,
             cursor,
             limit: crate::MAX_QUERY_LIMIT,
             agent_subject: self.agent_subject.clone(),

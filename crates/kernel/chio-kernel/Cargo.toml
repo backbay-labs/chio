@@ -22,6 +22,7 @@ name = "chio_kernel"
 # the box.
 default = ["delegation"]
 dhat-heap = []
+admission-test-support = []
 otel = ["dep:opentelemetry-semantic-conventions"]
 tokio-console-smoke = ["tokio/tracing"]
 # Hybrid signing path: pulls the pq cargo feature on chio-core-types so
@@ -115,6 +116,8 @@ chio-store-sqlite = { workspace = true }
 chio-test-support = { workspace = true }
 criterion = { workspace = true }
 dhat = { workspace = true }
+jsonschema = { workspace = true }
+tempfile = { workspace = true }
 # proptest = "1.10" (via workspace.dependencies). Used by:
 # - tests/property_budget_store.rs
 # - tests/replay_proptest.rs (replay-invariance suite)
@@ -150,6 +153,14 @@ harness = false
 
 [[bench]]
 name = "receipt_sign"
+harness = false
+
+[[bench]]
+name = "paper_security_components"
+harness = false
+
+[[bench]]
+name = "receipt_verify"
 harness = false
 
 [[bench]]

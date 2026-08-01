@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-outcome/sla/v1",
+  "title": "Chio Outcome SLA V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "slaId",
+        "providerId",
+        "listingDigest",
+        "maxFailureBps",
+        "minimumSampleCount",
+        "windowSeconds",
+        "windowAnchorUnixMs",
+        "effectiveAtUnixMs",
+        "expiresAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.outcome.sla.v1" },
+        "slaId": { "$ref": "#/$defs/digest" },
+        "providerId": { "$ref": "#/$defs/text" },
+        "listingDigest": { "$ref": "#/$defs/digest" },
+        "maxFailureBps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "minimumSampleCount": { "$ref": "#/$defs/positiveInteger" },
+        "windowSeconds": { "$ref": "#/$defs/positiveInteger" },
+        "windowAnchorUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "effectiveAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "expiresAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 }
+  }
+}

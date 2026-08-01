@@ -119,6 +119,7 @@ impl ChioEvaluator {
             policy_hash,
             receipt_store: None,
             revocation_store: None,
+            durable_admission: None,
             allow_ephemeral: false,
             identity_extractor: crate::identity::extract_identity,
             route_resolver: default_route_resolver,
@@ -215,6 +216,7 @@ impl ChioEvaluator {
                 requested_arguments: None,
                 execution_nonce: None,
                 model_metadata: None,
+                unsupported_authorization_extension: None,
                 policy: policy_mode(http_method),
             })
             .map_err(Into::into)
@@ -345,10 +347,17 @@ pub struct ChioEvaluatorBuilder {
     policy_hash: String,
     receipt_store: Option<std::sync::Arc<dyn chio_kernel::ReceiptStore>>,
     revocation_store: Option<std::sync::Arc<dyn chio_kernel::RevocationStore>>,
+    durable_admission: Option<DurableAdmissionStores>,
     allow_ephemeral: bool,
     identity_extractor: IdentityExtractor,
     route_resolver: RouteResolver,
     fail_open: bool,
+}
+
+struct DurableAdmissionStores {
+    store: std::sync::Arc<dyn chio_kernel::QualifiedAdmissionProjectionStore>,
+    outcome_store: std::sync::Arc<dyn chio_kernel::tool_outcome::QualifiedToolOutcomeStore>,
+    fence: chio_kernel::admission_operation::StoreMutationFence,
 }
 
 impl ChioEvaluatorBuilder {
@@ -364,6 +373,21 @@ impl ChioEvaluatorBuilder {
         store: std::sync::Arc<dyn chio_kernel::RevocationStore>,
     ) -> Self {
         self.revocation_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn durable_admission_stores(
+        mut self,
+        store: std::sync::Arc<dyn chio_kernel::QualifiedAdmissionProjectionStore>,
+        outcome_store: std::sync::Arc<dyn chio_kernel::tool_outcome::QualifiedToolOutcomeStore>,
+        fence: chio_kernel::admission_operation::StoreMutationFence,
+    ) -> Self {
+        self.durable_admission = Some(DurableAdmissionStores {
+            store,
+            outcome_store,
+            fence,
+        });
         self
     }
 
@@ -408,6 +432,13 @@ impl ChioEvaluatorBuilder {
         }
         if let Some(store) = self.revocation_store {
             builder = builder.revocation_store(store);
+        }
+        if let Some(durable) = self.durable_admission {
+            builder = builder.durable_admission_stores(
+                durable.store,
+                durable.outcome_store,
+                durable.fence,
+            );
         }
         let authority = builder
             .build(self.keypair, self.policy_hash)
@@ -506,6 +537,7 @@ mod tests {
                 issued_at: now.saturating_sub(60),
                 expires_at: now + 3600,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             issuer,
         )
@@ -570,10 +602,28 @@ mod tests {
             std::sync::Arc::new(chio_store_sqlite::SqliteRevocationStore::open(
                 dir.path().join("revocations.db"),
             )?);
-        let evaluator = ChioEvaluator::builder(Keypair::generate(), "test-policy".to_string())
-            .receipt_store(receipt_store)
-            .revocation_store(revocation_store)
-            .build()?;
+        let authority_database = dir.path().join("authority.db");
+        let authority_locks = dir.path().join("authority-locks");
+        std::fs::create_dir(&authority_locks)?;
+        chio_store_sqlite::SqliteAuthorityStore::provision(&authority_database, &authority_locks)?;
+        let authority_store = chio_store_sqlite::SqliteAuthorityStore::open_serving(
+            &authority_database,
+            &authority_locks,
+        )?;
+        let admission_store = std::sync::Arc::new(authority_store.admission_operation_store());
+        let outcome_store = std::sync::Arc::new(authority_store.tool_outcome_store());
+        let evaluator = ChioEvaluator::builder(
+            Keypair::generate(),
+            chio_core_types::crypto::sha256_hex(b"test-policy"),
+        )
+        .receipt_store(receipt_store)
+        .revocation_store(revocation_store)
+        .durable_admission_stores(
+            admission_store,
+            outcome_store,
+            authority_store.mutation_fence(),
+        )
+        .build()?;
         assert!(!evaluator.is_fail_open());
 
         let caller = CallerIdentity::anonymous();

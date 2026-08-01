@@ -79,9 +79,11 @@ public final class SecureEnclaveKeystore: Sendable {
         guard status == errSecSuccess else {
             throw ChioKeystoreError.secureEnclaveUnavailable(status)
         }
-        guard let key = item as? SecKey else {
+        // CFTypeRef cannot be conditionally downcast to a CoreFoundation type;
+        // verify the returned ref really is a key before the unconditional bridge.
+        guard let item, CFGetTypeID(item) == SecKeyGetTypeID() else {
             throw ChioKeystoreError.secureEnclaveUnavailable(errSecDecode)
         }
-        return key
+        return (item as! SecKey)
     }
 }

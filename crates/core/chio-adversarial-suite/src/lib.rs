@@ -30,6 +30,7 @@ pub const ATTACK_CLASSES: &[AttackClass] = &[
     AttackClass::RevocationRollback,
     AttackClass::AnchorGrafted,
     AttackClass::SigstoreBundlePayloadMismatch,
+    AttackClass::AuthorityBindingMutation,
 ];
 
 /// One statically bundled adversarial case file.
@@ -213,6 +214,18 @@ pub const BUNDLED_CASES: &[BundledCase] = &[
             "../cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json"
         ),
     },
+    BundledCase {
+        path: "cases/authority_binding_mutation/aggregate-root-binding-mutations-001.json",
+        contents: include_str!(
+            "../cases/authority_binding_mutation/aggregate-root-binding-mutations-001.json"
+        ),
+    },
+    BundledCase {
+        path: "cases/authority_binding_mutation/threshold-proposal-mutations-001.json",
+        contents: include_str!(
+            "../cases/authority_binding_mutation/threshold-proposal-mutations-001.json"
+        ),
+    },
 ];
 
 /// One malicious-but-well-formed case consumed by test harnesses.
@@ -354,6 +367,7 @@ pub enum AttackClass {
     RevocationRollback,
     AnchorGrafted,
     SigstoreBundlePayloadMismatch,
+    AuthorityBindingMutation,
 }
 
 impl AttackClass {
@@ -368,6 +382,7 @@ impl AttackClass {
             Self::RevocationRollback => "revocation_rollback",
             Self::AnchorGrafted => "anchor_grafted",
             Self::SigstoreBundlePayloadMismatch => "sigstore_bundle_payload_mismatch",
+            Self::AuthorityBindingMutation => "authority_binding_mutation",
         }
     }
 }
@@ -454,7 +469,8 @@ mod tests {
                 "scope_superset",
                 "revocation_rollback",
                 "anchor_grafted",
-                "sigstore_bundle_payload_mismatch"
+                "sigstore_bundle_payload_mismatch",
+                "authority_binding_mutation"
             ]
         );
     }

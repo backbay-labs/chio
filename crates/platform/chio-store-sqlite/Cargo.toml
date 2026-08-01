@@ -25,24 +25,37 @@ lineage = []
 chacha20poly1305 = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-credit = { workspace = true }
+chio-federation = { workspace = true }
+chio-federation-authority = { workspace = true }
+chio-fiscal = { workspace = true }
 chio-kernel = { workspace = true }
 chio-settle = { workspace = true }
 chio-supervisor = { workspace = true }
+hex = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 r2d2 = "0.8"
 r2d2_sqlite = "0.33.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
+subtle = "2.6"
 rusqlite = { workspace = true }
+rand_core = { workspace = true }
+libc = "0.2"
+nix = { version = "0.31.2", features = ["user"] }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 zeroize = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+chio-kernel = { workspace = true, features = ["admission-test-support"] }
 chio-test-support = { workspace = true }
 criterion = { workspace = true }
+frost-ed25519 = { workspace = true }
 loom = { workspace = true }
 proptest = { workspace = true }
+rand_chacha = { workspace = true }
 tempfile = { workspace = true }
 
 [[bench]]

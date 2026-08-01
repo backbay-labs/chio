@@ -64,6 +64,12 @@ let config = ProtectConfig {
     sidecar_control_token: None,
     signer_seed_hex: None,
     trusted_capability_issuers: Vec::new(),
+    control_url: None,
+    control_token: None,
+    budget_db: None,
+    revocation_db: None,
+    require_nonce: false,
+    allow_advisory: false,
     upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
 };
 

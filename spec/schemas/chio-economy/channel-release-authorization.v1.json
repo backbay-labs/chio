@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/channel-release-authorization/v1",
+  "title": "Chio Channel Release Authorization V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "publisherSignature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "authority",
+        "publicationRoot",
+        "rootPublication",
+        "releaseBroadcast"
+      ],
+      "properties": {
+        "schema": { "const": "chio.channel.release-authorization.v1" },
+        "authority": { "$ref": "#/$defs/authority" },
+        "publicationRoot": { "$ref": "#/$defs/digest" },
+        "rootPublication": { "$ref": "#/$defs/rootPublication" },
+        "releaseBroadcast": { "$ref": "#/$defs/releaseBroadcast" }
+      }
+    },
+    "publisherSignature": { "$ref": "#/$defs/channelSignature" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "nonNegativeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "baseUnits": { "type": "string", "pattern": "^(0|[1-9][0-9]{0,38})$", "maxLength": 39 },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "publicKey": { "type": "string", "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "signature": { "type": "string", "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "$ref": "#/$defs/nonNegativeInteger" },
+        "currency": { "$ref": "#/$defs/currency" }
+      }
+    },
+    "escrowReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chainId", "escrowContract", "escrowId"],
+      "properties": {
+        "chainId": { "$ref": "#/$defs/text" },
+        "escrowContract": { "$ref": "#/$defs/text" },
+        "escrowId": { "$ref": "#/$defs/text" }
+      }
+    },
+    "frost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorizationSlotId",
+        "authorizationId",
+        "actionDigest",
+        "signedEnvelopeDigest"
+      ],
+      "properties": {
+        "authorizationSlotId": { "$ref": "#/$defs/digest" },
+        "authorizationId": { "$ref": "#/$defs/digest" },
+        "actionDigest": { "$ref": "#/$defs/digest" },
+        "signedEnvelopeDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channelId",
+        "escrowReference",
+        "openDigest",
+        "closeDigest",
+        "closeBodyDigest",
+        "effectiveCloseDigest",
+        "finalStateDigest",
+        "finalStateSequence",
+        "finalCumulativeOwed",
+        "channelStateVersion",
+        "escrowReservationVersion",
+        "lifecycleFence",
+        "boundTokenBaseUnits",
+        "expectedReleaseTokenBaseUnits",
+        "expectedRefundTokenBaseUnits",
+        "assetBindingDigest",
+        "originalWeb3DispatchDigest",
+        "originalOperator",
+        "originalOperatorKeyHash",
+        "payeeBeneficiaryAddress",
+        "channelExpiryUnixMs",
+        "disputeDeadlineUnixMs",
+        "closeSubmissionCutoffUnixMs",
+        "escrowDeadlineUnixMs",
+        "publisherFence",
+        "authorizedAtUnixMs",
+        "frost",
+        "frostScopeId",
+        "frostResourceId",
+        "frostResourceVersion",
+        "frostResourceFence",
+        "frostRosterDigest",
+        "frostKeyEpoch",
+        "frostIssuedAtUnixMs"
+      ],
+      "properties": {
+        "channelId": { "$ref": "#/$defs/digest" },
+        "escrowReference": { "$ref": "#/$defs/escrowReference" },
+        "openDigest": { "$ref": "#/$defs/digest" },
+        "closeDigest": { "$ref": "#/$defs/digest" },
+        "closeBodyDigest": { "$ref": "#/$defs/digest" },
+        "effectiveCloseDigest": { "$ref": "#/$defs/digest" },
+        "finalStateDigest": { "$ref": "#/$defs/digest" },
+        "finalStateSequence": { "$ref": "#/$defs/nonNegativeInteger" },
+        "finalCumulativeOwed": { "$ref": "#/$defs/monetaryAmount" },
+        "channelStateVersion": { "$ref": "#/$defs/positiveInteger" },
+        "escrowReservationVersion": { "$ref": "#/$defs/positiveInteger" },
+        "lifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "boundTokenBaseUnits": { "$ref": "#/$defs/baseUnits" },
+        "expectedReleaseTokenBaseUnits": { "$ref": "#/$defs/baseUnits" },
+        "expectedRefundTokenBaseUnits": { "$ref": "#/$defs/baseUnits" },
+        "assetBindingDigest": { "$ref": "#/$defs/digest" },
+        "originalWeb3DispatchDigest": { "$ref": "#/$defs/digest" },
+        "originalOperator": { "$ref": "#/$defs/text" },
+        "originalOperatorKeyHash": { "$ref": "#/$defs/text" },
+        "payeeBeneficiaryAddress": { "$ref": "#/$defs/text" },
+        "channelExpiryUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "disputeDeadlineUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "closeSubmissionCutoffUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "escrowDeadlineUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "publisherFence": { "$ref": "#/$defs/positiveInteger" },
+        "authorizedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "frost": { "$ref": "#/$defs/frost" },
+        "frostScopeId": { "$ref": "#/$defs/text" },
+        "frostResourceId": { "$ref": "#/$defs/text" },
+        "frostResourceVersion": { "$ref": "#/$defs/positiveInteger" },
+        "frostResourceFence": { "$ref": "#/$defs/positiveInteger" },
+        "frostRosterDigest": { "$ref": "#/$defs/digest" },
+        "frostKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "frostIssuedAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "rootPublication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "effectSlotId",
+        "scopeId",
+        "effectKind",
+        "idempotencyKey",
+        "callDigest",
+        "resourceHeadDigest"
+      ],
+      "properties": {
+        "operationId": { "$ref": "#/$defs/digest" },
+        "effectSlotId": { "$ref": "#/$defs/digest" },
+        "scopeId": { "$ref": "#/$defs/text" },
+        "effectKind": { "const": "channel_release_root_publication" },
+        "idempotencyKey": { "$ref": "#/$defs/digest" },
+        "callDigest": { "$ref": "#/$defs/digest" },
+        "resourceHeadDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "releaseBroadcast": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "effectSlotId",
+        "scopeId",
+        "effectKind",
+        "idempotencyKey",
+        "callDigest",
+        "resourceHeadDigest"
+      ],
+      "properties": {
+        "operationId": { "$ref": "#/$defs/digest" },
+        "effectSlotId": { "$ref": "#/$defs/digest" },
+        "scopeId": { "$ref": "#/$defs/text" },
+        "effectKind": { "const": "channel_release_broadcast" },
+        "idempotencyKey": { "$ref": "#/$defs/digest" },
+        "callDigest": { "$ref": "#/$defs/digest" },
+        "resourceHeadDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "channelSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signerId", "keyEpoch", "signerKey", "signature"],
+      "properties": {
+        "signerId": { "$ref": "#/$defs/text" },
+        "keyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    }
+  }
+}

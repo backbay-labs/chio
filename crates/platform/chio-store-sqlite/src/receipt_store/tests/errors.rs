@@ -316,6 +316,7 @@ fn claim_log_projection_uses_capability_lineage_when_receipt_lacks_attribution()
             issued_at: 1_000,
             expires_at: 9_000,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &issuer_kp,
     )

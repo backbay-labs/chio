@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/channel-dispute/v1",
+  "title": "Chio Channel Dispute V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "submitterSignature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "disputeId",
+        "channelId",
+        "closeDigest",
+        "closeStateDigest",
+        "closeStateSequence",
+        "competingStateDigest",
+        "competingStateSequence",
+        "stateChainProofDigest",
+        "reason",
+        "submittedAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.channel.dispute.v1" },
+        "disputeId": { "$ref": "#/$defs/digest" },
+        "channelId": { "$ref": "#/$defs/digest" },
+        "closeDigest": { "$ref": "#/$defs/digest" },
+        "closeStateDigest": { "$ref": "#/$defs/digest" },
+        "closeStateSequence": { "$ref": "#/$defs/nonNegativeInteger" },
+        "competingStateDigest": { "$ref": "#/$defs/digest" },
+        "competingStateSequence": { "$ref": "#/$defs/nonNegativeInteger" },
+        "stateChainProofDigest": { "$ref": "#/$defs/digest" },
+        "reason": { "$ref": "#/$defs/text" },
+        "submittedAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "submitterSignature": { "$ref": "#/$defs/channelSignature" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "nonNegativeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "publicKey": { "type": "string", "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "signature": { "type": "string", "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "channelSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signerId", "keyEpoch", "signerKey", "signature"],
+      "properties": {
+        "signerId": { "$ref": "#/$defs/text" },
+        "keyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    }
+  }
+}

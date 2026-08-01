@@ -38,7 +38,8 @@ use chio_settle::{
     prepare_merkle_release, prepare_merkle_release_root_publication, prepare_web3_escrow_dispatch,
     project_escrow_execution_receipt, read_escrow_snapshot, static_validate_call, submit_call,
     DualSignReleaseInput, EscrowDispatchRequest, EscrowExecutionAmount, LocalDevnetDeployment,
-    SettlementAnchorContentBinding, SettlementFinalityStatus,
+    PreparedEvmCall, SettlementAnchorContentBinding, SettlementChainConfig,
+    SettlementFinalityStatus,
 };
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -189,6 +190,34 @@ async fn rpc_call(
     body.get("result")
         .cloned()
         .ok_or_else(|| "rpc result missing".into())
+}
+
+async fn submit_devnet_call(
+    config: &SettlementChainConfig,
+    call: &PreparedEvmCall,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let gas_limit = match call.gas_limit {
+        Some(gas_limit) => gas_limit,
+        None => estimate_call_gas(config, call)
+            .await?
+            .saturating_mul(12)
+            .saturating_div(10)
+            .saturating_add(50_000),
+    };
+    rpc_call(
+        &config.rpc_url,
+        "eth_sendTransaction",
+        json!([{
+            "from": call.from_address,
+            "to": call.to_address,
+            "data": call.data,
+            "gas": format!("0x{gas_limit:x}"),
+        }]),
+    )
+    .await?
+    .as_str()
+    .map(ToOwned::to_owned)
+    .ok_or_else(|| "eth_sendTransaction result is not a string".into())
 }
 
 async fn latest_block_timestamp(rpc_url: &str) -> Result<u64, Box<dyn std::error::Error>> {
@@ -416,7 +445,7 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
         &config.escrow_contract,
         4_500_000,
     )?;
-    let approval_tx = submit_call(&config, &approval.call)
+    let approval_tx = submit_call(&config, &approval)
         .await
         .map_err(|error| std::io::Error::other(format!("submit initial approval: {error}")))?;
     confirm_transaction(&config, &approval_tx)
@@ -477,11 +506,11 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
     )
     .await?;
 
-    let dispatch_b_tx = submit_call(&config, &dispatch_b.call).await?;
+    let dispatch_b_tx = submit_call(&config, &dispatch_b).await?;
     let dispatch_b_receipt = confirm_transaction(&config, &dispatch_b_tx).await?;
     let finalized_b = finalize_escrow_dispatch(&dispatch_b, &dispatch_b_receipt)?;
 
-    let dispatch_a_tx = submit_call(&config, &dispatch_a.call).await?;
+    let dispatch_a_tx = submit_call(&config, &dispatch_a).await?;
     let dispatch_a_receipt = confirm_transaction(&config, &dispatch_a_tx).await?;
     let finalized_a = finalize_escrow_dispatch(&dispatch_a, &dispatch_a_receipt)?;
 
@@ -499,7 +528,7 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
     let snapshot_b = read_escrow_snapshot(&config, &finalized_b.dispatch.escrow_id).await?;
     assert_eq!(snapshot_b.deposited_minor_units, 3_000_000);
 
-    let replay_error = submit_call(&config, &dispatch_a.call)
+    let replay_error = submit_call(&config, &dispatch_a)
         .await
         .test_expect_err("duplicate create must fail closed");
     assert!(
@@ -559,7 +588,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &config.escrow_contract,
         1_500_000,
     )?;
-    let approval_tx = submit_call(&config, &approval.call).await?;
+    let approval_tx = submit_call(&config, &approval).await?;
     confirm_transaction(&config, &approval_tx).await?;
 
     let capital_instruction = sample_capital_instruction(
@@ -589,7 +618,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &binding,
     )
     .await?;
-    let create_tx = submit_call(&config, &prepared_dispatch.call)
+    let create_tx = submit_call(&config, &prepared_dispatch)
         .await
         .map_err(|error| std::io::Error::other(format!("submit escrow create: {error}")))?;
     let create_receipt = confirm_transaction(&config, &create_tx)
@@ -691,14 +720,14 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         2,
         2,
     )?;
-    let settlement_root_tx = submit_call(&config, &settlement_root_call)
+    let settlement_root_tx = submit_devnet_call(&config, settlement_root_call.call())
         .await
         .map_err(|error| std::io::Error::other(format!("publish settlement root: {error}")))?;
     let settlement_root_receipt = confirm_transaction(&config, &settlement_root_tx)
         .await
         .map_err(|error| std::io::Error::other(format!("confirm settlement root: {error}")))?;
     assert!(settlement_root_receipt.status);
-    let merkle_release_tx = submit_call(&config, &merkle_release.call)
+    let merkle_release_tx = submit_devnet_call(&config, merkle_release.call())
         .await
         .map_err(|error| std::io::Error::other(format!("submit merkle release: {error}")))?;
     let merkle_receipt = confirm_transaction(&config, &merkle_release_tx)
@@ -739,7 +768,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &config.escrow_contract,
         750_000,
     )?;
-    let approval_refund_tx = submit_call(&config, &approval_refund.call)
+    let approval_refund_tx = submit_call(&config, &approval_refund)
         .await
         .map_err(|error| std::io::Error::other(format!("submit refund approval: {error}")))?;
     confirm_transaction(&config, &approval_refund_tx)
@@ -774,7 +803,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &binding,
     )
     .await?;
-    let refund_create_tx = submit_call(&config, &refund_dispatch.call)
+    let refund_create_tx = submit_call(&config, &refund_dispatch)
         .await
         .map_err(|error| std::io::Error::other(format!("submit refund escrow create: {error}")))?;
     let refund_create_receipt = confirm_transaction(&config, &refund_create_tx)
@@ -784,7 +813,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
     advance_time(&config.rpc_url, 10).await?;
     let refund_call =
         prepare_escrow_refund(&config, &refund_dispatch.dispatch, &accounts.outsider)?;
-    let refund_tx = submit_call(&config, &refund_call.call)
+    let refund_tx = submit_devnet_call(&config, refund_call.call())
         .await
         .map_err(|error| std::io::Error::other(format!("submit escrow refund: {error}")))?;
     let refund_receipt = confirm_transaction(&config, &refund_tx)
@@ -824,7 +853,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &config.escrow_contract,
         150_000_000,
     )?;
-    let approval_dual_tx = submit_call(&config, &approval_dual.call)
+    let approval_dual_tx = submit_call(&config, &approval_dual)
         .await
         .map_err(|error| std::io::Error::other(format!("submit dual approval: {error}")))?;
     confirm_transaction(&config, &approval_dual_tx)
@@ -857,7 +886,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &binding,
     )
     .await?;
-    let dual_create_tx = submit_call(&config, &dual_dispatch.call)
+    let dual_create_tx = submit_call(&config, &dual_dispatch)
         .await
         .map_err(|error| std::io::Error::other(format!("submit dual escrow create: {error}")))?;
     let dual_create_receipt = confirm_transaction(&config, &dual_create_tx)
@@ -875,13 +904,13 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &config,
         &dual_dispatch.dispatch,
         &dual_receipt,
-        &DualSignReleaseInput {
-            operator_private_key_hex: OPERATOR_PRIVATE_KEY.to_string(),
-            observed_amount: MonetaryAmount {
+        &DualSignReleaseInput::new(
+            OPERATOR_PRIVATE_KEY,
+            MonetaryAmount {
                 units: 15_000,
                 currency: "USD".to_string(),
             },
-        },
+        ),
     )
     .await?;
     assert_eq!(
@@ -902,10 +931,10 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
     );
     assert!(dual_sign_release.identity_registry_evidence.block_number > 0);
     assert!(dual_sign_release.identity_registry_evidence.active);
-    static_validate_call(&config, &dual_sign_release.call)
+    static_validate_call(&config, dual_sign_release.call())
         .await
         .map_err(|error| std::io::Error::other(format!("validate dual release: {error}")))?;
-    let gas = estimate_call_gas(&config, &dual_sign_release.call)
+    let gas = estimate_call_gas(&config, dual_sign_release.call())
         .await
         .map_err(|error| std::io::Error::other(format!("estimate dual release: {error}")))?;
     assert!(gas > 0);

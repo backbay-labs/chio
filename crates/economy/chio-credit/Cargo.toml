@@ -14,13 +14,21 @@ name = "chio_credit"
 [dependencies]
 chio-appraisal = { workspace = true }
 chio-core-types = { workspace = true }
+chio-did = { workspace = true }
+chio-federation = { workspace = true }
+chio-fincred = { workspace = true }
 chio-underwriting = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+chio-spec-validate = { workspace = true }
+frost-ed25519 = { workspace = true }
+hex = { workspace = true }
 proptest = { workspace = true }
+rand_chacha = { workspace = true }
+rand_core = { workspace = true }
 
 [lints]
 workspace = true

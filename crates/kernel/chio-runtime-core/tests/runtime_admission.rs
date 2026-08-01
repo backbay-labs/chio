@@ -53,6 +53,12 @@ use std::io;
 mod support;
 use support::treaty::{treaty_action_class, treaty_manifest, treaty_scope};
 
+fn emit_threat_matrix_code(code: &str) {
+    if std::env::var_os("CHIO_THREAT_MATRIX_EMIT_CODE").is_some() {
+        println!("CHIO_THREAT_MATRIX_CODE={code}");
+    }
+}
+
 fn profile() -> RuntimeAdmissionProfile {
     RuntimeAdmissionProfile {
         schema: CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA.to_string(),
@@ -89,6 +95,7 @@ fn capability(capability_id: &str) -> Result<CapabilityToken, Box<dyn std::error
             issued_at: 1_800_000_000,
             expires_at: 1_800_003_600,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &issuer,
     )?)
@@ -485,6 +492,9 @@ fn treaty_runtime_hook_denies_missing_lineage_evidence_ref(
     let metadata = decision
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    if let Some(code) = metadata["chio_runtime"]["failure_code"].as_str() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "chio_treaty_missing_required_evidence"
@@ -522,6 +532,9 @@ fn treaty_runtime_hook_denies_request_smuggled_trust_root() -> Result<(), Box<dy
     let metadata = decision
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    if let Some(code) = metadata["chio_runtime"]["failure_code"].as_str() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "request_smuggled_trust_root"
@@ -559,6 +572,9 @@ fn treaty_runtime_hook_denies_request_smuggled_dynamic_trust(
     let metadata = decision
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    if let Some(code) = metadata["chio_runtime"]["failure_code"].as_str() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "request_smuggled_dynamic_trust"
@@ -916,6 +932,9 @@ fn treaty_runtime_hook_denies_replayed_continuation() -> Result<(), Box<dyn std:
     let metadata = replay
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    if let Some(code) = metadata["chio_runtime"]["failure_code"].as_str() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "chio_treaty_continuation_replay"
@@ -1046,8 +1065,12 @@ fn chio_runtime_hook_releases_chio_native_reserved_state_after_kernel_abort(
                     "bundleSha256": bundle_hash
                 }
             })),
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1126,8 +1149,12 @@ fn chio_runtime_hook_denies_swarm_context_without_required_evidence_refs(
                     }
                 }
             })),
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1195,8 +1222,12 @@ fn chio_runtime_hook_denies_stale_swarm_continuation_before_dispatch(
                 },
                 "chioSwarm": swarm_runtime_context(&swarm_bundle)?
             })),
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1825,6 +1856,9 @@ fn kernel_hook_rejects_treaty_dsse_unanimous_deny() -> Result<(), Box<dyn std::e
     let metadata = decision
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    if let Some(code) = metadata["chio_runtime"]["failure_code"].as_str() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "chio_treaty_policy_denied"
@@ -2094,6 +2128,10 @@ fn treaty_runtime_fixture_with_policy(
         bilateral_invocation_binding_sha256
     );
     let bilateral_invocation_sha256 = bilateral_invocation_binding_sha256;
+    let dsse_consistency_model = chio_runtime_core::bilateral_dsse_consistency_model(
+        &bilateral_invocation.consistency_model,
+    )?
+    .to_string();
     let bilateral_dsse = sign_chio_bilateral_dsse_envelope(
         &receipt,
         &signer_a,
@@ -2119,7 +2157,7 @@ fn treaty_runtime_fixture_with_policy(
                 },
             }),
             consistency_anchor: Some("anchor-live".to_string()),
-            consistency_model: Some(bilateral_invocation.consistency_model.clone()),
+            consistency_model: Some(dsse_consistency_model.clone()),
             cross_org_visibility: Some("treaty_only".to_string()),
             treaty_binding_ref: Some(TreatyBindingRef {
                 treaty_id: bilateral_invocation.treaty_id.clone(),
@@ -2129,7 +2167,7 @@ fn treaty_runtime_fixture_with_policy(
                 continuation_sha256: continuation_sha256.clone(),
                 lineage_bundle_sha256: lineage_bundle_sha256.clone(),
                 action_class_id: bilateral_invocation.action_class_id.clone(),
-                consistency_model: bilateral_invocation.consistency_model.clone(),
+                consistency_model: dsse_consistency_model,
                 request_sha256: bilateral_invocation.request_sha256.clone(),
                 outcome_sha256: bilateral_invocation.outcome_sha256.clone(),
                 local_receipt_sha256: bilateral_invocation.local_receipt_sha256.clone(),
@@ -2261,6 +2299,9 @@ fn treaty_runtime_request(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: Some("kernel.buyer".to_string()),
     };
@@ -2282,6 +2323,7 @@ fn treaty_runtime_request(
             },
             "chioTreaty": treaty_context
         })),
+        body: Default::default(),
     });
     Ok(request)
 }
@@ -2319,8 +2361,12 @@ fn chio_swarm_runtime_request(
                 },
                 "chioSwarm": swarm_context
             })),
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     })

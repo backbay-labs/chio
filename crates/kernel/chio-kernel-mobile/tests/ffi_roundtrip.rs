@@ -60,6 +60,7 @@ fn make_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
         issued_at: ISSUED_AT,
         expires_at: EXPIRES_AT,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, issuer).unwrap()
 }
@@ -80,6 +81,8 @@ fn make_delegated_capability(
             attenuations: vec![],
             timestamp: ISSUED_AT,
             scope_hash: None,
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         issuer,
     )
@@ -317,6 +320,35 @@ fn evaluate_rejects_bad_trusted_hex() {
 }
 
 #[test]
+fn evaluate_rejects_unsupported_authorization_extensions() {
+    let subject = Keypair::generate();
+    let issuer = Keypair::generate();
+    let capability = make_capability(&subject, &issuer);
+    let request_json = serde_json::json!({
+        "capability": capability,
+        "trusted_issuers": [issuer.public_key().to_hex()],
+        "request": {
+            "request_id": "req-unsupported-extension",
+            "tool_name": "echo",
+            "server_id": "srv-a",
+            "agent_id": subject.public_key().to_hex(),
+            "approval_tokens": [{"opaque": true}],
+        },
+        "now_secs": EVAL_TIME as i64,
+    })
+    .to_string();
+
+    let error =
+        evaluate(request_json).expect_err("unsupported authorization extension must fail closed");
+
+    assert!(matches!(
+        error,
+        ChioMobileError::InvalidCapability { message }
+            if message.contains("cannot authenticate governed approvals")
+    ));
+}
+
+#[test]
 fn sign_receipt_roundtrip_and_verifies() {
     // WYSIWYS: the public signer recomputes content_hash over the
     // canonical content preimage. A matching content+hash pair signs and
@@ -491,6 +523,7 @@ fn verify_capability_happy_path() {
         issued_at: 1_000_000_000,
         expires_at: 5_000_000_000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let capability = CapabilityToken::sign(body, &issuer).unwrap();
 

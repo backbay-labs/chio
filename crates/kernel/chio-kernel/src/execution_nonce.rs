@@ -11,7 +11,7 @@
 //!
 //! * The nonce body is an opaque `nonce_id` plus a `NonceBinding` that
 //!   binds the nonce to the exact `(subject, capability, server, tool,
-//!   parameter_hash)` tuple. Substituting a nonce between unrelated tool
+//!   request_id, parameter_hash)` tuple. Substituting a nonce between unrelated tool
 //!   calls therefore fails the binding check.
 //! * The kernel signs the full body (nonce id + binding + expires_at)
 //!   with its receipt-signing key, so downstream tool servers can
@@ -35,13 +35,14 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::crypto::{Keypair, PublicKey, Signature};
+use chio_core::crypto::{Keypair, PublicKey};
 use lru::LruCache;
-use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::KernelError;
+
+pub use chio_core_types::message::{ExecutionNonce, NonceBinding, SignedExecutionNonce};
 
 /// Schema identifier for Chio execution nonces.
 pub const EXECUTION_NONCE_SCHEMA: &str = "chio.execution_nonce.v1";
@@ -55,82 +56,6 @@ pub const DEFAULT_EXECUTION_NONCE_STORE_CAPACITY: usize = 16_384;
 #[must_use]
 pub fn is_supported_execution_nonce_schema(schema: &str) -> bool {
     schema == EXECUTION_NONCE_SCHEMA
-}
-
-// ---------------------------------------------------------------------------
-// NonceBinding
-// ---------------------------------------------------------------------------
-
-/// Fields that tie a nonce to one specific tool invocation.
-///
-/// All five fields are in the signed body, so any mismatch during verify
-/// means either the nonce was minted for a different call or the nonce was
-/// tampered with after issuance.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NonceBinding {
-    /// Hex-encoded subject (agent) public key, taken from `capability.subject`.
-    pub subject_id: String,
-    /// ID of the capability that authorized this invocation.
-    pub capability_id: String,
-    /// Tool server that is expected to execute the call.
-    pub tool_server: String,
-    /// Tool name that is expected to execute.
-    pub tool_name: String,
-    /// SHA-256 hex of the canonical JSON of the evaluated arguments. Taken
-    /// directly from the `ToolCallAction::parameter_hash` that the kernel
-    /// embedded in the allow receipt.
-    pub parameter_hash: String,
-}
-
-// ---------------------------------------------------------------------------
-// ExecutionNonce (signable body)
-// ---------------------------------------------------------------------------
-
-/// The signable body of an execution nonce.
-///
-/// This is the canonical-JSON-serialized message the kernel signs. Every
-/// field is covered by the signature; none are mutable after issuance.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExecutionNonce {
-    /// Schema identifier. Must equal `EXECUTION_NONCE_SCHEMA`.
-    pub schema: String,
-    /// Unique nonce identifier (UUIDv7 hex).
-    pub nonce_id: String,
-    /// Unix timestamp (seconds) when the kernel issued this nonce.
-    pub issued_at: i64,
-    /// Unix timestamp (seconds) when this nonce expires.
-    /// Default: `issued_at + 30`. Configurable via `ExecutionNonceConfig`.
-    pub expires_at: i64,
-    /// Invocation binding: subject, capability, server, tool, parameter hash.
-    pub bound_to: NonceBinding,
-}
-
-// ---------------------------------------------------------------------------
-// SignedExecutionNonce
-// ---------------------------------------------------------------------------
-
-/// A kernel-signed execution nonce ready for transmission on an allow verdict.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SignedExecutionNonce {
-    /// The nonce body that was signed.
-    pub nonce: ExecutionNonce,
-    /// Ed25519 signature over `canonical_json_bytes(&nonce)` produced by the
-    /// kernel's receipt-signing key.
-    pub signature: Signature,
-}
-
-impl SignedExecutionNonce {
-    /// Convenience accessor for the nonce identifier.
-    #[must_use]
-    pub fn nonce_id(&self) -> &str {
-        &self.nonce.nonce_id
-    }
-
-    /// Convenience accessor for the expiry.
-    #[must_use]
-    pub fn expires_at(&self) -> i64 {
-        self.nonce.expires_at
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +120,10 @@ pub trait ExecutionNonceStore: Send + Sync {
     fn reserve_until(&self, nonce_id: &str, _nonce_expires_at: i64) -> Result<bool, KernelError> {
         self.reserve(nonce_id)
     }
+
+    fn is_consumed(&self, _nonce_id: &str) -> Result<bool, KernelError> {
+        Ok(false)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -258,6 +187,17 @@ impl ExecutionNonceStore for InMemoryExecutionNonceStore {
             .map_or(self.ttl, |remaining| remaining.max(self.ttl));
         self.reserve_with_retention(nonce_id, retention)
     }
+
+    fn is_consumed(&self, nonce_id: &str) -> Result<bool, KernelError> {
+        let cache = self.inner.lock().map_err(|_| {
+            error!("execution nonce store mutex poisoned; denying fail-closed");
+            KernelError::Internal("execution nonce store mutex poisoned; fail-closed".to_string())
+        })?;
+        let now = Instant::now();
+        Ok(cache
+            .peek(nonce_id)
+            .is_some_and(|retain_until| *retain_until > now))
+    }
 }
 
 impl InMemoryExecutionNonceStore {
@@ -278,6 +218,20 @@ impl InMemoryExecutionNonceStore {
                 return Ok(false);
             }
             cache.pop(&key);
+        }
+        let expired: Vec<String> = cache
+            .iter()
+            .filter(|(_, retain_until)| **retain_until <= now)
+            .map(|(nonce_id, _)| nonce_id.clone())
+            .collect();
+        for nonce_id in expired {
+            cache.pop(&nonce_id);
+        }
+        if cache.len() >= cache.cap().get() {
+            error!("execution nonce store capacity exhausted; denying fail-closed");
+            return Err(KernelError::Internal(
+                "execution nonce store capacity exhausted; fail-closed".to_string(),
+            ));
         }
         let Some(retain_until) = now.checked_add(retention) else {
             error!("execution nonce retention overflow; denying fail-closed");
@@ -315,6 +269,17 @@ pub fn mint_execution_nonce(
     config: &ExecutionNonceConfig,
     now: i64,
 ) -> Result<SignedExecutionNonce, KernelError> {
+    mint_execution_nonce_with_reservation(kernel_keypair, binding, None, None, config, now)
+}
+
+pub fn mint_execution_nonce_with_reservation(
+    kernel_keypair: &Keypair,
+    binding: NonceBinding,
+    reserved_hold_id: Option<String>,
+    reserving_request_id: Option<String>,
+    config: &ExecutionNonceConfig,
+    now: i64,
+) -> Result<SignedExecutionNonce, KernelError> {
     let ttl = i64::try_from(config.nonce_ttl_secs).unwrap_or(i64::MAX);
     let expires_at = now.saturating_add(ttl);
     let nonce = ExecutionNonce {
@@ -323,6 +288,8 @@ pub fn mint_execution_nonce(
         issued_at: now,
         expires_at,
         bound_to: binding,
+        reserved_hold_id,
+        reserving_request_id,
     };
     let (signature, _bytes) = kernel_keypair.sign_canonical(&nonce).map_err(|e| {
         KernelError::ReceiptSigningFailed(format!("failed to sign execution nonce: {e}"))
@@ -402,6 +369,46 @@ pub fn verify_execution_nonce(
     now: i64,
     nonce_store: &dyn ExecutionNonceStore,
 ) -> Result<(), ExecutionNonceError> {
+    validate_execution_nonce(presented, kernel_pubkey, expected, now)?;
+    reserve_execution_nonce(presented, nonce_store, now)
+}
+
+pub fn verify_execution_nonce_without_consume(
+    presented: &SignedExecutionNonce,
+    kernel_pubkey: &PublicKey,
+    expected: &NonceBinding,
+    now: i64,
+    nonce_store: &dyn ExecutionNonceStore,
+) -> Result<(), ExecutionNonceError> {
+    validate_execution_nonce(presented, kernel_pubkey, expected, now)?;
+    if nonce_store
+        .is_consumed(&presented.nonce.nonce_id)
+        .map_err(|error| ExecutionNonceError::Store(error.to_string()))?
+    {
+        return Err(ExecutionNonceError::Replayed);
+    }
+    Ok(())
+}
+
+pub fn consume_execution_nonce(
+    nonce_store: &dyn ExecutionNonceStore,
+    nonce_id: &str,
+    nonce_expires_at: i64,
+) -> Result<(), ExecutionNonceError> {
+    match nonce_store.reserve_until(nonce_id, nonce_expires_at) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(ExecutionNonceError::Replayed),
+        Err(error) => Err(ExecutionNonceError::Store(error.to_string())),
+    }
+}
+
+/// Validate a signed execution nonce without consuming it in the replay store.
+pub(crate) fn validate_execution_nonce(
+    presented: &SignedExecutionNonce,
+    kernel_pubkey: &PublicKey,
+    expected: &NonceBinding,
+    now: i64,
+) -> Result<(), ExecutionNonceError> {
     if !is_supported_execution_nonce_schema(&presented.nonce.schema) {
         warn!(
             schema = %presented.nonce.schema,
@@ -429,6 +436,11 @@ pub fn verify_execution_nonce(
     if bound.subject_id != expected.subject_id {
         return Err(ExecutionNonceError::BindingMismatch {
             field: "subject_id",
+        });
+    }
+    if bound.request_id.is_empty() || bound.request_id != expected.request_id {
+        return Err(ExecutionNonceError::BindingMismatch {
+            field: "request_id",
         });
     }
     if bound.capability_id != expected.capability_id {
@@ -460,6 +472,21 @@ pub fn verify_execution_nonce(
         return Err(ExecutionNonceError::InvalidSignature);
     }
 
+    Ok(())
+}
+
+/// Consume a previously validated execution nonce in the replay store.
+pub(crate) fn reserve_execution_nonce(
+    presented: &SignedExecutionNonce,
+    nonce_store: &dyn ExecutionNonceStore,
+    now: i64,
+) -> Result<(), ExecutionNonceError> {
+    if now >= presented.nonce.expires_at {
+        return Err(ExecutionNonceError::Expired {
+            now,
+            expires_at: presented.nonce.expires_at,
+        });
+    }
     // Pass the nonce's signed expiry so durable stores retain the
     // consumed marker for the full validity window - otherwise the row
     // can be pruned while the nonce is still cryptographically valid,
@@ -486,6 +513,7 @@ mod tests {
     fn sample_binding() -> NonceBinding {
         NonceBinding {
             subject_id: "subject-abc".to_string(),
+            request_id: "request-abc".to_string(),
             capability_id: "cap-123".to_string(),
             tool_server: "fs".to_string(),
             tool_name: "read_file".to_string(),
@@ -530,6 +558,22 @@ mod tests {
     }
 
     #[test]
+    fn nonce_expiry_is_rechecked_when_reserved() {
+        let kp = Keypair::generate();
+        let store = InMemoryExecutionNonceStore::default();
+        let cfg = ExecutionNonceConfig::default();
+        let binding = sample_binding();
+        let now = 1_000_000;
+        let signed = mint_execution_nonce(&kp, binding.clone(), &cfg, now).unwrap();
+        validate_execution_nonce(&signed, &kp.public_key(), &binding, now + 1).unwrap();
+
+        let error = reserve_execution_nonce(&signed, &store, signed.nonce.expires_at).unwrap_err();
+
+        assert!(matches!(error, ExecutionNonceError::Expired { .. }));
+        assert!(!store.is_consumed(signed.nonce_id()).unwrap());
+    }
+
+    #[test]
     fn replayed_nonce_is_rejected() {
         let kp = Keypair::generate();
         let store = InMemoryExecutionNonceStore::default();
@@ -542,6 +586,32 @@ mod tests {
         let err = verify_execution_nonce(&signed, &kp.public_key(), &binding, now + 2, &store)
             .unwrap_err();
         assert!(matches!(err, ExecutionNonceError::Replayed));
+    }
+
+    #[test]
+    fn nonce_without_request_binding_is_rejected() {
+        let kp = Keypair::generate();
+        let cfg = ExecutionNonceConfig::default();
+        let binding = sample_binding();
+        let now = 1_000_000;
+        let signed = mint_execution_nonce(&kp, binding.clone(), &cfg, now).unwrap();
+        let mut encoded = serde_json::to_value(signed).unwrap();
+        encoded["nonce"]["bound_to"]
+            .as_object_mut()
+            .unwrap()
+            .remove("request_id");
+        let decoded: SignedExecutionNonce = serde_json::from_value(encoded).unwrap();
+
+        assert!(decoded.nonce.bound_to.request_id.is_empty());
+        let error =
+            validate_execution_nonce(&decoded, &kp.public_key(), &binding, now + 1).unwrap_err();
+
+        assert!(matches!(
+            error,
+            ExecutionNonceError::BindingMismatch {
+                field: "request_id"
+            }
+        ));
     }
 
     #[test]
@@ -605,6 +675,20 @@ mod tests {
         assert!(store.reserve_until("long-lived", expires_at).unwrap());
         thread::sleep(Duration::from_millis(5));
         assert!(!store.reserve_until("long-lived", expires_at).unwrap());
+    }
+
+    #[test]
+    fn capacity_exhaustion_preserves_live_replay_markers() {
+        let store = InMemoryExecutionNonceStore::new(1, Duration::from_secs(30));
+
+        assert!(store.reserve("first").unwrap());
+        let error = store.reserve("second").unwrap_err();
+        assert!(matches!(
+            error,
+            KernelError::Internal(reason)
+                if reason.contains("execution nonce store capacity exhausted")
+        ));
+        assert!(!store.reserve("first").unwrap());
     }
 
     #[test]

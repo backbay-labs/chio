@@ -7,20 +7,18 @@ use dashmap::DashMap;
 use crate::budget_store::BudgetCommitMetadata;
 use crate::*;
 
-mod budget_sweep;
-mod dispatch_intent;
+#[path = "admission_coordinator.rs"]
+mod admission_coordinator;
 mod error;
 mod kernel_drop_guard;
 mod kernel_scopes;
 mod kernel_struct;
-mod payment_reconcile;
 
-pub use budget_sweep::{
-    BudgetHoldSweepHandle, DEFAULT_HOLD_EXPIRY_HORIZON_SECS, DEFAULT_HOLD_SWEEP_INTERVAL_SECS,
-};
 pub use construction::KernelBuildError;
-pub use dispatch_intent::DefaultDispatchIntentReconciler;
-pub use error::{HotPathStage, KernelError, OverloadResource, StructuredErrorReport};
+pub use error::{
+    HotPathStage, KernelError, OverloadResource, SettlementRuntimeConfigError,
+    StructuredErrorReport,
+};
 pub use kernel_struct::{
     ChioKernel, HotPathDeadlineConfig, HybridSigningConfig, KernelConfig, MemoryBudgetConfig,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS,
@@ -28,21 +26,20 @@ pub use kernel_struct::{
     DEFAULT_RECEIPT_WRITER_POLL_MS, DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS,
     MIN_RECEIPT_APPEND_BUDGET_MS,
 };
-pub use payment_reconcile::{
-    MonetaryDispatchIntentReconciler, PaymentReconcileOutcome, PaymentReconcileReport,
-};
 
-pub(crate) use kernel_drop_guard::{
-    dispatch_error_precedes_tool_side_effect, reserved_runtime_admission_ids,
-    PostAdmissionDropGuard, PostAdmissionReceiptContext,
+pub(crate) use admission_coordinator::{
+    DurableAdmissionRuntime, DurableToolAdmission, DurableToolReturnInput,
 };
+pub(crate) use kernel_drop_guard::{PostAdmissionDropGuard, PostAdmissionReceiptContext};
 pub(crate) use kernel_scopes::{
     current_scoped_receipt_federation_admission, current_scoped_receipt_tenant_id,
     extract_tenant_id_from_auth_context, scope_receipt_federation_admission,
-    scope_receipt_tenant_id, ReceiptFederationAdmission, ScopedKernelDispatchIntent,
-    ScopedKernelReceiptFederationAdmission, ScopedKernelReceiptTenantId,
+    scope_receipt_tenant_id, ReceiptFederationAdmission, ScopedKernelReceiptFederationAdmission,
+    ScopedKernelReceiptTenantId,
 };
-pub(crate) use kernel_struct::{capability_crypto_floor, receipt_crypto_floor};
+pub(crate) use kernel_struct::{
+    capability_crypto_floor, receipt_crypto_floor, ReservedSiblingShare, RestartReservedHoldGate,
+};
 
 pub type AgentId = String;
 
@@ -150,6 +147,126 @@ pub(crate) struct ValidatedGovernedCallChainProof {
 pub(crate) struct ValidatedGovernedAdmission {
     call_chain_proof: Option<ValidatedGovernedCallChainProof>,
     verified_runtime_attestation: Option<VerifiedRuntimeAttestationRecord>,
+    verified_payee_binding: Option<VerifiedGovernedPayeeBinding>,
+    approval_intent_hash: String,
+    approval_reservation: Option<VerifiedApprovalReservation>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct VerifiedApprovalReservation {
+    pub(crate) threshold_proposal_hash: String,
+    pub(crate) approval_set_hash: String,
+    pub(crate) threshold_replay: Option<ThresholdApprovalReplayReservationV1>,
+}
+
+#[derive(Debug)]
+pub(crate) struct VerifiedThresholdApprovalSet {
+    pub(crate) requirement: chio_core::capability::threshold_approval::ThresholdApprovalRequirement,
+    pub(crate) body: chio_core::capability::governance::VerifiedApprovalSetBody,
+    pub(crate) replay: ThresholdApprovalReplayReservationV1,
+}
+
+pub(crate) enum BudgetAdmissionOutcome {
+    Authorized {
+        grant_index: usize,
+        mutation: Box<PreExecutionBudgetMutation>,
+    },
+    PendingApproval {
+        grant_index: usize,
+        proposal: Box<chio_core::capability::governance::ThresholdApprovalProposal>,
+    },
+}
+
+#[cfg(test)]
+impl BudgetAdmissionOutcome {
+    pub(crate) fn into_authorized(
+        self,
+    ) -> Result<(usize, PreExecutionBudgetMutation), KernelError> {
+        match self {
+            Self::Authorized {
+                grant_index,
+                mutation,
+            } => Ok((grant_index, *mutation)),
+            Self::PendingApproval { .. } => Err(KernelError::Internal(
+                "budget admission remained pending approval".to_owned(),
+            )),
+        }
+    }
+}
+
+pub(crate) struct GovernedValidationContext<'a> {
+    parent_context: Option<&'a OperationContext>,
+    now: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VerifiedGovernedPayeeBinding {
+    beneficiary_id: String,
+    settlement_destination_ref: String,
+    payee_binding_digest: String,
+    economic_intent_digest: String,
+    pre_action_authority_digest: String,
+}
+
+impl VerifiedGovernedPayeeBinding {
+    pub(in crate::kernel) fn new(
+        beneficiary_id: String,
+        settlement_destination_ref: String,
+        economic_intent_digest: String,
+        pre_action_authority_digest: String,
+    ) -> Result<Self, chio_credit::obligation::ObligationError> {
+        let payee_binding_digest = chio_credit::obligation::derive_obligation_payee_binding_digest(
+            &beneficiary_id,
+            &settlement_destination_ref,
+        )?;
+        Ok(Self {
+            beneficiary_id,
+            settlement_destination_ref,
+            payee_binding_digest,
+            economic_intent_digest,
+            pre_action_authority_digest,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        beneficiary_id: &str,
+        settlement_destination_ref: &str,
+        economic_intent_digest: &str,
+        pre_action_authority_digest: &str,
+    ) -> Result<Self, chio_credit::obligation::ObligationError> {
+        Self::new(
+            beneficiary_id.to_owned(),
+            settlement_destination_ref.to_owned(),
+            economic_intent_digest.to_owned(),
+            pre_action_authority_digest.to_owned(),
+        )
+    }
+
+    #[must_use]
+    pub(crate) fn beneficiary_id(&self) -> &str {
+        &self.beneficiary_id
+    }
+
+    #[must_use]
+    pub(crate) fn settlement_destination_ref(&self) -> &str {
+        &self.settlement_destination_ref
+    }
+
+    #[must_use]
+    pub(crate) fn payee_binding_digest(&self) -> &str {
+        &self.payee_binding_digest
+    }
+
+    #[must_use]
+    pub(crate) fn economic_intent_digest(&self) -> &str {
+        &self.economic_intent_digest
+    }
+
+    #[must_use]
+    pub(crate) fn pre_action_authority_digest(&self) -> &str {
+        &self.pre_action_authority_digest
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -567,17 +684,32 @@ pub(crate) struct BudgetChargeResult {
     new_committed_cost_units: u64,
     budget_hold_id: String,
     authorize_metadata: BudgetCommitMetadata,
+    invocation_capture: Option<Box<crate::budget_store::BudgetHoldMutationDecision>>,
 }
 
 impl BudgetChargeResult {
     /// The rail/store hold id for the monetary budget charge, so a cleanup
     /// fault can name the stuck budget hold that needs manual recovery.
-    pub(crate) fn budget_hold_id(&self) -> &str {
-        &self.budget_hold_id
+    fn reverse_event_id(&self) -> String {
+        let authorize_event_id = self
+            .authorize_metadata
+            .event_id
+            .as_deref()
+            .unwrap_or(&self.budget_hold_id);
+        let authorize_commit_index = self.authorize_metadata.budget_commit_index.unwrap_or(0);
+        format!("{authorize_event_id}:rollback:{authorize_commit_index}")
     }
 
-    fn reverse_event_id(&self) -> String {
-        format!("{}:reverse", self.budget_hold_id)
+    fn capture_invocation_event_id(&self) -> String {
+        let authorize_commit_index = self.authorize_metadata.budget_commit_index.unwrap_or(0);
+        format!(
+            "{}:capture-invocation:{authorize_commit_index}",
+            self.budget_hold_id
+        )
+    }
+
+    fn cancel_captured_before_dispatch_event_id(&self) -> String {
+        self.reverse_event_id()
     }
 
     fn reconcile_event_id(&self) -> String {
@@ -588,6 +720,7 @@ impl BudgetChargeResult {
 pub(crate) enum PreExecutionBudgetMutation {
     None,
     Invocation { grant_index: usize },
+    InvocationHold(BudgetChargeResult),
     Charge(BudgetChargeResult),
 }
 
@@ -595,14 +728,28 @@ impl PreExecutionBudgetMutation {
     fn charge_result(&self) -> Option<&BudgetChargeResult> {
         match self {
             Self::Charge(charge) => Some(charge),
+            Self::None | Self::Invocation { .. } | Self::InvocationHold(_) => None,
+        }
+    }
+
+    fn durable_hold_result(&self) -> Option<&BudgetChargeResult> {
+        match self {
+            Self::Charge(charge) | Self::InvocationHold(charge) => Some(charge),
             Self::None | Self::Invocation { .. } => None,
+        }
+    }
+
+    fn durable_hold_result_mut(&mut self) -> Option<&mut BudgetChargeResult> {
+        match self {
+            Self::Charge(charge) | Self::InvocationHold(charge) => Some(charge),
+            Self::Invocation { .. } | Self::None => None,
         }
     }
 
     fn into_charge_result(self) -> Option<BudgetChargeResult> {
         match self {
             Self::Charge(charge) => Some(charge),
-            Self::None | Self::Invocation { .. } => None,
+            Self::None | Self::Invocation { .. } | Self::InvocationHold(_) => None,
         }
     }
 }
@@ -1097,6 +1244,9 @@ mod evaluation;
 // Capability and budget validation.
 #[path = "validation.rs"]
 mod validation;
+// Reconcile-by-nonce and reserved-hold TTL primitives (mediated spend path).
+#[path = "reconciliation.rs"]
+mod reconciliation;
 // Governed-admission validation and call-chain receipt evidence.
 #[path = "governed_validation.rs"]
 mod governed_validation;

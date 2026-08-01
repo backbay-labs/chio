@@ -19,6 +19,12 @@ use tower::ServiceExt;
 
 use chio_test_support::prelude::*;
 
+#[path = "tests/upstream_failures.rs"]
+mod upstream_failures;
+
+#[path = "tests/health.rs"]
+mod health;
+
 const PETSTORE_YAML: &str = r#"
 openapi: "3.0.0"
 info:
@@ -87,6 +93,7 @@ fn signed_capability_token_json(issuer: &Keypair, id: &str) -> String {
             issued_at: now.saturating_sub(60),
             expires_at: now + 3600,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         issuer,
     )
@@ -133,37 +140,6 @@ impl MockUpstreamServer {
             let request = read_http_request(&mut stream);
             request_log.lock().test_unwrap().push(request);
             write_http_response(&mut stream, status, &headers, &body);
-        });
-        Some(Self {
-            base_url: format!("http://{}", address),
-            requests,
-            handle,
-        })
-    }
-
-    /// Accept one connection and read the request, then hold the socket open
-    /// without responding so a client with a request timeout must give up on its
-    /// own. Stands in for an upstream that received the request but stalls.
-    fn spawn_unresponsive() -> Option<Self> {
-        let listener = Self::bind_mock_upstream_listener()?;
-        let address = listener.local_addr().test_unwrap();
-        let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let request_log = Arc::clone(&requests);
-        let handle = thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let request = read_http_request(&mut stream);
-                request_log.lock().test_unwrap().push(request);
-                // Never write a response. Block reading until the client gives up
-                // and closes the connection, modeling an upstream that stalls
-                // indefinitely rather than sleeping a fixed interval: the caller's
-                // request timeout must be what ends the hop.
-                let mut sink = [0_u8; 256];
-                while let Ok(read) = stream.read(&mut sink) {
-                    if read == 0 {
-                        break;
-                    }
-                }
-            }
         });
         Some(Self {
             base_url: format!("http://{}", address),
@@ -255,53 +231,14 @@ fn test_state_with_receipt_db(
         trusted_capability_issuers,
         trusted_receipt_signers,
         sidecar_control_token: None,
-        receipt_backend: "ephemeral",
-        revocation_backend: "ephemeral",
-    })
-}
-
-/// Build proxy state whose upstream client aborts a hop after `timeout`, so a
-/// stalled upstream surfaces inside the handler instead of hanging.
-fn test_state_with_client_timeout(
-    routes: Vec<RouteEntry>,
-    upstream: String,
-    timeout: std::time::Duration,
-) -> Arc<ProxyState> {
-    let keypair = Keypair::generate();
-    let approval_store: Arc<dyn ApprovalStore> = Arc::new(InMemoryApprovalStore::new());
-    let signer_public_key = keypair.public_key();
-    let trusted_capability_issuers = vec![signer_public_key.clone()];
-    let trusted_receipt_signers = vec![signer_public_key];
-    let evaluator = RequestEvaluator::new_ephemeral_with_approval_store(
-        routes,
-        keypair.clone(),
-        "test-policy".to_string(),
-        Arc::clone(&approval_store),
-    );
-    let egress_contract = default_upstream_egress_contract(&upstream).test_unwrap();
-    let http_client = client_builder_with_contract(&egress_contract)
-        .timeout(timeout)
-        .build()
-        .test_unwrap();
-    Arc::new(ProxyState {
-        evaluator,
-        signer_keypair: keypair,
-        upstream,
-        http_client,
-        egress_contract,
-        approval_admin: ApprovalAdmin::new(approval_store),
-        receipt_log: Mutex::new(ReceiptLog {
-            receipts: Vec::new(),
-        }),
-        tool_receipt_log: Mutex::new(ToolReceiptLog {
-            receipts: Vec::new(),
-        }),
-        receipt_store: None,
-        revocation_store: None,
-        revoked_capability_ids: Mutex::new(HashSet::new()),
-        trusted_capability_issuers,
-        trusted_receipt_signers,
-        sidecar_control_token: None,
+        budget_store: None,
+        mediation_hold_capable: false,
+        mediation_kernel: None,
+        minted_request_ids: Mutex::new(MintedRequestIdWindow::new(
+            chio_kernel::DEFAULT_EXECUTION_NONCE_TTL_SECS,
+        )),
+        reaper_handle: Mutex::new(None),
+        allow_advisory: true,
         receipt_backend: "ephemeral",
         revocation_backend: "ephemeral",
     })
@@ -345,6 +282,7 @@ fn signed_approval_response_token(
             subject: subject.public_key(),
             governed_intent_hash: "hash-1".to_string(),
             request_id: approval_id.to_string(),
+            threshold_proposal_hash: None,
             issued_at: now.saturating_sub(10),
             expires_at: now + 600,
             decision,
@@ -1216,89 +1154,6 @@ async fn proxy_handler_rejects_unsupported_methods_before_evaluation() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn proxy_handler_surfaces_upstream_failures_after_allowing_request() {
-    let state = test_state(
-        vec![RouteEntry {
-            pattern: "/pets".to_string(),
-            method: HttpMethod::Get,
-            operation_id: Some("listPets".to_string()),
-            policy: PolicyDecision::SessionAllow,
-        }],
-        "http://127.0.0.1:1".to_string(),
-    );
-    let request = Request::builder()
-        .method("GET")
-        .uri("/pets")
-        .body(Body::empty())
-        .test_unwrap();
-
-    let response = proxy_handler(State(Arc::clone(&state)), request).await;
-    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
-
-    let body = to_bytes(response.into_body(), 1024 * 1024)
-        .await
-        .test_unwrap();
-    let text = String::from_utf8(body.to_vec()).test_unwrap();
-    assert!(text.contains("upstream error:"));
-
-    let log = state.receipt_log.lock().await;
-    assert_eq!(log.receipts.len(), 1);
-    assert_eq!(log.receipts[0].response_status, 502);
-    assert_eq!(
-        http_status_scope(log.receipts[0].metadata.as_ref()),
-        Some(CHIO_HTTP_STATUS_SCOPE_FINAL)
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn proxy_handler_records_receipt_when_upstream_times_out() {
-    // An allowed request whose upstream accepts the connection but never responds
-    // must still finalize a receipt. The per-hop client timeout fires inside the
-    // handler, so the stall is recorded as a bad-gateway receipt rather than
-    // leaving the handler parked for an outer timeout to drop mid-flight.
-    let Some(server) = MockUpstreamServer::spawn_unresponsive() else {
-        return;
-    };
-    let state = test_state_with_client_timeout(
-        vec![RouteEntry {
-            pattern: "/pets".to_string(),
-            method: HttpMethod::Get,
-            operation_id: Some("listPets".to_string()),
-            policy: PolicyDecision::SessionAllow,
-        }],
-        server.base_url(),
-        std::time::Duration::from_millis(150),
-    );
-    let request = Request::builder()
-        .method("GET")
-        .uri("/pets")
-        .body(Body::empty())
-        .test_unwrap();
-
-    // The handler must return on its own once the upstream call times out; the
-    // outer guard only trips (failing the test) if it never does.
-    let response = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        proxy_handler(State(Arc::clone(&state)), request),
-    )
-    .await
-    .test_unwrap();
-
-    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
-    let receipt_id = response
-        .headers()
-        .get("x-chio-receipt-id")
-        .and_then(|value| value.to_str().ok())
-        .test_unwrap()
-        .to_string();
-
-    let log = state.receipt_log.lock().await;
-    assert_eq!(log.receipts.len(), 1);
-    assert_eq!(log.receipts[0].id, receipt_id);
-    assert_eq!(log.receipts[0].response_status, 502);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn proxy_handler_denies_invalid_capability_tokens() {
     let state = test_state(
         vec![RouteEntry {
@@ -2007,6 +1862,12 @@ async fn run_refuses_to_start_without_durable_receipts_unless_opted_in() {
         sidecar_control_token: None,
         signer_seed_hex: None,
         trusted_capability_issuers: Vec::new(),
+        control_url: None,
+        control_token: None,
+        budget_db: None,
+        revocation_db: None,
+        require_nonce: false,
+        allow_advisory: false,
         upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
     };
     let error = ProtectProxy::new(config).run().await.test_unwrap_err();
@@ -2036,6 +1897,12 @@ async fn run_refuses_to_start_with_an_in_memory_receipt_path_unless_opted_in() {
             sidecar_control_token: None,
             signer_seed_hex: None,
             trusted_capability_issuers: Vec::new(),
+            control_url: None,
+            control_token: None,
+            budget_db: None,
+            revocation_db: None,
+            require_nonce: false,
+            allow_advisory: false,
             upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
         };
         let error = ProtectProxy::new(config).run().await.test_unwrap_err();
@@ -2840,6 +2707,8 @@ fn child_token_with_chain_ancestor(
             attenuations: Vec::new(),
             timestamp: now,
             scope_hash: None,
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         &delegator,
     )
@@ -2853,6 +2722,7 @@ fn child_token_with_chain_ancestor(
             issued_at: now.saturating_sub(60),
             expires_at: now + 3600,
             delegation_chain: vec![link],
+            aggregate_invocation_budget: None,
         },
         &state.signer_keypair,
     )
@@ -2931,6 +2801,8 @@ async fn sidecar_validate_capability_checks_issuer_trust_before_walking_chain() 
             attenuations: Vec::new(),
             timestamp: now,
             scope_hash: None,
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         &delegator,
     )
@@ -2944,6 +2816,7 @@ async fn sidecar_validate_capability_checks_issuer_trust_before_walking_chain() 
             issued_at: now.saturating_sub(60),
             expires_at: now + 3600,
             delegation_chain: vec![link],
+            aggregate_invocation_budget: None,
         },
         &untrusted_issuer,
     )
@@ -3117,11 +2990,11 @@ async fn sidecar_evaluate_advisory_route_wraps_non_authorization_response() {
         "tool_name": "read",
         "parameters": {"path": "/etc/hostname"},
     });
-    let removed_response = build_app(Arc::clone(&state))
+    let mediated_response = build_app(Arc::clone(&state))
         .oneshot(loopback_post("/v1/evaluate", evaluate_body.clone()))
         .await
         .test_unwrap();
-    assert_eq!(removed_response.status(), StatusCode::GONE);
+    assert_eq!(mediated_response.status(), StatusCode::BAD_REQUEST);
 
     let evaluate_response = build_app(Arc::clone(&state))
         .oneshot(loopback_post("/v1/evaluate/advisory", evaluate_body))
@@ -3582,95 +3455,4 @@ async fn sidecar_evaluate_tool_call_denies_parameter_hash_mismatch() {
         .and_then(|m| m.get("advisory_check_outcome"))
         .and_then(|v| v.as_str());
     assert_eq!(alias_outcome, Some("parameter_hash_mismatch"));
-}
-
-#[tokio::test]
-async fn live_route_reports_process_healthy_without_consulting_dependencies() {
-    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
-    let request = Request::builder()
-        .method("GET")
-        .uri("/chio/live")
-        .body(Body::empty())
-        .test_unwrap();
-
-    let response = build_app(Arc::clone(&state))
-        .oneshot(request)
-        .await
-        .test_unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = to_bytes(response.into_body(), 1024 * 1024)
-        .await
-        .test_unwrap();
-    let health: HealthResponse = serde_json::from_slice(&body).test_unwrap();
-    assert_eq!(health.status, SidecarStatus::Healthy);
-}
-
-#[tokio::test]
-async fn health_route_reports_ready_when_the_receipt_store_is_reachable() {
-    let db_path = temp_receipt_db_path();
-    let state =
-        test_state_with_receipt_db(Vec::new(), "http://127.0.0.1:1".to_string(), Some(&db_path));
-    let request = Request::builder()
-        .method("GET")
-        .uri("/chio/health")
-        .body(Body::empty())
-        .test_unwrap();
-
-    let response = build_app(Arc::clone(&state))
-        .oneshot(request)
-        .await
-        .test_unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = to_bytes(response.into_body(), 1024 * 1024)
-        .await
-        .test_unwrap();
-    let health: HealthResponse = serde_json::from_slice(&body).test_unwrap();
-    assert_eq!(health.status, SidecarStatus::Healthy);
-}
-
-#[tokio::test]
-async fn readiness_consults_the_store_reachability_signal() {
-    // With no store there is no dependency to fail, so readiness is healthy. The
-    // reachability signal it consults is true for a working store; a store whose
-    // connection could no longer answer this query drives readiness to unhealthy.
-    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
-    assert_eq!(state.readiness_status().await, SidecarStatus::Healthy);
-
-    let db_path = temp_receipt_db_path();
-    let store = SqliteReceiptStore::open(&db_path).test_unwrap();
-    assert!(
-        store.is_reachable(),
-        "a freshly opened store must be reachable"
-    );
-}
-
-#[tokio::test]
-async fn reachability_probe_touches_the_write_path_and_persists_nothing() {
-    let db_path = temp_receipt_db_path();
-    let store = SqliteReceiptStore::open(&db_path).test_unwrap();
-
-    // A healthy store probes reachable, and the probe rolls back: exercising the
-    // write path must not leave a durable receipt behind.
-    assert!(
-        store.is_reachable(),
-        "a freshly opened store must be reachable"
-    );
-    assert!(
-        store.load_receipts().test_unwrap().is_empty(),
-        "the readiness probe must not persist a receipt"
-    );
-
-    // Drop the receipt table out of band, as a bad migration or schema corruption
-    // would. A bare connection check would still answer here; the write-path probe
-    // must not, so an instance that can no longer persist receipts leaves rotation.
-    let side = rusqlite::Connection::open(&db_path).test_unwrap();
-    side.execute("DROP TABLE http_receipts", []).test_unwrap();
-    drop(side);
-
-    assert!(
-        !store.is_reachable(),
-        "a store that can no longer persist receipts must fail readiness"
-    );
 }

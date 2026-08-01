@@ -1,4 +1,10 @@
 use super::*;
+use chio_fiscal::{FiscalDomain, FiscalResolution};
+use chio_open_market::fiscal_adapter::{
+    build_fiscal_open_market_fee_schedule_artifact, build_fiscal_open_market_penalty_artifact,
+    evaluate_fiscal_open_market_penalty, materialize_fiscal_open_market_fee_schedule,
+    FiscalLegacyFeeScheduleBinding, FiscalOpenMarketSchedule,
+};
 
 pub fn issue_signed_generic_trust_activation(
     config: &TrustServiceConfig,
@@ -96,9 +102,10 @@ pub fn evaluate_generic_governance_case_request(
     evaluate_generic_governance_case(request, now).map_err(CliError::cli_other_error)
 }
 
-pub fn issue_signed_open_market_fee_schedule(
+pub(crate) fn issue_signed_open_market_fee_schedule(
     config: &TrustServiceConfig,
     request: &OpenMarketFeeScheduleIssueRequest,
+    fiscal_runtime: Option<&TrustFiscalRuntime>,
 ) -> Result<SignedOpenMarketFeeSchedule, CliError> {
     let signer_keypair = load_behavioral_feed_signing_keypair(
         config.authority_seed_path.as_deref(),
@@ -106,23 +113,65 @@ pub fn issue_signed_open_market_fee_schedule(
     )?;
     let local_operator = public_generic_registry_publisher(config)?;
     let issued_at = request.issued_at.unwrap_or(now_unix_secs()?);
-    let artifact = build_open_market_fee_schedule_artifact(
-        &local_operator.operator_id,
-        local_operator.operator_name.clone(),
-        request,
-        issued_at,
-    )
-    .map_err(CliError::cli_other_error)?;
-    SignedOpenMarketFeeSchedule::sign(artifact, &signer_keypair).map_err(|error| {
+    let (artifact, governed_schedule_id) = if let Some(runtime) = fiscal_runtime {
+        runtime
+            .with_resolver(|resolver| {
+                match resolver.resolve::<FiscalOpenMarketSchedule>(
+                    FiscalDomain::OpenMarketFeeAndBondSchedule,
+                    None,
+                ) {
+                    FiscalResolution::Governed { schedule_id, .. } => Ok((
+                        materialize_fiscal_open_market_fee_schedule(resolver)
+                            .map_err(|error| error.to_string())?,
+                        Some(schedule_id),
+                    )),
+                    FiscalResolution::Fallback(_) => Ok((
+                        build_fiscal_open_market_fee_schedule_artifact(
+                            &local_operator.operator_id,
+                            local_operator.operator_name.clone(),
+                            request,
+                            issued_at,
+                            resolver,
+                        )
+                        .map_err(|error| error.to_string())?,
+                        None,
+                    )),
+                    FiscalResolution::Denied(reason) => {
+                        Err(format!("fiscal open-market economics denied: {reason:?}"))
+                    }
+                }
+            })
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?
+            .map_err(CliError::cli_other_error)?
+    } else {
+        (
+            build_open_market_fee_schedule_artifact(
+                &local_operator.operator_id,
+                local_operator.operator_name.clone(),
+                request,
+                issued_at,
+            )
+            .map_err(CliError::cli_other_error)?,
+            None,
+        )
+    };
+    let signed = SignedOpenMarketFeeSchedule::sign(artifact, &signer_keypair).map_err(|error| {
         CliError::cli_other_error(format!(
             "failed to sign open-market fee schedule artifact: {error}"
         ))
-    })
+    })?;
+    if let (Some(runtime), Some(schedule_id)) = (fiscal_runtime, governed_schedule_id) {
+        runtime
+            .bind_legacy_fee_schedule(&schedule_id, &signed)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    }
+    Ok(signed)
 }
 
-pub fn issue_signed_open_market_penalty(
+pub(crate) fn issue_signed_open_market_penalty(
     config: &TrustServiceConfig,
     request: &OpenMarketPenaltyIssueRequest,
+    fiscal_runtime: Option<&TrustFiscalRuntime>,
 ) -> Result<SignedOpenMarketPenalty, CliError> {
     let signer_keypair = load_behavioral_feed_signing_keypair(
         config.authority_seed_path.as_deref(),
@@ -132,13 +181,31 @@ pub fn issue_signed_open_market_penalty(
     ensure_open_market_issue_signed_by_trusted_authority(request, &trusted_authority_signers)?;
     let local_operator = public_generic_registry_publisher(config)?;
     let issued_at = request.opened_at.unwrap_or(now_unix_secs()?);
-    let artifact = build_open_market_penalty_artifact_with_trusted_signers(
-        &local_operator.operator_id,
-        request,
-        issued_at,
-        &trusted_authority_signers,
-    )
-    .map_err(CliError::cli_other_error)?;
+    let artifact = if let Some(runtime) = fiscal_runtime {
+        runtime
+            .with_resolver(|resolver| {
+                let binding = fiscal_binding(runtime, resolver)?;
+                build_fiscal_open_market_penalty_artifact(
+                    &local_operator.operator_id,
+                    request,
+                    issued_at,
+                    binding.as_ref(),
+                    resolver,
+                    &trusted_authority_signers,
+                )
+                .map_err(|error| error.to_string())
+            })
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?
+            .map_err(CliError::cli_other_error)?
+    } else {
+        build_open_market_penalty_artifact_with_trusted_signers(
+            &local_operator.operator_id,
+            request,
+            issued_at,
+            &trusted_authority_signers,
+        )
+        .map_err(CliError::cli_other_error)?
+    };
     SignedOpenMarketPenalty::sign(artifact, &signer_keypair).map_err(|error| {
         CliError::cli_other_error(format!(
             "failed to sign open-market penalty artifact: {error}"
@@ -146,15 +213,50 @@ pub fn issue_signed_open_market_penalty(
     })
 }
 
-pub fn evaluate_open_market_penalty_request(
+pub(crate) fn evaluate_open_market_penalty_request(
     config: &TrustServiceConfig,
     request: &OpenMarketPenaltyEvaluationRequest,
+    fiscal_runtime: Option<&TrustFiscalRuntime>,
 ) -> Result<OpenMarketPenaltyEvaluation, CliError> {
     let trusted_authority_signers = trusted_authority_public_keys(config)?;
     ensure_open_market_evaluation_signed_by_trusted_authority(request, &trusted_authority_signers)?;
     let now = request.evaluated_at.unwrap_or(now_unix_secs()?);
-    evaluate_open_market_penalty_with_trusted_signers(request, now, &trusted_authority_signers)
-        .map_err(CliError::cli_other_error)
+    if let Some(runtime) = fiscal_runtime {
+        runtime
+            .with_resolver(|resolver| {
+                let binding = fiscal_binding(runtime, resolver)?;
+                evaluate_fiscal_open_market_penalty(
+                    request,
+                    now,
+                    binding.as_ref(),
+                    resolver,
+                    &trusted_authority_signers,
+                )
+                .map_err(|error| error.to_string())
+            })
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?
+            .map_err(CliError::cli_other_error)
+    } else {
+        evaluate_open_market_penalty_with_trusted_signers(request, now, &trusted_authority_signers)
+            .map_err(CliError::cli_other_error)
+    }
+}
+
+fn fiscal_binding(
+    runtime: &TrustFiscalRuntime,
+    resolver: &chio_fiscal::FiscalResolver<'_>,
+) -> Result<Option<FiscalLegacyFeeScheduleBinding>, String> {
+    match resolver
+        .resolve::<FiscalOpenMarketSchedule>(FiscalDomain::OpenMarketFeeAndBondSchedule, None)
+    {
+        FiscalResolution::Governed { schedule_id, .. } => runtime
+            .legacy_fee_schedule_binding(&schedule_id)
+            .map_err(|error| error.to_string()),
+        FiscalResolution::Fallback(_) => Ok(None),
+        FiscalResolution::Denied(reason) => {
+            Err(format!("fiscal open-market economics denied: {reason:?}"))
+        }
+    }
 }
 
 fn ensure_open_market_issue_signed_by_trusted_authority(

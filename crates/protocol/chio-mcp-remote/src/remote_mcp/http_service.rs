@@ -150,11 +150,11 @@ async fn serve_http_async(config: RemoteServeHttpConfig) -> Result<(), CliError>
     }
     let local_auth_server = build_local_auth_server(&config, local_addr)?;
 
+    let factory = Arc::new(RemoteSessionFactory::new(config.clone())?);
     let sessions = Arc::new(RemoteSessionLedger::new(
         SessionLifecyclePolicy::from_env(),
         config.session_db_path.clone(),
     )?);
-    let factory = Arc::new(RemoteSessionFactory::new(config.clone()));
     if let Some(path) = config.session_db_path.as_deref() {
         let loaded_records = load_active_session_records(path)?;
         for session_id in loaded_records.invalid_session_ids {

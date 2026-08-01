@@ -7,15 +7,16 @@ pub(crate) struct FinalizeToolOutputCostContext<'a> {
     pub(crate) cap: &'a CapabilityToken,
 }
 
-struct PostInvocationHandling {
-    output: ToolServerOutput,
-    extra_metadata: Option<serde_json::Value>,
-    blocked_reason: Option<String>,
-    evidence: Vec<chio_core::receipt::metadata::GuardEvidence>,
+pub(crate) struct PostInvocationHandling {
+    pub(crate) output: ToolServerOutput,
+    pub(crate) extra_metadata: Option<serde_json::Value>,
+    pub(crate) blocked_reason: Option<String>,
+    pub(crate) evidence: Vec<chio_core::receipt::metadata::GuardEvidence>,
 }
 
 impl ChioKernel {
-    pub(crate) fn finalize_tool_output_with_metadata(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn finalize_tool_output_with_metadata_and_payee_binding(
         &self,
         request: &ToolCallRequest,
         output: ToolServerOutput,
@@ -23,6 +24,7 @@ impl ChioKernel {
         timestamp: u64,
         matched_grant_index: usize,
         extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
     ) -> Result<ToolCallResponse, KernelError> {
         let output = self.apply_stream_limits(output, elapsed)?;
         let post_invocation = self.apply_post_invocation_pipeline(
@@ -34,7 +36,7 @@ impl ChioKernel {
         let _post_invocation_evidence_scope =
             scope_post_invocation_guard_evidence(post_invocation.evidence);
         if let Some(reason) = post_invocation.blocked_reason.as_deref() {
-            return self.build_deny_response_with_metadata(
+            return self.build_deny_response_with_metadata_and_payee_binding(
                 request,
                 reason,
                 timestamp,
@@ -48,27 +50,33 @@ impl ChioKernel {
                 self.mark_runtime_admission_reservations_retained_fail_closed(
                     post_invocation.extra_metadata,
                 ),
+                verified_payee_binding,
             );
         }
 
         match post_invocation.output {
-            ToolServerOutput::Value(value) => self.build_allow_response_with_metadata(
-                request,
-                ToolCallOutput::Value(value),
-                timestamp,
-                Some(matched_grant_index),
-                post_invocation.extra_metadata,
-            ),
+            ToolServerOutput::Value(value) => self
+                .build_allow_response_with_metadata_and_payee_binding(
+                    request,
+                    ToolCallOutput::Value(value),
+                    timestamp,
+                    Some(matched_grant_index),
+                    post_invocation.extra_metadata,
+                    verified_payee_binding,
+                    AllowResponseNonce::MintForAllow,
+                ),
             ToolServerOutput::Stream(ToolServerStreamResult::Complete(stream)) => self
-                .build_allow_response_with_metadata(
+                .build_allow_response_with_metadata_and_payee_binding(
                     request,
                     ToolCallOutput::Stream(stream),
                     timestamp,
                     Some(matched_grant_index),
                     post_invocation.extra_metadata,
+                    verified_payee_binding,
+                    AllowResponseNonce::MintForAllow,
                 ),
             ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { stream, reason }) => self
-                .build_incomplete_response_with_output_and_metadata(
+                .build_incomplete_response_with_output_metadata_and_payee_binding(
                     request,
                     Some(ToolCallOutput::Stream(stream)),
                     &reason,
@@ -82,6 +90,7 @@ impl ChioKernel {
                     self.mark_runtime_admission_reservations_retained_fail_closed(
                         post_invocation.extra_metadata,
                     ),
+                    verified_payee_binding,
                 ),
         }
     }
@@ -110,6 +119,70 @@ impl ChioKernel {
         let outcome = self
             .post_invocation_pipeline
             .evaluate_with_context_and_evidence(&context, &response);
+        self.finish_post_invocation_pipeline(
+            output,
+            extra_metadata,
+            outcome,
+            crate::tool_outcome::InvocationStreamLimitsV1 {
+                max_total_bytes: self.config.max_stream_total_bytes,
+                max_chunks: self.config.memory_budget.max_stream_chunks,
+                max_duration_secs: self.config.max_stream_duration_secs,
+            },
+        )
+    }
+
+    pub(crate) fn apply_durable_post_invocation_pipeline(
+        &self,
+        request: &ToolCallRequest,
+        output: ToolServerOutput,
+        matched_grant_index: usize,
+        extra_metadata: Option<serde_json::Value>,
+        identities: &[crate::post_invocation::PostInvocationHookIdentity],
+        stream_limits: crate::tool_outcome::InvocationStreamLimitsV1,
+    ) -> Result<
+        (
+            PostInvocationHandling,
+            Vec<crate::post_invocation::DurablePipelineStepResult>,
+        ),
+        KernelError,
+    > {
+        if self.post_invocation_pipeline.is_empty() {
+            return Ok((
+                PostInvocationHandling {
+                    output,
+                    extra_metadata,
+                    blocked_reason: None,
+                    evidence: Vec::new(),
+                },
+                Vec::new(),
+            ));
+        }
+
+        let response = self.output_to_post_invocation_value(&output);
+        let context = crate::post_invocation::PostInvocationContext::from_request(
+            request,
+            Some(matched_grant_index),
+        );
+        let durable = self
+            .post_invocation_pipeline
+            .evaluate_durable_with_context_and_evidence(&context, &response, identities)
+            .map_err(KernelError::DurableAdmission)?;
+        let handling = self.finish_post_invocation_pipeline(
+            output,
+            extra_metadata,
+            durable.outcome,
+            stream_limits,
+        )?;
+        Ok((handling, durable.step_results))
+    }
+
+    fn finish_post_invocation_pipeline(
+        &self,
+        output: ToolServerOutput,
+        extra_metadata: Option<serde_json::Value>,
+        outcome: crate::post_invocation::PipelineOutcome,
+        stream_limits: crate::tool_outcome::InvocationStreamLimitsV1,
+    ) -> Result<PostInvocationHandling, KernelError> {
         let metadata =
             merge_metadata_objects(extra_metadata, self.post_invocation_metadata(&outcome));
 
@@ -141,7 +214,7 @@ impl ChioKernel {
                 // kernel materialize the whole redacted stream, nor grow the final
                 // signed output and receipt preimage past the configured budget.
                 Ok(PostInvocationHandling {
-                    output: self.apply_redacted_output(redacted)?,
+                    output: self.apply_redacted_output(redacted, stream_limits)?,
                     extra_metadata: metadata,
                     blocked_reason: None,
                     evidence: outcome.evidence,
@@ -199,11 +272,12 @@ impl ChioKernel {
     fn apply_redacted_output(
         &self,
         redacted: serde_json::Value,
+        stream_limits: crate::tool_outcome::InvocationStreamLimitsV1,
     ) -> Result<ToolServerOutput, KernelError> {
         parse_redacted_output(
             redacted,
-            self.config.max_stream_total_bytes,
-            self.config.memory_budget.max_stream_chunks,
+            stream_limits.max_total_bytes,
+            stream_limits.max_chunks,
         )
     }
 
@@ -245,34 +319,44 @@ impl ChioKernel {
         output: ToolServerOutput,
         elapsed: Duration,
     ) -> Result<ToolServerOutput, KernelError> {
+        let limits = crate::tool_outcome::InvocationStreamLimitsV1 {
+            max_total_bytes: self.config.max_stream_total_bytes,
+            max_chunks: self.config.memory_budget.max_stream_chunks,
+            max_duration_secs: self.config.max_stream_duration_secs,
+        };
+        self.apply_stream_limit_snapshot(output, elapsed, limits)
+    }
+
+    pub(crate) fn apply_stream_limit_snapshot(
+        &self,
+        output: ToolServerOutput,
+        elapsed: Duration,
+        limits: crate::tool_outcome::InvocationStreamLimitsV1,
+    ) -> Result<ToolServerOutput, KernelError> {
         let ToolServerOutput::Stream(stream_result) = output else {
             return Ok(output);
         };
 
-        let duration_limit = Duration::from_secs(self.config.max_stream_duration_secs);
-        let duration_exceeded =
-            self.config.max_stream_duration_secs > 0 && elapsed > duration_limit;
+        let duration_limit = Duration::from_secs(limits.max_duration_secs);
+        let duration_exceeded = limits.max_duration_secs > 0 && elapsed > duration_limit;
 
         let (stream, base_reason) = match stream_result {
             ToolServerStreamResult::Complete(stream) => (stream, None),
             ToolServerStreamResult::Incomplete { stream, reason } => (stream, Some(reason)),
         };
 
-        let (stream, total_bytes, truncation_cause) = truncate_stream_to_limits(
-            &stream,
-            self.config.max_stream_total_bytes,
-            self.config.memory_budget.max_stream_chunks,
-        )?;
+        let (stream, total_bytes, truncation_cause) =
+            truncate_stream_to_limits(&stream, limits.max_total_bytes, limits.max_chunks)?;
 
         let limit_reason = match truncation_cause {
             Some(cause) => Some(stream_limit_reason(
                 cause,
-                self.config.max_stream_total_bytes,
-                self.config.memory_budget.max_stream_chunks,
+                limits.max_total_bytes,
+                limits.max_chunks,
             )),
             None if duration_exceeded => Some(format!(
                 "CHIO_SERVER_STREAM_LIMIT: stream exceeded max duration of {}s",
-                self.config.max_stream_duration_secs
+                limits.max_duration_secs
             )),
             None => None,
         };

@@ -6,7 +6,6 @@ pub(super) enum HoldDisposition {
     Released,
     Reversed,
     Reconciled,
-    Expired,
 }
 
 impl HoldDisposition {
@@ -16,7 +15,6 @@ impl HoldDisposition {
             Self::Released => "released",
             Self::Reversed => "reversed",
             Self::Reconciled => "reconciled",
-            Self::Expired => "expired",
         }
     }
 
@@ -26,7 +24,6 @@ impl HoldDisposition {
             "released" => Some(Self::Released),
             "reversed" => Some(Self::Reversed),
             "reconciled" => Some(Self::Reconciled),
-            "expired" => Some(Self::Expired),
             _ => None,
         }
     }
@@ -40,6 +37,7 @@ pub(super) struct SqliteBudgetHold {
     pub(super) authorized_exposure_units: u64,
     pub(super) remaining_exposure_units: u64,
     pub(super) invocation_count_debited: bool,
+    pub(super) invocation_captured: bool,
     pub(super) disposition: HoldDisposition,
     pub(super) authority: Option<BudgetEventAuthority>,
 }

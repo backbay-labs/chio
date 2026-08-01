@@ -129,7 +129,7 @@ pub fn verify_treaty_bound_chio_bilateral_invocation(
     }
     if matches!(
         pred.consistency_model.as_str(),
-        "totally_ordered" | "quorum_required"
+        "totally-ordered" | "quorum-required"
     ) && pred.consistency_anchor.as_deref().is_none_or(str::is_empty)
     {
         return Err(VerifierError::PredicateSchemaInvalid(

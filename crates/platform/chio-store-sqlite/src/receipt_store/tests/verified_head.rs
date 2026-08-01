@@ -439,7 +439,7 @@ fn reseed_on_still_corrupt_store_stays_poisoned() -> Result<(), Box<dyn std::err
 /// evidence-less side effect the gate exists to prevent. Recovery clears it.
 #[test]
 fn poisoned_head_reports_writer_serving_closed() -> Result<(), Box<dyn std::error::Error>> {
-    let path = unique_db_path("chio-head-poison-serving");
+    let (temp_dir, path) = temp_db("chio-head-poison-serving")?;
     let keypair = receipt_test_keypair();
     let store = SqliteReceiptStore::open(&path)?;
     for i in 0..3 {
@@ -504,7 +504,8 @@ fn poisoned_head_reports_writer_serving_closed() -> Result<(), Box<dyn std::erro
         "a reseeded, verified head must serve again"
     );
 
-    let _ = fs::remove_file(path);
+    drop(store);
+    temp_dir.close()?;
     Ok(())
 }
 
@@ -517,7 +518,18 @@ fn poisoned_head_reports_writer_serving_closed() -> Result<(), Box<dyn std::erro
 /// surfaces must agree.
 #[test]
 fn poisoned_head_reads_store_unhealthy() -> Result<(), Box<dyn std::error::Error>> {
-    let (path, store, keypair) = open_seeded_store("chio-head-poison-health", 3)?;
+    let (temp_dir, path) = temp_db("chio-head-poison-health")?;
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    for i in 0..3 {
+        let receipt = sample_receipt_with_keypair(
+            &format!("rcpt-head-poison-health-{i}"),
+            (i + 1) as u64,
+            &keypair,
+        );
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
     store.create_next_receipt_checkpoint(3, &keypair)?;
 
     // Baseline: a seeded, verified head with no write error reads green on both
@@ -554,7 +566,8 @@ fn poisoned_head_reads_store_unhealthy() -> Result<(), Box<dyn std::error::Error
         "a store whose verified head is poisoned must read unhealthy so readiness and the pre-dispatch gate agree"
     );
 
-    let _ = fs::remove_file(path);
+    drop(store);
+    temp_dir.close()?;
     Ok(())
 }
 
@@ -1705,7 +1718,7 @@ fn seq_unchanged_recheck_catches_projection_tamper() -> Result<(), Box<dyn std::
 /// poison the head so `writer_serving_closed` fails closed.
 #[test]
 fn store_wide_append_failure_poisons_the_head() -> Result<(), Box<dyn std::error::Error>> {
-    let path = unique_db_path("chio-store-wide-poison");
+    let (temp_dir, path) = temp_db("chio-store-wide-poison")?;
     let keypair = receipt_test_keypair();
     let store = SqliteReceiptStore::open(&path)?;
     // Three real receipts -> claim-log entries 1..=3.
@@ -1767,6 +1780,7 @@ fn store_wide_append_failure_poisons_the_head() -> Result<(), Box<dyn std::error
         "a store-wide append failure must transition the head to Poisoned"
     );
 
-    let _ = fs::remove_file(path);
+    drop(store);
+    temp_dir.close()?;
     Ok(())
 }

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/capabilities/v1",
   "title": "Chio capability negotiation v1",
-  "description": "Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed.",
+  "description": "Feature bitset exchanged during federation trust establishment, including aggregate budgets, cumulative approval, threshold approval, and governed active response. Malformed feature names and unsupported schema IDs fail closed.",
   "type": "object",
   "additionalProperties": false,
   "required": [

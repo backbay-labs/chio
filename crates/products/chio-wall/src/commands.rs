@@ -377,6 +377,7 @@ fn chio_wall_capability_with_id(
             issued_at: 100,
             expires_at: 10_000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         issuer,
     )
@@ -1804,12 +1805,12 @@ mod tests {
         assert_eq!(routes, vec![route.to_string()]);
 
         // ForbiddenPathGuard derives High severity, meeting the default alerting
-        // threshold, so the exporter dispatches to the stub backend.
+        // threshold, so the exporter dispatches to the test backend.
         let event = serve_deny_event("ForbiddenPathGuard");
         let processed = exporter
             .export_batch(std::slice::from_ref(&event))
             .await
-            .expect("stub dispatch succeeds");
+            .expect("alert dispatch succeeds");
         assert_eq!(processed, 1, "the single deny event is dispatched");
 
         let mut body = String::new();

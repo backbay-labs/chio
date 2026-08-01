@@ -48,6 +48,14 @@ fn strict_nonce_state_with_upstream(routes: Vec<RouteEntry>, upstream: String) -
         trusted_capability_issuers,
         trusted_receipt_signers,
         sidecar_control_token: None,
+        budget_store: None,
+        mediation_hold_capable: false,
+        mediation_kernel: None,
+        minted_request_ids: Mutex::new(MintedRequestIdWindow::new(
+            chio_kernel::DEFAULT_EXECUTION_NONCE_TTL_SECS,
+        )),
+        reaper_handle: Mutex::new(None),
+        allow_advisory: false,
         receipt_backend: "ephemeral",
         revocation_backend: "ephemeral",
     })
@@ -207,7 +215,6 @@ async fn sidecar_evaluate_returns_strict_execution_nonce_for_retry() {
         .test_expect("strict sidecar preflight should return retry nonce");
 
     let mut retry_body = body;
-    retry_body.request_id = "req-sidecar-nonce-retry".to_string();
     retry_body.execution_nonce = Some(nonce);
     let retry_request = Request::builder()
         .method("POST")

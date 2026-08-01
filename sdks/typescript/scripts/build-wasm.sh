@@ -18,6 +18,9 @@
 
 set -euo pipefail
 
+# Optimize the complete Wasm dependency graph for the enforced gzip budgets.
+export CARGO_PROFILE_RELEASE_OPT_LEVEL="${CARGO_PROFILE_RELEASE_OPT_LEVEL:-z}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 TS_PACKAGES_DIR="${REPO_ROOT}/sdks/typescript/packages"

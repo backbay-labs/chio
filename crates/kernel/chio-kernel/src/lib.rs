@@ -29,6 +29,8 @@
 // when tokio drops `tokio::net`. Normal builds compile every item unchanged.
 
 #[cfg(not(loom))]
+pub mod admission_operation;
+#[cfg(not(loom))]
 pub mod approval;
 #[cfg(not(loom))]
 pub mod approval_channels;
@@ -51,6 +53,8 @@ pub mod cost_attribution;
 #[cfg(not(loom))]
 pub mod custody;
 #[cfg(not(loom))]
+pub mod dispatch_status;
+#[cfg(not(loom))]
 pub mod dpop;
 #[cfg(not(loom))]
 pub mod evidence_export;
@@ -58,6 +62,8 @@ pub mod evidence_export;
 pub mod execution_nonce;
 #[cfg(not(loom))]
 pub mod federation_artifact_store;
+#[cfg(not(loom))]
+pub mod governed_active_response;
 #[cfg(not(loom))]
 pub mod memory_provenance;
 #[cfg(not(loom))]
@@ -91,7 +97,13 @@ pub mod revocation_store;
 pub mod runtime;
 pub mod session;
 #[cfg(not(loom))]
-pub mod settlement_retry;
+mod settlement_routing;
+#[cfg(not(loom))]
+pub mod supplemental_quota;
+#[cfg(not(loom))]
+pub mod threshold_approval;
+#[cfg(not(loom))]
+pub mod tool_outcome;
 #[cfg(not(loom))]
 pub mod transport;
 #[cfg(not(loom))]
@@ -152,9 +164,10 @@ pub(crate) use receipt_support::*;
 // `crypto_floor=allow_classical`.
 #[cfg(not(loom))]
 pub use receipt_support::{
-    kernel_signing_backend, scope_fixed_runtime_for_current_thread,
-    sign_receipt_body_hybrid_canonical, sign_receipt_body_with_backend, FixedRuntimeScope,
-    KernelCryptoFloor, KernelSigningBackendError, SignedHybridReceipt,
+    fixed_runtime_unix_secs_for_current_thread, kernel_signing_backend,
+    scope_fixed_runtime_for_current_thread, sign_receipt_body_hybrid_canonical,
+    sign_receipt_body_with_backend, FixedRuntimeScope, KernelCryptoFloor,
+    KernelSigningBackendError, SignedHybridReceipt,
 };
 #[cfg(not(loom))]
 pub(crate) use request_matching::{
@@ -170,6 +183,12 @@ pub use request_matching::{
     capability_matches_resource_request, capability_matches_resource_subscription,
     capability_request_requires_dpop, capability_request_requires_dpop_with_model_metadata,
 };
+pub use threshold_approval::{
+    CollectedThresholdApprovalSet, InMemoryThresholdApprovalCollectorStore,
+    ThresholdApprovalCollector, ThresholdApprovalCollectorProposal,
+    ThresholdApprovalCollectorState, ThresholdApprovalCollectorStore,
+    ThresholdApprovalCollectorStoreError,
+};
 
 #[cfg(not(loom))]
 pub use approval::{
@@ -183,14 +202,17 @@ pub use approval::{
 pub use approval_channels::{RecordingChannel, WebhookChannel, WebhookPayload};
 #[cfg(not(loom))]
 pub use authority::{
-    AuthoritySnapshot, AuthorityStatus, AuthorityStoreError, AuthorityTrustedKeySnapshot,
-    CapabilityAuthority, LocalCapabilityAuthority,
+    ensure_capability_issuance_supported, validate_issued_capability_response,
+    validate_issued_capability_response_at, AuthoritySnapshot, AuthorityStatus,
+    AuthorityStoreError, AuthorityTrustedKeySnapshot, CapabilityAuthority,
+    LocalCapabilityAuthority,
 };
 #[cfg(not(loom))]
 pub use budget_store::{BudgetStore, BudgetStoreError, BudgetUsageRecord, InMemoryBudgetStore};
 #[cfg(not(loom))]
 pub use capability_lineage::{
-    CapabilityLineageError, CapabilitySnapshot, StoredCapabilitySnapshot,
+    CapabilityLineageError, CapabilitySnapshot, CapabilitySnapshotProvenance,
+    StoredCapabilitySnapshot,
 };
 #[cfg(not(loom))]
 pub use checkpoint::{
@@ -384,6 +406,8 @@ pub use chio_core::underwriting::{
     UNDERWRITING_SIMULATION_REPORT_SCHEMA,
 };
 #[cfg(not(loom))]
+pub use chio_credit::obligation::CreditExposureReservationRequest;
+#[cfg(not(loom))]
 pub use compliance_score::{
     compliance_factor_breakdown, compliance_score, ComplianceFactor, ComplianceFactorBreakdown,
     ComplianceScore, ComplianceScoreConfig, ComplianceScoreInputs, COMPLIANCE_SCORE_MAX,
@@ -476,13 +500,16 @@ pub use operator_report::{
 #[cfg(not(loom))]
 pub use payment::{
     AcpPaymentAdapter, CommercePaymentContext, GovernedPaymentContext, PaymentAdapter,
-    PaymentAuthorization, PaymentAuthorizeRequest, PaymentError, PaymentResult,
-    RailSettlementState, RailSettlementStatus, ReceiptSettlement, X402PaymentAdapter,
+    PaymentAuthorization, PaymentAuthorizationState, PaymentAuthorizeRequest, PaymentError,
+    PaymentJournalError, PaymentJournalRecord, PaymentJournalState, PaymentJournalTransition,
+    PaymentRailMode, PaymentReleaseAuthorityBinding, PaymentReleaseAuthorityKind, PaymentResult,
+    PaymentSettleAction, RailSettlementState, RailSettlementStatus, ReceiptSettlement,
+    X402PaymentAdapter,
 };
 #[cfg(not(loom))]
 pub use post_invocation::{
-    PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationPipeline,
-    PostInvocationVerdict,
+    PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationHookIdentity,
+    PostInvocationPipeline, PostInvocationVerdict,
 };
 #[cfg(not(loom))]
 pub use provider_verdict::{
@@ -501,16 +528,18 @@ pub use receipt_query::{
 };
 #[cfg(not(loom))]
 pub use receipt_store::{
-    AuthorizationReceiptConsumption, DispatchIntentJournalMode, DispatchIntentKey,
-    DispatchIntentReconcileReport, DispatchIntentReconciler, DispatchIntentRecord,
-    DispatchIntentResolution, FederatedEvidenceShareImport, FederatedEvidenceShareSummary,
-    ReceiptCheckpointCreateReport, ReceiptCheckpointRange, ReceiptCheckpointStatusReport,
-    ReceiptFlushReport, ReceiptStore, ReceiptStoreError, ReceiptStoreHealthReport,
-    ReceiptWalCheckpointReport, ReceiptWriterCounters, ReceiptWriterLiveness, RetentionConfig,
-    SideEffectClass, StoredChildReceipt, StoredToolReceipt,
+    AdmissionBudgetAuthorization, AdmissionBudgetAuthorizationError, AdmissionBudgetCapture,
+    AdmissionPaymentJournalAdvance, AdmissionPaymentJournalError, AdmissionPaymentSettlement,
+    AdmissionPaymentSettlementBegin, AtomicReceiptProjection, AuthorizationReceiptConsumption,
+    FederatedEvidenceShareImport, FederatedEvidenceShareSummary, PendingSettlementObservation,
+    QualifiedAdmissionProjectionStore, ReceiptCheckpointCreateReport, ReceiptCheckpointRange,
+    ReceiptCheckpointStatusReport, ReceiptFlushReport, ReceiptStore, ReceiptStoreError,
+    ReceiptStoreHealthReport, ReceiptWalCheckpointReport, ReceiptWriterCounters,
+    ReceiptWriterLiveness, RetentionConfig, StoredChildReceipt, StoredToolReceipt,
+    ThresholdApprovalReplayReservationV1, ADMISSION_TERMINAL_PROJECTION_DESCRIPTOR_KIND,
 };
 #[cfg(not(loom))]
-pub use revocation_runtime::{InMemoryRevocationStore, RevocationStore};
+pub use revocation_runtime::{InMemoryRevocationStore, RevocationObservation, RevocationStore};
 #[cfg(not(loom))]
 pub use revocation_store::{RevocationRecord, RevocationStoreError};
 #[cfg(not(loom))]
@@ -526,6 +555,17 @@ pub use session::{
     TerminalRegistry,
 };
 #[cfg(not(loom))]
+pub use supplemental_quota::{
+    supplemental_authorization_artifact_digest, supplemental_request_binding_hash,
+    CanonicalRevocationSet, SupplementalQuotaError, SupplementalQuotaVerificationContext,
+    SupplementalQuotaVerifier, SupplementalQuotaVerifierBinding, SupplementalQuotaVerifierError,
+    VerifiedSupplementalQuotaClaim, BROKER_CAPABILITY_EXECUTION_PROFILE,
+    MAX_ADMISSION_REVOCATION_IDS, MAX_SUPPLEMENTAL_AUTHORIZATION_BYTES,
+    MAX_SUPPLEMENTAL_CLAIM_FIELD_BYTES, MAX_SUPPLEMENTAL_CONTEXT_FIELD_BYTES,
+    MAX_SUPPLEMENTAL_NEGOTIATED_FEATURES, MAX_SUPPLEMENTAL_REVOCATION_IDS,
+    MAX_SUPPLEMENTAL_REVOCATION_ID_BYTES,
+};
+#[cfg(not(loom))]
 pub use weights_binding::{evaluate_weights_binding, WeightsBindingError, WeightsBindingRequest};
 
 #[cfg(not(loom))]
@@ -538,17 +578,15 @@ pub(crate) use kernel::{current_unix_timestamp, MatchingGrant, ReceiptContent};
 
 #[cfg(not(loom))]
 pub use kernel::{
-    AgentId, BudgetHoldSweepHandle, CapabilityId, ChildReceiptLog, ChioKernel,
-    DefaultDispatchIntentReconciler, Guard, GuardContext, GuardDecision, HotPathDeadlineConfig,
-    HotPathStage, HybridSigningConfig, KernelBuildError, KernelConfig, KernelError,
-    MemoryBudgetConfig, MonetaryDispatchIntentReconciler, OverloadResource,
-    PaymentReconcileOutcome, PaymentReconcileReport, PromptProvider, ReceiptLog, ResourceProvider,
-    RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook, ServerId,
-    StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_HOLD_EXPIRY_HORIZON_SECS,
-    DEFAULT_HOLD_SWEEP_INTERVAL_SECS, DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS,
-    DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RECEIPT_APPEND_BUDGET_MS,
-    DEFAULT_RECEIPT_WRITER_POLL_MS, DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS,
-    EMERGENCY_STOP_DENY_REASON, MIN_RECEIPT_APPEND_BUDGET_MS,
+    AgentId, CapabilityId, ChildReceiptLog, ChioKernel, Guard, GuardContext, GuardDecision,
+    HotPathDeadlineConfig, HotPathStage, HybridSigningConfig, KernelBuildError, KernelConfig,
+    KernelError, MemoryBudgetConfig, OverloadResource, PromptProvider, ReceiptLog,
+    ResourceProvider, RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook,
+    ServerId, SettlementRuntimeConfigError, StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
+    DEFAULT_RECEIPT_APPEND_BUDGET_MS, DEFAULT_RECEIPT_WRITER_POLL_MS,
+    DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS, EMERGENCY_STOP_DENY_REASON,
+    MIN_RECEIPT_APPEND_BUDGET_MS,
 };
 
 #[cfg(not(loom))]
@@ -560,7 +598,7 @@ pub use kernel::evaluator::ToolEvaluator;
 /// without reaching into crate-private module paths.
 pub mod settlement_observer {
     pub use crate::kernel::settlement_observer::{
-        build_observation, run_observer, SettlementObserverStatus,
+        build_observation, run_observer, SettlementObservationBuild, SettlementObserverStatus,
         SETTLEMENT_OBSERVER_STATUS_SCHEMA,
     };
 }

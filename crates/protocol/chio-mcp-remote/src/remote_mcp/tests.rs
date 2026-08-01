@@ -15,6 +15,9 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
 
+    #[path = "session_runtime.rs"]
+    mod session_runtime;
+
     fn sign_jwt_with_header(
         header: Value,
         claims: &serde_json::Value,
@@ -27,34 +30,6 @@ mod tests {
         let signing_input = format!("{header}.{payload}");
         let signature = URL_SAFE_NO_PAD.encode(sign(signing_input.as_bytes()));
         format!("{signing_input}.{signature}")
-    }
-
-    #[test]
-    fn mcp_rate_limiter_caps_session_window() {
-        let limiter = McpRateLimiter::new();
-        for _ in 0..MCP_RATE_LIMIT_MAX_REQUESTS {
-            assert!(limiter.check("session:test".to_string(), 120).is_ok());
-        }
-
-        let retry_after = limiter
-            .check("session:test".to_string(), 120)
-            .expect_err("session should be rate limited after the window budget is exhausted");
-        assert_eq!(retry_after, 60);
-        assert!(limiter.check("session:test".to_string(), 180).is_ok());
-    }
-
-    #[test]
-    fn mcp_rate_limiter_caps_tracked_keys() {
-        let limiter = McpRateLimiter::new();
-        for idx in 0..MCP_RATE_LIMIT_MAX_KEYS {
-            assert!(limiter.check(format!("session:{idx}"), 120).is_ok());
-        }
-
-        let retry_after = limiter
-            .check("session:overflow".to_string(), 120)
-            .expect_err("new rate-limit keys should be capped within a window");
-        assert_eq!(retry_after, 60);
-        assert!(limiter.check("session:0".to_string(), 120).is_ok());
     }
 
     #[test]
@@ -230,7 +205,6 @@ mod tests {
             retention_config: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-            dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         }
     }
 
@@ -473,6 +447,7 @@ mod tests {
                 issued_at: 1,
                 expires_at: u64::MAX,
                 delegation_chain: vec![],
+                aggregate_invocation_budget: None,
             },
             &old_authority,
         )

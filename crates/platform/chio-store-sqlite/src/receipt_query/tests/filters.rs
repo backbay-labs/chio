@@ -4,7 +4,7 @@ use chio_kernel::ReceiptStore;
 
 use crate::receipt_store::SqliteReceiptStore;
 
-use super::support::{make_receipt, unique_db_path};
+use super::support::{make_receipt, make_receipt_with_currency, unique_db_path, ReceiptCost};
 #[test]
 fn test_query_no_filters() {
     let path = unique_db_path("rq-no-filters");
@@ -509,6 +509,7 @@ fn test_query_filter_cost_range_min() {
     let result = store
         .query_receipts(&ReceiptQuery {
             min_cost: Some(100),
+            cost_currency: Some("USD".to_string()),
             limit: 10,
             read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
             ..Default::default()
@@ -571,6 +572,7 @@ fn test_query_filter_cost_range_max() {
     let result = store
         .query_receipts(&ReceiptQuery {
             max_cost: Some(100),
+            cost_currency: Some("USD".to_string()),
             limit: 10,
             read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
             ..Default::default()
@@ -642,6 +644,7 @@ fn test_query_filter_cost_range_both() {
         .query_receipts(&ReceiptQuery {
             min_cost: Some(75),
             max_cost: Some(150),
+            cost_currency: Some("USD".to_string()),
             limit: 10,
             read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
             ..Default::default()
@@ -657,6 +660,197 @@ fn test_query_filter_cost_range_both() {
     assert_eq!(result.total_count, 1);
 
     let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn cost_filters_preserve_full_u64_order() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("rq-cost-u64-order");
+    let store = SqliteReceiptStore::open(&path)?;
+    let signed_max = u64::try_from(i64::MAX)?;
+    let costs = [0, signed_max, signed_max + 1, u64::MAX];
+    for (index, cost) in costs.into_iter().enumerate() {
+        store.append_chio_receipt(&make_receipt(
+            &format!("boundary-{index}"),
+            "cap-1",
+            "s",
+            "t",
+            Decision::Allow,
+            100 + u64::try_from(index)?,
+            Some(cost),
+        ))?;
+    }
+
+    let at_or_above_unsigned_boundary = store.query_receipts(&ReceiptQuery {
+        min_cost: Some(signed_max + 1),
+        cost_currency: Some("USD".to_string()),
+        limit: 10,
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+        ..Default::default()
+    })?;
+    let above_costs = at_or_above_unsigned_boundary
+        .receipts
+        .iter()
+        .filter_map(|stored| stored.receipt.financial_metadata())
+        .map(|financial| financial.cost_charged)
+        .collect::<Vec<_>>();
+    assert_eq!(above_costs, vec![signed_max + 1, u64::MAX]);
+    assert_eq!(at_or_above_unsigned_boundary.total_count, 2);
+
+    let at_or_below_signed_boundary = store.query_receipts(&ReceiptQuery {
+        max_cost: Some(signed_max),
+        cost_currency: Some("USD".to_string()),
+        limit: 10,
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+        ..Default::default()
+    })?;
+    let below_costs = at_or_below_signed_boundary
+        .receipts
+        .iter()
+        .filter_map(|stored| stored.receipt.financial_metadata())
+        .map(|financial| financial.cost_charged)
+        .collect::<Vec<_>>();
+    assert_eq!(below_costs, vec![0, signed_max]);
+    assert_eq!(at_or_below_signed_boundary.total_count, 2);
+
+    let adjacent_boundaries = store.query_receipts(&ReceiptQuery {
+        min_cost: Some(signed_max),
+        max_cost: Some(signed_max + 1),
+        cost_currency: Some("USD".to_string()),
+        limit: 10,
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+        ..Default::default()
+    })?;
+    let adjacent_costs = adjacent_boundaries
+        .receipts
+        .iter()
+        .filter_map(|stored| stored.receipt.financial_metadata())
+        .map(|financial| financial.cost_charged)
+        .collect::<Vec<_>>();
+    assert_eq!(adjacent_costs, vec![signed_max, signed_max + 1]);
+    assert_eq!(adjacent_boundaries.total_count, 2);
+
+    let exact_unsigned_max = store.query_receipts(&ReceiptQuery {
+        min_cost: Some(u64::MAX),
+        max_cost: Some(u64::MAX),
+        cost_currency: Some("USD".to_string()),
+        limit: 10,
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+        ..Default::default()
+    })?;
+    let max_costs = exact_unsigned_max
+        .receipts
+        .iter()
+        .filter_map(|stored| stored.receipt.financial_metadata())
+        .map(|financial| financial.cost_charged)
+        .collect::<Vec<_>>();
+    assert_eq!(max_costs, vec![u64::MAX]);
+    assert_eq!(exact_unsigned_max.total_count, 1);
+
+    let _ = std::fs::remove_file(path);
+    Ok(())
+}
+
+#[test]
+fn cost_query_uses_one_reader_for_page_and_count() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("rq-cost-one-reader");
+    let store = SqliteReceiptStore::open_with_pool_sizes(&path, 1, 1)?;
+    store.append_chio_receipt(&make_receipt(
+        "one-reader",
+        "cap-1",
+        "s",
+        "t",
+        Decision::Allow,
+        100,
+        Some(u64::MAX),
+    ))?;
+
+    let result = store.query_receipts(&ReceiptQuery {
+        min_cost: Some(u64::MAX),
+        max_cost: Some(u64::MAX),
+        cost_currency: Some("USD".to_string()),
+        limit: 10,
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+        ..Default::default()
+    })?;
+
+    assert_eq!(result.receipts.len(), 1);
+    assert_eq!(result.total_count, 1);
+
+    drop(store);
+    let _ = std::fs::remove_file(path);
+    Ok(())
+}
+
+#[test]
+fn cost_filters_require_one_valid_currency() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("rq-cost-currency");
+    let store = SqliteReceiptStore::open(&path)?;
+    for (id, currency) in [("usd", "USD"), ("eur", "EUR")] {
+        store.append_chio_receipt(&make_receipt_with_currency(
+            id,
+            "cap-1",
+            "s",
+            "t",
+            Decision::Allow,
+            100,
+            ReceiptCost::new(Some(500), currency),
+        ))?;
+    }
+
+    let usd = store.query_receipts(&ReceiptQuery {
+        min_cost: Some(500),
+        max_cost: Some(500),
+        cost_currency: Some("USD".to_string()),
+        limit: 10,
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+        ..Default::default()
+    })?;
+    assert_eq!(usd.receipts.len(), 1);
+    assert_eq!(usd.total_count, 1);
+    assert_eq!(
+        usd.receipts
+            .first()
+            .and_then(|stored| stored.receipt.financial_metadata())
+            .map(|financial| financial.currency),
+        Some("USD".to_string())
+    );
+
+    let eur = store.query_receipts(&ReceiptQuery {
+        cost_currency: Some("EUR".to_string()),
+        limit: 10,
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+        ..Default::default()
+    })?;
+    assert_eq!(eur.receipts.len(), 1);
+    assert_eq!(eur.total_count, 1);
+    assert_eq!(
+        eur.receipts
+            .first()
+            .and_then(|stored| stored.receipt.financial_metadata())
+            .map(|financial| financial.currency),
+        Some("EUR".to_string())
+    );
+
+    for query in [
+        ReceiptQuery {
+            min_cost: Some(1),
+            limit: 10,
+            read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+            ..Default::default()
+        },
+        ReceiptQuery {
+            min_cost: Some(1),
+            cost_currency: Some("usd".to_string()),
+            limit: 10,
+            read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+            ..Default::default()
+        },
+    ] {
+        assert!(store.query_receipts(&query).is_err());
+    }
+
+    let _ = std::fs::remove_file(path);
+    Ok(())
 }
 
 #[test]

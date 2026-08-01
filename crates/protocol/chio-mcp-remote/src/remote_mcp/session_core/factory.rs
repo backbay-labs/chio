@@ -1,12 +1,100 @@
 use super::*;
 
 impl RemoteSessionFactory {
-    pub(super) fn new(config: RemoteServeHttpConfig) -> Self {
-        Self {
+    pub(super) fn new(config: RemoteServeHttpConfig) -> Result<Self, CliError> {
+        let loaded_policy = load_policy(&config.policy_path)?;
+        validate_durable_admission_participant_paths(
+            loaded_policy.kernel.durable_admission_mode,
+            config.control_url.as_deref(),
+            config.revocation_db_path.as_deref(),
+            config.budget_db_path.as_deref(),
+        )?;
+        let local_admission_database = if config.control_url.is_none() {
+            config
+                .session_db_path
+                .as_deref()
+                .map(durable_admission_sidecar_path)
+                .transpose()?
+        } else {
+            None
+        };
+        if let Some(admission_database) = local_admission_database.as_deref() {
+            let mut paths = vec![("durable admission database", admission_database)];
+            for (label, path) in [
+                ("remote session database", config.session_db_path.as_deref()),
+                ("receipt database", config.receipt_db_path.as_deref()),
+                ("revocation database", config.revocation_db_path.as_deref()),
+                (
+                    "capability authority database",
+                    config.authority_db_path.as_deref(),
+                ),
+                ("budget database", config.budget_db_path.as_deref()),
+            ] {
+                if let Some(path) = path {
+                    paths.push((label, path));
+                }
+            }
+            validate_distinct_database_paths(&paths)?;
+        }
+        let durable_admission = match (
+            loaded_policy.kernel.durable_admission_mode,
+            config.control_url.as_deref(),
+        ) {
+            (chio_kernel::admission_operation::DurableAdmissionMode::Off, _) => None,
+            (_, Some(control_url)) => {
+                let identity_path = config.session_db_path.as_deref().ok_or_else(|| {
+                    CliError::cli_other_error(
+                        "hosted MCP durable admission requires --session-db".to_string(),
+                    )
+                })?;
+                let control_token = require_control_token(config.control_token.as_deref())?;
+                Some(DurableAdmissionRuntime::open_remote(
+                    identity_path,
+                    control_url,
+                    control_token,
+                )?)
+            }
+            (mode, None) => {
+                open_durable_admission_runtime(mode, local_admission_database.as_deref())?
+            }
+        };
+        Ok(Self {
             config,
+            durable_admission,
             shared_upstream_owner: Arc::new(StdMutex::new(None)),
             lifecycle_policy: read_session_lifecycle_policy(),
+        })
+    }
+
+    fn kernel_keypair(
+        &self,
+        mode: chio_kernel::admission_operation::DurableAdmissionMode,
+    ) -> Result<Keypair, CliError> {
+        match self.durable_admission.as_ref() {
+            Some(runtime) => Ok(runtime.kernel_keypair()),
+            None if mode == chio_kernel::admission_operation::DurableAdmissionMode::Off => {
+                Ok(Keypair::generate())
+            }
+            None => Err(CliError::cli_other_error(
+                "hosted MCP durable admission runtime is unavailable".to_string(),
+            )),
         }
+    }
+
+    fn attach_durable_admission(&self, kernel: &mut ChioKernel) -> Result<(), CliError> {
+        if kernel.durable_admission_mode()
+            == chio_kernel::admission_operation::DurableAdmissionMode::Off
+        {
+            return Ok(());
+        }
+        self.durable_admission
+            .as_ref()
+            .ok_or_else(|| {
+                CliError::cli_other_error(
+                    "hosted MCP durable admission runtime is unavailable".to_string(),
+                )
+            })?
+            .attach(kernel)
     }
 
     pub(super) fn build_session_upstream_server(&self) -> Result<Arc<AdaptedMcpServer>, CliError> {
@@ -66,6 +154,7 @@ impl RemoteSessionFactory {
         &self,
         auth_context: SessionAuthContext,
     ) -> Result<Arc<RemoteSession>, CliError> {
+        let session_id = Keypair::generate().public_key().to_hex();
         let loaded_policy = load_policy(&self.config.policy_path)?;
         let auth_mode_fingerprint = fingerprint_remote_auth_contract(&self.config)?;
         let policy_fingerprint = fingerprint_remote_policy_contract(&loaded_policy)?;
@@ -84,7 +173,7 @@ impl RemoteSessionFactory {
         let upstream_capabilities = upstream_server.upstream_capabilities();
         let manifest = upstream_server.manifest_clone();
 
-        let kernel_kp = Keypair::generate();
+        let kernel_kp = self.kernel_keypair(loaded_policy.kernel.durable_admission_mode)?;
         let mut kernel = build_kernel(loaded_policy, &kernel_kp);
         configure_receipt_store(
             &mut kernel,
@@ -92,12 +181,15 @@ impl RemoteSessionFactory {
             self.config.control_url.as_deref(),
             self.config.control_token.as_deref(),
         )?;
-        configure_revocation_store(
-            &mut kernel,
-            self.config.revocation_db_path.as_deref(),
-            self.config.control_url.as_deref(),
-            self.config.control_token.as_deref(),
-        )?;
+        if self.durable_admission.is_none() {
+            configure_revocation_store(
+                &mut kernel,
+                self.config.revocation_db_path.as_deref(),
+                self.config.control_url.as_deref(),
+                self.config.control_token.as_deref(),
+            )?;
+        }
+        self.attach_durable_admission(&mut kernel)?;
         configure_capability_authority(
             &mut kernel,
             &kernel_kp,
@@ -110,12 +202,14 @@ impl RemoteSessionFactory {
             issuance_policy,
             runtime_assurance_policy,
         )?;
-        configure_budget_store(
-            &mut kernel,
-            self.config.budget_db_path.as_deref(),
-            self.config.control_url.as_deref(),
-            self.config.control_token.as_deref(),
-        )?;
+        if self.durable_admission.is_none() {
+            configure_budget_store(
+                &mut kernel,
+                self.config.budget_db_path.as_deref(),
+                self.config.control_url.as_deref(),
+                self.config.control_token.as_deref(),
+            )?;
+        }
         if let Some(resource_provider) = upstream_server.resource_provider() {
             kernel.register_resource_provider(Box::new(resource_provider));
         }
@@ -162,11 +256,11 @@ impl RemoteSessionFactory {
             vec![manifest],
         )?;
         edge.set_session_auth_context(session_auth_context.clone());
+        edge.set_initial_session_id(restored_kernel_session_id(&session_id))?;
         edge.attach_upstream_transport(upstream_notification_source);
 
         let (input_tx, input_rx) = mpsc::channel::<Value>();
         let (event_tx, _) = broadcast::channel::<RemoteSessionEvent>(256);
-        let session_id = Keypair::generate().public_key().to_hex();
         let retained_notification_events =
             Arc::new(StdMutex::new(VecDeque::<RetainedRemoteSessionEvent>::new()));
         let next_event_id = Arc::new(AtomicU64::new(0));
@@ -262,7 +356,7 @@ impl RemoteSessionFactory {
         let upstream_capabilities = upstream_server.upstream_capabilities();
         let manifest = upstream_server.manifest_clone();
 
-        let kernel_kp = Keypair::generate();
+        let kernel_kp = self.kernel_keypair(loaded_policy.kernel.durable_admission_mode)?;
         let mut kernel = build_kernel(loaded_policy, &kernel_kp);
         configure_receipt_store(
             &mut kernel,
@@ -270,12 +364,15 @@ impl RemoteSessionFactory {
             self.config.control_url.as_deref(),
             self.config.control_token.as_deref(),
         )?;
-        configure_revocation_store(
-            &mut kernel,
-            self.config.revocation_db_path.as_deref(),
-            self.config.control_url.as_deref(),
-            self.config.control_token.as_deref(),
-        )?;
+        if self.durable_admission.is_none() {
+            configure_revocation_store(
+                &mut kernel,
+                self.config.revocation_db_path.as_deref(),
+                self.config.control_url.as_deref(),
+                self.config.control_token.as_deref(),
+            )?;
+        }
+        self.attach_durable_admission(&mut kernel)?;
         configure_capability_authority(
             &mut kernel,
             &kernel_kp,
@@ -288,12 +385,14 @@ impl RemoteSessionFactory {
             issuance_policy,
             runtime_assurance_policy,
         )?;
-        configure_budget_store(
-            &mut kernel,
-            self.config.budget_db_path.as_deref(),
-            self.config.control_url.as_deref(),
-            self.config.control_token.as_deref(),
-        )?;
+        if self.durable_admission.is_none() {
+            configure_budget_store(
+                &mut kernel,
+                self.config.budget_db_path.as_deref(),
+                self.config.control_url.as_deref(),
+                self.config.control_token.as_deref(),
+            )?;
+        }
         if let Some(resource_provider) = upstream_server.resource_provider() {
             kernel.register_resource_provider(Box::new(resource_provider));
         }

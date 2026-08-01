@@ -21,11 +21,18 @@ mod tests {
     use crate::event::{AgUiEvent, EventClassification, EventType, TargetComponent};
     use crate::transport::{Transport, TransportKind};
     use chio_core::capability::{
-        attenuation::{DelegationLink, DelegationLinkBody},
-        scope::{ChioScope, Constraint, Operation, ToolGrant},
+        aggregate_invocation::{AggregateInvocationBudget, AggregateInvocationScope},
+        attenuation::{delegate, DelegationLink, DelegationLinkBody},
+        features::{
+            CapabilityNegotiation, AGGREGATE_INVOCATION_BUDGET, CUMULATIVE_APPROVAL_BUDGET,
+        },
+        scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant},
         token::{CapabilityToken, CapabilityTokenBody},
     };
     use chio_core::crypto::Keypair;
+    use std::collections::BTreeMap;
+
+    type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
     fn make_event(classification: EventClassification) -> AgUiEvent {
         let event_type = match classification {
@@ -73,6 +80,7 @@ mod tests {
                 issued_at: 0,
                 expires_at: u64::MAX,
                 delegation_chain: vec![],
+                aggregate_invocation_budget: None,
             },
             &kp,
         )
@@ -108,6 +116,7 @@ mod tests {
                 issued_at: 0,
                 expires_at: u64::MAX,
                 delegation_chain: vec![],
+                aggregate_invocation_budget: None,
             },
             issuer,
         )
@@ -129,6 +138,8 @@ mod tests {
                 attenuations: vec![],
                 timestamp: 0,
                 scope_hash: None,
+                aggregate_budget: None,
+                cumulative_approval: None,
             },
             issuer,
         )
@@ -161,6 +172,7 @@ mod tests {
                 issued_at: 0,
                 expires_at: u64::MAX,
                 delegation_chain: vec![parent_link],
+                aggregate_invocation_budget: None,
             },
             issuer,
         )
@@ -183,6 +195,8 @@ mod tests {
                 attenuations: vec![],
                 timestamp: 0,
                 scope_hash: None,
+                aggregate_budget: None,
+                cumulative_approval: None,
             },
             issuer,
         )
@@ -219,6 +233,7 @@ mod tests {
                 issued_at: 0,
                 expires_at: u64::MAX,
                 delegation_chain: vec![parent_link],
+                aggregate_invocation_budget: None,
             },
             issuer,
         )
@@ -241,6 +256,8 @@ mod tests {
                 attenuations: vec![],
                 timestamp: 0,
                 scope_hash: None,
+                aggregate_budget: None,
+                cumulative_approval: None,
             },
             issuer,
         )
@@ -274,6 +291,7 @@ mod tests {
                 issued_at: 0,
                 expires_at: u64::MAX,
                 delegation_chain: vec![parent_link],
+                aggregate_invocation_budget: None,
             },
             issuer,
         )
@@ -361,6 +379,208 @@ mod tests {
             },
             Keypair::generate(),
         )
+    }
+
+    fn cumulative_constraint(
+        threshold_units: u64,
+        root_binding: Option<
+            chio_core::capability::cumulative_approval::CumulativeApprovalRootBinding,
+        >,
+    ) -> Constraint {
+        Constraint::RequireCumulativeApprovalAbove {
+            threshold: MonetaryAmount {
+                units: threshold_units,
+                currency: "USD".to_string(),
+            },
+            approval_budget_id: "budget-1".to_string(),
+            approval_budget_epoch: 1,
+            cumulative_approval_root_binding: root_binding.map(Box::new),
+        }
+    }
+
+    fn cumulative_ag_ui_scope(
+        delegable: bool,
+        threshold_units: u64,
+        root_binding: Option<
+            chio_core::capability::cumulative_approval::CumulativeApprovalRootBinding,
+        >,
+    ) -> ChioScope {
+        let mut operations = vec![Operation::Invoke];
+        if delegable {
+            operations.push(Operation::Delegate);
+        }
+        ChioScope {
+            grants: vec![ToolGrant {
+                server_id: AG_UI_SERVER_ID.to_string(),
+                tool_name: "submit".to_string(),
+                operations,
+                constraints: vec![
+                    Constraint::Custom("session_id".to_string(), "sess-1".to_string()),
+                    Constraint::Custom("target_component_type".to_string(), "chat".to_string()),
+                    cumulative_constraint(threshold_units, root_binding),
+                ],
+                max_invocations: None,
+                max_cost_per_invocation: None,
+                max_total_cost: None,
+                dpop_required: None,
+            }],
+            resource_grants: vec![],
+            prompt_grants: vec![],
+        }
+    }
+
+    fn cumulative_family_fixture(
+    ) -> TestResult<(Keypair, CapabilityToken, CapabilityToken, CapabilityToken)> {
+        let issuer = Keypair::generate();
+        let root_subject = Keypair::generate();
+        let delegatee = Keypair::generate();
+        let root_body = CapabilityTokenBody {
+            id: "cap-ag-ui-cumulative-root".to_string(),
+            issuer: issuer.public_key(),
+            subject: root_subject.public_key(),
+            scope: cumulative_ag_ui_scope(true, 100, None),
+            issued_at: 1_700_000_000,
+            expires_at: u64::MAX,
+            delegation_chain: vec![],
+            aggregate_invocation_budget: None,
+        };
+        let root =
+            CapabilityToken::sign_cumulative_approval_family_root(root_body.clone(), &issuer)?;
+        let binding = root
+            .scope
+            .grants
+            .first()
+            .and_then(|grant| grant.constraints.last())
+            .and_then(Constraint::cumulative_approval_root_binding)
+            .cloned()
+            .ok_or_else(|| std::io::Error::other("cumulative root binding missing"))?;
+        let child_scope = cumulative_ag_ui_scope(false, 80, Some(binding));
+        let receipt = delegate(
+            &root,
+            &child_scope,
+            &root_subject,
+            &delegatee.public_key(),
+            Default::default(),
+            1_700_000_001,
+            [14_u8; 16],
+        )?;
+        let child = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "cap-ag-ui-cumulative-child".to_string(),
+                issuer: issuer.public_key(),
+                subject: delegatee.public_key(),
+                scope: child_scope,
+                issued_at: 1_700_000_001,
+                expires_at: u64::MAX,
+                delegation_chain: receipt.complete_chain(),
+                aggregate_invocation_budget: None,
+            },
+            &issuer,
+        )?;
+
+        let mut wrong_root_body = root_body;
+        wrong_root_body.id = "cap-ag-ui-cumulative-wrong-root".to_string();
+        wrong_root_body.subject = Keypair::generate().public_key();
+        let wrong_root =
+            CapabilityToken::sign_cumulative_approval_family_root(wrong_root_body, &issuer)?;
+        Ok((issuer, root, child, wrong_root))
+    }
+
+    #[test]
+    fn aggregate_capability_is_blocked_until_enforcement_is_available() {
+        let issuer = Keypair::generate();
+        let base = make_scoped_capability(&issuer, "submit");
+        let mut body = base.body();
+        body.aggregate_invocation_budget = Some(AggregateInvocationBudget {
+            scope: AggregateInvocationScope::Capability,
+            max_invocations: 1,
+            root_binding: None,
+        });
+        let capability = CapabilityToken::sign(body, &issuer).unwrap();
+        let mut peer_capabilities = CapabilityNegotiation::v1_default();
+        peer_capabilities
+            .features
+            .insert(AGGREGATE_INVOCATION_BUDGET.to_string(), true);
+        let proxy = AgUiProxy::new(
+            AgUiProxyConfig {
+                trusted_issuers: vec![issuer.public_key()],
+                peer_capabilities,
+                ..Default::default()
+            },
+            Keypair::generate(),
+        );
+        let event = make_event(EventClassification::Submit);
+        let mut transport = Transport::new(
+            TransportKind::WebSocket,
+            "ws-aggregate-unavailable".to_string(),
+            "agent-1".to_string(),
+        );
+
+        let (decision, receipt) = proxy
+            .evaluate(&event, Some(&capability), &mut transport)
+            .unwrap();
+
+        assert!(matches!(decision, ProxyDecision::Block { .. }));
+        assert!(!receipt.allowed);
+        assert!(receipt.denial_reason.as_deref().is_some_and(
+            |reason| reason.contains("aggregate invocation enforcement is unavailable")
+        ));
+        assert_eq!(transport.events_blocked, 1);
+    }
+
+    #[test]
+    fn cumulative_family_requires_matching_signed_root() -> TestResult {
+        let (issuer, root, child, wrong_root) = cumulative_family_fixture()?;
+        let mut peer_capabilities = CapabilityNegotiation::v1_default();
+        peer_capabilities
+            .features
+            .insert(CUMULATIVE_APPROVAL_BUDGET.to_string(), true);
+        let cases = [
+            (
+                "valid",
+                Some(root.clone()),
+                "cumulative approval enforcement is unavailable",
+            ),
+            ("missing", None, "capability rejected by chain binding"),
+            (
+                "mismatched",
+                Some(wrong_root),
+                "capability rejected by chain binding",
+            ),
+        ];
+
+        for (name, supplied_root, expected) in cases {
+            let mut capability_family_roots = BTreeMap::new();
+            if let Some(supplied_root) = supplied_root {
+                capability_family_roots.insert(root.id.clone(), supplied_root);
+            }
+            let proxy = AgUiProxy::try_new(
+                AgUiProxyConfig {
+                    trusted_issuers: vec![issuer.public_key()],
+                    peer_capabilities: peer_capabilities.clone(),
+                    capability_family_roots,
+                    parent_budget_snapshots: vec![parent_budget_snapshot(&root.id)],
+                    ..Default::default()
+                },
+                Keypair::generate(),
+            )?;
+            let mut transport = Transport::new(
+                TransportKind::WebSocket,
+                format!("ws-cumulative-{name}"),
+                "agent-1".to_string(),
+            );
+            let (decision, receipt) = proxy.evaluate(
+                &make_event(EventClassification::Submit),
+                Some(&child),
+                &mut transport,
+            )?;
+
+            assert!(matches!(decision, ProxyDecision::Block { .. }));
+            assert!(!receipt.allowed);
+            let reason = receipt.denial_reason.as_deref().unwrap_or_default();
+            assert!(reason.contains(expected), "{name}: {reason}");
+        }
+        Ok(())
     }
 
     #[test]
@@ -653,6 +873,38 @@ mod tests {
         assert!(receipt.allowed);
         assert_eq!(transport.events_forwarded, 1);
         assert_eq!(receipt.capability_id, "cap-child");
+    }
+
+    #[test]
+    fn restricted_event_rejects_delegated_capability_with_revoked_parent() {
+        let issuer = Keypair::generate();
+        let proxy = AgUiProxy::try_new(
+            AgUiProxyConfig {
+                trusted_issuers: vec![issuer.public_key()],
+                revoked_capability_ids: vec!["cap-parent".to_string()],
+                parent_budget_snapshots: vec![parent_budget_snapshot("cap-parent")],
+                ..Default::default()
+            },
+            Keypair::generate(),
+        )
+        .unwrap();
+        let event = make_event(EventClassification::Submit);
+        let cap = make_delegated_scoped_capability(&issuer, "submit", "cap-child", "cap-parent");
+        let mut transport = Transport::new(
+            TransportKind::WebSocket,
+            "ws-revoked-parent".to_string(),
+            "agent-1".to_string(),
+        );
+
+        let (decision, receipt) = proxy.evaluate(&event, Some(&cap), &mut transport).unwrap();
+
+        assert!(matches!(decision, ProxyDecision::Block { .. }));
+        assert!(!receipt.allowed);
+        assert!(receipt
+            .denial_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("delegation ancestor has been revoked")));
+        assert_eq!(transport.events_blocked, 1);
     }
 
     #[test]

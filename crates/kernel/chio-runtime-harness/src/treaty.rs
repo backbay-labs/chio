@@ -75,8 +75,9 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
             action_class_id: action_class_id.clone(),
             mode: "receipt_backed".to_string(),
             destructive: step.admission_bundle.destructive,
-            consistency_model: "totally_ordered".to_string(),
+            consistency_model: "totally-ordered".to_string(),
             co_sign: "bilateral_required".to_string(),
+            co_sign_quorum: None,
             evidence_required,
             participant_modes,
         }],
@@ -162,7 +163,7 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
         continuation_sha256: continuation_sha256.clone(),
         lineage_statement_sha256: String::new(),
         action_class_id: action_class_id.clone(),
-        consistency_model: "totally_ordered".to_string(),
+        consistency_model: "totally-ordered".to_string(),
         capability_id: step.request.capability_id.clone(),
         request_sha256: step.request.tool_args_sha256.clone(),
         outcome_sha256: outcome_sha256.clone(),
@@ -241,6 +242,15 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
             },
         }
     });
+    let dsse_consistency_model = chio_runtime_core::bilateral_dsse_consistency_model(
+        &bilateral_invocation.consistency_model,
+    )
+    .map_err(|error| {
+        RuntimeLoopbackError::message(format!(
+            "Chio runtime loopback DSSE consistency model: {error}"
+        ))
+    })?
+    .to_string();
     let envelope = chio_federation::bilateral_dsse::sign_chio_bilateral_dsse_envelope(
         &proof_receipt,
         &origin_key,
@@ -264,7 +274,7 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
             policy_evaluation_summary: Some(runtime_loopback_policy_summary(step)),
             governance_receipt_ref,
             consistency_anchor: Some(format!("chio:runtime-loopback:{step_index}")),
-            consistency_model: Some("totally_ordered".to_string()),
+            consistency_model: Some(dsse_consistency_model.clone()),
             cross_org_visibility: None,
             treaty_binding_ref: Some(chio_federation::bilateral_dsse::TreatyBindingRef {
                 treaty_id: treaty_scope.treaty_id.clone(),
@@ -274,7 +284,7 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
                 continuation_sha256: continuation_sha256.clone(),
                 lineage_bundle_sha256: lineage_bundle_sha256.clone(),
                 action_class_id: action_class_id.clone(),
-                consistency_model: "totally_ordered".to_string(),
+                consistency_model: dsse_consistency_model,
                 request_sha256: bilateral_invocation.request_sha256.clone(),
                 outcome_sha256: bilateral_invocation.outcome_sha256.clone(),
                 local_receipt_sha256: bilateral_invocation.local_receipt_sha256.clone(),
