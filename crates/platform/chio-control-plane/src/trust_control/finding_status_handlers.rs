@@ -682,6 +682,7 @@ mod tests {
             venue_finalization: authority_pin(8, "venue-finalization", now),
             market_penalty: authority_pin(9, "market-penalty", now),
             settlement_observer: authority_pin(10, "settlement-observer", now),
+            max_snapshot_age_secs: 3_600,
             settlement_finality_requirement:
                 chio_settle::FindingFinalityRequirement::Confirmations { min_depth: 64 },
             audit_authority: authority_pin(11, "audit-authority", now),
