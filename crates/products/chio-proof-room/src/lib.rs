@@ -141,6 +141,7 @@ const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_K
 const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
     "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
 const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS";
+const TRANSACTION_TRUSTED_CHECKPOINT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_CHECKPOINT_KEYS";
 const RUNTIME_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_RUNTIME_TRUSTED_ROOT_KEYS";
 const ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV: &str = "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS";
 const ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV: &str =
@@ -744,6 +745,15 @@ pub(crate) fn transaction_trusted_root_keys_from_env() -> Result<Vec<PublicKey>,
     }
 }
 
+pub(crate) fn transaction_trusted_checkpoint_keys_from_env() -> Result<Vec<PublicKey>, String> {
+    match env::var(TRANSACTION_TRUSTED_CHECKPOINT_KEYS_ENV) {
+        Ok(keys) => parse_public_keys(TRANSACTION_TRUSTED_CHECKPOINT_KEYS_ENV, &keys),
+        Err(env::VarError::NotPresent) => Ok(Vec::new()),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{TRANSACTION_TRUSTED_CHECKPOINT_KEYS_ENV} must be valid UTF-8"
+        )),
+    }
+}
 pub(crate) fn runtime_trust_from_env(
 ) -> Result<chio_transaction_passport::RuntimeSecurityTrust, String> {
     let trusted_passport_signer_keys = transaction_trusted_root_keys_from_env()?;

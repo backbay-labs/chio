@@ -29,3 +29,4 @@ Current ADR set:
 15. [ADR-0015 Predeclared Non-Discretionary Escrow Circuit Breakers](ADR-0015-predeclared-escrow-circuit-breakers.md)
 16. [ADR-0016 Authoritative Spend Contract](ADR-0016-authoritative-spend-contract.md)
 17. [ADR-0017 Cognition-Market Finding Artifacts And Reveal-As-Governed-Call](ADR-0017-cognition-market-finding-artifacts.md)
+18. [ADR-0018 Radicle Is A Carrier, Never An Authority (Adoption Deferred)](ADR-0018-radicle-carrier-not-authority.md)

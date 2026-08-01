@@ -66,6 +66,11 @@ ignore = [
     # still requires heapless 0.7, whose cas feature depends on atomic-polyfill. No compatible postcard release
     # permits heapless 0.8 or portable-atomic yet. Clear this exception when the postcard/heapless chain updates.
     "RUSTSEC-2023-0089",
+    # last-checked = 2026-07-31; wasmtime 43 type-index confusion across engines (RUSTSEC-2026-0222).
+    # The guard runtime holds one Arc<Engine> per backend and builds every Store from that same
+    # engine, so no store is ever paired with a Module from a different engine. Clears with the
+    # wasmtime 46/47 upgrade tracked for the guard runtime.
+    "RUSTSEC-2026-0222",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are

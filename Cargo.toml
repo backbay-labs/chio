@@ -172,6 +172,8 @@ members = [
     "tests/replay",
     #
     # Tooling
+    "bench/chio-chaos",
+    "bench/chio-loadgen",
     "bench/healthcare-pilot-capacity",
     "bench/ttfrh",
     "xtask",

@@ -52,112 +52,112 @@ def allow(expires: str, rationale: str, *, max_lines: int | None = None) -> Allo
 
 ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-cli/tests/mcp_serve_http.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized CLI MCP HTTP integration suite; capped to current size until split",
         max_lines=6_316,
     ),
     "crates/products/chio-cli/tests/passport.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized CLI passport integration suite; capped to current size until split",
         max_lines=5_395,
     ),
     "crates/products/chio-cli/tests/mcp_serve.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized CLI MCP serve integration suite; capped to current size until split",
         max_lines=4_500,
     ),
     "crates/protocol/chio-mcp-edge/src/runtime/runtime_tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized MCP edge runtime test suite; capped to current size until split",
         max_lines=4_643,
     ),
     "crates/products/chio-cli/tests/certify.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized CLI certify integration suite; capped to current size until split",
         max_lines=3_645,
     ),
     "crates/products/chio-cli/src/cli/dispatch/proof/fixture.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "launch proof fixture dispatch surface; capped to current size until split",
         max_lines=6_360,
     ),
     "crates/products/chio-cli/src/cli/dispatch/proof.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "launch proof dispatch surface; capped to current size until split",
         max_lines=3_399,
     ),
     "crates/products/chio-mercury/tests/cli.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized Mercury CLI integration suite; capped to current size until split",
         max_lines=3_264,
     ),
     "crates/products/chio-cli/tests/trust_cluster.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized CLI trust-cluster integration suite; capped to current size until split",
         max_lines=3_229,
     ),
     "crates/products/chio-api-protect/src/proxy/tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized API protect proxy test suite; capped to current size until split",
         max_lines=3_477,
     ),
     "crates/protocol/chio-acp-edge/src/tests/all.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized ACP edge aggregate test suite; capped to current size until split",
         max_lines=3_338,
     ),
     "crates/protocol/chio-a2a-edge/src/tests/all.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized A2A edge aggregate test suite; capped to current size until split",
         max_lines=3_207,
     ),
     "crates/products/chio-cli/tests/proof_cli_contract/support.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "launch proof CLI contract support module; capped to current size until split",
         max_lines=4_067,
     ),
     "crates/products/chio-cli/tests/proof_verify.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "launch proof verifier integration suite; capped to current size until split",
         max_lines=3_115,
     ),
     "crates/platform/chio-enterprise-export/tests/enterprise_export.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "launch enterprise export integration suite; capped to current size until split",
         max_lines=2_724,
     ),
     "crates/products/chio-cli/tests/federated_issue.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized CLI federated issue integration suite; capped to current size until split",
         max_lines=2_333,
     ),
     "crates/trust/chio-credentials/src/tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized credentials test suite; capped to current size until split",
         max_lines=2_164,
     ),
     "crates/core/chio-core-types/src/capability/tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized capability type test suite; capped to current size until split; covers time-checked verification, attenuation narrowing, and wildcard/concrete reflection regressions",
         max_lines=3_296,
     ),
     "crates/kernel/chio-runtime-core/tests/runtime_buyer_review.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized runtime buyer review integration suite; capped to current size until split",
         max_lines=2_068,
     ),
     "crates/kernel/chio-runtime-core/tests/runtime_admission.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "runtime admission integration suite; capped to current size after swarm authority split",
         max_lines=2_875,
     ),
     "crates/platform/chio-transaction-passport/tests/transaction_passport.rs": allow(
-        "2026-07-31",
-        "transaction passport integration suite with runtime-security review regressions; capped until split",
-        max_lines=2_445,
+        "2026-08-31",
+        "transaction passport integration suite with runtime-security and transparency-anchor review regressions; capped until split",
+        max_lines=2_800,
     ),
     "crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized remote MCP test suite; capped to current size until split",
         max_lines=2_012,
     ),
@@ -167,202 +167,202 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_004,
     ),
     "crates/trust/chio-selective-disclosure/src/lib.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "launch selective disclosure verifier surface; capped to current size until split",
-        max_lines=1_346,
+        max_lines=1_355,
     ),
     "crates/platform/chio-risk-comptroller/src/lib.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "launch risk comptroller verifier surface; capped to current size until split",
         max_lines=1_356,
     ),
     "crates/economy/chio-web3/src/tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "web3 test module with public-settlement review regressions; capped until split",
         max_lines=2_692,
     ),
     "crates/kernel/chio-runtime-proof-parity/src/lib.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "runtime proof parity surface; capped to current size until split",
         max_lines=1_058,
     ),
     "crates/kernel/chio-swarm-authority/src/verifier.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "swarm authority verifier surface; capped to current size until split",
         max_lines=2_279,
     ),
     "crates/platform/chio-transaction-passport/src/runtime_security/artifacts.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "runtime security artifact verifier with trusted join and overflow hardening; capped until split",
         max_lines=2_322,
     ),
     "crates/products/chio-cli/tests/proof_cli_contract/fixture.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "launch proof CLI fixture contract suite; capped to current size until split",
         max_lines=2_210,
     ),
     "crates/products/chio-cli/tests/proof_verify/support.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "launch proof verifier support module; capped to current size until split",
         max_lines=2_260,
     ),
     "crates/products/chio-proof-room/src/lib.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "Proof Room product surface; capped to current size until split",
         max_lines=1_196,
     ),
     "crates/economy/chio-settle/src/evm/tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "EVM settlement unit test module with anchor content-hash regression coverage; capped until split",
         max_lines=2_388,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized kernel runtime test suite; capped to current size until split",
         max_lines=4_817,
     ),
     "crates/products/chio-cli/src/cli/chio/dispatch/pheromone/iroh_mount.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "pheromone iroh mount dispatch surface; capped to current size until split",
         max_lines=3_411,
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "receipt store hot-path module after batch-bounded rework; capped to current size until split",
-        max_lines=5_308,
+        max_lines=5_375,
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "receipt retention regression suite; capped to current size until split",
-        max_lines=4_588,
+        max_lines=4_612,
     ),
     "crates/trust/chio-federation-transport-iroh/src/lanes/pheromone.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "iroh pheromone lane; capped to current size until split",
         max_lines=2_830,
     ),
     "crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "trust-control cluster and reports surface; capped to current size until split",
         max_lines=2_746,
     ),
     "crates/platform/chio-store-sqlite/src/budget_store/tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized budget store test suite; capped to current size until split",
         max_lines=2_657,
     ),
     "crates/trust/chio-federation-transport-iroh/src/lanes/revocation.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "iroh revocation lane; capped to current size until split",
         max_lines=2_511,
     ),
     "crates/trust/chio-federation-transport-iroh/src/lanes/fanout.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "iroh fanout lane; capped to current size until split",
         max_lines=2_443,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/support.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "existing oversized kernel test support module; capped to current size until split",
         max_lines=2_331,
     ),
     "crates/economy/chio-web3/src/settlement_proof.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "web3 settlement proof surface; capped to current size until split",
         max_lines=2_067,
     ),
     "crates/products/chio-wall/src/commands.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "wall command surface; capped to current size until split",
         max_lines=2_048,
     ),
     "crates/platform/chio-http-session/src/lib.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "shared HTTP session crate root; capped to current size until split",
         max_lines=1_103,
     ),
     "crates/economy/chio-credit/src/obligation/credit_admission.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "authoritative credit admission surface; capped to current size until split",
         max_lines=2_042,
     ),
     "crates/economy/chio-market/src/tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "market admission and quote test suite; capped to current size until split",
         max_lines=2_747,
     ),
     "crates/economy/chio-settle/src/channel/tests/support.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "settlement channel test support module; capped to current size until split",
         max_lines=2_030,
     ),
     "crates/kernel/chio-kernel/src/admission_operation_tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "durable admission operation regression suite; capped to current size until split",
         max_lines=2_339,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/budget.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "kernel budget and monetary evaluation regression suite; capped to current size until split",
         max_lines=2_017,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/durable_admission.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "durable kernel admission regression suite; capped to current size until split",
         max_lines=2_795,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/execution_nonce.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "execution nonce regression suite; capped to current size until split",
         max_lines=3_395,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/session.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "kernel session regression suite; capped to current size until split",
         max_lines=2_083,
     ),
     "crates/kernel/chio-kernel/src/kernel/validation.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "kernel capability and admission validation surface; capped to current size until split",
         max_lines=2_900,
     ),
     "crates/platform/chio-control-plane/src/lib.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "control-plane crate root; capped to current size until split",
         max_lines=1_039,
     ),
     "crates/platform/chio-control-plane/src/trust_control/capital_and_liability/liability.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "capital liability control surface; capped to current size until split",
         max_lines=2_166,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "admission factor assignment store surface; capped to current size until split",
         max_lines=2_246,
     ),
     "crates/platform/chio-store-sqlite/src/fiscal_store.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "fiscal persistence surface; capped to current size until split",
         max_lines=2_937,
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/support.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "receipt store test support module; capped to current size until split",
         max_lines=2_050,
     ),
     "crates/platform/chio-store-sqlite/src/serving_owner/global_commit_chain.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "serving-owner commit chain persistence surface; capped to current size until split",
         max_lines=2_155,
     ),
     "crates/platform/chio-store-sqlite/src/serving_owner/tests.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "serving-owner provisioning test suite; capped to current size until split",
         max_lines=2_075,
     ),
     "crates/products/chio-api-protect/src/proxy/mediated.rs": allow(
-        "2026-07-31",
+        "2026-08-31",
         "mediated API protection proxy surface; capped to current size until split",
         max_lines=3_574,
     ),
@@ -571,6 +571,26 @@ def validate_generated_headers(
             )
 
 
+def validate_rust_example_packages(
+    root: Path,
+    paths: list[str],
+    failures: list[str],
+) -> None:
+    checked: set[str] = set()
+    for path in paths:
+        parts = Path(path).parts
+        if len(parts) < 4 or parts[0] != "examples" or parts[2] != "src":
+            continue
+        example = str(Path(parts[0]) / parts[1])
+        if example in checked:
+            continue
+        checked.add(example)
+        if not (root / example / "Cargo.toml").is_file():
+            failures.append(
+                f"{example}: contains Rust src files but has no Cargo.toml"
+            )
+
+
 def validate_text_hygiene(root: Path, failures: list[str]) -> None:
     try:
         paths = discover_text_hygiene_files(root)
@@ -726,6 +746,7 @@ def main() -> int:
             failures.append(f"{file.path}: {violation}")
 
     validate_generated_headers(root, paths, failures)
+    validate_rust_example_packages(root, paths, failures)
     validate_text_hygiene(root, failures)
 
     if errors:

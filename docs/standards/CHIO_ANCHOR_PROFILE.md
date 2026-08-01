@@ -8,7 +8,8 @@ pre-release v1 workspace for multi-chain checkpoint anchoring.
 
 > Version posture: this is a pre-release standards profile. Internal `v2.x`
 > milestone labels are historical planning labels, not Chio-owned protocol,
-> schema, SDK, or runtime versions. Current protocol posture is v1-only.
+> schema, SDK, or runtime versions. The checkpoint-transparency migration uses
+> explicit v2 schemas where signed v1 envelopes cannot be extended compatibly.
 
 It covers four connected surfaces:
 
@@ -34,10 +35,11 @@ runtime example at `docs/standards/CHIO_ANCHOR_RUNTIME_REPORT_EXAMPLE.json`.
   matching the Chio super-root and at least one Bitcoin attestation
 - canonical Solana memo publication descriptors and imported memo-anchor
   verification over the built-in Memo program
-- one shared `chio.anchor-proof-bundle.v1` normalization lane spanning the
-  primary EVM proof and optional Bitcoin or Solana secondary evidence, with
-  Bitcoin linkage validated against the declared super-root digest instead of
-  metadata presence alone
+- one shared proof-bundle normalization lane spanning the primary EVM proof and
+  optional Bitcoin or Solana secondary evidence: v1 bundles require a v1
+  inclusion proof, and v2 bundles require a chain-committed v2 inclusion proof;
+  Bitcoin linkage is validated against the declared super-root digest instead
+  of metadata presence alone
 - canonical anchor-proof projection only from durable Chio evidence bundles
   that contain the receipt, one kernel-signed checkpoint, and one matching
   inclusion proof

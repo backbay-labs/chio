@@ -72,11 +72,21 @@ pub const DEFAULT_READER_POOL_MAX_SIZE: u32 = 8;
 /// writer pool defaults to a single connection.
 pub const DEFAULT_WRITER_POOL_MAX_SIZE: u32 = 1;
 
-/// SQLite pool sizing for receipt-store read and write paths.
+/// SQLite pool sizing and per-connection growth bound for receipt-store read
+/// and write paths.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SqlitePoolConfig {
     pub reader_pool_max_size: u32,
     pub writer_pool_max_size: u32,
+    /// Optional `PRAGMA max_page_count` ceiling applied to every pooled
+    /// connection. An operational bound on the logical page count of the MAIN
+    /// database file: a write that would push the main file past the cap fails
+    /// closed with a full-database error. This bounds the main file only, not the
+    /// `-wal` sidecar, so it is not a whole-volume guard: under checkpoint
+    /// starvation the WAL can still grow unbounded. `None` (the default) leaves
+    /// SQLite's built-in page ceiling in place, so a store opened without this
+    /// knob behaves exactly as before.
+    pub max_page_count: Option<u32>,
 }
 
 impl Default for SqlitePoolConfig {
@@ -84,6 +94,7 @@ impl Default for SqlitePoolConfig {
         Self {
             reader_pool_max_size: DEFAULT_READER_POOL_MAX_SIZE,
             writer_pool_max_size: DEFAULT_WRITER_POOL_MAX_SIZE,
+            max_page_count: None,
         }
     }
 }

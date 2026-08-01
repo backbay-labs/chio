@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-web3/v2/anchor-inclusion-proof.schema.json",
+  "title": "Chio V2 Anchor Inclusion Proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt",
+    "receipt_inclusion",
+    "checkpoint_statement",
+    "key_binding_certificate"
+  ],
+  "properties": {
+    "schema": { "const": "chio.anchor-inclusion-proof.v2" },
+    "receipt": {
+      "$ref": "../../chio-wire/v1/receipt/record.schema.json"
+    },
+    "receipt_inclusion": { "$ref": "#/$defs/receiptInclusion" },
+    "checkpoint_statement": { "$ref": "#/$defs/checkpointStatement" },
+    "chain_anchor": { "$ref": "#/$defs/chainAnchor" },
+    "bitcoin_anchor": { "$ref": "#/$defs/bitcoinAnchor" },
+    "super_root_inclusion": { "$ref": "#/$defs/superRootInclusion" },
+    "key_binding_certificate": { "$ref": "#/$defs/keyBinding" }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["bitcoin_anchor"] },
+      "then": { "required": ["super_root_inclusion"] }
+    }
+  ],
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^(0x)?[0-9a-f]{64}$"
+    },
+    "canonicalHash": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "publicKey": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:04[0-9a-f]{128}|p384:04[0-9a-f]{192}|hybrid:[0-9a-f]{64}:[0-9a-f]{3904}:ed25519\\+mldsa65|hybrid:p256:04[0-9a-f]{128}:[0-9a-f]{3904}:p256\\+mldsa65|hybrid:p384:04[0-9a-f]{192}:[0-9a-f]{3904}:p384\\+mldsa65)$"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:([0-9a-f]{2})+|p384:([0-9a-f]{2})+|hybrid:[0-9a-f]{128}:[0-9a-f]{6618}:ed25519\\+mldsa65|hybrid:p256:([0-9a-f]{2})+:[0-9a-f]{6618}:p256\\+mldsa65|hybrid:p384:([0-9a-f]{2})+:[0-9a-f]{6618}:p384\\+mldsa65)$"
+    },
+    "merkleProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tree_size", "leaf_index", "audit_path"],
+      "properties": {
+        "tree_size": { "type": "integer", "minimum": 1 },
+        "leaf_index": { "type": "integer", "minimum": 0 },
+        "audit_path": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hash" }
+        }
+      }
+    },
+    "receiptInclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checkpoint_seq", "merkle_root", "proof"],
+      "properties": {
+        "checkpoint_seq": { "type": "integer", "minimum": 1 },
+        "merkle_root": { "$ref": "#/$defs/hash" },
+        "proof": { "$ref": "#/$defs/merkleProof" }
+      }
+    },
+    "checkpointStatement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "checkpoint_seq",
+        "batch_start_seq",
+        "batch_end_seq",
+        "tree_size",
+        "merkle_root",
+        "issued_at",
+        "kernel_key",
+        "signature"
+      ],
+      "properties": {
+        "schema": { "const": "chio.checkpoint_statement.v2" },
+        "checkpoint_seq": { "type": "integer", "minimum": 1 },
+        "batch_start_seq": { "type": "integer", "minimum": 1 },
+        "batch_end_seq": { "type": "integer", "minimum": 1 },
+        "tree_size": { "type": "integer", "minimum": 1 },
+        "merkle_root": { "$ref": "#/$defs/canonicalHash" },
+        "issued_at": { "type": "integer", "minimum": 1 },
+        "previous_checkpoint_sha256": { "$ref": "#/$defs/sha256" },
+        "chain_root": { "$ref": "#/$defs/canonicalHash" },
+        "kernel_key": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "checkpoint_seq": { "const": 1 } },
+            "required": ["checkpoint_seq"]
+          },
+          "then": { "required": ["chain_root"] }
+        }
+      ]
+    },
+    "chainAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chain_id",
+        "contract_address",
+        "operator_address",
+        "tx_hash",
+        "block_number",
+        "block_hash",
+        "operator_key_hash",
+        "operator_epoch",
+        "anchored_merkle_root",
+        "anchored_checkpoint_seq"
+      ],
+      "properties": {
+        "chain_id": { "type": "string", "minLength": 1 },
+        "contract_address": { "type": "string", "minLength": 1 },
+        "operator_address": { "type": "string", "minLength": 1 },
+        "tx_hash": { "type": "string", "minLength": 1 },
+        "block_number": { "type": "integer", "minimum": 0 },
+        "block_hash": { "type": "string", "minLength": 1 },
+        "operator_key_hash": {
+          "allOf": [
+            { "$ref": "#/$defs/hash" },
+            {
+              "not": {
+                "enum": [
+                  "0000000000000000000000000000000000000000000000000000000000000000",
+                  "0x0000000000000000000000000000000000000000000000000000000000000000"
+                ]
+              }
+            }
+          ]
+        },
+        "operator_epoch": { "type": "integer", "minimum": 1 },
+        "anchored_merkle_root": { "$ref": "#/$defs/hash" },
+        "anchored_checkpoint_seq": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "bitcoinAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "ots_proof_b64",
+        "bitcoin_block_height",
+        "bitcoin_block_hash"
+      ],
+      "properties": {
+        "method": { "const": "opentimestamps" },
+        "ots_proof_b64": { "type": "string", "minLength": 1 },
+        "bitcoin_block_height": { "type": "integer", "minimum": 0 },
+        "bitcoin_block_hash": { "type": "string", "minLength": 1 }
+      }
+    },
+    "superRootInclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "super_root",
+        "proof",
+        "aggregated_checkpoint_start",
+        "aggregated_checkpoint_end"
+      ],
+      "properties": {
+        "super_root": { "$ref": "#/$defs/hash" },
+        "proof": { "$ref": "#/$defs/merkleProof" },
+        "aggregated_checkpoint_start": { "type": "integer", "minimum": 1 },
+        "aggregated_checkpoint_end": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "keyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["certificate", "signature"],
+      "properties": {
+        "certificate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema",
+            "chio_identity",
+            "chio_public_key",
+            "chain_scope",
+            "purpose",
+            "settlement_address",
+            "issued_at",
+            "expires_at",
+            "nonce"
+          ],
+          "properties": {
+            "schema": { "const": "chio.key-binding-certificate.v1" },
+            "chio_identity": { "type": "string", "minLength": 1 },
+            "chio_public_key": { "$ref": "#/$defs/publicKey" },
+            "chain_scope": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            },
+            "purpose": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "enum": ["anchor", "settle"] },
+              "uniqueItems": true
+            },
+            "settlement_address": { "type": "string", "minLength": 1 },
+            "issued_at": { "type": "integer", "minimum": 0 },
+            "expires_at": { "type": "integer", "minimum": 0 },
+            "nonce": { "type": "string", "minLength": 1 }
+          }
+        },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    }
+  }
+}

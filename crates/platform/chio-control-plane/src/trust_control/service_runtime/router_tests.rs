@@ -315,10 +315,11 @@ async fn versioned_rich_lifecycle_does_not_mutate_legacy_cluster_follower(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn live_structured_denial_has_no_invented_usage_sequence_or_cache_mutation(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let temp = crate::durable_admission::private_tempdir()?;
+    let temp = tempfile::tempdir()?;
+    crate::create_private_directory(temp.path())?;
     let database = temp.path().join("denied-authority.sqlite3");
     let lock_root = temp.path().join("locks");
-    crate::durable_admission::create_private_directory(&lock_root)?;
+    crate::create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     let joint = Arc::new(SqliteAuthorityStore::open_serving(&database, &lock_root)?);
     let mut state = metrics_state("service-secret");
@@ -428,10 +429,11 @@ async fn trust_control_metrics_accepts_valid_service_token() {
 #[tokio::test]
 async fn v1_lifecycle_uses_joint_store_when_legacy_handle_is_mismatched(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let temp = crate::durable_admission::private_tempdir()?;
+    let temp = tempfile::tempdir()?;
+    crate::create_private_directory(temp.path())?;
     let database = temp.path().join("joint.sqlite3");
     let lock_root = temp.path().join("locks");
-    crate::durable_admission::create_private_directory(&lock_root)?;
+    crate::create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     let joint = Arc::new(SqliteAuthorityStore::open_serving(&database, &lock_root)?);
     let legacy = Arc::new(SqliteBudgetStore::open(
@@ -550,10 +552,11 @@ async fn v1_lifecycle_uses_joint_store_when_legacy_handle_is_mismatched(
 #[tokio::test]
 async fn v1_lifecycle_uses_current_joint_epoch_after_restart(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let temp = crate::durable_admission::private_tempdir()?;
+    let temp = tempfile::tempdir()?;
+    crate::create_private_directory(temp.path())?;
     let database = temp.path().join("joint-restart.sqlite3");
     let lock_root = temp.path().join("locks");
-    crate::durable_admission::create_private_directory(&lock_root)?;
+    crate::create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     let first = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
     let first_fence = first.mutation_fence();

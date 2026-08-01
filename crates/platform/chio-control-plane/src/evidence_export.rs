@@ -447,7 +447,16 @@ fn read_ndjson_file<T: for<'de> Deserialize<'de>>(
         })?
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).map_err(CliError::from))
+        .enumerate()
+        .map(|(index, line)| {
+            serde_json::from_str(line).map_err(|error| {
+                CliError::attest_error(format!(
+                    "{relative_path} line {} does not parse as the current record schema \
+                     (records written by an older schema version must be re-exported): {error}",
+                    index + 1
+                ))
+            })
+        })
         .collect()
 }
 
@@ -1177,9 +1186,8 @@ pub fn cmd_evidence_export(
         }
         (Some(receipt_db), None) => {
             let store = SqliteReceiptStore::open(receipt_db)?;
-            let bundle = store.build_evidence_export_bundle(&prepared.query)?;
-            let transparency =
-                store.build_evidence_export_transparency_summary(&bundle.checkpoints)?;
+            let (bundle, transparency) =
+                store.build_evidence_export_bundle_with_transparency(&prepared.query)?;
             validate_evidence_bundle_requirements(&bundle, prepared.require_proofs)?;
             RemoteEvidenceExportResponse {
                 bundle,

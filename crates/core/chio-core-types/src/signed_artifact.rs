@@ -27,7 +27,9 @@ use crate::session::{CHIO_REQUEST_LINEAGE_RECORD_SCHEMA, CHIO_SESSION_ANCHOR_SCH
 /// can reject unknown signed artifacts before loading the `chio-anchor` crate.
 pub const CHIO_ANCHOR_BATCH_V1_SCHEMA: &str = "chio.anchor_batch.v1";
 pub const CHIO_ANCHOR_INCLUSION_PROOF_V1_SCHEMA: &str = "chio.anchor-inclusion-proof.v1";
+pub const CHIO_ANCHOR_INCLUSION_PROOF_V2_SCHEMA: &str = "chio.anchor-inclusion-proof.v2";
 pub const CHIO_ANCHOR_PROOF_BUNDLE_V1_SCHEMA: &str = "chio.anchor-proof-bundle.v1";
+pub const CHIO_ANCHOR_PROOF_BUNDLE_V2_SCHEMA: &str = "chio.anchor-proof-bundle.v2";
 pub const CHIO_BUDGET_SNAPSHOT_ANCHOR_PROVENANCE_V1_SCHEMA: &str =
     "chio.budget-snapshot-anchor-provenance.v1";
 pub const CHIO_BILATERAL_SIGNATURE_SLICE_V1_SCHEMA: &str = "chio.bilateral-signature-slice.v1";
@@ -174,6 +176,8 @@ pub const CHIO_DISCLOSURE_LINEAGE_VERIFIER_REPORT_V1_SCHEMA: &str =
     "chio.disclosure.lineage-verifier-report.v1";
 pub const CHIO_TRANSPARENCY_INCLUSION_PROOF_V1_SCHEMA: &str =
     "chio.transparency.inclusion-proof.v1";
+pub const CHIO_TRANSPARENCY_INCLUSION_PROOF_V2_SCHEMA: &str =
+    "chio.transparency.inclusion-proof.v2";
 pub const CHIO_POLICY_ACTIVATION_RECEIPT_V1_SCHEMA: &str = "chio.policy.activation-receipt.v1";
 pub const CHIO_RUNTIME_EXECUTION_LEASE_V1_SCHEMA: &str = "chio.runtime.execution-lease.v1";
 pub const CHIO_RUNTIME_TOOL_SERVER_ACK_V1_SCHEMA: &str = "chio.runtime.tool-server-ack.v1";
@@ -296,8 +300,16 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         Some(("anchor_inclusion_proof", "public-settlement-v1")),
     ),
     (
+        CHIO_ANCHOR_INCLUSION_PROOF_V2_SCHEMA,
+        Some(("anchor_inclusion_proof", "checkpoint-transparency-v2")),
+    ),
+    (
         CHIO_ANCHOR_PROOF_BUNDLE_V1_SCHEMA,
         Some(("anchor_proof_bundle", "public-settlement-v1")),
+    ),
+    (
+        CHIO_ANCHOR_PROOF_BUNDLE_V2_SCHEMA,
+        Some(("anchor_proof_bundle", "checkpoint-transparency-v2")),
     ),
     (
         CHIO_BILATERAL_SIGNATURE_SLICE_V1_SCHEMA,
@@ -797,6 +809,13 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_TRANSPARENCY_INCLUSION_PROOF_V1_SCHEMA,
         Some(("transparency_inclusion_proof", "crypto-context-v1")),
+    ),
+    (
+        CHIO_TRANSPARENCY_INCLUSION_PROOF_V2_SCHEMA,
+        Some((
+            "transparency_anchored_inclusion_proof",
+            "checkpoint-transparency-v2",
+        )),
     ),
     (
         CHIO_POLICY_ACTIVATION_RECEIPT_V1_SCHEMA,

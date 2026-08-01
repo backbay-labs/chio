@@ -1,5 +1,5 @@
 use alloy_primitives::keccak256;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 pub use chio_core_types::oracle::OracleConversionEvidence;
 
@@ -15,12 +15,32 @@ use crate::merkle::{leaf_hash, MerkleProof};
 use crate::receipt::body::ChioReceipt;
 use crate::validation::{ensure_non_empty, evm_addresses_match};
 
-pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA: &str = "chio.checkpoint_statement.v1";
-pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA: &str = "chio.anchor-inclusion-proof.v1";
+pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1: &str = "chio.checkpoint_statement.v1";
+pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2: &str = "chio.checkpoint_statement.v2";
+pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA: &str = CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2;
+pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V1: &str = "chio.anchor-inclusion-proof.v1";
+pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2: &str = "chio.anchor-inclusion-proof.v2";
+pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA: &str = CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2;
 pub const CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA: &str = "chio.oracle-conversion-evidence.v1";
 pub const CHIO_LINK_ORACLE_AUTHORITY: &str = "chio_link_runtime_v1";
 pub const CHIO_ANCHOR_CONTROL_STATE_SCHEMA: &str = "chio.anchor.control-state.v1";
 pub const CHIO_ANCHOR_CONTROL_TRACE_SCHEMA: &str = "chio.anchor.control-trace.v1";
+
+fn deserialize_non_null_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    if value.is_null() {
+        return Err(<D::Error as serde::de::Error>::custom(
+            "explicit null is not permitted; omit the optional field",
+        ));
+    }
+    T::deserialize(value)
+        .map(Some)
+        .map_err(<D::Error as serde::de::Error>::custom)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -40,8 +60,21 @@ pub struct Web3CheckpointStatement {
     pub tree_size: u64,
     pub merkle_root: Hash,
     pub issued_at: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub previous_checkpoint_sha256: Option<String>,
+    /// Checkpoint-chain commitment carried by the signed kernel body; must
+    /// round-trip losslessly or the reconstructed body fails signature
+    /// verification.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
+    pub chain_root: Option<Hash>,
     pub kernel_key: PublicKey,
     pub signature: Signature,
 }
@@ -86,11 +119,23 @@ pub struct AnchorInclusionProof {
     pub receipt: ChioReceipt,
     pub receipt_inclusion: Web3ReceiptInclusion,
     pub checkpoint_statement: Web3CheckpointStatement,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub chain_anchor: Option<Web3ChainAnchorRecord>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub bitcoin_anchor: Option<Web3BitcoinAnchor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub super_root_inclusion: Option<Web3SuperRootInclusion>,
     pub key_binding_certificate: SignedWeb3IdentityBinding,
 }
@@ -278,8 +323,22 @@ fn oracle_minor_units_per_unit(currency: &str) -> Result<u128, Web3ContractError
 pub fn validate_anchor_inclusion_proof(
     proof: &AnchorInclusionProof,
 ) -> Result<(), Web3ContractError> {
-    if proof.schema != CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA {
-        return Err(Web3ContractError::UnsupportedSchema(proof.schema.clone()));
+    match proof.schema.as_str() {
+        CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V1 => {
+            if proof.checkpoint_statement.schema != CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1 {
+                return Err(Web3ContractError::InvalidProof(
+                    "v1 anchor inclusion proofs must embed a v1 checkpoint statement".to_string(),
+                ));
+            }
+        }
+        CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2 => {
+            if proof.checkpoint_statement.schema != CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2 {
+                return Err(Web3ContractError::InvalidProof(
+                    "v2 anchor inclusion proofs must embed a v2 checkpoint statement".to_string(),
+                ));
+            }
+        }
+        _ => return Err(Web3ContractError::UnsupportedSchema(proof.schema.clone())),
     }
     validate_web3_identity_binding(&proof.key_binding_certificate)?;
     if proof.receipt.id.trim().is_empty() {
@@ -307,22 +366,15 @@ pub fn validate_anchor_inclusion_proof(
             "receipt inclusion merkle_root must match checkpoint statement".to_string(),
         ));
     }
-    if proof.checkpoint_statement.schema != CHIO_CHECKPOINT_STATEMENT_SCHEMA {
-        return Err(Web3ContractError::UnsupportedSchema(
-            proof.checkpoint_statement.schema.clone(),
-        ));
-    }
-    if proof.checkpoint_statement.batch_start_seq > proof.checkpoint_statement.batch_end_seq {
-        return Err(Web3ContractError::InvalidProof(
-            "checkpoint statement batch_start_seq must be <= batch_end_seq".to_string(),
-        ));
-    }
-    if proof.checkpoint_statement.tree_size == 0 {
-        return Err(Web3ContractError::InvalidProof(
-            "checkpoint statement tree_size must be non-zero".to_string(),
-        ));
-    }
-    if proof.checkpoint_statement.tree_size as usize != proof.receipt_inclusion.proof.tree_size {
+    validate_checkpoint_statement_shape(&proof.checkpoint_statement)?;
+    let checkpoint_tree_size =
+        usize::try_from(proof.checkpoint_statement.tree_size).map_err(|_| {
+            Web3ContractError::InvalidProof(
+                "checkpoint statement tree_size cannot be represented by this platform's Merkle proof index"
+                    .to_string(),
+            )
+        })?;
+    if checkpoint_tree_size != proof.receipt_inclusion.proof.tree_size {
         return Err(Web3ContractError::InvalidProof(
             "checkpoint statement tree_size must match receipt inclusion proof".to_string(),
         ));
@@ -458,6 +510,7 @@ pub fn validate_anchor_inclusion_proof(
 pub fn verify_checkpoint_statement(
     statement: &Web3CheckpointStatement,
 ) -> Result<(), Web3ContractError> {
+    validate_checkpoint_statement_shape(statement)?;
     let body = checkpoint_statement_body(statement);
     let verified = statement
         .kernel_key
@@ -469,6 +522,120 @@ pub fn verify_checkpoint_statement(
         ));
     }
     Ok(())
+}
+
+#[derive(Serialize)]
+struct Web3CheckpointChainLeaf {
+    checkpoint_seq: u64,
+    batch_start_seq: u64,
+    batch_end_seq: u64,
+    merkle_root: Hash,
+}
+
+fn checkpoint_chain_leaf_hash(
+    statement: &Web3CheckpointStatement,
+) -> Result<Hash, Web3ContractError> {
+    let leaf = Web3CheckpointChainLeaf {
+        checkpoint_seq: statement.checkpoint_seq,
+        batch_start_seq: statement.batch_start_seq,
+        batch_end_seq: statement.batch_end_seq,
+        merkle_root: statement.merkle_root,
+    };
+    let bytes = canonical_json_bytes(&leaf)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    Ok(leaf_hash(&bytes))
+}
+
+pub(crate) fn validate_checkpoint_statement_shape(
+    statement: &Web3CheckpointStatement,
+) -> Result<(), Web3ContractError> {
+    if !matches!(
+        statement.schema.as_str(),
+        CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1 | CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2
+    ) {
+        return Err(Web3ContractError::UnsupportedSchema(
+            statement.schema.clone(),
+        ));
+    }
+    if statement.schema == CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1 && statement.chain_root.is_some() {
+        return Err(Web3ContractError::InvalidProof(
+            "v1 checkpoint statements cannot carry chain_root".to_string(),
+        ));
+    }
+    if statement.checkpoint_seq == 0 {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement checkpoint_seq must be greater than zero".to_string(),
+        ));
+    }
+    if statement.batch_start_seq == 0 {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement batch_start_seq must be greater than zero".to_string(),
+        ));
+    }
+    if statement.issued_at == 0 {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement issued_at must be greater than zero".to_string(),
+        ));
+    }
+    if statement
+        .previous_checkpoint_sha256
+        .as_deref()
+        .is_some_and(|digest| !is_lowercase_sha256(digest))
+    {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement previous_checkpoint_sha256 must be 64 lowercase hex characters"
+                .to_string(),
+        ));
+    }
+    if statement.batch_start_seq > statement.batch_end_seq {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement batch_start_seq must be <= batch_end_seq".to_string(),
+        ));
+    }
+    if statement.tree_size == 0 {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement tree_size must be non-zero".to_string(),
+        ));
+    }
+    if statement.schema == CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2 {
+        let covered_entries = statement
+            .batch_end_seq
+            .checked_sub(statement.batch_start_seq)
+            .and_then(|count| count.checked_add(1))
+            .ok_or_else(|| {
+                Web3ContractError::InvalidProof(format!(
+                    "invalid checkpoint statement entry range {}-{}",
+                    statement.batch_start_seq, statement.batch_end_seq
+                ))
+            })?;
+        if statement.tree_size != covered_entries {
+            return Err(Web3ContractError::InvalidProof(format!(
+                "checkpoint statement tree_size {} does not match covered entry count {covered_entries}",
+                statement.tree_size
+            )));
+        }
+    }
+    if statement.schema == CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2 && statement.checkpoint_seq == 1 {
+        let Some(chain_root) = statement.chain_root else {
+            return Err(Web3ContractError::InvalidProof(
+                "v2 checkpoint 1 must carry chain_root".to_string(),
+            ));
+        };
+        let expected = checkpoint_chain_leaf_hash(statement)?;
+        if chain_root != expected {
+            return Err(Web3ContractError::InvalidProof(
+                "chain_root of the first checkpoint does not commit its own chain leaf".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn is_lowercase_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 pub fn verify_anchor_inclusion_proof(
@@ -534,6 +701,11 @@ pub(crate) struct Web3CheckpointStatementBody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     previous_checkpoint_sha256: Option<String>,
     kernel_key: PublicKey,
+    // Must mirror every signed field of the kernel checkpoint body: this
+    // struct reconstructs the canonical bytes the kernel signed, so an omitted
+    // field makes the signature unverifiable rather than merely unbound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chain_root: Option<Hash>,
 }
 
 pub(crate) fn checkpoint_statement_body(
@@ -549,5 +721,6 @@ pub(crate) fn checkpoint_statement_body(
         issued_at: statement.issued_at,
         previous_checkpoint_sha256: statement.previous_checkpoint_sha256.clone(),
         kernel_key: statement.kernel_key.clone(),
+        chain_root: statement.chain_root,
     }
 }

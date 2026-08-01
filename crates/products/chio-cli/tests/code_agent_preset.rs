@@ -185,7 +185,7 @@ fn private_store_paths() -> (tempfile::TempDir, PathBuf, PathBuf) {
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700))
-            .expect("restrict private store directory");
+            .expect("secure private store directory");
     }
     let receipt_db = dir.path().join("receipts.sqlite3");
     let session_db = dir.path().join("sessions.sqlite3");

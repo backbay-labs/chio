@@ -1,0 +1,71 @@
+name: Windows Secure Scaffold
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/windows-secure-scaffold.yml"
+      - ".github/actions/setup-rust/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "crates/kernel/chio-runtime-harness/**"
+      - "crates/platform/chio-store-sqlite/**"
+      - "crates/platform/chio-control-plane/**"
+      - "crates/products/chio-api-protect/**"
+      - "crates/products/chio-cli/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/windows-secure-scaffold.yml"
+      - ".github/actions/setup-rust/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "crates/kernel/chio-runtime-harness/**"
+      - "crates/platform/chio-store-sqlite/**"
+      - "crates/platform/chio-control-plane/**"
+      - "crates/products/chio-api-protect/**"
+      - "crates/products/chio-cli/**"
+  workflow_dispatch:
+
+concurrency:
+  group: windows-secure-scaffold-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows-secure-scaffold:
+    name: Windows authority guard and init
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: windows-secure-scaffold
+          protoc: "false"
+
+      - name: Test Windows authority platform guard
+        run: "cargo test --locked -p chio-store-sqlite --lib windows_platform_tests:: -- --nocapture"
+
+      - name: Test Windows control-plane guards
+        run: "cargo test --locked -p chio-control-plane --lib durable_admission::windows -- --nocapture"
+
+      - name: Test Windows trust service startup guard
+        run: "cargo test --locked -p chio-control-plane --lib trust_control::service_runtime::init::windows_authority_tests:: -- --nocapture"
+
+      - name: Test Windows runtime harness startup guard
+        run: "cargo test --locked -p chio-runtime-harness --lib windows_authority_tests:: -- --nocapture"
+
+      - name: Test Windows API protect startup guard
+        run: "cargo test --locked -p chio-api-protect --lib proxy::state::windows_authority_tests:: -- --nocapture"
+
+      - name: Test Windows CLI init wiring
+        run: "cargo test --locked -p chio-cli --test init init_creates_expected_project_files -- --exact --nocapture"

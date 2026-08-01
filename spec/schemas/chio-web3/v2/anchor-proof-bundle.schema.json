@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-web3/v2/anchor-proof-bundle.schema.json",
+  "title": "Chio V2 Anchor Proof Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "primary_proof", "secondary_lanes"],
+  "properties": {
+    "schema": { "const": "chio.anchor-proof-bundle.v2" },
+    "primary_proof": {
+      "allOf": [
+        { "$ref": "anchor-inclusion-proof.schema.json" },
+        { "required": ["chain_anchor"] }
+      ]
+    },
+    "secondary_lanes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "enum": ["bitcoin_ots", "solana_memo"] },
+      "uniqueItems": true
+    },
+    "solana_anchor": { "$ref": "#/$defs/solanaAnchor" },
+    "note": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "secondary_lanes": { "contains": { "const": "solana_memo" } }
+        },
+        "required": ["secondary_lanes"]
+      },
+      "then": { "required": ["solana_anchor"] },
+      "else": { "not": { "required": ["solana_anchor"] } }
+    },
+    {
+      "if": {
+        "properties": {
+          "secondary_lanes": { "contains": { "const": "bitcoin_ots" } }
+        },
+        "required": ["secondary_lanes"]
+      },
+      "then": {
+        "properties": {
+          "primary_proof": { "required": ["bitcoin_anchor"] }
+        }
+      },
+      "else": {
+        "properties": {
+          "primary_proof": { "not": { "required": ["bitcoin_anchor"] } }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^(0x)?[0-9a-f]{64}$"
+    },
+    "solanaAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chain_id",
+        "operator_pubkey",
+        "memo_program_id",
+        "tx_signature",
+        "slot",
+        "block_time",
+        "memo_data",
+        "anchored_merkle_root",
+        "anchored_checkpoint_seq"
+      ],
+      "properties": {
+        "chain_id": { "type": "string", "minLength": 1 },
+        "operator_pubkey": { "type": "string", "minLength": 1 },
+        "memo_program_id": {
+          "const": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+        },
+        "tx_signature": { "type": "string", "minLength": 1 },
+        "slot": { "type": "integer", "minimum": 0 },
+        "block_time": { "type": "integer", "minimum": 0 },
+        "memo_data": { "type": "string", "minLength": 1 },
+        "anchored_merkle_root": { "$ref": "#/$defs/hash" },
+        "anchored_checkpoint_seq": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

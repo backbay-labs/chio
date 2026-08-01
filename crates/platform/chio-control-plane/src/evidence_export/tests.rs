@@ -578,6 +578,7 @@ fn checkpoint_transparency_records_match_derived_chain() {
         &[b"three".to_vec(), b"four".to_vec()],
         &kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     let checkpoints = vec![first, second];
@@ -594,7 +595,7 @@ fn checkpoint_transparency_records_match_derived_chain() {
 }
 
 #[test]
-fn checkpoint_transparency_verification_fails_closed_on_equivocation() {
+fn checkpoint_transparency_verification_fails_closed_on_duplicate_checkpoint_fork() {
     let kp = Keypair::generate();
     let first = build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &kp).test_unwrap();
     let second = build_checkpoint_with_previous(
@@ -604,6 +605,7 @@ fn checkpoint_transparency_verification_fails_closed_on_equivocation() {
         &[b"three".to_vec(), b"four".to_vec()],
         &kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     let fork = build_checkpoint_with_previous(
@@ -613,12 +615,15 @@ fn checkpoint_transparency_verification_fails_closed_on_equivocation() {
         &[b"five".to_vec(), b"six".to_vec()],
         &kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
 
     let error = validate_checkpoint_transparency_summary(&[first, second, fork]).test_unwrap_err();
     assert!(
-        error.to_string().contains("equivocation"),
+        error
+            .to_string()
+            .contains("duplicate checkpoint sequence 2"),
         "unexpected error: {error}"
     );
 }

@@ -24,7 +24,10 @@ const RECEIPT_STORE_LEGACY_ANCHOR_TABLES: &[&str] =
 /// accepted. The Chio-specific `chio_tool_receipts` anchor needs no such check.
 const RECEIPT_STORE_GENERIC_LEGACY_ANCHOR_TABLES: &[&str] = &["http_receipts", "tool_receipts"];
 
-fn configure_sqlite_connection(connection: &mut Connection) -> Result<(), ReceiptStoreError> {
+fn configure_sqlite_connection(
+    connection: &mut Connection,
+    max_page_count: Option<u32>,
+) -> Result<(), ReceiptStoreError> {
     connection.execute_batch(
         r#"
         PRAGMA journal_mode = WAL;
@@ -35,6 +38,28 @@ fn configure_sqlite_connection(connection: &mut Connection) -> Result<(), Receip
         "#,
     )?;
     assert_sqlite_durability_pragmas(connection)?;
+    // Operational growth bound (see `SqlitePoolConfig::max_page_count`): cap the
+    // logical page count of the MAIN database file. A write that would push the
+    // main file past the cap fails closed with SQLITE_FULL. This bounds the main
+    // file only, not the `-wal` sidecar, so it is not a whole-volume exhaustion
+    // guard: under checkpoint starvation the WAL can still grow unbounded. `None`
+    // leaves SQLite's built-in page ceiling untouched.
+    if let Some(max_page_count) = max_page_count {
+        connection.pragma_update(None, "max_page_count", max_page_count)?;
+        // Verify the cap took effect. SQLite silently ignores a max_page_count of 0
+        // (leaving the default multi-gigabyte ceiling) and raises the effective
+        // limit to the current database size when the requested cap sits below it,
+        // so a caller could otherwise believe a fail-closed growth ceiling is
+        // installed while the file is effectively uncapped or already over the
+        // ceiling. Read the effective limit back and deny when it is not exactly
+        // the requested cap.
+        let effective: i64 = connection.query_row("PRAGMA max_page_count", [], |row| row.get(0))?;
+        if effective != i64::from(max_page_count) {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "sqlite max_page_count requested {max_page_count} but effective limit is {effective}"
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -253,7 +278,7 @@ impl SqliteReceiptStore {
                     "receipt database schema version {on_disk_schema_version} requires writable migration to version {RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION}; reopen it with SqliteReceiptStore::open"
                 )));
             }
-            configure_sqlite_connection(&mut connection)?;
+            configure_sqlite_connection(&mut connection, options.pool.max_page_count)?;
             super::support::ensure_transparency_projection_guards(&connection)?;
             verify_receipt_cost_projection(&connection)?;
             let settlement_store_binding = settlement_store_binding_if_ready(&connection)?;
@@ -264,12 +289,14 @@ impl SqliteReceiptStore {
                 options.pool.reader_pool_max_size,
                 "reader",
                 connection_flags,
+                options.pool.max_page_count,
             )?;
             let writer_pool = build_receipt_pool(
                 path,
                 options.pool.writer_pool_max_size,
                 "writer",
                 connection_flags,
+                options.pool.max_page_count,
             )?;
 
             return Ok(Self {
@@ -298,7 +325,7 @@ impl SqliteReceiptStore {
             RECEIPT_STORE_LEGACY_ANCHOR_TABLES,
         )
         .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
-        configure_sqlite_connection(&mut connection)?;
+        configure_sqlite_connection(&mut connection, options.pool.max_page_count)?;
         let schema_migration =
             connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         schema_migration.execute_batch(
@@ -1296,12 +1323,14 @@ impl SqliteReceiptStore {
             options.pool.reader_pool_max_size,
             "reader",
             connection_flags,
+            options.pool.max_page_count,
         )?;
         let writer_pool = build_receipt_pool(
             path,
             options.pool.writer_pool_max_size,
             "writer",
             connection_flags,
+            options.pool.max_page_count,
         )?;
 
         Ok(Self {
@@ -1326,6 +1355,7 @@ impl SqliteReceiptStore {
             crate::SqlitePoolConfig {
                 reader_pool_max_size,
                 writer_pool_max_size,
+                max_page_count: None,
             },
         )
     }
@@ -1336,6 +1366,7 @@ fn build_receipt_pool(
     max_size: u32,
     pool_name: &str,
     flags: Option<rusqlite::OpenFlags>,
+    max_page_count: Option<u32>,
 ) -> Result<Pool<SqliteConnectionManager>, ReceiptStoreError> {
     if max_size == 0 {
         return Err(ReceiptStoreError::Pool(format!(
@@ -1346,8 +1377,8 @@ fn build_receipt_pool(
     if let Some(flags) = flags {
         manager = manager.with_flags(flags);
     }
-    let manager = manager.with_init(|connection| {
-        configure_sqlite_connection(connection).map_err(|error| match error {
+    let manager = manager.with_init(move |connection| {
+        configure_sqlite_connection(connection, max_page_count).map_err(|error| match error {
             ReceiptStoreError::Sqlite(error) => error,
             other => rusqlite::Error::InvalidParameterName(other.to_string()),
         })

@@ -71,6 +71,7 @@ thiserror = { workspace = true, optional = true }
 arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
+chio-spec-validate = { workspace = true }
 chio-test-support = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }

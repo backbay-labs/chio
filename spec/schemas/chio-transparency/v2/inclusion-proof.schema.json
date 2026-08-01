@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-transparency/v2/inclusion-proof.schema.json",
+  "title": "Chio Checkpoint-Anchored Transparency Inclusion Proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "proof_id",
+    "log_id",
+    "artifact_ref",
+    "root_hash",
+    "leaf_hash",
+    "tree_size",
+    "leaf_index",
+    "checkpoint",
+    "inclusion_path",
+    "verified_at",
+    "checkpoint_statement"
+  ],
+  "properties": {
+    "schema": { "const": "chio.transparency.inclusion-proof.v2" },
+    "proof_id": { "type": "string", "minLength": 1 },
+    "log_id": {
+      "type": "string",
+      "pattern": "^local-log-[0-9a-f]{64}$"
+    },
+    "artifact_ref": { "$ref": "#/$defs/sha256" },
+    "root_hash": { "$ref": "#/$defs/hash" },
+    "leaf_hash": { "$ref": "#/$defs/hash" },
+    "tree_size": { "type": "integer", "minimum": 1 },
+    "leaf_index": { "type": "integer", "minimum": 0 },
+    "checkpoint": { "type": "string", "minLength": 1 },
+    "inclusion_path": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hash" }
+    },
+    "verified_at": { "type": "integer", "minimum": 1 },
+    "checkpoint_statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/checkpointBody" },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "hash": { "type": "string", "pattern": "^(0x)?[0-9a-f]{64}$" },
+    "canonicalHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+    "publicKey": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:04[0-9a-f]{128}|p384:04[0-9a-f]{192}|hybrid:[0-9a-f]{64}:[0-9a-f]{3904}:ed25519\\+mldsa65|hybrid:p256:04[0-9a-f]{128}:[0-9a-f]{3904}:p256\\+mldsa65|hybrid:p384:04[0-9a-f]{192}:[0-9a-f]{3904}:p384\\+mldsa65)$"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:([0-9a-f]{2})+|p384:([0-9a-f]{2})+|hybrid:[0-9a-f]{128}:[0-9a-f]{6618}:ed25519\\+mldsa65|hybrid:p256:([0-9a-f]{2})+:[0-9a-f]{6618}:p256\\+mldsa65|hybrid:p384:([0-9a-f]{2})+:[0-9a-f]{6618}:p384\\+mldsa65)$"
+    },
+    "checkpointBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "checkpoint_seq",
+        "batch_start_seq",
+        "batch_end_seq",
+        "tree_size",
+        "merkle_root",
+        "issued_at",
+        "kernel_key"
+      ],
+      "properties": {
+        "schema": {
+          "enum": [
+            "chio.checkpoint_statement.v1",
+            "chio.checkpoint_statement.v2"
+          ]
+        },
+        "checkpoint_seq": { "type": "integer", "minimum": 1 },
+        "batch_start_seq": { "type": "integer", "minimum": 1 },
+        "batch_end_seq": { "type": "integer", "minimum": 1 },
+        "tree_size": { "type": "integer", "minimum": 1 },
+        "merkle_root": { "$ref": "#/$defs/canonicalHash" },
+        "issued_at": { "type": "integer", "minimum": 1 },
+        "kernel_key": { "$ref": "#/$defs/publicKey" },
+        "previous_checkpoint_sha256": { "$ref": "#/$defs/sha256" },
+        "chain_root": { "$ref": "#/$defs/canonicalHash" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schema": { "const": "chio.checkpoint_statement.v1" }
+            },
+            "required": ["schema"]
+          },
+          "then": { "not": { "required": ["chain_root"] } }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema": { "const": "chio.checkpoint_statement.v2" },
+              "checkpoint_seq": { "const": 1 }
+            },
+            "required": ["schema", "checkpoint_seq"]
+          },
+          "then": { "required": ["chain_root"] }
+        }
+      ]
+    }
+  }
+}

@@ -840,9 +840,27 @@ fn proof_room_fixture_catalog_schema_is_registered() {
 
 #[test]
 fn public_settlement_anchor_evidence_schemas_are_registered() {
-    for (schema, artifact_kind) in [
-        ("chio.anchor-inclusion-proof.v1", "anchor_inclusion_proof"),
-        ("chio.anchor-proof-bundle.v1", "anchor_proof_bundle"),
+    for (schema, artifact_kind, introduced_by) in [
+        (
+            "chio.anchor-inclusion-proof.v1",
+            "anchor_inclusion_proof",
+            "public-settlement-v1",
+        ),
+        (
+            "chio.anchor-inclusion-proof.v2",
+            "anchor_inclusion_proof",
+            "checkpoint-transparency-v2",
+        ),
+        (
+            "chio.anchor-proof-bundle.v1",
+            "anchor_proof_bundle",
+            "public-settlement-v1",
+        ),
+        (
+            "chio.anchor-proof-bundle.v2",
+            "anchor_proof_bundle",
+            "checkpoint-transparency-v2",
+        ),
     ] {
         assert!(
             chio_core_types::is_supported_signed_artifact_schema(schema),
@@ -853,7 +871,7 @@ fn public_settlement_anchor_evidence_schemas_are_registered() {
                 .iter()
                 .any(|entry| entry.schema == schema
                     && entry.artifact_kind == artifact_kind
-                    && entry.introduced_by == "public-settlement-v1"),
+                    && entry.introduced_by == introduced_by),
             "anchor evidence schema should have a built-in registry row: {schema}"
         );
     }

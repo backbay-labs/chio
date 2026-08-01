@@ -1,6 +1,7 @@
 # PLAN-load-chaos: Load, soak, and chaos program: replace testing theater with real harnesses
 
 - Status: Draft (proposed, wave-3 reliability program)
+- Implemented in part: 2026-07-15, see "Implementation delta (2026-07-15)" below
 - Date: 2026-07-04
 - Extends: none
 - Depends on: RFC-0004 (bounded-memory / ENOMEM analog), RFC-0006 (storage hot path)
@@ -651,3 +652,70 @@ named test above.
 Steps 3 through 6 are independent of each other and can proceed in parallel once steps 1 and 2
 are available; the chaos storage scenarios (step 5) are strongest after RFC-0006 (step 2) so
 they assert the new recovery path rather than the legacy full-history rebuild.
+
+## Implementation delta (2026-07-15)
+
+This section records what has actually landed against the plan above. The
+original analysis is unchanged; this is an append-only status note. It is
+deliberately conservative: nothing here should be read as broader coverage than
+the tests and lanes named.
+
+### Landed
+
+- F49 (sustained lane cutover). `bench/chio-loadgen` is a real harness:
+  `StackHarness::boot` starts a live `ChioKernel` wired to a durable
+  `SqliteReceiptStore` and a configurable-latency stub tool server, and
+  `run_sustained` measures p50/p99 end-to-end latency and resident-set growth
+  with a fail-closed budget gate (`P99Exceeded`, `RssGrowthExceeded`). The
+  synthetic `sustained_p99_30min` bench and its `sustained-p99-nightly` cargo
+  feature were deleted; `sustained-p99-nightly.yml` now runs the real gate binary
+  (`cargo run -p chio-loadgen --release --bin sustained`). See
+  `bench/chio-loadgen/README.md`.
+- F53 (real in-tree fault injection, harness half). `bench/chio-chaos` injects
+  seven of the eight named fault classes against the live stack and asserts a
+  typed fail-closed deny plus recovery, each under the `InjectionNoOp`
+  discipline: SIGKILL-mid-append crash recovery with durable-ack verification,
+  SIGTERM-drain durable-ack preservation, ENOSPC (bounded `max_page_count`)
+  typed disk-full deny, wedged-writer `SQLITE_BUSY` deny and reseed,
+  retention-under-load head consistency, hung-tool-server dispatch-deadline deny,
+  and blocking-guard guard-pipeline-timeout deny. New nightly lane
+  `chio-chaos-nightly.yml`. The only product change was an optional
+  `max_page_count` on the sqlite pool config (an ops growth bound). See
+  `bench/chio-chaos/README.md`.
+- F52 (loom execution). The three TCB loom models now actually execute under
+  `--cfg loom` (`make loom`; the kernel is gated to compile under loom), and one
+  model was ported to drive the real `chio_kernel::session::Session` (terminal-
+  state admission invariant) rather than a hand-built stand-in. New nightly lane
+  `loom-nightly.yml` matrixed over the targets (one job per target so a hang
+  cannot mask the others). The store crate's `loom_receipt_writer` commit-actor
+  accounting models run as a fourth matrixed target under their own
+  `chio_store_sqlite_loom` cfg; the store's settlement-routing loom stand-in was
+  replaced by a real concurrent SQLite race test
+  (`chio-store-sqlite/tests/settle_attempts_races.rs`) because every SQL
+  statement it modeled is already an atomic step, leaving loom nothing to
+  falsify.
+
+### Not done (remains as follow-up)
+
+Named here so no reader overestimates coverage:
+
+- Chaos report regeneration, signing, and freshness gates (the evidence-pipeline
+  half of F53). The signed `chaos-run` / `attack-simulation` fixtures the
+  transaction-passport verifier consumes are still hand-committed. This branch
+  injects the faults for real in-tree but does not regenerate those signed
+  fixtures from the runs, and the CI chaos-runner signing key and per-facet
+  `max_age_days` / `regenerated_by` freshness gate are not wired.
+- `growth-probe` / `SizeProbe` feature and the soaks (F56 beyond RSS and queue
+  accounting), including the weekly 8-hour soak.
+- `RelayOutage` chaos scenario (needs federation relay infrastructure); it is the
+  eighth fault class and is not implemented.
+- F50 (healthcare replay / `--mode replay` and `quota.md` regeneration), F51
+  (TTFRH real wall-clock timing / `--samples-file`), F54 (wasm-guards PR gate),
+  and F55 (baseline-persisted bench-regression rework).
+- `exporter_queue_high_water` lands as `None`: the loadgen dispatch path does not
+  traverse the OTLP ingress queue, so there is no live exporter queue to
+  snapshot.
+- The retention chaos scenario exercises reseed-under-load serialization, not the
+  destructive prune/delete path (no orphan state is seeded).
+- SIGKILL proves process-crash recovery, not power-loss durability (the OS page
+  cache survives SIGKILL).

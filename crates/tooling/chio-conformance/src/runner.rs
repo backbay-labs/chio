@@ -68,6 +68,39 @@ pub struct ConformanceRunSummary {
     pub peer_result_files: Vec<PathBuf>,
 }
 
+struct ConformanceRuntimeState {
+    // Keep durable runtime state out of publishable artifacts and retain it
+    // until the child server has been stopped.
+    _directory: tempfile::TempDir,
+    auth_server_seed_path: PathBuf,
+    session_db_path: PathBuf,
+}
+
+impl ConformanceRuntimeState {
+    fn create() -> Result<Self, std::io::Error> {
+        let mut builder = tempfile::Builder::new();
+        builder.prefix("chio-conformance-runtime-");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            builder.permissions(fs::Permissions::from_mode(0o700));
+        }
+        let directory = builder.tempdir()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))?;
+        }
+        let auth_server_seed_path = directory.path().join("auth-server.seed");
+        let session_db_path = directory.path().join("mcp-session.sqlite3");
+        Ok(Self {
+            _directory: directory,
+            auth_server_seed_path,
+            session_db_path,
+        })
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerError {
     #[error("i/o error: {0}")]
@@ -205,6 +238,11 @@ pub fn run_conformance_harness(
         fs::remove_dir_all(&options.results_dir)?;
     }
     fs::create_dir_all(&options.results_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&options.results_dir, fs::Permissions::from_mode(0o700))?;
+    }
     if let Some(parent) = options.report_output.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -213,14 +251,26 @@ pub fn run_conformance_harness(
     create_private_directory(&artifacts_dir)?;
     let logs_dir = artifacts_dir.join("logs");
     fs::create_dir_all(&logs_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&artifacts_dir, fs::Permissions::from_mode(0o700))?;
+    }
 
     let listen = match options.listen {
         Some(listen) => listen,
         None => reserve_listen_addr()?,
     };
     let chio_executable = ensure_chio_executable(&options.repo_root, &options.cargo_binary)?;
+    let runtime_state = ConformanceRuntimeState::create()?;
     let server_log_path = logs_dir.join("chio-mcp-serve-http.log");
-    let server = spawn_remote_edge(&chio_executable, options, listen, &server_log_path)?;
+    let server = spawn_remote_edge(
+        &chio_executable,
+        options,
+        listen,
+        &runtime_state,
+        &server_log_path,
+    )?;
     let mut server_guard = ChildGuard { child: server };
     wait_for_server(listen, &mut server_guard.child, &server_log_path)?;
 
@@ -351,6 +401,7 @@ fn spawn_remote_edge(
     chio_executable: &Path,
     options: &ConformanceRunOptions,
     listen: SocketAddr,
+    runtime_state: &ConformanceRuntimeState,
     log_path: &Path,
 ) -> Result<Child, RunnerError> {
     let log = fs::File::create(log_path)?;
@@ -372,15 +423,15 @@ fn spawn_remote_edge(
         .arg(listen.to_string());
 
     let public_base_url = format!("http://{listen}");
-    let auth_server_seed_path = options.results_dir.join("artifacts/auth-server.seed");
-    let session_db_path = options.results_dir.join("artifacts/mcp-session.sqlite3");
-    command.arg("--session-db").arg(&session_db_path);
+    command
+        .arg("--session-db")
+        .arg(&runtime_state.session_db_path);
     let mut command_description = format!(
         "{} mcp serve-http --policy {} --server-id conformance-mcp-core --listen {} --session-db {}",
         chio_executable.display(),
         options.policy_path.display(),
         listen,
-        session_db_path.display()
+        runtime_state.session_db_path.display()
     );
 
     apply_conformance_auth_env(&mut command, options, options.auth_mode);
@@ -394,7 +445,7 @@ fn spawn_remote_edge(
                 .arg("--public-base-url")
                 .arg(&public_base_url)
                 .arg("--auth-server-seed-file")
-                .arg(&auth_server_seed_path)
+                .arg(&runtime_state.auth_server_seed_path)
                 .arg("--auth-jwt-audience")
                 .arg(format!("{public_base_url}/mcp"))
                 .arg("--auth-scope")
@@ -402,7 +453,7 @@ fn spawn_remote_edge(
             command_description.push_str(&format!(
                 " --public-base-url {} --auth-server-seed-file {} --auth-jwt-audience {}/mcp --auth-scope {} (admin via CHIO_ADMIN_TOKEN env)",
                 public_base_url,
-                auth_server_seed_path.display(),
+                runtime_state.auth_server_seed_path.display(),
                 public_base_url,
                 options.auth_scope
             ));
@@ -661,7 +712,7 @@ pub fn unique_run_dir(prefix: &str) -> PathBuf {
 mod tests {
     use super::{
         apply_conformance_auth_env, conformance_fixture_root_from_manifest_dir,
-        default_run_options, ConformanceAuthMode,
+        default_run_options, ConformanceAuthMode, ConformanceRuntimeState,
     };
     use std::ffi::OsStr;
     use std::fs;
@@ -704,6 +755,31 @@ mod tests {
         if let Err(error) = fs::write(fixtures.join("policy.yaml"), "version: 1\n") {
             panic!("failed to write policy fixture: {error}");
         }
+    }
+
+    #[test]
+    fn runtime_state_is_private_and_removed_after_the_run() {
+        let runtime_state = ConformanceRuntimeState::create()
+            .unwrap_or_else(|error| panic!("create conformance runtime state: {error}"));
+        let runtime_root = runtime_state._directory.path().to_path_buf();
+        assert_eq!(
+            runtime_state.session_db_path.parent(),
+            Some(runtime_root.as_path())
+        );
+        assert_eq!(
+            runtime_state.auth_server_seed_path.parent(),
+            Some(runtime_root.as_path())
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let metadata = fs::metadata(&runtime_root)
+                .unwrap_or_else(|error| panic!("read runtime directory metadata: {error}"));
+            assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+        }
+
+        drop(runtime_state);
+        assert!(!runtime_root.exists());
     }
 
     #[test]

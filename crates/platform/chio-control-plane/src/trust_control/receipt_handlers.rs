@@ -376,14 +376,9 @@ pub(crate) async fn handle_evidence_export(
         Ok(query) => query,
         Err(response) => return response,
     };
-    let bundle = match store.build_evidence_export_bundle(&query) {
-        Ok(bundle) => bundle,
-        Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
-        }
-    };
-    let transparency = match store.build_evidence_export_transparency_summary(&bundle.checkpoints) {
-        Ok(transparency) => transparency,
+    let (bundle, transparency) = match store.build_evidence_export_bundle_with_transparency(&query)
+    {
+        Ok(result) => result,
         Err(error) => {
             return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }

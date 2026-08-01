@@ -1376,18 +1376,37 @@ path separately verifies authority and emits receipts.
 
 ### 6.5 Checkpoints
 
-Receipt batches can be committed to a Merkle checkpoint with primary schema:
+Receipt batches can be committed to a Merkle checkpoint. New issuers use:
 
 ```text
-chio.checkpoint_statement.v1
+chio.checkpoint_statement.v2
 ```
 
-`chio.checkpoint_statement.v1` checkpoints remain valid for verification
-and evidence import. Checkpoint verification is part of exported evidence and
-compliance-oriented operator reporting. Chio's web3 anchoring and settlement
-lanes additionally require durable local receipt storage and kernel-signed
-checkpoint issuance; append-only remote receipt mirrors are insufficient when
-the runtime claims Merkle or Solana evidence readiness.
+The v2 signed body may carry `chain_root`, the RFC 6962 commitment over the
+checkpoint chain. `chio.checkpoint_statement.v1` checkpoints remain valid for
+legacy verification and evidence import, but a v1 body MUST NOT carry
+`chain_root`. New cryptographic prefix proofs use
+`chio.checkpoint_consistency_proof.v2`; the v1 consistency record remains a
+legacy metadata-only continuity record and MUST NOT be interpreted as a
+cryptographic prefix proof. Checkpoint verification is part of exported
+evidence and compliance-oriented operator reporting. Chio's web3 anchoring and
+settlement lanes additionally require durable local receipt storage and
+kernel-signed checkpoint issuance; append-only remote receipt mirrors are
+insufficient when the runtime claims Merkle or Solana evidence readiness.
+
+A checkpoint set presented without a separately pinned boundary MUST carry the
+predecessor chain back to checkpoint 1. A checkpoint that cites a predecessor
+absent from the set MUST fail verification. Scoped evidence exports therefore
+include the checkpoint prefix through the newest checkpoint covering the
+selected receipts.
+
+The registered `chio.transparency.inclusion-proof.v1` format retains its
+selective-disclosure hash construction and does not qualify a transaction as
+`trust_anchored`. The checkpoint-anchored receipt format is
+`chio.transparency.inclusion-proof.v2`: it uses RFC 6962 leaf and node hashing,
+binds the leaf to the transaction receipt bytes, and embeds a strictly parsed
+checkpoint statement signed by a verifier-pinned checkpoint key. Readers MUST
+NOT interpret v1 proof bytes with the v2 trust semantics.
 
 The current bounded release treats checkpoints as local audit evidence with
 derived `log_id`, `log_tree_size`, predecessor-witness, and consistency-proof
@@ -2788,7 +2807,8 @@ instead of ambient.
 The shipped official web3 execution surface is artifact-driven rather than
 permissionless. It consists of `chio.web3-trust-profile.v1`,
 `chio.web3-contract-package.v1`, `chio.web3-chain-configuration.v1`,
-`chio.anchor-inclusion-proof.v1`, `chio.oracle-conversion-evidence.v1`,
+`chio.anchor-inclusion-proof.v1`, `chio.anchor-inclusion-proof.v2`,
+`chio.oracle-conversion-evidence.v1`,
 `chio.web3-settlement-dispatch.v1`,
 `chio.web3-settlement-execution-receipt.v1`, and
 `chio.web3-qualification-matrix.v1`. Those artifacts bind one official
