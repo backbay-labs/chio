@@ -65,4 +65,5 @@ jobs:
       - name: Compile portable chaos tests
         env:
           CARGO_BUILD_JOBS: "4"
+          OPENSSL_DIR: "C:\\Program Files\\OpenSSL"
         run: cargo test -p chio-chaos --tests --no-run
