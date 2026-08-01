@@ -423,6 +423,7 @@ fn build_recipe(
 fn build_profile(
     governance: &Keypair,
     log_id: String,
+    runner_manifest_sha256: &str,
 ) -> Result<SignedFindingChallengeVerifierProfile, AnyError> {
     let mut profile = FindingChallengeVerifierProfile {
         schema: FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1.to_string(),
@@ -456,7 +457,7 @@ fn build_profile(
             valid_until: WINDOW_EXPIRES_AT,
             revocation_status_ref: "revocations/bbs".to_string(),
         },
-        allowed_runner_manifests: vec![HEX64.to_string()],
+        allowed_runner_manifests: vec![runner_manifest_sha256.to_string()],
         required_receipt_semantics: "chio.mediated_spend.v1".to_string(),
         resolver_policy_ref: "resolver-policy-v1".to_string(),
         retention_policy_ref: "retention-forever-v1".to_string(),
@@ -795,9 +796,11 @@ fn make_signed_report(
     };
     let draft = verify_finding_evidence(inputs.raw_finding, &trust, &bundle)?;
     if !draft.satisfies_required_facets(&trust.profile.body) {
-        return Err(missing(
-            "draft does not satisfy the required profile facets",
-        ));
+        return Err(format!(
+            "draft does not satisfy the required profile facets: {:?}",
+            draft.facets
+        )
+        .into());
     }
     Ok(sign_finding_verifier_report(
         &draft,
@@ -1006,10 +1009,16 @@ impl MarketWeb {
         ];
 
         // Acyclic publication order: profile, then recipe, then finding.
-        let profile = build_profile(&governance, log_id)?;
+        // The profile admits the exact retained runner manifest the recipe
+        // will commit, so the verifier cannot accept an unrelated manifest.
+        let recipe_dependencies = recipe_dependencies();
+        let profile = build_profile(
+            &governance,
+            log_id,
+            &recipe_dependencies.runner_manifest_sha256,
+        )?;
         let profile_raw = canonical_string(&profile)?;
         let profile_sha256 = sha256_hex(profile_raw.as_bytes());
-        let recipe_dependencies = recipe_dependencies();
         let recipe = build_recipe(&profile_sha256, &recipe_dependencies);
         let recipe_bytes = canonical_json_bytes(&recipe)?;
         let recipe_sha256 = sha256_hex(&recipe_bytes);
@@ -1866,6 +1875,10 @@ async fn finding_publish_discover_admission() -> TestResult {
 
     // The bid leg: the REAL marketplace path, gated by the verified
     // admission witness over the pinned deployment authorities.
+    let allocation = stack
+        .store
+        .get_allocation(&web.allocation_id)?
+        .ok_or_else(|| missing("allocation snapshot after activation"))?;
     let venue_key = keypair(6).public_key();
     let collateral_key = keypair(4).public_key();
     let trusted_signers = vec![web.operator.public_key()];
@@ -2246,7 +2259,11 @@ async fn profile_not_signed_by_governance_rejects() -> TestResult {
     let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     let interloper = keypair(9);
     let checkpoint_id = checkpoint_log_id(&stack.web.checkpoint);
-    let forged_profile = build_profile(&interloper, checkpoint_id)?;
+    let forged_profile = build_profile(
+        &interloper,
+        checkpoint_id,
+        &recipe_dependencies().runner_manifest_sha256,
+    )?;
     let (status, body) = send(
         &stack.state,
         authed_post("/v1/findings/profiles", canonical_string(&forged_profile)?)?,
@@ -2265,7 +2282,11 @@ async fn profile_not_signed_by_governance_rejects() -> TestResult {
 fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult {
     let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     let governance = keypair(1);
-    let profile = build_profile(&governance, checkpoint_log_id(&stack.web.checkpoint))?;
+    let profile = build_profile(
+        &governance,
+        checkpoint_log_id(&stack.web.checkpoint),
+        &recipe_dependencies().runner_manifest_sha256,
+    )?;
     let config = market_config();
     let profile_sha256 = digest_of(&profile)?;
     let now = stack.web.report.body.evaluation_time;
@@ -2274,7 +2295,11 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
     verify_report_authority_lifecycle(&stack.web.report, &profile, &config)
         .map_err(std::io::Error::other)?;
 
-    let forged = build_profile(&keypair(9), checkpoint_log_id(&stack.web.checkpoint))?;
+    let forged = build_profile(
+        &keypair(9),
+        checkpoint_log_id(&stack.web.checkpoint),
+        &recipe_dependencies().runner_manifest_sha256,
+    )?;
     assert!(verify_profile_for_activation(&forged, &digest_of(&forged)?, &config, now).is_err());
 
     let mut expired_body = profile.body.clone();
@@ -2299,7 +2324,11 @@ async fn profile_body_authority_must_match_governance() -> TestResult {
     let governance = keypair(1);
     let interloper = keypair(9);
     let checkpoint_id = checkpoint_log_id(&stack.web.checkpoint);
-    let profile = build_profile(&interloper, checkpoint_id)?;
+    let profile = build_profile(
+        &interloper,
+        checkpoint_id,
+        &recipe_dependencies().runner_manifest_sha256,
+    )?;
     let mismatched_profile = SignedExportEnvelope::sign(profile.body, &governance)?;
     let (status, body) = send(
         &stack.state,

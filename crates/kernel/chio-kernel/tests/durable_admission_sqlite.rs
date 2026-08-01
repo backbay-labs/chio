@@ -1158,10 +1158,14 @@ fn sqlite_durable_zero_charge_persists_release_evidence_and_reopens_cleanly(
 #[test]
 fn output_digest_delivery_contract_enforces_every_lane() -> Result<(), Box<dyn Error>> {
     let wrong_digest = sha256_hex(b"a digest the delivered output cannot match");
+    let true_digest = sha256_hex(&canonical_json_bytes(&serde_json::json!({
+        "tool": "mutate",
+        "echo": {"record": "ledger-unknown", "value": "committed"},
+    }))?);
 
     // Lane 1: a mismatch denies, charges nothing, and recovers to the same
     // persisted Deny after a restart.
-    let true_digest = {
+    {
         let temp = tempfile::tempdir()?;
         let database = temp.path().join("authority.db");
         let lock_root = temp.path().join("locks");
@@ -1304,8 +1308,11 @@ fn output_digest_delivery_contract_enforces_every_lane() -> Result<(), Box<dyn E
             AdmissionOperationState::DeniedAfterDelivery
         );
 
-        response.receipt.content_hash.clone()
-    };
+        assert_ne!(
+            response.receipt.content_hash, true_digest,
+            "a mismatch receipt exposes only the redacted delivery commitment"
+        );
+    }
 
     // Lane 2: a matching digest allows, captures, and replays the same Allow
     // after a restart without a second capture.

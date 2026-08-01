@@ -71,8 +71,8 @@ use chio_finding_verifier::{
 };
 use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
 use chio_kernel::checkpoint::{
-    build_checkpoint, build_inclusion_proof, checkpoint_log_id, KernelCheckpoint,
-    ReceiptInclusionProof,
+    build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_log_id,
+    KernelCheckpoint, ReceiptInclusionProof,
 };
 use chio_kernel::finding_purchase::FINDING_PURCHASE_CONTEXT_KEY;
 use chio_kernel::finding_recovery::FINDING_RECOVERY_CONTEXT_ARGUMENT;
@@ -97,7 +97,8 @@ use chio_open_market::fee_schedule::{
 use chio_open_market::finding_admission::{
     accept_finding_purchase, bid_with_finding_purchase, verify_finding_admission,
     FindingAdmissionContext, FindingAllocationSnapshot as SeamAllocationSnapshot,
-    FindingFeeScheduleGate, VerifiedFindingAdmission,
+    FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
+    VerifiedFindingAdmission,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
@@ -213,6 +214,12 @@ fn authority_pin(seed: u8, label: &str) -> FindingAuthorityPin {
     }
 }
 
+fn listing_authority_pin() -> FindingAuthorityPin {
+    let mut pin = authority_pin(24, "listing");
+    pin.authority_id = PUBLISHER_OPERATOR_ID.to_string();
+    pin
+}
+
 fn key_policy(seed: u8, label: &str) -> FindingAuthorityKeyPolicy {
     FindingAuthorityKeyPolicy {
         authority_id: format!("authority-{label}"),
@@ -229,6 +236,7 @@ fn market_config() -> FindingMarketConfig {
     FindingMarketConfig {
         venue_id: VENUE_ID.to_string(),
         venue: authority_pin(6, "venue"),
+        listing: listing_authority_pin(),
         governance_root: authority_pin(1, "governance"),
         verifier_report: authority_pin(15, "verifier-report"),
         collateral: authority_pin(4, "collateral"),
@@ -399,7 +407,41 @@ fn recipe_environment() -> FindingRecipeEnvironment {
     }
 }
 
-fn build_recipe(profile_envelope_sha256: &str, payload_sha256: &str) -> FindingReplayRecipeInput {
+struct RecipeDependencies {
+    blobs: Vec<Vec<u8>>,
+    baseline_input_sha256: String,
+    candidate_input_sha256: String,
+    parameters_sha256: String,
+    pre_run_template_sha256: String,
+    runner_manifest_sha256: String,
+    runtime_image_sha256: String,
+}
+
+fn recipe_dependencies() -> RecipeDependencies {
+    let blobs = vec![
+        b"wedge baseline input bundle".to_vec(),
+        b"wedge candidate input bundle".to_vec(),
+        b"wedge canonical parameter bundle".to_vec(),
+        b"wedge cycle-free pre-run template".to_vec(),
+        b"wedge pinned runner manifest".to_vec(),
+        b"wedge immutable runtime image".to_vec(),
+    ];
+    RecipeDependencies {
+        baseline_input_sha256: sha256_hex(&blobs[0]),
+        candidate_input_sha256: sha256_hex(&blobs[1]),
+        parameters_sha256: sha256_hex(&blobs[2]),
+        pre_run_template_sha256: sha256_hex(&blobs[3]),
+        runner_manifest_sha256: sha256_hex(&blobs[4]),
+        runtime_image_sha256: sha256_hex(&blobs[5]),
+        blobs,
+    }
+}
+
+fn build_recipe(
+    profile_envelope_sha256: &str,
+    payload_sha256: &str,
+    dependencies: &RecipeDependencies,
+) -> FindingReplayRecipeInput {
     FindingReplayRecipeInput {
         schema: FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1.to_string(),
         decision_rule_ref: "decision/replay-v1".to_string(),
@@ -408,24 +450,27 @@ fn build_recipe(profile_envelope_sha256: &str, payload_sha256: &str) -> FindingR
         payload_sha256: payload_sha256.to_string(),
         runner_server: SERVER_ID.to_string(),
         runner_tool: "finding.replay".to_string(),
-        runner_manifest_sha256: HEX64.to_string(),
+        runner_manifest_sha256: dependencies.runner_manifest_sha256.clone(),
         phases: vec![
             FindingRecipePhase {
                 phase: FindingRecipePhaseKind::Baseline,
-                input_bundle_sha256: HEX64.to_string(),
+                input_bundle_sha256: dependencies.baseline_input_sha256.clone(),
                 payload_application: "not_applied".to_string(),
             },
             FindingRecipePhase {
                 phase: FindingRecipePhaseKind::Candidate,
-                input_bundle_sha256: HEX64.to_string(),
+                input_bundle_sha256: dependencies.candidate_input_sha256.clone(),
                 payload_application: "apply_patch_v1".to_string(),
             },
         ],
-        parameters_sha256: HEX64.to_string(),
-        environment: recipe_environment(),
+        parameters_sha256: dependencies.parameters_sha256.clone(),
+        environment: FindingRecipeEnvironment {
+            runtime_image_sha256: dependencies.runtime_image_sha256.clone(),
+            ..recipe_environment()
+        },
         resource_bounds: resource_caps(),
         predicate: FindingPredicate::BaselineFailsCandidatePassesV1,
-        pre_run_template_sha256: HEX64.to_string(),
+        pre_run_template_sha256: dependencies.pre_run_template_sha256.clone(),
         claimed_verdict: FindingClaimedVerdict::PredicateHolds,
     }
 }
@@ -433,6 +478,7 @@ fn build_recipe(profile_envelope_sha256: &str, payload_sha256: &str) -> FindingR
 fn build_profile(
     governance: &Keypair,
     log_id: String,
+    runner_manifest_sha256: &str,
 ) -> Result<SignedFindingChallengeVerifierProfile, AnyError> {
     let mut profile = FindingChallengeVerifierProfile {
         schema: FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1.to_string(),
@@ -466,7 +512,7 @@ fn build_profile(
             valid_until: WINDOW_EXPIRES_AT,
             revocation_status_ref: "revocations/bbs".to_string(),
         },
-        allowed_runner_manifests: vec![HEX64.to_string()],
+        allowed_runner_manifests: vec![runner_manifest_sha256.to_string()],
         required_receipt_semantics: "chio.mediated_spend.v1".to_string(),
         resolver_policy_ref: "resolver-policy-v1".to_string(),
         retention_policy_ref: "retention-forever-v1".to_string(),
@@ -759,6 +805,9 @@ fn make_signed_report(
         profile: inputs.profile.clone(),
         admitted_kernel_keys: vec![inputs.kernel.public_key()],
         collateral_authority: inputs.collateral.public_key(),
+        runtime_attestation_authority: None,
+        appraisal_authority: None,
+        attestation_trust_policy: None,
         trusted_time,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
@@ -775,7 +824,12 @@ fn make_signed_report(
             })
             .collect(),
         checkpoints: vec![inputs.checkpoint.clone()],
+        checkpoint_transparency: build_checkpoint_transparency(std::slice::from_ref(
+            inputs.checkpoint,
+        ))?,
         recipe_preimage: Some(inputs.recipe_bytes),
+        runtime_attestation: None,
+        runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
             backing: inputs.backing.clone(),
             live: true,
@@ -898,6 +952,7 @@ struct MarketWeb {
     raw_finding: String,
     recipe_bytes: Vec<u8>,
     recipe_sha256: String,
+    recipe_dependencies: Vec<Vec<u8>>,
     profile: SignedFindingChallengeVerifierProfile,
     profile_raw: String,
     receipts: Vec<ResolvedReceiptEvidence>,
@@ -956,7 +1011,12 @@ impl MarketWeb {
             },
         ];
 
-        let profile = build_profile(&governance, log_id)?;
+        let recipe_dependencies = recipe_dependencies();
+        let profile = build_profile(
+            &governance,
+            log_id,
+            &recipe_dependencies.runner_manifest_sha256,
+        )?;
         let profile_raw = canonical_string(&profile)?;
         let profile_sha256 = sha256_hex(profile_raw.as_bytes());
         // The finding commits to the digest of the whole reveal envelope,
@@ -966,7 +1026,7 @@ impl MarketWeb {
             case.committed_media_type,
             case.committed_payload,
         ))?;
-        let recipe = build_recipe(&profile_sha256, &committed_digest);
+        let recipe = build_recipe(&profile_sha256, &committed_digest, &recipe_dependencies);
         let recipe_bytes = canonical_json_bytes(&recipe)?;
         let recipe_sha256 = sha256_hex(&recipe_bytes);
         let receipt_ids = vec![first.id.clone(), second.id.clone()];
@@ -1090,6 +1150,7 @@ impl MarketWeb {
             raw_finding,
             recipe_bytes,
             recipe_sha256,
+            recipe_dependencies: recipe_dependencies.blobs,
             profile,
             profile_raw,
             receipts,
@@ -1221,6 +1282,20 @@ impl Deployment {
             serde_json::json!(web.recipe_sha256)
         );
 
+        for dependency in &web.recipe_dependencies {
+            let expected_digest = sha256_hex(dependency);
+            let (status, body) = send(
+                state,
+                authed_post("/v1/findings/recipes", dependency.clone())?,
+            )
+            .await?;
+            assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+            assert_eq!(
+                json_body(&body)?["canonicalSha256"],
+                serde_json::json!(expected_digest)
+            );
+        }
+
         let (status, body) = send(
             state,
             authed_post("/v1/findings/publish", web.raw_finding.clone())?,
@@ -1285,11 +1360,22 @@ fn admission_witness(
         terms: &web.terms,
         backing: &web.backing,
         allocation_snapshot: SeamAllocationSnapshot {
-            live: true,
+            allocation_id: web.allocation_id.clone(),
+            backing_envelope_sha256: web.admission.body.backing_envelope_sha256.clone(),
+            expires_at: web.backing.body.expires_at,
+            status: FindingAllocationStatus::Consumed,
+            active_admission_id: Some(web.admission.body.admission_id.clone()),
+            prepared_admission_id: None,
             accepted_at,
         },
         collateral_authority: &collateral_key,
-        earliest_constituent_expiry: WINDOW_EXPIRES_AT,
+        constituent_expiry_bounds: FindingConstituentExpiryBounds {
+            finding: web.finding.expires_at,
+            listing: web.listing.body.expires_at.unwrap_or(u64::MAX),
+            pricing_hint: web.pricing_hint.body.expires_at,
+            seller_authorization: web.authorization.body.expires_at,
+            profile: WINDOW_EXPIRES_AT,
+        },
     };
     Ok(verify_finding_admission(&web.admission, &context)?)
 }
@@ -2249,14 +2335,6 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| Self::execution_error("reveal payload missing"))?
             .to_owned();
-        self.authority
-            .finding_purchase_store()
-            .register_community_fund_destination(
-                &self.web.allocation_id,
-                COMMUNITY_FUND_DESTINATION,
-                now,
-            )
-            .map_err(Self::execution_error)?;
         let record = coordinator
             .finalize_delivery(
                 &exchange.reservation_id,
@@ -3274,13 +3352,6 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
 
     let now = unix_timestamp_now();
-    lane.authority
-        .finding_purchase_store()
-        .register_community_fund_destination(
-            &lane.deployment.web.allocation_id,
-            COMMUNITY_FUND_DESTINATION,
-            now,
-        )?;
     let purchase_record = lane.coordinator.finalize_delivery(
         &lane.purchase.handshake.reservation_id,
         &response.receipt,
@@ -4451,14 +4522,8 @@ async fn wedge_purchase_settlement_replays_byte_identically_across_clocks() -> T
     let response = lane.reveal("wedge-clock-replay-1", "nonce-clock-replay-1")?;
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
 
-    let purchase_store = lane.authority.finding_purchase_store();
     let reservation_id = lane.purchase.handshake.reservation_id.clone();
     let now = unix_timestamp_now();
-    purchase_store.register_community_fund_destination(
-        &lane.deployment.web.allocation_id,
-        COMMUNITY_FUND_DESTINATION,
-        now,
-    )?;
     let first = lane.coordinator.finalize_delivery(
         &reservation_id,
         &response.receipt,
