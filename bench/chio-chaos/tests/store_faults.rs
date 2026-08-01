@@ -458,7 +458,7 @@ fn run_retention_under_load_round(round: u64) -> Result<(), ChaosError> {
         ));
     }
 
-    // Invariants: health OK, committed floor monotone, fresh append works.
+    // Invariants on the live handle: health OK and committed floor monotone.
     wait_until_healthy(&store, "store health after retention under load")?;
     let seq_after = store
         .latest_committed_entry_seq()
@@ -468,10 +468,40 @@ fn run_retention_under_load_round(round: u64) -> Result<(), ChaosError> {
             "latest_committed_entry_seq regressed under retention load: {seq_before} -> {seq_after}"
         )));
     }
-    let receipt = chaos_receipt(&format!("retention-{round}-final"), 200_000_000)?;
+
     store
+        .flush_receipt_writes()
+        .map_err(invariant("flush before retention recovery reopen"))?;
+    let store = Arc::try_unwrap(store).map_err(|_| {
+        ChaosError::InvariantViolated(
+            "retention scenario leaked a store handle before recovery reopen".to_string(),
+        )
+    })?;
+    drop(store);
+
+    // Recovery must survive a real process-style handle boundary. Reopen the
+    // database, wait for the new writer actor to report healthy, recheck the
+    // durable floor, and only then perform the final append probe.
+    let reopened = SqliteReceiptStore::open(&db).map_err(boot("reopen after retention load"))?;
+    wait_until_healthy(
+        &reopened,
+        "reopened store health after retention under load",
+    )?;
+    let reopened_seq = reopened
+        .latest_committed_entry_seq()
+        .map_err(invariant("read committed floor after retention reopen"))?;
+    if reopened_seq < seq_after {
+        return Err(ChaosError::InvariantViolated(format!(
+            "latest_committed_entry_seq regressed across retention reopen: {seq_after} -> {reopened_seq}"
+        )));
+    }
+    let receipt = chaos_receipt(&format!("retention-{round}-final"), 200_000_000)?;
+    reopened
         .append_chio_receipt_returning_seq(&receipt)
-        .map_err(invariant("append after retention load"))?;
+        .map_err(invariant("append after retention recovery reopen"))?;
+    reopened
+        .flush_receipt_writes()
+        .map_err(invariant("flush append after retention recovery reopen"))?;
 
     Ok(())
 }

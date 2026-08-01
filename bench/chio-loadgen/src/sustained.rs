@@ -2,6 +2,7 @@
 //! measures per-call latency percentiles plus resident-set growth, and reports
 //! a fail-closed budget verdict.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -9,10 +10,10 @@ use std::time::{Duration, Instant};
 use crate::rss;
 use crate::{LoadgenConfig, LoadgenError, StackHarness};
 
-/// Resident-set sampling cadence during a run; folds into the end-of-run
-/// high-water mark so a long run's peak, not just its final sample, bounds the
-/// growth budget.
-const RSS_SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
+/// Resident-set sampling cadence during a run. The sampler is independent of
+/// the pacer and remains live until every dispatch worker and result collector
+/// completes, so queue drain and short-lived peaks are part of the budget.
+const RSS_SAMPLE_INTERVAL: Duration = Duration::from_millis(25);
 
 /// Maximum concurrent dispatch workers. The queue is deliberately bounded; if
 /// all workers and queue slots are occupied, the configured arrival rate was not
@@ -116,15 +117,23 @@ pub fn run_sustained(
     latency_buffer.clear();
 
     let rss_start = rss::current_rss_bytes();
-    let mut rss_high_water = rss_start;
 
     // Start the measured window only after bounded allocations are resident.
     // This keeps setup cost out of the configured arrival interval and RSS
     // growth inside it.
     let run_start = Instant::now();
 
-    let mut next_rss_sample = run_start + RSS_SAMPLE_INTERVAL;
-    let (calls_attempted, mut dispatch_results) = thread::scope(|scope| {
+    let (calls_attempted, mut dispatch_results, rss_end) = thread::scope(|scope| {
+        let sampling_complete = Arc::new(AtomicBool::new(false));
+        let sampler_complete = Arc::clone(&sampling_complete);
+        let sampler = scope.spawn(move || {
+            sample_rss_until(
+                &sampler_complete,
+                RSS_SAMPLE_INTERVAL,
+                rss::current_rss_bytes,
+            )
+        });
+
         let worker_count = usize::try_from(scheduled)
             .unwrap_or(MAX_DISPATCH_WORKERS)
             .clamp(1, MAX_DISPATCH_WORKERS);
@@ -198,11 +207,6 @@ pub fn run_sustained(
                 thread::sleep(target - now);
             }
 
-            while Instant::now() >= next_rss_sample {
-                fold_high_water(&mut rss_high_water, rss::current_rss_bytes());
-                next_rss_sample += RSS_SAMPLE_INTERVAL;
-            }
-
             match tick_sender.try_send(()) {
                 Ok(()) => attempted += 1,
                 Err(mpsc::TrySendError::Full(())) => {
@@ -230,13 +234,17 @@ pub fn run_sustained(
                 ));
             }
         }
-        let results = collector
+        let collector_result = collector.join();
+        sampling_complete.store(true, Ordering::Release);
+        let rss_high_water = sampler
             .join()
+            .map_err(|_| LoadgenError::Dispatch("RSS sampler panicked".to_string()))?;
+        let results = collector_result
             .map_err(|_| LoadgenError::Dispatch("loadgen result collector panicked".to_string()))?;
         if let Some(error) = pacing_error {
             return Err(error);
         }
-        Ok((attempted, results))
+        Ok((attempted, results, rss_high_water))
     })?;
 
     if let Some(error) = dispatch_results.first_error.take() {
@@ -250,9 +258,6 @@ pub fn run_sustained(
             completed: calls_ok,
         });
     }
-
-    fold_high_water(&mut rss_high_water, rss::current_rss_bytes());
-    let rss_end = rss_high_water;
 
     let mut latencies_ns = dispatch_results.latencies_ns;
     latencies_ns.sort_unstable();
@@ -406,6 +411,24 @@ fn fold_high_water(high_water: &mut Option<u64>, sample: Option<u64>) {
     }
 }
 
+/// Sample resident-set size independently until the measured work is complete.
+/// The completion check follows each sample, which guarantees one final sample
+/// after the caller publishes completion and before the sampler exits.
+fn sample_rss_until(
+    complete: &AtomicBool,
+    interval: Duration,
+    mut sample: impl FnMut() -> Option<u64>,
+) -> Option<u64> {
+    let mut high_water = None;
+    loop {
+        fold_high_water(&mut high_water, sample());
+        if complete.load(Ordering::Acquire) {
+            return high_water;
+        }
+        thread::sleep(interval);
+    }
+}
+
 /// Nearest-rank percentile of a pre-sorted nanosecond slice, in nanoseconds. The
 /// raw nanosecond value is kept so the budget comparison does not truncate. An
 /// empty slice reports zero.
@@ -426,7 +449,9 @@ fn percentile_ns(sorted_ns: &[u64], percentile: u64) -> u64 {
 mod tests {
     use super::*;
     use crate::StoreBacking;
+    use std::collections::VecDeque;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     /// Build a config whose only load-bearing field for [`enforce_budget`] is the
     /// p99 budget; the store path is never opened by the gate.
@@ -460,6 +485,21 @@ mod tests {
             exporter_queue_high_water: None,
             within_budget: false,
         }
+    }
+
+    #[test]
+    fn rss_sampler_keeps_transient_peak_through_completion() {
+        let stop = AtomicBool::new(false);
+        let mut samples = VecDeque::from([Some(1_024), Some(8_192), Some(2_048)]);
+        let high_water = sample_rss_until(&stop, Duration::ZERO, || {
+            let sample = samples.pop_front();
+            if samples.is_empty() {
+                stop.store(true, Ordering::Release);
+            }
+            sample.flatten()
+        });
+
+        assert_eq!(high_water, Some(8_192));
     }
 
     #[test]

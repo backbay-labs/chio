@@ -13,6 +13,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::sync::mpsc;
 use std::time::Duration;
 
 use chio_chaos::{chaos_iterations, ChaosError};
@@ -65,6 +66,7 @@ fn sqlite_config(db_path: std::path::PathBuf) -> LoadgenConfig {
 /// InjectionNoOp check trips.
 struct BlockingGuard {
     stall: Duration,
+    entered: mpsc::Sender<()>,
 }
 
 impl Guard for BlockingGuard {
@@ -73,6 +75,7 @@ impl Guard for BlockingGuard {
     }
 
     fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+        let _ = self.entered.send(());
         std::thread::sleep(self.stall);
         Ok(GuardDecision::allow())
     }
@@ -156,12 +159,32 @@ fn chaos_blocking_guard_times_out_fail_closed() {
     };
     let mut harness = StackHarness::boot_with_deadlines(&config, deadlines)
         .test_expect("boot stack with a guard-pipeline deadline");
-    harness.add_guard(Box::new(BlockingGuard { stall: GUARD_SLEEP }));
+    let (guard_entered_sender, guard_entered_receiver) = mpsc::channel();
+    harness.add_guard(Box::new(BlockingGuard {
+        stall: GUARD_SLEEP,
+        entered: guard_entered_sender,
+    }));
 
     for round in 0..rounds {
-        let outcome = harness
-            .dispatch_once_verdict()
-            .test_expect("dispatch under the guard-pipeline deadline");
+        let (guard_entry, dispatch_result) = std::thread::scope(|scope| {
+            let dispatch = scope.spawn(|| harness.dispatch_once_verdict());
+            let guard_entry =
+                guard_entered_receiver.recv_timeout(Duration::from_millis(GUARD_BUDGET_MS));
+            let dispatch_result = dispatch
+                .join()
+                .test_expect("guard-deadline dispatch thread must not panic");
+            (guard_entry, dispatch_result)
+        });
+        if let Err(error) = guard_entry {
+            eprintln!("round {round}: blocking guard entry handshake failed: {error}");
+            panic!(
+                "{}",
+                ChaosError::InjectionNoOp(
+                    "blocking guard did not enter before the guard-pipeline deadline"
+                )
+            );
+        }
+        let outcome = dispatch_result.test_expect("dispatch under the guard-pipeline deadline");
 
         // InjectionNoOp: the guard ultimately allows, so an Allow verdict means
         // the guard-pipeline deadline never fired and the guard was never cut
