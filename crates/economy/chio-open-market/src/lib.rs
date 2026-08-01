@@ -36,6 +36,8 @@ pub mod finding_penalty;
 #[cfg(feature = "cognition-market-experimental")]
 pub mod finding_slash_amount;
 pub mod fiscal_adapter;
+#[cfg(kani)]
+mod kani_public_harnesses;
 pub mod penalty;
 #[cfg(feature = "cognition-market-experimental")]
 pub mod purchase_verification;

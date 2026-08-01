@@ -334,6 +334,17 @@ Source file: `crates/economy/chio-web3/src/kani_public_harnesses.rs`.
 | --- | --- | --- | --- | --- |
 | `public_settlement_state_id_fixed_point` | `crates/economy/chio-web3/src/kani_public_harnesses.rs` | `crates/economy/chio-web3/src/settlement.rs::settlement_state_id` | n/a (finite enum truth table) | Every lifecycle variant maps to its stable public identifier, and repeated evaluation returns the same identifier. |
 
+## Kani cognition-market harnesses
+
+Source file:
+`crates/economy/chio-open-market/src/kani_public_harnesses.rs`. The
+multi-crate runner reads `.kani/harnesses.toml`; this harness is also named in
+`formal/rust-verification/kani-public-harnesses.toml` and the proof manifest.
+
+| Property | Source line | Rust path constrained | Assumption discharge | One-line description |
+| --- | --- | --- | --- | --- |
+| `public_challenge_outcome_envelope_is_bond_capped_and_exact_sum` | ~L49 | `chio_open_market::finding_slash_amount::compute_slash_allocation` | n/a for arithmetic; bounded to three ordered buyer slots in a fixed `1:2:3` harm ratio whose destinations were already verified | Full-range `u64` bond inputs and concrete zero-harm, full-width harm-overflow, and destination-cap witnesses prove checked failures, bond caps, per-buyer harm caps, and exact-sum buyer plus community distribution. |
+
 ## Lean recursive-delegation theorems (Capability/Delegation.lean)
 
 Source file: `formal/lean4/Chio/Chio/Capability/Delegation.lean`. Rows

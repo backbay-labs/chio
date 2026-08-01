@@ -40,6 +40,24 @@ pub struct SlashDistribution {
     pub entries: Vec<DistributionEntry>,
 }
 
+/// Maximum harmed-buyer destinations in the unbatched v1 settlement.
+pub const MAX_UNBATCHED_BUYER_DESTINATIONS: usize = 15;
+
+/// Checked numeric allocation before verified destinations are attached.
+///
+/// `buyer_awards[index]` belongs to the verified harm at the same index.
+/// Slots at or above `buyer_count` are always zero. Keeping this arithmetic
+/// projection fixed-size makes the money invariant independently verifiable
+/// while [`compute_slash_distribution`] remains the destination-bearing API.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SlashAllocation {
+    pub slash_units: u64,
+    pub buyer_pool_units: u64,
+    pub community_fund_units: u64,
+    pub buyer_count: usize,
+    pub buyer_awards: [u64; MAX_UNBATCHED_BUYER_DESTINATIONS],
+}
+
 /// Typed rejections. Every variant refuses to compute a distribution
 /// rather than truncating one.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
@@ -52,6 +70,8 @@ pub enum SlashAmountError {
     CandidateAboveRequirement,
     #[error("the community fund destination must be distinct from every buyer destination")]
     CommunityFundCollision,
+    #[error("unbatched v1 supports at most 15 harmed-buyer destinations")]
+    TooManyBuyerDestinations,
     #[error("distribution entries do not sum to the slash")]
     DistributionMismatch,
 }
@@ -70,6 +90,111 @@ pub struct SlashInputs<'a> {
     pub community_fund_destination: &'a str,
 }
 
+/// Compute the checked numeric challenge award for verified ordered harms.
+///
+/// This is the production arithmetic core used by
+/// [`compute_slash_distribution`]. The caller supplies one realized-spend
+/// total per distinct, verified destination in deterministic purchase-key
+/// order. The production coordinator establishes this contract by folding
+/// authoritative purchase records by admitted destination. Candidate and harm
+/// accumulation use checked arithmetic. A candidate above the signed
+/// requirement rejects instead of being clamped, while live collateral caps
+/// the successful slash.
+pub fn compute_slash_allocation(
+    base_finding_stake_units: u64,
+    open_per_sale_encumbrances: u64,
+    live_allocated_collateral: u64,
+    listing_required_units: u64,
+    ordered_realized_spend_units: &[u64],
+) -> Result<SlashAllocation, SlashAmountError> {
+    if ordered_realized_spend_units.len() > MAX_UNBATCHED_BUYER_DESTINATIONS {
+        return Err(SlashAmountError::TooManyBuyerDestinations);
+    }
+
+    let candidate = base_finding_stake_units
+        .checked_add(open_per_sale_encumbrances)
+        .ok_or(SlashAmountError::Overflow)?;
+    if candidate > listing_required_units {
+        return Err(SlashAmountError::CandidateAboveRequirement);
+    }
+    let slash_units = candidate.min(live_allocated_collateral);
+
+    let mut total_harm = 0_u64;
+    for harm_units in ordered_realized_spend_units {
+        total_harm = total_harm
+            .checked_add(*harm_units)
+            .ok_or(SlashAmountError::Overflow)?;
+    }
+    let buyer_pool_units = slash_units.min(total_harm);
+    let community_fund_units = slash_units
+        .checked_sub(buyer_pool_units)
+        .ok_or(SlashAmountError::Overflow)?;
+
+    let mut buyer_awards = [0_u64; MAX_UNBATCHED_BUYER_DESTINATIONS];
+    let mut allocated = 0_u64;
+    if buyer_pool_units > 0 && total_harm > 0 {
+        for (index, harm_units) in ordered_realized_spend_units.iter().enumerate() {
+            if *harm_units == 0 {
+                continue;
+            }
+            let share = u128::from(buyer_pool_units)
+                .checked_mul(u128::from(*harm_units))
+                .ok_or(SlashAmountError::Overflow)?
+                / u128::from(total_harm);
+            let share = u64::try_from(share).map_err(|_| SlashAmountError::Overflow)?;
+            buyer_awards[index] = share;
+            allocated = allocated
+                .checked_add(share)
+                .ok_or(SlashAmountError::Overflow)?;
+        }
+
+        // The sum of floor-divided shares leaves fewer units than there are
+        // nonzero harms. Award at most one remainder unit per harmed buyer in
+        // the caller's deterministic purchase-key order.
+        let mut remainder = buyer_pool_units
+            .checked_sub(allocated)
+            .ok_or(SlashAmountError::Overflow)?;
+        for (index, harm_units) in ordered_realized_spend_units.iter().enumerate() {
+            if remainder == 0 {
+                break;
+            }
+            if *harm_units == 0 {
+                continue;
+            }
+            buyer_awards[index] = buyer_awards[index]
+                .checked_add(1)
+                .ok_or(SlashAmountError::Overflow)?;
+            remainder -= 1;
+        }
+        if remainder != 0 {
+            return Err(SlashAmountError::DistributionMismatch);
+        }
+    }
+
+    let summed_buyer_awards = buyer_awards[..ordered_realized_spend_units.len()]
+        .iter()
+        .try_fold(0_u64, |sum, award| sum.checked_add(*award))
+        .ok_or(SlashAmountError::Overflow)?;
+    if summed_buyer_awards != buyer_pool_units {
+        return Err(SlashAmountError::DistributionMismatch);
+    }
+    if buyer_pool_units
+        .checked_add(community_fund_units)
+        .ok_or(SlashAmountError::Overflow)?
+        != slash_units
+    {
+        return Err(SlashAmountError::DistributionMismatch);
+    }
+
+    Ok(SlashAllocation {
+        slash_units,
+        buyer_pool_units,
+        community_fund_units,
+        buyer_count: ordered_realized_spend_units.len(),
+        buyer_awards,
+    })
+}
+
 /// Compute the slash and its deterministic distribution.
 ///
 /// `candidate = base_finding_stake + open_per_sale_encumbrances`, capped
@@ -78,7 +203,9 @@ pub struct SlashInputs<'a> {
 /// the remainder goes only to the community fund. The buyer pool is
 /// allocated pro rata by realized spend, with the remainder distributed
 /// one unit at a time in purchase-key order so the result is identical on
-/// every replay.
+/// every replay. `harms` must contain one aggregate entry per distinct,
+/// authoritatively verified destination; the production challenge coordinator
+/// folds admitted M4 purchase records into that shape before calling this API.
 pub fn compute_slash_distribution(
     inputs: &SlashInputs<'_>,
     harms: &[VerifiedHarm],
@@ -94,77 +221,33 @@ pub fn compute_slash_distribution(
         return Err(SlashAmountError::CommunityFundCollision);
     }
 
-    let candidate = inputs
-        .base_finding_stake
-        .units
-        .checked_add(inputs.open_per_sale_encumbrances)
-        .ok_or(SlashAmountError::Overflow)?;
-    if candidate > inputs.listing_required_amount.units {
-        return Err(SlashAmountError::CandidateAboveRequirement);
-    }
-    let slash_units = candidate.min(inputs.live_allocated_collateral);
-
-    let mut total_harm: u64 = 0;
-    for harm in harms {
-        total_harm = total_harm
-            .checked_add(harm.realized_spend_units)
-            .ok_or(SlashAmountError::Overflow)?;
-    }
-    let buyer_pool_units = slash_units.min(total_harm);
-    let community_fund_units = slash_units
-        .checked_sub(buyer_pool_units)
-        .ok_or(SlashAmountError::Overflow)?;
-
     let mut ordered: Vec<&VerifiedHarm> = harms.iter().collect();
     ordered.sort_by(|left, right| left.purchase_key.cmp(&right.purchase_key));
+    let ordered_harms: Vec<u64> = ordered
+        .iter()
+        .map(|harm| harm.realized_spend_units)
+        .collect();
+    let allocation = compute_slash_allocation(
+        inputs.base_finding_stake.units,
+        inputs.open_per_sale_encumbrances,
+        inputs.live_allocated_collateral,
+        inputs.listing_required_amount.units,
+        &ordered_harms,
+    )?;
 
     let mut entries = Vec::with_capacity(ordered.len().saturating_add(1));
-    let mut allocated: u64 = 0;
-    if buyer_pool_units > 0 && total_harm > 0 {
-        for harm in &ordered {
-            // A record with no verified realized spend is not harmed, so it
-            // never enters the distribution: the remainder pass below would
-            // otherwise be able to pay it a unit taken from a buyer who was.
-            if harm.realized_spend_units == 0 {
-                continue;
-            }
-            // Floor division first, so no buyer can be allocated more than
-            // its pro rata share before the remainder pass runs.
-            let share = u128::from(buyer_pool_units)
-                .checked_mul(u128::from(harm.realized_spend_units))
-                .ok_or(SlashAmountError::Overflow)?
-                / u128::from(total_harm);
-            let share = u64::try_from(share).map_err(|_| SlashAmountError::Overflow)?;
-            allocated = allocated
-                .checked_add(share)
-                .ok_or(SlashAmountError::Overflow)?;
+    for (harm, share) in ordered.iter().zip(allocation.buyer_awards.iter()) {
+        if *share > 0 {
             entries.push(DistributionEntry {
                 destination: harm.destination.clone(),
-                amount_units: share,
+                amount_units: *share,
             });
         }
-        // Floor division leaves at most one unit per buyer unallocated.
-        // Hand those out in purchase-key order so two evaluators reach the
-        // same distribution byte for byte.
-        let mut remainder = buyer_pool_units
-            .checked_sub(allocated)
-            .ok_or(SlashAmountError::Overflow)?;
-        for entry in entries.iter_mut() {
-            if remainder == 0 {
-                break;
-            }
-            entry.amount_units = entry
-                .amount_units
-                .checked_add(1)
-                .ok_or(SlashAmountError::Overflow)?;
-            remainder -= 1;
-        }
-        entries.retain(|entry| entry.amount_units > 0);
     }
-    if community_fund_units > 0 {
+    if allocation.community_fund_units > 0 {
         entries.push(DistributionEntry {
             destination: inputs.community_fund_destination.to_owned(),
-            amount_units: community_fund_units,
+            amount_units: allocation.community_fund_units,
         });
     }
 
@@ -172,17 +255,17 @@ pub fn compute_slash_distribution(
         .iter()
         .try_fold(0_u64, |total, entry| total.checked_add(entry.amount_units))
         .ok_or(SlashAmountError::Overflow)?;
-    if summed != slash_units {
+    if summed != allocation.slash_units {
         return Err(SlashAmountError::DistributionMismatch);
     }
 
     Ok(SlashDistribution {
         slash: MonetaryAmount {
-            units: slash_units,
+            units: allocation.slash_units,
             currency: currency.clone(),
         },
-        buyer_pool_units,
-        community_fund_units,
+        buyer_pool_units: allocation.buyer_pool_units,
+        community_fund_units: allocation.community_fund_units,
         entries,
     })
 }
@@ -345,6 +428,19 @@ mod tests {
         assert_eq!(
             compute_slash_distribution(&base, &[]).unwrap_err(),
             SlashAmountError::CandidateAboveRequirement
+        );
+    }
+
+    #[test]
+    fn unbatched_allocation_enforces_the_fifteen_destination_cap() {
+        let at_cap = compute_slash_allocation(15, 0, 15, 15, &[1; 15])
+            .expect("fifteen destinations remain unbatched");
+        assert_eq!(at_cap.buyer_count, 15);
+        assert_eq!(at_cap.buyer_pool_units, 15);
+        assert_eq!(at_cap.buyer_awards, [1; 15]);
+        assert_eq!(
+            compute_slash_allocation(1, 0, 1, 1, &[1; 16]).unwrap_err(),
+            SlashAmountError::TooManyBuyerDestinations
         );
     }
 

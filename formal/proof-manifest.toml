@@ -58,6 +58,8 @@ gate_commands = [
   "./scripts/tests/aeneas-equivalence.test.sh",
   "./scripts/check-rust-verification-gates.sh",
   "cargo xtask check formal-mirrors",
+  "./scripts/check-kani-public-core.sh",
+  "./scripts/run-kani-manifest.sh --lane pr --crate chio-open-market",
   "./scripts/check-adapter-no-bypass.sh",
   "cargo test -p chio-formal-diff-tests",
   "./scripts/check-portable-kernel.sh",
@@ -79,6 +81,7 @@ covered_rust_modules = [
   "crates/economy/chio-credit/src/formal_economy.rs",
   "crates/economy/chio-web3/src/settlement.rs",
   "crates/trust/chio-federation/src/revocation_gossip.rs",
+  "crates/economy/chio-open-market/src/finding_slash_amount.rs",
 ]
 
 covered_rust_symbols = [
@@ -129,6 +132,8 @@ covered_rust_symbols = [
   "chio_federation::revocation_gossip::RevocationGossipPushQueue::flush_batches_at",
   "chio_federation::revocation_gossip::RevocationCatchupResponse::validate_response",
   "chio_federation::revocation_gossip::respond_to_catchup",
+  "chio_revocation_oracle::api::InclusionProof::verify",
+  "chio_open_market::finding_slash_amount::compute_slash_allocation",
 ]
 
 shell_entrypoints = [
@@ -234,6 +239,7 @@ notes = [
   "Aeneas production extraction pairs every registered decision-core, reservation-ledger, Merkle-walk, and economy-conversion function with a generated Lean equivalence theorem. Economy evidence proves scalar ceil and floor rounding only; collection conservation, production netting absorption, and P11 remain outside that theorem. The ledger theorem reaches the bounded transition model, while concrete runtime store linkage remains outside it.",
   "The post-admission drop lifecycle is model-checked at two invocations and one buffered child per invocation. Its evidence requires both a positive NoError result and every paired negative mutation producing a registered ITF counterexample.",
   "RevocationPropagation is checked nightly against callback-complete, canonical, signed traces captured at real kernel revocation commit, revocation admission, and receipt append boundaries. The full-state ITF is the sole state input, Apalache evaluates four non-vacuous invariant witnesses, every invariant has a registered real-runtime negative calibration, and ASSUME-TRACE-OBSERVER remains the explicit callback-completeness boundary.",
+  "The cognition-market challenge slash allocator is covered by its registered public Kani harness in the multi-crate PR lane.",
   "Release-facing formal claims must name this manifest, the theorem inventory, and the audited assumptions.",
   "ReceiptBeforeAllow proves the abstract persist-before-publish ordering and its production replay exercises the native happy path. It does not discharge concrete cross-row crash recovery, which remains excluded until implementation trace validation and crash-reopen conservation gates establish refinement.",
   "Manual Rust-to-model hashes are enforced by cargo xtask check formal-mirrors; transliteration and abstraction-anchor records require review, but matching hashes do not prove semantic equivalence or modeled properties.",

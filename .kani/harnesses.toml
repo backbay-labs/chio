@@ -469,3 +469,19 @@ default_unwind = 8
 timeout_secs = 1800
 lane = "pr"
 notes = "Schema-version pinning under chio_weights::ModelCard::new."
+
+# ---------------------------------------------------------------------
+# chio-open-market cognition-market challenge envelope
+# ---------------------------------------------------------------------
+# Source: crates/economy/chio-open-market/src/kani_public_harnesses.rs.
+# The harness calls the production slash allocator with three verified harmed
+# buyers in a fixed 1:2:3 harm ratio and full-range u64 bond inputs.
+
+[[harness]]
+crate = "chio-open-market"
+harness = "public_challenge_outcome_envelope_is_bond_capped_and_exact_sum"
+default_unwind = 17
+timeout_secs = 1800
+lane = "pr"
+features = ["kani"]
+notes = "Production M5 arithmetic core: full-width overflow and signed-cap failures reject; successful awards are live-bond capped and exact-sum over three ordered buyer harms in a fixed 1:2:3 ratio plus the community fund."
