@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/status-proof-input.schema.json",
+  "title": "Chio Finding Portable Status Proof Input",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/nonInclusion"
+    },
+    {
+      "$ref": "#/$defs/inclusion"
+    }
+  ],
+  "$defs": {
+    "nonInclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proof_kind",
+        "schema",
+        "feed_id",
+        "key_domain_nonce",
+        "map_epoch",
+        "finding_id",
+        "status_epoch_id",
+        "status_epoch_sha256",
+        "signed_status_epoch_b64",
+        "root_hash",
+        "siblings",
+        "checked_at"
+      ],
+      "properties": {
+        "proof_kind": {
+          "const": "non_inclusion"
+        },
+        "schema": {
+          "const": "chio.finding.status-proof-input.v1"
+        },
+        "feed_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "key_domain_nonce": {
+          "const": 3318287169837494
+        },
+        "map_epoch": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "finding_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "status_epoch_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "status_epoch_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "signed_status_epoch_b64": {
+          "$ref": "#/$defs/base64"
+        },
+        "root_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "siblings": {
+          "$ref": "#/$defs/sparsePath"
+        },
+        "checked_at": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        }
+      }
+    },
+    "inclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proof_kind",
+        "schema",
+        "feed_id",
+        "key_domain_nonce",
+        "map_epoch",
+        "finding_id",
+        "status_epoch_id",
+        "status_epoch_sha256",
+        "signed_status_epoch_b64",
+        "root_hash",
+        "siblings",
+        "checked_at",
+        "status",
+        "retraction_intent_sha256"
+      ],
+      "properties": {
+        "proof_kind": {
+          "const": "inclusion"
+        },
+        "schema": {
+          "const": "chio.finding.status-proof-input.v1"
+        },
+        "feed_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "key_domain_nonce": {
+          "const": 3318287169837494
+        },
+        "map_epoch": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "finding_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "status_epoch_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "status_epoch_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "signed_status_epoch_b64": {
+          "$ref": "#/$defs/base64"
+        },
+        "root_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "siblings": {
+          "$ref": "#/$defs/sparsePath"
+        },
+        "checked_at": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "status": {
+          "const": "retracted"
+        },
+        "retraction_intent_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "base64": {
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 196608,
+      "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+    },
+    "boundedIdentifier": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 512
+    },
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sparsePath": {
+      "type": "array",
+      "minItems": 256,
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/sha256"
+      }
+    }
+  }
+}

@@ -880,6 +880,12 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/seller-authorization.schema.json",
         ),
         (
+            "chio.finding.status-epoch.v1",
+            "finding_status_epoch",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/status-epoch.schema.json",
+        ),
+        (
             "chio.finding.verifier-report.v1",
             "finding_verifier_report",
             "finding-market-v1",
@@ -898,6 +904,7 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
         "chio.finding.recovery-context.v1",
         "chio.finding.replay-observation.v1",
         "chio.finding.replay-recipe-input.v1",
+        "chio.finding.status-proof-input.v1",
     ];
 
     let registry: serde_json::Value = serde_json::from_str(include_str!(concat!(

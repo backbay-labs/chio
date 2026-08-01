@@ -1461,7 +1461,7 @@ perform those checks separately before relying on the corresponding claim.
 
 #### 6.4.7.1 Market envelope discipline
 
-Seventeen families travel as signed export envelopes
+Eighteen families travel as signed export envelopes
 (`{body, signerKey, signature}`): `chio.finding.challenge-verifier-profile.v1`,
 `chio.finding.market-terms.v1`, `chio.finding.seller-authorization.v1`,
 `chio.finding.bond-backing.v1`, `chio.finding.verifier-report.v1`,
@@ -1472,16 +1472,16 @@ Seventeen families travel as signed export envelopes
 `chio.finding.finalized-bond-snapshot.v1`,
 `chio.finding.audit-epoch.v1`, `chio.finding.audit-report.v1`,
 `chio.finding.audit-round-authorization.v1`,
-`chio.finding.key-revocation.v1`, and
-`chio.finding.authority-status.v1`. This
+`chio.finding.key-revocation.v1`, `chio.finding.authority-status.v1`, and
+`chio.finding.status-epoch.v1`. This
 differs from the inline-signed
 `chio.finding.v1` and from the unsigned
 `chio.finding.replay-recipe-input.v1`,
 `chio.finding.purchase-context.v1`, and
-`chio.finding.replay-observation.v1`, and
-`chio.finding.recovery-context.v1`, which carry no envelope at all. Each
-of the seventeen envelope bodies is strict snake_case JSON that rejects
-unknown members. Fourteen carry a stable identifier, and twelve of those
+`chio.finding.replay-observation.v1`, `chio.finding.recovery-context.v1`, and
+`chio.finding.status-proof-input.v1`, which carry no envelope at all. Each
+of the eighteen envelope bodies is strict snake_case JSON that rejects
+unknown members. Fifteen carry a stable identifier, and thirteen of those
 are content-addressed exactly like `finding_id`: the SHA-256 digest of
 canonical JSON for the body after setting only the id member to the empty
 JSON string `""`, with every other member present. Two are exceptions:
@@ -1493,8 +1493,9 @@ domain-separated preimage over the whole canonical body (6.4.7.13).
 `chio.finding.audit-round-authorization.v1`, and
 `chio.finding.authority-status.v1` carry no identifier at all: each
 is named by the envelope digest of the statement itself (6.4.7.20,
-6.4.7.21, and 6.4.7.23). The
-first six additionally name their own signing authority in the body, as
+6.4.7.21, and 6.4.7.25). The
+first six and the status epoch additionally name their own signing authority
+in the body, as
 does a `buyer_submission` challenge through its `challenger`; the two
 purchase terminals, a `venue_audit` challenge, the six remaining
 challenge and audit artifacts, the key revocation, and the authority status
@@ -2028,7 +2029,70 @@ without permitting the venue to alter the eligible snapshot, fee schedule,
 randomness commitment, selection algorithm, rate, budget, authority, or time
 after governance authorization.
 
-#### 6.4.7.22 `chio.finding.recovery-context.v1`
+#### 6.4.7.22 `chio.finding.status-epoch.v1`
+
+The status-feed operator's signed sparse-map root. Its strict body binds the
+content-addressed `status_epoch_id`, signature domain
+`chio.finding.status.v1`, map version `sparse_map_v1`, proof semantics
+`siblings_leaf_to_root_v1`, feed id, fixed numeric key-domain nonce
+`3318287169837494`, monotonic `map_epoch`, operator identity, Ed25519 key and
+key epoch, root hash, depth 256, SHA-256, the four hash-domain labels, the
+canonical empty-leaf hash, anchoring references, generation time, and
+validity bounds. The outer envelope signature covers that complete body.
+
+`status_epoch_id` is SHA-256 over
+`"chio.finding.status-epoch.v1\0"` followed by canonical JSON for the body
+with only `status_epoch_id` set to `""`. The artifact digest referenced by a
+proof is SHA-256 over the complete canonical signed envelope. A verifier MUST
+require the outer `signerKey`, body `operator_key`, body `operator_id`, key
+epoch, feed, validity, rotation, and revocation state to agree with an
+externally governance-pinned `finding_status_operator` authorization. An
+embedded key never self-authorizes. A key that is revoked at verification
+time cannot advance status state.
+
+The sparse map uses these exact byte preimages, where `H` is SHA-256, integer
+and length values are unsigned big-endian 64-bit values, `K` is the 32-byte
+key hash, and `I` is the 32-byte decoded retraction-intent digest:
+
+```text
+K = H("chio.finding.status.v1:key\0" || key_domain_nonce || len(finding_id) || finding_id)
+empty[0] = H("chio.finding.status.v1:empty-leaf\0")
+leaf = H("chio.finding.status.v1:occupied-leaf\0" || K || "retracted" || I)
+branch(left, right) = H("chio.finding.status.v1:branch\0" || left || right)
+empty[n+1] = branch(empty[n], empty[n])
+```
+
+The root is `empty[256]` for an empty map. A path has exactly 256 sibling
+hashes ordered from leaf to root. At path position `h`, the branch direction
+is bit `255-h` of `K`, where bit zero is the high bit of the first byte. An
+inclusion path starts from `leaf`; a non-inclusion path starts from
+`empty[0]`. The existing append-only revocation-oracle root, its signed root
+envelope, and its local-state non-inclusion result are different protocols
+and MUST reject under this verifier even when a root digest happens to match.
+
+#### 6.4.7.23 `chio.finding.status-proof-input.v1`
+
+The UNSIGNED strict portable verifier input. It is a closed tagged `oneOf`
+whose `proof_kind` is exactly `non_inclusion` or `inclusion`. Both branches
+bind the schema, feed id, fixed numeric key-domain nonce, map epoch, finding
+id, status-epoch id and complete-envelope digest, base64 of the exact
+canonical signed epoch bytes, root hash, the exact 256-member sparse path,
+and `checked_at`. The inclusion branch additionally carries the exact status
+`retracted` and the retraction-intent digest. Inclusion-only members on a
+non-inclusion branch, missing inclusion members, unknown fields, and unknown
+branch tags reject at parse time.
+
+The verifier MUST enforce encoded and decoded size bounds before trusting
+content, strict I-JSON canonical byte identity for the proof and enclosed
+epoch, the signed epoch's schema, domain, map version, hashing semantics,
+operator authorization and signature, epoch id and envelope digest, every
+feed, nonce, epoch, root, and finding cross-binding, and the sparse path. It
+MUST compare `checked_at` and the epoch's signed generation and validity times
+against trusted time and a locally configured maximum epoch age. Caller
+freshness claims are not policy. The unsigned carrier never substitutes for
+the signed epoch it encloses.
+
+#### 6.4.7.24 `chio.finding.recovery-context.v1`
 
 The UNSIGNED evidence carrier for bounded no-charge redelivery of one already
 settled finding. It contains `recovery_id` and the exact canonical JSON bytes
@@ -2040,7 +2104,7 @@ their identities and cross-bindings, and mint only a bounded recovery grant.
 Unknown members, noncanonical embedded bytes, an identity mismatch, or an
 unverifiable signature MUST reject before any recovery admission mutation.
 
-#### 6.4.7.23 `chio.finding.authority-status.v1`
+#### 6.4.7.25 `chio.finding.authority-status.v1`
 
 The independently signed reading of one exact authority policy's revocation
 source. The body names the policy's `status_ref`, `authority_id`, `key`, and
@@ -2053,10 +2117,9 @@ at or before that action, the role was not live for the action. A missing,
 unverifiable, stale, cross-policy, or pre-action reading establishes no
 non-revocation claim.
 
-The finding family registers `chio.finding.v1`, the seventeen signed
-artifacts above, the four unsigned carriers, and the open-market penalty
-envelope at this stage. Status-epoch artifacts remain unsupported until a
-future revision of this specification defines and registers them.
+The finding family registers `chio.finding.v1`, the eighteen signed
+artifacts above, the five unsigned carriers, and the open-market penalty
+envelope at this stage.
 
 ### 6.5 Checkpoints
 

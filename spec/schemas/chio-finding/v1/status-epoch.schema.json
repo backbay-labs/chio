@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/status-epoch.schema.json",
+  "title": "Chio Finding Status Epoch (signed envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "status_epoch_id",
+        "signature_domain",
+        "status_map_version",
+        "proof_semantics",
+        "feed_id",
+        "key_domain_nonce",
+        "map_epoch",
+        "operator_id",
+        "operator_key",
+        "operator_key_epoch",
+        "root_hash",
+        "tree_depth",
+        "hash_algorithm",
+        "key_hash_domain",
+        "empty_leaf_domain",
+        "occupied_leaf_domain",
+        "branch_domain",
+        "empty_leaf_hash",
+        "anchor_refs",
+        "generated_at",
+        "valid_from",
+        "valid_until"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.status-epoch.v1"
+        },
+        "status_epoch_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "signature_domain": {
+          "const": "chio.finding.status.v1"
+        },
+        "status_map_version": {
+          "const": "sparse_map_v1"
+        },
+        "proof_semantics": {
+          "const": "siblings_leaf_to_root_v1"
+        },
+        "feed_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "key_domain_nonce": {
+          "const": 3318287169837494
+        },
+        "map_epoch": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "operator_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "operator_key": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "operator_key_epoch": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "root_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "tree_depth": {
+          "const": 256
+        },
+        "hash_algorithm": {
+          "const": "sha256"
+        },
+        "key_hash_domain": {
+          "const": "chio.finding.status.v1:key"
+        },
+        "empty_leaf_domain": {
+          "const": "chio.finding.status.v1:empty-leaf"
+        },
+        "occupied_leaf_domain": {
+          "const": "chio.finding.status.v1:occupied-leaf"
+        },
+        "branch_domain": {
+          "const": "chio.finding.status.v1:branch"
+        },
+        "empty_leaf_hash": {
+          "const": "80a7fe55f5efd9a02893aca68310d8ebd7f0ed7b8dd36686abda7704755a6755"
+        },
+        "anchor_refs": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/boundedIdentifier"
+          }
+        },
+        "generated_at": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "valid_from": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "valid_until": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "boundedIdentifier": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 512
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

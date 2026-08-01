@@ -120,6 +120,8 @@ pub const CHIO_FINDING_FINALIZED_BOND_SNAPSHOT_V1_SCHEMA: &str =
     "chio.finding.finalized-bond-snapshot.v1";
 /// Cognition-market governance statement withdrawing a pinned authority key.
 pub const CHIO_FINDING_KEY_REVOCATION_V1_SCHEMA: &str = "chio.finding.key-revocation.v1";
+/// Cognition-market signed sparse status-map root.
+pub const CHIO_FINDING_STATUS_EPOCH_V1_SCHEMA: &str = "chio.finding.status-epoch.v1";
 /// Cognition-market seller market terms.
 pub const CHIO_FINDING_MARKET_TERMS_V1_SCHEMA: &str = "chio.finding.market-terms.v1";
 /// Cognition-market settled purchase record.
@@ -614,6 +616,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_FINDING_KEY_REVOCATION_V1_SCHEMA,
         Some(("finding_key_revocation", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_STATUS_EPOCH_V1_SCHEMA,
+        Some(("finding_status_epoch", "finding-market-v1")),
     ),
     (
         CHIO_FINDING_MARKET_TERMS_V1_SCHEMA,
