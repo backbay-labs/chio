@@ -86,6 +86,13 @@ fn sample_config() -> SettlementChainConfig {
         .as_ref()
         .test_expect("anchor inclusion proof example carries a chain anchor");
     let rpc_url = "http://127.0.0.1:8545".to_string();
+    let mut policy = SettlementPolicyConfig::default();
+    policy.finding_impairment_destination_allowlist = [
+        BUYER_DESTINATION.to_string(),
+        COMMUNITY_FUND_DESTINATION.to_string(),
+    ]
+    .into_iter()
+    .collect();
     SettlementChainConfig {
         chain_id: anchor.chain_id.clone(),
         network_name: "Devnet".to_string(),
@@ -101,7 +108,7 @@ fn sample_config() -> SettlementChainConfig {
         settlement_token_address: "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string(),
         oracle: SettlementOracleConfig::default(),
         evidence_substrate: SettlementEvidenceConfig::default(),
-        policy: SettlementPolicyConfig::default(),
+        policy,
     }
 }
 
@@ -670,6 +677,25 @@ fn a_stale_or_future_dated_snapshot_is_rejected() {
 }
 
 #[test]
+fn confirmed_reconciliation_authenticates_an_aged_snapshot_without_renewing_dispatch() {
+    let (enforcement, snapshot) = default_pair();
+    let pins = default_pins();
+    let stale_now = OBSERVED_AT + MAX_SNAPSHOT_AGE_SECS + 1;
+
+    verify_finding_enforcement_for_reconciliation(&enforcement, &snapshot, &pins, stale_now)
+        .test_expect("confirmed recovery may recheck the originally authenticated block");
+    assert_rejected(
+        verify_finding_enforcement_for_reconciliation(
+            &enforcement,
+            &snapshot,
+            &pins,
+            OBSERVED_AT - 1,
+        ),
+        "observed after the trusted current time",
+    );
+}
+
+#[test]
 fn plan_finding_impairment_freezes_the_authorized_call() {
     let planned = planned();
     let intent = planned.intent();
@@ -782,6 +808,29 @@ fn plan_rejects_a_config_that_does_not_match_the_snapshot() {
         error
             .to_string()
             .contains("bond_vault_contract does not match"),
+        "unexpected rejection: {error}"
+    );
+}
+
+#[test]
+fn plan_refuses_destinations_outside_the_operator_allowlist() {
+    let verified = verified();
+    let mut config = sample_config();
+    config
+        .policy
+        .finding_impairment_destination_allowlist
+        .remove(BUYER_DESTINATION);
+
+    let error = plan_finding_impairment(
+        &config,
+        &verified,
+        &operator_address(),
+        &vault_snapshot(),
+        &sample_anchor_proof(),
+    )
+    .test_expect_err("an unallowlisted payout destination must not reach the vault");
+    assert!(
+        error.to_string().contains("not in the operator allowlist"),
         "unexpected rejection: {error}"
     );
 }

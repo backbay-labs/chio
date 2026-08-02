@@ -177,6 +177,75 @@ pub fn verify_finding_enforcement(
     pins: &FindingEnforcementPins,
     trusted_now_secs: u64,
 ) -> Result<VerifiedFindingEnforcement, SettlementError> {
+    verify_finding_enforcement_inner(
+        signed_enforcement,
+        signed_snapshot,
+        pins,
+        trusted_now_secs,
+        true,
+    )
+}
+
+/// Authenticate the live collateral input used to size a finding penalty.
+///
+/// The coordinator separately binds the returned snapshot body to the
+/// admitted allocation and currency. This function establishes the observer
+/// signature, pinned finality policy, freshness, and checked live balance so
+/// no bare request number can enter the penalty calculation.
+pub fn verify_finding_collateral_snapshot(
+    signed_snapshot: &SignedFindingFinalizedBondSnapshot,
+    settlement_observer: &PublicKey,
+    finality_requirement: FindingFinalityRequirement,
+    max_snapshot_age_secs: u64,
+    trusted_now_secs: u64,
+) -> Result<u64, SettlementError> {
+    verify_signed_finalized_bond_snapshot(signed_snapshot, settlement_observer)
+        .map_err(|error| reject(format!("finalized bond snapshot rejected: {error}")))?;
+    ensure_observed_finality_satisfies_policy(&signed_snapshot.body, finality_requirement)?;
+    ensure_snapshot_is_fresh(
+        &signed_snapshot.body,
+        max_snapshot_age_secs,
+        trusted_now_secs,
+    )?;
+    signed_snapshot
+        .body
+        .live_allocated_collateral()
+        .map_err(|error| {
+            reject(format!(
+                "bond snapshot collateral is not computable: {error}"
+            ))
+        })
+}
+
+/// Verify a previously dispatched enforcement for post-dispatch recovery.
+///
+/// Once the exact seller impairment is durably confirmed, an aged
+/// pre-dispatch snapshot cannot authorize another dispatch. Recovery still
+/// authenticates and binds that snapshot, rejects a future observation, and
+/// lets the caller re-read its block and operator qualification before
+/// clearing quarantine.
+pub fn verify_finding_enforcement_for_reconciliation(
+    signed_enforcement: &SignedFindingChallengeEnforcement,
+    signed_snapshot: &SignedFindingFinalizedBondSnapshot,
+    pins: &FindingEnforcementPins,
+    trusted_now_secs: u64,
+) -> Result<VerifiedFindingEnforcement, SettlementError> {
+    verify_finding_enforcement_inner(
+        signed_enforcement,
+        signed_snapshot,
+        pins,
+        trusted_now_secs,
+        false,
+    )
+}
+
+fn verify_finding_enforcement_inner(
+    signed_enforcement: &SignedFindingChallengeEnforcement,
+    signed_snapshot: &SignedFindingFinalizedBondSnapshot,
+    pins: &FindingEnforcementPins,
+    trusted_now_secs: u64,
+    require_fresh_snapshot: bool,
+) -> Result<VerifiedFindingEnforcement, SettlementError> {
     pins.validate()?;
 
     verify_signed_challenge_enforcement(signed_enforcement, &pins.finalization_authority)
@@ -231,7 +300,10 @@ pub fn verify_finding_enforcement(
         ));
     }
     ensure_destinations_sum_exactly(enforcement)?;
-    ensure_snapshot_is_fresh(snapshot, pins.max_snapshot_age_secs, trusted_now_secs)?;
+    ensure_snapshot_is_not_from_future(snapshot, trusted_now_secs)?;
+    if require_fresh_snapshot {
+        ensure_snapshot_is_fresh(snapshot, pins.max_snapshot_age_secs, trusted_now_secs)?;
+    }
 
     let seller_impair_intent_id =
         bound_intent_id(enforcement, FindingEffectIntentKind::SellerImpair)
@@ -373,14 +445,24 @@ fn ensure_snapshot_is_fresh(
     max_snapshot_age_secs: u64,
     trusted_now_secs: u64,
 ) -> Result<(), SettlementError> {
-    let Some(age_secs) = trusted_now_secs.checked_sub(snapshot.observed_at) else {
-        return Err(reject(
-            "bond snapshot was observed after the trusted current time",
-        ));
-    };
+    let age_secs = trusted_now_secs
+        .checked_sub(snapshot.observed_at)
+        .ok_or_else(|| reject("bond snapshot was observed after the trusted current time"))?;
     if age_secs > max_snapshot_age_secs {
         return Err(reject(
             "bond snapshot is older than the configured maximum observation age",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_snapshot_is_not_from_future(
+    snapshot: &FindingFinalizedBondSnapshot,
+    trusted_now_secs: u64,
+) -> Result<(), SettlementError> {
+    if trusted_now_secs.checked_sub(snapshot.observed_at).is_none() {
+        return Err(reject(
+            "bond snapshot was observed after the trusted current time",
         ));
     }
     Ok(())

@@ -43,9 +43,11 @@ pub use reconcile::{
     FindingImpairmentQuarantine, FindingVaultRejection, StoredImpairmentTransaction,
 };
 pub use verify::{
-    recheck_finding_bond_observation, verify_finding_enforcement, FindingBondObservationRecheck,
-    FindingBondObservationSource, FindingBondObservationVerdict, FindingEnforcementPins,
-    FindingFinalityRequirement, FindingOperatorQualification, VerifiedFindingEnforcement,
+    recheck_finding_bond_observation, verify_finding_collateral_snapshot,
+    verify_finding_enforcement, verify_finding_enforcement_for_reconciliation,
+    FindingBondObservationRecheck, FindingBondObservationSource, FindingBondObservationVerdict,
+    FindingEnforcementPins, FindingFinalityRequirement, FindingOperatorQualification,
+    VerifiedFindingEnforcement,
 };
 
 use alloy_primitives::{Address, FixedBytes, B256};

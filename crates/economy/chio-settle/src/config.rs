@@ -129,6 +129,10 @@ pub struct SettlementAmountTier {
 pub struct SettlementPolicyConfig {
     pub chio_minor_unit_decimals: u8,
     pub token_minor_unit_decimals: u8,
+    /// EVM destinations the operator permits a finding impairment to pay.
+    /// An empty set denies every finding impairment.
+    #[serde(default)]
+    pub finding_impairment_destination_allowlist: BTreeSet<String>,
     pub tiers: Vec<SettlementAmountTier>,
 }
 
@@ -137,6 +141,7 @@ impl Default for SettlementPolicyConfig {
         Self {
             chio_minor_unit_decimals: 2,
             token_minor_unit_decimals: 6,
+            finding_impairment_destination_allowlist: BTreeSet::new(),
             tiers: vec![
                 SettlementAmountTier {
                     upper_bound_units: 1_000,
@@ -177,6 +182,15 @@ impl SettlementPolicyConfig {
         if self.token_minor_unit_decimals < self.chio_minor_unit_decimals {
             return Err(SettlementError::invalid_input(
                 "token decimals must be >= Chio monetary minor-unit decimals",
+            ));
+        }
+        if self
+            .finding_impairment_destination_allowlist
+            .iter()
+            .any(|destination| destination.trim().is_empty())
+        {
+            return Err(SettlementError::invalid_input(
+                "finding impairment destination allowlist entries must not be empty",
             ));
         }
         let mut last_bound = 0_u64;

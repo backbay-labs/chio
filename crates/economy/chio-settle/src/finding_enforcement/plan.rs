@@ -139,10 +139,32 @@ pub fn plan_finding_impairment(
         ));
     }
 
+    let allowed_destinations = config
+        .policy
+        .finding_impairment_destination_allowlist
+        .iter()
+        .map(|destination| {
+            parse_evm_address(
+                destination,
+                "finding impairment destination allowlist entry",
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     let mut beneficiaries = Vec::with_capacity(enforcement.destinations.len());
     let mut shares = Vec::with_capacity(enforcement.destinations.len());
     let mut destinations = Vec::with_capacity(enforcement.destinations.len());
     for destination in &enforcement.destinations {
+        let parsed = parse_evm_address(
+            &destination.destination,
+            "finding impairment enforcement destination",
+        )?;
+        if !allowed_destinations.contains(&parsed) {
+            return Err(reject(format!(
+                "finding impairment destination {} is not in the operator allowlist",
+                destination.destination
+            )));
+        }
         beneficiaries.push(destination.destination.clone());
         shares.push(destination.amount.clone());
         destinations.push(FindingImpairmentDestination {

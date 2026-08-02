@@ -12,6 +12,9 @@ use std::time::{Duration, Instant};
 pub(crate) async fn serve_async(
     config: TrustServiceConfig,
     injected_joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
+    finding_purchase_executor: Option<
+        super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    >,
     finding_challenge_executor: Option<
         Arc<dyn super::super::finding_challenge_handlers::FindingChallengeSubmissionExecutor>,
     >,
@@ -19,7 +22,7 @@ pub(crate) async fn serve_async(
     serve_async_inner(
         config,
         injected_joint_authority_store,
-        None,
+        finding_purchase_executor,
         finding_challenge_executor,
     )
     .await
@@ -28,14 +31,6 @@ pub(crate) async fn serve_async(
 #[cfg(not(feature = "cognition-market-experimental"))]
 pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliError> {
     serve_async_inner(config).await
-}
-
-#[cfg(feature = "cognition-market-experimental")]
-pub(crate) async fn serve_async_with_finding_purchase_executor(
-    config: TrustServiceConfig,
-    executor: super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
-) -> Result<(), CliError> {
-    serve_async_inner(config, None, Some(executor), None).await
 }
 
 async fn serve_async_inner(

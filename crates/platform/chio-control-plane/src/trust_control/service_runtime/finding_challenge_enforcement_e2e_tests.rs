@@ -150,6 +150,7 @@ use crate::trust_control::{
     FindingPoolPin, TrustServiceConfig, TrustServiceState,
 };
 use crate::trust_control::{FindingRailInstruction, FindingRailObservation, FindingRailObserver};
+use chio_test_support::plain::TestResultOk;
 use tower::ServiceExt;
 
 use super::build_router;
@@ -2700,14 +2701,50 @@ fn liability_identity<'a>(
 
 fn collateral_facts<'a>(
     stake: &'a MonetaryAmount,
-    _required: &'a MonetaryAmount,
+    required: &'a MonetaryAmount,
     allocation_id: &'a str,
     live: u64,
 ) -> FindingCollateralFacts<'a> {
+    collateral_facts_at(stake, required, allocation_id, live, NOW)
+}
+
+fn collateral_facts_at<'a>(
+    stake: &'a MonetaryAmount,
+    required: &'a MonetaryAmount,
+    allocation_id: &'a str,
+    live: u64,
+    observed_at: u64,
+) -> FindingCollateralFacts<'a> {
+    let mut snapshot = FindingFinalizedBondSnapshot {
+        schema: FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1.to_string(),
+        snapshot_id: String::new(),
+        chain_id: "chio-devnet".to_string(),
+        vault_contract: "vault:finding-collateral".to_string(),
+        vault_id: "vault-01".to_string(),
+        seller: keypair(22).public_key(),
+        allocation_id: allocation_id.to_string(),
+        locked_amount: required.units,
+        held_amount: required
+            .units
+            .checked_sub(live)
+            .test_expect("fixture live collateral does not exceed locked collateral"),
+        slashed_amount: 0,
+        currency: stake.currency.clone(),
+        block_number: 21_000_000,
+        block_hash: chain_hash(0xbb),
+        finality_policy: "confirmations>=64".to_string(),
+        observed_finality: FindingObservedFinality::Confirmations { depth: 96 },
+        identity_registry_record: "registry/operators/venue-42".to_string(),
+        operator_key_hash: OPERATOR_KEY_HASH.to_string(),
+        operator_key_epoch: PINNED_KEY_EPOCH,
+        observed_at,
+    };
+    snapshot.snapshot_id =
+        compute_snapshot_id(&snapshot).test_expect("fixture collateral snapshot id computes");
     FindingCollateralFacts {
         base_finding_stake: stake,
-        live_allocated_collateral_units: live,
-        allocation_id,
+        bond_snapshot: SignedExportEnvelope::sign(snapshot, &keypair(34))
+            .test_expect("fixture collateral snapshot signs"),
     }
 }
 
@@ -3521,6 +3558,43 @@ fn finding_challenge_evaluation_refuses_collateral_from_an_unadmitted_allocation
         FindingChallengeState::Submitted,
         "a mismatched allocation consumes no evaluation attempt"
     );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_evaluation_derives_live_collateral_from_the_signed_snapshot() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenged = challenged_finding()?;
+    let case = digest_mismatch_case(
+        &deployment,
+        &challenged,
+        &DenyShape::seller_origin(),
+        Filing::Buyer,
+    )?;
+    coordinator.submit(&case.challenge, &challenged.raw_finding, NOW)?;
+
+    let stake = usd(300);
+    let required = usd(5_000);
+    let mut collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
+    collateral.bond_snapshot.body.held_amount = 4_900;
+    collateral.bond_snapshot.body.snapshot_id = String::new();
+    collateral.bond_snapshot.body.snapshot_id =
+        compute_snapshot_id(&collateral.bond_snapshot.body)?;
+    let evidence = case.evidence();
+    let refused = coordinator
+        .evaluate(&evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &collateral,
+            NOW + 1,
+        ))
+        .expect_err("a caller cannot lower the live balance inside a signed snapshot");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::CollateralSnapshot(_)
+    ));
     Ok(())
 }
 
@@ -4876,7 +4950,7 @@ fn finding_challenge_the_payout_never_seals_inside_the_claim_window() -> TestRes
             terms,
             1,
             std::slice::from_ref(&sale.purchase_key),
-            &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+            &collateral_facts_at(&stake, &required, &deployment.allocation_id, 5_000, now),
             &governance.context(),
             &governance.sanction_case,
             now,
@@ -5754,6 +5828,13 @@ fn settlement_config() -> Result<SettlementChainConfig, AnyError> {
         .as_ref()
         .ok_or("anchor inclusion proof example carries a chain anchor")?;
     let rpc_url = "http://127.0.0.1:8545".to_string();
+    let mut policy = SettlementPolicyConfig::default();
+    policy.finding_impairment_destination_allowlist = [
+        EVM_BUYER_DESTINATION.to_string(),
+        EVM_COMMUNITY_FUND.to_string(),
+    ]
+    .into_iter()
+    .collect();
     Ok(SettlementChainConfig {
         chain_id: anchor.chain_id.clone(),
         network_name: "Devnet".to_string(),
@@ -5768,7 +5849,7 @@ fn settlement_config() -> Result<SettlementChainConfig, AnyError> {
         settlement_token_address: "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string(),
         oracle: SettlementOracleConfig::default(),
         evidence_substrate: SettlementEvidenceConfig::default(),
-        policy: SettlementPolicyConfig::default(),
+        policy,
     })
 }
 
@@ -6782,6 +6863,33 @@ fn finding_challenge_an_operator_rotation_across_the_broadcast_never_settles() -
     );
     assert!(parked.quarantined);
     assert!(case.deployment.purchases.sales_blocked(LISTING_ID)?);
+
+    let still_rotated = FindingBondObservationRecheck {
+        operator_key_epoch: 4,
+        ..qualified_observation()
+    };
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::then_qualified(vec![still_rotated]),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW + 120,
+        )?
+        .expect_err("confirmed recovery must not bypass a quarantined observation");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::BondObservation(_)
+    ));
+    assert!(case.head()?.quarantined);
+
+    let recovered = case.finalize_observing(
+        &ScriptedObservations::qualified(),
+        &UnreachablePublisher,
+        SETTLEMENT_NOW + 180,
+    )??;
+    assert_eq!(recovered, FindingFinalization::AlreadyConfirmed);
+    let settled = case.head()?;
+    assert_eq!(settled.state, FindingLiabilityState::Settled);
+    assert!(!settled.quarantined);
     Ok(())
 }
 

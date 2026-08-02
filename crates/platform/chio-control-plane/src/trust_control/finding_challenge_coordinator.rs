@@ -93,7 +93,8 @@ use chio_open_market::penalty::{
 };
 use chio_settle::{
     dispatch_finding_impairment, plan_finding_impairment, recheck_finding_bond_observation,
-    verify_finding_enforcement, EvmBondSnapshot, FindingBondObservationSource,
+    verify_finding_collateral_snapshot, verify_finding_enforcement,
+    verify_finding_enforcement_for_reconciliation, EvmBondSnapshot, FindingBondObservationSource,
     FindingEnforcementPins, FindingFinalityRequirement, FindingImpairmentOutcome,
     FindingImpairmentPublisher, FindingImpairmentQuarantine, SettlementChainConfig,
     VerifiedFindingEnforcement,
@@ -417,6 +418,8 @@ pub enum ChallengeCoordinatorError {
     GovernanceBinding(&'static str),
     #[error("collateral facts do not name the allocation this liability is charged to")]
     CollateralAllocation,
+    #[error("authenticated collateral snapshot rejected: {0}")]
+    CollateralSnapshot(&'static str),
     #[error("signed market terms rejected: {0}")]
     TermsEnvelope(String),
     #[error("market terms do not bind this liability: {0}")]
@@ -548,19 +551,16 @@ pub enum EvaluationAdmission {
     },
 }
 
-/// The collateral facts one checked penalty calculation is derived from.
-/// Every member comes from a signed artifact the caller already verified.
-#[derive(Debug, Clone, Copy)]
+/// The authenticated collateral inputs one checked penalty calculation uses.
+/// The coordinator verifies the snapshot against its settlement-observer pin
+/// before deriving the live balance.
+#[derive(Debug, Clone)]
 pub struct FindingCollateralFacts<'a> {
     /// Seller precommitment from the admitted market terms.
     pub base_finding_stake: &'a MonetaryAmount,
-    /// Live collateral the finalized bond snapshot observed.
-    pub live_allocated_collateral_units: u64,
-    /// Allocation whose open per-sale encumbrances the candidate adds.
-    /// The penalty lane requires this to be the allocation the liability
-    /// is charged to: exposure read from any other allocation would size
-    /// this seller's slash from encumbrances it never opened.
-    pub allocation_id: &'a str,
+    /// Settlement-observer-signed live collateral reading. The allocation,
+    /// currency, and live amount are all derived from this envelope.
+    pub bond_snapshot: SignedFindingFinalizedBondSnapshot,
 }
 
 /// Independently authenticated reading of one pinned authority's revocation
@@ -1163,7 +1163,9 @@ impl FindingChallengeCoordinator {
         let body = &request.challenge.body;
         let admission = self.resolve_admission(body, request.now)?;
         self.require_failed_delivery_reservation_binding(body, request.evidence, &admission)?;
-        if request.collateral.allocation_id != admission.body.backing_allocation_id {
+        if request.collateral.bond_snapshot.body.allocation_id
+            != admission.body.backing_allocation_id
+        {
             return Err(ChallengeCoordinatorError::CollateralAllocation);
         }
         let schedule = self.resolve_fee_schedule(&admission.body.fee_schedule_envelope_sha256)?;
@@ -1446,8 +1448,17 @@ impl FindingChallengeCoordinator {
         // charged to. Facts naming another allocation would size the
         // slash from a different seller's open encumbrances, so they are
         // refused here, before anything durable is written.
-        if collateral.allocation_id != identity.allocation_id {
+        if collateral.bond_snapshot.body.allocation_id != identity.allocation_id {
             return Err(ChallengeCoordinatorError::CollateralAllocation);
+        }
+        let snapshot = &collateral.bond_snapshot.body;
+        if snapshot.chain_id != identity.chain_id
+            || snapshot.vault_contract != identity.vault_contract
+            || snapshot.vault_id != identity.vault_id
+        {
+            return Err(ChallengeCoordinatorError::CollateralSnapshot(
+                "snapshot does not name this liability's vault",
+            ));
         }
         let terms_envelope_sha256 = self.envelope_digest(terms)?;
         if terms_envelope_sha256 != signed_challenge.body.terms_envelope_sha256 {
@@ -1999,6 +2010,39 @@ impl FindingChallengeCoordinator {
             // the pre-dispatch collateral observation. The only remaining
             // work is to wait for the other signed effects and settle the
             // head, without ever dispatching the impairment again.
+            // If a post-dispatch chain recheck quarantined the liability,
+            // recovery must explicitly authenticate the original snapshot
+            // and re-observe its block and operator qualification before the
+            // quarantine can be cleared.
+            if liability.quarantined {
+                self.require_live_settlement_observer(bond_snapshot, now)?;
+                let settlement_observer = self.require_live_role(
+                    &self.pins.settlement_observer,
+                    bond_snapshot.body.observed_at,
+                    now,
+                    "settlement observer",
+                )?;
+                let pins = FindingEnforcementPins {
+                    finalization_authority: self.finalization_authority.public_key(),
+                    settlement_observer,
+                    seller: seller.clone(),
+                    finality_requirement: self.pins.settlement_finality_requirement,
+                    max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
+                };
+                let verified = verify_finding_enforcement_for_reconciliation(
+                    enforcement,
+                    bond_snapshot,
+                    &pins,
+                    now,
+                )
+                .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+                self.require_qualified_observation(&verified, observations)?;
+                self.challenges
+                    .set_liability_quarantine(liability_key, false, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+            }
             return if self.settle_if_enforcement_effects_confirmed(
                 liability_key,
                 enforcement,
@@ -3180,7 +3224,8 @@ impl FindingChallengeCoordinator {
         collateral: &FindingCollateralFacts<'_>,
         now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
-        let open = self.outstanding_exposure(collateral.allocation_id, now)?;
+        let live_allocated_collateral = self.authenticated_live_collateral(collateral, now)?;
+        let open = self.outstanding_exposure(&collateral.bond_snapshot.body.allocation_id, now)?;
         let candidate = collateral
             .base_finding_stake
             .units
@@ -3190,10 +3235,42 @@ impl FindingChallengeCoordinator {
                     "computed exposure overflowed".to_owned(),
                 )
             })?;
-        if candidate.min(collateral.live_allocated_collateral_units) == 0 {
+        if candidate.min(live_allocated_collateral) == 0 {
             return Err(ChallengeCoordinatorError::NothingToImpair);
         }
         Ok(())
+    }
+
+    /// Authenticate and derive the only live collateral figure penalty math
+    /// may consume.
+    fn authenticated_live_collateral(
+        &self,
+        collateral: &FindingCollateralFacts<'_>,
+        now: u64,
+    ) -> Result<u64, ChallengeCoordinatorError> {
+        let snapshot = &collateral.bond_snapshot;
+        self.require_live_settlement_observer(snapshot, now)?;
+        let settlement_observer =
+            self.pins.settlement_observer.key().map_err(|_| {
+                ChallengeCoordinatorError::AuthorityPinMismatch("settlement observer")
+            })?;
+        if snapshot.body.currency != collateral.base_finding_stake.currency {
+            return Err(ChallengeCoordinatorError::CollateralSnapshot(
+                "snapshot currency does not match the signed base stake",
+            ));
+        }
+        verify_finding_collateral_snapshot(
+            snapshot,
+            &settlement_observer,
+            self.pins.settlement_finality_requirement,
+            self.market_config.max_snapshot_age_secs,
+            now,
+        )
+        .map_err(|_| {
+            ChallengeCoordinatorError::CollateralSnapshot(
+                "snapshot signature, finality, freshness, or balance is invalid",
+            )
+        })
     }
 
     /// Require the caller's identity to be exactly the one the durable
@@ -3955,7 +4032,8 @@ impl FindingChallengeCoordinator {
         listing_required_amount: &MonetaryAmount,
         now: u64,
     ) -> Result<FindingPenaltyCalculation, ChallengeCoordinatorError> {
-        let open = self.outstanding_exposure(collateral.allocation_id, now)?;
+        let live_allocated_collateral = self.authenticated_live_collateral(collateral, now)?;
+        let open = self.outstanding_exposure(&collateral.bond_snapshot.body.allocation_id, now)?;
         let computed = collateral
             .base_finding_stake
             .units
@@ -3970,9 +4048,9 @@ impl FindingChallengeCoordinator {
             open_per_sale_encumbrance_units: open,
             computed_exposure_units: computed,
             listing_required_amount_units: listing_required_amount.units,
-            live_allocated_collateral_units: collateral.live_allocated_collateral_units,
+            live_allocated_collateral_units: live_allocated_collateral,
             penalty_amount: MonetaryAmount {
-                units: computed.min(collateral.live_allocated_collateral_units),
+                units: computed.min(live_allocated_collateral),
                 currency: collateral.base_finding_stake.currency.clone(),
             },
         };
@@ -4022,11 +4100,12 @@ impl FindingChallengeCoordinator {
         // candidate are read against it rather than against a figure the
         // call carried in beside it.
         let open = self.outstanding_exposure(identity.allocation_id, now)?;
+        let live_allocated_collateral = self.authenticated_live_collateral(collateral, now)?;
         let distribution = compute_slash_distribution(
             &SlashInputs {
                 base_finding_stake: collateral.base_finding_stake,
                 open_per_sale_encumbrances: open,
-                live_allocated_collateral: collateral.live_allocated_collateral_units,
+                live_allocated_collateral,
                 listing_required_amount,
                 community_fund_destination,
             },
