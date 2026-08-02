@@ -23,8 +23,7 @@ use chio_revocation_oracle::{
 use chio_store_sqlite::{
     FindingRetractionIntentState, FindingStatusEpochAdvance, FindingStatusProofKind,
     FindingStatusProofRecord, FindingStatusStoreError, SqliteFindingStatusStore,
-    VerifiedFindingStatusEpochInput, VerifiedFindingStatusLeafInput,
-    VerifiedFindingStatusProofInput,
+    VerifiedFindingStatusEpochInput, VerifiedFindingStatusProofInput,
 };
 
 use super::finding_status_verifier::authorization;
@@ -165,16 +164,39 @@ impl FindingStatusEpochPublisher {
         };
         let signed = chio_finding::parse_signed_status_epoch(&record.signed_epoch_bytes)
             .map_err(|error| error.to_string())?;
-        chio_finding::verify_signed_status_epoch(&signed, &authorization(&self.operator)?)
-            .map_err(|error| error.to_string())?;
+        signed.body.validate().map_err(|error| error.to_string())?;
+        if signed.signer_key != signed.body.operator_key
+            || !signed
+                .verify_signature()
+                .map_err(|error| error.to_string())?
+        {
+            return Err("current finding status epoch signature is invalid".to_owned());
+        }
         if signed.body.root_hash != hex::encode(map.root().root_hash)
             || signed.body.map_epoch != record.map_epoch
             || signed.body.status_epoch_id != record.epoch_id
+            || signed.body.feed_id != record.feed_id
+            || signed.body.operator_id != record.operator_id
+            || signed.body.key_domain_nonce != record.key_domain_nonce
+            || signed.body.operator_key.to_hex() != record.operator_key
+            || signed.body.operator_key_epoch != record.operator_key_epoch
         {
             return Err(
                 "current finding status epoch does not match the durable sparse map".to_owned(),
             );
         }
+        let current_authorization = authorization(&self.operator)?;
+        if signed.body.operator_key_epoch < current_authorization.operator.key_epoch
+            && signed.body.operator_id == current_authorization.operator.authority_id
+        {
+            // The store already authenticated this self-consistent epoch under
+            // the prior authorization before advancing its durable floor. It
+            // cannot be served under a rotated key pin, but it is a valid
+            // predecessor: advance the map epoch and sign a replacement.
+            return Ok(None);
+        }
+        chio_finding::verify_signed_status_epoch(&signed, &current_authorization)
+            .map_err(|error| error.to_string())?;
         if !anchor_refs.is_empty() && signed.body.anchor_refs != anchor_refs {
             return Err(
                 "point proof anchor references do not match the current signed epoch".to_owned(),
@@ -190,6 +212,79 @@ impl FindingStatusEpochPublisher {
         Ok(Some(signed))
     }
 
+    fn current_proof(
+        &self,
+        finding_id: &str,
+        map_epoch: u64,
+        kind: FindingStatusProofKind,
+    ) -> Result<Option<FindingStatusProofRecord>, String> {
+        match self
+            .store
+            .get_latest_proof(&self.operator.feed_id, finding_id)
+        {
+            Ok(Some(proof)) if proof.map_epoch == map_epoch && proof.kind == kind => {
+                Ok(Some(proof))
+            }
+            Ok(_) | Err(FindingStatusStoreError::MissingFloor { .. }) => Ok(None),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn persist_point_proof(
+        &self,
+        signed: &chio_finding::SignedFindingStatusEpoch,
+        finding_id: &str,
+        kind: FindingStatusProofKind,
+        proof_bytes: &[u8],
+        retraction_intent_sha256: Option<&str>,
+        now: u64,
+    ) -> Result<FindingStatusProofRecord, String> {
+        let epoch_bytes = chio_core::canonical_json_bytes(signed).map_err(|e| e.to_string())?;
+        let operator_key = signed.body.operator_key.to_hex();
+        let status_value_bytes =
+            (kind == FindingStatusProofKind::Inclusion).then_some(b"retracted".as_slice());
+        self.store
+            .advance_epoch(&FindingStatusEpochAdvance {
+                epoch: VerifiedFindingStatusEpochInput {
+                    feed_id: &signed.body.feed_id,
+                    operator_id: &signed.body.operator_id,
+                    key_domain_nonce: signed.body.key_domain_nonce,
+                    map_epoch: signed.body.map_epoch,
+                    epoch_id: &signed.body.status_epoch_id,
+                    root_hash: &signed.body.root_hash,
+                    signed_epoch_bytes: &epoch_bytes,
+                    operator_key: &operator_key,
+                    operator_key_epoch: signed.body.operator_key_epoch,
+                    operator_authorization_sha256: &self.operator.authorization_sha256,
+                    generated_at: signed.body.generated_at,
+                    valid_until: signed.body.valid_until,
+                    recorded_at: now,
+                },
+                leaves: &[],
+                proofs: &[VerifiedFindingStatusProofInput {
+                    feed_id: &signed.body.feed_id,
+                    operator_id: &signed.body.operator_id,
+                    key_domain_nonce: signed.body.key_domain_nonce,
+                    map_epoch: signed.body.map_epoch,
+                    epoch_id: &signed.body.status_epoch_id,
+                    root_hash: &signed.body.root_hash,
+                    finding_id,
+                    kind,
+                    proof_bytes,
+                    status_value_bytes,
+                    retraction_intent_sha256,
+                    checked_at: now,
+                    valid_until: signed.body.valid_until,
+                    recorded_at: now,
+                }],
+            })
+            .map_err(|error| error.to_string())?;
+        self.store
+            .get_latest_proof(&signed.body.feed_id, finding_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "published finding status proof disappeared".to_owned())
+    }
+
     /// Publish one dispatch-eligible local retraction exactly once.
     pub fn publish_retraction(
         &self,
@@ -202,25 +297,36 @@ impl FindingStatusEpochPublisher {
             .get_retraction_intent(intent_id)
             .map_err(|error| error.to_string())?
             .ok_or_else(|| "finding retraction intent is not durable".to_owned())?;
-        if intent.state == FindingRetractionIntentState::Published {
-            return self
-                .store
-                .get_latest_proof(&intent.feed_id, &intent.finding_id)
-                .map_err(|error| error.to_string())?
-                .filter(|proof| proof.kind == FindingStatusProofKind::Inclusion)
-                .ok_or_else(|| "published retraction is missing its inclusion proof".to_owned());
-        }
         if intent.state != FindingRetractionIntentState::DispatchEligible
-            || intent.feed_id != self.operator.feed_id
+            && intent.state != FindingRetractionIntentState::Published
+        {
+            return Err("finding retraction is not eligible for this publisher".to_owned());
+        }
+        if intent.feed_id != self.operator.feed_id
             || intent.operator_id != self.operator.authority.authority_id
         {
             return Err("finding retraction is not eligible for this publisher".to_owned());
         }
         let mut map = self.rebuild_map()?;
-        map.insert(&intent.finding_id, &intent.intent_sha256)
-            .map_err(|error| error.to_string())?;
-        let map_epoch = self.next_map_epoch()?;
-        let signed = self.sign_epoch(&map, map_epoch, anchor_refs, now)?;
+        if intent.state == FindingRetractionIntentState::DispatchEligible {
+            map.insert(&intent.finding_id, &intent.intent_sha256)
+                .map_err(|error| error.to_string())?;
+        }
+        let signed = if intent.state == FindingRetractionIntentState::Published {
+            match self.current_epoch_for_point_proof(&map, anchor_refs, now)? {
+                Some(signed) => signed,
+                None => self.sign_epoch(&map, self.next_map_epoch()?, anchor_refs, now)?,
+            }
+        } else {
+            self.sign_epoch(&map, self.next_map_epoch()?, anchor_refs, now)?
+        };
+        if let Some(proof) = self.current_proof(
+            &intent.finding_id,
+            signed.body.map_epoch,
+            FindingStatusProofKind::Inclusion,
+        )? {
+            return Ok(proof);
+        }
         let sparse = map
             .proof(&intent.finding_id)
             .map_err(|error| error.to_string())?;
@@ -241,53 +347,15 @@ impl FindingStatusEpochPublisher {
             },
         )
         .map_err(|error| error.to_string())?;
-        let epoch_bytes = chio_core::canonical_json_bytes(&signed).map_err(|e| e.to_string())?;
         let proof_bytes = chio_core::canonical_json_bytes(&proof).map_err(|e| e.to_string())?;
-        self.store
-            .advance_epoch(&FindingStatusEpochAdvance {
-                epoch: VerifiedFindingStatusEpochInput {
-                    feed_id: &signed.body.feed_id,
-                    operator_id: &signed.body.operator_id,
-                    key_domain_nonce: signed.body.key_domain_nonce,
-                    map_epoch: signed.body.map_epoch,
-                    epoch_id: &signed.body.status_epoch_id,
-                    root_hash: &signed.body.root_hash,
-                    signed_epoch_bytes: &epoch_bytes,
-                    operator_key: &signed.body.operator_key.to_hex(),
-                    operator_key_epoch: signed.body.operator_key_epoch,
-                    operator_authorization_sha256: &self.operator.authorization_sha256,
-                    generated_at: signed.body.generated_at,
-                    valid_until: signed.body.valid_until,
-                    recorded_at: now,
-                },
-                leaves: &[VerifiedFindingStatusLeafInput {
-                    finding_id: &intent.finding_id,
-                    status_value_bytes: b"retracted",
-                    retraction_intent_sha256: &intent.intent_sha256,
-                    local_intent_id: Some(&intent.intent_id),
-                }],
-                proofs: &[VerifiedFindingStatusProofInput {
-                    feed_id: &signed.body.feed_id,
-                    operator_id: &signed.body.operator_id,
-                    key_domain_nonce: signed.body.key_domain_nonce,
-                    map_epoch: signed.body.map_epoch,
-                    epoch_id: &signed.body.status_epoch_id,
-                    root_hash: &signed.body.root_hash,
-                    finding_id: &intent.finding_id,
-                    kind: FindingStatusProofKind::Inclusion,
-                    proof_bytes: &proof_bytes,
-                    status_value_bytes: Some(b"retracted"),
-                    retraction_intent_sha256: Some(&intent.intent_sha256),
-                    checked_at: now,
-                    valid_until: signed.body.valid_until,
-                    recorded_at: now,
-                }],
-            })
-            .map_err(|error| error.to_string())?;
-        self.store
-            .get_latest_proof(&intent.feed_id, &intent.finding_id)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| "published retraction proof disappeared".to_owned())
+        self.persist_point_proof(
+            &signed,
+            &intent.finding_id,
+            FindingStatusProofKind::Inclusion,
+            &proof_bytes,
+            Some(&intent.intent_sha256),
+            now,
+        )
     }
 
     /// Publish a fresh non-inclusion proof for one live finding. This reuses
@@ -317,6 +385,13 @@ impl FindingStatusEpochPublisher {
                 self.sign_epoch(&map, map_epoch, anchor_refs, now)?
             }
         };
+        if let Some(proof) = self.current_proof(
+            finding_id,
+            signed.body.map_epoch,
+            FindingStatusProofKind::NonInclusion,
+        )? {
+            return Ok(proof);
+        }
         let sparse = map.proof(finding_id).map_err(|error| error.to_string())?;
         let proof = build_status_non_inclusion_proof_input(&signed, finding_id, &sparse, now)
             .map_err(|error| error.to_string())?;
@@ -329,47 +404,14 @@ impl FindingStatusEpochPublisher {
             },
         )
         .map_err(|error| error.to_string())?;
-        let epoch_bytes = chio_core::canonical_json_bytes(&signed).map_err(|e| e.to_string())?;
         let proof_bytes = chio_core::canonical_json_bytes(&proof).map_err(|e| e.to_string())?;
-        self.store
-            .advance_epoch(&FindingStatusEpochAdvance {
-                epoch: VerifiedFindingStatusEpochInput {
-                    feed_id: &signed.body.feed_id,
-                    operator_id: &signed.body.operator_id,
-                    key_domain_nonce: signed.body.key_domain_nonce,
-                    map_epoch: signed.body.map_epoch,
-                    epoch_id: &signed.body.status_epoch_id,
-                    root_hash: &signed.body.root_hash,
-                    signed_epoch_bytes: &epoch_bytes,
-                    operator_key: &signed.body.operator_key.to_hex(),
-                    operator_key_epoch: signed.body.operator_key_epoch,
-                    operator_authorization_sha256: &self.operator.authorization_sha256,
-                    generated_at: signed.body.generated_at,
-                    valid_until: signed.body.valid_until,
-                    recorded_at: now,
-                },
-                leaves: &[],
-                proofs: &[VerifiedFindingStatusProofInput {
-                    feed_id: &signed.body.feed_id,
-                    operator_id: &signed.body.operator_id,
-                    key_domain_nonce: signed.body.key_domain_nonce,
-                    map_epoch: signed.body.map_epoch,
-                    epoch_id: &signed.body.status_epoch_id,
-                    root_hash: &signed.body.root_hash,
-                    finding_id,
-                    kind: FindingStatusProofKind::NonInclusion,
-                    proof_bytes: &proof_bytes,
-                    status_value_bytes: None,
-                    retraction_intent_sha256: None,
-                    checked_at: now,
-                    valid_until: signed.body.valid_until,
-                    recorded_at: now,
-                }],
-            })
-            .map_err(|error| error.to_string())?;
-        self.store
-            .get_latest_proof(&signed.body.feed_id, finding_id)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| "published non-inclusion proof disappeared".to_owned())
+        self.persist_point_proof(
+            &signed,
+            finding_id,
+            FindingStatusProofKind::NonInclusion,
+            &proof_bytes,
+            None,
+            now,
+        )
     }
 }

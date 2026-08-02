@@ -30,6 +30,10 @@ async fn finding_status_retraction() -> TestResult {
         )?;
     let now = unix_timestamp_now();
     let live = publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    let duplicate_live =
+        publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now + 1)?;
+    assert_eq!(duplicate_live.proof_sha256, live.proof_sha256);
+    assert_eq!(duplicate_live.checked_at, live.checked_at);
     let other_live_finding = sha256_hex(b"m6-independent-live-finding");
     let other_live = publisher.publish_non_inclusion(&other_live_finding, &[], now)?;
     assert_eq!(
@@ -144,7 +148,7 @@ async fn finding_status_retraction() -> TestResult {
     // for the pending and retracted admission checks. The live purchase above
     // must retain its seller exposure for the full liability horizon, so this
     // test cannot recycle that allocation merely to reach the status gate.
-    let status_lane = open_lane(LaneOptions {
+    let mut status_lane = open_lane(LaneOptions {
         install_status_verifier: true,
         ..LaneOptions::standard()
     })
@@ -190,13 +194,38 @@ async fn finding_status_retraction() -> TestResult {
         status_store.issue_retraction_intent(&intent)?,
         chio_store_sqlite::FindingStatusWriteOutcome::ExactReplay
     );
-    assert_eq!(
-        status_gate_store.issue_retraction_intent(&intent)?,
-        chio_store_sqlite::FindingStatusWriteOutcome::Inserted
-    );
     assert!(publisher
         .publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)
         .is_err());
+
+    let hook_store = status_gate_store.clone();
+    let hook_intent_id = intent_id.clone();
+    let hook_feed_id = config.status_feed_operator_ref.clone();
+    let hook_operator_id = config.status_feed_operator.authority.authority_id.clone();
+    let hook_finding_id = lane.deployment.web.finding_id.clone();
+    let hook_intent_bytes = intent_bytes.clone();
+    let inclusion_deadline = intent.inclusion_deadline;
+    status_lane
+        .kernel
+        .set_payment_adapter(Box::new(ReversibleHoldAdapter {
+            calls: status_lane.calls.clone(),
+            authorize_hook: Some(Arc::new(move || {
+                hook_store
+                    .issue_retraction_intent(&chio_store_sqlite::FindingRetractionIntentInput {
+                        intent_id: &hook_intent_id,
+                        feed_id: &hook_feed_id,
+                        operator_id: &hook_operator_id,
+                        finding_id: &hook_finding_id,
+                        source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
+                        intent_bytes: &hook_intent_bytes,
+                        issued_at: now,
+                        inclusion_deadline,
+                        created_at: now,
+                    })
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())
+            })),
+        }));
 
     let pending = status_lane.reveal_with_status(
         &status_lane.purchase,
@@ -205,6 +234,9 @@ async fn finding_status_retraction() -> TestResult {
         "m6-pending-nonce-2",
     )?;
     assert_denied_with(&pending, "pending");
+    assert_eq!(status_lane.calls.authorizations.load(Ordering::SeqCst), 1);
+    assert_eq!(status_lane.calls.releases.load(Ordering::SeqCst), 1);
+    assert_eq!(status_lane.invocations.load(Ordering::SeqCst), 0);
 
     let included = status_gate_publisher.publish_retraction(&intent_id, &[], now)?;
     let included_b64 = STANDARD.encode(&included.proof_bytes);
@@ -224,6 +256,63 @@ async fn finding_status_retraction() -> TestResult {
         "m6-rollback-nonce-2",
     )?;
     assert_denied_with(&rollback, "rollback");
+
+    let second_finding_id = sha256_hex(b"m6-second-retracted-finding");
+    let second_intent_id = sha256_hex(b"m6-second-retraction-intent");
+    let second_intent_bytes = canonical_json_bytes(&serde_json::json!({
+        "finding_id": second_finding_id,
+        "reason": "seller_voluntary_retraction",
+        "schema": "chio.finding.voluntary-retraction.v1",
+    }))?;
+    status_gate_store.issue_retraction_intent(
+        &chio_store_sqlite::FindingRetractionIntentInput {
+            intent_id: &second_intent_id,
+            feed_id: &config.status_feed_operator_ref,
+            operator_id: &config.status_feed_operator.authority.authority_id,
+            finding_id: &second_finding_id,
+            source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
+            intent_bytes: &second_intent_bytes,
+            issued_at: now,
+            inclusion_deadline: now + config.status_feed_service_bond.inclusion_sla_secs,
+            created_at: now,
+        },
+    )?;
+    let second_included =
+        status_gate_publisher.publish_retraction(&second_intent_id, &[], now + 1)?;
+    let refreshed_included = status_gate_publisher.publish_retraction(&intent_id, &[], now + 1)?;
+    assert_eq!(refreshed_included.map_epoch, second_included.map_epoch);
+    assert_eq!(
+        refreshed_included.kind,
+        chio_store_sqlite::FindingStatusProofKind::Inclusion
+    );
+
+    let mut rotated_operator = config.status_feed_operator.clone();
+    rotated_operator.authority.key_hex = keypair(46).public_key().to_hex();
+    rotated_operator.authority.key_epoch += 1;
+    rotated_operator.authorization_sha256 = sha256_hex(b"rotated-status-operator-authorization");
+    let rotated_publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            status_gate_store.clone(),
+            rotated_operator.clone(),
+            config.status_feed_service_bond.clone(),
+            keypair(46),
+            config.status_max_epoch_age_secs,
+        )?;
+    let prior_epoch = status_gate_store
+        .get_feed_floor(&config.status_feed_operator_ref)?
+        .map_epoch;
+    let rotated = rotated_publisher.publish_non_inclusion(
+        &sha256_hex(b"m6-live-after-operator-rotation"),
+        &[],
+        now + 2,
+    )?;
+    assert_eq!(rotated.map_epoch, prior_epoch + 1);
+    assert_eq!(
+        status_gate_store
+            .get_current_epoch(&config.status_feed_operator_ref)?
+            .operator_key_epoch,
+        rotated_operator.authority.key_epoch
+    );
 
     publisher.publish_retraction(&intent_id, &[], now)?;
     let resolved = resolver.resolve(chio_guards::finding_retraction::FindingRetractionQuery {

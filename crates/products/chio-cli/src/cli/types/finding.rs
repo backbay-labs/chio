@@ -86,6 +86,9 @@ pub(crate) enum FindingCommands {
         /// Governance-pinned status operator authorization (strict canonical JSON).
         #[arg(long)]
         operator_authorization: PathBuf,
+        /// Durable rollback floor for this feed and stable operator identity.
+        #[arg(long)]
+        rollback_floor: PathBuf,
         /// Maximum accepted age of the signed status epoch in seconds.
         #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
         max_epoch_age_secs: u64,

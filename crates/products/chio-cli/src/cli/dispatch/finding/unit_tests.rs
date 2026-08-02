@@ -469,6 +469,8 @@ fn status_subcommand_parses() {
         "status-feed/venue-01",
         "--operator-authorization",
         "status-operator.json",
+        "--rollback-floor",
+        "status-floor.json",
         "--max-epoch-age-secs",
         "300",
     ])
@@ -480,12 +482,14 @@ fn status_subcommand_parses() {
                     id,
                     feed,
                     operator_authorization,
+                    rollback_floor,
                     max_epoch_age_secs,
                 },
         } => {
             assert_eq!(id, GOLDEN_FINDING_ID);
             assert_eq!(feed, "status-feed/venue-01");
             assert_eq!(operator_authorization, PathBuf::from("status-operator.json"));
+            assert_eq!(rollback_floor, PathBuf::from("status-floor.json"));
             assert_eq!(max_epoch_age_secs, 300);
         }
         _ => panic!("expected finding status command"),
@@ -498,6 +502,7 @@ fn status_requires_a_venue_url() {
         GOLDEN_FINDING_ID,
         "status-feed/venue-01",
         Path::new("status-operator.json"),
+        Path::new("status-floor.json"),
         300,
         false,
         None,
@@ -505,6 +510,120 @@ fn status_requires_a_venue_url() {
     .unwrap_err()
     .to_string();
     assert!(error.contains("--control-url"), "unexpected error: {error}");
+}
+
+#[test]
+fn status_floor_rejects_rollback_and_same_epoch_equivocation() {
+    let dir = tempfile::tempdir().unwrap();
+    let floor_path = dir.path().join("status-floor.json");
+    let authorization = chio_finding::FindingStatusOperatorAuthorization {
+        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
+        feed_id: "status-feed/venue-01".to_owned(),
+        operator: chio_finding::FindingAuthorityKeyPolicy {
+            authority_id: "venue-01-status-operator".to_owned(),
+            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
+            key_epoch: 4,
+            valid_from: 1_700_000_000,
+            valid_until: 1_900_000_000,
+            rotation_policy_ref: "governance/status-rotation".to_owned(),
+            revocation_status_ref: "governance/status-revocation".to_owned(),
+        },
+        revoked_from: None,
+    };
+    let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
+    let response = FindingStatusProofResponse {
+        feed_id: authorization.feed_id.clone(),
+        key_domain_nonce: 3_318_287_169_837_494,
+        map_epoch: 8,
+        epoch_id: "1".repeat(64),
+        root_hash: "2".repeat(64),
+        finding_id: GOLDEN_FINDING_ID.to_owned(),
+        proof_kind: "non_inclusion".to_owned(),
+        proof_sha256: "3".repeat(64),
+        proof_input_b64: String::new(),
+        signed_epoch_sha256: "4".repeat(64),
+        signed_epoch_b64: String::new(),
+        checked_at: 1_800_000_000,
+        valid_until: 1_800_000_300,
+    };
+    advance_status_floor(
+        &floor_path,
+        &response,
+        &authorization,
+        &authorization_sha256,
+    )
+    .unwrap();
+
+    let mut rollback = response;
+    rollback.map_epoch = 7;
+    assert!(advance_status_floor(
+        &floor_path,
+        &rollback,
+        &authorization,
+        &authorization_sha256,
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("rollback floor"));
+
+    rollback.map_epoch = 8;
+    rollback.root_hash = "5".repeat(64);
+    assert!(advance_status_floor(
+        &floor_path,
+        &rollback,
+        &authorization,
+        &authorization_sha256,
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("equivocates"));
+}
+
+#[test]
+fn status_rejects_oversized_encoded_proof_before_decoding() {
+    let authorization = chio_finding::FindingStatusOperatorAuthorization {
+        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
+        feed_id: "status-feed/venue-01".to_owned(),
+        operator: chio_finding::FindingAuthorityKeyPolicy {
+            authority_id: "venue-01-status-operator".to_owned(),
+            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
+            key_epoch: 4,
+            valid_from: 1_700_000_000,
+            valid_until: 1_900_000_000,
+            rotation_policy_ref: "governance/status-rotation".to_owned(),
+            revocation_status_ref: "governance/status-revocation".to_owned(),
+        },
+        revoked_from: None,
+    };
+    let max_encoded_proof =
+        (chio_finding::MAX_FINDING_STATUS_PROOF_BYTES.saturating_add(2) / 3)
+            .saturating_mul(4);
+    let response = FindingStatusProofResponse {
+        feed_id: authorization.feed_id.clone(),
+        key_domain_nonce: 3_318_287_169_837_494,
+        map_epoch: 8,
+        epoch_id: "1".repeat(64),
+        root_hash: "2".repeat(64),
+        finding_id: GOLDEN_FINDING_ID.to_owned(),
+        proof_kind: "non_inclusion".to_owned(),
+        proof_sha256: "3".repeat(64),
+        proof_input_b64: "A".repeat(max_encoded_proof.saturating_add(1)),
+        signed_epoch_sha256: "4".repeat(64),
+        signed_epoch_b64: String::new(),
+        checked_at: 1_800_000_000,
+        valid_until: 1_800_000_300,
+    };
+
+    let error = verify_status_projection(
+        &response,
+        &authorization.feed_id,
+        GOLDEN_FINDING_ID,
+        &authorization,
+        300,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("oversized"), "unexpected error: {error}");
 }
 
 #[test]

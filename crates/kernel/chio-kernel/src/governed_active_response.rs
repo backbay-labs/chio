@@ -199,6 +199,7 @@ impl ChioKernel {
                     admission.operation(),
                     serde_json::json!({"cause": "active-response-approval-reservation-failed"}),
                     trusted_now_unix_ms,
+                    None,
                 );
             }
             return Err(error);
@@ -245,6 +246,7 @@ impl ChioKernel {
             admission.admission.operation(),
             serde_json::json!({"cause": "active-response-cancelled"}),
             current_unix_timestamp_ms(),
+            None,
         )
     }
 }

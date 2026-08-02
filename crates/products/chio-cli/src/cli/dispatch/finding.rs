@@ -31,6 +31,12 @@ const FINDING_SEARCH_PATH: &str = "/v1/findings/search";
 const FINDING_PUBLISH_MAX_BODY_BYTES: usize = 256 * 1024;
 /// Out-of-band status operator authorization file cap.
 const FINDING_STATUS_AUTHORIZATION_MAX_BYTES: usize = 64 * 1024;
+/// Aggregate status response cap, including the portable proof and the
+/// separately projected signed epoch carrier.
+const FINDING_STATUS_RESPONSE_MAX_BYTES: usize = 512 * 1024;
+/// Durable CLI rollback-floor document cap.
+const FINDING_STATUS_FLOOR_MAX_BYTES: usize = 16 * 1024;
+const FINDING_STATUS_FLOOR_SCHEMA_V1: &str = "chio.finding.status-cli-floor.v1";
 
 pub(crate) fn dispatch_finding(
     command: FindingCommands,
@@ -95,11 +101,13 @@ pub(crate) fn dispatch_finding(
             id,
             feed,
             operator_authorization,
+            rollback_floor,
             max_epoch_age_secs,
         } => cmd_finding_status(
             &id,
             &feed,
             &operator_authorization,
+            &rollback_floor,
             max_epoch_age_secs,
             json_output,
             control_url.as_deref(),
@@ -607,6 +615,7 @@ fn emit_purchase_result(result: &FindingPurchaseResult, json_output: bool) -> Re
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 struct FindingStatusProofResponse {
     feed_id: String,
     key_domain_nonce: u64,
@@ -621,6 +630,54 @@ struct FindingStatusProofResponse {
     signed_epoch_b64: String,
     checked_at: u64,
     valid_until: u64,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct FindingStatusCliFloor {
+    schema: String,
+    feed_id: String,
+    operator_id: String,
+    rotation_policy_ref: String,
+    operator_key_epoch: u64,
+    operator_authorization_sha256: String,
+    key_domain_nonce: u64,
+    map_epoch: u64,
+    epoch_id: String,
+    root_hash: String,
+}
+
+struct FindingStatusFloorLock {
+    path: PathBuf,
+    _file: std::fs::File,
+}
+
+impl FindingStatusFloorLock {
+    fn acquire(floor_path: &Path) -> Result<Self, CliError> {
+        let file_name = floor_path.file_name().ok_or_else(|| {
+            CliError::cli_other_error("finding status rollback floor path has no file name".to_owned())
+        })?;
+        let mut lock_name = file_name.to_os_string();
+        lock_name.push(".lock");
+        let path = floor_path.with_file_name(lock_name);
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|error| {
+                CliError::cli_io_error(format!(
+                    "failed to acquire finding status rollback-floor lock {}: {error}",
+                    path.display()
+                ))
+            })?;
+        Ok(Self { path, _file: file })
+    }
+}
+
+impl Drop for FindingStatusFloorLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
 }
 
 fn require_feed_id(feed_id: &str) -> Result<&str, CliError> {
@@ -691,6 +748,17 @@ fn verify_status_projection(
     if response.feed_id != expected_feed || response.finding_id != expected_finding {
         return Err(CliError::cli_other_error(
             "finding status response binds a different feed or finding".to_string(),
+        ));
+    }
+    let max_proof_b64 = (chio_finding::MAX_FINDING_STATUS_PROOF_BYTES.saturating_add(2) / 3)
+        .saturating_mul(4);
+    let max_epoch_b64 = (chio_finding::MAX_FINDING_STATUS_EPOCH_BYTES.saturating_add(2) / 3)
+        .saturating_mul(4);
+    if response.proof_input_b64.len() > max_proof_b64
+        || response.signed_epoch_b64.len() > max_epoch_b64
+    {
+        return Err(CliError::transport_shape_error(
+            "finding status response carries an oversized encoded proof or epoch".to_owned(),
         ));
     }
     let proof_bytes = STANDARD.decode(&response.proof_input_b64).map_err(|_| {
@@ -807,10 +875,144 @@ fn verify_status_projection(
     Ok(())
 }
 
+fn read_status_floor(path: &Path) -> Result<Option<FindingStatusCliFloor>, CliError> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(CliError::cli_other_error(format!(
+            "{} is not a regular rollback-floor file",
+            path.display()
+        )));
+    }
+    let mut reader = std::fs::File::open(path)?
+        .take((FINDING_STATUS_FLOOR_MAX_BYTES as u64).saturating_add(1));
+    let mut bytes = Vec::with_capacity(FINDING_STATUS_FLOOR_MAX_BYTES.saturating_add(1));
+    reader.read_to_end(&mut bytes)?;
+    if bytes.len() > FINDING_STATUS_FLOOR_MAX_BYTES {
+        return Err(CliError::cli_other_error(format!(
+            "{} exceeds the finding status rollback-floor bound",
+            path.display()
+        )));
+    }
+    let raw = std::str::from_utf8(&bytes).map_err(|error| {
+        CliError::cli_other_error(format!("{} is not valid UTF-8: {error}", path.display()))
+    })?;
+    let canonical = chio_core::canonical::canonical_json_bytes_from_str(raw).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{} is not strict canonical I-JSON: {error}",
+            path.display()
+        ))
+    })?;
+    if canonical != bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{} is not the canonical rollback-floor serialization",
+            path.display()
+        )));
+    }
+    Ok(Some(serde_json::from_slice(&bytes)?))
+}
+
+fn write_status_floor(path: &Path, floor: &FindingStatusCliFloor) -> Result<(), CliError> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    if !parent.is_dir() {
+        return Err(CliError::cli_other_error(format!(
+            "finding status rollback-floor directory {} does not exist",
+            parent.display()
+        )));
+    }
+    let file_name = path.file_name().ok_or_else(|| {
+        CliError::cli_other_error("finding status rollback floor path has no file name".to_owned())
+    })?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| CliError::cli_other_error(format!("system clock is invalid: {error}")))?
+        .as_nanos();
+    let mut temp_name = std::ffi::OsString::from(".");
+    temp_name.push(file_name);
+    temp_name.push(format!(".tmp-{}-{nonce}", std::process::id()));
+    let temp_path = parent.join(temp_name);
+    let bytes = chio_core::canonical_json_bytes(floor)?;
+    let write_result = (|| -> Result<(), CliError> {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&temp_path, path)?;
+        std::fs::File::open(parent)?.sync_all()?;
+        Ok(())
+    })();
+    if write_result.is_err() {
+        let _ = std::fs::remove_file(&temp_path);
+    }
+    write_result
+}
+
+fn advance_status_floor(
+    path: &Path,
+    status: &FindingStatusProofResponse,
+    authorization: &chio_finding::FindingStatusOperatorAuthorization,
+    authorization_sha256: &str,
+) -> Result<(), CliError> {
+    let _lock = FindingStatusFloorLock::acquire(path)?;
+    if let Some(current) = read_status_floor(path)? {
+        if current.schema != FINDING_STATUS_FLOOR_SCHEMA_V1
+            || current.feed_id != status.feed_id
+            || current.operator_id != authorization.operator.authority_id
+            || current.rotation_policy_ref != authorization.operator.rotation_policy_ref
+            || current.key_domain_nonce != status.key_domain_nonce
+        {
+            return Err(CliError::cli_other_error(
+                "finding status rollback floor binds a different feed or operator".to_owned(),
+            ));
+        }
+        if authorization.operator.key_epoch < current.operator_key_epoch
+            || (authorization.operator.key_epoch == current.operator_key_epoch
+                && authorization_sha256 != current.operator_authorization_sha256)
+        {
+            return Err(CliError::cli_other_error(
+                "finding status operator authorization regressed or equivocated".to_owned(),
+            ));
+        }
+        if status.map_epoch < current.map_epoch {
+            return Err(CliError::cli_other_error(
+                "finding status response is below the durable rollback floor".to_owned(),
+            ));
+        }
+        if status.map_epoch == current.map_epoch
+            && (status.epoch_id != current.epoch_id || status.root_hash != current.root_hash)
+        {
+            return Err(CliError::cli_other_error(
+                "finding status response equivocates at the durable rollback floor".to_owned(),
+            ));
+        }
+    }
+    write_status_floor(
+        path,
+        &FindingStatusCliFloor {
+            schema: FINDING_STATUS_FLOOR_SCHEMA_V1.to_owned(),
+            feed_id: status.feed_id.clone(),
+            operator_id: authorization.operator.authority_id.clone(),
+            rotation_policy_ref: authorization.operator.rotation_policy_ref.clone(),
+            operator_key_epoch: authorization.operator.key_epoch,
+            operator_authorization_sha256: authorization_sha256.to_owned(),
+            key_domain_nonce: status.key_domain_nonce,
+            map_epoch: status.map_epoch,
+            epoch_id: status.epoch_id.clone(),
+            root_hash: status.root_hash.clone(),
+        },
+    )
+}
+
 fn cmd_finding_status(
     finding_id: &str,
     feed_id: &str,
     operator_authorization: &Path,
+    rollback_floor: &Path,
     max_epoch_age_secs: u64,
     json_output: bool,
     control_url: Option<&str>,
@@ -824,6 +1026,7 @@ fn cmd_finding_status(
         ));
     }
     let authorization = load_status_operator_authorization(operator_authorization, feed_id)?;
+    let authorization_sha256 = chio_core::sha256_hex(&chio_core::canonical_json_bytes(&authorization)?);
     let encoded_feed = utf8_percent_encode(feed_id, NON_ALPHANUMERIC);
     let endpoint = finding_endpoint(
         url,
@@ -840,13 +1043,24 @@ fn cmd_finding_status(
             )))
         }
     };
-    let status: FindingStatusProofResponse = serde_json::from_reader(response.into_reader())?;
+    let raw_status = read_bounded_response(
+        response,
+        FINDING_STATUS_RESPONSE_MAX_BYTES,
+        "finding status response",
+    )?;
+    let status: FindingStatusProofResponse = serde_json::from_str(&raw_status)?;
     verify_status_projection(
         &status,
         feed_id,
         finding_id,
         &authorization,
         max_epoch_age_secs,
+    )?;
+    advance_status_floor(
+        rollback_floor,
+        &status,
+        &authorization,
+        &authorization_sha256,
     )?;
     if json_output {
         println!("{}", serde_json::to_string_pretty(&status)?);

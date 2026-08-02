@@ -426,6 +426,7 @@ impl ChioKernel {
                                 "cause": "no-authoritative-budget-participant"
                             }),
                             trusted_now_unix_ms,
+                            None,
                         ) {
                             warn!(
                                 operation_id = %operation.binding().operation_id().as_str(),
@@ -1524,6 +1525,7 @@ impl ChioKernel {
         operation: &AdmissionOperationV1,
         verifier_policy: serde_json::Value,
         trusted_now_unix_ms: u64,
+        confirmed_payment_unwind: Option<&PreDispatchPaymentUnwindEvidence>,
     ) -> Result<(), KernelError> {
         let runtime = self.durable_runtime()?;
         let _mutation_guard = runtime.lock_mutations()?;
@@ -1591,11 +1593,6 @@ impl ChioKernel {
                 // Settling, release on the rail, then settle. The release proof is
                 // built from the acquired-participant snapshot, which the terminal
                 // compensation projection below also accepts.
-                let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
-                    KernelError::DurableAdmission(
-                        "authorized pre-dispatch hold has no configured payment adapter".to_owned(),
-                    )
-                })?;
                 let authorization_id = journal.authorization_id.clone().ok_or_else(|| {
                     KernelError::DurableAdmission(
                         "authorized payment journal omitted its authorization".to_owned(),
@@ -1635,14 +1632,34 @@ impl ChioKernel {
                         trusted_now_unix_ms,
                     })
                     .map_err(|error| KernelError::DurableAdmission(error.to_string()))?;
-                let result = adapter
-                    .release(&authorization_id, current.binding().request_id().as_str())
-                    .map_err(|error| KernelError::DurableAdmission(error.to_string()))?;
-                if result.settlement_status != crate::payment::RailSettlementStatus::Released {
-                    return Err(KernelError::DurableAdmission(
-                        "pre-dispatch rail release was not confirmed".to_owned(),
-                    ));
-                }
+                let transaction_id = if let Some(unwind) = confirmed_payment_unwind {
+                    if unwind.authorization_id != authorization_id
+                        || unwind.settlement_status
+                            != crate::payment::PreDispatchPaymentUnwindStatus::Released
+                    {
+                        return Err(KernelError::DurableAdmission(
+                            "confirmed pre-dispatch payment unwind does not match the journal"
+                                .to_owned(),
+                        ));
+                    }
+                    unwind.transaction_id.clone()
+                } else {
+                    let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
+                        KernelError::DurableAdmission(
+                            "authorized pre-dispatch hold has no configured payment adapter"
+                                .to_owned(),
+                        )
+                    })?;
+                    let result = adapter
+                        .release(&authorization_id, current.binding().request_id().as_str())
+                        .map_err(|error| KernelError::DurableAdmission(error.to_string()))?;
+                    if result.settlement_status != crate::payment::RailSettlementStatus::Released {
+                        return Err(KernelError::DurableAdmission(
+                            "pre-dispatch rail release was not confirmed".to_owned(),
+                        ));
+                    }
+                    result.transaction_id
+                };
                 journal = runtime
                     .store
                     .advance_payment_journal(crate::receipt_store::AdmissionPaymentJournalAdvance {
@@ -1651,7 +1668,7 @@ impl ChioKernel {
                         expected: &journal,
                         transition:
                             &crate::payment::PaymentJournalTransition::SettlementCompleted {
-                                transaction_id: result.transaction_id,
+                                transaction_id,
                             },
                         release_evidence: None,
                         active_fence: &runtime.fence,

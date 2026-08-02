@@ -257,7 +257,7 @@ fn market_config() -> FindingMarketConfig {
             min_depth: 64,
         },
         audit_authority: authority_pin(35, "audit-authority"),
-        audit_randomness_witness: authority_pin(37, "audit-randomness-witness"),
+        audit_randomness_witness: authority_pin(38, "audit-randomness-witness"),
         audit_pool: FindingPoolPin {
             principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
             rail_destination: AUDIT_POOL_DESTINATION.to_string(),
@@ -1438,6 +1438,7 @@ struct PaymentCalls {
 
 struct ReversibleHoldAdapter {
     calls: Arc<PaymentCalls>,
+    authorize_hook: Option<Arc<dyn Fn() -> Result<(), String> + Send + Sync>>,
 }
 
 impl PaymentAdapter for ReversibleHoldAdapter {
@@ -1454,6 +1455,9 @@ impl PaymentAdapter for ReversibleHoldAdapter {
         request: &PaymentAuthorizeRequest,
     ) -> Result<PaymentAuthorization, PaymentError> {
         self.calls.authorizations.fetch_add(1, Ordering::SeqCst);
+        if let Some(hook) = self.authorize_hook.as_ref() {
+            hook().map_err(PaymentError::RailError)?;
+        }
         Ok(PaymentAuthorization {
             authorization_id: format!("authorization:{}", request.reference),
             state: PaymentAuthorizationState::Held,
@@ -1704,6 +1708,7 @@ fn build_reveal_kernel(inputs: &RevealKernelInputs<'_>) -> Result<ChioKernel, An
     match inputs.rail {
         Rail::ReversibleHold => kernel.set_payment_adapter(Box::new(ReversibleHoldAdapter {
             calls: inputs.calls.clone(),
+            authorize_hook: None,
         })),
         Rail::PrepaidFinal => kernel.set_payment_adapter(Box::new(PrepaidFinalAdapter {
             calls: inputs.calls.clone(),

@@ -81,13 +81,16 @@ chio finding status \
   --id <finding-id> \
   --feed <governance-pinned-feed-id> \
   --operator-authorization <governance-pinned-authorization.json> \
+  --rollback-floor <durable-status-floor.json> \
   --max-epoch-age-secs <deployment-freshness-limit>
 ```
 
 The command fetches the current proof from the configured control-plane URL,
 verifies the proof and embedded signed epoch against the out-of-band operator
 authorization, applies the configured freshness limit, cross-checks the
-response projection, and prints the verified status. A transport,
+response projection, atomically advances the caller-selected durable rollback
+floor, and prints the verified status. Reuse the same rollback-floor path for
+every query against that feed and stable operator identity. A transport,
 canonicalization, signature, lifecycle, digest, feed, finding, epoch, or
 sparse-path failure exits nonzero.
 

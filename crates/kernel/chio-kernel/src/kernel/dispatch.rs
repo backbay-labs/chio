@@ -807,6 +807,12 @@ impl ChioKernel {
                 }
             }
         }
+        self.verify_purchase_admission(matched_grant, request, now_unix_secs)
+            .map_err(|reason| {
+                KernelError::GuardDenied(format!(
+                    "finding purchase dispatch revalidation failed: {reason}"
+                ))
+            })?;
         Ok(())
     }
 
