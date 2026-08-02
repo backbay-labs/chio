@@ -147,9 +147,7 @@ fn later_root_claim_failure_does_not_reserve_agent_web_replay_ids() {
         verify_transaction_passport_file(&passport_path),
         "read-only Agent Web verification",
     );
-    let claim_set_path = bundle.join("claim-set.json");
-    let original_claim_set = proof_test_ok(std::fs::read(&claim_set_path), "read claim set");
-    proof_test_ok(std::fs::write(&claim_set_path, b"{}"), "corrupt claim set");
+    fail_before_root_claim_set_verification_once();
 
     let error = match verify_transaction_passport_file_and_consume_agent_web_replays(
         &passport_path,
@@ -167,10 +165,6 @@ fn later_root_claim_failure_does_not_reserve_agent_web_replay_ids() {
         "consuming verification must reach the Agent Web branch before the root claim failure"
     );
 
-    proof_test_ok(
-        std::fs::write(&claim_set_path, original_claim_set),
-        "restore claim set",
-    );
     proof_test_ok(
         verify_transaction_passport_file_and_consume_agent_web_replays(
             &passport_path,

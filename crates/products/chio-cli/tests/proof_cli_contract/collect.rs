@@ -317,9 +317,10 @@ fn proof_collect_agent_web_envelope_requires_durable_replay_store() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
-    assert!(stderr.contains(
-        "CHIO_AGENT_WEB_REPLAY_STORE_PATH is required when Standard Webhooks replay protection is enabled"
-    ));
+    assert!(
+        stderr.contains("CHIO_AGENT_WEB_REPLAY_STORE_PATH must be set and non-empty"),
+        "unexpected proof collect error: {stderr}"
+    );
 }
 
 #[test]
@@ -382,7 +383,10 @@ fn proof_collect_consumes_replay_while_proof_verify_remains_idempotent() {
         .test_expect("second proof collect runs");
     assert!(!second_collect.status.success());
     let stderr = String::from_utf8(second_collect.stderr).test_expect("stderr is utf8");
-    assert!(stderr.contains("replayed Standard Webhooks id"));
+    assert!(
+        stderr.contains("replayed Standard Webhooks id"),
+        "unexpected second proof collect error: {stderr}"
+    );
 }
 
 #[test]

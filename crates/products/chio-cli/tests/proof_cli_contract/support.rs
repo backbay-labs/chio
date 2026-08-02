@@ -1275,15 +1275,20 @@ fn source_verifier_fixture_env() -> Vec<(&'static str, String)> {
 }
 
 fn standard_webhooks_clock_env() -> (String, String) {
-    let host_now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .test_expect("host clock is after Unix epoch")
-        .as_secs();
-    let verifier_now = host_now.saturating_add(60);
-    let max_age_seconds = verifier_now
-        .saturating_sub(STANDARD_WEBHOOKS_FIXTURE_TIMESTAMP)
-        .saturating_add(300);
-    (verifier_now.to_string(), max_age_seconds.to_string())
+    static CLOCK_ENV: OnceLock<(String, String)> = OnceLock::new();
+    CLOCK_ENV
+        .get_or_init(|| {
+            let host_now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .test_expect("host clock is after Unix epoch")
+                .as_secs();
+            let verifier_now = host_now.saturating_add(60);
+            let max_age_seconds = verifier_now
+                .saturating_sub(STANDARD_WEBHOOKS_FIXTURE_TIMESTAMP)
+                .saturating_add(300);
+            (verifier_now.to_string(), max_age_seconds.to_string())
+        })
+        .clone()
 }
 
 fn refresh_existing_manifest_artifacts(bundle: &Path) {
