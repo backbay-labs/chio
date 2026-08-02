@@ -1018,7 +1018,12 @@ fn verify_transaction_passport_file_with_mode(
     let mut deferred_agent_web_replay_reservation = None;
     let mut expected_public_settlement_trust_market_context = None;
     let mut expected_commerce_trust_market_context = None;
-    if claim_requirements.requires(CLAIM_PREFIX_FINDING) {
+    let finding_claims_advertised = claim_set_advertises_prefix(
+        &transparency_artifacts,
+        &passport.claim_set_path,
+        CLAIM_PREFIX_FINDING,
+    )?;
+    if claim_requirements.requires(CLAIM_PREFIX_FINDING) || finding_claims_advertised {
         let trust = cognition_market_proof_trust_from_env(&trusted_transaction_root_keys)?;
         let report = chio_control_plane::transaction_passport::
             verify_cognition_market_passport_artifacts(
@@ -1858,6 +1863,35 @@ fn load_standalone_evidence_graph_artifacts(
         artifacts.insert(node.path.clone(), bytes);
     }
     Ok(artifacts)
+}
+
+fn claim_set_advertises_prefix(
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    claim_set_path: &str,
+    prefix: &str,
+) -> Result<bool, CliError> {
+    let bytes = artifacts.get(claim_set_path).ok_or_else(|| {
+        CliError::cli_other_error(format!(
+            "proof verify: claim set artifact missing from evidence graph: {claim_set_path}"
+        ))
+    })?;
+    let claim_set: serde_json::Value = serde_json::from_slice(bytes)?;
+    let claims = claim_set
+        .get("claims")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| CliError::cli_other_error("proof verify: claim set missing claims array"))?;
+    for claim in claims {
+        let claim_id = claim
+            .get("claim_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                CliError::cli_other_error("proof verify: claim set claim_id must be a string")
+            })?;
+        if claim_id.starts_with(prefix) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn resolve_bundle_artifact_path(

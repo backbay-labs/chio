@@ -33,6 +33,40 @@ fn proof_test_ok<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -
     }
 }
 
+#[test]
+fn finding_claim_set_rows_force_cognition_market_routing() {
+    let claim_set_path = "claim-set.json";
+    let mut artifacts = BTreeMap::from([(
+        claim_set_path.to_string(),
+        serde_json::to_vec(&serde_json::json!({
+            "claims": [{
+                "claim_id": "claim.transaction.passport_root_verified",
+                "status": "verified"
+            }]
+        }))
+        .unwrap_or_default(),
+    )]);
+    assert!(!proof_test_ok(
+        claim_set_advertises_prefix(&artifacts, claim_set_path, CLAIM_PREFIX_FINDING),
+        "inspect transaction-only ClaimSet",
+    ));
+
+    artifacts.insert(
+        claim_set_path.to_string(),
+        serde_json::to_vec(&serde_json::json!({
+            "claims": [{
+                "claim_id": "claim.finding.delivery_digest_bound",
+                "status": "verified"
+            }]
+        }))
+        .unwrap_or_default(),
+    );
+    assert!(proof_test_ok(
+        claim_set_advertises_prefix(&artifacts, claim_set_path, CLAIM_PREFIX_FINDING),
+        "inspect ClaimSet with an advertised finding claim",
+    ));
+}
+
 fn agent_web_replay_test_env(replay_store_path: &std::path::Path) -> TestEnvGuard {
     let host_now = proof_test_ok(
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH),
