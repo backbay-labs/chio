@@ -3335,7 +3335,7 @@ fn empty_v4_schema_adds_authenticated_projection_history() {
     let mut connection = Connection::open_in_memory().expect("open legacy database");
     connection
         .execute_batch(&finding_challenge_v4_schema())
-        .expect("install v4 challenge schema");
+        .expect("install previous challenge schema");
     assert_eq!(
         crate::check_schema_version(
             &connection,
@@ -3347,9 +3347,9 @@ fn empty_v4_schema_adds_authenticated_projection_history() {
         0
     );
     crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 4)
-        .expect("stamp v4 schema");
+        .expect("stamp previous schema");
 
-    initialize_finding_challenge_schema(&mut connection).expect("migrate empty v4 schema");
+    initialize_finding_challenge_schema(&mut connection).expect("migrate empty previous schema");
     let version: i32 = connection
         .query_row(
             "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
@@ -3371,7 +3371,7 @@ fn nonempty_v4_schema_is_not_adopted_without_projection_history() {
     let mut connection = Connection::open_in_memory().expect("open legacy database");
     connection
         .execute_batch(&finding_challenge_v4_schema())
-        .expect("install v4 challenge schema");
+        .expect("install previous challenge schema");
     assert_eq!(
         crate::check_schema_version(
             &connection,
@@ -3383,7 +3383,7 @@ fn nonempty_v4_schema_is_not_adopted_without_projection_history() {
         0
     );
     crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 4)
-        .expect("stamp v4 schema");
+        .expect("stamp previous schema");
     connection
         .execute(
             r#"
