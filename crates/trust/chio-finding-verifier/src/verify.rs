@@ -615,6 +615,18 @@ fn evaluate_status_liveness(
             "status proof finding id does not match the verified Finding",
         );
     }
+    let proof_feed_id = match &proof {
+        FindingStatusProofInput::NonInclusion(value) => &value.feed_id,
+        FindingStatusProofInput::Inclusion(value) => &value.feed_id,
+    };
+    if proof_feed_id != &finding.status_feed_ref || authorization.feed_id != finding.status_feed_ref
+    {
+        return facet(
+            FindingFacetKind::StatusLiveness,
+            FindingFacetOutcome::Failed,
+            "status proof and operator authorization do not bind the Finding status feed",
+        );
+    }
     if matches!(proof, FindingStatusProofInput::Inclusion(_)) {
         return facet(
             FindingFacetKind::StatusLiveness,

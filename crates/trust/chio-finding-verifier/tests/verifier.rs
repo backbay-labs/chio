@@ -555,6 +555,20 @@ fn portable_live_status_proof(
     ),
     Box<dyn Error>,
 > {
+    portable_live_status_proof_for_feed(finding_id, "status-feed/venue-wedge")
+}
+
+fn portable_live_status_proof_for_feed(
+    finding_id: &str,
+    feed_id: &str,
+) -> Result<
+    (
+        Vec<u8>,
+        FindingStatusOperatorAuthorization,
+        FindingStatusFreshnessPolicy,
+    ),
+    Box<dyn Error>,
+> {
     let operator = keypair(42);
     let mut map = FindingStatusSparseMap::new();
     let root = map.insert("aa".repeat(32).as_str(), "11".repeat(32).as_str())?;
@@ -565,7 +579,7 @@ fn portable_live_status_proof(
         signature_domain: FINDING_STATUS_SIGNATURE_DOMAIN.to_string(),
         status_map_version: FINDING_STATUS_MAP_VERSION.to_string(),
         proof_semantics: FINDING_STATUS_PROOF_SEMANTICS.to_string(),
-        feed_id: "status-feed/venue-wedge".to_string(),
+        feed_id: feed_id.to_string(),
         key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
         map_epoch: root.map_epoch,
         operator_id: "venue-status-operator".to_string(),
@@ -590,7 +604,7 @@ fn portable_live_status_proof(
         build_status_non_inclusion_proof_input(&signed, finding_id, &sparse, 1_750_000_030)?;
     let authorization = FindingStatusOperatorAuthorization {
         role: FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: "status-feed/venue-wedge".to_string(),
+        feed_id: feed_id.to_string(),
         operator: FindingAuthorityKeyPolicy {
             authority_id: "venue-status-operator".to_string(),
             key: operator.public_key(),
@@ -822,6 +836,35 @@ fn portable_status_proof_rejects_a_clock_different_from_report_evaluation() -> T
     assert_eq!(status.outcome, FindingFacetOutcome::Failed);
     assert!(
         status.reason.contains("report evaluation time"),
+        "unexpected reason: {}",
+        status.reason
+    );
+    assert!(!draft.satisfies_required_facets(&fx.profile.body));
+    Ok(())
+}
+
+#[test]
+fn portable_status_proof_must_bind_the_findings_declared_feed() -> TestResult {
+    let fx = fixture()?;
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let (status_bytes, authorization, freshness) =
+        portable_live_status_proof_for_feed(&finding.finding_id, "status-feed/substituted")?;
+    let mut trust = trust_roots(&fx);
+    trust.trusted_time = freshness.now;
+    trust.status_operator_authorization = Some(authorization);
+    trust.status_freshness_policy = Some(freshness);
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.status_proof_input = Some(&status_bytes);
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let status = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::StatusLiveness)
+        .ok_or("status-liveness facet missing")?;
+    assert_eq!(status.outcome, FindingFacetOutcome::Failed);
+    assert!(
+        status.reason.contains("Finding status feed"),
         "unexpected reason: {}",
         status.reason
     );

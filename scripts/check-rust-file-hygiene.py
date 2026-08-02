@@ -84,7 +84,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-cli/src/cli/dispatch/proof.rs": allow(
         "2026-08-31",
         "launch proof dispatch surface; capped to current size until split",
-        max_lines=3_445,
+        max_lines=3_464,
+    ),
+    "crates/products/chio-cli/src/cli/dispatch/finding/unit_tests.rs": allow(
+        "2026-08-31",
+        "finding CLI regression suite; capped to current size until split",
+        max_lines=2_124,
     ),
     "crates/products/chio-mercury/tests/cli.rs": allow(
         "2026-08-31",
