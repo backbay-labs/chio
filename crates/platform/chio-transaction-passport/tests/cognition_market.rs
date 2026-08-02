@@ -397,7 +397,7 @@ fn cognition_market_qualified_profile_rejects_wrong_role_and_schema() -> TestRes
             })
         })
         .ok_or("status node missing")?;
-    status_node["schema"] = Value::String("chio.finding.status-proof-input.v2".to_string());
+    status_node["schema"] = Value::String("chio.finding.status-proof-input.v9".to_string());
     resign_graph(&mut wrong_schema)?;
     assert!(verify(&wrong_schema).is_err());
     Ok(())
