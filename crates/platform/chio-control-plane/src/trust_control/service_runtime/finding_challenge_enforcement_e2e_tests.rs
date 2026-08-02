@@ -326,7 +326,7 @@ struct TestAuthorityStatusResolver {
 impl TestAuthorityStatusResolver {
     fn live() -> Self {
         Self {
-            signer_seed: 36,
+            signer_seed: 37,
             status_ref_override: None,
             revoked_authority: None,
             revoked_from_override: None,
@@ -388,7 +388,7 @@ fn market_config() -> FindingMarketConfig {
         venue: authority_pin(6, "venue"),
         listing: authority_pin(24, "listing"),
         governance_root: authority_pin(1, "governance"),
-        authority_status: authority_pin(36, "authority-status"),
+        authority_status: authority_pin(37, "authority-status"),
         verifier_report: authority_pin(15, "verifier-report"),
         collateral: authority_pin(4, "collateral"),
         purchase: authority_pin(16, "purchase"),
@@ -7762,8 +7762,8 @@ fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> Tes
     let stale_at = OBSERVED_AT + MAX_SNAPSHOT_AGE_SECS + 1;
     assert_eq!(
         case.finalize(&UnreachablePublisher, stale_at)?,
-        FindingFinalization::AwaitingEffects,
-        "a landed impairment waits on signed effects without revalidating its old snapshot"
+        FindingFinalization::AwaitingStatusPublication,
+        "a landed impairment waits on signed status without revalidating its old snapshot"
     );
     for state in [
         FindingEffectIntentState::Dispatched,
@@ -7775,8 +7775,10 @@ fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> Tes
             stale_at + 1,
         )?;
     }
+    case.mark_status_eligible(&chain_hash(0x77), stale_at + 1)?;
+    case.publish_status(stale_at + 2)?;
     assert_eq!(
-        case.finalize(&UnreachablePublisher, stale_at + 2)?,
+        case.finalize(&UnreachablePublisher, stale_at + 3)?,
         FindingFinalization::AlreadyConfirmed
     );
     assert_eq!(case.head()?.state, FindingLiabilityState::Settled);
@@ -8125,7 +8127,14 @@ fn finding_challenge_confirmed_impairment_recovers_across_operator_rotation() ->
         &UnreachablePublisher,
         SETTLEMENT_NOW + 120,
     )??;
-    assert_eq!(recovered, FindingFinalization::AlreadyConfirmed);
+    assert_eq!(recovered, FindingFinalization::AwaitingStatusPublication);
+    let reconciled = case.head()?;
+    assert_eq!(reconciled.state, FindingLiabilityState::Finalizing);
+    assert!(!reconciled.quarantined);
+
+    case.publish_status(SETTLEMENT_NOW + 181)?;
+    let completed = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 182)?;
+    assert_eq!(completed, FindingFinalization::AlreadyConfirmed);
     let settled = case.head()?;
     assert_eq!(settled.state, FindingLiabilityState::Settled);
     assert!(!settled.quarantined);

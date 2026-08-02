@@ -4,7 +4,7 @@ fn market_config() -> FindingMarketConfig {
         venue: authority_pin(6, "venue"),
         listing: listing_authority_pin(),
         governance_root: authority_pin(1, "governance"),
-        authority_status: authority_pin(36, "authority-status"),
+        authority_status: authority_pin(37, "authority-status"),
         verifier_report: authority_pin(15, "verifier-report"),
         collateral: authority_pin(4, "collateral"),
         purchase: authority_pin(16, "purchase"),

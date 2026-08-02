@@ -106,6 +106,27 @@ impl FindingChallengeCoordinator {
         Ok(())
     }
 
+    fn confirm_fenced_anchor_effect(
+        &self,
+        liability_key: &str,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let effects = self
+            .challenges
+            .list_effect_intents(liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        let mut anchors = effects.iter().filter(|effect| {
+            effect.kind == FindingEffectIntentKind::RootIntent && !effect.settlement_required
+        });
+        let anchor = anchors
+            .next()
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if anchors.next().is_some() {
+            return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
+        }
+        self.confirm_effect_intent(&anchor.intent_key, now)
+    }
+
     fn reconcile_status_publication_and_settle(
         &self,
         liability_key: &str,
@@ -137,6 +158,72 @@ impl FindingChallengeCoordinator {
             .settle_liability(liability_key, FindingLiabilityState::Finalizing, now)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         Ok(true)
+    }
+
+    /// Finish a previously confirmed impairment without dispatching it
+    /// again.
+    ///
+    /// The liability is loaded again here because another finalizer may
+    /// have quarantined it after this caller's initial read. Settlement
+    /// repeats the same check in its write transaction, closing the race
+    /// between this read and the lifecycle transition.
+    fn finish_confirmed_impairment(
+        &self,
+        liability_key: &str,
+        enforcement: &SignedFindingChallengeEnforcement,
+        bond_snapshot: &SignedFindingFinalizedBondSnapshot,
+        observations: &dyn FindingBondObservationSource,
+        now: u64,
+    ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
+        let liability = self
+            .challenges
+            .get_liability(liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore("liability is not recorded".to_owned())
+            })?;
+        // If a post-dispatch chain recheck quarantined the liability,
+        // recovery must explicitly authenticate the original snapshot and
+        // re-observe its block and operator qualification before the
+        // quarantine can be cleared.
+        if liability.quarantined {
+            self.require_live_settlement_observer(bond_snapshot, now)?;
+            let settlement_observer = self.require_live_role(
+                &self.pins.settlement_observer,
+                bond_snapshot.body.observed_at,
+                now,
+                "settlement observer",
+            )?;
+            let seller = PublicKey::from_hex(&liability.seller_hex).map_err(|_| {
+                ChallengeCoordinatorError::ChallengeStore(
+                    "liability carries an invalid durable seller key".to_owned(),
+                )
+            })?;
+            let pins = FindingEnforcementPins {
+                finalization_authority: self.finalization_authority.public_key(),
+                settlement_observer,
+                seller,
+                finality_requirement: self.pins.settlement_finality_requirement,
+                max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
+            };
+            let verified = verify_finding_enforcement_for_reconciliation(
+                enforcement,
+                bond_snapshot,
+                &pins,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+            self.require_qualified_observation(&verified, observations)?;
+            self.challenges
+                .set_liability_quarantine(liability_key, false, now)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        }
+        self.confirm_fenced_anchor_effect(liability_key, now)?;
+        if self.reconcile_status_publication_and_settle(liability_key, enforcement, now)? {
+            Ok(FindingFinalization::AlreadyConfirmed)
+        } else {
+            Ok(FindingFinalization::AwaitingStatusPublication)
+        }
     }
 
     /// The sealed claim snapshot for one liability, when one exists.

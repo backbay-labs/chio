@@ -674,6 +674,7 @@ mod tests {
             venue: authority_pin(1, "venue", now),
             listing: authority_pin(12, "listing", now),
             governance_root: authority_pin(2, "governance", now),
+            authority_status: authority_pin(13, "authority-status", now),
             verifier_report: authority_pin(3, "verifier", now),
             collateral: authority_pin(4, "collateral", now),
             purchase: authority_pin(5, "purchase", now),
