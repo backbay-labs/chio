@@ -3,7 +3,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_kernel::{ReceiptStoreError, RetentionConfig};
+use chio_kernel::{ReceiptStore, ReceiptStoreError, RetentionConfig};
 
 use crate::SqliteReceiptStore;
 
@@ -4625,6 +4625,43 @@ fn governed_receipt_lineage_is_co_archived() -> Result<(), Box<dyn std::error::E
     assert_eq!(arch_chain.as_deref(), Some("chain-lineage-0"));
     assert_eq!(arch_parent.as_deref(), Some("parent-receipt-lineage-0"));
 
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&archive);
+    Ok(())
+}
+
+#[test]
+fn retained_receipt_lookup_reads_only_from_a_trusted_archive(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("retained-receipt-live");
+    let archive = unique_db_path("retained-receipt-archive");
+    let archive_path = archive.to_str().ok_or("archive path invalid")?;
+    let keypair = super::support::receipt_test_keypair();
+
+    let store = SqliteReceiptStore::open(&path)?;
+    store.enable_background_checkpoints(super::support::signer(&keypair, 2))?;
+    let mut archived_id = String::new();
+    for i in 0..4u64 {
+        let receipt = super::support::sample_receipt_with_keypair_and_timestamp(
+            &format!("retained-{i}"),
+            i + 1,
+            if i < 2 { 100 } else { 200 },
+            &keypair,
+        );
+        if i == 0 {
+            archived_id.clone_from(&receipt.id);
+        }
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+    assert_eq!(store.archive_receipts_before(150, archive_path)?, 2);
+
+    let retained = store
+        .load_retained_chio_receipt(&archived_id)?
+        .ok_or("trusted archive lookup missed the archived receipt")?;
+    assert_eq!(retained.id, archived_id);
+
+    drop(store);
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_file(&archive);
     Ok(())

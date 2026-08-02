@@ -2488,7 +2488,7 @@ fn unrelated_audit_round() -> Result<FindingAuditRound, AnyError> {
 fn audit_round_over(eligible: Vec<EligibleListing>) -> Result<FindingAuditRound, AnyError> {
     let revealed_seed = audit_seed();
     let audit_authority = keypair(35);
-    let randomness_witness = keypair(37);
+    let randomness_witness = keypair(38);
     let eligible_snapshot_at = NOW - 2_000;
     let seed_witnessed_at = NOW - 1_500;
     let eligible_snapshot_digest = derive_eligible_snapshot_digest(&eligible)?;
@@ -3479,6 +3479,12 @@ fn upheld_outcome(
         ),
         reason: "evidence_signature_invalid".to_string(),
         trigger_digest: hex64('9'),
+        audit_epoch_envelope_sha256: match &challenge.body.authorization {
+            FindingChallengeAuthorization::VenueAudit(audit) => {
+                Some(audit.audit_epoch_envelope_sha256.clone())
+            }
+            FindingChallengeAuthorization::BuyerSubmission(_) => None,
+        },
         penalty_calculation: Some(chio_finding::FindingPenaltyCalculation {
             base_finding_stake_units: 300,
             open_per_sale_encumbrance_units,
@@ -7133,7 +7139,7 @@ fn finding_challenge_an_outcome_the_store_never_recorded_authorizes_no_impairmen
 }
 
 #[test]
-fn finding_challenge_a_second_appeal_finality_reuses_the_root_intent() -> TestResult {
+fn finding_challenge_a_second_appeal_finality_mints_no_new_root_intent() -> TestResult {
     let case = upheld_liability()?;
     let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
     let AppealResolution::Finalizing(first) =

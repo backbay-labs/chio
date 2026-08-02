@@ -10,6 +10,75 @@ fn capability_lineage_store_error(error: chio_kernel::CapabilityLineageError) ->
     }
 }
 
+/// Open the archive recorded by the live retention ledger only after the
+/// archive has authenticated the entire deleted prefix. Returning an archived
+/// point lookup on the strength of the ledger path alone would let a replaced
+/// or incomplete archive supply governed provenance.
+fn trusted_retention_archive_path(
+    store: &SqliteReceiptStore,
+) -> Result<Option<String>, ReceiptStoreError> {
+    let connection = store.connection()?;
+    let recorded = retention_watermark(&connection)?.unwrap_or(0);
+    if recorded == 0 {
+        return Ok(None);
+    }
+    let trusted = trusted_retention_watermark(&connection)?;
+    if trusted != recorded {
+        return Err(ReceiptStoreError::ReadBoundary(
+            "configured retention archive does not authenticate the recorded prefix".to_owned(),
+        ));
+    }
+    latest_watermark_archive_path(&connection)?.map_or_else(
+        || {
+            Err(ReceiptStoreError::ReadBoundary(
+                "retention watermark does not name an authenticated archive".to_owned(),
+            ))
+        },
+        |path| Ok(Some(path)),
+    )
+}
+
+fn open_retention_archive(path: &str) -> Result<Connection, ReceiptStoreError> {
+    Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(ReceiptStoreError::from)
+}
+
+fn load_chio_receipt_row(
+    connection: &Connection,
+    receipt_id: &str,
+    context: &str,
+) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+    connection
+        .query_row(
+            "SELECT seq, raw_json FROM chio_tool_receipts WHERE receipt_id = ?1",
+            params![receipt_id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()?
+        .map(|(seq, raw_json)| {
+            decode_verified_chio_receipt(&raw_json, context, Some(seq.max(0) as u64))
+        })
+        .transpose()
+}
+
+fn load_receipt_lineage_statement_row(
+    connection: &Connection,
+    receipt_id: &str,
+) -> Result<Option<chio_core::receipt::lineage::ReceiptLineageStatement>, ReceiptStoreError> {
+    connection
+        .query_row(
+            "SELECT raw_json FROM receipt_lineage_statements WHERE receipt_id = ?1",
+            params![receipt_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .map(|raw| serde_json::from_str(&raw).map_err(ReceiptStoreError::from))
+        .transpose()
+}
+
 impl SqliteReceiptStore {
     pub fn record_session_anchor_record(
         &self,
@@ -422,6 +491,24 @@ impl ReceiptStore for SqliteReceiptStore {
             .transpose()
     }
 
+    fn load_retained_chio_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        let Some(archive_path) = trusted_retention_archive_path(self)? else {
+            return self.load_chio_receipt(receipt_id);
+        };
+        let connection = self.connection()?;
+        if let Some(receipt) =
+            load_chio_receipt_row(&connection, receipt_id, "retained live tool receipt")?
+        {
+            return Ok(Some(receipt));
+        }
+        drop(connection);
+        let archive = open_retention_archive(&archive_path)?;
+        load_chio_receipt_row(&archive, receipt_id, "retained archived tool receipt")
+    }
+
     fn load_child_receipt(
         &self,
         receipt_id: &str,
@@ -757,6 +844,22 @@ impl ReceiptStore for SqliteReceiptStore {
         self.receipt_lineage_verification(receipt_id)
     }
 
+    fn get_retained_receipt_lineage_verification(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ReceiptLineageVerification>, ReceiptStoreError> {
+        let Some(archive_path) = trusted_retention_archive_path(self)? else {
+            return self.get_receipt_lineage_verification(receipt_id);
+        };
+        let connection = self.connection()?;
+        if let Some(verification) = load_receipt_lineage_verification(&connection, receipt_id)? {
+            return Ok(Some(verification));
+        }
+        drop(connection);
+        let archive = open_retention_archive(&archive_path)?;
+        load_receipt_lineage_verification(&archive, receipt_id)
+    }
+
     fn list_receipt_lineage_statement_links(
         &self,
         receipt_id: &str,
@@ -770,6 +873,23 @@ impl ReceiptStore for SqliteReceiptStore {
     ) -> Result<Option<chio_core::receipt::lineage::ReceiptLineageStatement>, ReceiptStoreError>
     {
         self.receipt_lineage_statement(receipt_id)
+    }
+
+    fn load_retained_receipt_lineage_statement(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<chio_core::receipt::lineage::ReceiptLineageStatement>, ReceiptStoreError>
+    {
+        let Some(archive_path) = trusted_retention_archive_path(self)? else {
+            return self.load_receipt_lineage_statement(receipt_id);
+        };
+        let connection = self.connection()?;
+        if let Some(statement) = load_receipt_lineage_statement_row(&connection, receipt_id)? {
+            return Ok(Some(statement));
+        }
+        drop(connection);
+        let archive = open_retention_archive(&archive_path)?;
+        load_receipt_lineage_statement_row(&archive, receipt_id)
     }
 
     fn as_any_mut(&self) -> Option<&dyn std::any::Any> {

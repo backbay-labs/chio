@@ -323,6 +323,8 @@ pub enum FindingDeliverySettlementMode {
 /// Kernel-verified live-status evidence attached to an M6-qualified finding
 /// delivery. All digest and root fields derive from the exact canonical
 /// portable proof and its embedded signed epoch, never from caller metadata.
+pub const FINDING_STATUS_KEY_DOMAIN_NONCE: u64 = 3_318_287_169_837_494;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct FindingStatusProofMetadata {
@@ -350,7 +352,12 @@ impl FindingStatusProofMetadata {
             512,
             "finding_delivery.status_proof.feed_id",
         )?;
-        if self.key_domain_nonce == 0 || self.map_epoch == 0 || self.non_inclusion_checked_at == 0 {
+        if self.key_domain_nonce != FINDING_STATUS_KEY_DOMAIN_NONCE {
+            return Err(Error::CanonicalJson(format!(
+                "finding delivery status proof key_domain_nonce must equal {FINDING_STATUS_KEY_DOMAIN_NONCE}"
+            )));
+        }
+        if self.map_epoch == 0 || self.non_inclusion_checked_at == 0 {
             return Err(Error::CanonicalJson(
                 "finding delivery status proof numeric fields must be nonzero".to_string(),
             ));
@@ -536,4 +543,29 @@ pub struct ReceiptAttributionMetadata {
     /// Index of the matched grant when the request resolved to a specific grant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grant_index: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn status_proof() -> FindingStatusProofMetadata {
+        FindingStatusProofMetadata {
+            feed_id: "status-feed/test".to_owned(),
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            map_epoch: 1,
+            status_epoch_artifact_sha256: "1".repeat(64),
+            proof_sha256: "2".repeat(64),
+            root_hash: "3".repeat(64),
+            non_inclusion_checked_at: 1,
+        }
+    }
+
+    #[test]
+    fn finding_status_metadata_requires_the_protocol_key_domain() {
+        let mut proof = status_proof();
+        proof.key_domain_nonce = 1;
+        assert!(proof.validate().is_err());
+        assert!(status_proof().validate().is_ok());
+    }
 }

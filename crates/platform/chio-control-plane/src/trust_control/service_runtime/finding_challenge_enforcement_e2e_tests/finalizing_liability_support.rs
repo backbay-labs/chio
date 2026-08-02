@@ -23,24 +23,23 @@ struct FinalizingLiability {
 }
 
 fn finalizing_liability() -> Result<FinalizingLiability, AnyError> {
-    finalizing_liability_with(EnforcementRoot::Confirmed, true, true)
+    finalizing_liability_with(EnforcementRoot::Confirmed, true)
 }
 
 fn finalizing_liability_rooted(root: EnforcementRoot) -> Result<FinalizingLiability, AnyError> {
-    finalizing_liability_with(root, true, true)
+    finalizing_liability_with(root, true)
 }
 
 fn finalizing_liability_pending_retraction() -> Result<FinalizingLiability, AnyError> {
-    finalizing_liability_with(EnforcementRoot::Confirmed, false, true)
+    finalizing_liability_with(EnforcementRoot::Confirmed, true)
 }
 
 fn finalizing_liability_without_anchor() -> Result<FinalizingLiability, AnyError> {
-    finalizing_liability_with(EnforcementRoot::Confirmed, true, false)
+    finalizing_liability_with(EnforcementRoot::Confirmed, false)
 }
 
 fn finalizing_liability_with(
     root: EnforcementRoot,
-    retraction_confirmed: bool,
     anchor_fenced: bool,
 ) -> Result<FinalizingLiability, AnyError> {
     let deployment = deployment()?;
@@ -156,16 +155,6 @@ fn finalizing_liability_with(
         true,
         NOW + 5,
     )?;
-    if retraction_confirmed {
-        for state in [
-            FindingEffectIntentState::Dispatched,
-            FindingEffectIntentState::Confirmed,
-        ] {
-            deployment
-                .challenges
-                .advance_effect_intent(&retraction_key, state, NOW + 6)?;
-        }
-    }
     let (enforcement, snapshot) = enforcement_pair(
         &liability_key,
         &finding.finding_id,

@@ -69,7 +69,10 @@ pub fn finding_memory_dependents(
     let edges: Vec<LineageEdge> = graph
         .edges
         .iter()
-        .filter(|edge| edge.kind == crate::schema::EdgeKind::FindingMemoryWriteToDelivery)
+        .filter(|edge| {
+            edge.kind == crate::schema::EdgeKind::FindingMemoryWriteToDelivery
+                && edge.evidence_class == crate::schema::EvidenceClass::Verified
+        })
         .cloned()
         .collect();
     let typed = LineageGraph {
@@ -264,7 +267,12 @@ mod tests {
     #[test]
     fn finding_delivery_reverse_query_returns_only_typed_memory_dependents() {
         let mut g = LineageGraph::empty();
-        for id in ["rcpt:delivery", "rcpt:memory", "rcpt:generic"] {
+        for id in [
+            "rcpt:delivery",
+            "rcpt:memory",
+            "rcpt:generic",
+            "rcpt:asserted-memory",
+        ] {
             g.nodes.push(LineageNode {
                 id: id.to_owned(),
                 kind: NodeKind::Receipt,
@@ -281,6 +289,16 @@ mod tests {
             to: "rcpt:delivery".to_owned(),
             kind: EdgeKind::FindingMemoryWriteToDelivery,
             evidence_class: EvidenceClass::Verified,
+            source_table: None,
+            source_id: None,
+            tenant_id: None,
+            recorded_at: None,
+        });
+        g.edges.push(LineageEdge {
+            from: "rcpt:asserted-memory".to_owned(),
+            to: "rcpt:delivery".to_owned(),
+            kind: EdgeKind::FindingMemoryWriteToDelivery,
+            evidence_class: EvidenceClass::Asserted,
             source_table: None,
             source_id: None,
             tenant_id: None,
@@ -314,6 +332,7 @@ mod tests {
         assert!(ids.contains("rcpt:delivery"));
         assert!(ids.contains("rcpt:memory"));
         assert!(!ids.contains("rcpt:generic"));
+        assert!(!ids.contains("rcpt:asserted-memory"));
         assert!(result.truncated.is_none());
     }
 

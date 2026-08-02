@@ -491,6 +491,16 @@ pub trait ReceiptStore: Send + Sync {
     ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
         Ok(None)
     }
+    /// Load a receipt from the store's complete retained history. Stores with
+    /// no separate retention tier inherit the live point lookup. A store that
+    /// archives receipts must override this method and authenticate the archive
+    /// before returning an archived row.
+    fn load_retained_chio_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        self.load_chio_receipt(receipt_id)
+    }
     /// Load a child-request receipt by id. Provided default returns `None`; a
     /// store used for a store-authoritative deployment must override both this
     /// and `load_chio_receipt`. A miss is a fail-closed deny
@@ -838,6 +848,15 @@ pub trait ReceiptStore: Send + Sync {
         Ok(None)
     }
 
+    /// Load lineage verification from the complete retained history. The
+    /// default preserves the live-only behavior for stores without archival.
+    fn get_retained_receipt_lineage_verification(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ReceiptLineageVerification>, ReceiptStoreError> {
+        self.get_receipt_lineage_verification(receipt_id)
+    }
+
     fn list_receipt_lineage_statement_links(
         &self,
         _receipt_id: &str,
@@ -853,6 +872,16 @@ pub trait ReceiptStore: Send + Sync {
         _receipt_id: &str,
     ) -> Result<Option<ReceiptLineageStatement>, ReceiptStoreError> {
         Ok(None)
+    }
+
+    /// Load the signed lineage statement from the complete retained history.
+    /// The default preserves the live-only behavior for stores without
+    /// archival.
+    fn load_retained_receipt_lineage_statement(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ReceiptLineageStatement>, ReceiptStoreError> {
+        self.load_receipt_lineage_statement(receipt_id)
     }
 
     fn as_any_mut(&self) -> Option<&dyn std::any::Any> {

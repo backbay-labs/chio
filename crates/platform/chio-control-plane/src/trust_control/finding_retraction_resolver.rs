@@ -54,7 +54,7 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
     ) -> Result<Option<VerifiedFindingDeliveryLineage>, FindingRetractionResolveError> {
         let child = self
             .receipts
-            .load_chio_receipt(memory_write_receipt_id)
+            .load_retained_chio_receipt(memory_write_receipt_id)
             .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?;
         let Some(child) = child else {
             return Ok(None);
@@ -67,7 +67,7 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
         }
         let statement = self
             .receipts
-            .load_receipt_lineage_statement(memory_write_receipt_id)
+            .load_retained_receipt_lineage_statement(memory_write_receipt_id)
             .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?;
         let Some(statement) = statement else {
             return Ok(None);
@@ -86,7 +86,7 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
         }
         let verification = self
             .receipts
-            .get_receipt_lineage_verification(memory_write_receipt_id)
+            .get_retained_receipt_lineage_verification(memory_write_receipt_id)
             .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?
             .ok_or_else(|| {
                 FindingRetractionResolveError::InvalidLineage(
@@ -102,7 +102,7 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
         }
         let parent = self
             .receipts
-            .load_chio_receipt(&statement.parent_receipt_id)
+            .load_retained_chio_receipt(&statement.parent_receipt_id)
             .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?
             .ok_or_else(|| {
                 FindingRetractionResolveError::InvalidLineage(

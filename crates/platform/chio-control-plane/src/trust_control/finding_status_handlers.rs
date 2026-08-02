@@ -23,12 +23,25 @@ pub(crate) const FINDING_STATUS_INTENT_MAX_BODY_BYTES: usize = 256 * 1024;
 
 const FINDING_STATUS_INTENT_SCHEMA: &str = "chio.finding.status-intent-submission.v1";
 const FINDING_STATUS_INTENT_ID_DOMAIN: &str = "chio.finding.status-intent-id.v1";
+const FINDING_VOLUNTARY_RETRACTION_RECEIPT_SCHEMA: &str =
+    "chio.finding.voluntary-retraction-receipt.v1";
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum FindingStatusIntentSource {
     Voluntary,
     Enforcement,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+struct FindingVoluntaryRetractionReceipt {
+    schema: String,
+    feed_id: String,
+    key_domain_nonce: u64,
+    finding_id: String,
+    source_authority_id: String,
+    issued_at: u64,
 }
 
 impl FindingStatusIntentSource {
@@ -62,6 +75,7 @@ struct FindingStatusIntentSubmission {
     source: FindingStatusIntentSource,
     source_authority_id: String,
     source_receipt_sha256: String,
+    source_receipt: SignedExportEnvelope<FindingVoluntaryRetractionReceipt>,
     operator_id: String,
     operator_key_epoch: u64,
     issued_at: u64,
@@ -373,7 +387,40 @@ fn validate_intent_submission(
             StatusCode::UNAUTHORIZED,
             "status intent operator signature is invalid",
         )
-    })
+    })?;
+    let source = &body.source_receipt;
+    if source.body.schema != FINDING_VOLUNTARY_RETRACTION_RECEIPT_SCHEMA
+        || source.body.feed_id != body.feed_id
+        || source.body.key_domain_nonce != body.key_domain_nonce
+        || source.body.finding_id != body.finding_id
+        || source.body.source_authority_id != body.source_authority_id
+        || source.body.issued_at != body.issued_at
+        || source.signer_key.to_hex() != body.source_authority_id
+    {
+        return Err(plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "voluntary retraction source receipt bindings are invalid",
+        ));
+    }
+    if !matches!(source.verify_signature(), Ok(true)) {
+        return Err(plain_http_error(
+            StatusCode::UNAUTHORIZED,
+            "voluntary retraction source receipt signature is invalid",
+        ));
+    }
+    let source_digest = chio_finding::signed_envelope_sha256(source).map_err(|_| {
+        plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "voluntary retraction source receipt is not canonical",
+        )
+    })?;
+    if source_digest != body.source_receipt_sha256 {
+        return Err(plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "voluntary retraction source receipt digest differs",
+        ));
+    }
+    Ok(())
 }
 
 fn status_read_error(error: FindingStatusStoreError) -> Response {
@@ -635,15 +682,33 @@ mod tests {
 
     fn submission() -> FindingStatusIntentSubmission {
         let (operator, bond) = config();
+        let seller = Keypair::from_seed(&[83; 32]);
+        let source_authority_id = seller.public_key().to_hex();
+        let finding_id = sha256_hex(b"finding");
+        let source_receipt = SignedExportEnvelope::sign(
+            FindingVoluntaryRetractionReceipt {
+                schema: FINDING_VOLUNTARY_RETRACTION_RECEIPT_SCHEMA.to_string(),
+                feed_id: FEED_ID.to_string(),
+                key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+                finding_id: finding_id.clone(),
+                source_authority_id: source_authority_id.clone(),
+                issued_at: NOW,
+            },
+            &seller,
+        )
+        .test_expect("seller-signed retraction receipt");
+        let source_receipt_sha256 = chio_finding::signed_envelope_sha256(&source_receipt)
+            .test_expect("source receipt digest");
         let mut body = FindingStatusIntentSubmission {
             schema: FINDING_STATUS_INTENT_SCHEMA.to_string(),
             intent_id: String::new(),
             feed_id: FEED_ID.to_string(),
             key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
-            finding_id: sha256_hex(b"finding"),
+            finding_id,
             source: FindingStatusIntentSource::Voluntary,
-            source_authority_id: "seller-42".to_string(),
-            source_receipt_sha256: sha256_hex(b"seller-retraction-receipt"),
+            source_authority_id,
+            source_receipt_sha256,
+            source_receipt,
             operator_id: operator.authority.authority_id,
             operator_key_epoch: operator.authority.key_epoch,
             issued_at: NOW,
@@ -834,6 +899,22 @@ mod tests {
             .test_expect("substitute-signed status intent");
         let response = validate_intent_submission(&signed, &operator, &bond, FEED_ID, NOW)
             .test_expect_err("operator substitution must reject");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn intent_validation_rejects_a_countersigned_forged_source_receipt() {
+        let (operator, bond) = config();
+        let mut body = submission();
+        body.source_receipt.signature = Keypair::from_seed(&[84; 32]).sign(b"forged source");
+        body.source_receipt_sha256 = chio_finding::signed_envelope_sha256(&body.source_receipt)
+            .test_expect("forged source receipt digest");
+        body.intent_id = compute_intent_id(&body).test_expect("forged status intent id");
+        let signed = SignedExportEnvelope::sign(body, &operator_key())
+            .test_expect("operator-countersigned forged source receipt");
+
+        let response = validate_intent_submission(&signed, &operator, &bond, FEED_ID, NOW)
+            .test_expect_err("operator countersignature cannot replace source authentication");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 

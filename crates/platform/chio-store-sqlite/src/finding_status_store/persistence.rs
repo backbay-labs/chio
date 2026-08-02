@@ -1174,7 +1174,6 @@ fn verify_intent_replay(
         || record.intent_bytes != input.intent_bytes
         || record.issued_at != input.issued_at
         || record.inclusion_deadline != input.inclusion_deadline
-        || record.created_at != input.created_at
     {
         return Err(FindingStatusStoreError::Conflict(format!(
             "retraction intent {} was replayed with different bytes or bindings",

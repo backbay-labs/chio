@@ -222,6 +222,48 @@ fn exact_status_artifacts_replay_at_a_later_observation_time() {
 }
 
 #[test]
+fn exact_retraction_intent_replay_retains_the_first_server_time() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('4');
+    let intent_id = hex64('5');
+    let input = FindingRetractionIntentInput {
+        intent_id: &intent_id,
+        feed_id: FEED,
+        operator_id: OPERATOR,
+        finding_id: &finding_id,
+        source: FindingRetractionIntentSource::Voluntary,
+        intent_bytes: b"seller-signed-retraction",
+        issued_at: NOW + 1,
+        inclusion_deadline: NOW + 500,
+        created_at: NOW + 2,
+    };
+    assert_eq!(
+        store.issue_retraction_intent(&input).expect("issue intent"),
+        FindingStatusWriteOutcome::Inserted
+    );
+    let replay = FindingRetractionIntentInput {
+        created_at: NOW + 20,
+        ..input
+    };
+    assert_eq!(
+        store
+            .issue_retraction_intent(&replay)
+            .expect("replay at a later server time"),
+        FindingStatusWriteOutcome::ExactReplay
+    );
+    assert_eq!(
+        store
+            .get_retraction_intent(&intent_id)
+            .expect("load intent")
+            .expect("intent exists")
+            .created_at,
+        NOW + 2
+    );
+}
+
+#[test]
 fn dispatch_eligibility_replay_retains_the_original_authorization_time() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();
