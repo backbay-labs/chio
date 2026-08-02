@@ -1019,7 +1019,7 @@ fn verify_transaction_passport_file_with_mode(
     let mut expected_public_settlement_trust_market_context = None;
     let mut expected_commerce_trust_market_context = None;
     let finding_claims_advertised = claim_set_advertises_prefix(
-        &transparency_artifacts,
+        bundle_dir,
         &passport.claim_set_path,
         CLAIM_PREFIX_FINDING,
     )?;
@@ -1866,15 +1866,15 @@ fn load_standalone_evidence_graph_artifacts(
 }
 
 fn claim_set_advertises_prefix(
-    artifacts: &BTreeMap<String, Vec<u8>>,
+    bundle_dir: &Path,
     claim_set_path: &str,
     prefix: &str,
 ) -> Result<bool, CliError> {
-    let bytes = artifacts.get(claim_set_path).ok_or_else(|| {
-        CliError::cli_other_error(format!(
-            "proof verify: claim set artifact missing from evidence graph: {claim_set_path}"
-        ))
-    })?;
+    let bytes = fs::read(resolve_bundle_artifact_path(bundle_dir, claim_set_path)?)?;
+    claim_set_bytes_advertise_prefix(&bytes, prefix)
+}
+
+fn claim_set_bytes_advertise_prefix(bytes: &[u8], prefix: &str) -> Result<bool, CliError> {
     let claim_set: serde_json::Value = serde_json::from_slice(bytes)?;
     let claims = claim_set
         .get("claims")
