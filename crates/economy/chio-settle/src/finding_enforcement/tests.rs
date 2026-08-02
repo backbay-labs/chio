@@ -1070,6 +1070,24 @@ impl FindingImpairmentPublisher for StubPublisher {
         }
         Ok(self.attempt.clone())
     }
+
+    fn observe(
+        &self,
+        intent: &FindingImpairmentIntent,
+        call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        if intent.intent_id != self.fenced_intent_id {
+            return Err(FindingImpairmentPublishError::IntentNotFenced(
+                intent.intent_id.clone(),
+            ));
+        }
+        if call.data != self.expected_call_data {
+            return Err(FindingImpairmentPublishError::Permanent(
+                "observed call does not match the fenced intent".to_string(),
+            ));
+        }
+        Ok(self.attempt.clone())
+    }
 }
 
 #[test]
@@ -1086,6 +1104,29 @@ fn the_publisher_seam_dispatches_the_frozen_call_and_reconciles_it() {
 
     let outcome =
         dispatch_finding_impairment(&planned, &publisher).test_expect("a fenced intent dispatches");
+
+    assert_eq!(
+        outcome,
+        FindingImpairmentOutcome::Confirmed {
+            tx_hash: stored.tx_hash
+        }
+    );
+}
+
+#[test]
+fn the_publisher_seam_reobserves_the_frozen_call_without_dispatch() {
+    let planned = planned();
+    let stored = stored_matching(&planned);
+    let publisher = StubPublisher {
+        fenced_intent_id: planned.intent().intent_id.clone(),
+        expected_call_data: planned.call().data.clone(),
+        attempt: FindingImpairmentAttempt::Observed {
+            stored: stored.clone(),
+        },
+    };
+
+    let outcome = reobserve_finding_impairment(&planned, &publisher)
+        .test_expect("a stored transaction can be re-observed");
 
     assert_eq!(
         outcome,

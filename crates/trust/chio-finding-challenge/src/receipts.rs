@@ -69,5 +69,29 @@ pub(crate) fn role_policy(
 /// Whether a pinned key policy covers an instant. Outside its window the key
 /// is not an authority for that moment, whatever it is today.
 pub(crate) fn policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u64) -> bool {
-    policy.valid_from <= instant && instant <= policy.valid_until
+    policy.valid_from <= instant && instant < policy.valid_until
+}
+
+#[cfg(test)]
+mod tests {
+    use chio_core_types::crypto::Keypair;
+
+    use super::*;
+
+    #[test]
+    fn authority_policy_excludes_its_expiration_boundary() {
+        let policy = FindingAuthorityKeyPolicy {
+            authority_id: "finding-receipt-authority".to_owned(),
+            key: Keypair::from_seed(&[7_u8; 32]).public_key(),
+            key_epoch: 1,
+            valid_from: 10,
+            valid_until: 20,
+            rotation_policy_ref: "rotations/finding-receipt-authority".to_owned(),
+            revocation_status_ref: "revocations/finding-receipt-authority".to_owned(),
+        };
+
+        assert!(policy_covers(&policy, 10));
+        assert!(policy_covers(&policy, 19));
+        assert!(!policy_covers(&policy, 20));
+    }
 }

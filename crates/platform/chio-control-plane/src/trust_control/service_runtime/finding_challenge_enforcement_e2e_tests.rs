@@ -5392,6 +5392,23 @@ fn finding_challenge_appeal_finality_impairs_and_fences_every_effect_intent() ->
         authorized.slash.evaluation.effective_state,
         OpenMarketPenaltyEffectiveState::BondSlashed
     );
+    let liability = case
+        .deployment
+        .challenges
+        .get_liability(&case.upheld.liability_key)?
+        .ok_or("the finalizing liability remains durable")?;
+    let stable_penalty_issued_at = liability
+        .appeal_deadline
+        .and_then(|deadline| deadline.checked_add(1))
+        .ok_or("the appeal deadline has a representable successor")?;
+    assert_eq!(
+        authorized.slash.penalty.body.opened_at, stable_penalty_issued_at,
+        "the final penalty is issued from the durable appeal boundary"
+    );
+    assert_eq!(
+        authorized.slash.penalty.body.updated_at, stable_penalty_issued_at,
+        "a retry clock cannot change the signed penalty bytes"
+    );
     assert_eq!(
         authorized.enforcement.body.amount,
         case.upheld.sealed.distribution.slash
@@ -5807,7 +5824,7 @@ fn finding_challenge_an_outcome_the_store_never_recorded_authorizes_no_impairmen
 }
 
 #[test]
-fn finding_challenge_a_second_appeal_finality_collides_on_the_root_intent() -> TestResult {
+fn finding_challenge_a_second_appeal_finality_reuses_the_root_intent() -> TestResult {
     let case = upheld_liability()?;
     let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
     let AppealResolution::Finalizing(first) =
@@ -5816,15 +5833,18 @@ fn finding_challenge_a_second_appeal_finality_collides_on_the_root_intent() -> T
         return Err("appeal finality with no reversal authorizes the impairment".into());
     };
 
-    // A replay off a re-minted penalty carries a different penalty
-    // envelope. The intent is keyed on the liability rather than on that
-    // envelope, so the second one collides with what is already durable.
+    // The retry clock is later, but the penalty is issued at the durable
+    // appeal boundary. Every effect intent therefore reconciles identically,
+    // and only the already-finalizing lifecycle transition refuses the call.
     let refused = resolve_final(&case, &identity, &case.outcome, APPEAL_FINAL_AT + 20)
         .expect_err("one liability authorizes one enforcement");
-    assert!(matches!(
-        refused,
-        ChallengeCoordinatorError::ChallengeStore(_)
-    ));
+    let ChallengeCoordinatorError::ChallengeStore(detail) = refused else {
+        return Err("the finalizing lifecycle transition refuses the replay".into());
+    };
+    assert!(
+        !detail.contains("conflicting effect intent"),
+        "retry-stable penalty bytes must reconcile every fenced effect"
+    );
     let intents = case
         .deployment
         .challenges
@@ -5977,6 +5997,17 @@ impl FindingImpairmentPublisher for AmbiguousPublisher {
             stored: None,
         })
     }
+
+    fn observe(
+        &self,
+        _intent: &chio_settle::FindingImpairmentIntent,
+        _call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        Ok(FindingImpairmentAttempt::Rejected {
+            rejection: FindingVaultRejection::EvidenceAlreadyUsed,
+            stored: None,
+        })
+    }
 }
 
 /// A publisher that broadcasts, stores the raw transaction, and only
@@ -5999,23 +6030,14 @@ impl MiningPublisher {
     fn attempts(&self) -> u32 {
         self.attempts.lock().map(|guard| *guard).unwrap_or_default()
     }
-}
 
-impl FindingImpairmentPublisher for MiningPublisher {
-    fn publish(
+    fn observation(
         &self,
         intent: &chio_settle::FindingImpairmentIntent,
         call: &PreparedEvmCall,
-    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
-        let attempt = match self.attempts.lock() {
-            Ok(mut guard) => {
-                *guard = guard.saturating_add(1);
-                *guard
-            }
-            Err(_) => return Err(FindingImpairmentPublishError::Transient("poisoned".into())),
-        };
-        let mined = attempt > 1;
-        Ok(FindingImpairmentAttempt::Observed {
+        mined: bool,
+    ) -> FindingImpairmentAttempt {
+        FindingImpairmentAttempt::Observed {
             stored: StoredImpairmentTransaction {
                 chain_id: intent.chain_id.clone(),
                 tx_hash: self.tx_hash.clone(),
@@ -6034,7 +6056,33 @@ impl FindingImpairmentPublisher for MiningPublisher {
                 }),
                 finality: mined.then_some(SettlementFinalityStatus::Finalized),
             },
-        })
+        }
+    }
+}
+
+impl FindingImpairmentPublisher for MiningPublisher {
+    fn publish(
+        &self,
+        intent: &chio_settle::FindingImpairmentIntent,
+        call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        let attempt = match self.attempts.lock() {
+            Ok(mut guard) => {
+                *guard = guard.saturating_add(1);
+                *guard
+            }
+            Err(_) => return Err(FindingImpairmentPublishError::Transient("poisoned".into())),
+        };
+        let mined = attempt > 1;
+        Ok(self.observation(intent, call, mined))
+    }
+
+    fn observe(
+        &self,
+        intent: &chio_settle::FindingImpairmentIntent,
+        call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        Ok(self.observation(intent, call, self.attempts() > 1))
     }
 }
 
@@ -6045,6 +6093,16 @@ struct UnreachableChainPublisher;
 
 impl FindingImpairmentPublisher for UnreachableChainPublisher {
     fn publish(
+        &self,
+        _intent: &chio_settle::FindingImpairmentIntent,
+        _call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        Err(FindingImpairmentPublishError::Transient(
+            "no route to the chain".to_string(),
+        ))
+    }
+
+    fn observe(
         &self,
         _intent: &chio_settle::FindingImpairmentIntent,
         _call: &PreparedEvmCall,
@@ -6069,6 +6127,85 @@ impl FindingImpairmentPublisher for UnreachablePublisher {
         Err(FindingImpairmentPublishError::Permanent(
             "a confirmed impairment must never be dispatched again".to_string(),
         ))
+    }
+
+    fn observe(
+        &self,
+        intent: &chio_settle::FindingImpairmentIntent,
+        call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        let tx_hash = chain_hash(0x77);
+        Ok(FindingImpairmentAttempt::Observed {
+            stored: StoredImpairmentTransaction {
+                chain_id: intent.chain_id.clone(),
+                tx_hash: tx_hash.clone(),
+                to_address: call.to_address.clone(),
+                input_data: Some(call.data.clone()),
+                receipt: Some(EvmTransactionReceipt {
+                    tx_hash,
+                    block_number: 21_000_100,
+                    block_hash: chain_hash(0xbc),
+                    status: true,
+                    from_address: call.from_address.clone(),
+                    to_address: call.to_address.clone(),
+                    gas_used: 210_000,
+                    observed_at: OBSERVED_AT,
+                    logs: Vec::new(),
+                }),
+                finality: Some(SettlementFinalityStatus::Finalized),
+            },
+        })
+    }
+}
+
+/// A publisher whose first receipt is finalized but whose immediate
+/// re-observation no longer finds that receipt on the canonical chain.
+struct ReorgedReceiptPublisher;
+
+impl FindingImpairmentPublisher for ReorgedReceiptPublisher {
+    fn publish(
+        &self,
+        intent: &chio_settle::FindingImpairmentIntent,
+        call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        let tx_hash = chain_hash(0x78);
+        Ok(FindingImpairmentAttempt::Observed {
+            stored: StoredImpairmentTransaction {
+                chain_id: intent.chain_id.clone(),
+                tx_hash: tx_hash.clone(),
+                to_address: call.to_address.clone(),
+                input_data: Some(call.data.clone()),
+                receipt: Some(EvmTransactionReceipt {
+                    tx_hash,
+                    block_number: 21_000_101,
+                    block_hash: chain_hash(0xbd),
+                    status: true,
+                    from_address: call.from_address.clone(),
+                    to_address: call.to_address.clone(),
+                    gas_used: 210_000,
+                    observed_at: OBSERVED_AT,
+                    logs: Vec::new(),
+                }),
+                finality: Some(SettlementFinalityStatus::Finalized),
+            },
+        })
+    }
+
+    fn observe(
+        &self,
+        intent: &chio_settle::FindingImpairmentIntent,
+        call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        Ok(FindingImpairmentAttempt::Observed {
+            stored: StoredImpairmentTransaction {
+                chain_id: intent.chain_id.clone(),
+                tx_hash: chain_hash(0x78),
+                to_address: call.to_address.clone(),
+                input_data: Some(call.data.clone()),
+                receipt: None,
+                finality: None,
+            },
+        })
     }
 }
 
@@ -6544,6 +6681,30 @@ fn finding_challenge_an_unmined_broadcast_stays_dispatchable_and_settles_when_it
 }
 
 #[test]
+fn finding_challenge_a_reorged_transaction_receipt_never_settles() -> TestResult {
+    let case = finalizing_liability()?;
+
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::qualified(),
+            &ReorgedReceiptPublisher,
+            SETTLEMENT_NOW,
+        )?
+        .expect_err("a transaction missing from the immediate canonical recheck cannot settle");
+    assert!(matches!(refused, ChallengeCoordinatorError::Settlement(_)));
+    assert_eq!(
+        case.intent_state()?,
+        FindingEffectIntentState::Failed,
+        "a receipt that failed its immediate recheck is not confirmed"
+    );
+    let parked = case.head()?;
+    assert_eq!(parked.state, FindingLiabilityState::Finalizing);
+    assert!(parked.quarantined);
+    assert!(parked.publication_pending);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() -> TestResult {
     let case = finalizing_liability()?;
     // An attempt that confirmed the impairment and died before it could
@@ -6568,6 +6729,34 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
         "the resumed attempt finishes the settlement the interrupted one owed"
     );
     assert!(!settled.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_confirmed_recovery_reobserves_transaction_finality() -> TestResult {
+    let case = finalizing_liability()?;
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        case.deployment.challenges.advance_effect_intent(
+            &case.intent_key,
+            state,
+            SETTLEMENT_NOW,
+        )?;
+    }
+
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::qualified(),
+            &ReorgedReceiptPublisher,
+            SETTLEMENT_NOW + 1,
+        )?
+        .expect_err("recovery cannot inherit an earlier receipt observation");
+    assert!(matches!(refused, ChallengeCoordinatorError::Settlement(_)));
+    let parked = case.head()?;
+    assert_eq!(parked.state, FindingLiabilityState::Finalizing);
+    assert!(parked.quarantined);
     Ok(())
 }
 

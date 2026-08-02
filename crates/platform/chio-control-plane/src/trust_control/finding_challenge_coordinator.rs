@@ -93,11 +93,11 @@ use chio_open_market::penalty::{
 };
 use chio_settle::{
     dispatch_finding_impairment, plan_finding_impairment, recheck_finding_bond_observation,
-    verify_finding_collateral_snapshot, verify_finding_enforcement,
+    reobserve_finding_impairment, verify_finding_collateral_snapshot, verify_finding_enforcement,
     verify_finding_enforcement_for_reconciliation, EvmBondSnapshot, FindingBondObservationSource,
     FindingEnforcementPins, FindingFinalityRequirement, FindingImpairmentOutcome,
-    FindingImpairmentPublisher, FindingImpairmentQuarantine, SettlementChainConfig,
-    VerifiedFindingEnforcement,
+    FindingImpairmentPublisher, FindingImpairmentQuarantine, PlannedFindingImpairment,
+    SettlementChainConfig, VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
     derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
@@ -1221,7 +1221,7 @@ impl FindingChallengeCoordinator {
 
         let challenge_envelope_sha256 = self.envelope_digest(request.challenge)?;
         let profile_envelope_sha256 = self.envelope_digest(request.profile)?;
-        let evidence_bundle_digest = self.evidence_bundle_digest(body)?;
+        let evidence_bundle_digest = self.evidence_bundle_digest(body, request.evidence)?;
         let attempt = self
             .challenges
             .get_challenge(&body.challenge_id)
@@ -1644,6 +1644,7 @@ impl FindingChallengeCoordinator {
             &sanction_case.body.case_id,
             None,
             now,
+            now,
         )?;
 
         self.challenges
@@ -1753,6 +1754,7 @@ impl FindingChallengeCoordinator {
                     sanction_case_id,
                     Some(&hold.evaluation.penalty_id),
                     now,
+                    now,
                 )?;
                 self.challenges
                     .record_governance_case(&FindingGovernanceCaseInput {
@@ -1785,6 +1787,12 @@ impl FindingChallengeCoordinator {
             AppealDisposition::Final { sanction_case } => {
                 self.require_live_role(&self.finalization_pin, now, now, "finalization")?;
                 self.require_appeal_window_closed(&record, sanction_case, sanction_case_id, now)?;
+                let penalty_issued_at = record
+                    .appeal_deadline
+                    .and_then(|deadline| deadline.checked_add(1))
+                    .ok_or(ChallengeCoordinatorError::AppealNotFinal(
+                        "appeal deadline has no representable successor",
+                    ))?;
                 let slash = self.mint_penalty(
                     FindingPenaltyBranch::AppealFinalImpairment,
                     governance,
@@ -1794,6 +1802,7 @@ impl FindingChallengeCoordinator {
                     outcome,
                     sanction_case_id,
                     Some(&hold.evaluation.penalty_id),
+                    penalty_issued_at,
                     now,
                 )?;
                 self.finalize_enforcement(
@@ -2032,20 +2041,7 @@ impl FindingChallengeCoordinator {
         {
             return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
         }
-        if seller_intent.state == FindingEffectIntentState::Confirmed {
-            // A confirmed impairment no longer depends on the freshness of
-            // the pre-dispatch collateral observation. The only remaining
-            // work is to wait for the other signed effects and settle the
-            // head, without ever dispatching the impairment again.
-            return self.finish_confirmed_impairment(
-                liability_key,
-                enforcement,
-                bond_snapshot,
-                seller,
-                observations,
-                now,
-            );
-        }
+        let seller_was_confirmed = seller_intent.state == FindingEffectIntentState::Confirmed;
         self.require_live_settlement_observer(bond_snapshot, now)?;
         let settlement_observer = self.require_live_role(
             &self.pins.settlement_observer,
@@ -2060,8 +2056,15 @@ impl FindingChallengeCoordinator {
             finality_requirement: self.pins.settlement_finality_requirement,
             max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
         };
-        let verified = verify_finding_enforcement(enforcement, bond_snapshot, &pins, now)
-            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        let verified = if seller_was_confirmed {
+            // Recovery authenticates the frozen observation but does not
+            // require it to remain publication-fresh. The transaction and
+            // its canonical receipt are independently re-observed below.
+            verify_finding_enforcement_for_reconciliation(enforcement, bond_snapshot, &pins, now)
+        } else {
+            verify_finding_enforcement(enforcement, bond_snapshot, &pins, now)
+        }
+        .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
         // The snapshot's signature proves who observed the collateral, not
         // that what they observed is still true. A block reorged out from
         // under it, a rotated operator key, or a registry that no longer
@@ -2089,8 +2092,17 @@ impl FindingChallengeCoordinator {
         if intent.state == FindingEffectIntentState::Confirmed {
             // The impairment already landed and was proved to be this
             // intent. Dispatching again would ask the vault to move the
-            // same collateral twice, and the confirmed state has no
-            // outgoing edge, so the settle is the only work left.
+            // same collateral twice. Re-read the stored transaction before
+            // settlement so a later reorg or loss of finality cannot inherit
+            // an earlier confirmation as current chain truth.
+            if let Err(error) = self.require_reobserved_impairment(&planned, publisher, None) {
+                self.challenges
+                    .set_liability_quarantine(liability_key, true, now)
+                    .map_err(|store| {
+                        ChallengeCoordinatorError::ChallengeStore(store.to_string())
+                    })?;
+                return Err(error);
+            }
             return self.finish_confirmed_impairment(
                 liability_key,
                 enforcement,
@@ -2126,7 +2138,7 @@ impl FindingChallengeCoordinator {
         };
 
         match &outcome {
-            FindingImpairmentOutcome::Confirmed { .. } => {
+            FindingImpairmentOutcome::Confirmed { tx_hash } => {
                 // Settling is the separate question. The head closes only
                 // if the observation the amount was computed against is
                 // still the canonical one at the receipt's finality; a
@@ -2137,6 +2149,24 @@ impl FindingChallengeCoordinator {
                 // transaction on that failure path, so no concurrent
                 // finalizer can observe the confirmation without its
                 // fail-closed head state.
+                if let Err(error) =
+                    self.require_reobserved_impairment(&planned, publisher, Some(tx_hash.as_str()))
+                {
+                    // The publisher is idempotent by intent, so a failed
+                    // recheck returns this intent to the recoverable lane
+                    // without authorizing another semantic impairment.
+                    self.challenges
+                        .advance_effect_intent(&intent_key, FindingEffectIntentState::Failed, now)
+                        .map_err(|store| {
+                            ChallengeCoordinatorError::ChallengeStore(store.to_string())
+                        })?;
+                    self.challenges
+                        .set_liability_quarantine(liability_key, true, now)
+                        .map_err(|store| {
+                            ChallengeCoordinatorError::ChallengeStore(store.to_string())
+                        })?;
+                    return Err(error);
+                }
                 if let Err(error) = self.require_qualified_observation(&verified, observations) {
                     self.challenges
                         .confirm_seller_impairment_and_quarantine(&intent_key, liability_key, now)
@@ -3429,6 +3459,38 @@ impl FindingChallengeCoordinator {
         }
     }
 
+    /// Re-read the exact stored transaction and require it still to be a
+    /// canonical finalized execution of the frozen impairment call.
+    fn require_reobserved_impairment(
+        &self,
+        planned: &PlannedFindingImpairment,
+        publisher: &dyn FindingImpairmentPublisher,
+        expected_tx_hash: Option<&str>,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let outcome = reobserve_finding_impairment(planned, publisher)
+            .map_err(|error| ChallengeCoordinatorError::Publisher(error.to_string()))?;
+        match outcome {
+            FindingImpairmentOutcome::Confirmed { tx_hash }
+                if expected_tx_hash.is_none_or(|expected| expected == tx_hash) =>
+            {
+                Ok(())
+            }
+            FindingImpairmentOutcome::Confirmed { .. } => {
+                Err(ChallengeCoordinatorError::Settlement(
+                    "re-observed impairment transaction does not match the published transaction"
+                        .to_owned(),
+                ))
+            }
+            FindingImpairmentOutcome::Quarantined { .. }
+            | FindingImpairmentOutcome::Failed { .. } => {
+                Err(ChallengeCoordinatorError::Settlement(
+                    "re-observed impairment transaction is not finalized on the canonical chain"
+                        .to_owned(),
+                ))
+            }
+        }
+    }
+
     /// Clear publication pending only after every effect the signed
     /// enforcement binds has reached its durable confirmed state.
     fn settle_if_enforcement_effects_confirmed(
@@ -4661,9 +4723,10 @@ impl FindingChallengeCoordinator {
         outcome: &SignedFindingChallengeOutcome,
         sanction_case_id: &str,
         hold_penalty_id: Option<&str>,
+        issued_at: u64,
         now: u64,
     ) -> Result<FindingPenaltyOutcome, ChallengeCoordinatorError> {
-        self.require_live_role(&self.penalty_pin, now, now, "penalty")?;
+        self.require_live_role(&self.penalty_pin, issued_at, now, "penalty")?;
         let penalty_key = self.penalty_authority.public_key();
         let governance_key = self.require_live_role(
             &self.pins.governance_authority,
@@ -4710,8 +4773,8 @@ impl FindingChallengeCoordinator {
             subject_operator_id: Some(governance.subject_operator_id.to_owned()),
             supersedes_penalty_id: supersedes.map(str::to_owned),
             issued_by: governance.issued_by.to_owned(),
-            opened_at: Some(now),
-            updated_at: Some(now),
+            opened_at: Some(issued_at),
+            updated_at: Some(issued_at),
             expires_at: governance.penalty_expires_at,
             note: None,
         };
@@ -4722,7 +4785,7 @@ impl FindingChallengeCoordinator {
         let artifact = build_open_market_penalty_artifact_with_trusted_signers(
             governance.local_operator_id,
             &issue,
-            now,
+            issued_at,
             &trusted,
         )
         .map_err(ChallengeCoordinatorError::PenaltyMint)?;
@@ -4766,13 +4829,34 @@ impl FindingChallengeCoordinator {
     fn evidence_bundle_digest(
         &self,
         challenge: &FindingChallenge,
+        evidence: &FindingChallengeClassEvidence<'_>,
     ) -> Result<String, ChallengeCoordinatorError> {
         let bytes = chio_core::canonical_json_bytes(&challenge.evidence)
             .map_err(|_| ChallengeCoordinatorError::Canonical)?;
-        let mut preimage = Vec::with_capacity(EVIDENCE_BUNDLE_DOMAIN.len() + 1 + bytes.len());
+        let mut revocation_digests = match evidence {
+            FindingChallengeClassEvidence::EvidenceInvalid(resolved) => resolved
+                .revoked_keys
+                .iter()
+                .map(|proof| self.envelope_digest(proof.statement))
+                .collect::<Result<Vec<_>, _>>()?,
+            FindingChallengeClassEvidence::DigestMismatch(_)
+            | FindingChallengeClassEvidence::ReplayContradiction(_) => Vec::new(),
+        };
+        revocation_digests.sort_unstable();
+        revocation_digests.dedup();
+        let mut preimage = Vec::with_capacity(
+            EVIDENCE_BUNDLE_DOMAIN.len()
+                + 1
+                + bytes.len()
+                + revocation_digests.len().saturating_mul(65),
+        );
         preimage.extend_from_slice(EVIDENCE_BUNDLE_DOMAIN.as_bytes());
         preimage.push(0);
         preimage.extend_from_slice(&bytes);
+        for digest in revocation_digests {
+            preimage.push(0);
+            preimage.extend_from_slice(digest.as_bytes());
+        }
         Ok(sha256_hex(&preimage))
     }
 

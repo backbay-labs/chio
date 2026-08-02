@@ -36,7 +36,8 @@ pub use plan::{
     PlannedFindingImpairment,
 };
 pub use publish::{
-    dispatch_finding_impairment, FindingImpairmentPublishError, FindingImpairmentPublisher,
+    dispatch_finding_impairment, reobserve_finding_impairment, FindingImpairmentPublishError,
+    FindingImpairmentPublisher,
 };
 pub use reconcile::{
     reconcile_finding_impairment, FindingImpairmentAttempt, FindingImpairmentOutcome,

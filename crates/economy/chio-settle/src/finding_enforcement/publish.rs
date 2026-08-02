@@ -51,6 +51,19 @@ pub trait FindingImpairmentPublisher: Send + Sync {
         intent: &FindingImpairmentIntent,
         call: &PreparedEvmCall,
     ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError>;
+
+    /// Re-observe the stored transaction for an already broadcast intent.
+    ///
+    /// This method MUST NOT broadcast. It re-reads the transaction receipt,
+    /// canonical block identity, and configured finality depth immediately
+    /// before the coordinator commits confirmation or settlement. `call` is
+    /// supplied only so the returned raw transaction can be checked against
+    /// the same frozen bytes as the original publication.
+    fn observe(
+        &self,
+        intent: &FindingImpairmentIntent,
+        call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError>;
 }
 
 /// Dispatch a planned impairment through a publisher and reconcile the
@@ -64,5 +77,15 @@ pub fn dispatch_finding_impairment(
     publisher: &dyn FindingImpairmentPublisher,
 ) -> Result<FindingImpairmentOutcome, FindingImpairmentPublishError> {
     let attempt = publisher.publish(planned.intent(), planned.call())?;
+    Ok(reconcile_finding_impairment(planned.intent(), &attempt))
+}
+
+/// Re-observe and reconcile an already broadcast impairment without
+/// dispatching it again.
+pub fn reobserve_finding_impairment(
+    planned: &PlannedFindingImpairment,
+    publisher: &dyn FindingImpairmentPublisher,
+) -> Result<FindingImpairmentOutcome, FindingImpairmentPublishError> {
+    let attempt = publisher.observe(planned.intent(), planned.call())?;
     Ok(reconcile_finding_impairment(planned.intent(), &attempt))
 }
