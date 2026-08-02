@@ -112,15 +112,10 @@ fn serve_with_optional_finding_challenge_executor(
         .build()
         .map_err(|error| {
             CliError::cli_other_error(format!("failed to start async runtime: {error}"))
-    })?;
+        })?;
     runtime.block_on(async move {
-        service_runtime::serve_async(
-            config,
-            joint_authority_store,
-            purchase_executor,
-            executor,
-        )
-        .await
+        service_runtime::serve_async(config, joint_authority_store, purchase_executor, executor)
+            .await
     })
 }
 

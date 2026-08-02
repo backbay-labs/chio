@@ -329,7 +329,7 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(all(feature = "cognition-market-experimental", unix))]
+    #[cfg(unix)]
     #[test]
     fn configured_joint_authority_hardens_an_existing_lock_root(
     ) -> Result<(), Box<dyn std::error::Error>> {
