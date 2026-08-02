@@ -364,7 +364,7 @@ fn confirm_settlement_effects(fixture: &Fixture, liability_key: &str, now: u64) 
 fn remove_schema_fragment(schema: String, fragment: &str) -> String {
     assert!(
         schema.contains(fragment),
-        "the legacy fixture fragment must match the canonical v4 schema"
+        "the legacy fixture fragment must match the canonical schema"
     );
     schema.replacen(fragment, "", 1)
 }
@@ -3185,7 +3185,7 @@ fn v2_schema_migrates_to_frozen_appeals_and_required_effects() {
         0
     );
     crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 2)
-        .expect("stamp v2 schema");
+        .expect("stamp legacy schema");
 
     let liability_key = digest("legacy-v2-liability");
     connection
@@ -3231,7 +3231,7 @@ fn v2_schema_migrates_to_frozen_appeals_and_required_effects() {
         )
         .expect("insert v2 effect");
 
-    initialize_finding_challenge_schema(&mut connection).expect("migrate v2 schema");
+    initialize_finding_challenge_schema(&mut connection).expect("migrate legacy schema");
 
     let version: i32 = connection
         .query_row(
@@ -3261,7 +3261,7 @@ fn v2_schema_migrates_to_frozen_appeals_and_required_effects() {
         )
         .expect("read migrated settlement gate");
     assert_eq!(settlement_required, 1);
-    verify_finding_challenge_invariants(&connection).expect("verify canonical v4 schema");
+    verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
 }
 
 #[test]
@@ -3281,9 +3281,9 @@ fn empty_v3_schema_migrates_pool_binding_and_recovery_lifecycle() {
         0
     );
     crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 3)
-        .expect("stamp v3 schema");
+        .expect("stamp legacy schema");
 
-    initialize_finding_challenge_schema(&mut connection).expect("migrate empty v3 schema");
+    initialize_finding_challenge_schema(&mut connection).expect("migrate empty legacy schema");
 
     let version: i32 = connection
         .query_row(
@@ -3311,7 +3311,7 @@ fn empty_v3_schema_migrates_pool_binding_and_recovery_lifecycle() {
         )
         .expect("read migrated lifecycle trigger");
     assert!(trigger.contains("indeterminate_closed"));
-    verify_finding_challenge_invariants(&connection).expect("verify canonical v4 schema");
+    verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
 }
 
 #[test]

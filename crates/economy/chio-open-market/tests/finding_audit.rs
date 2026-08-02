@@ -380,13 +380,13 @@ fn budget_exhaustion_caps_the_selection() {
 fn an_unknown_selection_algorithm_rejects() {
     let (eligible, epoch) = standard_round();
     let mut future = epoch;
-    future.selection_algorithm_id = "chio.finding.audit-selection.stratified.v2".to_owned();
+    future.selection_algorithm_id = "chio.finding.audit-selection.stratified.v9".to_owned();
     future.audit_epoch_id = String::new();
     future.audit_epoch_id = compute_audit_epoch_id(&future).test_expect("epoch id");
     assert_eq!(
         select_audit_targets(&future, SEED, &eligible).test_unwrap_err(),
         FindingAuditError::UnsupportedAlgorithm(
-            "chio.finding.audit-selection.stratified.v2".to_owned()
+            "chio.finding.audit-selection.stratified.v9".to_owned()
         )
     );
 }
