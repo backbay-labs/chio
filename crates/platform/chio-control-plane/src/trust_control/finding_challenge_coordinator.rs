@@ -143,6 +143,9 @@ const EFFECT_ANCHOR_EVIDENCE_DOMAIN: &str = "chio.finding.effect.anchor-evidence
 /// Domain separator for the deterministic dispute-fee operation id.
 const DISPUTE_FEE_OPERATION_DOMAIN: &str = "chio.finding.dispute-fee-operation.v1";
 
+/// Domain separator for returning a collected fee when its bond never funds.
+const DISPUTE_FEE_RETURN_OPERATION_DOMAIN: &str = "chio.finding.dispute-fee-return-operation.v1";
+
 /// Domain separator for the retraction intent id the retraction effect
 /// key is derived over.
 const RETRACTION_INTENT_DOMAIN: &str = "chio.finding.retraction-intent.v1";
@@ -175,9 +178,9 @@ const MAX_RAW_FINDING_BYTES: usize = 1_048_576;
 const MAX_REVOCATION_STATUS_AGE_SECS: u64 = 3_600;
 
 /// Signed assertion returned by the deployment's resolver for one pinned
-/// authority. The governance root authenticates both live and revoked
-/// answers, so a caller cannot manufacture non-revocation with a plain
-/// boolean.
+/// authority. The independent status authority authenticates both live and
+/// revoked answers, so a caller cannot manufacture non-revocation with a
+/// plain boolean.
 pub const FINDING_AUTHORITY_STATUS_SCHEMA_V1: &str = "chio.finding.authority-status.v1";
 
 /// Shortest seller-signed appeal window the venue will admit.
@@ -254,6 +257,12 @@ pub fn derive_fee_intent_key(submission_id: &str, fee_operation_id: &str) -> Str
 fn dispute_fee_intent_key(challenge_id: &str) -> String {
     let operation_id =
         sha256_hex(format!("{DISPUTE_FEE_OPERATION_DOMAIN}\0{challenge_id}").as_bytes());
+    derive_fee_intent_key(challenge_id, &operation_id)
+}
+
+fn dispute_fee_return_intent_key(challenge_id: &str) -> String {
+    let operation_id =
+        sha256_hex(format!("{DISPUTE_FEE_RETURN_OPERATION_DOMAIN}\0{challenge_id}").as_bytes());
     derive_fee_intent_key(challenge_id, &operation_id)
 }
 
@@ -990,6 +999,19 @@ impl FindingChallengeCoordinator {
         };
         let received_at = recovered_received_at.unwrap_or(now);
         if recovered_received_at.is_none() {
+            if let FindingChallengeAuthorization::BuyerSubmission(submission) = &body.authorization
+            {
+                if self.recover_expired_fee_only_submission(
+                    body,
+                    &challenge_envelope_sha256,
+                    submission,
+                    &terms.body,
+                    &admission.body.challenge_administration_pool,
+                    now,
+                )? {
+                    return Err(ChallengeCoordinatorError::DisputeBondWindow);
+                }
+            }
             if admission_validation_at != now {
                 self.resolve_admission(body, now)?;
             }
@@ -2401,6 +2423,105 @@ impl FindingChallengeCoordinator {
         Ok(())
     }
 
+    /// Return a collected filing fee once the signed funding horizon has
+    /// closed and no dispute bond ever became durable.
+    ///
+    /// The original fee and its compensation have distinct semantic keys.
+    /// A crash after either rail observation therefore resumes without a
+    /// second debit or credit. A still-live filing is left untouched so a
+    /// transient bond-rail outage can retry and complete normally.
+    fn recover_expired_fee_only_submission(
+        &self,
+        challenge: &FindingChallenge,
+        challenge_envelope_sha256: &str,
+        submission: &chio_finding::FindingBuyerSubmission,
+        terms: &chio_finding::FindingMarketTerms,
+        pool: &chio_finding::FindingPoolBinding,
+        now: u64,
+    ) -> Result<bool, ChallengeCoordinatorError> {
+        let Some(recorded) = self
+            .challenges
+            .get_challenge(&challenge.challenge_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+        else {
+            return Ok(false);
+        };
+        let owner_hex = submission.challenger.to_hex();
+        if recorded.state != FindingChallengeState::Submitted
+            || recorded.challenge_envelope_sha256 != challenge_envelope_sha256
+            || recorded.finding_id != challenge.finding_id
+            || recorded.listing_id != challenge.listing_id
+            || recorded.authorization_branch != FindingChallengeAuthorizationBranch::BuyerSubmission
+            || recorded.challenger_hex.as_deref() != Some(owner_hex.as_str())
+            || self
+                .challenges
+                .get_dispute_lock(&challenge.challenge_id)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+                .is_some()
+        {
+            return Ok(false);
+        }
+        let filing_deadline = terms
+            .issued_at
+            .checked_add(terms.filing_window_secs)
+            .ok_or(ChallengeCoordinatorError::FilingWindowClosed)?;
+        let expired = now > filing_deadline
+            || now >= terms.expires_at
+            || now >= submission.dispute_lock_ref.expiry;
+        if !expired {
+            return Ok(false);
+        }
+
+        let fee = &submission.dispute_fee_terminal;
+        let collected_instruction = FindingRailInstruction {
+            idempotency_key: dispute_fee_intent_key(&challenge.challenge_id),
+            payer: fee.payer.to_hex(),
+            amount_units: fee.amount.units,
+            currency: fee.amount.currency.clone(),
+            pool_principal_id: fee.beneficiary_pool_principal_id.clone(),
+            rail_destination: fee.rail_destination.clone(),
+        };
+        let collected_digest = canonical_digest_of(&collected_instruction)?;
+        let collected = self
+            .challenges
+            .get_effect_intent(&collected_instruction.idempotency_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        if !collected.is_some_and(|intent| {
+            intent.kind == FindingEffectIntentKind::Fee
+                && intent.liability_key.is_none()
+                && !intent.settlement_required
+                && intent.intent_digest == collected_digest
+                && intent.state == FindingEffectIntentState::Confirmed
+        }) {
+            return Ok(false);
+        }
+        let funding_key = derive_dispute_bond_funding_intent_key(
+            &challenge.challenge_id,
+            &submission.dispute_lock_ref.lock_id,
+        );
+        if self
+            .challenges
+            .get_effect_intent(&funding_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .is_some_and(|intent| intent.state == FindingEffectIntentState::Confirmed)
+        {
+            return Ok(false);
+        }
+
+        let returned_fee_key =
+            self.return_dispute_fee(&challenge.challenge_id, submission, pool, now)?;
+        self.challenges
+            .close_compensated_unfunded_filing(
+                &challenge.challenge_id,
+                &collected_instruction.idempotency_key,
+                &returned_fee_key,
+                &funding_key,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        Ok(true)
+    }
+
     /// Recover the venue receipt time only when this exact challenge and
     /// this exact admission-pinned bond already reached confirmed funding.
     /// This lets a crash after the debit reconstruct and return an expired
@@ -3556,6 +3677,83 @@ impl FindingChallengeCoordinator {
                 // The intent stays durable and unreconciled, so the filing
                 // cannot proceed on an uncollected fee, and a retry
                 // re-dispatches from `failed` rather than fencing again.
+                let _ = self.challenges.advance_effect_intent(
+                    &intent_key,
+                    FindingEffectIntentState::Failed,
+                    now,
+                );
+                Err(ChallengeCoordinatorError::FeeRail(reason))
+            }
+        }
+    }
+
+    /// Compensate a collected dispute fee when the paired bond never
+    /// funded before the signed filing horizon closed.
+    fn return_dispute_fee(
+        &self,
+        challenge_id: &str,
+        submission: &chio_finding::FindingBuyerSubmission,
+        pool: &chio_finding::FindingPoolBinding,
+        now: u64,
+    ) -> Result<String, ChallengeCoordinatorError> {
+        let fee = &submission.dispute_fee_terminal;
+        let intent_key = dispute_fee_return_intent_key(challenge_id);
+        let instruction = FindingRailInstruction {
+            idempotency_key: intent_key.clone(),
+            payer: pool.principal_id.clone(),
+            amount_units: fee.amount.units,
+            currency: fee.amount.currency.clone(),
+            pool_principal_id: pool.principal_id.clone(),
+            rail_destination: fee.payer.to_hex(),
+        };
+        let intent_digest = canonical_digest_of(&instruction)?;
+        let fenced = self
+            .challenges
+            .record_effect_intent(
+                &intent_key,
+                FindingEffectIntentKind::Fee,
+                &intent_digest,
+                None,
+                false,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        if fenced == FindingChallengeWriteOutcome::ExistingSame {
+            let state = self
+                .challenges
+                .get_effect_intent(&intent_key)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+                .map(|record| record.state);
+            if state == Some(FindingEffectIntentState::Confirmed) {
+                return Ok(intent_key);
+            }
+        }
+        self.challenges
+            .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, now)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        match self.rail.dispatch(&instruction) {
+            Ok(observation)
+                if rail_observation_matches(&instruction, &intent_digest, &observation) =>
+            {
+                self.challenges
+                    .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+                Ok(intent_key)
+            }
+            Ok(_) => {
+                let _ = self.challenges.advance_effect_intent(
+                    &intent_key,
+                    FindingEffectIntentState::Failed,
+                    now,
+                );
+                Err(ChallengeCoordinatorError::FeeRail(
+                    "fee return observation does not reconcile to the dispatched instruction"
+                        .to_owned(),
+                ))
+            }
+            Err(reason) => {
                 let _ = self.challenges.advance_effect_intent(
                     &intent_key,
                     FindingEffectIntentState::Failed,

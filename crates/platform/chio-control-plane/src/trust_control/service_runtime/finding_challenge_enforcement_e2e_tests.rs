@@ -21,7 +21,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::body::{to_bytes, Body};
@@ -386,6 +386,8 @@ struct RecordingRail {
     instructions: Mutex<Vec<FindingRailInstruction>>,
     refusing: AtomicBool,
     misreporting: AtomicBool,
+    dispatch_attempts: AtomicUsize,
+    fail_on_attempt: AtomicUsize,
 }
 
 impl RecordingRail {
@@ -402,6 +404,11 @@ impl RecordingRail {
 
     fn accept(&self) {
         self.refusing.store(false, Ordering::SeqCst);
+        self.fail_on_attempt.store(0, Ordering::SeqCst);
+    }
+
+    fn fail_on_attempt(&self, attempt: usize) {
+        self.fail_on_attempt.store(attempt, Ordering::SeqCst);
     }
 
     fn misreport(&self) {
@@ -414,7 +421,10 @@ impl FindingRailObserver for RecordingRail {
         &self,
         instruction: &FindingRailInstruction,
     ) -> Result<FindingRailObservation, String> {
-        if self.refusing.load(Ordering::SeqCst) {
+        let attempt = self.dispatch_attempts.fetch_add(1, Ordering::SeqCst) + 1;
+        if self.refusing.load(Ordering::SeqCst)
+            || self.fail_on_attempt.load(Ordering::SeqCst) == attempt
+        {
             return Err("rail refused the instruction".to_string());
         }
         if let Ok(mut guard) = self.instructions.lock() {
@@ -3163,6 +3173,75 @@ fn finding_challenge_recovers_and_returns_a_funded_expired_lock() -> TestResult 
             .ok_or("the recovery refunds the bond")?
             .payer,
         CHALLENGE_POOL_PRINCIPAL
+    );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_refunds_a_fee_when_the_bond_never_funds() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenge = buyer_challenge(&keypair(41))?;
+    let challenge_id = challenge.body.challenge_id.clone();
+    let (_, raw) = finding_artifact()?;
+    let FindingChallengeAuthorization::BuyerSubmission(submission) = &challenge.body.authorization
+    else {
+        return Err("the compensation fixture is a buyer submission".into());
+    };
+
+    deployment.rail.fail_on_attempt(2);
+    assert!(matches!(
+        coordinator
+            .submit(&challenge, &raw, NOW)
+            .expect_err("the bond rail fails after the fee settles"),
+        ChallengeCoordinatorError::DisputeBondRail(_)
+    ));
+    assert_eq!(
+        deployment.rail.charges().len(),
+        1,
+        "only the filing fee reached the rail"
+    );
+    assert!(deployment
+        .challenges
+        .get_dispute_lock(&challenge_id)?
+        .is_none());
+
+    deployment.rail.accept();
+    assert!(matches!(
+        coordinator
+            .submit(&challenge, &raw, submission.dispute_lock_ref.expiry)
+            .expect_err("an expired unfunded filing closes after compensation"),
+        ChallengeCoordinatorError::DisputeBondWindow
+    ));
+    let instructions = deployment.rail.charges();
+    assert_eq!(instructions.len(), 2);
+    let returned = instructions
+        .last()
+        .ok_or("the fee return reached the rail")?;
+    assert_eq!(returned.payer, CHALLENGE_POOL_PRINCIPAL);
+    assert_eq!(returned.pool_principal_id, CHALLENGE_POOL_PRINCIPAL);
+    assert_eq!(returned.rail_destination, keypair(41).public_key().to_hex());
+    assert_eq!(returned.amount_units, 25);
+    assert_eq!(
+        deployment
+            .challenges
+            .get_challenge(&challenge_id)?
+            .ok_or("the compensated filing remains durable")?
+            .state,
+        FindingChallengeState::IndeterminateClosed
+    );
+
+    assert!(matches!(
+        coordinator
+            .submit(&challenge, &raw, submission.dispute_lock_ref.expiry + 1)
+            .expect_err("a compensated filing cannot reopen"),
+        ChallengeCoordinatorError::DisputeBondWindow
+            | ChallengeCoordinatorError::FilingWindowClosed
+    ));
+    assert_eq!(
+        deployment.rail.charges().len(),
+        2,
+        "fee compensation is idempotent"
     );
     Ok(())
 }

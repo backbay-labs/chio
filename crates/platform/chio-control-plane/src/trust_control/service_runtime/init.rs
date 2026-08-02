@@ -231,7 +231,7 @@ fn open_configured_joint_authority_store(
         return Ok(None);
     };
     let lock_root = crate::durable_admission_lock_root(path)?;
-    std::fs::create_dir_all(&lock_root)?;
+    crate::create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(path, &lock_root)?;
     Ok(Some(Arc::new(SqliteAuthorityStore::open_serving(
         path, &lock_root,
@@ -253,7 +253,8 @@ mod tests {
     use super::cluster_join_budget;
     #[cfg(feature = "cognition-market-experimental")]
     use super::{
-        validate_injected_joint_authority_store, SqliteAuthorityStore, TrustServiceConfig,
+        open_configured_joint_authority_store, validate_injected_joint_authority_store,
+        SqliteAuthorityStore, TrustServiceConfig,
     };
     #[cfg(feature = "cognition-market-experimental")]
     use std::collections::BTreeMap;
@@ -350,6 +351,30 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.to_string().contains("does not match"));
+        Ok(())
+    }
+
+    #[cfg(all(feature = "cognition-market-experimental", unix))]
+    #[test]
+    fn configured_joint_authority_hardens_an_existing_lock_root(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir()?;
+        secure_directory(temp.path())?;
+        let database = temp.path().join("joint-authority.db");
+        let lock_root = crate::durable_admission_lock_root(&database)?;
+        std::fs::create_dir(&lock_root)?;
+        std::fs::set_permissions(&lock_root, std::fs::Permissions::from_mode(0o775))?;
+
+        let store = open_configured_joint_authority_store(&test_config(database))?
+            .ok_or("configured authority store was not opened")?;
+        assert_eq!(
+            std::fs::metadata(&lock_root)?.permissions().mode() & 0o077,
+            0,
+            "startup must remove group and other access before provisioning"
+        );
+        drop(store);
         Ok(())
     }
 }

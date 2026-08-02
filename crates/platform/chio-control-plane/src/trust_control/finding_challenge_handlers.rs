@@ -287,10 +287,27 @@ fn coordinator_unavailable(error: &ChallengeCoordinatorError) -> bool {
             | ChallengeCoordinatorError::AuthorityPinMismatch(_)
             | ChallengeCoordinatorError::AuthorityLifecycle { .. }
             | ChallengeCoordinatorError::FeeRail(_)
+            | ChallengeCoordinatorError::DisputeBondRail(_)
             | ChallengeCoordinatorError::ChallengeStore(_)
             | ChallengeCoordinatorError::PurchaseStore(_)
             | ChallengeCoordinatorError::ChallengeEnvelope(_)
             | ChallengeCoordinatorError::Signing
             | ChallengeCoordinatorError::Canonical
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::coordinator_unavailable;
+    use crate::trust_control::finding_challenge_coordinator::ChallengeCoordinatorError;
+
+    #[test]
+    fn dispute_bond_rail_failures_are_retryable_service_outages() {
+        assert!(coordinator_unavailable(
+            &ChallengeCoordinatorError::DisputeBondRail("rail unavailable".to_owned())
+        ));
+        assert!(!coordinator_unavailable(
+            &ChallengeCoordinatorError::DisputeBondWindow
+        ));
+    }
 }

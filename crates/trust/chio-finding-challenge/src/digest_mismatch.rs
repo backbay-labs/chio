@@ -156,7 +156,9 @@ pub(crate) fn evaluate_digest_mismatch(
             FindingChallengeReason::DeliveryCheckpointNotEstablished,
         ));
     }
-    if verify_receipt_strict(&evidence.deny_receipt.receipt).is_err() {
+    if verify_receipt_strict(&evidence.deny_receipt.receipt).is_err()
+        || !matches!(evidence.deny_receipt.receipt.action.verify_hash(), Ok(true))
+    {
         return Ok(unresolved(
             committed,
             FindingChallengeReason::DeliveryEvidenceNotEstablished,

@@ -717,6 +717,9 @@ pub struct DenyShape {
     pub observed_digest: String,
     pub signer: DenySigner,
     pub decision: Decision,
+    /// Sign an otherwise valid receipt whose action hash contradicts its
+    /// parameters.
+    pub break_action_commitment: bool,
     /// Supply a checkpoint that is not the one the references name.
     pub substitute_checkpoint: bool,
 }
@@ -737,6 +740,7 @@ impl DenyShape {
                 reason: "delivered output does not match the committed output digest".to_string(),
                 guard: "delivery_contract".to_string(),
             },
+            break_action_commitment: false,
             substitute_checkpoint: false,
         }
     }
@@ -827,11 +831,15 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
         DenySigner::Delivery => &world.delivery_kernel,
         DenySigner::Production => &world.production_kernel,
     };
+    let mut action = ToolCallAction::from_parameters(serde_json::json!({ "finding": "reveal" }))?;
+    if shape.break_action_commitment {
+        action.parameter_hash = HEX64_THIRD.to_string();
+    }
     let receipt = signed_receipt(
         kernel,
         1_745_000_000,
         "finding.reveal",
-        ToolCallAction::from_parameters(serde_json::json!({ "finding": "reveal" }))?,
+        action,
         shape.decision.clone(),
         &shape.observed_digest,
         Some(serde_json::Value::Object(metadata)),

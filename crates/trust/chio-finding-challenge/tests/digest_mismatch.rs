@@ -36,6 +36,29 @@ fn authenticated_seller_origin_mismatch_upholds() -> TestResult {
 }
 
 #[test]
+fn a_deny_receipt_with_a_broken_action_commitment_is_indeterminate() -> TestResult {
+    let world = world()?;
+    let shape = DenyShape {
+        break_action_commitment: true,
+        ..DenyShape::seller_origin()
+    };
+    let case = digest_case(&world, &shape)?;
+    let evidence = case.evidence();
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::DeliveryEvidenceNotEstablished,
+    )?;
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
+    assert!(!evaluation.authorizes_penalty());
+    Ok(())
+}
+
+#[test]
 fn a_venue_audit_may_file_the_same_class() -> TestResult {
     let world = world()?;
     let case = venue_digest_case(&world, &DenyShape::seller_origin())?;

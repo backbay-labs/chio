@@ -1113,6 +1113,92 @@ impl SqliteFindingChallengeStore {
         Ok(FindingChallengeWriteOutcome::Inserted)
     }
 
+    /// Close an unstarted buyer filing after its collected fee was returned
+    /// because the paired dispute bond never reached confirmed funding.
+    ///
+    /// Both money effects must already be durably confirmed, no lock may
+    /// exist, and the bond-funding intent must remain unconfirmed. This
+    /// keeps compensation and terminal closure crash-resumable without
+    /// allowing a funded filing to discard its stake.
+    pub fn close_compensated_unfunded_filing(
+        &self,
+        challenge_id: &str,
+        collected_fee_intent_key: &str,
+        returned_fee_intent_key: &str,
+        bond_funding_intent_key: &str,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        require_identifier(challenge_id, "challenge_id")?;
+        require_hex64(collected_fee_intent_key, "collected_fee_intent_key")?;
+        require_hex64(returned_fee_intent_key, "returned_fee_intent_key")?;
+        require_hex64(bond_funding_intent_key, "bond_funding_intent_key")?;
+        require_trusted_time(now, "now")?;
+        if collected_fee_intent_key == returned_fee_intent_key {
+            return Err(FindingChallengeStoreError::Conflict(
+                "fee collection and compensation must use distinct intents".to_owned(),
+            ));
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let challenge = load_challenge_tx(&transaction, challenge_id)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if challenge.authorization_branch != FindingChallengeAuthorizationBranch::BuyerSubmission {
+            return Err(FindingChallengeStoreError::Conflict(
+                "a venue audit has no filing fee to compensate".to_owned(),
+            ));
+        }
+        if load_dispute_lock_tx(&transaction, challenge_id)?.is_some() {
+            return Err(FindingChallengeStoreError::Conflict(
+                "a filing with a durable dispute lock is not unfunded".to_owned(),
+            ));
+        }
+        for (key, label) in [
+            (collected_fee_intent_key, "collection"),
+            (returned_fee_intent_key, "compensation"),
+        ] {
+            let intent = load_effect_intent_tx(&transaction, key)?
+                .ok_or(FindingChallengeStoreError::NotFound)?;
+            if intent.kind != FindingEffectIntentKind::Fee
+                || intent.liability_key.is_some()
+                || intent.settlement_required
+                || intent.state != FindingEffectIntentState::Confirmed
+            {
+                return Err(FindingChallengeStoreError::Conflict(format!(
+                    "fee {label} intent is not independently confirmed"
+                )));
+            }
+        }
+        if load_effect_intent_tx(&transaction, bond_funding_intent_key)?
+            .is_some_and(|intent| intent.state == FindingEffectIntentState::Confirmed)
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "a confirmed dispute bond cannot close as unfunded".to_owned(),
+            ));
+        }
+        match challenge.state {
+            FindingChallengeState::IndeterminateClosed => {
+                return Ok(FindingChallengeWriteOutcome::ExistingSame)
+            }
+            FindingChallengeState::Submitted => {}
+            other => {
+                return Err(FindingChallengeStoreError::Conflict(format!(
+                    "compensated filing cannot close from state {}",
+                    challenge_state_name(other)
+                )))
+            }
+        }
+        advance_challenge_state_tx(
+            &transaction,
+            challenge_id,
+            "submitted",
+            "indeterminate_closed",
+            now,
+        )?;
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingChallengeWriteOutcome::Inserted)
+    }
+
     /// Open one liability head. Idempotent on the liability key: a replay
     /// carrying the same defect, listing, allocation, and vault returns
     /// [`FindingChallengeWriteOutcome::ExistingSame`] without disturbing
