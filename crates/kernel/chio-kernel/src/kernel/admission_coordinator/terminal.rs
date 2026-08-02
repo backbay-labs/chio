@@ -754,6 +754,7 @@ impl ChioKernel {
         let ResolvedToolOutcomeV1::Resolved {
             resolved_output: expected_output,
             resolved_output_size_bytes,
+            settlement_disposition,
             ..
         } = tool_return.outcome.disposition()
         else {
@@ -769,6 +770,9 @@ impl ChioKernel {
             return Err(KernelError::DurableAdmission(
                 "completed output conflicts with its retained preimage".to_owned(),
             ));
+        }
+        if let Some(binding) = purchase.as_ref() {
+            self.settle_finding_pool_delivery_terminal(binding, settlement_disposition)?;
         }
         let retained_financial_metadata = receipt
             .metadata
@@ -1907,6 +1911,9 @@ impl ChioKernel {
                 })
             })
             .transpose()?;
+        if let Some(binding) = purchase.as_ref() {
+            self.settle_finding_pool_delivery_terminal(binding, &settlement_disposition)?;
+        }
         let tool_outcome = runtime
             .verify_terminal_outcome(&admission.operation, &context)
             .map_err(tool_outcome_error)?;

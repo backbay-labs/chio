@@ -292,6 +292,7 @@ impl ChioKernel {
             finding_status_proof_verifier: None,
             finding_delivery_receipt_authorities: Vec::new(),
             finding_pool_allocation_authority: None,
+            finding_pool_ledger: None,
             price_oracle: None,
             runtime_admission_hook: None,
             runtime_admission_readiness_timeout: Duration::from_millis(

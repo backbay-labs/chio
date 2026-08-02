@@ -1,9 +1,9 @@
-//! Kernel boundary for authenticated cognition-market pool debits.
+//! Kernel boundary for authenticated cognition-market pool reservations.
 //!
-//! The hard-ceiling entry point accepts only a backend that explicitly
-//! implements [`QualifiedFindingPoolLedger`]. Implementations must provide an
-//! atomic or linearizable debit and durable exact replay. Advisory remote
-//! budget views must not implement the marker trait.
+//! The deployment pins one backend that explicitly implements
+//! [`QualifiedFindingPoolLedger`]. Implementations must provide atomic or
+//! linearizable reservation, terminal settlement, and durable exact replay.
+//! Advisory remote budget views must not implement the marker trait.
 
 use chio_core_types::crypto::PublicKey;
 use chio_swarm_authority::finding_pool::{
@@ -21,9 +21,18 @@ pub struct FindingPoolDebitReceipt {
     pub allocation_envelope_sha256: String,
     pub amount_units: u64,
     pub currency: String,
+    pub state: FindingPoolDebitState,
+    pub reserved_after_units: u64,
     pub spent_after_units: u64,
     pub remaining_after_units: u64,
     pub replayed: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindingPoolDebitState {
+    Reserved,
+    Finalized,
+    Released,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -36,6 +45,12 @@ pub enum FindingPoolLedgerError {
     AllocationNotLive,
     #[error("finding pool id is already bound to another signed allocation")]
     PoolBindingConflict,
+    #[error("finding pool purchase has no durable reservation")]
+    ReservationMissing,
+    #[error("finding pool reservation conflicts with its recorded terminal")]
+    TerminalConflict,
+    #[error("finding pool ledger is already configured for this kernel")]
+    AlreadyConfigured,
     #[error("finding pool ledger storage failed: {0}")]
     Storage(String),
 }
@@ -54,6 +69,8 @@ pub enum FindingPoolDebitError {
     ZeroAmount,
     #[error("finding pool allocation authority is not configured")]
     AllocationAuthorityMissing,
+    #[error("qualified finding pool ledger is not configured")]
+    LedgerMissing,
     #[error("finding pool debit {0} is invalid")]
     InvalidField(&'static str),
     #[error(transparent)]
@@ -98,6 +115,71 @@ pub struct AuthorizedFindingPoolDebit {
     allocation_issued_at_unix_ms: u64,
     allocation_expires_at_unix_ms: u64,
     debit_requested_at_unix_ms: u64,
+}
+
+/// Kernel-authenticated delivery terminal for a prior pool reservation.
+///
+/// Fields are private so callers cannot manufacture a successful or failed
+/// delivery decision. Qualified backends can inspect the exact purchase
+/// binding through the accessors below.
+#[derive(Debug, Clone)]
+pub struct AuthorizedFindingPoolTerminal {
+    purchase_id: String,
+    finding_id: String,
+    listing_id: String,
+    reservation_id: String,
+    authoritative_payment_operation_id: String,
+    amount_units: u64,
+    currency: String,
+    decision: FindingPoolTerminalDecision,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindingPoolTerminalDecision {
+    Finalize,
+    Release,
+}
+
+impl AuthorizedFindingPoolTerminal {
+    #[must_use]
+    pub fn purchase_id(&self) -> &str {
+        &self.purchase_id
+    }
+
+    #[must_use]
+    pub fn finding_id(&self) -> &str {
+        &self.finding_id
+    }
+
+    #[must_use]
+    pub fn listing_id(&self) -> &str {
+        &self.listing_id
+    }
+
+    #[must_use]
+    pub fn reservation_id(&self) -> &str {
+        &self.reservation_id
+    }
+
+    #[must_use]
+    pub fn authoritative_payment_operation_id(&self) -> &str {
+        &self.authoritative_payment_operation_id
+    }
+
+    #[must_use]
+    pub fn amount_units(&self) -> u64 {
+        self.amount_units
+    }
+
+    #[must_use]
+    pub fn currency(&self) -> &str {
+        &self.currency
+    }
+
+    #[must_use]
+    pub fn decision(&self) -> FindingPoolTerminalDecision {
+        self.decision
+    }
 }
 
 impl AuthorizedFindingPoolDebit {
@@ -198,14 +280,22 @@ impl AuthorizedFindingPoolDebit {
 }
 
 pub trait FindingPoolLedger: Send + Sync {
-    /// Whether `purchase_id` is already durably committed. A `true` result
-    /// only selects the replay path; [`Self::debit`] must still compare every
+    /// Whether `purchase_id` already has a durable reservation. A `true`
+    /// result only selects the replay path; [`Self::debit`] must still compare every
     /// authenticated field before returning the prior receipt.
     fn contains_purchase(&self, purchase_id: &str) -> Result<bool, FindingPoolLedgerError>;
 
     fn debit(
         &self,
         debit: &AuthorizedFindingPoolDebit,
+    ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError>;
+
+    /// Finalize or release a reservation from the kernel's durable delivery
+    /// terminal. Exact replay must return the recorded terminal, while an
+    /// attempted opposite terminal must fail closed.
+    fn settle(
+        &self,
+        terminal: &AuthorizedFindingPoolTerminal,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError>;
 }
 
@@ -216,26 +306,23 @@ pub trait FindingPoolLedger: Send + Sync {
 pub trait QualifiedFindingPoolLedger: FindingPoolLedger {}
 
 impl ChioKernel {
-    /// Debit a signed finding pool allocation through this deployment's
-    /// configured verifiers, trust roots, and trusted wall clock.
-    pub fn debit_finding_pool_purchase<L: QualifiedFindingPoolLedger + ?Sized>(
+    /// Reserve a signed finding pool allocation through this deployment's
+    /// configured ledger, verifiers, trust roots, and trusted wall clock.
+    pub fn debit_finding_pool_purchase(
         &self,
-        ledger: &L,
         request: FindingPoolDebitRequest<'_>,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolDebitError> {
-        self.debit_finding_pool_purchase_at(
-            ledger,
-            request,
-            crate::kernel::current_unix_timestamp_ms(),
-        )
+        self.debit_finding_pool_purchase_at(request, crate::kernel::current_unix_timestamp_ms())
     }
 
-    fn debit_finding_pool_purchase_at<L: QualifiedFindingPoolLedger + ?Sized>(
+    fn debit_finding_pool_purchase_at(
         &self,
-        ledger: &L,
         request: FindingPoolDebitRequest<'_>,
         trusted_now_unix_ms: u64,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolDebitError> {
+        let ledger = self
+            .finding_pool_ledger()
+            .ok_or(FindingPoolDebitError::LedgerMissing)?;
         let allocation = &request.allocation.body;
         let allocation_is_live = trusted_now_unix_ms >= allocation.issued_at_unix_ms
             && trusted_now_unix_ms < allocation.expires_at_unix_ms;
@@ -333,6 +420,63 @@ impl ChioKernel {
         .map_err(FindingPoolDebitError::Allocation)?;
         ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger)
     }
+
+    /// Apply the pool reservation terminal derived from the kernel's frozen
+    /// post-delivery settlement decision. Purchases that did not use the
+    /// configured pool ledger are left unchanged.
+    pub(crate) fn settle_finding_pool_delivery(
+        &self,
+        purchase: &crate::finding_purchase::VerifiedFindingPurchase,
+        disposition: &crate::tool_outcome::SettlementDispositionV1,
+    ) -> Result<(), FindingPoolLedgerError> {
+        let Some(ledger) = self.finding_pool_ledger() else {
+            return Ok(());
+        };
+        if !ledger.contains_purchase(&purchase.purchase_intent_id)? {
+            return Ok(());
+        }
+        let decision = match disposition {
+            crate::tool_outcome::SettlementDispositionV1::Capture { amount }
+                if amount == &purchase.accepted_price =>
+            {
+                FindingPoolTerminalDecision::Finalize
+            }
+            crate::tool_outcome::SettlementDispositionV1::ContractualZeroCharge { currency }
+                if currency == &purchase.accepted_price.currency =>
+            {
+                FindingPoolTerminalDecision::Release
+            }
+            crate::tool_outcome::SettlementDispositionV1::Capture { .. }
+            | crate::tool_outcome::SettlementDispositionV1::ContractualZeroCharge { .. }
+            | crate::tool_outcome::SettlementDispositionV1::NotApplicable => {
+                return Err(FindingPoolLedgerError::TerminalConflict);
+            }
+        };
+        ledger.settle(&AuthorizedFindingPoolTerminal {
+            purchase_id: purchase.purchase_intent_id.clone(),
+            finding_id: purchase.finding_id.clone(),
+            listing_id: purchase.listing_id.clone(),
+            reservation_id: purchase.reservation_id.clone(),
+            authoritative_payment_operation_id: purchase.authoritative_payment_operation_id.clone(),
+            amount_units: purchase.accepted_price.units,
+            currency: purchase.accepted_price.currency.clone(),
+            decision,
+        })?;
+        Ok(())
+    }
+
+    pub(crate) fn settle_finding_pool_delivery_terminal(
+        &self,
+        purchase: &crate::finding_purchase::VerifiedFindingPurchase,
+        disposition: &crate::tool_outcome::SettlementDispositionV1,
+    ) -> Result<(), crate::KernelError> {
+        self.settle_finding_pool_delivery(purchase, disposition)
+            .map_err(|error| {
+                crate::KernelError::DurableAdmission(format!(
+                    "finding pool terminal could not be committed: {error}"
+                ))
+            })
+    }
 }
 
 fn require_identifier(value: &str, field: &'static str) -> Result<(), FindingPoolDebitError> {
@@ -354,3 +498,7 @@ fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingPoolDebi
         Err(FindingPoolDebitError::InvalidField(field))
     }
 }
+
+#[cfg(test)]
+#[path = "finding_pool_tests.rs"]
+mod tests;

@@ -147,6 +147,9 @@ pub fn is_in_memory_sqlite_path(path: &str) -> bool {
     let Some(rest) = path.strip_prefix("file:") else {
         return false;
     };
+    // SQLite URI fragments do not participate in either the filename or the
+    // query. Strip them before interpreting the durability-sensitive parts.
+    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
     let (name, query) = match rest.split_once('?') {
         Some((name, query)) => (name, Some(query)),
         None => (rest, None),

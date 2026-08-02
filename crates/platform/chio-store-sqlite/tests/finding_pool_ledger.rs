@@ -10,7 +10,7 @@ use chio_core::capability::scope::{
 use chio_core::capability::token::{CapabilityToken, CHIO_CAPABILITY_SCHEMA};
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_kernel::finding_pool::{
-    FindingPoolDebitError, FindingPoolDebitRequest, FindingPoolLedgerError,
+    FindingPoolDebitError, FindingPoolDebitRequest, FindingPoolDebitState, FindingPoolLedgerError,
 };
 use chio_kernel::finding_purchase::{
     FindingPurchaseContextView, FindingPurchaseVerifier, FindingStatusProofContextView,
@@ -181,6 +181,9 @@ fn debit_at_with_status(
     });
     kernel.set_finding_purchase_verifier(Arc::new(verifier));
     kernel.set_finding_pool_allocation_authority(fixture.authority.public_key());
+    kernel
+        .set_finding_pool_ledger(Arc::new(ledger.clone()))
+        .test_expect("configure qualified pool ledger");
     if let Some(status_verifier) = status_verifier {
         kernel.set_finding_status_proof_verifier(status_verifier);
     }
@@ -211,25 +214,22 @@ fn debit_at_with_status(
         now_unix_ms / 1_000,
         std::iter::empty::<String>(),
     );
-    kernel.debit_finding_pool_purchase(
-        ledger,
-        FindingPoolDebitRequest {
-            allocation: &fixture.allocation,
-            pool: &fixture.pool,
-            expected_allocation_envelope_sha256: &fixture.envelope_sha256,
-            purchaser_id: &fixture.allocation.body.purchaser_id,
-            purchase_context: FindingPurchaseContextView {
-                marker: &marker,
-                context_b64: "test-purchase-context",
-                capability: &capability,
-                server_id: "finding-server",
-                tool_name: "read_finding",
-                arguments: &arguments,
-                expected_output_digest: &"c".repeat(64),
-            },
-            status_proof_b64,
+    kernel.debit_finding_pool_purchase(FindingPoolDebitRequest {
+        allocation: &fixture.allocation,
+        pool: &fixture.pool,
+        expected_allocation_envelope_sha256: &fixture.envelope_sha256,
+        purchaser_id: &fixture.allocation.body.purchaser_id,
+        purchase_context: FindingPurchaseContextView {
+            marker: &marker,
+            context_b64: "test-purchase-context",
+            capability: &capability,
+            server_id: "finding-server",
+            tool_name: "read_finding",
+            arguments: &arguments,
+            expected_output_digest: &"c".repeat(64),
         },
-    )
+        status_proof_b64,
+    })
 }
 
 #[derive(Clone)]
@@ -299,7 +299,8 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
             Ok(receipt) => {
                 successful += 1;
                 successful_purchase_id.get_or_insert(receipt.purchase_id.clone());
-                assert!(receipt.spent_after_units <= 100);
+                assert_eq!(receipt.state, FindingPoolDebitState::Reserved);
+                assert!(receipt.reserved_after_units <= 100);
             }
             Err(FindingPoolDebitError::Ledger(FindingPoolLedgerError::AmountExceeded)) => {
                 exhausted += 1;
@@ -311,9 +312,15 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
     assert_eq!(exhausted, 10);
     assert_eq!(
         ledger
+            .reserved_units(&fixture.envelope_sha256)
+            .test_expect("read reserved units"),
+        Some(100)
+    );
+    assert_eq!(
+        ledger
             .spent_units(&fixture.envelope_sha256)
             .test_expect("read spent units"),
-        Some(100)
+        Some(0)
     );
 
     drop(ledger);
@@ -321,8 +328,8 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
         SqliteFindingPoolLedger::open_qualified(&database).test_expect("restart ledger");
     assert_eq!(
         restarted
-            .spent_units(&fixture.envelope_sha256)
-            .test_expect("read restarted spend"),
+            .reserved_units(&fixture.envelope_sha256)
+            .test_expect("read restarted reservations"),
         Some(100)
     );
     let replay_purchase_id = successful_purchase_id
@@ -331,11 +338,12 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
     let replay = debit(&restarted, &fixture, replay_purchase_id, 10)
         .test_expect("exact replay after restart");
     assert!(replay.replayed);
-    assert!(replay.spent_after_units <= 100);
+    assert_eq!(replay.state, FindingPoolDebitState::Reserved);
+    assert!(replay.reserved_after_units <= 100);
     assert_eq!(
         restarted
-            .spent_units(&fixture.envelope_sha256)
-            .test_expect("read spend after replay"),
+            .reserved_units(&fixture.envelope_sha256)
+            .test_expect("read reservations after replay"),
         Some(100)
     );
 
@@ -494,9 +502,47 @@ fn cognition_market_pool_requires_live_status_before_new_debit_but_replays() {
     ));
     assert_eq!(
         ledger
-            .spent_units(&fixture.envelope_sha256)
-            .test_expect("read status-qualified spend"),
+            .reserved_units(&fixture.envelope_sha256)
+            .test_expect("read status-qualified reservation"),
         Some(10)
+    );
+}
+
+#[test]
+fn cognition_market_kernel_refuses_pool_ledger_replacement() {
+    let first_directory = tempfile::tempdir().test_expect("create first ledger directory");
+    let second_directory = tempfile::tempdir().test_expect("create second ledger directory");
+    let first =
+        SqliteFindingPoolLedger::open_qualified(first_directory.path().join("pool.sqlite3"))
+            .test_expect("open first qualified ledger");
+    let second =
+        SqliteFindingPoolLedger::open_qualified(second_directory.path().join("pool.sqlite3"))
+            .test_expect("open second qualified ledger");
+    let fixture = fixture(100);
+    let mut kernel = ChioKernel::new(KernelConfig {
+        keypair: fixture.authority,
+        ca_public_keys: Vec::new(),
+        max_delegation_depth: 1,
+        policy_hash: "finding-pool-ledger-pinning-test".to_string(),
+        allow_sampling: false,
+        allow_sampling_tool_use: false,
+        allow_elicitation: false,
+        max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
+        max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
+        require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
+        allow_ephemeral_revocation_store: true,
+        checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
+        retention_config: None,
+        memory_budget: MemoryBudgetConfig::defaults(),
+        deadlines: HotPathDeadlineConfig::default(),
+    });
+    kernel
+        .set_finding_pool_ledger(Arc::new(first))
+        .test_expect("pin first ledger");
+    assert_eq!(
+        kernel.set_finding_pool_ledger(Arc::new(second)),
+        Err(FindingPoolLedgerError::AlreadyConfigured)
     );
 }
 
@@ -511,6 +557,9 @@ fn cognition_market_qualified_pool_refuses_in_memory_storage() {
         "file:pool?mode%3Dmemory",
         "file:pool?mode=%6demory",
         "file:%3Amemory%3A",
+        "file::memory:#fragment",
+        "file:pool?mode=memory#fragment",
+        "file:pool?vfs=memdb#fragment",
     ] {
         assert!(
             matches!(

@@ -331,8 +331,28 @@ pub(crate) fn purchase_marked_grant(
 }
 
 impl ChioKernel {
+    /// Pin the single qualified pool ledger for this deployment kernel.
+    /// Once installed it cannot be replaced, preventing callers from routing
+    /// successive debits for one signed allocation through disjoint ledgers.
+    pub fn set_finding_pool_ledger(
+        &mut self,
+        ledger: std::sync::Arc<dyn crate::finding_pool::QualifiedFindingPoolLedger>,
+    ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+        if self.finding_pool_ledger.is_some() {
+            return Err(crate::finding_pool::FindingPoolLedgerError::AlreadyConfigured);
+        }
+        self.finding_pool_ledger = Some(ledger);
+        Ok(())
+    }
+
     pub(crate) fn finding_pool_allocation_authority(&self) -> Option<&PublicKey> {
         self.finding_pool_allocation_authority.as_ref()
+    }
+
+    pub(crate) fn finding_pool_ledger(
+        &self,
+    ) -> Option<&dyn crate::finding_pool::QualifiedFindingPoolLedger> {
+        self.finding_pool_ledger.as_deref()
     }
 
     pub(crate) fn verify_finding_status_for_pool(
