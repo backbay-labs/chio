@@ -25,7 +25,6 @@ mod lease_history;
 mod path_identity;
 mod rollback_anchor;
 
-#[cfg(feature = "cognition-market-experimental")]
 use global_commit_chain::{
     append_finding_challenge_projection_if_changed, append_finding_status_projection_if_changed,
 };
@@ -198,7 +197,6 @@ impl SqliteServingOwner {
         )
     }
 
-    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) fn append_finding_challenge_projection_if_changed(
         &self,
         transaction: &Transaction<'_>,

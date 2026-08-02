@@ -358,7 +358,6 @@ pub(crate) fn append_global_commit(
 /// Append the challenge projection and its authority-wide reference when
 /// the current challenge snapshot differs from the latest committed one.
 /// Identical replays produce no phantom history entry.
-#[cfg(feature = "cognition-market-experimental")]
 pub(crate) fn append_finding_challenge_projection_if_changed(
     transaction: &Transaction<'_>,
     fence: &StoreMutationFence,
