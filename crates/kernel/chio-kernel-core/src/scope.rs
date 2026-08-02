@@ -225,18 +225,18 @@ fn constraint_matches(
         }
         Constraint::MaxLength(max) => Ok(string_leaves.iter().all(|leaf| leaf.value.len() <= *max)),
         Constraint::MaxArgsSize(max) => Ok(arguments.to_string().len() <= *max),
-        // The delivery carriers are enforced only where an output-aware
-        // terminal exists. Spelling either as a Custom key must never
-        // satisfy a grant by argument matching alone, so the spelling
-        // fails the grant it appears on without condemning its sibling
-        // grants; the first-class variants below still deny the whole
-        // evaluation on this surface.
+        // Delivery and recovery authority must use first-class constraints.
+        // Rejecting a Custom spelling is deliberate: merely failing that
+        // grant would let an unconstrained sibling serve the same call and
+        // silently downgrade the issuer's intended boundary.
         Constraint::Custom(key, _)
             if key == "output_digest_sha256"
                 || key == "require_finding_purchase"
                 || key == "require_finding_recovery" =>
         {
-            Ok(false)
+            Err(ScopeMatchError::ConstraintError(format!(
+                "{key} must use its first-class constraint, not Custom"
+            )))
         }
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
         Constraint::AudienceAllowlist(allowed) => {
@@ -701,10 +701,11 @@ mod delivery_spelling_tests {
     }
 
     #[test]
-    fn custom_delivery_spellings_never_match_and_never_poison_siblings() {
+    fn custom_delivery_spellings_reject_the_call_including_clean_siblings() {
         for (key, value) in [
             ("output_digest_sha256", "aa"),
             ("require_finding_purchase", "finding-1"),
+            ("require_finding_recovery", "finding-1"),
         ] {
             let scope = ChioScope {
                 grants: vec![
@@ -717,14 +718,13 @@ mod delivery_spelling_tests {
                 key.to_string(),
                 serde_json::Value::String(value.to_string()),
             )]));
-            let matches = resolve_matching_grants(&scope, "tool", "srv", &arguments)
-                .expect("a custom delivery spelling must not fail the whole candidate set");
-            assert_eq!(
-                matches.len(),
-                1,
-                "only the clean sibling may match for {key}"
+            assert!(
+                matches!(
+                    resolve_matching_grants(&scope, "tool", "srv", &arguments),
+                    Err(ScopeMatchError::ConstraintError(_))
+                ),
+                "a custom {key} spelling must reject the call before a clean sibling can serve it"
             );
-            assert_eq!(matches[0].index, 1);
         }
     }
 
