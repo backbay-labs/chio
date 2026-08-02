@@ -46,15 +46,15 @@ use chio_core::receipt::metadata::{
 use chio_core::session::{RequestId, SessionAnchorReference};
 use chio_core::sha256_hex;
 use chio_finding::{
-    compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
-    compute_profile_id, compute_terms_id, derive_finding_recovery_id, derive_purchase_key,
-    sign_finding, verify_signed_failed_delivery, verify_signed_purchase_record, Finding,
-    FindingAdmission, FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
-    FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
-    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
-    FindingCollateralVault, FindingDescriptor, FindingEvidenceClass, FindingFacetKind,
-    FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass, FindingMarketTerms,
-    FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
+    buyer_refund_destination, compute_admission_id, compute_allocation_id,
+    compute_authorization_id, compute_finding_id, compute_profile_id, compute_terms_id,
+    derive_finding_recovery_id, derive_purchase_key, sign_finding, verify_signed_failed_delivery,
+    verify_signed_purchase_record, Finding, FindingAdmission, FindingAuthorityKeyPolicy,
+    FindingBackingRequirement, FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass,
+    FindingChallengeBondLimit, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
+    FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor, FindingEvidenceClass,
+    FindingFacetKind, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
+    FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
     FindingPurchaseContext, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
     FindingRecipePhase, FindingRecipePhaseKind, FindingRecoveryContext, FindingReplayRecipeInput,
     FindingResourceCaps, FindingSellerAuthorization, SignedFindingAdmission,
@@ -2817,7 +2817,8 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
     assert_eq!(record.body.accepted_price, usd(PRICE_UNITS));
     assert_eq!(record.body.realized_spend, usd(PRICE_UNITS));
     assert_eq!(record.body.delivery_receipt_id, response.receipt.id);
-    assert_eq!(record.body.payout_destination, PAYOUT_DESTINATION);
+    let refund_destination = buyer_refund_destination(&lane.buyer.public_key());
+    assert_eq!(record.body.payout_destination, refund_destination);
 
     let reservation = purchase_store
         .get_reservation(&lane.purchase.handshake.reservation_id)?
@@ -2859,7 +2860,7 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
         purchase_store.list_payout_destinations(&lane.deployment.web.allocation_id)?,
         vec![
             (0_u8, COMMUNITY_FUND_DESTINATION.to_string()),
-            (1_u8, PAYOUT_DESTINATION.to_string()),
+            (1_u8, refund_destination),
         ]
     );
     assert!(purchase_store

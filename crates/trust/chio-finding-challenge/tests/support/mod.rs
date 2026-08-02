@@ -603,15 +603,16 @@ impl World {
         &self,
         shape: StandingShape,
     ) -> Built<SignedFindingPurchaseRecord> {
+        let buyer = match shape {
+            StandingShape::ForeignBuyer => keypair(77).public_key(),
+            _ => self.buyer.public_key(),
+        };
         let record = FindingPurchaseRecord {
             schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_string(),
             purchase_key: derive_purchase_key(HEX64_THIRD, PAYMENT_OPERATION_ID),
             purchase_intent_id: PURCHASE_INTENT_ID.to_string(),
             authoritative_payment_operation_id: PAYMENT_OPERATION_ID.to_string(),
-            buyer: match shape {
-                StandingShape::ForeignBuyer => keypair(77).public_key(),
-                _ => self.buyer.public_key(),
-            },
+            buyer: buyer.clone(),
             payer: self.buyer.public_key(),
             finding_id: match shape {
                 StandingShape::ForeignFinding => HEX64_ALT.to_string(),
@@ -632,7 +633,7 @@ impl World {
             encumbrance_id: "encumbrance-42".to_string(),
             delivery_receipt_id: "delivery-receipt-42".to_string(),
             payment_reference: "payment-reference-42".to_string(),
-            payout_destination: "rail:venue-ledger:buyer-1".to_string(),
+            payout_destination: chio_finding::buyer_refund_destination(&buyer),
             // The only difference of an unnamed record: it is a settled
             // record of the same sale that the challenge does not name.
             recorded_at: match shape {

@@ -27,11 +27,12 @@ use chio_core::receipt::metadata::{
     FINDING_DELIVERY_METADATA_KEY,
 };
 use chio_finding::{
-    compute_failed_delivery_id, derive_purchase_key, verify_finding, verify_signed_bond_backing,
-    verify_signed_seller_authorization, Finding, FindingFailedDelivery, FindingHoldReleaseTerminal,
-    FindingPurchaseRecord, SignedFindingAdmission, SignedFindingBondBacking,
-    SignedFindingFailedDelivery, SignedFindingPurchaseRecord, SignedFindingSellerAuthorization,
-    FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
+    buyer_refund_destination, compute_failed_delivery_id, derive_purchase_key, verify_finding,
+    verify_signed_bond_backing, verify_signed_seller_authorization, Finding, FindingFailedDelivery,
+    FindingHoldReleaseTerminal, FindingPurchaseRecord, SignedFindingAdmission,
+    SignedFindingBondBacking, SignedFindingFailedDelivery, SignedFindingPurchaseRecord,
+    SignedFindingSellerAuthorization, FINDING_FAILED_DELIVERY_SCHEMA_V1,
+    FINDING_PURCHASE_RECORD_SCHEMA_V1,
 };
 use chio_kernel::admission_operation::{
     AdmissionOperationState, AdmissionOperationStore, AdmissionReceiptMetadataV1,
@@ -817,9 +818,9 @@ impl FindingPurchaseCoordinator {
         }
         let accepted_bid_envelope_sha256 = &terminal.delivery.accepted_bid_envelope_sha256;
         let delivery_receipt_id = &receipt.id;
-        let payout_destination = &admission.body.payee_destination;
         let buyer = PublicKey::from_hex(&reservation.payer_hex)
             .map_err(|_| PurchaseCoordinatorError::Store("payer key malformed".to_owned()))?;
+        let payout_destination = buyer_refund_destination(&buyer);
         let record = FindingPurchaseRecord {
             schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_owned(),
             purchase_key: derive_purchase_key(
@@ -877,7 +878,7 @@ impl FindingPurchaseCoordinator {
                 record_json: &record_json,
                 record_sha256: &record_sha256,
                 delivery_receipt_id,
-                payout_destination,
+                payout_destination: &payout_destination,
                 retention_expires_at,
                 now,
             })

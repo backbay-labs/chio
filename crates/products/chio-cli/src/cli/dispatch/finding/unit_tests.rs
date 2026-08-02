@@ -199,7 +199,7 @@ fn live_buy_fixture() -> LiveBuyFixture {
         encumbrance_id: "encumbrance-live-buy".to_owned(),
         delivery_receipt_id: receipt.id.clone(),
         payment_reference: authoritative_payment_operation_id.clone(),
-        payout_destination: "rail:test:seller".to_owned(),
+        payout_destination: chio_finding::buyer_refund_destination(&buyer.public_key()),
         recorded_at: now,
     };
     let signed_record = SignedFindingPurchaseRecord::sign(record, &purchase_authority).unwrap();

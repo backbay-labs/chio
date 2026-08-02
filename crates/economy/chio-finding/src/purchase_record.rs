@@ -58,7 +58,7 @@ pub struct FindingPurchaseRecord {
     pub encumbrance_id: String,
     pub delivery_receipt_id: String,
     pub payment_reference: String,
-    /// Rail-tagged payout destination.
+    /// Deterministic buyer-controlled destination for a later harm payout.
     pub payout_destination: String,
     pub recorded_at: u64,
 }
@@ -107,6 +107,9 @@ impl FindingPurchaseRecord {
         require_bounded_id(&self.delivery_receipt_id, "delivery_receipt_id")?;
         require_bounded_id(&self.payment_reference, "payment_reference")?;
         require_bounded_id(&self.payout_destination, "payout_destination")?;
+        if self.payout_destination != buyer_refund_destination(&self.buyer) {
+            return Err(FindingError::InvalidField("payout_destination"));
+        }
         require_nonzero(self.recorded_at, "recorded_at")?;
         self.verify_purchase_key()
     }
@@ -123,6 +126,16 @@ impl FindingPurchaseRecord {
             Err(FindingError::ArtifactIdMismatch("purchase_key"))
         }
     }
+}
+
+/// Derive the only harm-payout destination a purchase record may name.
+///
+/// The buyer key is authenticated by the purchase-authority signature, so
+/// a seller admission cannot redirect a later buyer reimbursement to the
+/// seller's ordinary sale-payee account.
+#[must_use]
+pub fn buyer_refund_destination(buyer: &PublicKey) -> String {
+    format!("buyer:{}", buyer.to_hex())
 }
 
 /// Derive the purchase key: sha256 over the domain-separated preimage of the

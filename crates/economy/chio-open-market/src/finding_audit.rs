@@ -23,8 +23,10 @@ use std::collections::BTreeSet;
 use chio_core_types::crypto::PublicKey;
 use chio_core_types::hashing::sha256;
 use chio_finding::{
-    derive_audit_seed_commitment, FindingAuditEpoch, FindingAuditReport, FindingError,
-    MAX_AUDIT_SELECTION, MAX_FINDING_IDENTIFIER_BYTES, MAX_PUBLISHED_RATE_BPS,
+    derive_audit_seed_commitment, signed_envelope_sha256, verify_signed_challenge_outcome,
+    FindingAuditEpoch, FindingAuditReport, FindingChallengeAuthorizationKind, FindingError,
+    SignedFindingChallengeOutcome, MAX_AUDIT_SELECTION, MAX_FINDING_IDENTIFIER_BYTES,
+    MAX_PUBLISHED_RATE_BPS,
 };
 
 use crate::capability::scope::MonetaryAmount;
@@ -164,6 +166,20 @@ pub enum FindingAuditError {
     ExtraneousOutcome { attempted: usize, outcomes: usize },
     #[error("{attempted} selected findings were attempted but only {outcomes} signed outcomes account for them")]
     MissingOutcome { attempted: usize, outcomes: usize },
+    #[error("audit outcome rejected: {0}")]
+    Outcome(FindingError),
+    #[error("audit outcome {0} did not use the venue-audit authorization branch")]
+    OutcomeAuthorization(String),
+    #[error("audit outcome {0} does not bind this audit epoch envelope")]
+    OutcomeRoundBinding(String),
+    #[error("audit outcome {0} was not evaluated inside the committed report interval")]
+    OutcomeTimeBinding(String),
+    #[error("audit outcome {0} does not name one attempted selection")]
+    OutcomeSelectionBinding(String),
+    #[error("more than one signed outcome names attempted finding {0}")]
+    DuplicateOutcome(String),
+    #[error("signed outcome envelope {0} is absent from the report")]
+    OutcomeDigestMismatch(String),
     #[error("audit arithmetic exceeded its representable range")]
     Overflow,
 }
@@ -290,11 +306,11 @@ pub fn select_audit_targets_within_budget(
 ///
 /// Accounting is then complete in both directions. Every selected finding is
 /// either recorded as a missed attempt with a reason or attempted, and each
-/// attempted selection owes exactly one attempt receipt, so a round can
-/// neither drop a target silently nor pad its receipts. Attempt receipt and
-/// outcome identifiers are opaque to the report, so they are held to that
-/// exact count rather than matched per finding; a lane that keys receipts to
-/// findings can tighten this to a per-finding match.
+/// attempted selection owes exactly one attempt receipt and one resolved,
+/// evaluator-signed outcome. The outcome must name that selection, use the
+/// venue-audit authorization branch, bind this exact epoch envelope as its
+/// trigger, and be evaluated after commitment but no later than publication.
+/// The report must carry the digest of each exact signed outcome envelope.
 ///
 /// Selection order is not part of the report's contract: the artifact's
 /// list carries no ordering semantics, so set equality is required and the
@@ -302,9 +318,11 @@ pub fn select_audit_targets_within_budget(
 pub fn verify_audit_report(
     epoch: &FindingAuditEpoch,
     pinned_seed_witness: &PublicKey,
+    pinned_evaluator_authority: &PublicKey,
     epoch_envelope_sha256: &str,
     report: &FindingAuditReport,
     eligible: &[EligibleListing],
+    resolved_outcomes: &[SignedFindingChallengeOutcome],
 ) -> Result<(), FindingAuditError> {
     if !is_hex64(epoch_envelope_sha256) {
         return Err(FindingAuditError::InvalidEpochEnvelopeDigest);
@@ -380,6 +398,73 @@ pub fn verify_audit_report(
             })
         }
         Ordering::Equal => {}
+    }
+    match resolved_outcomes.len().cmp(&attempted) {
+        Ordering::Less => {
+            return Err(FindingAuditError::MissingOutcome {
+                attempted,
+                outcomes: resolved_outcomes.len(),
+            })
+        }
+        Ordering::Greater => {
+            return Err(FindingAuditError::ExtraneousOutcome {
+                attempted,
+                outcomes: resolved_outcomes.len(),
+            })
+        }
+        Ordering::Equal => {}
+    }
+
+    let missed: BTreeSet<&str> = report
+        .missed_attempts
+        .iter()
+        .map(|missed| missed.finding_id.as_str())
+        .collect();
+    let attempted_selections: BTreeSet<(&str, &str)> = expected
+        .iter()
+        .filter(|selection| !missed.contains(selection.finding_id.as_str()))
+        .map(|selection| (selection.finding_id.as_str(), selection.listing_id.as_str()))
+        .collect();
+    let reported_digests: BTreeSet<&str> = report
+        .outcome_envelope_digests
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let mut resolved_selections = BTreeSet::new();
+    for signed in resolved_outcomes {
+        verify_signed_challenge_outcome(signed, pinned_evaluator_authority)
+            .map_err(FindingAuditError::Outcome)?;
+        let outcome = &signed.body;
+        if outcome.authorization != FindingChallengeAuthorizationKind::VenueAudit {
+            return Err(FindingAuditError::OutcomeAuthorization(
+                outcome.outcome_id.clone(),
+            ));
+        }
+        if outcome.trigger_digest != epoch_envelope_sha256 {
+            return Err(FindingAuditError::OutcomeRoundBinding(
+                outcome.outcome_id.clone(),
+            ));
+        }
+        if outcome.evaluated_at <= epoch.committed_at || outcome.evaluated_at > report.reported_at {
+            return Err(FindingAuditError::OutcomeTimeBinding(
+                outcome.outcome_id.clone(),
+            ));
+        }
+        let selection = (outcome.finding_id.as_str(), outcome.listing_id.as_str());
+        if !attempted_selections.contains(&selection) {
+            return Err(FindingAuditError::OutcomeSelectionBinding(
+                outcome.outcome_id.clone(),
+            ));
+        }
+        if !resolved_selections.insert(selection) {
+            return Err(FindingAuditError::DuplicateOutcome(
+                outcome.finding_id.clone(),
+            ));
+        }
+        let envelope_digest = signed_envelope_sha256(signed).map_err(FindingAuditError::Outcome)?;
+        if !reported_digests.contains(envelope_digest.as_str()) {
+            return Err(FindingAuditError::OutcomeDigestMismatch(envelope_digest));
+        }
     }
     Ok(())
 }

@@ -539,6 +539,13 @@ pub struct ChallengeSubmissionOutcome {
     pub dispute_bond_lock_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExpiredFeeOnlyRecovery {
+    Unchanged,
+    Compensated,
+    FundingConfirmed { received_at: u64 },
+}
+
 /// Whether an evaluation may proceed, and what the admission itself did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvaluationAdmission {
@@ -989,7 +996,7 @@ impl FindingChallengeCoordinator {
             })
             .map_or(now, |recorded| recorded.submitted_at);
         let admission = self.resolve_admission(body, admission_validation_at)?;
-        let recovered_received_at = match &body.authorization {
+        let mut recovered_received_at = match &body.authorization {
             FindingChallengeAuthorization::BuyerSubmission(submission) => self
                 .confirmed_funded_submission_received_at(
                     body,
@@ -999,11 +1006,10 @@ impl FindingChallengeCoordinator {
                 )?,
             FindingChallengeAuthorization::VenueAudit(_) => None,
         };
-        let received_at = recovered_received_at.unwrap_or(now);
         if recovered_received_at.is_none() {
             if let FindingChallengeAuthorization::BuyerSubmission(submission) = &body.authorization
             {
-                if self.recover_expired_fee_only_submission(
+                match self.recover_expired_fee_only_submission(
                     body,
                     &challenge_envelope_sha256,
                     submission,
@@ -1011,14 +1017,23 @@ impl FindingChallengeCoordinator {
                     &admission.body.challenge_administration_pool,
                     now,
                 )? {
-                    return Err(ChallengeCoordinatorError::DisputeBondWindow);
+                    ExpiredFeeOnlyRecovery::Compensated => {
+                        return Err(ChallengeCoordinatorError::DisputeBondWindow)
+                    }
+                    ExpiredFeeOnlyRecovery::FundingConfirmed { received_at } => {
+                        recovered_received_at = Some(received_at);
+                    }
+                    ExpiredFeeOnlyRecovery::Unchanged => {}
                 }
             }
-            if admission_validation_at != now {
-                self.resolve_admission(body, now)?;
+            if recovered_received_at.is_none() {
+                if admission_validation_at != now {
+                    self.resolve_admission(body, now)?;
+                }
+                self.require_filing_window(&terms.body, body.filed_at, now)?;
             }
-            self.require_filing_window(&terms.body, body.filed_at, now)?;
         }
+        let received_at = recovered_received_at.unwrap_or(now);
         match &body.authorization {
             FindingChallengeAuthorization::BuyerSubmission(submission) => {
                 self.require_dispute_terms(
@@ -2507,13 +2522,13 @@ impl FindingChallengeCoordinator {
         terms: &chio_finding::FindingMarketTerms,
         pool: &chio_finding::FindingPoolBinding,
         now: u64,
-    ) -> Result<bool, ChallengeCoordinatorError> {
+    ) -> Result<ExpiredFeeOnlyRecovery, ChallengeCoordinatorError> {
         let Some(recorded) = self
             .challenges
             .get_challenge(&challenge.challenge_id)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
         else {
-            return Ok(false);
+            return Ok(ExpiredFeeOnlyRecovery::Unchanged);
         };
         let owner_hex = submission.challenger.to_hex();
         if recorded.state != FindingChallengeState::Submitted
@@ -2528,7 +2543,7 @@ impl FindingChallengeCoordinator {
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
                 .is_some()
         {
-            return Ok(false);
+            return Ok(ExpiredFeeOnlyRecovery::Unchanged);
         }
         let filing_deadline = terms
             .issued_at
@@ -2538,7 +2553,7 @@ impl FindingChallengeCoordinator {
             || now >= terms.expires_at
             || now >= submission.dispute_lock_ref.expiry;
         if !expired {
-            return Ok(false);
+            return Ok(ExpiredFeeOnlyRecovery::Unchanged);
         }
 
         let fee = &submission.dispute_fee_terminal;
@@ -2562,19 +2577,107 @@ impl FindingChallengeCoordinator {
                 && intent.intent_digest == collected_digest
                 && intent.state == FindingEffectIntentState::Confirmed
         }) {
-            return Ok(false);
+            return Ok(ExpiredFeeOnlyRecovery::Unchanged);
         }
         let funding_key = derive_dispute_bond_funding_intent_key(
             &challenge.challenge_id,
             &submission.dispute_lock_ref.lock_id,
         );
-        if self
+        let funding = self
             .challenges
             .get_effect_intent(&funding_key)
-            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
-            .is_some_and(|intent| intent.state == FindingEffectIntentState::Confirmed)
-        {
-            return Ok(false);
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        if let Some(intent) = &funding {
+            if intent.state == FindingEffectIntentState::Confirmed {
+                return Ok(ExpiredFeeOnlyRecovery::FundingConfirmed {
+                    received_at: recorded.submitted_at,
+                });
+            }
+            if intent.state == FindingEffectIntentState::Quarantined {
+                return Ok(ExpiredFeeOnlyRecovery::Unchanged);
+            }
+            if matches!(
+                intent.state,
+                FindingEffectIntentState::Dispatched | FindingEffectIntentState::Failed
+            ) {
+                let lock = &submission.dispute_lock_ref;
+                let input = FindingDisputeLockInput {
+                    lock_id: &lock.lock_id,
+                    challenge_id: &challenge.challenge_id,
+                    owner_hex: &owner_hex,
+                    schedule_envelope_sha256: &lock.fee_schedule_envelope_sha256,
+                    amount_units: lock.amount.units,
+                    currency: &lock.amount.currency,
+                    pool_principal_id: &pool.principal_id,
+                    pool_rail_destination: &pool.rail_destination,
+                    pool_authority_epoch: pool.authority_epoch,
+                    expires_at: lock.expiry,
+                    locked_at: recorded.submitted_at,
+                };
+                let expected_digest = dispute_bond_funding_intent_digest(&input);
+                if intent.kind != FindingEffectIntentKind::ChallengeBond
+                    || intent.liability_key.is_some()
+                    || intent.settlement_required
+                    || intent.intent_digest != expected_digest
+                {
+                    return Ok(ExpiredFeeOnlyRecovery::Unchanged);
+                }
+                self.challenges
+                    .advance_effect_intent(&funding_key, FindingEffectIntentState::Dispatched, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+                let instruction = FindingRailInstruction {
+                    idempotency_key: funding_key.clone(),
+                    payer: owner_hex,
+                    amount_units: lock.amount.units,
+                    currency: lock.amount.currency.clone(),
+                    pool_principal_id: pool.principal_id.clone(),
+                    rail_destination: pool.rail_destination.clone(),
+                };
+                let instruction_digest = canonical_digest_of(&instruction)?;
+                match self.rail.dispatch(&instruction) {
+                    Ok(observation)
+                        if rail_observation_matches(
+                            &instruction,
+                            &instruction_digest,
+                            &observation,
+                        ) =>
+                    {
+                        self.challenges
+                            .advance_effect_intent(
+                                &funding_key,
+                                FindingEffectIntentState::Confirmed,
+                                now,
+                            )
+                            .map_err(|error| {
+                                ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                            })?;
+                        return Ok(ExpiredFeeOnlyRecovery::FundingConfirmed {
+                            received_at: recorded.submitted_at,
+                        });
+                    }
+                    Ok(_) => {
+                        let _ = self.challenges.advance_effect_intent(
+                            &funding_key,
+                            FindingEffectIntentState::Failed,
+                            now,
+                        );
+                        return Err(ChallengeCoordinatorError::DisputeBondRail(
+                            "rail observation does not reconcile to the dispatched instruction"
+                                .to_owned(),
+                        ));
+                    }
+                    Err(reason) => {
+                        let _ = self.challenges.advance_effect_intent(
+                            &funding_key,
+                            FindingEffectIntentState::Failed,
+                            now,
+                        );
+                        return Err(ChallengeCoordinatorError::DisputeBondRail(reason));
+                    }
+                }
+            }
         }
 
         let returned_fee_key =
@@ -2588,7 +2691,7 @@ impl FindingChallengeCoordinator {
                 now,
             )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
-        Ok(true)
+        Ok(ExpiredFeeOnlyRecovery::Compensated)
     }
 
     /// Recover the venue receipt time only when this exact challenge and

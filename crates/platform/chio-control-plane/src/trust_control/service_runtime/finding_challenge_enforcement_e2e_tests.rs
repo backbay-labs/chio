@@ -43,8 +43,8 @@ use chio_core::receipt::metadata::{
 };
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
-    audit_seed_witness_signing_bytes, compute_admission_id, compute_allocation_id,
-    compute_audit_epoch_id, compute_challenge_id, compute_enforcement_id,
+    audit_seed_witness_signing_bytes, buyer_refund_destination, compute_admission_id,
+    compute_allocation_id, compute_audit_epoch_id, compute_challenge_id, compute_enforcement_id,
     compute_failed_delivery_id, compute_finding_id, compute_profile_id, compute_snapshot_id,
     compute_terms_id, derive_audit_seed_commitment, derive_purchase_key, sign_finding,
     signed_envelope_sha256, Finding, FindingAdmission, FindingAffectedDelivery, FindingAuditEpoch,
@@ -172,6 +172,11 @@ const BUYER_ONE_DESTINATION: &str = "rail:venue-ledger:buyer-one";
 const BUYER_TWO_DESTINATION: &str = "rail:venue-ledger:buyer-two";
 const CHALLENGER_BOUNTY_DESTINATION: &str = "rail:venue-ledger:challenger-bounty";
 const NOW: u64 = 1_750_000_000;
+
+fn buyer_destination(seed: u8) -> String {
+    buyer_refund_destination(&keypair(seed).public_key())
+}
+
 /// Seller-signed claim window the shared terms carry. The lane's clock in
 /// these tests is second-granular, so the shortest window that still has
 /// two distinct instants keeps the window-opening call and the sealing
@@ -390,7 +395,7 @@ struct RecordingRail {
     refusing: AtomicBool,
     misreporting: AtomicBool,
     dispatch_attempts: AtomicUsize,
-    fail_on_attempt: AtomicUsize,
+    fail_after_record_on_attempt: AtomicUsize,
 }
 
 impl RecordingRail {
@@ -407,11 +412,11 @@ impl RecordingRail {
 
     fn accept(&self) {
         self.refusing.store(false, Ordering::SeqCst);
-        self.fail_on_attempt.store(0, Ordering::SeqCst);
     }
 
-    fn fail_on_attempt(&self, attempt: usize) {
-        self.fail_on_attempt.store(attempt, Ordering::SeqCst);
+    fn fail_after_record_on_attempt(&self, attempt: usize) {
+        self.fail_after_record_on_attempt
+            .store(attempt, Ordering::SeqCst);
     }
 
     fn misreport(&self) {
@@ -425,13 +430,28 @@ impl FindingRailObserver for RecordingRail {
         instruction: &FindingRailInstruction,
     ) -> Result<FindingRailObservation, String> {
         let attempt = self.dispatch_attempts.fetch_add(1, Ordering::SeqCst) + 1;
-        if self.refusing.load(Ordering::SeqCst)
-            || self.fail_on_attempt.load(Ordering::SeqCst) == attempt
-        {
+        if self.refusing.load(Ordering::SeqCst) {
             return Err("rail refused the instruction".to_string());
         }
         if let Ok(mut guard) = self.instructions.lock() {
-            guard.push(instruction.clone());
+            if let Some(recorded) = guard
+                .iter()
+                .find(|recorded| recorded.idempotency_key == instruction.idempotency_key)
+            {
+                if recorded.payer != instruction.payer
+                    || recorded.amount_units != instruction.amount_units
+                    || recorded.currency != instruction.currency
+                    || recorded.pool_principal_id != instruction.pool_principal_id
+                    || recorded.rail_destination != instruction.rail_destination
+                {
+                    return Err("idempotency key was reused for another instruction".to_string());
+                }
+            } else {
+                guard.push(instruction.clone());
+            }
+        }
+        if self.fail_after_record_on_attempt.load(Ordering::SeqCst) == attempt {
+            return Err("rail response was lost after recording the instruction".to_string());
         }
         Ok(FindingRailObservation {
             instruction_sha256: if self.misreporting.load(Ordering::SeqCst) {
@@ -2182,7 +2202,12 @@ fn settle_purchase_with(
     let reservation_id = format!("reservation-{tag}");
     let payment_operation_id = format!("payment-{tag}");
     let bid = digest(&format!("bid-{tag}"));
-    let buyer = keypair(41);
+    let buyer = if destination == BUYER_TWO_DESTINATION {
+        keypair(42)
+    } else {
+        keypair(41)
+    };
+    let refund_destination = buyer_refund_destination(&buyer.public_key());
     deployment
         .purchases
         .open_reservation(&FindingPurchaseReservationInput {
@@ -2228,7 +2253,7 @@ fn settle_purchase_with(
         encumbrance_id: format!("encumbrance-{tag}"),
         delivery_receipt_id: format!("receipt-delivery-{tag}"),
         payment_reference: payment_operation_id,
-        payout_destination: destination.to_string(),
+        payout_destination: refund_destination.clone(),
         recorded_at: now,
     };
     record.validate()?;
@@ -2239,7 +2264,7 @@ fn settle_purchase_with(
     if admission == PayoutAdmission::Admitted {
         deployment
             .purchases
-            .admit_payout_destination(allocation_id, destination, now)?;
+            .admit_payout_destination(allocation_id, &refund_destination, now)?;
     }
     deployment
         .purchases
@@ -2250,7 +2275,7 @@ fn settle_purchase_with(
             record_sha256: &record_sha256,
             delivery_receipt_id: &format!("receipt-delivery-{tag}"),
             payout_destination: match admission {
-                PayoutAdmission::Admitted => destination,
+                PayoutAdmission::Admitted => &refund_destination,
                 PayoutAdmission::Withheld => "rail:venue-ledger:withheld-test-placeholder",
             },
             retention_expires_at: now + 100_000,
@@ -3241,7 +3266,7 @@ fn finding_challenge_recovers_and_returns_a_funded_expired_lock() -> TestResult 
 }
 
 #[test]
-fn finding_challenge_refunds_a_fee_when_the_bond_never_funds() -> TestResult {
+fn finding_challenge_reconciles_a_debited_bond_before_expired_recovery() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let challenge = buyer_challenge(&keypair(41))?;
@@ -3252,17 +3277,17 @@ fn finding_challenge_refunds_a_fee_when_the_bond_never_funds() -> TestResult {
         return Err("the compensation fixture is a buyer submission".into());
     };
 
-    deployment.rail.fail_on_attempt(2);
+    deployment.rail.fail_after_record_on_attempt(2);
     assert!(matches!(
         coordinator
             .submit(&challenge, &raw, NOW)
-            .expect_err("the bond rail fails after the fee settles"),
+            .expect_err("the bond rail response is lost after the debit"),
         ChallengeCoordinatorError::DisputeBondRail(_)
     ));
     assert_eq!(
         deployment.rail.charges().len(),
-        1,
-        "only the filing fee reached the rail"
+        2,
+        "the filing fee and bond debit both reached the rail"
     );
     assert!(deployment
         .challenges
@@ -3270,21 +3295,36 @@ fn finding_challenge_refunds_a_fee_when_the_bond_never_funds() -> TestResult {
         .is_none());
 
     deployment.rail.accept();
-    assert!(matches!(
-        coordinator
-            .submit(&challenge, &raw, submission.dispute_lock_ref.expiry)
-            .expect_err("an expired unfunded filing closes after compensation"),
-        ChallengeCoordinatorError::DisputeBondWindow
-    ));
+    coordinator.submit(&challenge, &raw, submission.dispute_lock_ref.expiry)?;
     let instructions = deployment.rail.charges();
-    assert_eq!(instructions.len(), 2);
+    assert_eq!(instructions.len(), 3);
+    let funding_key =
+        derive_dispute_bond_funding_intent_key(&challenge_id, &submission.dispute_lock_ref.lock_id);
+    assert_eq!(instructions[1].idempotency_key, funding_key);
+    assert_eq!(instructions[1].payer, keypair(41).public_key().to_hex());
     let returned = instructions
         .last()
-        .ok_or("the fee return reached the rail")?;
+        .ok_or("the expired funded bond return reached the rail")?;
     assert_eq!(returned.payer, CHALLENGE_POOL_PRINCIPAL);
     assert_eq!(returned.pool_principal_id, CHALLENGE_POOL_PRINCIPAL);
     assert_eq!(returned.rail_destination, keypair(41).public_key().to_hex());
-    assert_eq!(returned.amount_units, 25);
+    assert_eq!(returned.amount_units, 40);
+    assert_eq!(
+        deployment
+            .challenges
+            .get_effect_intent(&funding_key)?
+            .ok_or("the reconciled funding intent remains durable")?
+            .state,
+        FindingEffectIntentState::Confirmed
+    );
+    assert_eq!(
+        deployment
+            .challenges
+            .get_dispute_lock(&challenge_id)?
+            .ok_or("recovery reconstructs the debited bond")?
+            .state,
+        FindingDisputeLockState::Returned
+    );
     assert_eq!(
         deployment
             .challenges
@@ -3294,17 +3334,11 @@ fn finding_challenge_refunds_a_fee_when_the_bond_never_funds() -> TestResult {
         FindingChallengeState::IndeterminateClosed
     );
 
-    assert!(matches!(
-        coordinator
-            .submit(&challenge, &raw, submission.dispute_lock_ref.expiry + 1)
-            .expect_err("a compensated filing cannot reopen"),
-        ChallengeCoordinatorError::DisputeBondWindow
-            | ChallengeCoordinatorError::FilingWindowClosed
-    ));
+    coordinator.submit(&challenge, &raw, submission.dispute_lock_ref.expiry + 1)?;
     assert_eq!(
         deployment.rail.charges().len(),
-        2,
-        "fee compensation is idempotent"
+        3,
+        "funding reconciliation and bond return are idempotent"
     );
     Ok(())
 }
@@ -4834,7 +4868,7 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
     // already paid, so the destination roster cannot be what refuses it.
     deployment.purchases.admit_payout_destination(
         &deployment.allocation_id,
-        BUYER_TWO_DESTINATION,
+        &buyer_destination(42),
         NOW + 1,
     )?;
     let ready = ready_to_uphold_with_open_exposure(&deployment, &coordinator, 100)?;
@@ -7406,8 +7440,8 @@ fn finding_challenge_evidence_invalid_reaches_an_enforced_sanction() -> TestResu
     assert_eq!(
         allocation,
         std::collections::BTreeMap::from([
-            (BUYER_ONE_DESTINATION.to_string(), 50),
-            (BUYER_TWO_DESTINATION.to_string(), 50),
+            (buyer_destination(41), 50),
+            (buyer_destination(42), 50),
             (COMMUNITY_FUND_RAIL.to_string(), 400),
         ]),
         "each harmed buyer takes exactly its pro rata share and the remainder goes to the fund"
@@ -7515,7 +7549,7 @@ fn finding_challenge_replay_contradiction_reaches_an_enforced_sanction() -> Test
     assert_eq!(
         allocation_by_destination(&upheld.sealed.distribution),
         std::collections::BTreeMap::from([
-            (BUYER_ONE_DESTINATION.to_string(), 60),
+            (buyer_destination(41), 60),
             (COMMUNITY_FUND_RAIL.to_string(), 340),
         ])
     );
@@ -8314,8 +8348,8 @@ fn finding_challenge_harmed_buyer_allocation_is_capped_and_exactly_summed() -> T
     assert_eq!(
         allocation,
         std::collections::BTreeMap::from([
-            (BUYER_ONE_DESTINATION.to_string(), 40),
-            (BUYER_TWO_DESTINATION.to_string(), 40),
+            (buyer_destination(41), 40),
+            (buyer_destination(42), 40),
         ])
     );
     let summed: u64 = allocation.values().sum();
