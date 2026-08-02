@@ -173,6 +173,7 @@ impl FindingChallengeCoordinator {
         enforcement: &SignedFindingChallengeEnforcement,
         bond_snapshot: &SignedFindingFinalizedBondSnapshot,
         observations: &dyn FindingBondObservationSource,
+        tx_hash: &str,
         now: u64,
     ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
         let liability = self
@@ -219,6 +220,7 @@ impl FindingChallengeCoordinator {
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         }
         self.confirm_fenced_anchor_effect(liability_key, now)?;
+        self.mark_retraction_dispatch_eligible(enforcement, tx_hash, now)?;
         if self.reconcile_status_publication_and_settle(liability_key, enforcement, now)? {
             Ok(FindingFinalization::AlreadyConfirmed)
         } else {
