@@ -79,7 +79,7 @@ END;
 CREATE TRIGGER IF NOT EXISTS challenges_lifecycle
 BEFORE UPDATE OF state ON challenges
 WHEN NOT (
-    (OLD.state = 'submitted' AND NEW.state = 'evaluating')
+    (OLD.state = 'submitted' AND NEW.state IN ('evaluating', 'indeterminate_closed'))
     OR (OLD.state = 'evaluating' AND NEW.state IN (
         'rejected', 'indeterminate_retryable', 'indeterminate_closed', 'upheld'
     ))
@@ -118,6 +118,11 @@ CREATE TABLE IF NOT EXISTS dispute_locks (
     amount_units INTEGER NOT NULL CHECK (amount_units > 0),
     currency TEXT NOT NULL
         CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+    pool_principal_id TEXT NOT NULL
+        CHECK (length(pool_principal_id) BETWEEN 1 AND 512),
+    pool_rail_destination TEXT NOT NULL
+        CHECK (length(pool_rail_destination) BETWEEN 1 AND 512),
+    pool_authority_epoch INTEGER NOT NULL CHECK (pool_authority_epoch > 0),
     expires_at INTEGER NOT NULL CHECK (expires_at > 0),
     state TEXT NOT NULL CHECK (state IN ('locked', 'returned', 'forfeited')),
     locked_at INTEGER NOT NULL CHECK (locked_at > 0),
@@ -136,6 +141,9 @@ WHEN NEW.lock_id <> OLD.lock_id
   OR NEW.schedule_envelope_sha256 <> OLD.schedule_envelope_sha256
   OR NEW.amount_units <> OLD.amount_units
   OR NEW.currency <> OLD.currency
+  OR NEW.pool_principal_id <> OLD.pool_principal_id
+  OR NEW.pool_rail_destination <> OLD.pool_rail_destination
+  OR NEW.pool_authority_epoch <> OLD.pool_authority_epoch
   OR NEW.expires_at <> OLD.expires_at
   OR NEW.locked_at <> OLD.locked_at
 BEGIN

@@ -76,7 +76,7 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 3;
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 4;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] =
     &["challenges", "admission_operations", "chio_serving_owner"];
 const FINDING_CHALLENGE_SCHEMA: &str = include_str!("finding_challenge_store.sql");
@@ -292,6 +292,9 @@ pub struct FindingDisputeLockInput<'a> {
     pub schedule_envelope_sha256: &'a str,
     pub amount_units: u64,
     pub currency: &'a str,
+    pub pool_principal_id: &'a str,
+    pub pool_rail_destination: &'a str,
+    pub pool_authority_epoch: u64,
     pub expires_at: u64,
     pub locked_at: u64,
 }
@@ -310,13 +313,16 @@ pub fn derive_dispute_bond_funding_intent_key(challenge_id: &str, lock_id: &str)
 pub fn dispute_bond_funding_intent_digest(input: &FindingDisputeLockInput<'_>) -> String {
     sha256_hex(
         format!(
-            "{DISPUTE_BOND_FUNDING_DOMAIN}\0{challenge}\0{lock}\0{owner}\0{schedule}\0{units}\0{currency}\0{expiry}",
+            "{DISPUTE_BOND_FUNDING_DOMAIN}\0{challenge}\0{lock}\0{owner}\0{schedule}\0{units}\0{currency}\0{pool}\0{destination}\0{pool_epoch}\0{expiry}",
             challenge = input.challenge_id,
             lock = input.lock_id,
             owner = input.owner_hex,
             schedule = input.schedule_envelope_sha256,
             units = input.amount_units,
             currency = input.currency,
+            pool = input.pool_principal_id,
+            destination = input.pool_rail_destination,
+            pool_epoch = input.pool_authority_epoch,
             expiry = input.expires_at,
         )
         .as_bytes(),
@@ -337,13 +343,16 @@ pub fn derive_dispute_bond_return_intent_key(challenge_id: &str, lock_id: &str) 
 pub fn dispute_bond_return_intent_digest(input: &FindingDisputeLockInput<'_>) -> String {
     sha256_hex(
         format!(
-            "{DISPUTE_BOND_RETURN_DOMAIN}\0{challenge}\0{lock}\0{owner}\0{schedule}\0{units}\0{currency}\0{expiry}",
+            "{DISPUTE_BOND_RETURN_DOMAIN}\0{challenge}\0{lock}\0{owner}\0{schedule}\0{units}\0{currency}\0{pool}\0{destination}\0{pool_epoch}\0{expiry}",
             challenge = input.challenge_id,
             lock = input.lock_id,
             owner = input.owner_hex,
             schedule = input.schedule_envelope_sha256,
             units = input.amount_units,
             currency = input.currency,
+            pool = input.pool_principal_id,
+            destination = input.pool_rail_destination,
+            pool_epoch = input.pool_authority_epoch,
             expiry = input.expires_at,
         )
         .as_bytes(),
@@ -360,6 +369,9 @@ pub struct FindingDisputeLockRecord {
     pub schedule_envelope_sha256: String,
     pub amount_units: u64,
     pub currency: String,
+    pub pool_principal_id: String,
+    pub pool_rail_destination: String,
+    pub pool_authority_epoch: u64,
     pub expires_at: u64,
     pub state: FindingDisputeLockState,
     pub locked_at: u64,
@@ -911,8 +923,13 @@ impl SqliteFindingChallengeStore {
                 INSERT INTO dispute_locks (
                     lock_id, challenge_id, owner_hex, bond_class,
                     schedule_envelope_sha256, amount_units, currency,
-                    expires_at, state, locked_at, updated_at
-                ) VALUES (?1, ?2, ?3, 'dispute', ?4, ?5, ?6, ?7, 'locked', ?8, ?8)
+                    pool_principal_id, pool_rail_destination,
+                    pool_authority_epoch, expires_at, state, locked_at,
+                    updated_at
+                ) VALUES (
+                    ?1, ?2, ?3, 'dispute', ?4, ?5, ?6, ?7, ?8, ?9,
+                    ?10, 'locked', ?11, ?11
+                )
                 "#,
                 params![
                     input.lock_id,
@@ -921,6 +938,9 @@ impl SqliteFindingChallengeStore {
                     input.schedule_envelope_sha256,
                     sqlite_i64(input.amount_units, "amount_units")?,
                     input.currency,
+                    input.pool_principal_id,
+                    input.pool_rail_destination,
+                    sqlite_i64(input.pool_authority_epoch, "pool_authority_epoch")?,
                     sqlite_i64(input.expires_at, "expires_at")?,
                     locked_at,
                 ],
@@ -989,6 +1009,9 @@ impl SqliteFindingChallengeStore {
                 schedule_envelope_sha256: &lock.schedule_envelope_sha256,
                 amount_units: lock.amount_units,
                 currency: &lock.currency,
+                pool_principal_id: &lock.pool_principal_id,
+                pool_rail_destination: &lock.pool_rail_destination,
+                pool_authority_epoch: lock.pool_authority_epoch,
                 expires_at: lock.expires_at,
                 locked_at: lock.locked_at,
             };
@@ -1039,6 +1062,55 @@ impl SqliteFindingChallengeStore {
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
         load_dispute_lock_tx(&transaction, challenge_id)
+    }
+
+    /// Close a submitted buyer filing whose independently funded bond was
+    /// recovered only after its signed expiry. The lock must already be
+    /// reconstructed from the confirmed funding intent, so the subsequent
+    /// return is fenced by the same durable identity as an ordinary close.
+    ///
+    /// This edge is deliberately unavailable from `evaluating`: once an
+    /// adjudication has started, only its signed outcome may close it.
+    pub fn close_expired_submitted_filing(
+        &self,
+        challenge_id: &str,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        require_identifier(challenge_id, "challenge_id")?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let challenge = load_challenge_tx(&transaction, challenge_id)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        let lock = load_dispute_lock_tx(&transaction, challenge_id)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if lock.state != FindingDisputeLockState::Locked || lock.expires_at > now {
+            return Err(FindingChallengeStoreError::Conflict(
+                "only an expired funded lock may close an unstarted filing".to_owned(),
+            ));
+        }
+        match challenge.state {
+            FindingChallengeState::IndeterminateClosed => {
+                return Ok(FindingChallengeWriteOutcome::ExistingSame)
+            }
+            FindingChallengeState::Submitted => {}
+            other => {
+                return Err(FindingChallengeStoreError::Conflict(format!(
+                    "expired filing cannot close from state {}",
+                    challenge_state_name(other)
+                )))
+            }
+        }
+        advance_challenge_state_tx(
+            &transaction,
+            challenge_id,
+            "submitted",
+            "indeterminate_closed",
+            now,
+        )?;
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingChallengeWriteOutcome::Inserted)
     }
 
     /// Open one liability head. Idempotent on the liability key: a replay
@@ -2322,8 +2394,10 @@ fn load_dispute_lock_tx(
         .query_row(
             r#"
             SELECT lock_id, challenge_id, owner_hex, bond_class,
-                   schedule_envelope_sha256, amount_units, currency, expires_at,
-                   state, locked_at, updated_at
+                   schedule_envelope_sha256, amount_units, currency,
+                   pool_principal_id, pool_rail_destination,
+                   pool_authority_epoch, expires_at, state, locked_at,
+                   updated_at
             FROM dispute_locks WHERE challenge_id = ?1
             "#,
             [challenge_id],
@@ -2336,10 +2410,13 @@ fn load_dispute_lock_tx(
                     row.get::<_, String>(4)?,
                     row.get::<_, i64>(5)?,
                     row.get::<_, String>(6)?,
-                    row.get::<_, i64>(7)?,
+                    row.get::<_, String>(7)?,
                     row.get::<_, String>(8)?,
                     row.get::<_, i64>(9)?,
                     row.get::<_, i64>(10)?,
+                    row.get::<_, String>(11)?,
+                    row.get::<_, i64>(12)?,
+                    row.get::<_, i64>(13)?,
                 ))
             },
         )
@@ -2353,6 +2430,9 @@ fn load_dispute_lock_tx(
         schedule_envelope_sha256,
         amount_units,
         currency,
+        pool_principal_id,
+        pool_rail_destination,
+        pool_authority_epoch,
         expires_at,
         state,
         locked_at,
@@ -2369,6 +2449,9 @@ fn load_dispute_lock_tx(
         schedule_envelope_sha256,
         amount_units: stored_u64(amount_units, "amount_units")?,
         currency,
+        pool_principal_id,
+        pool_rail_destination,
+        pool_authority_epoch: stored_u64(pool_authority_epoch, "pool_authority_epoch")?,
         expires_at: stored_u64(expires_at, "expires_at")?,
         state: dispute_lock_state_from_name(&state)?,
         locked_at: stored_u64(locked_at, "locked_at")?,
@@ -2797,6 +2880,9 @@ fn dispute_lock_matches(
         && existing.schedule_envelope_sha256 == input.schedule_envelope_sha256
         && existing.amount_units == input.amount_units
         && existing.currency == input.currency
+        && existing.pool_principal_id == input.pool_principal_id
+        && existing.pool_rail_destination == input.pool_rail_destination
+        && existing.pool_authority_epoch == input.pool_authority_epoch
 }
 
 fn liability_matches(existing: &FindingLiabilityRecord, input: &FindingLiabilityInput<'_>) -> bool {
@@ -2866,9 +2952,12 @@ fn validate_dispute_lock(
     require_hex64(input.owner_hex, "owner_hex")?;
     require_hex64(input.schedule_envelope_sha256, "schedule_envelope_sha256")?;
     require_currency(input.currency)?;
+    require_identifier(input.pool_principal_id, "pool_principal_id")?;
+    require_identifier(input.pool_rail_destination, "pool_rail_destination")?;
     if input.amount_units == 0 {
         return Err(invariant("dispute bond amount must be nonzero"));
     }
+    require_trusted_time(input.pool_authority_epoch, "pool_authority_epoch")?;
     require_trusted_time(input.locked_at, "locked_at")?;
     require_trusted_time(input.expires_at, "expires_at")?;
     if input.expires_at <= input.locked_at {
@@ -3204,7 +3293,7 @@ pub(crate) fn initialize_finding_challenge_schema(
         return transaction.commit().map_err(sqlite_error);
     }
 
-    if !matches!(on_disk, 1 | 2) {
+    if !matches!(on_disk, 1..=3) {
         return Err(invariant(format!(
             "unsupported finding challenge schema version {on_disk}"
         )));
@@ -3248,12 +3337,32 @@ fn migrate_finding_challenge_schema(
     let has_appeal_window = has_appeal_window_opened_at && has_appeal_deadline && has_appeal_terms;
     let has_settlement_required =
         table_has_column(&transaction, "effect_intents", "settlement_required")?;
+    let has_pool_principal = table_has_column(&transaction, "dispute_locks", "pool_principal_id")?;
+    let has_pool_destination =
+        table_has_column(&transaction, "dispute_locks", "pool_rail_destination")?;
+    let has_pool_epoch = table_has_column(&transaction, "dispute_locks", "pool_authority_epoch")?;
+    let has_dispute_pool = has_pool_principal && has_pool_destination && has_pool_epoch;
 
     if (has_appeal_window_opened_at || has_appeal_deadline || has_appeal_terms)
         && !has_appeal_window
     {
         return Err(invariant(
             "legacy liability schema has only part of the appeal commitment",
+        ));
+    }
+    if (has_pool_principal || has_pool_destination || has_pool_epoch) && !has_dispute_pool {
+        return Err(invariant(
+            "legacy dispute lock schema has only part of the admitted pool binding",
+        ));
+    }
+    if table_has_rows_where(&transaction, "dispute_locks", "1 = 1")? {
+        return Err(invariant(
+            "funded legacy dispute locks cannot be migrated without their admitted pool binding",
+        ));
+    }
+    if table_has_rows_where(&transaction, "effect_intents", "kind = 'challenge_bond'")? {
+        return Err(invariant(
+            "legacy dispute funding intents cannot be migrated without their admitted pool binding",
         ));
     }
 
@@ -3324,7 +3433,6 @@ fn migrate_finding_challenge_schema(
             "#
         ))
         .map_err(sqlite_error)?;
-
     let settlement_required = if has_settlement_required {
         "settlement_required"
     } else {
@@ -3343,6 +3451,8 @@ fn migrate_finding_challenge_schema(
                    attempt_count, recorded_at, updated_at
             FROM effect_intents;
 
+            DROP TRIGGER IF EXISTS challenges_lifecycle;
+            DROP TABLE dispute_locks;
             DROP TABLE effect_intents;
             DROP TABLE liability_heads;
             "#
@@ -3454,8 +3564,9 @@ pub(crate) fn verify_finding_challenge_invariants(
     expected
         .execute_batch(FINDING_CHALLENGE_SCHEMA)
         .map_err(sqlite_error)?;
-    if finding_challenge_schema_catalog(connection)? != finding_challenge_schema_catalog(&expected)?
-    {
+    let actual = finding_challenge_schema_catalog(connection)?;
+    let canonical = finding_challenge_schema_catalog(&expected)?;
+    if actual != canonical {
         return Err(invariant(
             "finding challenge schema differs from the canonical definition",
         ));

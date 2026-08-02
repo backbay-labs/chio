@@ -114,7 +114,7 @@ use chio_store_sqlite::{
 use super::finding_handlers::{
     FindingRailInstruction, FindingRailObservation, FindingRailObserver,
 };
-use super::service_types::{FindingAuthorityPin, FindingMarketConfig, FindingPoolPin};
+use super::service_types::{FindingAuthorityPin, FindingMarketConfig};
 
 /// Domain separator for the per-finding defect identity.
 const DEFECT_DOMAIN: &str = "chio.finding.defect.v1";
@@ -414,6 +414,8 @@ pub enum ChallengeCoordinatorError {
     TermsBinding(&'static str),
     #[error("the claim window this liability owes has not closed")]
     ClaimWindowOpen,
+    #[error("claim candidates do not exactly match the authoritative settled purchase set")]
+    ClaimSetMismatch,
     #[error("purchase record {0} is not resolvable in the authoritative index")]
     UnknownPurchaseRecord(String),
     #[error("purchase record {0} does not belong to this liability at the frozen cutoff")]
@@ -743,7 +745,6 @@ pub struct FindingChallengeCoordinator {
     /// Resolves the signed artifacts a filing binds by digest.
     filings: Arc<dyn FindingFilingResolver>,
     venue_id: String,
-    challenge_administration_pool: FindingPoolPin,
     status_feed_operator_ref: String,
     /// Disposition a rejected challenge's bond takes, predeclared by the
     /// admitted market terms rather than chosen per case.
@@ -834,7 +835,6 @@ impl FindingChallengeCoordinator {
             rail,
             filings,
             venue_id: config.venue_id.clone(),
-            challenge_administration_pool: config.challenge_administration_pool.clone(),
             status_feed_operator_ref: config.status_feed_operator_ref.clone(),
             failed_challenge_disposition,
         })
@@ -931,10 +931,19 @@ impl FindingChallengeCoordinator {
         // terms carry the filing window, the audit toggle, and the bond
         // limits the seller committed the listing to.
         let terms = self.resolve_market_terms(body)?;
-        self.require_filing_window(&terms.body, body.filed_at, now)?;
+        let prior_filing = self
+            .challenges
+            .get_challenge(&body.challenge_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        if matches!(
+            &body.authorization,
+            FindingChallengeAuthorization::BuyerSubmission(_)
+        ) && prior_filing.is_none()
+        {
+            self.require_filing_window(&terms.body, body.filed_at, now)?;
+        }
         match &body.authorization {
             FindingChallengeAuthorization::BuyerSubmission(submission) => {
-                self.require_dispute_terms(submission, now)?;
                 self.require_bond_within_terms_limits(
                     &terms.body,
                     submission,
@@ -942,6 +951,7 @@ impl FindingChallengeCoordinator {
                 )?;
             }
             FindingChallengeAuthorization::VenueAudit(audit) => {
+                self.require_filing_window(&terms.body, body.filed_at, now)?;
                 // A seller may sign terms that never enter the audit
                 // rotation; a bondless audit against those terms has no
                 // authorization to stand on, whatever round drew it.
@@ -950,6 +960,48 @@ impl FindingChallengeCoordinator {
                 }
                 self.require_audit_selection(audit, body, now)?;
             }
+        }
+        // Resolve the retained admission before any durable row or money
+        // effect. Its pool binding governed this sale and remains the only
+        // authorized destination after venue configuration rotates. An
+        // exact retained filing is provisionally checked at its original
+        // receipt time so an already-funded bond remains refundable after
+        // key rotation; an unfunded retry is checked again at `now` below.
+        let admission_validation_at = prior_filing
+            .as_ref()
+            .filter(|recorded| {
+                recorded.challenge_envelope_sha256 == challenge_envelope_sha256
+                    && recorded.finding_id == body.finding_id
+                    && recorded.listing_id == body.listing_id
+            })
+            .map_or(now, |recorded| recorded.submitted_at);
+        let admission = self.resolve_admission(body, admission_validation_at)?;
+        let recovered_received_at = match &body.authorization {
+            FindingChallengeAuthorization::BuyerSubmission(submission) => self
+                .confirmed_funded_submission_received_at(
+                    body,
+                    &challenge_envelope_sha256,
+                    submission,
+                    &admission.body.challenge_administration_pool,
+                )?,
+            FindingChallengeAuthorization::VenueAudit(_) => None,
+        };
+        let received_at = recovered_received_at.unwrap_or(now);
+        if recovered_received_at.is_none() {
+            if admission_validation_at != now {
+                self.resolve_admission(body, now)?;
+            }
+            self.require_filing_window(&terms.body, body.filed_at, now)?;
+        }
+        match &body.authorization {
+            FindingChallengeAuthorization::BuyerSubmission(submission) => {
+                self.require_dispute_terms(
+                    submission,
+                    &admission.body.challenge_administration_pool,
+                    received_at,
+                )?;
+            }
+            FindingChallengeAuthorization::VenueAudit(_) => {}
         }
         let write = self
             .challenges
@@ -976,19 +1028,54 @@ impl FindingChallengeCoordinator {
         };
         let lock = &submission.dispute_lock_ref;
         let fee_intent_key = self.charge_dispute_fee(&body.challenge_id, submission, now)?;
-        self.fund_dispute_bond(&body.challenge_id, submission, now)?;
+        let recorded = self
+            .challenges
+            .get_challenge(&body.challenge_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore("challenge is not recorded".to_owned())
+            })?;
+        let pool = &admission.body.challenge_administration_pool;
+        self.fund_dispute_bond(
+            &body.challenge_id,
+            submission,
+            pool,
+            recorded.submitted_at,
+            now,
+        )?;
         self.challenges
             .lock_dispute_bond(&FindingDisputeLockInput {
                 lock_id: &lock.lock_id,
                 challenge_id: &body.challenge_id,
-                owner_hex: &submission.challenger.to_hex(),
+                owner_hex: recorded
+                    .challenger_hex
+                    .as_deref()
+                    .ok_or(ChallengeCoordinatorError::DisputeFeePayer)?,
                 schedule_envelope_sha256: &lock.fee_schedule_envelope_sha256,
                 amount_units: lock.amount.units,
                 currency: &lock.amount.currency,
+                pool_principal_id: &pool.principal_id,
+                pool_rail_destination: &pool.rail_destination,
+                pool_authority_epoch: pool.authority_epoch,
                 expires_at: lock.expiry,
-                locked_at: now,
+                locked_at: recorded.submitted_at,
             })
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        if lock.expiry <= now
+            && matches!(
+                recorded.state,
+                FindingChallengeState::Submitted | FindingChallengeState::IndeterminateClosed
+            )
+        {
+            if recorded.state == FindingChallengeState::Submitted {
+                self.challenges
+                    .close_expired_submitted_filing(&body.challenge_id, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+            }
+            self.dispose_dispute_bond(&body.challenge_id, now)?;
+        }
         Ok(ChallengeSubmissionOutcome {
             challenge_id: body.challenge_id.clone(),
             branch,
@@ -1051,6 +1138,7 @@ impl FindingChallengeCoordinator {
         self.require_live_evaluator_key(request)?;
         let body = &request.challenge.body;
         let admission = self.resolve_admission(body, request.now)?;
+        self.require_failed_delivery_reservation_binding(body, request.evidence, &admission)?;
         if request.collateral.allocation_id != admission.body.backing_allocation_id {
             return Err(ChallengeCoordinatorError::CollateralAllocation);
         }
@@ -1375,7 +1463,21 @@ impl FindingChallengeCoordinator {
         }
         let listing_requirement = Self::listing_bond_requirement(governance.fee_schedule)?;
         self.require_live_role(&self.penalty_pin, now, now, "penalty")?;
-        self.require_purchase_authority_for_candidates(claim_candidates, now)?;
+        let authoritative_claims = self
+            .purchases
+            .list_settled_purchase_keys_at_or_below(
+                identity.listing_id,
+                identity.allocation_id,
+                cutoff_slot,
+            )
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?;
+        let mut supplied_claims = claim_candidates.to_vec();
+        supplied_claims.sort();
+        supplied_claims.dedup();
+        if supplied_claims != authoritative_claims {
+            return Err(ChallengeCoordinatorError::ClaimSetMismatch);
+        }
+        self.require_purchase_authority_for_candidates(&authoritative_claims, now)?;
         self.require_impairable_collateral(collateral, now)?;
         let authoritative_calculation =
             self.checked_penalty_calculation(collateral, listing_requirement, now)?;
@@ -1438,7 +1540,7 @@ impl FindingChallengeCoordinator {
             &liability_key,
             identity,
             cutoff_slot,
-            claim_candidates,
+            &authoritative_claims,
             collateral,
             listing_requirement,
             &authoritative_calculation.penalty_amount,
@@ -1633,6 +1735,102 @@ impl FindingChallengeCoordinator {
                 )
             }
         }
+    }
+
+    /// Re-sign a finalizing enforcement against a fresh, verified bond
+    /// snapshot before the seller impairment has ever been dispatched.
+    ///
+    /// Snapshot freshness is intentionally checked at publication time,
+    /// but queueing or reconciliation delay can age out the snapshot that
+    /// closed the appeal. The liability and every semantic effect remain
+    /// frozen; only the observer-signed snapshot digest and finalization
+    /// instant change. Once the seller intent leaves `pending`, refresh is
+    /// refused because an external impairment may already exist.
+    pub fn refresh_finalizing_enforcement(
+        &self,
+        authorized: &AuthorizedImpairment,
+        bond_snapshot: &SignedFindingFinalizedBondSnapshot,
+        seller: &PublicKey,
+        now: u64,
+    ) -> Result<AuthorizedImpairment, ChallengeCoordinatorError> {
+        let old = &authorized.enforcement;
+        verify_pinned_envelope(
+            old,
+            &self.finalization_authority.public_key(),
+            "finding challenge enforcement",
+        )
+        .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        if self.envelope_digest(old)? != authorized.enforcement_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "authorized impairment digest does not match its enforcement".to_owned(),
+            ));
+        }
+        let liability = self
+            .challenges
+            .get_liability(&old.body.liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore("liability is not recorded".to_owned())
+            })?;
+        if liability.state != FindingLiabilityState::Finalizing {
+            return Err(ChallengeCoordinatorError::LiabilityState("finalizing"));
+        }
+        self.require_penalty_matches_enforcement(&liability, old, &authorized.slash.penalty, now)?;
+        let seller_intent_id = old
+            .body
+            .effect_intents
+            .iter()
+            .find(|binding| binding.kind == chio_finding::FindingEffectIntentKind::SellerImpair)
+            .map(|binding| binding.intent_id.as_str())
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        let seller_intent = self
+            .challenges
+            .get_effect_intent(seller_intent_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if seller_intent.kind != FindingEffectIntentKind::SellerImpair
+            || seller_intent.liability_key.as_deref() != Some(old.body.liability_key.as_str())
+            || seller_intent.state != FindingEffectIntentState::Pending
+        {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "bond snapshot refresh is permitted only before impairment dispatch".to_owned(),
+            ));
+        }
+
+        let mut body = old.body.clone();
+        body.bond_snapshot_envelope_sha256 = self.envelope_digest(bond_snapshot)?;
+        body.finalized_at = now;
+        body.enforcement_id.clear();
+        body.enforcement_id =
+            compute_enforcement_id(&body).map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        body.validate()
+            .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
+        self.require_live_role(&self.finalization_pin, now, now, "finalization")?;
+        let refreshed = SignedFindingChallengeEnforcement::sign(body, &self.finalization_authority)
+            .map_err(|_| ChallengeCoordinatorError::Signing)?;
+
+        self.require_live_settlement_observer(bond_snapshot, now)?;
+        let settlement_observer = self.require_live_role(
+            &self.pins.settlement_observer,
+            bond_snapshot.body.observed_at,
+            now,
+            "settlement observer",
+        )?;
+        let pins = FindingEnforcementPins {
+            finalization_authority: self.finalization_authority.public_key(),
+            settlement_observer,
+            seller: seller.clone(),
+            finality_requirement: self.pins.settlement_finality_requirement,
+            max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
+        };
+        verify_finding_enforcement(&refreshed, bond_snapshot, &pins, now)
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        Ok(AuthorizedImpairment {
+            enforcement_envelope_sha256: self.envelope_digest(&refreshed)?,
+            enforcement: refreshed,
+            slash: authorized.slash.clone(),
+            effect_intent_keys: authorized.effect_intent_keys.clone(),
+        })
     }
 
     /// Verify the enforcement pair, prepare the exact authorized call,
@@ -2014,6 +2212,63 @@ impl FindingChallengeCoordinator {
         Ok(admission)
     }
 
+    /// Bind a failed-delivery terminal back to the durable reservation that
+    /// produced it. A listing may be rebacked after a denial, so matching
+    /// only finding and listing would let an old zero-charge terminal slash
+    /// a new allocation that never backed that attempted sale.
+    fn require_failed_delivery_reservation_binding(
+        &self,
+        challenge: &FindingChallenge,
+        evidence: &FindingChallengeClassEvidence<'_>,
+        admission: &SignedFindingAdmission,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let FindingChallengeClassEvidence::DigestMismatch(evidence) = evidence else {
+            return Ok(());
+        };
+        let terminal = &evidence.failed_delivery.body;
+        let retained = self
+            .purchases
+            .get_failed_delivery_record(&terminal.failed_delivery_id)
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::AdmissionBinding(
+                "failed_delivery_reservation",
+            ))?;
+        let reservation = self
+            .purchases
+            .get_reservation(&terminal.reservation_id)
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::AdmissionBinding(
+                "failed_delivery_reservation",
+            ))?;
+        let encumbrance = self
+            .purchases
+            .get_encumbrance(&terminal.reservation_id)
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::AdmissionBinding(
+                "failed_delivery_backing",
+            ))?;
+        if terminal.finding_id != challenge.finding_id
+            || terminal.listing_id != challenge.listing_id
+            || retained.reservation_id != terminal.reservation_id
+            || retained.record_sha256 != self.envelope_digest(evidence.failed_delivery)?
+            || terminal.accepted_bid_envelope_sha256 != reservation.bid_envelope_sha256
+            || terminal.purchase_intent_id != reservation.purchase_intent_id
+            || terminal.authoritative_payment_operation_id
+                != reservation.authoritative_payment_operation_id
+            || terminal.buyer.to_hex() != reservation.payer_hex
+            || reservation.finding_id != challenge.finding_id
+            || reservation.listing_id != challenge.listing_id
+            || reservation.admission_envelope_sha256 != challenge.venue_admission_envelope_sha256
+            || reservation.admission_envelope_sha256 != self.envelope_digest(admission)?
+            || encumbrance.allocation_id != admission.body.backing_allocation_id
+        {
+            return Err(ChallengeCoordinatorError::AdmissionBinding(
+                "failed_delivery_reservation",
+            ));
+        }
+        Ok(())
+    }
+
     /// Derive the only retry horizon the signed artifacts authorize. The
     /// filing horizon and terms expiry are seller signed; a buyer lock is
     /// an additional signed cap because retry can never retain that lock
@@ -2091,6 +2346,62 @@ impl FindingChallengeCoordinator {
         Ok(())
     }
 
+    /// Recover the venue receipt time only when this exact challenge and
+    /// this exact admission-pinned bond already reached confirmed funding.
+    /// This lets a crash after the debit reconstruct and return an expired
+    /// lock without treating a fresh backdated filing as timely.
+    fn confirmed_funded_submission_received_at(
+        &self,
+        challenge: &FindingChallenge,
+        challenge_envelope_sha256: &str,
+        submission: &chio_finding::FindingBuyerSubmission,
+        pool: &chio_finding::FindingPoolBinding,
+    ) -> Result<Option<u64>, ChallengeCoordinatorError> {
+        let Some(recorded) = self
+            .challenges
+            .get_challenge(&challenge.challenge_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let owner_hex = submission.challenger.to_hex();
+        if recorded.challenge_envelope_sha256 != challenge_envelope_sha256
+            || recorded.finding_id != challenge.finding_id
+            || recorded.listing_id != challenge.listing_id
+            || recorded.authorization_branch != FindingChallengeAuthorizationBranch::BuyerSubmission
+            || recorded.challenger_hex.as_deref() != Some(owner_hex.as_str())
+        {
+            return Ok(None);
+        }
+        let lock = &submission.dispute_lock_ref;
+        let input = FindingDisputeLockInput {
+            lock_id: &lock.lock_id,
+            challenge_id: &challenge.challenge_id,
+            owner_hex: &owner_hex,
+            schedule_envelope_sha256: &lock.fee_schedule_envelope_sha256,
+            amount_units: lock.amount.units,
+            currency: &lock.amount.currency,
+            pool_principal_id: &pool.principal_id,
+            pool_rail_destination: &pool.rail_destination,
+            pool_authority_epoch: pool.authority_epoch,
+            expires_at: lock.expiry,
+            locked_at: recorded.submitted_at,
+        };
+        let key = derive_dispute_bond_funding_intent_key(&challenge.challenge_id, &lock.lock_id);
+        let confirmed = self
+            .challenges
+            .get_effect_intent(&key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .is_some_and(|intent| {
+                intent.kind == FindingEffectIntentKind::ChallengeBond
+                    && intent.liability_key.is_none()
+                    && !intent.settlement_required
+                    && intent.intent_digest == dispute_bond_funding_intent_digest(&input)
+                    && intent.state == FindingEffectIntentState::Confirmed
+            });
+        Ok(confirmed.then_some(recorded.submitted_at))
+    }
+
     /// Require the fee and bond a buyer submission carries to be the ones
     /// the admitted market terms pinned and the signed fee schedule
     /// priced.
@@ -2108,10 +2419,10 @@ impl FindingChallengeCoordinator {
     fn require_dispute_terms(
         &self,
         submission: &chio_finding::FindingBuyerSubmission,
-        now: u64,
+        pool: &chio_finding::FindingPoolBinding,
+        received_at: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
         let fee = &submission.dispute_fee_terminal;
-        let pool = &self.challenge_administration_pool;
         if fee.beneficiary_pool_principal_id != pool.principal_id
             || fee.rail_destination != pool.rail_destination
             || fee.amount.currency != pool.currency
@@ -2122,7 +2433,7 @@ impl FindingChallengeCoordinator {
             return Err(ChallengeCoordinatorError::DisputeFeePayer);
         }
         let lock = &submission.dispute_lock_ref;
-        if lock.expiry <= now {
+        if lock.expiry <= received_at {
             return Err(ChallengeCoordinatorError::DisputeBondWindow);
         }
         if lock.amount.currency != pool.currency {
@@ -2142,7 +2453,9 @@ impl FindingChallengeCoordinator {
         // A schedule that has not been issued yet, or that has expired,
         // prices nothing: the window a filing is admitted in is the window
         // its own schedule is live in.
-        if now < terms.issued_at || terms.expires_at.is_some_and(|expiry| now >= expiry) {
+        if received_at < terms.issued_at
+            || terms.expires_at.is_some_and(|expiry| received_at >= expiry)
+        {
             return Err(ChallengeCoordinatorError::DisputeTerms("filing window"));
         }
         if fee.amount.units != terms.dispute_fee.units
@@ -3197,18 +3510,24 @@ impl FindingChallengeCoordinator {
         &self,
         challenge_id: &str,
         submission: &chio_finding::FindingBuyerSubmission,
+        pool: &chio_finding::FindingPoolBinding,
+        locked_at: u64,
         now: u64,
     ) -> Result<String, ChallengeCoordinatorError> {
         let lock = &submission.dispute_lock_ref;
+        let owner_hex = submission.challenger.to_hex();
         let input = FindingDisputeLockInput {
             lock_id: &lock.lock_id,
             challenge_id,
-            owner_hex: &submission.challenger.to_hex(),
+            owner_hex: &owner_hex,
             schedule_envelope_sha256: &lock.fee_schedule_envelope_sha256,
             amount_units: lock.amount.units,
             currency: &lock.amount.currency,
+            pool_principal_id: &pool.principal_id,
+            pool_rail_destination: &pool.rail_destination,
+            pool_authority_epoch: pool.authority_epoch,
             expires_at: lock.expiry,
-            locked_at: now,
+            locked_at,
         };
         let intent_key = derive_dispute_bond_funding_intent_key(challenge_id, &lock.lock_id);
         let intent_digest = dispute_bond_funding_intent_digest(&input);
@@ -3241,8 +3560,8 @@ impl FindingChallengeCoordinator {
             payer: submission.challenger.to_hex(),
             amount_units: lock.amount.units,
             currency: lock.amount.currency.clone(),
-            pool_principal_id: self.challenge_administration_pool.principal_id.clone(),
-            rail_destination: self.challenge_administration_pool.rail_destination.clone(),
+            pool_principal_id: pool.principal_id.clone(),
+            rail_destination: pool.rail_destination.clone(),
         };
         let instruction_digest = canonical_digest_of(&instruction)?;
         match self.rail.dispatch(&instruction) {
@@ -3292,6 +3611,9 @@ impl FindingChallengeCoordinator {
             schedule_envelope_sha256: &lock.schedule_envelope_sha256,
             amount_units: lock.amount_units,
             currency: &lock.currency,
+            pool_principal_id: &lock.pool_principal_id,
+            pool_rail_destination: &lock.pool_rail_destination,
+            pool_authority_epoch: lock.pool_authority_epoch,
             expires_at: lock.expires_at,
             locked_at: lock.locked_at,
         };
@@ -3323,10 +3645,10 @@ impl FindingChallengeCoordinator {
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         let instruction = FindingRailInstruction {
             idempotency_key: intent_key.clone(),
-            payer: self.challenge_administration_pool.principal_id.clone(),
+            payer: lock.pool_principal_id.clone(),
             amount_units: lock.amount_units,
             currency: lock.currency.clone(),
-            pool_principal_id: self.challenge_administration_pool.principal_id.clone(),
+            pool_principal_id: lock.pool_principal_id.clone(),
             rail_destination: lock.owner_hex.clone(),
         };
         let instruction_digest = canonical_digest_of(&instruction)?;

@@ -1105,6 +1105,48 @@ impl SqliteFindingPurchaseStore {
         load_purchase_record_tx(&transaction, "purchase_key", purchase_key)
     }
 
+    /// Every settled purchase charged to one allocation on one listing at
+    /// or below a frozen slot cutoff. This is the authoritative claim set:
+    /// callers may use hints to select work, but they cannot omit a retained
+    /// settled record from the snapshot that determines buyer compensation.
+    pub fn list_settled_purchase_keys_at_or_below(
+        &self,
+        listing_id: &str,
+        allocation_id: &str,
+        cutoff: u64,
+    ) -> Result<Vec<String>, FindingPurchaseStoreError> {
+        require_identifier(listing_id, "listing_id")?;
+        require_hex64(allocation_id, "allocation_id")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let mut statement = transaction
+            .prepare(
+                r#"
+                SELECT records.purchase_key
+                FROM purchase_records AS records
+                JOIN pending_purchase_slots AS slots
+                  ON slots.reservation_id = records.reservation_id
+                JOIN seller_exposure_encumbrances AS encumbrances
+                  ON encumbrances.reservation_id = records.reservation_id
+                WHERE slots.listing_id = ?1
+                  AND slots.slot_ordinal <= ?2
+                  AND slots.state = 'closed_record'
+                  AND encumbrances.allocation_id = ?3
+                ORDER BY records.purchase_key ASC
+                "#,
+            )
+            .map_err(sqlite_error)?;
+        let keys = statement
+            .query_map(
+                params![listing_id, sqlite_i64(cutoff, "cutoff")?, allocation_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sqlite_error)?;
+        Ok(keys)
+    }
+
     /// One retained failed-delivery record, re-checked against its stored
     /// digest on the read path.
     pub fn get_failed_delivery_record(

@@ -126,9 +126,11 @@ use chio_settle::{
 };
 use chio_store_sqlite::finding_market_store::{FindingRecordInput, SqliteFindingMarketStore};
 use chio_store_sqlite::{
+    derive_dispute_bond_funding_intent_key, dispute_bond_funding_intent_digest,
     FindingChallengeState, FindingChallengeVerdict, FindingDisputeLockDisposition,
-    FindingDisputeLockState, FindingEffectIntentState, FindingLiabilityState,
-    FindingPurchaseDeliveryInput, FindingPurchaseReservationInput, SqliteAuthorityStore,
+    FindingDisputeLockInput, FindingDisputeLockState, FindingEffectIntentKind,
+    FindingEffectIntentState, FindingLiabilityState, FindingPurchaseDeliveryInput,
+    FindingPurchaseDenyInput, FindingPurchaseReservationInput, SqliteAuthorityStore,
     SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
 };
 
@@ -906,6 +908,14 @@ fn signed_admission(
     allocation_id: &str,
     terms: &SignedFindingMarketTerms,
 ) -> Result<SignedFindingAdmission, AnyError> {
+    signed_admission_with_backing(allocation_id, terms, &hex64('6'))
+}
+
+fn signed_admission_with_backing(
+    allocation_id: &str,
+    terms: &SignedFindingMarketTerms,
+    backing_envelope_sha256: &str,
+) -> Result<SignedFindingAdmission, AnyError> {
     let challenged = challenged_finding()?;
     let venue = keypair(6);
     let schedule_digest = signed_envelope_sha256(&published_fee_schedule()?)?;
@@ -953,7 +963,7 @@ fn signed_admission(
             },
         ],
         backing_allocation_id: allocation_id.to_string(),
-        backing_envelope_sha256: hex64('6'),
+        backing_envelope_sha256: backing_envelope_sha256.to_string(),
         audit_pool: FindingPoolBinding {
             principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
             rail_destination: AUDIT_POOL_DESTINATION.to_string(),
@@ -1484,6 +1494,7 @@ impl DigestMismatchCase {
 }
 
 fn digest_mismatch_case(
+    deployment: &Deployment,
     challenged: &ChallengedFinding,
     shape: &DenyShape,
     filing: Filing,
@@ -1567,6 +1578,45 @@ fn digest_mismatch_case(
     terminal.failed_delivery_id = compute_failed_delivery_id(&terminal)?;
     let failed_delivery = SignedExportEnvelope::sign(terminal, &keypair(17))?;
     let failed_delivery_envelope_sha256 = signed_envelope_sha256(&failed_delivery)?;
+
+    // Retain the exact reservation and backing that produced the denial.
+    // The evaluator must resolve this durable sale identity rather than
+    // trusting a terminal presented beside whichever admission is current.
+    deployment
+        .purchases
+        .open_reservation(&FindingPurchaseReservationInput {
+            reservation_id: DENY_RESERVATION_ID,
+            purchase_intent_id: DENY_INTENT_ID,
+            authoritative_payment_operation_id: DENY_PAYMENT_ID,
+            payer_hex: &keypair(41).public_key().to_hex(),
+            agent_id: "agent-buyer-01",
+            finding_id: &challenged.finding.finding_id,
+            listing_id: LISTING_ID,
+            bid_envelope_sha256: &hex64('c'),
+            ask_digest: &digest("deny-ask"),
+            admission_envelope_sha256: &deployment.admission_envelope_sha256,
+            amount_units: 100,
+            currency: "USD",
+            expires_at: NOW + 3_600,
+            encumbrance_id: "encumbrance-denied-01",
+            allocation_id: &deployment.allocation_id,
+            maximum_sale_exposure_units: REGISTERED_EXPOSURE_CAP,
+            created_at: NOW,
+        })?;
+    deployment
+        .purchases
+        .reserve_slot(DENY_RESERVATION_ID, NOW)?;
+    let failed_delivery_json = canonical_json_bytes(&failed_delivery)?;
+    deployment
+        .purchases
+        .close_slot_with_deny(&FindingPurchaseDenyInput {
+            reservation_id: DENY_RESERVATION_ID,
+            failed_delivery_id: &failed_delivery.body.failed_delivery_id,
+            record_json: &failed_delivery_json,
+            record_sha256: &sha256_hex(&failed_delivery_json),
+            deny_receipt_id: &failed_delivery.body.deny_receipt_id,
+            now: NOW,
+        })?;
 
     let evidence = FindingChallengeEvidence::DigestMismatch {
         failed_delivery_envelope_sha256: failed_delivery_envelope_sha256.clone(),
@@ -2960,6 +3010,163 @@ fn finding_challenge_buyer_submission_charges_the_challenge_administration_pool(
 }
 
 #[test]
+fn finding_challenge_pool_rotation_preserves_the_admission_pinned_rail() -> TestResult {
+    let deployment = deployment()?;
+    let mut rotated = market_config();
+    rotated.challenge_administration_pool = FindingPoolPin {
+        principal_id: "pool:challenge-admin-rotated".to_string(),
+        rail_destination: "rail:venue-ledger:challenge-admin-rotated".to_string(),
+        currency: "USD".to_string(),
+        authority_epoch: 2,
+    };
+    let coordinator =
+        deployment.coordinator_under(&rotated, FindingDisputeLockDisposition::Forfeited)?;
+    let challenge = buyer_challenge(&keypair(41))?;
+    let (_, raw) = finding_artifact()?;
+
+    coordinator.submit(&challenge, &raw, NOW)?;
+    let instructions = deployment.rail.charges();
+    assert_eq!(instructions.len(), 2);
+    assert!(instructions.iter().all(|instruction| {
+        instruction.pool_principal_id == CHALLENGE_POOL_PRINCIPAL
+            && instruction.rail_destination == CHALLENGE_POOL_DESTINATION
+    }));
+    let lock = deployment
+        .challenges
+        .get_dispute_lock(&challenge.body.challenge_id)?
+        .ok_or("the admission-pinned lock is durable")?;
+    assert_eq!(lock.pool_principal_id, CHALLENGE_POOL_PRINCIPAL);
+    assert_eq!(lock.pool_rail_destination, CHALLENGE_POOL_DESTINATION);
+    assert_eq!(lock.pool_authority_epoch, 1);
+    close_challenge(
+        &deployment,
+        &challenge.body.challenge_id,
+        FindingChallengeVerdict::Upheld,
+        &digest("rotated-pool-upheld"),
+        NOW + 1,
+    )?;
+    assert_eq!(
+        coordinator.dispose_dispute_bond(&challenge.body.challenge_id, NOW + 2)?,
+        Some(FindingDisputeLockDisposition::Returned)
+    );
+    let returned = deployment
+        .rail
+        .charges()
+        .pop()
+        .ok_or("the retained pool returns the dispute bond")?;
+    assert_eq!(returned.payer, CHALLENGE_POOL_PRINCIPAL);
+    assert_eq!(returned.pool_principal_id, CHALLENGE_POOL_PRINCIPAL);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_unknown_admission_moves_no_filing_funds() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let buyer = keypair(41);
+    let mut challenge = buyer_challenge(&buyer)?;
+    challenge.body.venue_admission_envelope_sha256 = hex64('9');
+    challenge.body.challenge_id = compute_challenge_id(&challenge.body)?;
+    let challenge = SignedExportEnvelope::sign(challenge.body, &buyer)?;
+    let (_, raw) = finding_artifact()?;
+
+    let refused = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("an unknown admission must be refused before funding");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::AdmissionBinding("venue_admission_envelope_sha256")
+    ));
+    assert!(deployment.rail.charges().is_empty());
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_recovers_and_returns_a_funded_expired_lock() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenge = buyer_challenge(&keypair(41))?;
+    let challenge_id = challenge.body.challenge_id.clone();
+    let (_, raw) = finding_artifact()?;
+    deployment.rail.refuse();
+    assert!(matches!(
+        coordinator
+            .submit(&challenge, &raw, NOW)
+            .expect_err("the injected first attempt stops before bond reconstruction"),
+        ChallengeCoordinatorError::FeeRail(_)
+    ));
+    deployment.rail.accept();
+    let FindingChallengeAuthorization::BuyerSubmission(submission) = &challenge.body.authorization
+    else {
+        return Err("the recovery fixture is a buyer submission".into());
+    };
+    let lock = &submission.dispute_lock_ref;
+    let owner_hex = submission.challenger.to_hex();
+    let input = FindingDisputeLockInput {
+        lock_id: &lock.lock_id,
+        challenge_id: &challenge_id,
+        owner_hex: &owner_hex,
+        schedule_envelope_sha256: &lock.fee_schedule_envelope_sha256,
+        amount_units: lock.amount.units,
+        currency: &lock.amount.currency,
+        pool_principal_id: CHALLENGE_POOL_PRINCIPAL,
+        pool_rail_destination: CHALLENGE_POOL_DESTINATION,
+        pool_authority_epoch: 1,
+        expires_at: lock.expiry,
+        locked_at: NOW,
+    };
+    let funding_key = derive_dispute_bond_funding_intent_key(&challenge_id, &lock.lock_id);
+    deployment.challenges.record_effect_intent(
+        &funding_key,
+        FindingEffectIntentKind::ChallengeBond,
+        &dispute_bond_funding_intent_digest(&input),
+        None,
+        false,
+        NOW,
+    )?;
+    deployment.challenges.advance_effect_intent(
+        &funding_key,
+        FindingEffectIntentState::Dispatched,
+        NOW,
+    )?;
+    deployment.challenges.advance_effect_intent(
+        &funding_key,
+        FindingEffectIntentState::Confirmed,
+        NOW,
+    )?;
+
+    coordinator.submit(&challenge, &raw, lock.expiry)?;
+    let lock = deployment
+        .challenges
+        .get_dispute_lock(&challenge_id)?
+        .ok_or("recovery reconstructed the funded lock")?;
+    assert_eq!(lock.state, FindingDisputeLockState::Returned);
+    assert_eq!(lock.pool_principal_id, CHALLENGE_POOL_PRINCIPAL);
+    assert_eq!(
+        deployment
+            .challenges
+            .get_challenge(&challenge_id)?
+            .ok_or("the recovered filing remains durable")?
+            .state,
+        FindingChallengeState::IndeterminateClosed
+    );
+    let instructions = deployment.rail.charges();
+    assert_eq!(instructions.len(), 2);
+    assert_eq!(
+        instructions
+            .last()
+            .ok_or("the recovery refunds the bond")?
+            .payer,
+        CHALLENGE_POOL_PRINCIPAL
+    );
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_submission_rejects_noncanonical_finding_before_money_moves() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -3198,7 +3405,12 @@ fn finding_challenge_evaluation_refuses_collateral_from_an_unadmitted_allocation
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let challenged = challenged_finding()?;
-    let case = digest_mismatch_case(&challenged, &DenyShape::seller_origin(), Filing::Buyer)?;
+    let case = digest_mismatch_case(
+        &deployment,
+        &challenged,
+        &DenyShape::seller_origin(),
+        Filing::Buyer,
+    )?;
     coordinator.submit(&case.challenge, &challenged.raw_finding, NOW)?;
 
     let unadmitted_allocation = consume_allocation(&deployment.market, LISTING_ID, &hex64('2'))?;
@@ -3228,6 +3440,70 @@ fn finding_challenge_evaluation_refuses_collateral_from_an_unadmitted_allocation
             .state,
         FindingChallengeState::Submitted,
         "a mismatched allocation consumes no evaluation attempt"
+    );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_failed_delivery_cannot_move_to_a_rebacked_admission() -> TestResult {
+    let mut deployment = deployment()?;
+    let challenged = challenged_finding()?;
+    let mut case = digest_mismatch_case(
+        &deployment,
+        &challenged,
+        &DenyShape::seller_origin(),
+        Filing::Buyer,
+    )?;
+    let rebacked = consume_allocation(&deployment.market, LISTING_ID, &hex64('e'))?;
+    let backing_envelope_sha256 = hex64('f');
+    let admission = signed_admission_with_backing(
+        &rebacked,
+        &market_terms(CLAIM_WINDOW_SECS)?,
+        &backing_envelope_sha256,
+    )?;
+    let admission_envelope_sha256 = signed_envelope_sha256(&admission)?;
+    let filings = Arc::get_mut(&mut deployment.filings)
+        .ok_or("the test has not shared its filing resolver yet")?;
+    filings.admissions.insert(
+        (
+            admission.body.finding_id.clone(),
+            admission.body.listing_id.clone(),
+            backing_envelope_sha256.clone(),
+        ),
+        admission,
+    );
+    case.challenge.body.backing_envelope_sha256 = backing_envelope_sha256;
+    case.challenge.body.venue_admission_envelope_sha256 = admission_envelope_sha256;
+    case.challenge.body.challenge_id = compute_challenge_id(&case.challenge.body)?;
+    case.challenge = SignedExportEnvelope::sign(case.challenge.body, &keypair(41))?;
+
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    coordinator.submit(&case.challenge, &challenged.raw_finding, NOW)?;
+    coordinator.admit_evaluation(&case.challenge.body.challenge_id, NOW + 1)?;
+    let stake = usd(300);
+    let required = usd(5_000);
+    let collateral = collateral_facts(&stake, &required, &rebacked, 5_000);
+    let evidence = case.evidence();
+    let refused = coordinator
+        .evaluate(&evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &collateral,
+            NOW + 2,
+        ))
+        .expect_err("an old failed delivery cannot slash the listing's new backing");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::AdmissionBinding("failed_delivery_reservation")
+    ));
+    assert_eq!(
+        deployment
+            .challenges
+            .get_challenge(&case.challenge.body.challenge_id)?
+            .ok_or("the challenge remains durable")?
+            .state,
+        FindingChallengeState::Evaluating
     );
     Ok(())
 }
@@ -4384,23 +4660,43 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
 
     let stake = usd(300);
     let required = usd(5_000);
-    let refused = uphold_across_claim_window(
-        &coordinator,
-        &market_terms(CLAIM_WINDOW_SECS)?,
-        &ready.challenge,
-        &ready.outcome,
-        &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
-        2,
-        &[liable.purchase_key, elsewhere.purchase_key],
-        &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
-        &governance.context(),
-        &governance.sanction_case,
-        NOW + 2,
-    )
-    .expect_err("a sale charged to another vault is not this liability's harm");
+    let terms = market_terms(CLAIM_WINDOW_SECS)?;
+    let identity = liability_identity(&ready.finding.finding_id, &deployment.allocation_id);
+    let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
+    assert!(matches!(
+        coordinator.uphold(
+            &ready.challenge_id,
+            &ready.challenge,
+            &ready.outcome,
+            &identity,
+            &terms,
+            2,
+            std::slice::from_ref(&liable.purchase_key),
+            &collateral,
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 1,
+        ),
+        Err(ChallengeCoordinatorError::ClaimWindowOpen)
+    ));
+    let refused = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.challenge,
+            &ready.outcome,
+            &identity,
+            &terms,
+            2,
+            &[liable.purchase_key, elsewhere.purchase_key],
+            &collateral,
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2,
+        )
+        .expect_err("a sale charged to another vault is not this liability's harm");
     assert!(matches!(
         refused,
-        ChallengeCoordinatorError::PurchaseOutsideAllocation(_)
+        ChallengeCoordinatorError::ClaimSetMismatch
     ));
     assert!(
         coordinator
@@ -4588,6 +4884,66 @@ fn finding_challenge_sealed_snapshot_distribution_sums_exactly() -> TestResult {
         .ok_or("the snapshot is sealed durably")?;
     assert_eq!(stored.0, sealed.snapshot_digest);
     assert_eq!(stored.1, sealed.allocation_digest);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_claim_snapshot_refuses_an_omitted_settled_purchase() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let first = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 60, NOW)?;
+    let second = settle_purchase(&deployment, "beta", BUYER_TWO_DESTINATION, 40, NOW + 1)?;
+    let ready = ready_to_uphold_with_open_exposure(&deployment, &coordinator, 200)?;
+    let terms = market_terms(CLAIM_WINDOW_SECS)?;
+    let identity = liability_identity(&ready.finding.finding_id, &deployment.allocation_id);
+    let stake = usd(300);
+    let required = usd(5_000);
+    let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
+    let complete = vec![first.purchase_key.clone(), second.purchase_key];
+
+    assert!(matches!(
+        coordinator.uphold(
+            &ready.challenge_id,
+            &ready.challenge,
+            &ready.outcome,
+            &identity,
+            &terms,
+            2,
+            &complete,
+            &collateral,
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2,
+        ),
+        Err(ChallengeCoordinatorError::ClaimWindowOpen)
+    ));
+    let refused = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.challenge,
+            &ready.outcome,
+            &identity,
+            &terms,
+            2,
+            std::slice::from_ref(&first.purchase_key),
+            &collateral,
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2 + CLAIM_WINDOW_SECS,
+        )
+        .expect_err("an omitted settled buyer must prevent sealing");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::ClaimSetMismatch
+    ));
+    assert!(coordinator
+        .sealed_claim(&derive_liability_key(
+            &derive_defect_key(&ready.finding.finding_id),
+            VENUE_ID,
+            &identity,
+        ))?
+        .is_none());
     Ok(())
 }
 
@@ -4911,6 +5267,83 @@ fn finding_challenge_appeal_finality_impairs_and_fences_every_effect_intent() ->
     assert_eq!(liability.state, FindingLiabilityState::Finalizing);
     assert!(liability.publication_pending);
     assert!(case.deployment.purchases.sales_blocked(LISTING_ID)?);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_refreshes_a_snapshot_only_before_impairment_dispatch() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    let authorized = impair_after_appeal(
+        &case.coordinator,
+        &case.governance,
+        &case.upheld,
+        &case.outcome,
+        &identity,
+        APPEAL_FINAL_AT,
+    )?;
+    let seller = keypair(22).public_key();
+    let observed_at = APPEAL_FINAL_AT + 10;
+    let mut snapshot = FindingFinalizedBondSnapshot {
+        schema: FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1.to_string(),
+        snapshot_id: String::new(),
+        chain_id: authorized.enforcement.body.vault.chain_id.clone(),
+        vault_contract: authorized.enforcement.body.vault.vault_contract.clone(),
+        vault_id: authorized.enforcement.body.vault.vault_id.clone(),
+        seller: seller.clone(),
+        allocation_id: authorized.enforcement.body.seller_allocation_id.clone(),
+        locked_amount: 5_000,
+        held_amount: authorized.enforcement.body.amount.units,
+        slashed_amount: 0,
+        currency: authorized.enforcement.body.amount.currency.clone(),
+        block_number: 21_000_200,
+        block_hash: chain_hash(0xbd),
+        finality_policy: "confirmations>=64".to_string(),
+        observed_finality: FindingObservedFinality::Confirmations { depth: 96 },
+        identity_registry_record: "registry/operators/venue-42".to_string(),
+        operator_key_hash: OPERATOR_KEY_HASH.to_string(),
+        operator_key_epoch: PINNED_KEY_EPOCH,
+        observed_at,
+    };
+    snapshot.snapshot_id = compute_snapshot_id(&snapshot)?;
+    let snapshot = SignedExportEnvelope::sign(snapshot, &keypair(34))?;
+    let refreshed = case.coordinator.refresh_finalizing_enforcement(
+        &authorized,
+        &snapshot,
+        &seller,
+        observed_at + 1,
+    )?;
+    assert_eq!(
+        refreshed.enforcement.body.bond_snapshot_envelope_sha256,
+        signed_envelope_sha256(&snapshot)?
+    );
+    assert_ne!(
+        refreshed.enforcement_envelope_sha256,
+        authorized.enforcement_envelope_sha256
+    );
+    assert_eq!(refreshed.slash.penalty, authorized.slash.penalty);
+    assert_eq!(refreshed.effect_intent_keys, authorized.effect_intent_keys);
+
+    let seller_intent = authorized
+        .effect_intent_keys
+        .iter()
+        .find(|(kind, _)| *kind == FindingEffectIntentKind::SellerImpair)
+        .map(|(_, key)| key)
+        .ok_or("the impairment authorization fences its seller intent")?;
+    case.deployment.challenges.advance_effect_intent(
+        seller_intent,
+        FindingEffectIntentState::Dispatched,
+        observed_at + 2,
+    )?;
+    let refused = case
+        .coordinator
+        .refresh_finalizing_enforcement(&refreshed, &snapshot, &seller, observed_at + 3)
+        .expect_err("a dispatched impairment can no longer refresh its snapshot");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::Settlement(detail)
+            if detail.contains("only before impairment dispatch")
+    ));
     Ok(())
 }
 
@@ -6320,7 +6753,12 @@ fn finding_challenge_digest_mismatch_reaches_an_enforced_sanction() -> TestResul
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
     let challenged = challenged_finding()?;
-    let case = digest_mismatch_case(&challenged, &DenyShape::seller_origin(), Filing::Buyer)?;
+    let case = digest_mismatch_case(
+        &deployment,
+        &challenged,
+        &DenyShape::seller_origin(),
+        Filing::Buyer,
+    )?;
     let challenge_id = case.challenge.body.challenge_id.clone();
 
     coordinator.submit(&case.challenge, &challenged.raw_finding, NOW)?;
@@ -6376,8 +6814,9 @@ fn finding_challenge_digest_mismatch_reaches_an_enforced_sanction() -> TestResul
         .ok_or("an upheld outcome carries its checked calculation")?;
     assert_eq!(calculation.penalty_amount, usd(300));
 
-    // The denied reveal never took a slot, so the cutoff is the empty line
-    // and the claim window is trivially closed.
+    // The denied reveal closed its reserved slot without a purchase record,
+    // so the cutoff includes that denial but the authoritative claim set is
+    // empty.
     let identity = liability_identity(&challenged.finding.finding_id, &deployment.allocation_id);
     let upheld = uphold_across_claim_window(
         &coordinator,
@@ -6385,7 +6824,7 @@ fn finding_challenge_digest_mismatch_reaches_an_enforced_sanction() -> TestResul
         &case.challenge,
         &evaluated.outcome,
         &identity,
-        0,
+        1,
         &[],
         &collateral,
         &governance.context(),
@@ -6397,7 +6836,7 @@ fn finding_challenge_digest_mismatch_reaches_an_enforced_sanction() -> TestResul
         .challenges
         .get_liability(&upheld.liability_key)?
         .ok_or("liability head is durable")?;
-    assert_eq!(liability.purchase_cutoff_slot, Some(0));
+    assert_eq!(liability.purchase_cutoff_slot, Some(1));
     assert_eq!(liability.state, FindingLiabilityState::PendingAppeal);
     assert_eq!(
         upheld.hold.evaluation.effective_state,
@@ -7014,7 +7453,7 @@ fn assert_denial_cannot_sanction(shape: &DenyShape, expected_reason: &str) -> Te
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
     let challenged = challenged_finding()?;
-    let case = digest_mismatch_case(&challenged, shape, Filing::Buyer)?;
+    let case = digest_mismatch_case(&deployment, &challenged, shape, Filing::Buyer)?;
     coordinator.submit(&case.challenge, &challenged.raw_finding, NOW)?;
 
     let stake = usd(300);
@@ -7127,7 +7566,12 @@ fn finding_challenge_every_cross_class_evidence_pairing_is_inadmissible() -> Tes
     let challenged = challenged_finding()?;
     let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 50, NOW)?;
 
-    let digest = digest_mismatch_case(&challenged, &DenyShape::seller_origin(), Filing::Buyer)?;
+    let digest = digest_mismatch_case(
+        &deployment,
+        &challenged,
+        &DenyShape::seller_origin(),
+        Filing::Buyer,
+    )?;
     let invalid = evidence_invalid_case(
         &challenged,
         ProductionShape::ForeignSignature,

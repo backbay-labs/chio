@@ -364,9 +364,33 @@ fn confirm_settlement_effects(fixture: &Fixture, liability_key: &str, now: u64) 
 fn remove_schema_fragment(schema: String, fragment: &str) -> String {
     assert!(
         schema.contains(fragment),
-        "the v2 fixture fragment must match the canonical v3 schema"
+        "the legacy fixture fragment must match the canonical v4 schema"
     );
     schema.replacen(fragment, "", 1)
+}
+
+fn finding_challenge_v3_schema() -> String {
+    let schema = FINDING_CHALLENGE_SCHEMA.replace(
+        "OLD.state = 'submitted' AND NEW.state IN ('evaluating', 'indeterminate_closed')",
+        "OLD.state = 'submitted' AND NEW.state = 'evaluating'",
+    );
+    let mut schema = remove_schema_fragment(
+        schema,
+        r#"    pool_principal_id TEXT NOT NULL
+        CHECK (length(pool_principal_id) BETWEEN 1 AND 512),
+    pool_rail_destination TEXT NOT NULL
+        CHECK (length(pool_rail_destination) BETWEEN 1 AND 512),
+    pool_authority_epoch INTEGER NOT NULL CHECK (pool_authority_epoch > 0),
+"#,
+    );
+    for fragment in [
+        "  OR NEW.pool_principal_id <> OLD.pool_principal_id\n",
+        "  OR NEW.pool_rail_destination <> OLD.pool_rail_destination\n",
+        "  OR NEW.pool_authority_epoch <> OLD.pool_authority_epoch\n",
+    ] {
+        schema = remove_schema_fragment(schema, fragment);
+    }
+    schema
 }
 
 fn finding_challenge_v2_schema() -> String {
@@ -427,6 +451,9 @@ fn lock_input<'a>(
         schedule_envelope_sha256: schedule,
         amount_units: 25,
         currency: "USD",
+        pool_principal_id: "challenge-pool",
+        pool_rail_destination: "rail:challenge-pool",
+        pool_authority_epoch: 1,
         expires_at: NOW + 86_400,
         locked_at: NOW,
     }
@@ -1033,6 +1060,9 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
             schedule_envelope_sha256: schedule.clone(),
             amount_units: 25,
             currency: "USD".to_string(),
+            pool_principal_id: "challenge-pool".to_string(),
+            pool_rail_destination: "rail:challenge-pool".to_string(),
+            pool_authority_epoch: 1,
             expires_at: NOW + 86_400,
             state: FindingDisputeLockState::Locked,
             locked_at: NOW,
@@ -3231,7 +3261,57 @@ fn v2_schema_migrates_to_frozen_appeals_and_required_effects() {
         )
         .expect("read migrated settlement gate");
     assert_eq!(settlement_required, 1);
-    verify_finding_challenge_invariants(&connection).expect("verify canonical v3 schema");
+    verify_finding_challenge_invariants(&connection).expect("verify canonical v4 schema");
+}
+
+#[test]
+fn empty_v3_schema_migrates_pool_binding_and_recovery_lifecycle() {
+    let mut connection = Connection::open_in_memory().expect("open legacy database");
+    connection
+        .execute_batch(&finding_challenge_v3_schema())
+        .expect("install v3 challenge schema");
+    assert_eq!(
+        crate::check_schema_version(
+            &connection,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            FINDING_CHALLENGE_SCHEMA_ANCHORS,
+        )
+        .expect("adopt legacy database"),
+        0
+    );
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 3)
+        .expect("stamp v3 schema");
+
+    initialize_finding_challenge_schema(&mut connection).expect("migrate empty v3 schema");
+
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_CHALLENGE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION);
+    for column in [
+        "pool_principal_id",
+        "pool_rail_destination",
+        "pool_authority_epoch",
+    ] {
+        assert!(
+            table_has_column(&connection, "dispute_locks", column).expect("inspect migrated lock"),
+            "migration installs {column}"
+        );
+    }
+    let trigger: String = connection
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = 'challenges_lifecycle'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read migrated lifecycle trigger");
+    assert!(trigger.contains("indeterminate_closed"));
+    verify_finding_challenge_invariants(&connection).expect("verify canonical v4 schema");
 }
 
 #[test]
