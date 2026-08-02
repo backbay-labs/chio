@@ -307,7 +307,6 @@ impl FinalizingLiability {
             &self.penalty,
             &self.snapshot,
             &self.seller,
-            live_evaluator_key(now),
             &settlement_config()?,
             &settlement_config()?.operator_address,
             &evm_vault_snapshot(),
