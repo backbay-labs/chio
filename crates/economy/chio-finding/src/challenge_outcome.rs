@@ -363,6 +363,10 @@ pub struct FindingChallengeOutcome {
     pub listing_id: String,
     pub backing_allocation_id: String,
     pub authorization: FindingChallengeAuthorizationKind,
+    /// Exact signed audit-epoch envelope authorized by the challenge.
+    /// Present only for venue-audit outcomes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audit_epoch_envelope_sha256: Option<String>,
     pub evidence_kind: FindingChallengeEvidenceKind,
     pub verifier_profile_envelope_sha256: String,
     pub evidence_bundle_digest: String,
@@ -396,6 +400,13 @@ impl FindingChallengeOutcome {
         require_hex64(&self.finding_id, "finding_id")?;
         require_bounded_id(&self.listing_id, "listing_id")?;
         require_hex64(&self.backing_allocation_id, "backing_allocation_id")?;
+        match (self.authorization, &self.audit_epoch_envelope_sha256) {
+            (FindingChallengeAuthorizationKind::VenueAudit, Some(digest)) => {
+                require_hex64(digest, "audit_epoch_envelope_sha256")?;
+            }
+            (FindingChallengeAuthorizationKind::BuyerSubmission, None) => {}
+            _ => return Err(FindingError::InvalidField("audit_epoch_envelope_sha256")),
+        }
         require_hex64(
             &self.verifier_profile_envelope_sha256,
             "verifier_profile_envelope_sha256",

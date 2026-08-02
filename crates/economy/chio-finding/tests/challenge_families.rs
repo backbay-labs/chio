@@ -360,6 +360,7 @@ fn outcome_body(
         listing_id: "finding-listing-01".to_string(),
         backing_allocation_id: HEX64_ALT.to_string(),
         authorization: FindingChallengeAuthorizationKind::BuyerSubmission,
+        audit_epoch_envelope_sha256: None,
         evidence_kind,
         verifier_profile_envelope_sha256: HEX64_THIRD.to_string(),
         evidence_bundle_digest: HEX64.to_string(),

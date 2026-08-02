@@ -1556,6 +1556,12 @@ pub fn outcome_for(
         listing_id: LISTING_ID.to_string(),
         backing_allocation_id: HEX64_ALT.to_string(),
         authorization: challenge.body.authorization.kind(),
+        audit_epoch_envelope_sha256: match &challenge.body.authorization {
+            FindingChallengeAuthorization::BuyerSubmission(_) => None,
+            FindingChallengeAuthorization::VenueAudit(audit) => {
+                Some(audit.audit_epoch_envelope_sha256.clone())
+            }
+        },
         evidence_kind: challenge.body.evidence.kind(),
         verifier_profile_envelope_sha256: world.profile_envelope_sha256.clone(),
         evidence_bundle_digest: HEX64.to_string(),

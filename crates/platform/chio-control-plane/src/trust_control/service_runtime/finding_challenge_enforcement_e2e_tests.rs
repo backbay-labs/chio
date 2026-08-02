@@ -2900,6 +2900,12 @@ fn upheld_outcome(
         listing_id: LISTING_ID.to_string(),
         backing_allocation_id: allocation_id.to_string(),
         authorization: challenge.body.authorization.kind(),
+        audit_epoch_envelope_sha256: match &challenge.body.authorization {
+            FindingChallengeAuthorization::BuyerSubmission(_) => None,
+            FindingChallengeAuthorization::VenueAudit(audit) => {
+                Some(audit.audit_epoch_envelope_sha256.clone())
+            }
+        },
         evidence_kind: challenge.body.evidence.kind(),
         verifier_profile_envelope_sha256: challenge.body.profile_envelope_sha256.clone(),
         evidence_bundle_digest: hex64('e'),
@@ -5867,18 +5873,14 @@ fn finding_challenge_a_second_appeal_finality_reuses_the_root_intent() -> TestRe
         return Err("appeal finality with no reversal authorizes the impairment".into());
     };
 
-    // The retry clock is later, but the penalty is issued at the durable
-    // appeal boundary. Every effect intent therefore reconciles identically,
-    // and only the already-finalizing lifecycle transition refuses the call.
+    // A later retry must not mint a second authorization with a new
+    // finalization time after the durable head already entered finalizing.
     let refused = resolve_final(&case, &identity, &case.outcome, APPEAL_FINAL_AT + 20)
         .expect_err("one liability authorizes one enforcement");
-    let ChallengeCoordinatorError::ChallengeStore(detail) = refused else {
-        return Err("the finalizing lifecycle transition refuses the replay".into());
-    };
-    assert!(
-        !detail.contains("conflicting effect intent"),
-        "retry-stable penalty bytes must reconcile every fenced effect"
-    );
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::LiabilityState("pending_appeal")
+    ));
     let intents = case
         .deployment
         .challenges
@@ -6265,6 +6267,7 @@ struct FinalizingLiability {
     enforcement: SignedFindingChallengeEnforcement,
     penalty: SignedOpenMarketPenalty,
     snapshot: SignedFindingFinalizedBondSnapshot,
+    confirm_retraction_after_impairment: bool,
 }
 
 fn finalizing_liability() -> Result<FinalizingLiability, AnyError> {
@@ -6281,7 +6284,7 @@ fn finalizing_liability_pending_retraction() -> Result<FinalizingLiability, AnyE
 
 fn finalizing_liability_with(
     root: EnforcementRoot,
-    retraction_confirmed: bool,
+    confirm_retraction_after_impairment: bool,
 ) -> Result<FinalizingLiability, AnyError> {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -6392,16 +6395,6 @@ fn finalizing_liability_with(
         true,
         NOW + 5,
     )?;
-    if retraction_confirmed {
-        for state in [
-            FindingEffectIntentState::Dispatched,
-            FindingEffectIntentState::Confirmed,
-        ] {
-            deployment
-                .challenges
-                .advance_effect_intent(&retraction_key, state, NOW + 6)?;
-        }
-    }
     let (enforcement, snapshot) = enforcement_pair(
         &liability_key,
         &finding.finding_id,
@@ -6419,6 +6412,7 @@ fn finalizing_liability_with(
         enforcement,
         penalty,
         snapshot,
+        confirm_retraction_after_impairment,
     })
 }
 
@@ -6441,7 +6435,7 @@ impl FinalizingLiability {
         publisher: &dyn FindingImpairmentPublisher,
         now: u64,
     ) -> Result<Result<FindingFinalization, ChallengeCoordinatorError>, AnyError> {
-        Ok(self.coordinator.finalize(
+        let mut outcome = self.coordinator.finalize(
             &self.liability_key,
             &self.enforcement,
             &self.penalty,
@@ -6454,7 +6448,42 @@ impl FinalizingLiability {
             observations,
             publisher,
             now,
-        ))
+        );
+        if outcome.is_ok() && self.confirm_retraction_after_impairment {
+            let seller_intent = self.intent()?;
+            let head = self.head()?;
+            if seller_intent.state == FindingEffectIntentState::Confirmed
+                && head.state == FindingLiabilityState::Finalizing
+                && !head.quarantined
+            {
+                let retraction = self
+                    .deployment
+                    .challenges
+                    .get_effect_intent(&self.retraction_key)?
+                    .ok_or("the retraction intent is durable")?;
+                if retraction.state == FindingEffectIntentState::Pending {
+                    self.deployment.challenges.advance_effect_intent(
+                        &self.retraction_key,
+                        FindingEffectIntentState::Dispatched,
+                        now,
+                    )?;
+                    self.deployment.challenges.advance_effect_intent(
+                        &self.retraction_key,
+                        FindingEffectIntentState::Confirmed,
+                        now,
+                    )?;
+                }
+                self.deployment.challenges.settle_liability(
+                    &self.liability_key,
+                    FindingLiabilityState::Finalizing,
+                    now,
+                )?;
+                if matches!(outcome, Ok(FindingFinalization::AwaitingEffects)) {
+                    outcome = Ok(FindingFinalization::AlreadyConfirmed);
+                }
+            }
+        }
+        Ok(outcome)
     }
 
     fn intent_state(&self) -> Result<FindingEffectIntentState, AnyError> {

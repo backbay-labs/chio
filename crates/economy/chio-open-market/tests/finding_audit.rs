@@ -218,6 +218,7 @@ fn resolved_outcomes_for_report(
                     format!("audit backing allocation:{finding_id}").as_bytes(),
                 ),
                 authorization: FindingChallengeAuthorizationKind::VenueAudit,
+                audit_epoch_envelope_sha256: Some(report.audit_epoch_envelope_sha256.clone()),
                 evidence_kind: FindingChallengeEvidenceKind::EvidenceInvalid,
                 verifier_profile_envelope_sha256: sha256_hex(b"audit verifier profile"),
                 evidence_bundle_digest: sha256_hex(
@@ -633,7 +634,8 @@ fn an_outcome_from_another_audit_round_cannot_resolve_a_report() {
     let envelope = signed_epoch_digest(&epoch);
     let mut report = report_for(&envelope, &selection);
     let mut outcomes = resolved_outcomes_for_report(&report, &eligible);
-    outcomes[0].body.trigger_digest = sha256_hex(b"another audit epoch envelope");
+    outcomes[0].body.audit_epoch_envelope_sha256 =
+        Some(sha256_hex(b"another audit epoch envelope"));
     outcomes[0].body.outcome_id = derive_outcome_id(&outcomes[0].body).test_expect("outcome id");
     outcomes[0] = SignedFindingChallengeOutcome::sign(outcomes[0].body.clone(), &audit_evaluator())
         .test_expect("sign cross-round outcome");

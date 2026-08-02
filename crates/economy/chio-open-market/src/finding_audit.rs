@@ -308,8 +308,9 @@ pub fn select_audit_targets_within_budget(
 /// either recorded as a missed attempt with a reason or attempted, and each
 /// attempted selection owes exactly one attempt receipt and one resolved,
 /// evaluator-signed outcome. The outcome must name that selection, use the
-/// venue-audit authorization branch, bind this exact epoch envelope as its
-/// trigger, and be evaluated after commitment but no later than publication.
+/// venue-audit authorization branch, carry this exact epoch envelope from its
+/// signed challenge authorization, and be evaluated after commitment but no
+/// later than publication.
 /// The report must carry the digest of each exact signed outcome envelope.
 ///
 /// Selection order is not part of the report's contract: the artifact's
@@ -440,7 +441,7 @@ pub fn verify_audit_report(
                 outcome.outcome_id.clone(),
             ));
         }
-        if outcome.trigger_digest != epoch_envelope_sha256 {
+        if outcome.audit_epoch_envelope_sha256.as_deref() != Some(epoch_envelope_sha256) {
             return Err(FindingAuditError::OutcomeRoundBinding(
                 outcome.outcome_id.clone(),
             ));

@@ -2111,6 +2111,35 @@ impl SqliteFindingChallengeStore {
                 effect_intent_state_name(state)
             )));
         }
+        if intent.kind == FindingEffectIntentKind::Retraction
+            && state == FindingEffectIntentState::Dispatched
+        {
+            let liability_key = intent
+                .liability_key
+                .as_deref()
+                .ok_or_else(|| invariant("a retraction intent must identify its liability"))?;
+            let liability = load_liability_tx(&transaction, liability_key)?
+                .ok_or(FindingChallengeStoreError::NotFound)?;
+            let confirmed_impairments: i64 = transaction
+                .query_row(
+                    r#"
+                    SELECT COUNT(*) FROM effect_intents
+                    WHERE liability_key = ?1
+                      AND kind = 'seller_impair'
+                      AND settlement_required = 1
+                      AND state = 'confirmed'
+                    "#,
+                    [liability_key],
+                    |row| row.get(0),
+                )
+                .map_err(sqlite_error)?;
+            if confirmed_impairments != 1 || liability.quarantined {
+                return Err(FindingChallengeStoreError::Conflict(
+                    "retraction dispatch requires one confirmed, reconciled seller impairment"
+                        .to_owned(),
+                ));
+            }
+        }
         let attempts = if state == FindingEffectIntentState::Dispatched {
             intent
                 .attempt_count

@@ -2922,6 +2922,18 @@ fn settlement_waits_for_every_required_effect_confirmation() {
         "pending required effects keep the liability finalizing"
     );
 
+    assert!(
+        matches!(
+            fixture.store.advance_effect_intent(
+                &required[2].0,
+                FindingEffectIntentState::Dispatched,
+                NOW + 7,
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "retraction cannot dispatch before seller impairment is confirmed"
+    );
+
     for (intent_key, kind, _) in &required[..2] {
         fixture
             .store
@@ -2954,28 +2966,16 @@ fn settlement_waits_for_every_required_effect_confirmation() {
     assert_eq!(still_finalizing.state, FindingLiabilityState::Finalizing);
     assert!(still_finalizing.publication_pending);
 
-    fixture
-        .store
-        .advance_effect_intent(
-            &required[2].0,
-            FindingEffectIntentState::Dispatched,
-            NOW + 8,
-        )
-        .expect("dispatch retraction");
-    fixture
-        .store
-        .advance_effect_intent(&required[2].0, FindingEffectIntentState::Confirmed, NOW + 8)
-        .expect("confirm retraction");
     assert!(
         matches!(
-            fixture.store.settle_liability(
-                &head.liability_key,
-                FindingLiabilityState::Finalizing,
+            fixture.store.advance_effect_intent(
+                &required[2].0,
+                FindingEffectIntentState::Dispatched,
                 NOW + 9,
             ),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
-        "a current quarantine blocks settlement even after every effect confirms"
+        "a quarantined impairment cannot publish a retraction"
     );
     assert_eq!(
         fixture
@@ -2988,6 +2988,22 @@ fn settlement_waits_for_every_required_effect_confirmation() {
         .store
         .set_liability_quarantine(&head.liability_key, false, NOW + 10)
         .expect("clear reconciled quarantine");
+    fixture
+        .store
+        .advance_effect_intent(
+            &required[2].0,
+            FindingEffectIntentState::Dispatched,
+            NOW + 10,
+        )
+        .expect("dispatch retraction after impairment reconciliation");
+    fixture
+        .store
+        .advance_effect_intent(
+            &required[2].0,
+            FindingEffectIntentState::Confirmed,
+            NOW + 10,
+        )
+        .expect("confirm retraction");
     assert_eq!(
         fixture
             .store

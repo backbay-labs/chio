@@ -56,6 +56,9 @@
             "venue_audit"
           ]
         },
+        "audit_epoch_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
         "evidence_kind": {
           "enum": [
             "digest_mismatch",
@@ -99,6 +102,30 @@
         }
       },
       "allOf": [
+        {
+          "if": {
+            "properties": {
+              "authorization": {
+                "const": "venue_audit"
+              }
+            },
+            "required": [
+              "authorization"
+            ]
+          },
+          "then": {
+            "required": [
+              "audit_epoch_envelope_sha256"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "audit_epoch_envelope_sha256"
+              ]
+            }
+          }
+        },
         {
           "if": {
             "properties": {

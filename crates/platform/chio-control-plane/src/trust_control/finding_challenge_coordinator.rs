@@ -1266,6 +1266,12 @@ impl FindingChallengeCoordinator {
             listing_id: body.listing_id.clone(),
             backing_allocation_id: admission.body.backing_allocation_id.clone(),
             authorization: body.authorization.kind(),
+            audit_epoch_envelope_sha256: match &body.authorization {
+                chio_finding::FindingChallengeAuthorization::BuyerSubmission(_) => None,
+                chio_finding::FindingChallengeAuthorization::VenueAudit(audit) => {
+                    Some(audit.audit_epoch_envelope_sha256.clone())
+                }
+            },
             evidence_kind: body.evidence.kind(),
             verifier_profile_envelope_sha256: profile_envelope_sha256.clone(),
             evidence_bundle_digest: evidence_bundle_digest.clone(),
@@ -1800,6 +1806,9 @@ impl FindingChallengeCoordinator {
                 })
             }
             AppealDisposition::Final { sanction_case } => {
+                if record.state != FindingLiabilityState::PendingAppeal {
+                    return Err(ChallengeCoordinatorError::LiabilityState("pending_appeal"));
+                }
                 self.require_live_role(&self.finalization_pin, now, now, "finalization")?;
                 self.require_appeal_window_closed(&record, sanction_case, sanction_case_id, now)?;
                 let penalty_issued_at = record
