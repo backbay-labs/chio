@@ -1599,6 +1599,14 @@ fn blocking_sales_stops_the_slot_line_and_the_wait_predicate_is_exact() {
             .expect("wait predicate"),
         "slot one is still reserved"
     );
+    assert_eq!(
+        fixture
+            .store
+            .closed_settled_purchase_keys_at_or_below(LISTING_ID, &fixture.allocation_id, 2,)
+            .expect("atomic closure and claim enumeration"),
+        None,
+        "an open slot cannot be observed beside an apparently complete claim set"
+    );
 
     assert_eq!(
         fixture
@@ -1680,6 +1688,14 @@ fn blocking_sales_stops_the_slot_line_and_the_wait_predicate_is_exact() {
             .all_slots_closed_at_or_below(LISTING_ID, 2)
             .expect("wait predicate"),
         "an aborted purchase closes its slot exactly as a settled one does"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .closed_settled_purchase_keys_at_or_below(LISTING_ID, &fixture.allocation_id, 2,)
+            .expect("atomic closure and claim enumeration"),
+        Some(vec![hex64('d')]),
+        "the complete set is returned from the same snapshot that proves closure"
     );
 
     // Blocks are per listing.

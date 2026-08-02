@@ -168,6 +168,7 @@ pub(crate) fn evaluate_replay_contradiction(
             &tuple.receipt_ref.receipt_sha256,
         ) || !checkpoint_matches_reference(resolved.checkpoint, &tuple.checkpoint_ref)
             || verify_receipt_strict(&resolved.receipt.receipt).is_err()
+            || !matches!(resolved.receipt.receipt.action.verify_hash(), Ok(true))
         {
             return Ok(facet.adjudication(
                 FindingReplayPredicateResult::Indeterminate,

@@ -1154,10 +1154,8 @@ fn build_evidence_case(
     // empty so the evaluator, rather than fixture setup, performs the
     // fail-closed rejection.
     let checkpoint_transparency =
-        match build_checkpoint_transparency(core::slice::from_ref(&challenged_checkpoint)) {
-            Ok(summary) => summary,
-            Err(_) => CheckpointTransparencySummary::default(),
-        };
+        build_checkpoint_transparency(core::slice::from_ref(&challenged_checkpoint))
+            .unwrap_or_default();
     Ok(EvidenceCase {
         challenge,
         purchase_record,
@@ -1245,6 +1243,8 @@ pub struct ReplayShape {
     pub signer: Option<u8>,
     /// Break the receipt-to-observation digest commitment.
     pub break_content_commitment: bool,
+    /// Sign a receipt whose action hash contradicts its own parameters.
+    pub break_action_commitment: bool,
     /// Report an environment other than the one the recipe committed.
     pub environment_digest: Option<String>,
     /// Decision carried by each replay receipt.
@@ -1258,6 +1258,7 @@ impl Default for ReplayShape {
             recipe_preimage: None,
             signer: None,
             break_content_commitment: false,
+            break_action_commitment: false,
             environment_digest: None,
             decision: Decision::Allow,
         }
@@ -1345,14 +1346,18 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
         } else {
             sha256_hex(text.as_bytes())
         };
+        let mut action = ToolCallAction::from_parameters(serde_json::json!({
+            "replay_run_id": REPLAY_RUN_ID,
+            "phase": index,
+        }))?;
+        if shape.break_action_commitment {
+            action.parameter_hash = HEX64_THIRD.to_string();
+        }
         let receipt = signed_receipt(
             &kernel,
             1_746_000_000 + index as u64,
             "finding.replay",
-            ToolCallAction::from_parameters(serde_json::json!({
-                "replay_run_id": REPLAY_RUN_ID,
-                "phase": index,
-            }))?,
+            action,
             shape.decision.clone(),
             &content_hash,
             None,

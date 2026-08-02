@@ -120,6 +120,11 @@ pub struct FindingMarketConfig {
     /// venue. This is independent of the fee-schedule operator roster.
     pub listing: FindingAuthorityPin,
     pub governance_root: FindingAuthorityPin,
+    /// Independently signs revocation-status readings for every market
+    /// role, including the governance root. Keeping this key outside the
+    /// governed roster prevents a compromised governance root from
+    /// declaring itself and its delegates live.
+    pub authority_status: FindingAuthorityPin,
     pub verifier_report: FindingAuthorityPin,
     pub collateral: FindingAuthorityPin,
     pub purchase: FindingAuthorityPin,
@@ -235,6 +240,7 @@ impl FindingMarketConfig {
             ("venue", &self.venue),
             ("listing", &self.listing),
             ("governance root", &self.governance_root),
+            ("authority status", &self.authority_status),
             ("verifier report", &self.verifier_report),
             ("collateral", &self.collateral),
             ("purchase", &self.purchase),

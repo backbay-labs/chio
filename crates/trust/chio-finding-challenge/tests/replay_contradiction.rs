@@ -196,6 +196,31 @@ fn a_receipt_that_does_not_commit_its_observation_is_indeterminate() -> TestResu
 }
 
 #[test]
+fn a_receipt_with_a_broken_action_commitment_is_indeterminate() -> TestResult {
+    let world = world()?;
+    let shape = ReplayShape {
+        phases: vec![PhaseShape::baseline_fails(), PhaseShape::candidate_fails()],
+        break_action_commitment: true,
+        ..ReplayShape::default()
+    };
+    let case = replay_case(&world, &shape)?;
+    let reproductions = case.reproductions();
+    let evidence = case.evidence(&reproductions);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::ReplayObservationNotEstablished,
+    )?;
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
+    assert!(!evaluation.authorizes_penalty());
+    Ok(())
+}
+
+#[test]
 fn a_denied_replay_receipt_cannot_establish_an_execution() -> TestResult {
     let world = world()?;
     let shape = ReplayShape {

@@ -507,6 +507,7 @@ struct ChallengeRolePins {
     venue_authority: FindingAuthorityPin,
     audit_authority: FindingAuthorityPin,
     governance_authority: FindingAuthorityPin,
+    authority_status: FindingAuthorityPin,
     purchase_authority: FindingAuthorityPin,
     settlement_observer: FindingAuthorityPin,
     settlement_finality_requirement: FindingFinalityRequirement,
@@ -553,7 +554,7 @@ pub struct FindingCollateralFacts<'a> {
     pub allocation_id: &'a str,
 }
 
-/// Governance-authenticated reading of one pinned authority's revocation
+/// Independently authenticated reading of one pinned authority's revocation
 /// source. `revoked_from` is compared with the instant the role acted, so
 /// a later revocation does not rewrite an earlier valid signature.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -572,7 +573,7 @@ pub type SignedFindingAuthorityStatus = SignedExportEnvelope<FindingAuthoritySta
 
 /// Trusted resolver for a pin's externally published revocation source.
 /// The returned envelope is still verified by the coordinator against the
-/// pinned governance root and exact pin fields.
+/// independent status-authority pin and exact role fields.
 pub trait FindingAuthorityStatusResolver: Send + Sync {
     fn resolve(
         &self,
@@ -821,6 +822,7 @@ impl FindingChallengeCoordinator {
                 venue_authority: config.venue.clone(),
                 audit_authority: config.audit_authority.clone(),
                 governance_authority: config.governance_root.clone(),
+                authority_status: config.authority_status.clone(),
                 purchase_authority: config.purchase.clone(),
                 settlement_observer: config.settlement_observer.clone(),
                 settlement_finality_requirement: config.settlement_finality_requirement,
@@ -1511,13 +1513,23 @@ impl FindingChallengeCoordinator {
             )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
 
-        if !self
+        // Re-enumerate after the upheld transaction raised the sales block,
+        // and prove closure in the same SQLite snapshot as that enumeration.
+        // A reservation settling across the earlier pure checks is therefore
+        // either still open here or included in the immutable claim set.
+        let authoritative_claims = self
             .purchases
-            .all_slots_closed_at_or_below(identity.listing_id, cutoff_slot)
+            .closed_settled_purchase_keys_at_or_below(
+                identity.listing_id,
+                identity.allocation_id,
+                cutoff_slot,
+            )
             .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?
-        {
-            return Err(ChallengeCoordinatorError::ClaimWindowOpen);
+            .ok_or(ChallengeCoordinatorError::ClaimWindowOpen)?;
+        if supplied_claims != authoritative_claims {
+            return Err(ChallengeCoordinatorError::ClaimSetMismatch);
         }
+        self.require_purchase_authority_for_candidates(&authoritative_claims, now)?;
         // The deadline the head froze when the window opened governs, not
         // the one this call just derived: a retry reads the instant harmed
         // buyers were promised rather than one measured from its own
@@ -1925,6 +1937,16 @@ impl FindingChallengeCoordinator {
                 return Err(ChallengeCoordinatorError::LiabilityIdentity(label));
             }
         }
+        enforcement
+            .body
+            .validate()
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        verify_pinned_envelope(
+            enforcement,
+            &self.finalization_authority.public_key(),
+            "finding challenge enforcement",
+        )
+        .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
         self.require_penalty_matches_enforcement(&liability, enforcement, penalty, now)?;
         self.require_live_role(
             &self.finalization_pin,
@@ -1932,6 +1954,39 @@ impl FindingChallengeCoordinator {
             now,
             "finalization",
         )?;
+        let seller_intent_id = enforcement
+            .body
+            .effect_intents
+            .iter()
+            .find(|binding| binding.kind == chio_finding::FindingEffectIntentKind::SellerImpair)
+            .map(|binding| binding.intent_id.as_str())
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        let seller_intent = self
+            .challenges
+            .get_effect_intent(seller_intent_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if seller_intent.kind != FindingEffectIntentKind::SellerImpair
+            || seller_intent.liability_key.as_deref() != Some(liability_key)
+            || !seller_intent.settlement_required
+        {
+            return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
+        }
+        if seller_intent.state == FindingEffectIntentState::Confirmed {
+            // A confirmed impairment no longer depends on the freshness of
+            // the pre-dispatch collateral observation. The only remaining
+            // work is to wait for the other signed effects and settle the
+            // head, without ever dispatching the impairment again.
+            return if self.settle_if_enforcement_effects_confirmed(
+                liability_key,
+                enforcement,
+                now,
+            )? {
+                Ok(FindingFinalization::AlreadyConfirmed)
+            } else {
+                Ok(FindingFinalization::AwaitingEffects)
+            };
+        }
         self.require_live_settlement_observer(bond_snapshot, now)?;
         let settlement_observer = self.require_live_role(
             &self.pins.settlement_observer,
@@ -2547,14 +2602,19 @@ impl FindingChallengeCoordinator {
             .authority_status
             .resolve(pin, now)
             .map_err(|_| reject("revocation source could not be resolved"))?;
-        let governance_key = self
+        let status_key = self
             .pins
-            .governance_authority
+            .authority_status
             .key()
-            .map_err(|_| reject("governance status authority pin is invalid"))?;
-        verify_pinned_envelope(&signed, &governance_key, "authority status")
+            .map_err(|_| reject("status authority pin is invalid"))?;
+        verify_pinned_envelope(&signed, &status_key, "authority status")
             .map_err(|_| reject("revocation status signature is invalid"))?;
         let body = &signed.body;
+        if !self.pins.authority_status.covers(body.observed_at) {
+            return Err(reject(
+                "status authority is outside its configured validity window",
+            ));
+        }
         let key = pin.key().map_err(|_| reject("authority pin is invalid"))?;
         if body.schema != FINDING_AUTHORITY_STATUS_SCHEMA_V1
             || body.status_ref != pin.revocation_status_ref

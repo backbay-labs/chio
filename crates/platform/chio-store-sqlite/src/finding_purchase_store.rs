@@ -1119,32 +1119,42 @@ impl SqliteFindingPurchaseStore {
         require_hex64(allocation_id, "allocation_id")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
-        let mut statement = transaction
-            .prepare(
+        settled_purchase_keys_at_or_below_tx(&transaction, listing_id, allocation_id, cutoff)
+    }
+
+    /// Return the complete settled claim set only when every slot at or
+    /// below the cutoff is terminal in the same database snapshot.
+    ///
+    /// The closure predicate and enumeration deliberately share one read
+    /// transaction. A purchase that settles concurrently is therefore
+    /// either still visible as reserved (and this returns `None`) or is
+    /// included in the returned key set. Once the listing sales block is
+    /// raised, a successful result cannot be invalidated by a new slot.
+    pub fn closed_settled_purchase_keys_at_or_below(
+        &self,
+        listing_id: &str,
+        allocation_id: &str,
+        cutoff: u64,
+    ) -> Result<Option<Vec<String>>, FindingPurchaseStoreError> {
+        require_identifier(listing_id, "listing_id")?;
+        require_hex64(allocation_id, "allocation_id")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let open: i64 = transaction
+            .query_row(
                 r#"
-                SELECT records.purchase_key
-                FROM purchase_records AS records
-                JOIN pending_purchase_slots AS slots
-                  ON slots.reservation_id = records.reservation_id
-                JOIN seller_exposure_encumbrances AS encumbrances
-                  ON encumbrances.reservation_id = records.reservation_id
-                WHERE slots.listing_id = ?1
-                  AND slots.slot_ordinal <= ?2
-                  AND slots.state = 'closed_record'
-                  AND encumbrances.allocation_id = ?3
-                ORDER BY records.purchase_key ASC
+                SELECT COUNT(*) FROM pending_purchase_slots
+                WHERE listing_id = ?1 AND slot_ordinal <= ?2 AND state = 'reserved'
                 "#,
+                params![listing_id, sqlite_i64(cutoff, "cutoff")?],
+                |row| row.get(0),
             )
             .map_err(sqlite_error)?;
-        let keys = statement
-            .query_map(
-                params![listing_id, sqlite_i64(cutoff, "cutoff")?, allocation_id],
-                |row| row.get::<_, String>(0),
-            )
-            .map_err(sqlite_error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(sqlite_error)?;
-        Ok(keys)
+        if open != 0 {
+            return Ok(None);
+        }
+        settled_purchase_keys_at_or_below_tx(&transaction, listing_id, allocation_id, cutoff)
+            .map(Some)
     }
 
     /// One retained failed-delivery record, re-checked against its stored
@@ -1687,6 +1697,40 @@ fn insert_destination_tx(
         ));
     }
     Ok(())
+}
+
+fn settled_purchase_keys_at_or_below_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+    allocation_id: &str,
+    cutoff: u64,
+) -> Result<Vec<String>, FindingPurchaseStoreError> {
+    let mut statement = transaction
+        .prepare(
+            r#"
+            SELECT records.purchase_key
+            FROM purchase_records AS records
+            JOIN pending_purchase_slots AS slots
+              ON slots.reservation_id = records.reservation_id
+            JOIN seller_exposure_encumbrances AS encumbrances
+              ON encumbrances.reservation_id = records.reservation_id
+            WHERE slots.listing_id = ?1
+              AND slots.slot_ordinal <= ?2
+              AND slots.state = 'closed_record'
+              AND encumbrances.allocation_id = ?3
+            ORDER BY records.purchase_key ASC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let keys = statement
+        .query_map(
+            params![listing_id, sqlite_i64(cutoff, "cutoff")?, allocation_id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(keys)
 }
 
 /// Raise one listing's sales block inside a caller-supplied transaction.

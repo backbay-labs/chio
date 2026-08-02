@@ -303,7 +303,7 @@ struct TestAuthorityStatusResolver {
 impl TestAuthorityStatusResolver {
     fn live() -> Self {
         Self {
-            signer_seed: 1,
+            signer_seed: 36,
             status_ref_override: None,
             revoked_authority: None,
             revoked_from_override: None,
@@ -346,6 +346,7 @@ fn market_config() -> FindingMarketConfig {
         venue: authority_pin(6, "venue"),
         listing: authority_pin(24, "listing"),
         governance_root: authority_pin(1, "governance"),
+        authority_status: authority_pin(36, "authority-status"),
         verifier_report: authority_pin(15, "verifier-report"),
         collateral: authority_pin(4, "collateral"),
         purchase: authority_pin(16, "purchase"),
@@ -6420,6 +6421,44 @@ fn finding_challenge_confirmed_impairment_waits_for_retraction_before_settlement
 }
 
 #[test]
+fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> TestResult {
+    let case = finalizing_liability_pending_retraction()?;
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        case.deployment.challenges.advance_effect_intent(
+            &case.intent_key,
+            state,
+            SETTLEMENT_NOW,
+        )?;
+    }
+
+    let stale_at = OBSERVED_AT + MAX_SNAPSHOT_AGE_SECS + 1;
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, stale_at)?,
+        FindingFinalization::AwaitingEffects,
+        "a landed impairment waits on signed effects without revalidating its old snapshot"
+    );
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        case.deployment.challenges.advance_effect_intent(
+            &case.retraction_key,
+            state,
+            stale_at + 1,
+        )?;
+    }
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, stale_at + 2)?,
+        FindingFinalization::AlreadyConfirmed
+    );
+    assert_eq!(case.head()?.state, FindingLiabilityState::Settled);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_a_superseded_sanction_never_reaches_the_publisher() -> TestResult {
     let case = finalizing_liability()?;
     // Another sanction recorded after the enforcement was signed and
@@ -7105,6 +7144,13 @@ fn finding_market_configuration_validates_listing_and_snapshot_pins() -> TestRes
         .clone_from(&duplicate_listing.venue.key_hex);
     assert!(duplicate_listing.validate().is_err());
 
+    let mut circular_status_authority = market_config();
+    circular_status_authority
+        .authority_status
+        .key_hex
+        .clone_from(&circular_status_authority.governance_root.key_hex);
+    assert!(circular_status_authority.validate().is_err());
+
     let mut unbounded_snapshot = market_config();
     unbounded_snapshot.max_snapshot_age_secs = 0;
     assert!(unbounded_snapshot.validate().is_err());
@@ -7144,8 +7190,9 @@ fn finding_challenge_an_evaluator_key_outside_its_pinned_lifecycle_signs_nothing
     ));
 
     // Status is returned by the injected resolver, then authenticated
-    // against the governance pin. A forged signature, another source, a
-    // revoked key, and a stale reading all refuse before adjudication.
+    // against the independent status-authority pin. A governance-root
+    // self-signature, another source, a revoked key, and a stale reading
+    // all refuse before adjudication.
     let readings = [
         (
             TestAuthorityStatusResolver {
@@ -7170,7 +7217,7 @@ fn finding_challenge_an_evaluator_key_outside_its_pinned_lifecycle_signs_nothing
         ),
         (
             TestAuthorityStatusResolver {
-                signer_seed: 2,
+                signer_seed: 1,
                 ..TestAuthorityStatusResolver::live()
             },
             "revocation status signature is invalid",
