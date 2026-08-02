@@ -43,36 +43,37 @@ use chio_core::receipt::metadata::{
 };
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
-    compute_admission_id, compute_allocation_id, compute_audit_epoch_id, compute_challenge_id,
-    compute_enforcement_id, compute_failed_delivery_id, compute_finding_id, compute_profile_id,
-    compute_snapshot_id, compute_terms_id, derive_audit_seed_commitment, derive_purchase_key,
-    sign_finding, signed_envelope_sha256, Finding, FindingAdmission, FindingAffectedDelivery,
-    FindingAuditEpoch, FindingAuthorityKeyPolicy, FindingBackingRequirement,
-    FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass, FindingBuyerSubmission,
-    FindingChallenge, FindingChallengeAuthorization, FindingChallengeBondLimit,
-    FindingChallengeEnforcement, FindingChallengeEvidence, FindingChallengeFacet,
-    FindingChallengeStanding, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
-    FindingCheckpointRef, FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor,
-    FindingDisputeBondClass, FindingDisputeFeeEvent, FindingDisputeFeeTerminal,
-    FindingDisputeLockRef, FindingEffectIntentBinding, FindingEnforcementDestination,
-    FindingEvidenceClass, FindingEvidenceInvalidity, FindingFacetKind, FindingFailedDelivery,
-    FindingFeeEvent, FindingFeeTerminalBinding, FindingFinalizedBondSnapshot,
-    FindingGuaranteeClass, FindingHoldReleaseTerminal, FindingMarketTerms, FindingObservedFinality,
-    FindingOutcomeClass, FindingPoolBinding, FindingPredicate, FindingPurchaseRecord,
-    FindingReceiptRef, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
-    FindingRecipePhase, FindingRecipePhaseKind, FindingReplayObservation,
-    FindingReplayPredicateResult, FindingReplayRecipeInput, FindingReplayReproduction,
-    FindingReplayTerminalResult, FindingResourceCaps, FindingVaultReference,
-    FindingVenueAuditAuthorization, SignedFindingAdmission, SignedFindingChallenge,
-    SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
-    SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery,
-    SignedFindingFinalizedBondSnapshot, SignedFindingMarketTerms, SignedFindingPurchaseRecord,
-    FINDING_ADMISSION_SCHEMA_V1, FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
-    FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1, FINDING_CHALLENGE_SCHEMA_V1,
-    FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_FAILED_DELIVERY_SCHEMA_V1,
-    FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1,
-    FINDING_PURCHASE_RECORD_SCHEMA_V1, FINDING_REPLAY_OBSERVATION_SCHEMA_V1,
-    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1, MAX_PUBLISHED_RATE_BPS,
+    audit_seed_witness_signing_bytes, compute_admission_id, compute_allocation_id,
+    compute_audit_epoch_id, compute_challenge_id, compute_enforcement_id,
+    compute_failed_delivery_id, compute_finding_id, compute_profile_id, compute_snapshot_id,
+    compute_terms_id, derive_audit_seed_commitment, derive_purchase_key, sign_finding,
+    signed_envelope_sha256, Finding, FindingAdmission, FindingAffectedDelivery, FindingAuditEpoch,
+    FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
+    FindingBondBacking, FindingBondClass, FindingBuyerSubmission, FindingChallenge,
+    FindingChallengeAuthorization, FindingChallengeBondLimit, FindingChallengeEnforcement,
+    FindingChallengeEvidence, FindingChallengeFacet, FindingChallengeStanding,
+    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingCheckpointRef,
+    FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor, FindingDisputeBondClass,
+    FindingDisputeFeeEvent, FindingDisputeFeeTerminal, FindingDisputeLockRef,
+    FindingEffectIntentBinding, FindingEnforcementDestination, FindingEvidenceClass,
+    FindingEvidenceInvalidity, FindingFacetKind, FindingFailedDelivery, FindingFeeEvent,
+    FindingFeeTerminalBinding, FindingFinalizedBondSnapshot, FindingGuaranteeClass,
+    FindingHoldReleaseTerminal, FindingMarketTerms, FindingObservedFinality, FindingOutcomeClass,
+    FindingPoolBinding, FindingPredicate, FindingPurchaseRecord, FindingReceiptRef,
+    FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase,
+    FindingRecipePhaseKind, FindingReplayObservation, FindingReplayPredicateResult,
+    FindingReplayRecipeInput, FindingReplayReproduction, FindingReplayTerminalResult,
+    FindingResourceCaps, FindingVaultReference, FindingVenueAuditAuthorization,
+    SignedFindingAdmission, SignedFindingChallenge, SignedFindingChallengeEnforcement,
+    SignedFindingChallengeOutcome, SignedFindingChallengeVerifierProfile,
+    SignedFindingFailedDelivery, SignedFindingFinalizedBondSnapshot, SignedFindingMarketTerms,
+    SignedFindingPurchaseRecord, FINDING_ADMISSION_SCHEMA_V1, FINDING_AUDIT_EPOCH_SCHEMA_V1,
+    FINDING_BOND_BACKING_SCHEMA_V1, FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1,
+    FINDING_CHALLENGE_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
+    FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1,
+    FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
+    FINDING_REPLAY_OBSERVATION_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
+    MAX_PUBLISHED_RATE_BPS,
 };
 use chio_finding_challenge::{
     FindingChallengeClassEvidence, FindingDigestMismatchEvidence, FindingEvidenceInvalidEvidence,
@@ -361,6 +362,7 @@ fn market_config() -> FindingMarketConfig {
             min_depth: 64,
         },
         audit_authority: authority_pin(35, "audit-authority"),
+        audit_randomness_witness: authority_pin(37, "audit-randomness-witness"),
         audit_pool: FindingPoolPin {
             principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
             rail_destination: AUDIT_POOL_DESTINATION.to_string(),
@@ -2033,14 +2035,30 @@ fn unrelated_audit_round() -> Result<FindingAuditRound, AnyError> {
 /// the full published rate so every eligible listing is drawn.
 fn audit_round_over(eligible: Vec<EligibleListing>) -> Result<FindingAuditRound, AnyError> {
     let revealed_seed = audit_seed();
+    let audit_authority = keypair(35);
+    let randomness_witness = keypair(37);
+    let seed_witnessed_at = NOW - 2_000;
+    let eligible_snapshot_at = NOW - 1_500;
+    let seed_commitment = derive_audit_seed_commitment(&revealed_seed);
     let mut epoch = FindingAuditEpoch {
         schema: FINDING_AUDIT_EPOCH_SCHEMA_V1.to_string(),
         audit_epoch_id: String::new(),
         epoch_index: 1,
+        audit_authority: audit_authority.public_key(),
+        seed_witnessed_at,
+        eligible_snapshot_at,
+        seed_witness: randomness_witness.public_key(),
+        seed_witness_signature: randomness_witness.sign(&audit_seed_witness_signing_bytes(
+            &audit_authority.public_key(),
+            1,
+            &seed_commitment,
+            seed_witnessed_at,
+            eligible_snapshot_at,
+        )),
         eligible_snapshot_digest: derive_eligible_snapshot_digest(&eligible)?,
         eligible_listing_count: u64::try_from(eligible.len())?,
         fee_schedule_envelope_sha256: signed_envelope_sha256(&published_fee_schedule()?)?,
-        seed_commitment: derive_audit_seed_commitment(&revealed_seed),
+        seed_commitment,
         selection_algorithm_id: AUDIT_SELECTION_ALGORITHM_V1.to_string(),
         published_rate_bps: MAX_PUBLISHED_RATE_BPS,
         available_budget: usd(10_000),
@@ -2050,7 +2068,7 @@ fn audit_round_over(eligible: Vec<EligibleListing>) -> Result<FindingAuditRound,
     epoch.audit_epoch_id = compute_audit_epoch_id(&epoch)?;
     epoch.validate()?;
     Ok(FindingAuditRound {
-        epoch: SignedExportEnvelope::sign(epoch, &keypair(35))?,
+        epoch: SignedExportEnvelope::sign(epoch, &audit_authority)?,
         revealed_seed,
         eligible,
     })
@@ -2141,6 +2159,7 @@ fn settle_purchase(
         tag,
         destination,
         realized_spend_units,
+        "USD",
         now,
         PayoutAdmission::Admitted,
     )
@@ -2155,6 +2174,7 @@ fn settle_purchase_with(
     tag: &str,
     destination: &str,
     realized_spend_units: u64,
+    record_currency: &str,
     now: u64,
     admission: PayoutAdmission,
 ) -> Result<SettledPurchase, AnyError> {
@@ -2196,8 +2216,14 @@ fn settle_purchase_with(
         listing_id: LISTING_ID.to_string(),
         accepted_bid_envelope_sha256: bid.clone(),
         venue_admission_envelope_sha256: deployment.admission_envelope_sha256.clone(),
-        accepted_price: usd(100),
-        realized_spend: usd(realized_spend_units),
+        accepted_price: MonetaryAmount {
+            units: 100,
+            currency: record_currency.to_owned(),
+        },
+        realized_spend: MonetaryAmount {
+            units: realized_spend_units,
+            currency: record_currency.to_owned(),
+        },
         seller_backing_envelope_sha256: hex64('6'),
         encumbrance_id: format!("encumbrance-{tag}"),
         delivery_receipt_id: format!("receipt-delivery-{tag}"),
@@ -4799,6 +4825,7 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
         "beta",
         BUYER_TWO_DESTINATION,
         40,
+        "USD",
         NOW + 1,
         PayoutAdmission::Admitted,
     )?;
@@ -4873,27 +4900,27 @@ fn finding_challenge_harm_in_another_currency_seals_nothing() -> TestResult {
     // terms sign the same denomination the collateral facts carry, so
     // what stands between this sale and the payout is the harm
     // verification alone.
-    let stake = MonetaryAmount {
-        units: 300,
-        currency: "EUR".to_string(),
-    };
-    let required = MonetaryAmount {
-        units: 5_000,
-        currency: "EUR".to_string(),
-    };
-    let eur_terms = market_terms_shaped(|terms| {
-        terms.backing_requirement.base_finding_stake.currency = "EUR".to_string();
-        terms.backing_requirement.maximum_sale_exposure.currency = "EUR".to_string();
-    })?;
-    let deployment = deployment_publishing_terms(std::slice::from_ref(&eur_terms))?;
+    let stake = usd(300);
+    let required = usd(5_000);
+    let terms = market_terms(CLAIM_WINDOW_SECS)?;
+    let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
-    let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 60, NOW)?;
+    let sale = settle_purchase_with(
+        &deployment,
+        &deployment.allocation_id,
+        "alpha",
+        BUYER_ONE_DESTINATION,
+        60,
+        "EUR",
+        NOW,
+        PayoutAdmission::Admitted,
+    )?;
     let ready =
-        ready_to_uphold_with_terms_and_penalty(&deployment, &coordinator, &eur_terms, 100, "EUR")?;
+        ready_to_uphold_with_terms_and_penalty(&deployment, &coordinator, &terms, 100, "USD")?;
     let refused = uphold_across_claim_window(
         &coordinator,
-        &eur_terms,
+        &terms,
         &ready.challenge,
         &ready.outcome,
         &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
@@ -5828,13 +5855,15 @@ fn settlement_config() -> Result<SettlementChainConfig, AnyError> {
         .as_ref()
         .ok_or("anchor inclusion proof example carries a chain anchor")?;
     let rpc_url = "http://127.0.0.1:8545".to_string();
-    let mut policy = SettlementPolicyConfig::default();
-    policy.finding_impairment_destination_allowlist = [
-        EVM_BUYER_DESTINATION.to_string(),
-        EVM_COMMUNITY_FUND.to_string(),
-    ]
-    .into_iter()
-    .collect();
+    let policy = SettlementPolicyConfig {
+        finding_impairment_destination_allowlist: [
+            EVM_BUYER_DESTINATION.to_string(),
+            EVM_COMMUNITY_FUND.to_string(),
+        ]
+        .into_iter()
+        .collect(),
+        ..SettlementPolicyConfig::default()
+    };
     Ok(SettlementChainConfig {
         chain_id: anchor.chain_id.clone(),
         network_name: "Devnet".to_string(),
@@ -7856,8 +7885,8 @@ fn finding_challenge_every_cross_class_evidence_pairing_is_inadmissible() -> Tes
                 .ok_or("the challenge is durable")?;
             assert_eq!(
                 record.state,
-                FindingChallengeState::Evaluating,
-                "an inadmissible submission never advances to a verdict state"
+                FindingChallengeState::Submitted,
+                "an inadmissible submission never enters evaluation"
             );
             assert!(record.outcome_envelope_sha256.is_none());
         }
@@ -7932,7 +7961,7 @@ fn finding_challenge_a_foreign_recipe_preimage_never_reaches_a_verdict() -> Test
         .challenges
         .get_challenge(&case.challenge.body.challenge_id)?
         .ok_or("the challenge is durable")?;
-    assert_eq!(record.state, FindingChallengeState::Evaluating);
+    assert_eq!(record.state, FindingChallengeState::Submitted);
     assert!(record.outcome_envelope_sha256.is_none());
 
     // The same reproduction set against the committed recipe adjudicates,
@@ -8131,6 +8160,7 @@ fn finding_challenge_a_payout_destination_that_was_never_admitted_is_refused() -
         "alpha",
         BUYER_ONE_DESTINATION,
         50,
+        "USD",
         NOW,
         PayoutAdmission::Withheld,
     )?;

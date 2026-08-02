@@ -76,9 +76,13 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 4;
-const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] =
-    &["challenges", "admission_operations", "chio_serving_owner"];
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 5;
+const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
+    "challenges",
+    "finding_challenge_projection_commits",
+    "admission_operations",
+    "chio_serving_owner",
+];
 const FINDING_CHALLENGE_SCHEMA: &str = include_str!("finding_challenge_store.sql");
 
 /// Upper bound on every opaque identifier this store persists. An
@@ -563,6 +567,9 @@ impl SqliteFindingChallengeStore {
     }
 
     fn commit_write(&self, transaction: Transaction<'_>) -> Result<(), FindingChallengeStoreError> {
+        self.serving_owner
+            .append_finding_challenge_projection_if_changed(&transaction)
+            .map_err(|error| FindingChallengeStoreError::Unavailable(error.to_string()))?;
         transaction.commit().map_err(|error| {
             FindingChallengeStoreError::OutcomeUnknown(
                 self.serving_owner
@@ -731,82 +738,60 @@ impl SqliteFindingChallengeStore {
         }
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
+        let target = record_verdict_tx(
+            &transaction,
+            challenge_id,
+            verdict,
+            outcome_envelope_sha256,
+            now,
+        )?;
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(target)
+    }
+
+    /// Atomically close an upheld evaluation only while the evaluator's
+    /// signed exposure still matches the authoritative allocation, and
+    /// raise the listing sales block in the same transaction.
+    ///
+    /// If a purchase reservation races the evaluator's earlier read, the
+    /// exposure mismatch rolls back both the block and the verdict. The
+    /// challenge remains evaluating and a retry can sign the refreshed
+    /// calculation. Once the transaction commits, no new reservation can
+    /// change the exposure behind the terminal outcome.
+    pub fn record_upheld_verdict_with_exposure_fence(
+        &self,
+        challenge_id: &str,
+        outcome_envelope_sha256: &str,
+        allocation_id: &str,
+        expected_open_exposure_units: u64,
+        now: u64,
+    ) -> Result<FindingChallengeState, FindingChallengeStoreError> {
+        require_identifier(challenge_id, "challenge_id")?;
+        require_hex64(outcome_envelope_sha256, "outcome_envelope_sha256")?;
+        require_hex64(allocation_id, "allocation_id")?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
         let challenge = load_challenge_tx(&transaction, challenge_id)?
             .ok_or(FindingChallengeStoreError::NotFound)?;
-        match challenge.state {
-            FindingChallengeState::Evaluating => {}
-            FindingChallengeState::Submitted => {
+        if challenge.state == FindingChallengeState::Evaluating {
+            let authoritative = outstanding_exposure_total_tx(&transaction, allocation_id, now)
+                .map_err(purchase_error)?;
+            if authoritative != expected_open_exposure_units {
                 return Err(FindingChallengeStoreError::Conflict(
-                    "a verdict requires an evaluation already in progress".to_owned(),
+                    "allocation exposure changed before the upheld verdict".to_owned(),
                 ));
             }
-            recorded => {
-                if challenge.outcome_envelope_sha256.as_deref() == Some(outcome_envelope_sha256)
-                    && verdict_admits_state(verdict, recorded)
-                {
-                    return Ok(recorded);
-                }
-                return Err(FindingChallengeStoreError::Conflict(format!(
-                    "challenge already carries a verdict in state {}",
-                    challenge_state_name(recorded)
-                )));
-            }
+            block_new_slots_tx(&transaction, &challenge.listing_id, now).map_err(purchase_error)?;
         }
-        let (target, retry_count, retry_deadline) = match verdict {
-            FindingChallengeVerdict::Upheld => (
-                FindingChallengeState::Upheld,
-                challenge.retry_count,
-                challenge.retry_deadline,
-            ),
-            FindingChallengeVerdict::Rejected => (
-                FindingChallengeState::Rejected,
-                challenge.retry_count,
-                challenge.retry_deadline,
-            ),
-            FindingChallengeVerdict::Indeterminate { retry_deadline } => {
-                match retry_deadline.filter(|deadline| *deadline > now) {
-                    Some(deadline) if challenge.retry_count < MAX_CHALLENGE_RETRIES => {
-                        let spent = challenge
-                            .retry_count
-                            .checked_add(1)
-                            .ok_or_else(|| invariant("challenge retry count overflowed u64"))?;
-                        (
-                            FindingChallengeState::IndeterminateRetryable,
-                            spent,
-                            Some(deadline),
-                        )
-                    }
-                    _ => (
-                        FindingChallengeState::IndeterminateClosed,
-                        challenge.retry_count,
-                        challenge.retry_deadline,
-                    ),
-                }
-            }
-        };
-        let changed = transaction
-            .execute(
-                r#"
-                UPDATE challenges
-                SET state = ?2, retry_count = ?3, retry_deadline = ?4,
-                    outcome_envelope_sha256 = ?5, updated_at = ?6
-                WHERE challenge_id = ?1 AND state = 'evaluating'
-                "#,
-                params![
-                    challenge_id,
-                    challenge_state_name(target),
-                    sqlite_i64(retry_count, "retry_count")?,
-                    retry_deadline
-                        .map(|deadline| sqlite_i64(deadline, "retry_deadline"))
-                        .transpose()?,
-                    outcome_envelope_sha256,
-                    sqlite_i64(now, "now")?,
-                ],
-            )
-            .map_err(sqlite_error)?;
-        if changed != 1 {
-            return Err(invariant("challenge verdict did not affect one row"));
-        }
+        let target = record_verdict_tx(
+            &transaction,
+            challenge_id,
+            FindingChallengeVerdict::Upheld,
+            outcome_envelope_sha256,
+            now,
+        )?;
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(target)
@@ -2400,6 +2385,92 @@ const CHALLENGE_COLUMNS: &str = r#"
     retry_deadline, outcome_envelope_sha256, submitted_at, updated_at
 "#;
 
+fn record_verdict_tx(
+    transaction: &Transaction<'_>,
+    challenge_id: &str,
+    verdict: FindingChallengeVerdict,
+    outcome_envelope_sha256: &str,
+    now: u64,
+) -> Result<FindingChallengeState, FindingChallengeStoreError> {
+    let challenge = load_challenge_tx(transaction, challenge_id)?
+        .ok_or(FindingChallengeStoreError::NotFound)?;
+    match challenge.state {
+        FindingChallengeState::Evaluating => {}
+        FindingChallengeState::Submitted => {
+            return Err(FindingChallengeStoreError::Conflict(
+                "a verdict requires an evaluation already in progress".to_owned(),
+            ));
+        }
+        recorded => {
+            if challenge.outcome_envelope_sha256.as_deref() == Some(outcome_envelope_sha256)
+                && verdict_admits_state(verdict, recorded)
+            {
+                return Ok(recorded);
+            }
+            return Err(FindingChallengeStoreError::Conflict(format!(
+                "challenge already carries a verdict in state {}",
+                challenge_state_name(recorded)
+            )));
+        }
+    }
+    let (target, retry_count, retry_deadline) = match verdict {
+        FindingChallengeVerdict::Upheld => (
+            FindingChallengeState::Upheld,
+            challenge.retry_count,
+            challenge.retry_deadline,
+        ),
+        FindingChallengeVerdict::Rejected => (
+            FindingChallengeState::Rejected,
+            challenge.retry_count,
+            challenge.retry_deadline,
+        ),
+        FindingChallengeVerdict::Indeterminate { retry_deadline } => {
+            match retry_deadline.filter(|deadline| *deadline > now) {
+                Some(deadline) if challenge.retry_count < MAX_CHALLENGE_RETRIES => {
+                    let spent = challenge
+                        .retry_count
+                        .checked_add(1)
+                        .ok_or_else(|| invariant("challenge retry count overflowed u64"))?;
+                    (
+                        FindingChallengeState::IndeterminateRetryable,
+                        spent,
+                        Some(deadline),
+                    )
+                }
+                _ => (
+                    FindingChallengeState::IndeterminateClosed,
+                    challenge.retry_count,
+                    challenge.retry_deadline,
+                ),
+            }
+        }
+    };
+    let changed = transaction
+        .execute(
+            r#"
+            UPDATE challenges
+            SET state = ?2, retry_count = ?3, retry_deadline = ?4,
+                outcome_envelope_sha256 = ?5, updated_at = ?6
+            WHERE challenge_id = ?1 AND state = 'evaluating'
+            "#,
+            params![
+                challenge_id,
+                challenge_state_name(target),
+                sqlite_i64(retry_count, "retry_count")?,
+                retry_deadline
+                    .map(|deadline| sqlite_i64(deadline, "retry_deadline"))
+                    .transpose()?,
+                outcome_envelope_sha256,
+                sqlite_i64(now, "now")?,
+            ],
+        )
+        .map_err(sqlite_error)?;
+    if changed != 1 {
+        return Err(invariant("challenge verdict did not affect one row"));
+    }
+    Ok(target)
+}
+
 struct RawChallenge {
     challenge_id: String,
     finding_id: String,
@@ -3366,6 +3437,52 @@ pub(crate) fn initialize_finding_challenge_schema(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;
+        transaction
+            .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .map_err(sqlite_error)?;
+        crate::stamp_schema_version(
+            &transaction,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| invariant(error.to_string()))?;
+        verify_finding_challenge_invariants(&transaction)?;
+        return transaction.commit().map_err(sqlite_error);
+    }
+
+    if on_disk == 4 {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+        let has_unauthenticated_state = [
+            "challenges",
+            "dispute_locks",
+            "liability_heads",
+            "governance_case_index",
+            "claim_snapshots",
+            "effect_intents",
+            "listing_sales_blocks",
+        ]
+        .into_iter()
+        .try_fold(false, |found, table| {
+            let present = transaction
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1)",
+                    [table],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(sqlite_error)?;
+            if present {
+                table_has_rows_where(&transaction, table, "1 = 1").map(|rows| found || rows)
+            } else {
+                Ok(found)
+            }
+        })?;
+        if has_unauthenticated_state {
+            return Err(invariant(
+                "v4 finding challenge state has no authenticated projection history",
+            ));
+        }
         transaction
             .execute_batch(FINDING_CHALLENGE_SCHEMA)
             .map_err(sqlite_error)?;

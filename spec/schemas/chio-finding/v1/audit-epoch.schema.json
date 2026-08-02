@@ -17,6 +17,11 @@
         "schema",
         "audit_epoch_id",
         "epoch_index",
+        "audit_authority",
+        "seed_witnessed_at",
+        "eligible_snapshot_at",
+        "seed_witness",
+        "seed_witness_signature",
         "eligible_snapshot_digest",
         "eligible_listing_count",
         "fee_schedule_envelope_sha256",
@@ -36,6 +41,21 @@
         },
         "epoch_index": {
           "$ref": "#/$defs/iJsonU64"
+        },
+        "audit_authority": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "seed_witnessed_at": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "eligible_snapshot_at": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "seed_witness": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "seed_witness_signature": {
+          "$ref": "#/$defs/ed25519Signature"
         },
         "eligible_snapshot_digest": {
           "$ref": "#/$defs/sha256"
@@ -85,6 +105,10 @@
     "ed25519PublicKey": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "ed25519Signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
     },
     "iJsonU64": {
       "type": "integer",

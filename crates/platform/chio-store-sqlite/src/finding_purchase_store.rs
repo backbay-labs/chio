@@ -1038,6 +1038,9 @@ impl SqliteFindingPurchaseStore {
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         let outcome = block_new_slots_tx(&transaction, listing_id, now)?;
+        self.serving_owner
+            .append_finding_challenge_projection_if_changed(&transaction)
+            .map_err(|error| FindingPurchaseStoreError::Unavailable(error.to_string()))?;
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(outcome)

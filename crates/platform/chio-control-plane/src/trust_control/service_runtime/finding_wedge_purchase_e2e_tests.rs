@@ -252,6 +252,7 @@ fn market_config() -> FindingMarketConfig {
             min_depth: 64,
         },
         audit_authority: authority_pin(35, "audit-authority"),
+        audit_randomness_witness: authority_pin(37, "audit-randomness-witness"),
         audit_pool: FindingPoolPin {
             principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
             rail_destination: AUDIT_POOL_DESTINATION.to_string(),

@@ -1,5 +1,6 @@
 //! `chio.finding.audit-epoch.v1`: the venue's signed precommitment for one
-//! audit round, published BEFORE any listing is selected.
+//! audit round, published after an independent randomness witness has
+//! committed the seed and before any listing snapshot is taken.
 //!
 //! Random auditing is an operator assumption unless the round commits its
 //! inputs before it samples. This artifact commits the eligible listing
@@ -14,7 +15,7 @@
 //! it. Two artifacts, never one mutable one.
 
 use chio_core_types::capability::scope::MonetaryAmount;
-use chio_core_types::crypto::PublicKey;
+use chio_core_types::crypto::{PublicKey, Signature};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +32,9 @@ pub const FINDING_AUDIT_EPOCH_SCHEMA_V1: &str =
 /// the separator unambiguous against the seed text that follows it.
 const AUDIT_SEED_COMMITMENT_DOMAIN: &[u8] = b"chio.finding.audit-seed.v1\0";
 
+/// Domain separator for the independently witnessed seed commitment.
+const AUDIT_SEED_WITNESS_DOMAIN: &str = "chio.finding.audit-seed-witness.v1";
+
 /// Upper bound on the published audit rate, in basis points.
 pub const MAX_PUBLISHED_RATE_BPS: u64 = 10_000;
 
@@ -45,6 +49,27 @@ pub fn derive_audit_seed_commitment(revealed_seed: &str) -> String {
     chio_core_types::crypto::sha256_hex(&preimage)
 }
 
+/// Exact bytes the independent randomness witness signs before the
+/// eligible listing snapshot exists.
+///
+/// The future snapshot time is committed here so the venue cannot reuse a
+/// witness statement for a snapshot it had already observed. The snapshot
+/// digest is deliberately absent because it does not exist yet.
+#[must_use]
+pub fn audit_seed_witness_signing_bytes(
+    audit_authority: &PublicKey,
+    epoch_index: u64,
+    seed_commitment: &str,
+    seed_witnessed_at: u64,
+    eligible_snapshot_at: u64,
+) -> Vec<u8> {
+    format!(
+        "{AUDIT_SEED_WITNESS_DOMAIN}\0{}\0{epoch_index}\0{seed_commitment}\0{seed_witnessed_at}\0{eligible_snapshot_at}",
+        audit_authority.to_hex()
+    )
+    .into_bytes()
+}
+
 /// Audit epoch precommitment body.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -54,6 +79,18 @@ pub struct FindingAuditEpoch {
     /// `audit_epoch_id` cleared.
     pub audit_epoch_id: String,
     pub epoch_index: u64,
+    /// The externally pinned signer of the enclosing epoch envelope. The
+    /// witness statement binds its commitment to this exact authority.
+    pub audit_authority: PublicKey,
+    /// Time the independently trusted witness committed the seed.
+    pub seed_witnessed_at: u64,
+    /// Time the venue took the eligible listing snapshot. This must be
+    /// strictly later than the witness commitment.
+    pub eligible_snapshot_at: u64,
+    /// Independently pinned randomness-witness key.
+    pub seed_witness: PublicKey,
+    /// Strict Ed25519 signature over [`audit_seed_witness_signing_bytes`].
+    pub seed_witness_signature: Signature,
     /// Digest of the eligible listing snapshot this round samples from.
     pub eligible_snapshot_digest: String,
     pub eligible_listing_count: u64,
@@ -79,6 +116,16 @@ impl FindingAuditEpoch {
         }
         require_hex64(&self.audit_epoch_id, "audit_epoch_id")?;
         require_i_json_u64(self.epoch_index, "epoch_index")?;
+        crate::envelope::require_ed25519(&self.audit_authority, "audit_epoch")?;
+        crate::envelope::require_ed25519(&self.seed_witness, "audit_seed_witness")?;
+        if self.audit_authority == self.seed_witness {
+            return Err(FindingError::InvalidField("seed_witness"));
+        }
+        require_nonzero(self.seed_witnessed_at, "seed_witnessed_at")?;
+        require_nonzero(self.eligible_snapshot_at, "eligible_snapshot_at")?;
+        if self.seed_witnessed_at >= self.eligible_snapshot_at {
+            return Err(FindingError::InvalidField("eligible_snapshot_at"));
+        }
         require_hex64(&self.eligible_snapshot_digest, "eligible_snapshot_digest")?;
         require_nonzero(self.eligible_listing_count, "eligible_listing_count")?;
         require_hex64(
@@ -95,7 +142,30 @@ impl FindingAuditEpoch {
         require_currency(&self.available_budget.currency, "available_budget.currency")?;
         require_hex64(&self.authorization_digest, "authorization_digest")?;
         require_nonzero(self.committed_at, "committed_at")?;
+        if self.eligible_snapshot_at > self.committed_at {
+            return Err(FindingError::InvalidField("committed_at"));
+        }
+        self.verify_seed_witness()?;
         self.verify_audit_epoch_id()
+    }
+
+    /// Verify the independently pinned seed witness embedded in this body.
+    pub fn verify_seed_witness(&self) -> Result<(), FindingError> {
+        let message = audit_seed_witness_signing_bytes(
+            &self.audit_authority,
+            self.epoch_index,
+            &self.seed_commitment,
+            self.seed_witnessed_at,
+            self.eligible_snapshot_at,
+        );
+        if self
+            .seed_witness
+            .verify_strict(&message, &self.seed_witness_signature)
+        {
+            Ok(())
+        } else {
+            Err(FindingError::EnvelopeSignatureInvalid("audit_seed_witness"))
+        }
     }
 
     /// Recompute and compare the content-addressed epoch id.
@@ -123,7 +193,14 @@ pub fn compute_audit_epoch_id(epoch: &FindingAuditEpoch) -> Result<String, Findi
 pub fn verify_signed_audit_epoch(
     signed: &SignedFindingAuditEpoch,
     pinned_audit_authority: &PublicKey,
+    pinned_seed_witness: &PublicKey,
 ) -> Result<(), FindingError> {
     signed.body.validate()?;
+    if signed.body.audit_authority != *pinned_audit_authority {
+        return Err(FindingError::AuthorityMismatch("audit_epoch"));
+    }
+    if signed.body.seed_witness != *pinned_seed_witness {
+        return Err(FindingError::AuthorityMismatch("audit_seed_witness"));
+    }
     crate::envelope::verify_pinned_envelope(signed, pinned_audit_authority, "audit_epoch")
 }

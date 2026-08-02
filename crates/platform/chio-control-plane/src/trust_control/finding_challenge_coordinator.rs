@@ -79,7 +79,7 @@ use chio_open_market::finding_penalty::{
     evaluate_finding_penalty, FindingPenaltyBranch, FindingPenaltyContext,
 };
 use chio_open_market::finding_slash_amount::{
-    compute_slash_distribution, DistributionEntry, SlashDistribution, SlashInputs, VerifiedHarm,
+    compute_frozen_slash_distribution, DistributionEntry, SlashDistribution, VerifiedHarm,
 };
 use chio_open_market::governance::generic::SignedGenericGovernanceCase;
 use chio_open_market::listing::{
@@ -518,6 +518,7 @@ pub trait FindingFilingResolver: Send + Sync {
 struct ChallengeRolePins {
     venue_authority: FindingAuthorityPin,
     audit_authority: FindingAuthorityPin,
+    audit_randomness_witness: FindingAuthorityPin,
     governance_authority: FindingAuthorityPin,
     authority_status: FindingAuthorityPin,
     purchase_authority: FindingAuthorityPin,
@@ -830,6 +831,7 @@ impl FindingChallengeCoordinator {
             pins: ChallengeRolePins {
                 venue_authority: config.venue.clone(),
                 audit_authority: config.audit_authority.clone(),
+                audit_randomness_witness: config.audit_randomness_witness.clone(),
                 governance_authority: config.governance_root.clone(),
                 authority_status: config.authority_status.clone(),
                 purchase_authority: config.purchase.clone(),
@@ -1147,9 +1149,9 @@ impl FindingChallengeCoordinator {
     /// record the verdict, and dispose the bond the verdict calls for.
     ///
     /// An inadmissible submission produces no verdict and no signed
-    /// outcome. The challenge is left evaluating, which is recoverable:
-    /// nothing was held, sanctioned, forfeited, or transitioned, and a
-    /// corrected attempt re-enters the same evaluation.
+    /// outcome. Its durable state remains submitted, so a funded filing
+    /// can still reach its ordinary expiry and bond-return path rather than
+    /// becoming stranded in evaluation.
     ///
     /// The evaluator key's own lifecycle is proved before the attempt is
     /// admitted, so a key that has expired, that is revoked, or that is
@@ -1171,10 +1173,11 @@ impl FindingChallengeCoordinator {
         let schedule = self.resolve_fee_schedule(&admission.body.fee_schedule_envelope_sha256)?;
         let listing_requirement = Self::listing_bond_requirement(&schedule)?;
         let terms = self.resolve_market_terms(body)?;
-        if self.admit_evaluation(&body.challenge_id, request.now)? != EvaluationAdmission::Admitted
-        {
-            return Ok(None);
-        }
+        // Funding is still the admission ticket to evaluator work. The
+        // lifecycle transition itself waits until the pure evaluator has
+        // produced an adjudication, so an immutable refusal cannot strand
+        // the funded filing in `evaluating`.
+        self.require_funded_filing(&body.challenge_id, request.now)?;
         let audit_authority = self
             .pins
             .audit_authority
@@ -1210,6 +1213,10 @@ impl FindingChallengeCoordinator {
         else {
             return Ok(None);
         };
+        if self.admit_evaluation(&body.challenge_id, request.now)? != EvaluationAdmission::Admitted
+        {
+            return Ok(None);
+        }
         let (verdict, facet, reason) = adjudication.into_parts();
 
         let challenge_envelope_sha256 = self.envelope_digest(request.challenge)?;
@@ -1278,15 +1285,22 @@ impl FindingChallengeCoordinator {
             .map_err(|_| ChallengeCoordinatorError::Signing)?;
         let outcome_envelope_sha256 = self.envelope_digest(&signed)?;
 
-        let state = self
-            .challenges
-            .record_verdict(
+        let state = match signed.body.penalty_calculation.as_ref() {
+            Some(calculation) => self.challenges.record_upheld_verdict_with_exposure_fence(
+                &body.challenge_id,
+                &outcome_envelope_sha256,
+                &admission.body.backing_allocation_id,
+                calculation.open_per_sale_encumbrance_units,
+                request.now,
+            ),
+            None => self.challenges.record_verdict(
                 &body.challenge_id,
                 store_verdict(verdict, signed.body.retry_deadline),
                 &outcome_envelope_sha256,
                 request.now,
-            )
-            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+            ),
+        }
+        .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         let bond_disposition = self.dispose_dispute_bond(&body.challenge_id, request.now)?;
         Ok(Some(ChallengeEvaluationOutcome {
             state,
@@ -1345,10 +1359,11 @@ impl FindingChallengeCoordinator {
     /// The critical transaction, and everything that has to follow it
     /// before an appeal window can open.
     ///
-    /// The liability compare-and-set, the sales block, the purchase cutoff
-    /// freeze, and the claim deadline commit in one store call on the
-    /// connection the purchase store shares, so no slot can open above the
-    /// cutoff and below the block. The claim snapshot then waits on two
+    /// The terminal upheld verdict has already fenced its signed exposure
+    /// and raised the sales block in one transaction. This step freezes the
+    /// purchase cutoff and claim deadline while replaying that same block on
+    /// the shared connection, so no slot can open above the cutoff. The
+    /// claim snapshot then waits on two
     /// conditions. Every slot at or below the frozen cutoff must have
     /// reached a settled record or a denial, because a slot still in
     /// flight is a buyer who may yet belong in it. And the seller-signed
@@ -1365,12 +1380,11 @@ impl FindingChallengeCoordinator {
     /// replays the compare-and-set as a no-op and continues. It follows
     /// that no single call can both open the window and seal the payout.
     ///
-    /// Two preconditions of the hold are checked before any of that
-    /// commits, because both are pure and both would otherwise wedge the
-    /// listing behind a hold that can never be minted, with no transition
-    /// left to release it: the governance artifacts must carry pinned
-    /// signatures, and the collateral must be able to fund a nonzero
-    /// amount, which the penalty artifacts require.
+    /// Two preconditions of the hold are checked before a liability is
+    /// opened: the governance artifacts must carry pinned signatures, and
+    /// the collateral must still fund the evaluator-signed amount. A
+    /// failure opens no liability, while the terminal fraud verdict keeps
+    /// the listing's fail-closed sales block in place for reconciliation.
     #[allow(clippy::too_many_arguments)]
     pub fn uphold(
         &self,
@@ -1441,6 +1455,12 @@ impl FindingChallengeCoordinator {
                 ChallengeCoordinatorError::ChallengeStore("challenge is not recorded".to_owned())
             })?;
         if challenge_envelope_sha256 != recorded_challenge.challenge_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
+        let presented_outcome_envelope_sha256 = self.envelope_digest(outcome)?;
+        if recorded_challenge.outcome_envelope_sha256.as_deref()
+            != Some(presented_outcome_envelope_sha256.as_str())
+        {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
         }
         // Every exposure figure behind the penalty is read against one
@@ -1514,9 +1534,18 @@ impl FindingChallengeCoordinator {
         }
         self.require_purchase_authority_for_candidates(&authoritative_claims, now)?;
         self.require_impairable_collateral(collateral, now)?;
-        let authoritative_calculation =
-            self.checked_penalty_calculation(collateral, listing_requirement, now)?;
-        if outcome.body.penalty_calculation.as_ref() != Some(&authoritative_calculation) {
+        let signed_calculation = outcome
+            .body
+            .penalty_calculation
+            .as_ref()
+            .ok_or(ChallengeCoordinatorError::PenaltyCalculationMismatch)?;
+        let live_allocated_collateral = self.authenticated_live_collateral(collateral, now)?;
+        if signed_calculation.base_finding_stake_units != signed_stake.units
+            || signed_calculation.listing_required_amount_units != listing_requirement.units
+            || signed_calculation.penalty_amount.currency != signed_stake.currency
+            || listing_requirement.currency != signed_stake.currency
+            || signed_calculation.penalty_amount.units > live_allocated_collateral
+        {
             return Err(ChallengeCoordinatorError::PenaltyCalculationMismatch);
         }
         let defect_key = derive_defect_key(identity.finding_id);
@@ -1536,12 +1565,11 @@ impl FindingChallengeCoordinator {
             })
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         self.challenges
-            .uphold_liability_with_exposure_fence(
+            .uphold_liability(
                 &liability_key,
                 challenge_id,
                 cutoff_slot,
                 claim_deadline,
-                authoritative_calculation.open_per_sale_encumbrance_units,
                 now,
             )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
@@ -1587,8 +1615,7 @@ impl FindingChallengeCoordinator {
             cutoff_slot,
             &authoritative_claims,
             collateral,
-            listing_requirement,
-            &authoritative_calculation.penalty_amount,
+            &signed_calculation.penalty_amount,
             &admission.body.community_fund_destination,
             now,
         )?;
@@ -2846,7 +2873,13 @@ impl FindingChallengeCoordinator {
             now,
             "audit",
         )?;
-        verify_signed_audit_epoch(&round.epoch, &audit_authority)
+        let randomness_witness = self.require_live_role(
+            &self.pins.audit_randomness_witness,
+            round.epoch.body.seed_witnessed_at,
+            now,
+            "audit randomness witness",
+        )?;
+        verify_signed_audit_epoch(&round.epoch, &audit_authority, &randomness_witness)
             .map_err(|error| ChallengeCoordinatorError::AuditEpoch(error.to_string()))?;
         if round.epoch.body.authorization_digest != audit.authorization_digest {
             return Err(ChallengeCoordinatorError::AuditRoundBinding(
@@ -2857,9 +2890,13 @@ impl FindingChallengeCoordinator {
         // to before the seed was revealed, so it is recomputed here rather
         // than read from anything the filing carries. A listing the round
         // never drew has no entry to find.
-        let selection =
-            select_audit_targets(&round.epoch.body, &round.revealed_seed, &round.eligible)
-                .map_err(|error| ChallengeCoordinatorError::AuditSelection(error.to_string()))?;
+        let selection = select_audit_targets(
+            &round.epoch.body,
+            &randomness_witness,
+            &round.revealed_seed,
+            &round.eligible,
+        )
+        .map_err(|error| ChallengeCoordinatorError::AuditSelection(error.to_string()))?;
         let drawn = selection
             .iter()
             .find(|target| {
@@ -4075,7 +4112,6 @@ impl FindingChallengeCoordinator {
         cutoff_slot: u64,
         claim_candidates: &[String],
         collateral: &FindingCollateralFacts<'_>,
-        listing_required_amount: &MonetaryAmount,
         expected_penalty: &MonetaryAmount,
         community_fund_destination: &str,
         now: u64,
@@ -4095,26 +4131,15 @@ impl FindingChallengeCoordinator {
             .ok_or_else(|| {
                 ChallengeCoordinatorError::SlashArithmetic("verified harm overflowed".to_owned())
             })?;
-        // The durable identity is the authority on which allocation this
-        // liability may draw from, so the encumbrances that size the
-        // candidate are read against it rather than against a figure the
-        // call carried in beside it.
-        let open = self.outstanding_exposure(identity.allocation_id, now)?;
         let live_allocated_collateral = self.authenticated_live_collateral(collateral, now)?;
-        let distribution = compute_slash_distribution(
-            &SlashInputs {
-                base_finding_stake: collateral.base_finding_stake,
-                open_per_sale_encumbrances: open,
-                live_allocated_collateral,
-                listing_required_amount,
-                community_fund_destination,
-            },
-            &harms,
-        )
-        .map_err(|error| ChallengeCoordinatorError::SlashArithmetic(error.to_string()))?;
-        if &distribution.slash != expected_penalty {
+        if expected_penalty.currency != collateral.base_finding_stake.currency
+            || expected_penalty.units > live_allocated_collateral
+        {
             return Err(ChallengeCoordinatorError::PenaltyCalculationMismatch);
         }
+        let distribution =
+            compute_frozen_slash_distribution(expected_penalty, community_fund_destination, &harms)
+                .map_err(|error| ChallengeCoordinatorError::SlashArithmetic(error.to_string()))?;
 
         let snapshot_digest = snapshot_digest_of(&harms)?;
         let allocation_digest = allocation_digest_of(&distribution)?;

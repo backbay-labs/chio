@@ -14,27 +14,27 @@ use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, canonical_json_string};
 use chio_finding::{
-    compute_audit_epoch_id, compute_audit_report_id, compute_challenge_id, compute_enforcement_id,
-    compute_snapshot_id, derive_audit_seed_commitment, derive_outcome_id,
-    ensure_challenge_class_compatibility, signed_envelope_sha256, verdict_for_replay_predicate,
-    verify_audit_report_epoch_binding, verify_outcome_challenge_binding, verify_signed_audit_epoch,
-    verify_signed_audit_report, verify_signed_challenge, verify_signed_challenge_enforcement,
-    verify_signed_challenge_outcome, verify_signed_finalized_bond_snapshot,
-    FindingAffectedDelivery, FindingAuditEpoch, FindingAuditReport, FindingBuyerSubmission,
-    FindingChallenge, FindingChallengeAuthorization, FindingChallengeAuthorizationKind,
-    FindingChallengeEnforcement, FindingChallengeEvidence, FindingChallengeEvidenceKind,
-    FindingChallengeFacet, FindingChallengeOutcome, FindingChallengeStanding,
-    FindingChallengeVerdict, FindingCheckpointRef, FindingDigestMismatchFacet,
-    FindingDisputeBondClass, FindingDisputeFeeEvent, FindingDisputeFeeTerminal,
-    FindingDisputeLockRef, FindingEffectIntentBinding, FindingEffectIntentKind,
-    FindingEnforcementDestination, FindingError, FindingEvidenceClass, FindingEvidenceInvalidFacet,
-    FindingEvidenceInvalidity, FindingFinalizedBondSnapshot, FindingGuaranteeClass,
-    FindingMissedAudit, FindingObservedFinality, FindingPenaltyCalculation, FindingPredicate,
-    FindingReceiptRef, FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind,
-    FindingReplayContradictionFacet, FindingReplayObservation, FindingReplayPredicateResult,
-    FindingReplayRecipeInput, FindingReplayReproduction, FindingReplayTerminalResult,
-    FindingResourceCaps, FindingVaultReference, FindingVenueAuditAuthorization,
-    FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_REPORT_SCHEMA_V1,
+    audit_seed_witness_signing_bytes, compute_audit_epoch_id, compute_audit_report_id,
+    compute_challenge_id, compute_enforcement_id, compute_snapshot_id,
+    derive_audit_seed_commitment, derive_outcome_id, ensure_challenge_class_compatibility,
+    signed_envelope_sha256, verdict_for_replay_predicate, verify_audit_report_epoch_binding,
+    verify_outcome_challenge_binding, verify_signed_audit_epoch, verify_signed_audit_report,
+    verify_signed_challenge, verify_signed_challenge_enforcement, verify_signed_challenge_outcome,
+    verify_signed_finalized_bond_snapshot, FindingAffectedDelivery, FindingAuditEpoch,
+    FindingAuditReport, FindingBuyerSubmission, FindingChallenge, FindingChallengeAuthorization,
+    FindingChallengeAuthorizationKind, FindingChallengeEnforcement, FindingChallengeEvidence,
+    FindingChallengeEvidenceKind, FindingChallengeFacet, FindingChallengeOutcome,
+    FindingChallengeStanding, FindingChallengeVerdict, FindingCheckpointRef,
+    FindingDigestMismatchFacet, FindingDisputeBondClass, FindingDisputeFeeEvent,
+    FindingDisputeFeeTerminal, FindingDisputeLockRef, FindingEffectIntentBinding,
+    FindingEffectIntentKind, FindingEnforcementDestination, FindingError, FindingEvidenceClass,
+    FindingEvidenceInvalidFacet, FindingEvidenceInvalidity, FindingFinalizedBondSnapshot,
+    FindingGuaranteeClass, FindingMissedAudit, FindingObservedFinality, FindingPenaltyCalculation,
+    FindingPredicate, FindingReceiptRef, FindingRecipeEnvironment, FindingRecipePhase,
+    FindingRecipePhaseKind, FindingReplayContradictionFacet, FindingReplayObservation,
+    FindingReplayPredicateResult, FindingReplayRecipeInput, FindingReplayReproduction,
+    FindingReplayTerminalResult, FindingResourceCaps, FindingVaultReference,
+    FindingVenueAuditAuthorization, FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_REPORT_SCHEMA_V1,
     FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1, FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
     FINDING_CHALLENGE_SCHEMA_V1, FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1,
     FINDING_REPLAY_OBSERVATION_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
@@ -485,14 +485,30 @@ fn bond_snapshot_body(seller: &Keypair) -> Result<FindingFinalizedBondSnapshot, 
 }
 
 fn audit_epoch_body() -> Result<FindingAuditEpoch, FindingError> {
+    let audit_authority = keypair(42);
+    let seed_witness = keypair(43);
+    let seed_witnessed_at = 1_749_999_000;
+    let eligible_snapshot_at = 1_749_999_500;
+    let seed_commitment = derive_audit_seed_commitment(SEED);
     let mut epoch = FindingAuditEpoch {
         schema: FINDING_AUDIT_EPOCH_SCHEMA_V1.to_string(),
         audit_epoch_id: String::new(),
         epoch_index: 4,
+        audit_authority: audit_authority.public_key(),
+        seed_witnessed_at,
+        eligible_snapshot_at,
+        seed_witness: seed_witness.public_key(),
+        seed_witness_signature: seed_witness.sign(&audit_seed_witness_signing_bytes(
+            &audit_authority.public_key(),
+            4,
+            &seed_commitment,
+            seed_witnessed_at,
+            eligible_snapshot_at,
+        )),
         eligible_snapshot_digest: HEX64.to_string(),
         eligible_listing_count: 128,
         fee_schedule_envelope_sha256: HEX64_ALT.to_string(),
-        seed_commitment: derive_audit_seed_commitment(SEED),
+        seed_commitment,
         selection_algorithm_id: "weighted-reservoir-v1".to_string(),
         published_rate_bps: 250,
         available_budget: usd(750_000),
@@ -1697,13 +1713,30 @@ fn audit_report_accounts_for_every_selection() -> TestResult {
 #[test]
 fn audit_artifacts_sign_and_conform_to_their_schemas() -> TestResult {
     let audit_authority = keypair(42);
+    let seed_witness = keypair(43);
     let interloper = keypair(9);
 
     let signed_epoch = SignedExportEnvelope::sign(audit_epoch_body()?, &audit_authority)?;
-    (verify_signed_audit_epoch(&signed_epoch, &audit_authority.public_key()))?;
+    (verify_signed_audit_epoch(
+        &signed_epoch,
+        &audit_authority.public_key(),
+        &seed_witness.public_key(),
+    ))?;
     assert_eq!(
-        verify_signed_audit_epoch(&signed_epoch, &interloper.public_key()),
+        verify_signed_audit_epoch(
+            &signed_epoch,
+            &interloper.public_key(),
+            &seed_witness.public_key(),
+        ),
         Err(FindingError::AuthorityMismatch("audit_epoch"))
+    );
+    assert_eq!(
+        verify_signed_audit_epoch(
+            &signed_epoch,
+            &audit_authority.public_key(),
+            &interloper.public_key(),
+        ),
+        Err(FindingError::AuthorityMismatch("audit_seed_witness"))
     );
     let epoch_value: Value = serde_json::to_value(&signed_epoch)?;
     validate_family_schema("audit-epoch", &epoch_value)?;

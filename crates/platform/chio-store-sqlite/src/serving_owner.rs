@@ -26,8 +26,9 @@ mod path_identity;
 mod rollback_anchor;
 
 use global_commit_chain::{
-    append_global_commit, initialize_global_commit_schema, reset_derived_budget_ack_cache,
-    seed_global_baseline, verify_global_commit_schema, verify_pristine_authority_tables,
+    append_finding_challenge_projection_if_changed, append_global_commit,
+    initialize_global_commit_schema, reset_derived_budget_ack_cache, seed_global_baseline,
+    verify_global_commit_schema, verify_pristine_authority_tables,
 };
 use lease_history::{initialize_serving_lease_schema, verify_serving_lease_history};
 use rollback_anchor::RollbackAnchor;
@@ -185,6 +186,13 @@ impl SqliteServingOwner {
             projection_sequence,
             &self.fence,
         )
+    }
+
+    pub(crate) fn append_finding_challenge_projection_if_changed(
+        &self,
+        transaction: &Transaction<'_>,
+    ) -> Result<bool, SqliteServingOwnerError> {
+        append_finding_challenge_projection_if_changed(transaction, &self.fence)
     }
 
     pub(crate) fn sync_authority_anchor(

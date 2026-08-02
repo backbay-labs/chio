@@ -270,6 +270,63 @@ pub fn compute_slash_distribution(
     })
 }
 
+/// Distribute an evaluator-signed slash amount without re-reading the
+/// mutable exposure that originally sized it.
+///
+/// The coordinator calls this only after the outcome was recorded in the
+/// same transaction that fenced exposure and blocked new sales. Existing
+/// reservations may settle or expire while claims are collected, but
+/// those later category changes cannot rewrite the terminal signed amount.
+pub fn compute_frozen_slash_distribution(
+    slash: &MonetaryAmount,
+    community_fund_destination: &str,
+    harms: &[VerifiedHarm],
+) -> Result<SlashDistribution, SlashAmountError> {
+    if harms
+        .iter()
+        .any(|harm| harm.destination == community_fund_destination)
+    {
+        return Err(SlashAmountError::CommunityFundCollision);
+    }
+    let mut ordered: Vec<&VerifiedHarm> = harms.iter().collect();
+    ordered.sort_by(|left, right| left.purchase_key.cmp(&right.purchase_key));
+    let ordered_harms: Vec<u64> = ordered
+        .iter()
+        .map(|harm| harm.realized_spend_units)
+        .collect();
+    let allocation =
+        compute_slash_allocation(slash.units, 0, slash.units, slash.units, &ordered_harms)?;
+
+    let mut entries = Vec::with_capacity(ordered.len().saturating_add(1));
+    for (harm, share) in ordered.iter().zip(allocation.buyer_awards.iter()) {
+        if *share > 0 {
+            entries.push(DistributionEntry {
+                destination: harm.destination.clone(),
+                amount_units: *share,
+            });
+        }
+    }
+    if allocation.community_fund_units > 0 {
+        entries.push(DistributionEntry {
+            destination: community_fund_destination.to_owned(),
+            amount_units: allocation.community_fund_units,
+        });
+    }
+    let summed = entries
+        .iter()
+        .try_fold(0_u64, |total, entry| total.checked_add(entry.amount_units))
+        .ok_or(SlashAmountError::Overflow)?;
+    if summed != slash.units {
+        return Err(SlashAmountError::DistributionMismatch);
+    }
+    Ok(SlashDistribution {
+        slash: slash.clone(),
+        buyer_pool_units: allocation.buyer_pool_units,
+        community_fund_units: allocation.community_fund_units,
+        entries,
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
@@ -288,6 +345,22 @@ mod tests {
             destination: destination.to_owned(),
             realized_spend_units: units,
         }
+    }
+
+    #[test]
+    fn frozen_slash_distribution_does_not_depend_on_later_exposure_categories() {
+        let harms = vec![
+            harm("purchase-a", "buyer-a", 60),
+            harm("purchase-b", "buyer-b", 40),
+        ];
+        let first = compute_frozen_slash_distribution(&usd(300), "community", &harms)
+            .expect("frozen distribution");
+        let replay = compute_frozen_slash_distribution(&usd(300), "community", &harms)
+            .expect("replayed frozen distribution");
+        assert_eq!(first, replay);
+        assert_eq!(first.slash, usd(300));
+        assert_eq!(first.buyer_pool_units, 100);
+        assert_eq!(first.community_fund_units, 200);
     }
 
     fn inputs<'a>(stake: &'a MonetaryAmount, required: &'a MonetaryAmount) -> SlashInputs<'a> {

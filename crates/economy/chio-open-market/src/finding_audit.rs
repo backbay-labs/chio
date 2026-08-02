@@ -20,6 +20,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
+use chio_core_types::crypto::PublicKey;
 use chio_core_types::hashing::sha256;
 use chio_finding::{
     derive_audit_seed_commitment, FindingAuditEpoch, FindingAuditReport, FindingError,
@@ -121,6 +122,8 @@ pub enum FindingAuditError {
     InvalidSeed,
     #[error("revealed seed does not reproduce the epoch's seed commitment")]
     SeedCommitmentMismatch,
+    #[error("audit epoch randomness witness does not match the deployment pin")]
+    RandomnessWitnessMismatch,
     #[error("epoch committed {committed} eligible listings, {presented} were presented")]
     EligibleCountMismatch { committed: u64, presented: u64 },
     #[error("eligible snapshot digest does not equal the epoch's committed digest")]
@@ -159,6 +162,8 @@ pub enum FindingAuditError {
     },
     #[error("{outcomes} signed outcomes exceed the {attempted} attempted selections")]
     ExtraneousOutcome { attempted: usize, outcomes: usize },
+    #[error("{attempted} selected findings were attempted but only {outcomes} signed outcomes account for them")]
+    MissingOutcome { attempted: usize, outcomes: usize },
     #[error("audit arithmetic exceeded its representable range")]
     Overflow,
 }
@@ -233,10 +238,11 @@ pub fn audit_target_count(
 /// committed before the snapshot could be shaped around it.
 pub fn select_audit_targets(
     epoch: &FindingAuditEpoch,
+    pinned_seed_witness: &PublicKey,
     revealed_seed: &str,
     eligible: &[EligibleListing],
 ) -> Result<Vec<AuditSelection>, FindingAuditError> {
-    select_targets(epoch, revealed_seed, eligible, None)
+    select_targets(epoch, pinned_seed_witness, revealed_seed, eligible, None)
 }
 
 /// Select the round's audit targets, capped by what the committed budget
@@ -253,11 +259,18 @@ pub fn select_audit_targets(
 /// never disagree about which listings come first.
 pub fn select_audit_targets_within_budget(
     epoch: &FindingAuditEpoch,
+    pinned_seed_witness: &PublicKey,
     revealed_seed: &str,
     eligible: &[EligibleListing],
     per_attempt_cost: &MonetaryAmount,
 ) -> Result<Vec<AuditSelection>, FindingAuditError> {
-    select_targets(epoch, revealed_seed, eligible, Some(per_attempt_cost))
+    select_targets(
+        epoch,
+        pinned_seed_witness,
+        revealed_seed,
+        eligible,
+        Some(per_attempt_cost),
+    )
 }
 
 /// Verify a published audit report against its epoch, as an independent
@@ -288,6 +301,7 @@ pub fn select_audit_targets_within_budget(
 /// ordered form stays with [`select_audit_targets`].
 pub fn verify_audit_report(
     epoch: &FindingAuditEpoch,
+    pinned_seed_witness: &PublicKey,
     epoch_envelope_sha256: &str,
     report: &FindingAuditReport,
     eligible: &[EligibleListing],
@@ -300,7 +314,8 @@ pub fn verify_audit_report(
         return Err(FindingAuditError::EpochEnvelopeMismatch);
     }
 
-    let expected = select_audit_targets(epoch, &report.revealed_seed, eligible)?;
+    let expected =
+        select_audit_targets(epoch, pinned_seed_witness, &report.revealed_seed, eligible)?;
     if report.reported_at <= epoch.committed_at {
         return Err(FindingAuditError::ReportNotAfterEpoch);
     }
@@ -351,11 +366,20 @@ pub fn verify_audit_report(
         Ordering::Equal => {}
     }
     let outcomes = report.outcome_envelope_digests.len();
-    if outcomes > attempted {
-        return Err(FindingAuditError::ExtraneousOutcome {
-            attempted,
-            outcomes,
-        });
+    match outcomes.cmp(&attempted) {
+        Ordering::Less => {
+            return Err(FindingAuditError::MissingOutcome {
+                attempted,
+                outcomes,
+            })
+        }
+        Ordering::Greater => {
+            return Err(FindingAuditError::ExtraneousOutcome {
+                attempted,
+                outcomes,
+            })
+        }
+        Ordering::Equal => {}
     }
     Ok(())
 }
@@ -378,11 +402,15 @@ struct DrawnListing {
 
 fn select_targets(
     epoch: &FindingAuditEpoch,
+    pinned_seed_witness: &PublicKey,
     revealed_seed: &str,
     eligible: &[EligibleListing],
     per_attempt_cost: Option<&MonetaryAmount>,
 ) -> Result<Vec<AuditSelection>, FindingAuditError> {
     epoch.validate().map_err(FindingAuditError::Epoch)?;
+    if epoch.seed_witness != *pinned_seed_witness {
+        return Err(FindingAuditError::RandomnessWitnessMismatch);
+    }
     if epoch.selection_algorithm_id != AUDIT_SELECTION_ALGORITHM_V1 {
         return Err(FindingAuditError::UnsupportedAlgorithm(
             epoch.selection_algorithm_id.clone(),

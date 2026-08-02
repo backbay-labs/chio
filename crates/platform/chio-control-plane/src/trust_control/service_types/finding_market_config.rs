@@ -150,6 +150,11 @@ pub struct FindingMarketConfig {
     /// Authorizes bondless venue audits. A buyer submission verifies
     /// against its own named challenger instead.
     pub audit_authority: FindingAuthorityPin,
+    /// Independently witnesses each audit seed commitment before the
+    /// eligible listing snapshot is taken. This role must be disjoint from
+    /// the venue and audit authority so neither can grind the seed after
+    /// observing the snapshot.
+    pub audit_randomness_witness: FindingAuthorityPin,
     pub audit_pool: FindingPoolPin,
     pub challenge_administration_pool: FindingPoolPin,
     pub community_fund_destination: String,
@@ -250,6 +255,7 @@ impl FindingMarketConfig {
             ("market penalty", &self.market_penalty),
             ("settlement observer", &self.settlement_observer),
             ("audit authority", &self.audit_authority),
+            ("audit randomness witness", &self.audit_randomness_witness),
         ];
         let mut parsed = Vec::with_capacity(roster.len());
         for (label, pin) in roster {

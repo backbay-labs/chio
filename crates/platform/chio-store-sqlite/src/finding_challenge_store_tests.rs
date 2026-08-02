@@ -369,6 +369,14 @@ fn remove_schema_fragment(schema: String, fragment: &str) -> String {
     schema.replacen(fragment, "", 1)
 }
 
+fn finding_challenge_v4_schema() -> String {
+    FINDING_CHALLENGE_SCHEMA
+        .split_once("-- Immutable local history for the challenge projection.")
+        .expect("v5 projection schema marker")
+        .0
+        .to_owned()
+}
+
 fn finding_challenge_v3_schema() -> String {
     let schema = FINDING_CHALLENGE_SCHEMA.replace(
         "OLD.state = 'submitted' AND NEW.state IN ('evaluating', 'indeterminate_closed')",
@@ -1857,6 +1865,64 @@ fn upheld_transition_fences_the_signed_exposure_before_blocking_sales() {
 }
 
 #[test]
+fn upheld_verdict_fences_exposure_before_becoming_terminal() {
+    let fixture = fixture();
+    assert_eq!(
+        reserve_slot(
+            &fixture,
+            "verdict-exposure-race",
+            LISTING_ID,
+            &fixture.allocation_id
+        ),
+        1
+    );
+    let challenge = Challenge::buyer("verdict-exposure-race");
+    submit(&fixture, &challenge);
+    fixture
+        .store
+        .begin_evaluation(&challenge.challenge_id, NOW + 1)
+        .expect("begin evaluation");
+    let outcome_digest = digest("verdict-exposure-race-outcome");
+
+    assert!(matches!(
+        fixture.store.record_upheld_verdict_with_exposure_fence(
+            &challenge.challenge_id,
+            &outcome_digest,
+            &fixture.allocation_id,
+            0,
+            NOW + 2,
+        ),
+        Err(FindingChallengeStoreError::Conflict(_))
+    ));
+    assert_eq!(
+        challenge_state(&fixture, &challenge.challenge_id),
+        FindingChallengeState::Evaluating
+    );
+    assert!(!fixture
+        .purchases
+        .sales_blocked(LISTING_ID)
+        .expect("read sales block"));
+
+    assert_eq!(
+        fixture
+            .store
+            .record_upheld_verdict_with_exposure_fence(
+                &challenge.challenge_id,
+                &outcome_digest,
+                &fixture.allocation_id,
+                10,
+                NOW + 2,
+            )
+            .expect("record fenced verdict"),
+        FindingChallengeState::Upheld
+    );
+    assert!(fixture
+        .purchases
+        .sales_blocked(LISTING_ID)
+        .expect("read sales block"));
+}
+
+#[test]
 fn a_successful_appeal_returns_the_listing_to_selling() {
     let fixture = fixture();
     assert_eq!(
@@ -3262,6 +3328,101 @@ fn v2_schema_migrates_to_frozen_appeals_and_required_effects() {
         .expect("read migrated settlement gate");
     assert_eq!(settlement_required, 1);
     verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
+fn empty_v4_schema_adds_authenticated_projection_history() {
+    let mut connection = Connection::open_in_memory().expect("open legacy database");
+    connection
+        .execute_batch(&finding_challenge_v4_schema())
+        .expect("install v4 challenge schema");
+    assert_eq!(
+        crate::check_schema_version(
+            &connection,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            FINDING_CHALLENGE_SCHEMA_ANCHORS,
+        )
+        .expect("adopt legacy database"),
+        0
+    );
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 4)
+        .expect("stamp v4 schema");
+
+    initialize_finding_challenge_schema(&mut connection).expect("migrate empty v4 schema");
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_CHALLENGE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION);
+    assert!(table_has_column(
+        &connection,
+        "finding_challenge_projection_commits",
+        "snapshot_digest"
+    )
+    .expect("inspect projection history"));
+}
+
+#[test]
+fn nonempty_v4_schema_is_not_adopted_without_projection_history() {
+    let mut connection = Connection::open_in_memory().expect("open legacy database");
+    connection
+        .execute_batch(&finding_challenge_v4_schema())
+        .expect("install v4 challenge schema");
+    assert_eq!(
+        crate::check_schema_version(
+            &connection,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            FINDING_CHALLENGE_SCHEMA_ANCHORS,
+        )
+        .expect("adopt legacy database"),
+        0
+    );
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 4)
+        .expect("stamp v4 schema");
+    connection
+        .execute(
+            r#"
+            INSERT INTO challenges (
+                challenge_id, finding_id, listing_id,
+                challenge_envelope_sha256, authorization_branch,
+                evidence_class, challenger_hex, state, retry_count,
+                retry_deadline, outcome_envelope_sha256, submitted_at,
+                updated_at
+            ) VALUES (
+                'legacy-challenge', ?1, 'legacy-listing', ?2,
+                'buyer_submission', 'evidence_invalid', ?3,
+                'submitted', 0, NULL, NULL, ?4, ?4
+            )
+            "#,
+            params![
+                hex64('a'),
+                digest("legacy-v4-envelope"),
+                hex64('b'),
+                sqlite_i64(NOW, "now").expect("legacy time"),
+            ],
+        )
+        .expect("insert unauthenticated v4 state");
+
+    assert_eq!(
+        crate::check_schema_version(
+            &connection,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            FINDING_CHALLENGE_SCHEMA_ANCHORS,
+        )
+        .expect("read legacy schema version"),
+        4
+    );
+    assert!(table_has_rows_where(&connection, "challenges", "1 = 1")
+        .expect("inspect unauthenticated v4 state"));
+
+    initialize_finding_challenge_schema(&mut connection)
+        .expect_err("nonempty unauthenticated v4 state must reject");
 }
 
 #[test]

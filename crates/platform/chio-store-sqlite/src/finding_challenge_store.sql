@@ -471,3 +471,35 @@ BEFORE DELETE ON effect_intents
 BEGIN
     SELECT RAISE(ABORT, 'effect intent must be retained');
 END;
+
+-- Immutable local history for the challenge projection. Every mutation of
+-- challenge state, including its composed listing sales block, appends one
+-- row here and one exact reference in the authority-wide commit chain.
+CREATE TABLE IF NOT EXISTS finding_challenge_projection_commits (
+    projection_sequence INTEGER PRIMARY KEY CHECK (projection_sequence > 0),
+    mutation_kind TEXT NOT NULL CHECK (mutation_kind = 'finding_challenge_write'),
+    snapshot_digest TEXT NOT NULL CHECK (
+        length(snapshot_digest) = 64
+        AND snapshot_digest NOT GLOB '*[^0-9a-f]*'
+    ),
+    previous_commit_digest TEXT NOT NULL CHECK (
+        length(previous_commit_digest) = 64
+        AND previous_commit_digest NOT GLOB '*[^0-9a-f]*'
+    ),
+    commit_digest TEXT NOT NULL UNIQUE CHECK (
+        length(commit_digest) = 64
+        AND commit_digest NOT GLOB '*[^0-9a-f]*'
+    )
+);
+
+CREATE TRIGGER IF NOT EXISTS finding_challenge_projection_commits_immutable
+BEFORE UPDATE ON finding_challenge_projection_commits
+BEGIN
+    SELECT RAISE(ABORT, 'finding challenge projection commit is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS finding_challenge_projection_commits_no_delete
+BEFORE DELETE ON finding_challenge_projection_commits
+BEGIN
+    SELECT RAISE(ABORT, 'finding challenge projection commit is immutable');
+END;

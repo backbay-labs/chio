@@ -10,17 +10,19 @@
 //! unnoticed.
 
 use chio_finding::{
-    compute_audit_epoch_id, compute_audit_report_id, derive_audit_seed_commitment,
-    signed_envelope_sha256, FindingAuditEpoch, FindingAuditReport, FindingMissedAudit,
-    FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_REPORT_SCHEMA_V1,
+    audit_seed_witness_signing_bytes, compute_audit_epoch_id, compute_audit_report_id,
+    derive_audit_seed_commitment, signed_envelope_sha256, FindingAuditEpoch, FindingAuditReport,
+    FindingMissedAudit, FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_REPORT_SCHEMA_V1,
 };
 use chio_open_market::{
     capability::scope::MonetaryAmount,
     crypto::{sha256_hex, Keypair},
     finding_audit::{
         audit_target_count, derive_audit_draw, derive_eligible_snapshot_digest,
-        select_audit_targets, select_audit_targets_within_budget, verify_audit_report,
-        AuditSelection, EligibleListing, FindingAuditError, AUDIT_SELECTION_ALGORITHM_V1,
+        select_audit_targets as select_audit_targets_with_witness,
+        select_audit_targets_within_budget as select_audit_targets_within_budget_with_witness,
+        verify_audit_report as verify_audit_report_with_witness, AuditSelection, EligibleListing,
+        FindingAuditError, AUDIT_SELECTION_ALGORITHM_V1,
     },
     receipt::lineage::SignedExportEnvelope,
 };
@@ -33,6 +35,52 @@ const BUDGET_UNITS: u64 = 750;
 const RATE_BPS: u64 = 2_500;
 const COMMITTED_AT: u64 = 1_750_000_000;
 const REPORTED_AT: u64 = 1_750_050_000;
+
+fn audit_authority() -> Keypair {
+    Keypair::from_seed(&[42_u8; 32])
+}
+
+fn seed_witness() -> Keypair {
+    Keypair::from_seed(&[43_u8; 32])
+}
+
+fn select_audit_targets(
+    epoch: &FindingAuditEpoch,
+    seed: &str,
+    eligible: &[EligibleListing],
+) -> Result<Vec<AuditSelection>, FindingAuditError> {
+    select_audit_targets_with_witness(epoch, &seed_witness().public_key(), seed, eligible)
+}
+
+fn select_audit_targets_within_budget(
+    epoch: &FindingAuditEpoch,
+    seed: &str,
+    eligible: &[EligibleListing],
+    cost: &MonetaryAmount,
+) -> Result<Vec<AuditSelection>, FindingAuditError> {
+    select_audit_targets_within_budget_with_witness(
+        epoch,
+        &seed_witness().public_key(),
+        seed,
+        eligible,
+        cost,
+    )
+}
+
+fn verify_audit_report(
+    epoch: &FindingAuditEpoch,
+    epoch_envelope_sha256: &str,
+    report: &FindingAuditReport,
+    eligible: &[EligibleListing],
+) -> Result<(), FindingAuditError> {
+    verify_audit_report_with_witness(
+        epoch,
+        &seed_witness().public_key(),
+        epoch_envelope_sha256,
+        report,
+        eligible,
+    )
+}
 
 fn usd(units: u64) -> MonetaryAmount {
     MonetaryAmount {
@@ -72,15 +120,31 @@ fn eligible_snapshot(count: usize) -> Vec<EligibleListing> {
 }
 
 fn epoch_for(eligible: &[EligibleListing], rate_bps: u64, budget_units: u64) -> FindingAuditEpoch {
+    let audit_authority = audit_authority();
+    let seed_witness = seed_witness();
+    let seed_witnessed_at = COMMITTED_AT - 2;
+    let eligible_snapshot_at = COMMITTED_AT - 1;
+    let seed_commitment = derive_audit_seed_commitment(SEED);
     let mut epoch = FindingAuditEpoch {
         schema: FINDING_AUDIT_EPOCH_SCHEMA_V1.to_owned(),
         audit_epoch_id: String::new(),
         epoch_index: 7,
+        audit_authority: audit_authority.public_key(),
+        seed_witnessed_at,
+        eligible_snapshot_at,
+        seed_witness: seed_witness.public_key(),
+        seed_witness_signature: seed_witness.sign(&audit_seed_witness_signing_bytes(
+            &audit_authority.public_key(),
+            7,
+            &seed_commitment,
+            seed_witnessed_at,
+            eligible_snapshot_at,
+        )),
         eligible_snapshot_digest: derive_eligible_snapshot_digest(eligible)
             .test_expect("snapshot digest"),
         eligible_listing_count: eligible.len() as u64,
         fee_schedule_envelope_sha256: sha256_hex(b"fee-schedule-envelope"),
-        seed_commitment: derive_audit_seed_commitment(SEED),
+        seed_commitment,
         selection_algorithm_id: AUDIT_SELECTION_ALGORITHM_V1.to_owned(),
         published_rate_bps: rate_bps,
         available_budget: usd(budget_units),
@@ -107,7 +171,7 @@ fn selected_ids(selection: &[AuditSelection]) -> Vec<String> {
 }
 
 fn signed_epoch_digest(epoch: &FindingAuditEpoch) -> String {
-    let audit_authority = Keypair::from_seed(&[42_u8; 32]);
+    let audit_authority = audit_authority();
     let signed =
         SignedExportEnvelope::sign(epoch.clone(), &audit_authority).test_expect("sign audit epoch");
     signed_envelope_sha256(&signed).test_expect("epoch envelope digest")
@@ -134,7 +198,10 @@ fn report_for(
             finding_id: ids[2].clone(),
             reason: "retained replay inputs expired before the attempt".to_owned(),
         }],
-        outcome_envelope_digests: vec![sha256_hex(b"audit-outcome-envelope")],
+        outcome_envelope_digests: vec![
+            sha256_hex(b"audit-outcome-envelope-1"),
+            sha256_hex(b"audit-outcome-envelope-2"),
+        ],
         reported_at: REPORTED_AT,
     };
     report.audit_report_id = compute_audit_report_id(&report).test_expect("report id");
@@ -440,6 +507,35 @@ fn a_report_revealing_a_wrong_seed_rejects() {
 }
 
 #[test]
+fn a_snapshot_cutoff_substituted_after_the_seed_witnessed_it_rejects() {
+    let (eligible, mut epoch) = standard_round();
+    epoch.eligible_snapshot_at += 1;
+    epoch.audit_epoch_id = String::new();
+    epoch.audit_epoch_id = compute_audit_epoch_id(&epoch).test_expect("epoch id");
+    assert_eq!(
+        select_audit_targets(&epoch, SEED, &eligible).test_unwrap_err(),
+        FindingAuditError::Epoch(chio_finding::FindingError::EnvelopeSignatureInvalid(
+            "audit_seed_witness"
+        ))
+    );
+}
+
+#[test]
+fn the_venue_key_cannot_substitute_for_the_pinned_randomness_witness() {
+    let (eligible, epoch) = standard_round();
+    assert_eq!(
+        select_audit_targets_with_witness(
+            &epoch,
+            &audit_authority().public_key(),
+            SEED,
+            &eligible,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::RandomnessWitnessMismatch
+    );
+}
+
+#[test]
 fn a_report_with_an_added_selection_rejects() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
@@ -507,11 +603,20 @@ fn a_report_leaving_a_target_unaccounted_rejects() {
         }
     );
 
+    // Every attempted target also owes one signed outcome envelope.
+    let mut missing_outcome = report_for(&envelope, &selection);
+    missing_outcome.outcome_envelope_digests.truncate(1);
+    reseal(&mut missing_outcome);
+    assert_eq!(
+        verify_audit_report(&epoch, &envelope, &missing_outcome, &eligible).test_unwrap_err(),
+        FindingAuditError::MissingOutcome {
+            attempted: 2,
+            outcomes: 1,
+        }
+    );
+
     // So does a signed outcome for a target that was never attempted.
     let mut extra_outcome = report_for(&envelope, &selection);
-    extra_outcome
-        .outcome_envelope_digests
-        .push(sha256_hex(b"second-audit-outcome-envelope"));
     extra_outcome
         .outcome_envelope_digests
         .push(sha256_hex(b"third-audit-outcome-envelope"));

@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS authority_global_commits (
     commit_sequence INTEGER PRIMARY KEY CHECK (commit_sequence > 0),
     mutation_kind TEXT NOT NULL CHECK (mutation_kind <> ''),
     projection_kind TEXT NOT NULL CHECK (
-        projection_kind IN ('baseline', 'admission', 'budget', 'revocation', 'frost', 'payment', 'economic', 'channel_release_publication', 'factor_assignment_authority_set', 'fiscal')
+        projection_kind IN ('baseline', 'admission', 'budget', 'revocation', 'frost', 'payment', 'economic', 'channel_release_publication', 'factor_assignment_authority_set', 'fiscal', 'finding_challenge')
     ),
     projection_key TEXT NOT NULL,
     projection_sequence INTEGER NOT NULL CHECK (projection_sequence >= 0),
@@ -115,6 +115,15 @@ struct ProjectionRootEntry<'a> {
     projection_reference_digest: &'a str,
 }
 
+#[derive(Serialize)]
+struct FindingChallengeProjectionEntry<'a> {
+    format: &'static str,
+    previous_commit_digest: &'a str,
+    projection_sequence: u64,
+    mutation_kind: &'a str,
+    snapshot_digest: &'a str,
+}
+
 struct CommitRow {
     sequence: u64,
     mutation_kind: String,
@@ -193,8 +202,41 @@ pub(crate) fn initialize_global_commit_schema(
     )?;
     if !table_exists {
         connection.execute_batch(GLOBAL_COMMIT_SCHEMA)?;
+    } else if verify_global_commit_schema(connection).is_err() {
+        migrate_previous_global_commit_schema(connection)?;
     }
     verify_global_commit_schema(connection)
+}
+
+fn migrate_previous_global_commit_schema(
+    connection: &Connection,
+) -> Result<(), SqliteServingOwnerError> {
+    let previous_schema = GLOBAL_COMMIT_SCHEMA.replace(", 'finding_challenge'", "");
+    let expected_previous = Connection::open_in_memory()?;
+    expected_previous.execute_batch(&previous_schema)?;
+    if global_schema_catalog(connection)? != global_schema_catalog(&expected_previous)? {
+        return Err(invalid("global authority commit schema is not canonical"));
+    }
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute_batch(
+        r#"
+        DROP TRIGGER authority_global_commits_immutable;
+        DROP TRIGGER authority_global_commits_no_delete;
+        DROP INDEX authority_global_commits_projection;
+        ALTER TABLE authority_global_commits
+            RENAME TO authority_global_commits_previous;
+        "#,
+    )?;
+    transaction.execute_batch(GLOBAL_COMMIT_SCHEMA)?;
+    transaction.execute_batch(
+        r#"
+        INSERT INTO authority_global_commits
+        SELECT * FROM authority_global_commits_previous;
+        DROP TABLE authority_global_commits_previous;
+        "#,
+    )?;
+    transaction.commit()?;
+    Ok(())
 }
 
 pub(crate) fn verify_global_commit_schema(
@@ -295,6 +337,86 @@ pub(crate) fn append_global_commit(
         Some(&fence.lease_id),
         fence.owner_epoch,
     )
+}
+
+/// Append the challenge projection and its authority-wide reference when
+/// the current challenge snapshot differs from the latest committed one.
+/// Identical replays produce no phantom history entry.
+pub(crate) fn append_finding_challenge_projection_if_changed(
+    transaction: &Transaction<'_>,
+    fence: &StoreMutationFence,
+) -> Result<bool, SqliteServingOwnerError> {
+    let snapshot_digest = finding_challenge_snapshot_digest(transaction)?;
+    let latest = transaction
+        .query_row(
+            r#"
+            SELECT projection_sequence, snapshot_digest, commit_digest
+            FROM finding_challenge_projection_commits
+            ORDER BY projection_sequence DESC LIMIT 1
+            "#,
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()?;
+    if latest
+        .as_ref()
+        .is_some_and(|(_, committed_snapshot, _)| committed_snapshot == &snapshot_digest)
+    {
+        return Ok(false);
+    }
+    let (previous_sequence, previous_commit_digest) = match latest {
+        Some((sequence, _, commit_digest)) => (
+            read_u64(sequence, "finding challenge projection sequence")?,
+            commit_digest,
+        ),
+        None => (0, GLOBAL_GENESIS_DIGEST.to_owned()),
+    };
+    let projection_sequence = previous_sequence
+        .checked_add(1)
+        .ok_or_else(|| invalid("finding challenge projection sequence overflowed"))?;
+    let mutation_kind = "finding_challenge_write";
+    let commit_digest = digest(&FindingChallengeProjectionEntry {
+        format: "chio.sqlite-finding-challenge-projection.v1",
+        previous_commit_digest: &previous_commit_digest,
+        projection_sequence,
+        mutation_kind,
+        snapshot_digest: &snapshot_digest,
+    })?;
+    let inserted = transaction.execute(
+        r#"
+        INSERT INTO finding_challenge_projection_commits (
+            projection_sequence, mutation_kind, snapshot_digest,
+            previous_commit_digest, commit_digest
+        ) VALUES (?1, ?2, ?3, ?4, ?5)
+        "#,
+        params![
+            sqlite_u64(projection_sequence, "finding challenge projection sequence")?,
+            mutation_kind,
+            snapshot_digest,
+            previous_commit_digest,
+            commit_digest,
+        ],
+    )?;
+    if inserted != 1 {
+        return Err(invalid(
+            "finding challenge projection did not advance exactly once",
+        ));
+    }
+    append_global_commit(
+        transaction,
+        mutation_kind,
+        "finding_challenge",
+        "market",
+        projection_sequence,
+        fence,
+    )?;
+    Ok(true)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -741,6 +863,25 @@ fn projection_reference_digest(
             )
             .optional()?
             .ok_or_else(|| invalid("fiscal projection reference is absent")),
+        "finding_challenge" => {
+            if key != "market" {
+                return Err(invalid("finding challenge projection key is invalid"));
+            }
+            connection
+                .query_row(
+                    r#"
+                    SELECT commit_digest FROM finding_challenge_projection_commits
+                    WHERE projection_sequence = ?1
+                    "#,
+                    [sqlite_u64(
+                        sequence,
+                        "finding challenge projection sequence",
+                    )?],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .ok_or_else(|| invalid("finding challenge projection reference is absent"))
+        }
         _ => Err(invalid("unknown global authority projection kind")),
     }
 }
@@ -1059,6 +1200,28 @@ fn baseline_projection_digest(connection: &Connection) -> Result<String, SqliteS
     baseline_projection_digest_for_tables(connection, table_names(connection, false)?)
 }
 
+fn finding_challenge_snapshot_digest(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    let tables = [
+        "challenges",
+        "dispute_locks",
+        "liability_heads",
+        "governance_case_index",
+        "claim_snapshots",
+        "effect_intents",
+        "listing_sales_blocks",
+    ];
+    let mut snapshots = Vec::with_capacity(tables.len());
+    for table in tables {
+        snapshots.push(table_snapshot(connection, table, None)?);
+    }
+    digest(&AuthoritySnapshot {
+        format: "chio.sqlite-finding-challenge-snapshot.v1",
+        tables: snapshots,
+    })
+}
+
 /// Refuses any authority table that already carries rows, which a global baseline
 /// cannot adopt. Enumerated from `sqlite_schema`, so tables that do not exist yet
 /// are simply absent and provisioning can run this before it creates anything.
@@ -1332,6 +1495,7 @@ fn verify_global_projection_coverage(
     connection: &Connection,
 ) -> Result<(), SqliteServingOwnerError> {
     verify_channel_release_projection_coverage(connection)?;
+    verify_finding_challenge_projection_coverage(connection)?;
     let incomplete = connection.query_row(
         r#"
         SELECT
@@ -1434,6 +1598,142 @@ fn verify_global_projection_coverage(
     )?;
     if incomplete {
         return Err(invalid("global authority projection coverage is not exact"));
+    }
+    Ok(())
+}
+
+fn verify_finding_challenge_projection_coverage(
+    connection: &Connection,
+) -> Result<(), SqliteServingOwnerError> {
+    let projection_table_present = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'finding_challenge_projection_commits')",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if !projection_table_present {
+        let global_reference_present = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM authority_global_commits WHERE projection_kind = 'finding_challenge')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        return if global_reference_present {
+            Err(invalid("finding challenge projection table is absent"))
+        } else {
+            Ok(())
+        };
+    }
+    let mut statement = connection.prepare(
+        r#"
+        SELECT projection_sequence, mutation_kind, snapshot_digest,
+               previous_commit_digest, commit_digest
+        FROM finding_challenge_projection_commits
+        ORDER BY projection_sequence
+        "#,
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut previous = GLOBAL_GENESIS_DIGEST.to_owned();
+    let mut expected_sequence = 1_u64;
+    for (stored_sequence, mutation_kind, snapshot_digest, previous_digest, commit_digest) in &rows {
+        let sequence = read_u64(*stored_sequence, "finding challenge projection sequence")?;
+        if sequence != expected_sequence
+            || mutation_kind != "finding_challenge_write"
+            || previous_digest != &previous
+            || !is_digest(snapshot_digest)
+            || !is_digest(commit_digest)
+        {
+            return Err(invalid("finding challenge projection chain is malformed"));
+        }
+        let expected_digest = digest(&FindingChallengeProjectionEntry {
+            format: "chio.sqlite-finding-challenge-projection.v1",
+            previous_commit_digest: &previous,
+            projection_sequence: sequence,
+            mutation_kind,
+            snapshot_digest,
+        })?;
+        if expected_digest != *commit_digest {
+            return Err(invalid("finding challenge projection digest mismatch"));
+        }
+        let global_count = connection.query_row(
+            r#"
+            SELECT COUNT(*) FROM authority_global_commits
+            WHERE projection_kind = 'finding_challenge'
+              AND projection_key = 'market' AND projection_sequence = ?1
+            "#,
+            [sqlite_u64(
+                sequence,
+                "finding challenge projection sequence",
+            )?],
+            |row| row.get::<_, i64>(0),
+        )?;
+        if global_count != 1 {
+            return Err(invalid(
+                "finding challenge global projection coverage is not exact",
+            ));
+        }
+        previous.clone_from(commit_digest);
+        expected_sequence = expected_sequence
+            .checked_add(1)
+            .ok_or_else(|| invalid("finding challenge projection sequence overflowed"))?;
+    }
+    let orphaned_global = connection.query_row(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM authority_global_commits AS global
+            WHERE global.projection_kind = 'finding_challenge'
+              AND (
+                  global.projection_key <> 'market'
+                  OR NOT EXISTS(
+                      SELECT 1 FROM finding_challenge_projection_commits AS local
+                      WHERE local.projection_sequence = global.projection_sequence
+                  )
+              )
+        )
+        "#,
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if orphaned_global {
+        return Err(invalid(
+            "finding challenge global projection reference is orphaned",
+        ));
+    }
+    let has_state = connection.query_row(
+        r#"
+        SELECT EXISTS(SELECT 1 FROM challenges)
+            OR EXISTS(SELECT 1 FROM dispute_locks)
+            OR EXISTS(SELECT 1 FROM liability_heads)
+            OR EXISTS(SELECT 1 FROM governance_case_index)
+            OR EXISTS(SELECT 1 FROM claim_snapshots)
+            OR EXISTS(SELECT 1 FROM effect_intents)
+            OR EXISTS(SELECT 1 FROM listing_sales_blocks)
+        "#,
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    match rows.last() {
+        Some((_, _, snapshot_digest, _, _)) => {
+            if finding_challenge_snapshot_digest(connection)? != *snapshot_digest {
+                return Err(invalid(
+                    "finding challenge projection does not cover current state",
+                ));
+            }
+        }
+        None if has_state => {
+            return Err(invalid(
+                "finding challenge state has no authenticated projection",
+            ));
+        }
+        None => {}
     }
     Ok(())
 }
@@ -1690,6 +1990,18 @@ fn invalid(detail: impl Into<String>) -> SqliteServingOwnerError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn immediately_previous_global_schema_migrates_to_finding_challenge_kind(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let connection = Connection::open_in_memory()?;
+        let previous_schema = GLOBAL_COMMIT_SCHEMA.replace(", 'finding_challenge'", "");
+        connection.execute_batch(&previous_schema)?;
+        assert!(verify_global_commit_schema(&connection).is_err());
+        initialize_global_commit_schema(&connection)?;
+        verify_global_commit_schema(&connection)?;
+        Ok(())
+    }
 
     fn projection_fixture() -> Result<Connection, rusqlite::Error> {
         let connection = Connection::open_in_memory()?;
