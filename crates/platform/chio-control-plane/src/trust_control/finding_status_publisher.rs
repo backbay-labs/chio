@@ -50,11 +50,12 @@ impl FindingStatusEpochPublisher {
         authorization(&operator)?
             .validate()
             .map_err(|error| error.to_string())?;
+        service_bond
+            .validate(&operator)
+            .map_err(|error| error.to_string())?;
         if max_epoch_age_secs == 0
             || operator_keypair.public_key()
                 != operator.authority.key().map_err(|e| e.to_string())?
-            || service_bond.feed_id != operator.feed_id
-            || service_bond.operator_id != operator.authority.authority_id
         {
             return Err("finding status publisher configuration is not authorized".to_owned());
         }

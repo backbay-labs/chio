@@ -648,7 +648,6 @@ struct FindingStatusCliFloor {
 }
 
 struct FindingStatusFloorLock {
-    path: PathBuf,
     _file: std::fs::File,
 }
 
@@ -661,22 +660,24 @@ impl FindingStatusFloorLock {
         lock_name.push(".lock");
         let path = floor_path.with_file_name(lock_name);
         let file = std::fs::OpenOptions::new()
+            .read(true)
             .write(true)
-            .create_new(true)
+            .create(true)
+            .truncate(false)
             .open(&path)
             .map_err(|error| {
                 CliError::cli_io_error(format!(
-                    "failed to acquire finding status rollback-floor lock {}: {error}",
+                    "failed to open finding status rollback-floor lock {}: {error}",
                     path.display()
                 ))
             })?;
-        Ok(Self { path, _file: file })
-    }
-}
-
-impl Drop for FindingStatusFloorLock {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        file.try_lock().map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to acquire finding status rollback-floor lock {}: {error}",
+                path.display()
+            ))
+        })?;
+        Ok(Self { _file: file })
     }
 }
 

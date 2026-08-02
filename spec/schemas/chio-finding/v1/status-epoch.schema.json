@@ -108,7 +108,7 @@
           "$ref": "#/$defs/iJsonU64NonZero"
         },
         "valid_from": {
-          "$ref": "#/$defs/iJsonU64NonZero"
+          "$ref": "#/$defs/iJsonU64"
         },
         "valid_until": {
           "$ref": "#/$defs/iJsonU64NonZero"

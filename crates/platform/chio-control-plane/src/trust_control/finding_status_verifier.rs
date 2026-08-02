@@ -217,11 +217,9 @@ impl MarketFindingStatusVerifier {
         authorization(&operator)?
             .validate()
             .map_err(|error| error.to_string())?;
-        if service_bond.feed_id != operator.feed_id
-            || service_bond.operator_id != operator.authority.authority_id
-        {
-            return Err("finding status service bond does not bind the operator".to_owned());
-        }
+        service_bond
+            .validate(&operator)
+            .map_err(|error| error.to_string())?;
         Ok(Self {
             operator,
             service_bond,

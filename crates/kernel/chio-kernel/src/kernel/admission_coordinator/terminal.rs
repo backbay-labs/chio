@@ -856,13 +856,7 @@ impl ChioKernel {
             crate::memory_provenance::classify_memory_action(&request.tool_name, &request.arguments)
                 .as_ref()
         {
-            self.append_memory_provenance_for_write(
-                store,
-                key,
-                &request.capability.id,
-                &receipt.id,
-                receipt.timestamp,
-            )?;
+            self.append_memory_provenance_for_write(store, key, request, &receipt)?;
         }
         let (verdict, reason, terminal_state) =
             if let Some(denial) = delivery_evaluation.denial.as_ref() {
@@ -2265,13 +2259,7 @@ impl ChioKernel {
         if let Some(crate::memory_provenance::MemoryActionKind::Write { store, key }) =
             memory_action_kind.as_ref()
         {
-            self.append_memory_provenance_for_write(
-                store,
-                key,
-                &request.capability.id,
-                &projected_receipt.id,
-                projected_receipt.timestamp,
-            )?;
+            self.append_memory_provenance_for_write(store, key, request, &projected_receipt)?;
         }
         let (verdict, reason, terminal_state, execution_nonce) =
             if let Some(denial) = delivery_evaluation.denial.as_ref() {

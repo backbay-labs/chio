@@ -189,6 +189,21 @@ fn status_epoch_numeric_identifiers_are_nonzero_i_json_integers() -> TestResult 
 }
 
 #[test]
+fn status_epoch_schema_accepts_zero_valid_from_like_the_runtime() -> TestResult {
+    let (_, mut auth, signed) = inclusion_fixture()?;
+    let keypair = operator();
+    let mut body = signed.body;
+    body.valid_from = 0;
+    body.status_epoch_id = compute_status_epoch_id(&body)?;
+    let genesis_epoch = SignedExportEnvelope::sign(body, &keypair)?;
+    auth.operator.valid_from = 0;
+
+    verify_signed_status_epoch(&genesis_epoch, &auth)?;
+    validate_schema("status-epoch", &serde_json::to_value(genesis_epoch)?)?;
+    Ok(())
+}
+
+#[test]
 fn exact_canonical_proof_bytes_round_trip() -> TestResult {
     let (proof, _, _) = inclusion_fixture()?;
     let canonical = chio_core_types::canonical_json_bytes(&proof)?;

@@ -45,6 +45,12 @@ use uuid::Uuid;
 /// existing chains.
 pub const MEMORY_PROVENANCE_ENTRY_SCHEMA: &str = "chio.memory_provenance_entry.v1";
 
+/// Optional governed `memory_write` argument that binds purchased Finding
+/// content to the durable delivery receipt that authorized its disclosure.
+/// When present, the kernel verifies the receipt and persists a signed typed
+/// lineage edge after the write receipt is durable.
+pub const FINDING_DELIVERY_RECEIPT_ID_ARGUMENT: &str = "finding_delivery_receipt_id";
+
 /// Sentinel `prev_hash` used for the first entry in a chain. Kept as a
 /// fixed 64-character hex string of zeros so canonical-JSON hashing is
 /// deterministic and the chain has no special-case branch.

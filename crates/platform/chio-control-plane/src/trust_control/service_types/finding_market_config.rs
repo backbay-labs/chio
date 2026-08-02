@@ -236,7 +236,7 @@ pub struct FindingStatusServiceBond {
 }
 
 impl FindingStatusServiceBond {
-    fn validate(&self, operator: &FindingStatusOperatorPin) -> Result<(), CliError> {
+    pub(crate) fn validate(&self, operator: &FindingStatusOperatorPin) -> Result<(), CliError> {
         if self.bond_id.trim().is_empty() || self.bond_id.trim() != self.bond_id {
             return Err(CliError::cli_other_error(
                 "finding-market status service bond id is invalid".to_string(),

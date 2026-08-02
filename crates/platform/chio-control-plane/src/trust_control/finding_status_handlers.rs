@@ -859,6 +859,35 @@ mod tests {
     }
 
     #[test]
+    fn verifier_and_publisher_reject_malformed_service_bond(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (operator, mut bond) = config();
+        let (_temp, authority) = provision_authority()?;
+        bond.locked_units = 0;
+
+        assert!(
+            super::super::finding_status_verifier::MarketFindingStatusVerifier::new(
+                operator.clone(),
+                bond.clone(),
+                300,
+                authority.finding_status_store(),
+            )
+            .is_err()
+        );
+        assert!(
+            super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+                authority.finding_status_store(),
+                operator,
+                bond,
+                operator_key(),
+                300,
+            )
+            .is_err()
+        );
+        Ok(())
+    }
+
+    #[test]
     fn root_projection_rejects_stale_or_substituted_epoch_authority(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (operator, bond) = config();

@@ -33,16 +33,12 @@ use chio_core::merkle::MerkleTree;
 use chio_core::receipt::body::{ChioReceipt, ChioReceiptBody};
 use chio_core::receipt::decision::{Decision, ToolCallAction};
 use chio_core::receipt::kinds::TrustLevel;
-use chio_core::receipt::lineage::{
-    ReceiptLineageEndpoints, ReceiptLineageRelationKind, ReceiptLineageStatement,
-    ReceiptLineageStatementBody, SignedExportEnvelope,
-};
+use chio_core::receipt::lineage::{ReceiptLineageRelationKind, SignedExportEnvelope};
 use chio_core::receipt::metadata::{
     DeliveryContract, DeliveryResult, FindingDelivery, FindingDeliverySettlementMode,
     FindingMediaTypeCheck, FindingTransformProfile, DELIVERY_CONTRACT_METADATA_KEY,
     DELIVERY_CONTRACT_SCHEMA, FINDING_DELIVERY_METADATA_KEY, FINDING_DELIVERY_SCHEMA,
 };
-use chio_core::session::{RequestId, SessionAnchorReference};
 use chio_core::sha256_hex;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
@@ -2898,6 +2894,8 @@ fn buyer_memory_write(
         "collection": "purchased-findings",
         "id": deployment.web.finding_id,
         "content": STANDARD.encode(SEALED_PAYLOAD),
+        (chio_kernel::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT):
+            delivery_receipt.id,
     });
     let request = ToolCallRequest {
         request_id: "wedge-memory-write-1".to_string(),
@@ -2938,47 +2936,11 @@ fn buyer_memory_write(
         .and_then(|metadata| metadata.get("governed_transaction"))
         .is_some());
 
-    let statement = ReceiptLineageStatement::sign(
-        ReceiptLineageStatementBody::new(
-            format!("lineage-{}", write.receipt.id),
-            ReceiptLineageEndpoints::new(
-                delivery_receipt.id.clone(),
-                write.receipt.id.clone(),
-                RequestId::new("wedge-reveal-1"),
-                RequestId::new("wedge-memory-write-1"),
-                SessionAnchorReference::new("anchor-reveal", HEX64),
-                SessionAnchorReference::new("anchor-memory", HEX64),
-            ),
-            ReceiptLineageRelationKind::FindingMemoryWriteToDelivery,
-            unix_timestamp_now(),
-            buyer_kernel_keypair.public_key(),
-        ),
-        &buyer_kernel_keypair,
-    )?;
-    assert!(statement.verify_signature()?);
     let store: &dyn ReceiptStore = receipts.as_ref();
-    store.record_session_anchor(
-        "wedge-buyer-session",
-        "anchor-memory",
-        &sha256_hex(b"wedge-buyer-auth-context"),
-        unix_timestamp_now(),
-        None,
-        &serde_json::json!({
-            "schema": "chio.session_anchor.v1",
-            "id": "anchor-memory",
-        }),
-    )?;
-    store.record_receipt_lineage_statement(
-        &write.receipt.id,
-        Some("wedge-memory-write-1"),
-        Some("wedge-buyer-session"),
-        Some("anchor-memory"),
-        Some("wedge-reveal-1"),
-        Some(&delivery_receipt.id),
-        None,
-        unix_timestamp_now(),
-        &serde_json::to_value(&statement)?,
-    )?;
+    let statement = store
+        .load_receipt_lineage_statement(&write.receipt.id)?
+        .ok_or_else(|| missing("kernel-persisted Finding memory lineage statement"))?;
+    assert!(statement.verify_signature()?);
     let links = store.list_receipt_lineage_statement_links(&write.receipt.id)?;
     let link = links
         .first()

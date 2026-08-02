@@ -127,13 +127,7 @@ impl ChioKernel {
         if let Some(crate::memory_provenance::MemoryActionKind::Write { store, key }) =
             memory_action_kind.as_ref()
         {
-            self.append_memory_provenance_for_write(
-                store,
-                key,
-                &cap.id,
-                &receipt.id,
-                receipt.timestamp,
-            )?;
+            self.append_memory_provenance_for_write(store, key, request, &receipt)?;
         }
 
         // Mint a short-lived, single-use execution nonce for allow responses
@@ -381,27 +375,226 @@ impl ChioKernel {
         &self,
         store: &str,
         key: &str,
-        capability_id: &str,
-        receipt_id: &str,
-        written_at: u64,
+        request: &ToolCallRequest,
+        receipt: &ChioReceipt,
     ) -> Result<(), KernelError> {
         let Some(chain) = self.memory_provenance_store() else {
+            if request
+                .arguments
+                .get(crate::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT)
+                .is_some()
+            {
+                return Err(KernelError::Internal(
+                    "Finding memory write requires a memory provenance store".to_owned(),
+                ));
+            }
             return Ok(());
         };
         chain
             .append(crate::memory_provenance::MemoryProvenanceAppend {
                 store: store.to_string(),
                 key: key.to_string(),
-                capability_id: capability_id.to_string(),
-                receipt_id: receipt_id.to_string(),
-                written_at,
+                capability_id: request.capability.id.clone(),
+                receipt_id: receipt.id.clone(),
+                written_at: receipt.timestamp,
             })
-            .map(|_| ())
             .map_err(|error| {
                 KernelError::Internal(format!(
                     "memory provenance append failed for store={store} key={key}: {error}"
                 ))
-            })
+            })?;
+        self.record_finding_memory_write_lineage(request, receipt, key)
+    }
+
+    fn record_finding_memory_write_lineage(
+        &self,
+        request: &ToolCallRequest,
+        child: &ChioReceipt,
+        memory_key: &str,
+    ) -> Result<(), KernelError> {
+        let Some(binding) = request
+            .arguments
+            .get(crate::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT)
+        else {
+            return Ok(());
+        };
+        if request.governed_intent.is_none() {
+            return Err(KernelError::Internal(
+                "Finding delivery lineage requires a governed memory write".to_owned(),
+            ));
+        }
+        let parent_receipt_id = binding
+            .as_str()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                KernelError::Internal(
+                    "Finding delivery receipt binding must be a nonempty string".to_owned(),
+                )
+            })?;
+        let Some(()) = self.with_receipt_store(|store| {
+            let parent = store
+                .load_chio_receipt(parent_receipt_id)?
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding delivery receipt binding is not durably available".to_owned(),
+                    )
+                })?;
+            if parent.id != parent_receipt_id
+                || !parent.is_allowed()
+                || !parent.verify_signature().map_err(|error| {
+                    KernelError::Internal(format!(
+                        "Finding delivery receipt signature verification failed: {error}"
+                    ))
+                })?
+            {
+                return Err(KernelError::Internal(
+                    "Finding delivery receipt binding is not an authentic allow receipt".to_owned(),
+                ));
+            }
+            let delivery_value = parent
+                .metadata
+                .as_ref()
+                .and_then(|metadata| {
+                    metadata.get(chio_core::receipt::metadata::FINDING_DELIVERY_METADATA_KEY)
+                })
+                .cloned()
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding delivery receipt binding has no typed delivery metadata".to_owned(),
+                    )
+                })?;
+            let delivery: chio_core::receipt::metadata::FindingDelivery =
+                serde_json::from_value(delivery_value).map_err(|error| {
+                    KernelError::Internal(format!(
+                        "Finding delivery receipt metadata is malformed: {error}"
+                    ))
+                })?;
+            delivery.validate().map_err(|error| {
+                KernelError::Internal(format!(
+                    "Finding delivery receipt metadata is invalid: {error}"
+                ))
+            })?;
+            if delivery.finding_id != memory_key
+                || delivery.digest_check
+                    != chio_core::receipt::metadata::DeliveryResult::Matched
+                || delivery.media_type_check
+                    != chio_core::receipt::metadata::FindingMediaTypeCheck::Matched
+            {
+                return Err(KernelError::Internal(
+                    "Finding delivery receipt does not authorize this memory entry".to_owned(),
+                ));
+            }
+            let parent_request_id = parent
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("receipt_context"))
+                .and_then(|context| context.get("request_id"))
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding delivery receipt has no authenticated request id".to_owned(),
+                    )
+                })?;
+            let parent_bytes = chio_core::canonical::canonical_json_bytes(&parent).map_err(|error| {
+                KernelError::Internal(format!(
+                    "Finding delivery receipt canonicalization failed: {error}"
+                ))
+            })?;
+            let child_bytes = chio_core::canonical::canonical_json_bytes(child).map_err(|error| {
+                KernelError::Internal(format!(
+                    "Finding memory write receipt canonicalization failed: {error}"
+                ))
+            })?;
+            let parent_anchor = chio_core::session::SessionAnchorReference::new(
+                format!("receipt:{}", parent.id),
+                chio_core::crypto::sha256_hex(&parent_bytes),
+            );
+            let child_anchor = chio_core::session::SessionAnchorReference::new(
+                format!("receipt:{}", child.id),
+                chio_core::crypto::sha256_hex(&child_bytes),
+            );
+            let session_id = format!("finding-memory-write:{}", child.id);
+            let auth_context_fingerprint = chio_core::crypto::sha256_hex(
+                format!("{}:{}", request.agent_id, request.capability.id).as_bytes(),
+            );
+            store.record_session_anchor(
+                &session_id,
+                &child_anchor.session_anchor_id,
+                &auth_context_fingerprint,
+                child.timestamp,
+                None,
+                &serde_json::json!({
+                    "schema": "chio.finding.memory-write-anchor.v1",
+                    "receipt_id": child.id,
+                    "receipt_sha256": child_anchor.session_anchor_hash,
+                }),
+            )?;
+            let request_lineage = chio_core::session::RequestLineageRecord::new(
+                chio_core::session::RequestId::new(&request.request_id),
+                child_anchor.clone(),
+                chio_core::session::OperationKind::ToolCall,
+                chio_core::session::RequestLineageMode::LocalChild,
+                child.timestamp,
+            )
+            .with_parent_request_id(chio_core::session::RequestId::new(parent_request_id));
+            store.record_request_lineage(
+                &session_id,
+                &request.request_id,
+                Some(parent_request_id),
+                Some(&child_anchor.session_anchor_id),
+                child.timestamp,
+                Some(&child.content_hash),
+                &serde_json::to_value(&request_lineage).map_err(|error| {
+                    KernelError::Internal(format!(
+                        "Finding memory write request lineage serialization failed: {error}"
+                    ))
+                })?,
+            )?;
+            let statement = chio_core::receipt::lineage::ReceiptLineageStatement::sign(
+                chio_core::receipt::lineage::ReceiptLineageStatementBody::new(
+                    format!("finding-memory-lineage:{}", child.id),
+                    chio_core::receipt::lineage::ReceiptLineageEndpoints::new(
+                        parent.id.clone(),
+                        child.id.clone(),
+                        chio_core::session::RequestId::new(parent_request_id),
+                        chio_core::session::RequestId::new(&request.request_id),
+                        parent_anchor,
+                        child_anchor.clone(),
+                    ),
+                    chio_core::receipt::lineage::ReceiptLineageRelationKind::FindingMemoryWriteToDelivery,
+                    child.timestamp,
+                    self.config.keypair.public_key(),
+                ),
+                &self.config.keypair,
+            )
+            .map_err(|error| {
+                KernelError::Internal(format!(
+                    "Finding memory write lineage signing failed: {error}"
+                ))
+            })?;
+            store.record_receipt_lineage_statement(
+                &child.id,
+                Some(&request.request_id),
+                Some(&session_id),
+                Some(&child_anchor.session_anchor_id),
+                Some(parent_request_id),
+                Some(&parent.id),
+                Some(&format!("finding:{}", delivery.finding_id)),
+                child.timestamp,
+                &serde_json::to_value(&statement).map_err(|error| {
+                    KernelError::Internal(format!(
+                        "Finding memory write lineage serialization failed: {error}"
+                    ))
+                })?,
+            )?;
+            Ok(())
+        })? else {
+            return Err(KernelError::Internal(
+                "Finding delivery lineage requires a durable receipt store".to_owned(),
+            ));
+        };
+        Ok(())
     }
 }
 

@@ -580,6 +580,19 @@ fn status_floor_rejects_rollback_and_same_epoch_equivocation() {
 }
 
 #[test]
+fn status_floor_lock_recovers_from_stale_sidecar_and_excludes_live_writer() {
+    let dir = tempfile::tempdir().unwrap();
+    let floor_path = dir.path().join("status-floor.json");
+    let lock_path = dir.path().join("status-floor.json.lock");
+    std::fs::write(&lock_path, b"stale owner").unwrap();
+
+    let first = FindingStatusFloorLock::acquire(&floor_path).unwrap();
+    assert!(FindingStatusFloorLock::acquire(&floor_path).is_err());
+    drop(first);
+    FindingStatusFloorLock::acquire(&floor_path).unwrap();
+}
+
+#[test]
 fn status_rejects_oversized_encoded_proof_before_decoding() {
     let authorization = chio_finding::FindingStatusOperatorAuthorization {
         role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
