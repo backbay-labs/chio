@@ -34,7 +34,7 @@ fn proof_test_ok<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -
 }
 
 #[test]
-fn finding_claim_set_rows_force_cognition_market_routing() {
+fn only_verified_finding_claim_set_rows_force_cognition_market_routing() {
     let transaction_claim_set = serde_json::to_vec(&serde_json::json!({
         "claims": [{
             "claim_id": "claim.transaction.passport_root_verified",
@@ -43,7 +43,7 @@ fn finding_claim_set_rows_force_cognition_market_routing() {
     }))
     .unwrap_or_default();
     assert!(!proof_test_ok(
-        claim_set_bytes_advertise_prefix(&transaction_claim_set, CLAIM_PREFIX_FINDING),
+        claim_set_bytes_advertise_verified_prefix(&transaction_claim_set, CLAIM_PREFIX_FINDING),
         "inspect transaction-only ClaimSet",
     ));
 
@@ -55,9 +55,26 @@ fn finding_claim_set_rows_force_cognition_market_routing() {
     }))
     .unwrap_or_default();
     assert!(proof_test_ok(
-        claim_set_bytes_advertise_prefix(&finding_claim_set, CLAIM_PREFIX_FINDING),
+        claim_set_bytes_advertise_verified_prefix(&finding_claim_set, CLAIM_PREFIX_FINDING),
         "inspect ClaimSet with an advertised finding claim",
     ));
+
+    for status in ["omitted", "unsupported", "failed"] {
+        let non_verified_finding_claim_set = serde_json::to_vec(&serde_json::json!({
+            "claims": [{
+                "claim_id": "claim.finding.delivery_digest_bound",
+                "status": status
+            }]
+        }))
+        .unwrap_or_default();
+        assert!(!proof_test_ok(
+            claim_set_bytes_advertise_verified_prefix(
+                &non_verified_finding_claim_set,
+                CLAIM_PREFIX_FINDING,
+            ),
+            "inspect ClaimSet with a non-verified finding claim",
+        ));
+    }
 }
 
 fn agent_web_replay_test_env(replay_store_path: &std::path::Path) -> TestEnvGuard {

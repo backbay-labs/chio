@@ -1018,11 +1018,10 @@ fn verify_transaction_passport_file_with_mode(
     let mut deferred_agent_web_replay_reservation = None;
     let mut expected_public_settlement_trust_market_context = None;
     let mut expected_commerce_trust_market_context = None;
-    let finding_claims_advertised = claim_set_advertises_prefix(
-        bundle_dir,
-        &passport.claim_set_path,
-        CLAIM_PREFIX_FINDING,
-    )?;
+    let finding_claim_set_path = resolve_bundle_artifact_path(bundle_dir, &passport.claim_set_path)?;
+    let finding_claim_set = fs::read(finding_claim_set_path)?;
+    let finding_claims_advertised =
+        claim_set_bytes_advertise_verified_prefix(&finding_claim_set, CLAIM_PREFIX_FINDING)?;
     if claim_requirements.requires(CLAIM_PREFIX_FINDING) || finding_claims_advertised {
         let trust = cognition_market_proof_trust_from_env(&trusted_transaction_root_keys)?;
         let report = chio_control_plane::transaction_passport::
@@ -1865,16 +1864,10 @@ fn load_standalone_evidence_graph_artifacts(
     Ok(artifacts)
 }
 
-fn claim_set_advertises_prefix(
-    bundle_dir: &Path,
-    claim_set_path: &str,
+fn claim_set_bytes_advertise_verified_prefix(
+    bytes: &[u8],
     prefix: &str,
 ) -> Result<bool, CliError> {
-    let bytes = fs::read(resolve_bundle_artifact_path(bundle_dir, claim_set_path)?)?;
-    claim_set_bytes_advertise_prefix(&bytes, prefix)
-}
-
-fn claim_set_bytes_advertise_prefix(bytes: &[u8], prefix: &str) -> Result<bool, CliError> {
     let claim_set: serde_json::Value = serde_json::from_slice(bytes)?;
     let claims = claim_set
         .get("claims")
@@ -1887,7 +1880,13 @@ fn claim_set_bytes_advertise_prefix(bytes: &[u8], prefix: &str) -> Result<bool, 
             .ok_or_else(|| {
                 CliError::cli_other_error("proof verify: claim set claim_id must be a string")
             })?;
-        if claim_id.starts_with(prefix) {
+        let status = claim
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                CliError::cli_other_error("proof verify: claim set status must be a string")
+            })?;
+        if claim_id.starts_with(prefix) && status == "verified" {
             return Ok(true);
         }
     }
