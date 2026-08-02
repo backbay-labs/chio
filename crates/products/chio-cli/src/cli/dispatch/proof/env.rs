@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{collections::BTreeSet, io::Read, sync::Arc, time::Duration};
 
 use super::CliError;
 use chio_egress_contract::HttpEgressContract;
@@ -15,6 +15,14 @@ const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
 const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS";
 const TRANSACTION_TRUSTED_CHECKPOINT_KEYS_ENV: &str =
     "CHIO_TRANSACTION_TRUSTED_CHECKPOINT_KEYS";
+const FINDING_VERIFIER_AUTHORITY_KEY_ENV: &str = "CHIO_FINDING_VERIFIER_AUTHORITY_KEY";
+const FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV: &str =
+    "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256";
+const FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV: &str =
+    "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH";
+const FINDING_STATUS_NOW_UNIX_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_NOW_UNIX_SECONDS";
+const FINDING_STATUS_MAX_AGE_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_MAX_AGE_SECONDS";
+const FINDING_STATUS_AUTHORIZATION_MAX_BYTES: usize = 64 * 1024;
 const RUNTIME_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_RUNTIME_TRUSTED_ROOT_KEYS";
 const ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV: &str = "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS";
 const ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV: &str =
@@ -190,6 +198,113 @@ fn optional_u64_from_env(env_name: &str) -> Result<Option<u64>, CliError> {
         Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
             "{env_name} must be valid UTF-8"
         ))),
+    }
+}
+
+pub(super) fn cognition_market_proof_trust_from_env(
+    trusted_passport_signer_keys: &[chio_core_types::PublicKey],
+) -> Result<chio_control_plane::transaction_passport::CognitionMarketProofTrust, CliError> {
+    let verifier_keys = required_public_keys_from_env(
+        FINDING_VERIFIER_AUTHORITY_KEY_ENV,
+        "Finding verifier authority",
+    )?;
+    if verifier_keys.len() != 1 {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_AUTHORITY_KEY_ENV} must contain exactly one public key"
+        )));
+    }
+    let finding_verifier_authority = verifier_keys
+        .into_iter()
+        .next()
+        .ok_or_else(|| CliError::cli_other_error("Finding verifier authority key is missing"))?;
+    let trusted_verifier_profile_envelope_sha256 =
+        required_sha256_env(FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV)?;
+    let authorization_path = required_utf8_env(FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV)?;
+    let mut reader = std::fs::File::open(&authorization_path)?
+        .take((FINDING_STATUS_AUTHORIZATION_MAX_BYTES as u64).saturating_add(1));
+    let mut authorization_bytes =
+        Vec::with_capacity(FINDING_STATUS_AUTHORIZATION_MAX_BYTES.saturating_add(1));
+    reader.read_to_end(&mut authorization_bytes)?;
+    if authorization_bytes.len() > FINDING_STATUS_AUTHORIZATION_MAX_BYTES {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV} exceeds the authorization size bound"
+        )));
+    }
+    let authorization_text = std::str::from_utf8(&authorization_bytes).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV} is not valid UTF-8: {error}"
+        ))
+    })?;
+    let canonical = chio_core_types::canonical_json_bytes_from_str(authorization_text).map_err(
+        |error| {
+            CliError::cli_other_error(format!(
+                "{FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV} is not strict canonical I-JSON: {error}"
+            ))
+        },
+    )?;
+    if canonical != authorization_bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV} is not the canonical authorization serialization"
+        )));
+    }
+    let status_operator_authorization: chio_finding::FindingStatusOperatorAuthorization =
+        serde_json::from_slice(&authorization_bytes)?;
+    status_operator_authorization.validate().map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Finding status operator authorization is invalid: {error}"
+        ))
+    })?;
+    let now = required_positive_u64_env(FINDING_STATUS_NOW_UNIX_SECONDS_ENV)?;
+    let max_epoch_age_secs = required_positive_u64_env(FINDING_STATUS_MAX_AGE_SECONDS_ENV)?;
+    Ok(
+        chio_control_plane::transaction_passport::CognitionMarketProofTrust {
+            trusted_passport_signer_keys: trusted_passport_signer_keys.to_vec(),
+            finding_verifier_authority,
+            trusted_verifier_profile_envelope_sha256,
+            status_operator_authorization,
+            status_freshness: chio_finding::FindingStatusFreshnessPolicy {
+                now,
+                max_epoch_age_secs,
+            },
+        },
+    )
+}
+
+fn required_utf8_env(env_name: &str) -> Result<String, CliError> {
+    match std::env::var(env_name) {
+        Ok(value) if !value.trim().is_empty() => Ok(value),
+        Ok(_) => Err(CliError::cli_other_error(format!(
+            "{env_name} must be non-empty"
+        ))),
+        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
+            "{env_name} must be set"
+        ))),
+        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+            "{env_name} must be valid UTF-8"
+        ))),
+    }
+}
+
+fn required_positive_u64_env(env_name: &str) -> Result<u64, CliError> {
+    let raw = required_utf8_env(env_name)?;
+    raw.parse::<u64>()
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or_else(|| CliError::cli_other_error(format!("{env_name} must be a nonzero u64")))
+}
+
+fn required_sha256_env(env_name: &str) -> Result<String, CliError> {
+    let value = required_utf8_env(env_name)?;
+    if value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        Ok(value)
+    } else {
+        Err(CliError::cli_other_error(format!(
+            "{env_name} must be a lowercase 64-character SHA-256 digest"
+        )))
     }
 }
 

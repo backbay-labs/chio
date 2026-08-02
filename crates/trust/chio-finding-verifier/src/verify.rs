@@ -24,6 +24,7 @@ use chio_core_types::capability::trust_policy::AttestationTrustPolicy;
 use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core_types::receipt::body::{chio_receipt_id, ChioReceipt};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
+use chio_core_types::receipt::metadata::DeliveryResult;
 use chio_finding::{
     compute_report_id, signed_envelope_sha256, verify_finding, verify_pinned_envelope,
     verify_signed_bond_backing, verify_signed_profile, verify_status_proof_input, Finding,
@@ -362,6 +363,31 @@ pub fn verify_finding_evidence(
                     break;
                 }
             }
+            let Some(delivery) = evidence.receipt.delivery_contract() else {
+                failure = Some(format!(
+                    "receipt {} has no signed delivery contract",
+                    evidence.receipt.id
+                ));
+                break;
+            };
+            if let Err(error) = delivery.validate() {
+                failure = Some(format!(
+                    "receipt {} delivery contract is invalid: {error}",
+                    evidence.receipt.id
+                ));
+                break;
+            }
+            if delivery.result != DeliveryResult::Matched
+                || delivery.expected_digest != finding.payload_sha256
+                || delivery.observed_digest != finding.payload_sha256
+                || evidence.receipt.content_hash != finding.payload_sha256
+            {
+                failure = Some(format!(
+                    "receipt {} delivery contract does not bind the Finding payload digest",
+                    evidence.receipt.id
+                ));
+                break;
+            }
             match chio_receipt_id(&evidence.receipt.body()) {
                 Ok(id) => recomputed_ids.push(id),
                 Err(_) => {
@@ -565,6 +591,13 @@ fn evaluate_status_liveness(
             "status proof supplied without pinned operator authorization and freshness policy",
         );
     };
+    if freshness.now != trust.trusted_time {
+        return facet(
+            FindingFacetKind::StatusLiveness,
+            FindingFacetOutcome::Failed,
+            "status freshness clock does not match the report evaluation time",
+        );
+    }
     let proof = match chio_finding::parse_status_proof_input(raw) {
         Ok(proof) => proof,
         Err(error) => {
@@ -797,6 +830,16 @@ fn evaluate_bond_backing(
                 FindingFacetKind::BondBacking,
                 FindingFacetOutcome::Failed,
                 "backing allocation names a different finding",
+            ),
+            None,
+        );
+    }
+    if snapshot.accepted_at >= trust.trusted_time {
+        return (
+            facet(
+                FindingFacetKind::BondBacking,
+                FindingFacetOutcome::Failed,
+                "backing allocation was not accepted before report evaluation",
             ),
             None,
         );

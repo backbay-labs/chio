@@ -40,6 +40,7 @@ const FINDING_VERIFIER_MODULE: &str = "chio-finding-verifier";
 pub struct CognitionMarketProofTrust {
     pub trusted_passport_signer_keys: Vec<PublicKey>,
     pub finding_verifier_authority: PublicKey,
+    pub trusted_verifier_profile_envelope_sha256: String,
     pub status_operator_authorization: FindingStatusOperatorAuthorization,
     pub status_freshness: FindingStatusFreshnessPolicy,
 }
@@ -130,6 +131,13 @@ pub fn verify_cognition_market_passport_artifacts(
         })?;
     verify_signed_verifier_report(&report, &trust.finding_verifier_authority)
         .map_err(|error| invalid_artifact(report_node.path, error.to_string()))?;
+    if report.body.verifier_profile_envelope_sha256
+        != trust.trusted_verifier_profile_envelope_sha256
+    {
+        return Err(claim_failed(
+            "signed verifier report does not bind the deployment-pinned verifier profile",
+        ));
+    }
 
     let recipe_bytes = artifact_bytes(artifacts, recipe_node.path)?;
     let recipe = parse_recipe(recipe_node.path, recipe_bytes)?;
@@ -173,6 +181,11 @@ pub fn verify_cognition_market_passport_artifacts(
             "qualified status-fresh claim requires a non-inclusion proof",
         ));
     }
+    if trust.status_freshness.now != report.body.evaluation_time {
+        return Err(claim_failed(
+            "status freshness clock does not match the signed report evaluation time",
+        ));
+    }
     verify_status_proof_input(
         &status,
         &trust.status_operator_authorization,
@@ -192,14 +205,21 @@ pub fn verify_cognition_market_passport_artifacts(
     // The generic verifier performs the final passport signature, graph/root,
     // policy, and ClaimSet digest checks. Cognition-specific semantics above
     // are what make these four external claims eligible for acceptance.
-    verify_passport_root_and_claim_set_artifacts(
+    let mut report = verify_passport_root_and_claim_set_artifacts(
         passport,
         passport_path,
         evidence_graph_bytes,
         verifier_policy_bytes,
         artifacts,
         &trust.trusted_passport_signer_keys,
-    )
+    )?;
+    report
+        .verified_claims
+        .retain(|claim| COGNITION_MARKET_CLAIMS.contains(&claim.as_str()));
+    report
+        .claim_results
+        .retain(|claim| COGNITION_MARKET_CLAIMS.contains(&claim.claim_id.as_str()));
+    Ok(report)
 }
 
 fn validate_every_graph_artifact(

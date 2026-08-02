@@ -24,6 +24,7 @@ use chio_core_types::receipt::governance::{
 };
 use chio_core_types::receipt::kinds::TrustLevel;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
+use chio_core_types::receipt::metadata::{DeliveryContract, DeliveryResult};
 use chio_core_types::MerkleTree;
 use chio_core_types::{canonical_json_bytes, sha256_hex};
 use chio_finding::{
@@ -71,27 +72,36 @@ fn receipt(
     content_hash: &str,
     runtime_assurance: Option<&RuntimeAssuranceReceiptMetadata>,
 ) -> Result<ChioReceipt, Box<dyn Error>> {
-    let metadata = runtime_assurance
-        .map(|runtime_assurance| {
-            serde_json::to_value(serde_json::json!({
-                "governed_transaction": GovernedTransactionReceiptMetadata {
-                    intent_id: format!("intent-evidence-{index}"),
-                    intent_hash: HEX64.to_string(),
-                    purpose: "produce finding evidence".to_string(),
-                    server_id: "finding-server".to_string(),
-                    tool_name: "finding.produce".to_string(),
-                    max_amount: None,
-                    commerce: None,
-                    metered_billing: None,
-                    approval: None,
-                    runtime_assurance: Some(runtime_assurance.clone()),
-                    call_chain: None,
-                    autonomy: None,
-                    economic_authorization: None,
-                }
-            }))
-        })
-        .transpose()?;
+    let mut metadata = serde_json::Map::new();
+    metadata.insert(
+        "delivery_contract".to_owned(),
+        serde_json::to_value(DeliveryContract {
+            schema: chio_core_types::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
+            expected_digest: content_hash.to_owned(),
+            observed_digest: content_hash.to_owned(),
+            result: DeliveryResult::Matched,
+        })?,
+    );
+    if let Some(runtime_assurance) = runtime_assurance {
+        metadata.insert(
+            "governed_transaction".to_owned(),
+            serde_json::to_value(GovernedTransactionReceiptMetadata {
+                intent_id: format!("intent-evidence-{index}"),
+                intent_hash: HEX64.to_string(),
+                purpose: "produce finding evidence".to_string(),
+                server_id: "finding-server".to_string(),
+                tool_name: "finding.produce".to_string(),
+                max_amount: None,
+                commerce: None,
+                metered_billing: None,
+                approval: None,
+                runtime_assurance: Some(runtime_assurance.clone()),
+                call_chain: None,
+                autonomy: None,
+                economic_authorization: None,
+            })?,
+        );
+    }
     let body = ChioReceiptBody {
         id: String::new(),
         timestamp: 1_750_000_000 + u64::from(index),
@@ -109,7 +119,7 @@ fn receipt(
         content_hash: content_hash.to_string(),
         policy_hash: "policy-wedge".to_string(),
         evidence: Vec::new(),
-        metadata,
+        metadata: Some(serde_json::Value::Object(metadata)),
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: kernel.public_key(),
@@ -671,11 +681,38 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
 }
 
 #[test]
+fn receipt_authenticity_requires_a_signed_delivery_digest_binding() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let mut receipts = clone_receipts(&fx);
+    let unrelated_digest = "ab".repeat(32);
+    let unrelated = receipt(&keypair(21), 0, &unrelated_digest, None)?;
+    receipts[0].canonical_receipt_bytes = canonical_json_bytes(&unrelated)?;
+    receipts[0].receipt = unrelated;
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, receipts))?;
+    let authenticity = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
+        .ok_or("receipt-authenticity facet missing")?;
+    assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
+    assert!(
+        authenticity.reason.contains("Finding payload digest"),
+        "unexpected reason: {}",
+        authenticity.reason
+    );
+    assert!(!draft.satisfies_required_facets(&fx.profile.body));
+    Ok(())
+}
+
+#[test]
 fn portable_status_proof_verifies_and_is_pinned_into_signed_report() -> TestResult {
     let fx = fixture()?;
     let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
     let (status_bytes, authorization, freshness) = portable_live_status_proof(&finding.finding_id)?;
     let mut trust = trust_roots(&fx);
+    trust.trusted_time = freshness.now;
     trust.status_operator_authorization = Some(authorization);
     trust.status_freshness_policy = Some(freshness);
     let mut evidence = bundle(&fx, clone_receipts(&fx));
@@ -718,6 +755,7 @@ fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> T
     evidence.status_proof_input = Some(&status_bytes);
 
     let mut baseline_trust = trust_roots(&fx);
+    baseline_trust.trusted_time = freshness.now;
     baseline_trust.status_operator_authorization = Some(authorization.clone());
     baseline_trust.status_freshness_policy = Some(freshness);
     let baseline = verify_finding_evidence(&fx.raw_finding, &baseline_trust, &evidence)?;
@@ -730,6 +768,7 @@ fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> T
     alternate_authorization.operator.rotation_policy_ref =
         "status-rotation-policy/alternate".to_owned();
     let mut authorization_trust = trust_roots(&fx);
+    authorization_trust.trusted_time = freshness.now;
     authorization_trust.status_operator_authorization = Some(alternate_authorization);
     authorization_trust.status_freshness_policy = Some(freshness);
     let authorization_changed =
@@ -744,6 +783,7 @@ fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> T
     );
 
     let mut freshness_trust = trust_roots(&fx);
+    freshness_trust.trusted_time = freshness.now;
     freshness_trust.status_operator_authorization =
         baseline_trust.status_operator_authorization.clone();
     freshness_trust.status_freshness_policy = Some(FindingStatusFreshnessPolicy {
@@ -759,6 +799,33 @@ fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> T
         baseline.resolved_evidence_bundle_sha256,
         freshness_changed.resolved_evidence_bundle_sha256
     );
+    Ok(())
+}
+
+#[test]
+fn portable_status_proof_rejects_a_clock_different_from_report_evaluation() -> TestResult {
+    let fx = fixture()?;
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let (status_bytes, authorization, freshness) = portable_live_status_proof(&finding.finding_id)?;
+    let mut trust = trust_roots(&fx);
+    trust.status_operator_authorization = Some(authorization);
+    trust.status_freshness_policy = Some(freshness);
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.status_proof_input = Some(&status_bytes);
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let status = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::StatusLiveness)
+        .ok_or("status-liveness facet missing")?;
+    assert_eq!(status.outcome, FindingFacetOutcome::Failed);
+    assert!(
+        status.reason.contains("report evaluation time"),
+        "unexpected reason: {}",
+        status.reason
+    );
+    assert!(!draft.satisfies_required_facets(&fx.profile.body));
     Ok(())
 }
 
@@ -1114,6 +1181,26 @@ fn missing_bond_snapshot_is_unavailable_and_denies() -> TestResult {
     assert_eq!(
         draft.facet_outcome(FindingFacetKind::BondBacking),
         Some(FindingFacetOutcome::Unavailable)
+    );
+    assert!(draft.backing_allocation_id.is_none());
+    assert!(!draft.satisfies_required_facets(&fx.profile.body));
+    Ok(())
+}
+
+#[test]
+fn backing_accepted_at_or_after_evaluation_is_not_verified() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let mut evidence_bundle = bundle(&fx, clone_receipts(&fx));
+    evidence_bundle
+        .bond_snapshot
+        .as_mut()
+        .ok_or("bond snapshot missing")?
+        .accepted_at = trust.trusted_time;
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence_bundle)?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::BondBacking),
+        Some(FindingFacetOutcome::Failed)
     );
     assert!(draft.backing_allocation_id.is_none());
     assert!(!draft.satisfies_required_facets(&fx.profile.body));

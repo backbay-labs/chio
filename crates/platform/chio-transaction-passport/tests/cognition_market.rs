@@ -181,6 +181,14 @@ fn recipe_bytes_for_profile(
 }
 
 fn report_bytes(recipe: &[u8], status: &[u8]) -> TestResult<Vec<u8>> {
+    report_bytes_for_profile(recipe, status, "23")
+}
+
+fn report_bytes_for_profile(
+    recipe: &[u8],
+    status: &[u8],
+    verifier_profile_prefix: &str,
+) -> TestResult<Vec<u8>> {
     let verifier = verifier_keypair();
     let facets = FindingFacetKind::ALL
         .into_iter()
@@ -197,7 +205,7 @@ fn report_bytes(recipe: &[u8], status: &[u8]) -> TestResult<Vec<u8>> {
         finding_id: FINDING_ID.to_string(),
         finding_artifact_sha256: HEX64.to_string(),
         verifier_profile_id: "12".repeat(32),
-        verifier_profile_envelope_sha256: "23".repeat(32),
+        verifier_profile_envelope_sha256: verifier_profile_prefix.repeat(32),
         verifier_implementation_id: "chio-finding-verifier/0.1-qualified".to_string(),
         resolved_evidence_bundle_sha256: "34".repeat(32),
         replay_recipe_input_sha256: Some(sha256_hex(recipe)),
@@ -331,6 +339,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
     let trust = CognitionMarketProofTrust {
         trusted_passport_signer_keys: vec![root.public_key()],
         finding_verifier_authority: verifier_keypair().public_key(),
+        trusted_verifier_profile_envelope_sha256: "23".repeat(32),
         status_operator_authorization: status_authorization(&status_keypair),
         status_freshness: FindingStatusFreshnessPolicy {
             now: CHECKED_AT,
@@ -505,6 +514,47 @@ fn cognition_market_qualified_profile_rejects_recipe_for_another_profile() -> Te
         .to_string();
     assert!(
         error.contains("different verifier profiles"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_unpinned_profile() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let status = bundle
+        .artifacts
+        .get("attachments/status-proof-input.json")
+        .ok_or("status attachment missing")?
+        .clone();
+    let recipe = recipe_bytes_for_profile("55", "33")?;
+    let report = report_bytes_for_profile(&recipe, &status, "33")?;
+    replace_graph_artifact(&mut bundle, "attachments/replay-recipe-input.json", recipe)?;
+    replace_graph_artifact(&mut bundle, "report.json", report)?;
+    resign_graph(&mut bundle)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("unpinned verifier profile was accepted")?
+        .to_string();
+    assert!(
+        error.contains("deployment-pinned verifier profile"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_inconsistent_status_clock() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle.trust.status_freshness.now = CHECKED_AT - 1;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("inconsistent status clock was accepted")?
+        .to_string();
+    assert!(
+        error.contains("status freshness clock"),
         "unexpected error: {error}"
     );
     Ok(())

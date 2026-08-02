@@ -126,6 +126,102 @@ fn runtime_artifact_loader_includes_policy_activation_receipt() {
 }
 
 #[test]
+fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
+    let _env_lock = match AGENT_WEB_ENV_LOCK.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let tempdir = proof_test_ok(tempfile::tempdir(), "create tempdir");
+    let authorization = chio_finding::FindingStatusOperatorAuthorization {
+        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
+        feed_id: "qualified-finding-status".to_owned(),
+        operator: chio_finding::FindingAuthorityKeyPolicy {
+            authority_id: "qualified-status-operator".to_owned(),
+            key: proof_test_ok(
+                chio_core_types::PublicKey::from_hex(
+                    "197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                ),
+                "parse status operator key",
+            ),
+            key_epoch: 1,
+            valid_from: 1_749_999_940,
+            valid_until: 1_750_000_600,
+            rotation_policy_ref: "rotation/qualified-status-v1".to_owned(),
+            revocation_status_ref: "revocations/qualified-status-v1".to_owned(),
+        },
+        revoked_from: None,
+    };
+    let authorization_path = tempdir.path().join("status-operator-authorization.json");
+    proof_test_ok(
+        std::fs::write(
+            &authorization_path,
+            proof_test_ok(
+                chio_core_types::canonical_json_bytes(&authorization),
+                "serialize status authorization",
+            ),
+        ),
+        "write status authorization",
+    );
+    let _env = TestEnvGuard::set(&[
+        (
+            "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS",
+            std::ffi::OsStr::new(
+                "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+            ),
+        ),
+        (
+            "CHIO_FINDING_VERIFIER_AUTHORITY_KEY",
+            std::ffi::OsStr::new(
+                "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+            ),
+        ),
+        (
+            "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256",
+            std::ffi::OsStr::new(
+                "2323232323232323232323232323232323232323232323232323232323232323",
+            ),
+        ),
+        (
+            "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH",
+            authorization_path.as_os_str(),
+        ),
+        (
+            "CHIO_FINDING_STATUS_NOW_UNIX_SECONDS",
+            std::ffi::OsStr::new("1750000030"),
+        ),
+        (
+            "CHIO_FINDING_STATUS_MAX_AGE_SECONDS",
+            std::ffi::OsStr::new("60"),
+        ),
+    ]);
+    let passport_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join("fixtures/proof-room/finding/cognition-market-qualified-profile")
+        .join("transaction-passport.json");
+    let report = proof_test_ok(
+        verify_transaction_passport_file(&passport_path),
+        "verify cognition-market proof bundle through the CLI route",
+    );
+    assert_eq!(
+        report.get("accepted").and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+    let verified_claims = report
+        .get("verified_claims")
+        .and_then(serde_json::Value::as_array)
+        .map(|claims| {
+            claims
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .collect::<std::collections::BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    for claim in chio_control_plane::transaction_passport::COGNITION_MARKET_CLAIMS {
+        assert!(verified_claims.contains(claim), "missing claim {claim}");
+    }
+}
+
+#[test]
 fn later_root_claim_failure_does_not_reserve_agent_web_replay_ids() {
     let _env_lock = match AGENT_WEB_ENV_LOCK.lock() {
         Ok(guard) => guard,

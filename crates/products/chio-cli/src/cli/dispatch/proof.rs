@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 mod proof_env;
 use proof_env::{
     agent_web_replay_store_from_env_if_configured, agent_web_verifier_trust_from_env,
+    cognition_market_proof_trust_from_env,
     commerce_trusted_event_authority_receipt_kernel_keys_from_env,
     commerce_trusted_payment_signer_keys_from_env, commerce_trusted_provider_keys_from_env,
     disclosure_lineage_verifier_trust_from_env, enterprise_trusted_approval_signer_keys_from_env,
@@ -48,6 +49,7 @@ const CLAIM_PREFIX_DISCLOSURE: &str = "claim.disclosure.";
 const CLAIM_PREFIX_COMMERCE: &str = "claim.commerce.";
 const CLAIM_PREFIX_TRANSACTION: &str = "claim.transaction.";
 const CLAIM_PREFIX_MARKET: &str = "claim.market.";
+const CLAIM_PREFIX_FINDING: &str = "claim.finding.";
 const CLAIM_DISCLOSURE_CRYPTO_CONTEXT_BOUND: &str = "claim.disclosure.crypto_context_bound";
 const STANDALONE_TRANSACTION_VERIFIED_CLAIMS: [&str; 6] = [
     "claim.transaction.passport_root_verified",
@@ -57,7 +59,7 @@ const STANDALONE_TRANSACTION_VERIFIED_CLAIMS: [&str; 6] = [
     "claim.transaction.policy_digest_bound",
     "claim.transaction.omission_policy_bound",
 ];
-const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
+const VERIFIER_CLAIM_PREFIXES: [&str; 12] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
     CLAIM_PREFIX_ENTERPRISE,
@@ -69,6 +71,7 @@ const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_COMMERCE,
     CLAIM_PREFIX_TRANSACTION,
     CLAIM_PREFIX_MARKET,
+    CLAIM_PREFIX_FINDING,
 ];
 const PROOF_VERIFY_EXIT_REQUIRED_CLAIM_FAILED: i32 = 10;
 const PROOF_VERIFY_EXIT_INTEGRITY_FAILURE: i32 = 20;
@@ -1015,6 +1018,20 @@ fn verify_transaction_passport_file_with_mode(
     let mut deferred_agent_web_replay_reservation = None;
     let mut expected_public_settlement_trust_market_context = None;
     let mut expected_commerce_trust_market_context = None;
+    if claim_requirements.requires(CLAIM_PREFIX_FINDING) {
+        let trust = cognition_market_proof_trust_from_env(&trusted_transaction_root_keys)?;
+        let report = chio_control_plane::transaction_passport::
+            verify_cognition_market_passport_artifacts(
+                &passport,
+                passport_report_path.clone(),
+                &evidence_graph_bytes,
+                &verifier_policy_bytes,
+                &transparency_artifacts,
+                &trust,
+            )
+            .map_err(map_proof_error)?;
+        push_family_report(&mut family_reports, report)?;
+    }
     if claim_requirements.requires(CLAIM_PREFIX_TRUST_MARKET)
         || risk_route.through_trust_market
         || settlement_requires_trust_market_context
@@ -1574,6 +1591,8 @@ fn proof_verify_checker_for_claim(claim_id: &str) -> &'static str {
         "chio proof verify --require delegation"
     } else if claim_id.starts_with("claim.trust_market.") {
         "chio proof verify --require trust-market"
+    } else if claim_id.starts_with("claim.finding.") {
+        "chio proof verify (cognition-market)"
     } else {
         "chio proof verify"
     }
