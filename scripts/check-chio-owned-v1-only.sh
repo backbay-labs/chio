@@ -154,6 +154,18 @@ while IFS= read -r line; do
     continue
   fi
 
+  # The Agent Web replay-scope v2 string is a hash domain separator, not a
+  # Chio wire or SDK version. Keep the exemption limited to that exact domain.
+  if [[ "$text" =~ chio\.agent-web\.replay-scope\.v2 ]]; then
+    continue
+  fi
+
+  # Mercury proof packages intentionally publish v2 while retaining legacy v1
+  # verification. This subsystem format is outside the v1 wire-surface scan.
+  if [[ "$text" =~ chio\.mercury\.proof_package\.v2 ]]; then
+    continue
+  fi
+
   # Public settlement intentionally publishes v2 dispatch and execution-receipt
   # artifacts while preserving v1 bundle verification.
   if [[ "$text" =~ chio\.web3-settlement-(dispatch|execution-receipt)\.v2|CHIO_WEB3_SETTLEMENT_(DISPATCH|RECEIPT|EXECUTION_RECEIPT)_V2_SCHEMA|WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA ]]; then
