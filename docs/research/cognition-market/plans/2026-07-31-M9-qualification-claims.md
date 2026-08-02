@@ -1,10 +1,11 @@
 # M9: Qualification, Claims, And Release Boundary
 
-Status: implementation complete; cumulative qualification in progress on
-2026-08-01. Focused promoted-default, proof-bundle, schema, registry, formal,
-and bounded-profile gates pass. This record names the exact bounded profile
-and deliberately leaves conditional M7 and usage-gated R&D extensions
-unshipped.
+Status: implementation and stack-owned cumulative qualification complete on
+2026-08-01. Promoted-default, proof-bundle, schema, registry, formal, strict
+Rust verification, build, Clippy, formatting, code-generation, and
+bounded-profile gates pass. The workspace test sweep records one unrelated
+baseline exception below. This record names the exact bounded profile and
+deliberately leaves conditional M7 and usage-gated R&D extensions unshipped.
 
 ## Qualified Profile
 
@@ -75,9 +76,9 @@ The bounded matrix includes three cognition-market conditions:
 - `COGM9-03`: approved scoped claims and the two audited assumptions.
 
 `cargo xtask qualify bounded-chio` validates the matrix contract and every
-repo-relative witness. Feature removal and ADR-0017 acceptance occur only
-after the focused exits, schema and formal registries, generated artifacts,
-and the full workspace build, test, Clippy, and formatting gates pass.
+repo-relative witness. Feature removal and ADR-0017 acceptance are backed by
+the focused exits, schema and formal registries, generated artifacts, formal
+and strict Rust verification, and cumulative workspace gates recorded below.
 
 ## Recorded Results
 
@@ -89,8 +90,9 @@ and the full workspace build, test, Clippy, and formatting gates pass.
 | claim-registry integrity | passed, 10 tests |
 | bounded matrix contract and witness resolution | passed, 12 tests |
 | `cargo xtask qualify bounded-chio` | passed, 9 conditions |
-| Lean proof build, strict Rust verification, and public harness mapping | passed; Lean built 27 jobs |
+| Lean proof build, strict Rust verification, and public harness mapping | passed; 1,532 Lean jobs, 32 Creusot files, 44 core Kani harnesses, 30 public-core Kani harnesses, and 17 non-core PR harnesses |
 | schema registry and deterministic schema manifest | passed |
 | promoted-default M8 marketplace and SQLite pool exits | passed, 38 and 4 tests; conditional M7 test ignored |
-| generated Rust, Python, TypeScript, and Go artifacts | pending cumulative gate |
-| final full workspace build, test, Clippy, and formatting | pending cumulative gate |
+| generated Rust, Python, TypeScript, and Go artifacts | passed, `make codegen-check` |
+| full workspace build, Clippy, and formatting | passed |
+| full workspace test sweep | stack-owned targets passed; five receipt-retention repair fixtures fail identically on `origin/main` at `a768ff73a` with `RetentionArchiveIncomplete` |
