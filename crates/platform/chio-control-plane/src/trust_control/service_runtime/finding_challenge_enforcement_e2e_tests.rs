@@ -1589,14 +1589,25 @@ enum ProductionShape {
 /// byte for byte identical.
 fn production_receipts(shape: ProductionShape) -> Result<Vec<ChioReceipt>, AnyError> {
     let kernel = production_kernel();
+    let payload_sha256 = hex64('8');
+    let mut delivery_metadata = serde_json::Map::new();
+    delivery_metadata.insert(
+        DELIVERY_CONTRACT_METADATA_KEY.to_string(),
+        serde_json::to_value(DeliveryContract {
+            schema: DELIVERY_CONTRACT_SCHEMA.to_string(),
+            expected_digest: payload_sha256.clone(),
+            observed_digest: payload_sha256.clone(),
+            result: DeliveryResult::Matched,
+        })?,
+    );
     let mut first = signed_receipt(
         &kernel,
         PRODUCTION_FIRST_AT,
         "finding.produce",
         ToolCallAction::from_parameters(serde_json::json!({ "step": 0 }))?,
         Decision::Allow,
-        &hex64('a'),
-        None,
+        &payload_sha256,
+        Some(serde_json::Value::Object(delivery_metadata.clone())),
     )?;
     let second = signed_receipt(
         &kernel,
@@ -1604,8 +1615,8 @@ fn production_receipts(shape: ProductionShape) -> Result<Vec<ChioReceipt>, AnyEr
         "finding.produce",
         ToolCallAction::from_parameters(serde_json::json!({ "step": 1 }))?,
         Decision::Allow,
-        &hex64('b'),
-        None,
+        &payload_sha256,
+        Some(serde_json::Value::Object(delivery_metadata)),
     )?;
     if shape == ProductionShape::ForeignSignature {
         first.signature.clone_from(&second.signature);

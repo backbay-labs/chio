@@ -22,6 +22,9 @@ use chio_core::receipt::body::{ChioReceipt, ChioReceiptBody};
 use chio_core::receipt::decision::{Decision, ToolCallAction};
 use chio_core::receipt::kinds::TrustLevel;
 use chio_core::receipt::lineage::SignedExportEnvelope;
+use chio_core::receipt::metadata::{
+    DeliveryContract, DeliveryResult, DELIVERY_CONTRACT_METADATA_KEY, DELIVERY_CONTRACT_SCHEMA,
+};
 use chio_core::sha256_hex;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
@@ -281,6 +284,20 @@ fn json_body(bytes: &[u8]) -> Result<serde_json::Value, AnyError> {
     Ok(serde_json::from_slice(bytes)?)
 }
 
+fn matched_delivery_metadata(content_hash: &str) -> Result<serde_json::Value, AnyError> {
+    let mut metadata = serde_json::Map::new();
+    metadata.insert(
+        DELIVERY_CONTRACT_METADATA_KEY.to_string(),
+        serde_json::to_value(DeliveryContract {
+            schema: DELIVERY_CONTRACT_SCHEMA.to_string(),
+            expected_digest: content_hash.to_string(),
+            observed_digest: content_hash.to_string(),
+            result: DeliveryResult::Matched,
+        })?,
+    );
+    Ok(serde_json::Value::Object(metadata))
+}
+
 /// One evidence receipt signed by the admitted kernel key.
 fn receipt(kernel: &Keypair, index: u32) -> Result<ChioReceipt, AnyError> {
     let body = ChioReceiptBody {
@@ -300,7 +317,7 @@ fn receipt(kernel: &Keypair, index: u32) -> Result<ChioReceipt, AnyError> {
         content_hash: HEX64.to_string(),
         policy_hash: "policy-wedge".to_string(),
         evidence: Vec::new(),
-        metadata: None,
+        metadata: Some(matched_delivery_metadata(HEX64)?),
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: kernel.public_key(),
