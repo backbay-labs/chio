@@ -8,7 +8,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use chio_core::capability::{
     scope::{ChioScope, Constraint, Operation, ToolGrant},
@@ -504,4 +504,74 @@ fn finding_quarantine_denies_unavailable_state_and_resolver_substitution() {
 
     let missing = MemoryGovernanceGuard::with_config(finding_quarantine_config());
     assert!(missing.is_err());
+}
+
+struct MutableFindingResolver {
+    value: Mutex<FindingStatusValue>,
+}
+
+impl FindingRetractionResolver for MutableFindingResolver {
+    fn resolver_id(&self) -> &str {
+        "resolver-1"
+    }
+
+    fn feed_id(&self) -> &str {
+        "feed-1"
+    }
+
+    fn resolve(
+        &self,
+        _query: FindingRetractionQuery<'_>,
+    ) -> Result<FindingRetractionResolution, FindingRetractionResolveError> {
+        let value = *self
+            .value
+            .lock()
+            .map_err(|_| FindingRetractionResolveError::StatusUnavailable("poisoned".to_owned()))?;
+        Ok(FindingRetractionResolution {
+            delivery_receipt_id: "delivery-1".to_owned(),
+            finding_id: "finding-1".to_owned(),
+            feed_id: "feed-1".to_owned(),
+            map_epoch: 3,
+            epoch_id: "a".repeat(64),
+            root_hash: "b".repeat(64),
+            value,
+        })
+    }
+}
+
+#[test]
+fn finding_quarantine_rechecks_status_immediately_before_dispatch() {
+    let resolver = Arc::new(MutableFindingResolver {
+        value: Mutex::new(FindingStatusValue::Live),
+    });
+    let guard = MemoryGovernanceGuard::with_config_and_retraction_resolver(
+        finding_quarantine_config(),
+        resolver.clone(),
+    )
+    .expect("build finding quarantine guard");
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let (request, agent_id, server_id) = make_request_in_scope(
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory", "id": "key-1"}),
+    );
+    let ctx = GuardContext {
+        request: &request,
+        scope: &scope,
+        agent_id: &agent_id,
+        server_id: &server_id,
+        session_filesystem_roots: None,
+        matched_grant_index: None,
+    };
+    assert!(matches!(
+        guard.evaluate(&ctx).expect("initial evaluation").verdict,
+        Verdict::Allow
+    ));
+    *resolver.value.lock().expect("status lock") = FindingStatusValue::Retracted;
+    assert!(matches!(
+        guard.revalidate_before_dispatch(&ctx),
+        Err(chio_kernel::KernelError::GuardDenied(_))
+    ));
 }

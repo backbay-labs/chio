@@ -222,6 +222,46 @@ fn exact_status_artifacts_replay_at_a_later_observation_time() {
 }
 
 #[test]
+fn dispatch_eligibility_replay_retains_the_original_authorization_time() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('4');
+    let intent_id = hex64('5');
+    let evidence = br#"{"schema":"chio.finding.impairment-finality.v1"}"#;
+    store
+        .issue_retraction_intent(&FindingRetractionIntentInput {
+            intent_id: &intent_id,
+            feed_id: FEED,
+            operator_id: OPERATOR,
+            finding_id: &finding_id,
+            source: FindingRetractionIntentSource::Enforcement,
+            intent_bytes: b"signed-enforcement-intent",
+            issued_at: NOW + 1,
+            inclusion_deadline: NOW + 500,
+            created_at: NOW + 2,
+        })
+        .expect("persist intent");
+    assert_eq!(
+        store
+            .mark_retraction_dispatch_eligible(&intent_id, evidence, NOW + 3)
+            .expect("authorize dispatch"),
+        FindingStatusWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .mark_retraction_dispatch_eligible(&intent_id, evidence, NOW + 30)
+            .expect("replay the same finality evidence at a later retry clock"),
+        FindingStatusWriteOutcome::ExactReplay
+    );
+    let retained = store
+        .get_retraction_intent(&intent_id)
+        .expect("load intent")
+        .expect("intent remains durable");
+    assert_eq!(retained.dispatch_eligible_at, Some(NOW + 3));
+}
+
+#[test]
 fn rollback_and_same_epoch_equivocation_reject_without_moving_floor() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();

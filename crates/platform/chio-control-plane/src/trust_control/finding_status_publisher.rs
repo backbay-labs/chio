@@ -149,6 +149,47 @@ impl FindingStatusEpochPublisher {
         SignedExportEnvelope::sign(body, &self.operator_keypair).map_err(|error| error.to_string())
     }
 
+    /// Reuse the current signed map for point proofs while it remains live.
+    /// A point lookup must not advance the feed floor and thereby evict every
+    /// other proof over an unchanged root.
+    fn current_epoch_for_point_proof(
+        &self,
+        map: &FindingStatusSparseMap,
+        anchor_refs: &[String],
+        now: u64,
+    ) -> Result<Option<chio_finding::SignedFindingStatusEpoch>, String> {
+        let record = match self.store.get_current_epoch(&self.operator.feed_id) {
+            Ok(record) => record,
+            Err(FindingStatusStoreError::MissingFloor { .. }) => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        let signed = chio_finding::parse_signed_status_epoch(&record.signed_epoch_bytes)
+            .map_err(|error| error.to_string())?;
+        chio_finding::verify_signed_status_epoch(&signed, &authorization(&self.operator)?)
+            .map_err(|error| error.to_string())?;
+        if signed.body.root_hash != hex::encode(map.root().root_hash)
+            || signed.body.map_epoch != record.map_epoch
+            || signed.body.status_epoch_id != record.epoch_id
+        {
+            return Err(
+                "current finding status epoch does not match the durable sparse map".to_owned(),
+            );
+        }
+        if !anchor_refs.is_empty() && signed.body.anchor_refs != anchor_refs {
+            return Err(
+                "point proof anchor references do not match the current signed epoch".to_owned(),
+            );
+        }
+        if now < signed.body.valid_from || now < signed.body.generated_at {
+            return Err("finding status publisher clock precedes the current epoch".to_owned());
+        }
+        let age = now - signed.body.generated_at;
+        if now >= signed.body.valid_until || age > self.max_epoch_age_secs {
+            return Ok(None);
+        }
+        Ok(Some(signed))
+    }
+
     /// Publish one dispatch-eligible local retraction exactly once.
     pub fn publish_retraction(
         &self,
@@ -249,8 +290,9 @@ impl FindingStatusEpochPublisher {
             .ok_or_else(|| "published retraction proof disappeared".to_owned())
     }
 
-    /// Publish a fresh non-inclusion proof for one live finding. This is the
-    /// same verifier input the CLI/SDK can precheck and the kernel must verify.
+    /// Publish a fresh non-inclusion proof for one live finding. This reuses
+    /// the current signed epoch while its unchanged map remains live, so a
+    /// point lookup cannot invalidate proofs for other findings.
     pub fn publish_non_inclusion(
         &self,
         finding_id: &str,
@@ -268,8 +310,13 @@ impl FindingStatusEpochPublisher {
             Err(error) => return Err(error.to_string()),
         }
         let map = self.rebuild_map()?;
-        let map_epoch = self.next_map_epoch()?;
-        let signed = self.sign_epoch(&map, map_epoch, anchor_refs, now)?;
+        let signed = match self.current_epoch_for_point_proof(&map, anchor_refs, now)? {
+            Some(signed) => signed,
+            None => {
+                let map_epoch = self.next_map_epoch()?;
+                self.sign_epoch(&map, map_epoch, anchor_refs, now)?
+            }
+        };
         let sparse = map.proof(finding_id).map_err(|error| error.to_string())?;
         let proof = build_status_non_inclusion_proof_input(&signed, finding_id, &sparse, now)
             .map_err(|error| error.to_string())?;

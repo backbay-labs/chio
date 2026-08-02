@@ -687,6 +687,7 @@ mod tests {
             settlement_finality_requirement:
                 chio_settle::FindingFinalityRequirement::Confirmations { min_depth: 64 },
             audit_authority: authority_pin(11, "audit-authority", now),
+            audit_randomness_witness: authority_pin(14, "audit-randomness-witness", now),
             audit_pool: FindingPoolPin {
                 principal_id: "pool:audit".to_string(),
                 rail_destination: "rail:test:audit".to_string(),

@@ -310,8 +310,28 @@ impl Guard for MemoryGovernanceGuard {
         true
     }
 
-    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
-        Ok(())
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let action = extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments)
+            .map_err(|_| {
+                KernelError::GuardDenied(
+                    "memory-governance dispatch revalidation rejected malformed input".to_owned(),
+                )
+            })?;
+        let decision = match action {
+            ToolAction::MemoryRead { store, key } => {
+                self.evaluate_read(ctx, &store, key.as_deref())?
+            }
+            _ => return Ok(()),
+        };
+        match decision.verdict {
+            chio_kernel::Verdict::Allow | chio_kernel::Verdict::PendingApproval => Ok(()),
+            chio_kernel::Verdict::Deny => Err(KernelError::GuardDenied(
+                "memory-governance dispatch revalidation denied".to_owned(),
+            )),
+        }
     }
 }
 

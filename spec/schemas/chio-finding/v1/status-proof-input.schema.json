@@ -42,7 +42,7 @@
           "const": 3318287169837494
         },
         "map_epoch": {
-          "$ref": "#/$defs/iJsonU64"
+          "$ref": "#/$defs/iJsonU64NonZero"
         },
         "finding_id": {
           "$ref": "#/$defs/sha256"
@@ -100,7 +100,7 @@
           "const": 3318287169837494
         },
         "map_epoch": {
-          "$ref": "#/$defs/iJsonU64"
+          "$ref": "#/$defs/iJsonU64NonZero"
         },
         "finding_id": {
           "$ref": "#/$defs/sha256"

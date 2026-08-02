@@ -30,6 +30,26 @@ async fn finding_status_retraction() -> TestResult {
         )?;
     let now = unix_timestamp_now();
     let live = publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    let other_live_finding = sha256_hex(b"m6-independent-live-finding");
+    let other_live = publisher.publish_non_inclusion(&other_live_finding, &[], now)?;
+    assert_eq!(
+        other_live.map_epoch, live.map_epoch,
+        "point proofs over an unchanged map reuse the signed epoch"
+    );
+    assert_eq!(
+        status_store.get_feed_floor(&config.status_feed_operator_ref)?.map_epoch,
+        live.map_epoch
+    );
+    assert_eq!(
+        status_store
+            .get_latest_proof(
+                &config.status_feed_operator_ref,
+                &lane.deployment.web.finding_id,
+            )?
+            .ok_or("the first point proof remains current")?
+            .epoch_id,
+        live.epoch_id
+    );
     let live_b64 = STANDARD.encode(&live.proof_bytes);
     let delivered = lane.reveal_with_status(
         &lane.purchase,

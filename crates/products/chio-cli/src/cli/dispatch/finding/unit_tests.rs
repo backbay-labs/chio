@@ -467,14 +467,26 @@ fn status_subcommand_parses() {
         GOLDEN_FINDING_ID,
         "--feed",
         "status-feed/venue-01",
+        "--operator-authorization",
+        "status-operator.json",
+        "--max-epoch-age-secs",
+        "300",
     ])
     .unwrap();
     match cli.command {
         Commands::Finding {
-            command: FindingCommands::Status { id, feed },
+            command:
+                FindingCommands::Status {
+                    id,
+                    feed,
+                    operator_authorization,
+                    max_epoch_age_secs,
+                },
         } => {
             assert_eq!(id, GOLDEN_FINDING_ID);
             assert_eq!(feed, "status-feed/venue-01");
+            assert_eq!(operator_authorization, PathBuf::from("status-operator.json"));
+            assert_eq!(max_epoch_age_secs, 300);
         }
         _ => panic!("expected finding status command"),
     }
@@ -485,12 +497,46 @@ fn status_requires_a_venue_url() {
     let error = cmd_finding_status(
         GOLDEN_FINDING_ID,
         "status-feed/venue-01",
+        Path::new("status-operator.json"),
+        300,
         false,
         None,
     )
     .unwrap_err()
     .to_string();
     assert!(error.contains("--control-url"), "unexpected error: {error}");
+}
+
+#[test]
+fn status_operator_authorization_is_loaded_out_of_band_and_feed_pinned() {
+    let dir = tempfile::tempdir().unwrap();
+    let authorization = chio_finding::FindingStatusOperatorAuthorization {
+        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
+        feed_id: "status-feed/venue-01".to_owned(),
+        operator: chio_finding::FindingAuthorityKeyPolicy {
+            authority_id: "venue-01-status-operator".to_owned(),
+            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
+            key_epoch: 4,
+            valid_from: 1_700_000_000,
+            valid_until: 1_900_000_000,
+            rotation_policy_ref: "governance/status-rotation".to_owned(),
+            revocation_status_ref: "governance/status-revocation".to_owned(),
+        },
+        revoked_from: Some(1_850_000_000),
+    };
+    let path = write_temp(
+        &dir,
+        "status-operator.json",
+        &canonical_json_string(&authorization).unwrap(),
+    );
+    assert_eq!(
+        load_status_operator_authorization(&path, "status-feed/venue-01").unwrap(),
+        authorization
+    );
+    let error = load_status_operator_authorization(&path, "status-feed/elsewhere")
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("different feed"), "unexpected error: {error}");
 }
 
 #[test]

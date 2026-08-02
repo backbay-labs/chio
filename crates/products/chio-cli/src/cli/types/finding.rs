@@ -83,6 +83,12 @@ pub(crate) enum FindingCommands {
         /// Governance-pinned status feed configured by the venue.
         #[arg(long)]
         feed: String,
+        /// Governance-pinned status operator authorization (strict canonical JSON).
+        #[arg(long)]
+        operator_authorization: PathBuf,
+        /// Maximum accepted age of the signed status epoch in seconds.
+        #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
+        max_epoch_age_secs: u64,
     },
 
     /// Open a dispute against one admitted finding listing.

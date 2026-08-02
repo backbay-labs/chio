@@ -29,6 +29,8 @@ const FINDING_SEARCH_PATH: &str = "/v1/findings/search";
 /// layer; checking it here turns a truncated upload into a local
 /// diagnostic instead of a remote 413.
 const FINDING_PUBLISH_MAX_BODY_BYTES: usize = 256 * 1024;
+/// Out-of-band status operator authorization file cap.
+const FINDING_STATUS_AUTHORIZATION_MAX_BYTES: usize = 64 * 1024;
 
 pub(crate) fn dispatch_finding(
     command: FindingCommands,
@@ -89,9 +91,16 @@ pub(crate) fn dispatch_finding(
             control_url.as_deref(),
             control_token.as_deref(),
         ),
-        FindingCommands::Status { id, feed } => cmd_finding_status(
+        FindingCommands::Status {
+            id,
+            feed,
+            operator_authorization,
+            max_epoch_age_secs,
+        } => cmd_finding_status(
             &id,
             &feed,
+            &operator_authorization,
+            max_epoch_age_secs,
             json_output,
             control_url.as_deref(),
         ),
@@ -628,10 +637,56 @@ fn require_feed_id(feed_id: &str) -> Result<&str, CliError> {
     Ok(feed_id)
 }
 
+fn load_status_operator_authorization(
+    path: &Path,
+    expected_feed: &str,
+) -> Result<chio_finding::FindingStatusOperatorAuthorization, CliError> {
+    let mut reader = std::fs::File::open(path)?
+        .take((FINDING_STATUS_AUTHORIZATION_MAX_BYTES as u64).saturating_add(1));
+    let mut bytes = Vec::with_capacity(FINDING_STATUS_AUTHORIZATION_MAX_BYTES.saturating_add(1));
+    reader.read_to_end(&mut bytes)?;
+    if bytes.len() > FINDING_STATUS_AUTHORIZATION_MAX_BYTES {
+        return Err(CliError::cli_other_error(format!(
+            "{} exceeds the finding status operator authorization bound",
+            path.display()
+        )));
+    }
+    let raw = std::str::from_utf8(&bytes).map_err(|error| {
+        CliError::cli_other_error(format!("{} is not valid UTF-8: {error}", path.display()))
+    })?;
+    let canonical = chio_core::canonical::canonical_json_bytes_from_str(raw).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{} is not strict canonical I-JSON: {error}",
+            path.display()
+        ))
+    })?;
+    if canonical != bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{} is not the canonical authorization serialization",
+            path.display()
+        )));
+    }
+    let authorization: chio_finding::FindingStatusOperatorAuthorization =
+        serde_json::from_slice(&bytes)?;
+    authorization.validate().map_err(|error| {
+        CliError::cli_other_error(format!(
+            "finding status operator authorization is invalid: {error}"
+        ))
+    })?;
+    if authorization.feed_id != expected_feed {
+        return Err(CliError::cli_other_error(
+            "finding status operator authorization binds a different feed".to_owned(),
+        ));
+    }
+    Ok(authorization)
+}
+
 fn verify_status_projection(
     response: &FindingStatusProofResponse,
     expected_feed: &str,
     expected_finding: &str,
+    authorization: &chio_finding::FindingStatusOperatorAuthorization,
+    max_epoch_age_secs: u64,
 ) -> Result<(), CliError> {
     if response.feed_id != expected_feed || response.finding_id != expected_finding {
         return Err(CliError::cli_other_error(
@@ -731,31 +786,9 @@ fn verify_status_projection(
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| CliError::cli_other_error(format!("system clock is invalid: {error}")))?
         .as_secs();
-    let max_epoch_age_secs = epoch
-        .body
-        .valid_until
-        .checked_sub(epoch.body.generated_at)
-        .filter(|value| *value > 0)
-        .ok_or_else(|| {
-            CliError::cli_other_error("finding status epoch validity window is invalid".to_string())
-        })?;
-    let authorization = chio_finding::FindingStatusOperatorAuthorization {
-        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: epoch.body.feed_id.clone(),
-        operator: chio_finding::FindingAuthorityKeyPolicy {
-            authority_id: epoch.body.operator_id.clone(),
-            key: epoch.body.operator_key.clone(),
-            key_epoch: epoch.body.operator_key_epoch,
-            valid_from: epoch.body.valid_from,
-            valid_until: epoch.body.valid_until,
-            rotation_policy_ref: "status-response-operator".to_string(),
-            revocation_status_ref: "status-response-operator".to_string(),
-        },
-        revoked_from: None,
-    };
     let verified_epoch = chio_finding::verify_status_proof_input(
         &proof,
-        &authorization,
+        authorization,
         chio_finding::FindingStatusFreshnessPolicy {
             now,
             max_epoch_age_secs,
@@ -777,12 +810,20 @@ fn verify_status_projection(
 fn cmd_finding_status(
     finding_id: &str,
     feed_id: &str,
+    operator_authorization: &Path,
+    max_epoch_age_secs: u64,
     json_output: bool,
     control_url: Option<&str>,
 ) -> Result<(), CliError> {
     let url = require_control_url(control_url)?;
     let finding_id = require_finding_id(finding_id)?;
     let feed_id = require_feed_id(feed_id)?;
+    if max_epoch_age_secs == 0 {
+        return Err(CliError::cli_other_error(
+            "--max-epoch-age-secs must be greater than zero".to_owned(),
+        ));
+    }
+    let authorization = load_status_operator_authorization(operator_authorization, feed_id)?;
     let encoded_feed = utf8_percent_encode(feed_id, NON_ALPHANUMERIC);
     let endpoint = finding_endpoint(
         url,
@@ -800,7 +841,13 @@ fn cmd_finding_status(
         }
     };
     let status: FindingStatusProofResponse = serde_json::from_reader(response.into_reader())?;
-    verify_status_projection(&status, feed_id, finding_id)?;
+    verify_status_projection(
+        &status,
+        feed_id,
+        finding_id,
+        &authorization,
+        max_epoch_age_secs,
+    )?;
     if json_output {
         println!("{}", serde_json::to_string_pretty(&status)?);
     } else {

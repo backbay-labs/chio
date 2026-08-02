@@ -77,13 +77,19 @@ from copied JSON fields.
 Operators and buyers can perform that exact-byte verification through the CLI:
 
 ```bash
-chio finding status --id <finding-id> --feed <governance-pinned-feed-id>
+chio finding status \
+  --id <finding-id> \
+  --feed <governance-pinned-feed-id> \
+  --operator-authorization <governance-pinned-authorization.json> \
+  --max-epoch-age-secs <deployment-freshness-limit>
 ```
 
 The command fetches the current proof from the configured control-plane URL,
-verifies the proof and embedded signed epoch locally, cross-checks the response
-projection, and prints the verified status. A transport, canonicalization,
-signature, digest, feed, finding, epoch, or sparse-path failure exits nonzero.
+verifies the proof and embedded signed epoch against the out-of-band operator
+authorization, applies the configured freshness limit, cross-checks the
+response projection, and prints the verified status. A transport,
+canonicalization, signature, lifecycle, digest, feed, finding, epoch, or
+sparse-path failure exits nonzero.
 
 At minimum, monitoring checks:
 

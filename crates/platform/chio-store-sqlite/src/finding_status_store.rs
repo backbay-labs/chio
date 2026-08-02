@@ -682,7 +682,6 @@ impl SqliteFindingStatusStore {
             | FindingRetractionIntentState::Published => {
                 if existing.finality_evidence_sha256.as_deref() != Some(&evidence_sha256)
                     || existing.finality_evidence_bytes.as_deref() != Some(finality_evidence_bytes)
-                    || existing.dispatch_eligible_at != Some(authorized_at)
                 {
                     return Err(FindingStatusStoreError::Conflict(format!(
                         "retraction intent {intent_id} has different finality evidence"
