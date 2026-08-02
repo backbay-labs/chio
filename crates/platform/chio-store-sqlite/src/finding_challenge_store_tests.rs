@@ -2922,15 +2922,22 @@ fn settlement_waits_for_every_required_effect_confirmation() {
         "pending required effects keep the liability finalizing"
     );
 
-    for (intent_key, _, _) in &required[..2] {
+    for (intent_key, kind, _) in &required[..2] {
         fixture
             .store
             .advance_effect_intent(intent_key, FindingEffectIntentState::Dispatched, NOW + 7)
             .expect("dispatch required effect");
-        fixture
-            .store
-            .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, NOW + 7)
-            .expect("confirm required effect");
+        if *kind == FindingEffectIntentKind::SellerImpair {
+            fixture
+                .store
+                .confirm_seller_impairment_and_quarantine(intent_key, &head.liability_key, NOW + 7)
+                .expect("confirm seller impairment and quarantine liability");
+        } else {
+            fixture
+                .store
+                .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, NOW + 7)
+                .expect("confirm required effect");
+        }
     }
     assert!(
         matches!(
@@ -2959,13 +2966,35 @@ fn settlement_waits_for_every_required_effect_confirmation() {
         .store
         .advance_effect_intent(&required[2].0, FindingEffectIntentState::Confirmed, NOW + 8)
         .expect("confirm retraction");
+    assert!(
+        matches!(
+            fixture.store.settle_liability(
+                &head.liability_key,
+                FindingLiabilityState::Finalizing,
+                NOW + 9,
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "a current quarantine blocks settlement even after every effect confirms"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .confirm_seller_impairment_and_quarantine(&required[0].0, &head.liability_key, NOW + 9,)
+            .expect("replay atomic confirmation and quarantine"),
+        FindingChallengeWriteOutcome::ExistingSame
+    );
+    fixture
+        .store
+        .set_liability_quarantine(&head.liability_key, false, NOW + 10)
+        .expect("clear reconciled quarantine");
     assert_eq!(
         fixture
             .store
             .settle_liability(
                 &head.liability_key,
                 FindingLiabilityState::Finalizing,
-                NOW + 9,
+                NOW + 11,
             )
             .expect("settle after every required effect confirms"),
         FindingChallengeWriteOutcome::Inserted
@@ -2989,7 +3018,7 @@ fn settlement_waits_for_every_required_effect_confirmation() {
             .settle_liability(
                 &head.liability_key,
                 FindingLiabilityState::Finalizing,
-                NOW + 10,
+                NOW + 12,
             )
             .expect("replay settlement"),
         FindingChallengeWriteOutcome::ExistingSame

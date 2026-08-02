@@ -6004,7 +6004,7 @@ impl MiningPublisher {
 impl FindingImpairmentPublisher for MiningPublisher {
     fn publish(
         &self,
-        _intent: &chio_settle::FindingImpairmentIntent,
+        intent: &chio_settle::FindingImpairmentIntent,
         call: &PreparedEvmCall,
     ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
         let attempt = match self.attempts.lock() {
@@ -6017,6 +6017,7 @@ impl FindingImpairmentPublisher for MiningPublisher {
         let mined = attempt > 1;
         Ok(FindingImpairmentAttempt::Observed {
             stored: StoredImpairmentTransaction {
+                chain_id: intent.chain_id.clone(),
                 tx_hash: self.tx_hash.clone(),
                 to_address: call.to_address.clone(),
                 input_data: Some(call.data.clone()),

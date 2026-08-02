@@ -2037,48 +2037,14 @@ impl FindingChallengeCoordinator {
             // the pre-dispatch collateral observation. The only remaining
             // work is to wait for the other signed effects and settle the
             // head, without ever dispatching the impairment again.
-            // If a post-dispatch chain recheck quarantined the liability,
-            // recovery must explicitly authenticate the original snapshot
-            // and re-observe its block and operator qualification before the
-            // quarantine can be cleared.
-            if liability.quarantined {
-                self.require_live_settlement_observer(bond_snapshot, now)?;
-                let settlement_observer = self.require_live_role(
-                    &self.pins.settlement_observer,
-                    bond_snapshot.body.observed_at,
-                    now,
-                    "settlement observer",
-                )?;
-                let pins = FindingEnforcementPins {
-                    finalization_authority: self.finalization_authority.public_key(),
-                    settlement_observer,
-                    seller: seller.clone(),
-                    finality_requirement: self.pins.settlement_finality_requirement,
-                    max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
-                };
-                let verified = verify_finding_enforcement_for_reconciliation(
-                    enforcement,
-                    bond_snapshot,
-                    &pins,
-                    now,
-                )
-                .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-                self.require_qualified_observation(&verified, observations)?;
-                self.challenges
-                    .set_liability_quarantine(liability_key, false, now)
-                    .map_err(|error| {
-                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
-                    })?;
-            }
-            return if self.settle_if_enforcement_effects_confirmed(
+            return self.finish_confirmed_impairment(
                 liability_key,
                 enforcement,
+                bond_snapshot,
+                seller,
+                observations,
                 now,
-            )? {
-                Ok(FindingFinalization::AlreadyConfirmed)
-            } else {
-                Ok(FindingFinalization::AwaitingEffects)
-            };
+            );
         }
         self.require_live_settlement_observer(bond_snapshot, now)?;
         let settlement_observer = self.require_live_role(
@@ -2125,15 +2091,14 @@ impl FindingChallengeCoordinator {
             // intent. Dispatching again would ask the vault to move the
             // same collateral twice, and the confirmed state has no
             // outgoing edge, so the settle is the only work left.
-            return if self.settle_if_enforcement_effects_confirmed(
+            return self.finish_confirmed_impairment(
                 liability_key,
                 enforcement,
+                bond_snapshot,
+                seller,
+                observations,
                 now,
-            )? {
-                Ok(FindingFinalization::AlreadyConfirmed)
-            } else {
-                Ok(FindingFinalization::AwaitingEffects)
-            };
+            );
         }
         self.require_sanction_governs(liability_key, &penalty.body.case_id)?;
         self.require_confirmed_enforcement_root(liability_key, &verified)?;
@@ -2162,30 +2127,33 @@ impl FindingChallengeCoordinator {
 
         match &outcome {
             FindingImpairmentOutcome::Confirmed { .. } => {
-                // A finalized transaction was proved to be this exact
-                // intent, so the intent is confirmed whatever the chain
-                // did afterwards: leaving it dispatchable would invite a
-                // second impairment of the same collateral.
-                self.challenges
-                    .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
-                    .map_err(|error| {
-                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
-                    })?;
                 // Settling is the separate question. The head closes only
                 // if the observation the amount was computed against is
                 // still the canonical one at the receipt's finality; a
                 // reorg or a rotation across the broadcast means an
                 // operator has to reconcile what actually moved, and a
                 // settled head would have closed the last edge to do it
-                // from.
+                // from. Confirmation and quarantine are one store
+                // transaction on that failure path, so no concurrent
+                // finalizer can observe the confirmation without its
+                // fail-closed head state.
                 if let Err(error) = self.require_qualified_observation(&verified, observations) {
                     self.challenges
-                        .set_liability_quarantine(liability_key, true, now)
+                        .confirm_seller_impairment_and_quarantine(&intent_key, liability_key, now)
                         .map_err(|store| {
                             ChallengeCoordinatorError::ChallengeStore(store.to_string())
                         })?;
                     return Err(error);
                 }
+                // A finalized transaction was proved to be this exact
+                // intent, so the intent is confirmed: leaving it
+                // dispatchable would invite a second impairment of the
+                // same collateral.
+                self.challenges
+                    .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
                 self.settle_if_enforcement_effects_confirmed(liability_key, enforcement, now)?;
             }
             FindingImpairmentOutcome::Quarantined { reason } if quarantine_is_pending(*reason) => {
@@ -3398,6 +3366,67 @@ impl FindingChallengeCoordinator {
             ));
         }
         Ok(())
+    }
+
+    /// Finish a previously confirmed impairment without dispatching it
+    /// again.
+    ///
+    /// The liability is loaded again here because another finalizer may
+    /// have quarantined it after this caller's initial read. Settlement
+    /// repeats the same check in its write transaction, closing the race
+    /// between this read and the lifecycle transition.
+    fn finish_confirmed_impairment(
+        &self,
+        liability_key: &str,
+        enforcement: &SignedFindingChallengeEnforcement,
+        bond_snapshot: &SignedFindingFinalizedBondSnapshot,
+        seller: &PublicKey,
+        observations: &dyn FindingBondObservationSource,
+        now: u64,
+    ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
+        let liability = self
+            .challenges
+            .get_liability(liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore("liability is not recorded".to_owned())
+            })?;
+        // If a post-dispatch chain recheck quarantined the liability,
+        // recovery must explicitly authenticate the original snapshot and
+        // re-observe its block and operator qualification before the
+        // quarantine can be cleared.
+        if liability.quarantined {
+            self.require_live_settlement_observer(bond_snapshot, now)?;
+            let settlement_observer = self.require_live_role(
+                &self.pins.settlement_observer,
+                bond_snapshot.body.observed_at,
+                now,
+                "settlement observer",
+            )?;
+            let pins = FindingEnforcementPins {
+                finalization_authority: self.finalization_authority.public_key(),
+                settlement_observer,
+                seller: seller.clone(),
+                finality_requirement: self.pins.settlement_finality_requirement,
+                max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
+            };
+            let verified = verify_finding_enforcement_for_reconciliation(
+                enforcement,
+                bond_snapshot,
+                &pins,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+            self.require_qualified_observation(&verified, observations)?;
+            self.challenges
+                .set_liability_quarantine(liability_key, false, now)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        }
+        if self.settle_if_enforcement_effects_confirmed(liability_key, enforcement, now)? {
+            Ok(FindingFinalization::AlreadyConfirmed)
+        } else {
+            Ok(FindingFinalization::AwaitingEffects)
+        }
     }
 
     /// Clear publication pending only after every effect the signed

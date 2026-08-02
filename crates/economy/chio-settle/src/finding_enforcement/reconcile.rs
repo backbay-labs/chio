@@ -12,6 +12,8 @@ use crate::{EvmTransactionReceipt, SettlementFinalityStatus};
 /// it later observed for that transaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredImpairmentTransaction {
+    /// Authenticated chain on which the publisher observed the transaction.
+    pub chain_id: String,
     /// Hash of the transaction the publisher broadcast.
     pub tx_hash: String,
     /// Address the transaction was sent to.
@@ -63,6 +65,8 @@ pub enum FindingImpairmentQuarantine {
     ReceiptReverted,
     /// The receipt does not belong to the stored transaction.
     ReceiptTransactionMismatch,
+    /// The stored transaction was observed on another chain.
+    ChainMismatch,
     /// The stored transaction did not target the frozen bond vault.
     TargetMismatch,
     /// The publisher recorded no call input, and the vault exposes no
@@ -156,6 +160,9 @@ fn match_stored_transaction(
     intent: &FindingImpairmentIntent,
     stored: &StoredImpairmentTransaction,
 ) -> Result<String, FindingImpairmentQuarantine> {
+    if stored.chain_id != intent.chain_id {
+        return Err(FindingImpairmentQuarantine::ChainMismatch);
+    }
     let receipt = stored
         .receipt
         .as_ref()

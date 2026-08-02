@@ -291,6 +291,7 @@ fn stored_matching(planned: &PlannedFindingImpairment) -> StoredImpairmentTransa
     let tx_hash = chain_hash(0xde);
     let to_address = planned.call().to_address.clone();
     StoredImpairmentTransaction {
+        chain_id: planned.intent().chain_id.clone(),
         receipt: Some(receipt(&tx_hash, &to_address, true)),
         finality: Some(SettlementFinalityStatus::Finalized),
         input_data: Some(planned.call().data.clone()),
@@ -913,6 +914,8 @@ fn evidence_already_used_with_an_insufficient_observation_quarantines() {
     reverted.receipt = Some(receipt(&base.tx_hash, &base.to_address, false));
     let mut foreign_receipt = base.clone();
     foreign_receipt.receipt = Some(receipt(&chain_hash(0xdf), &base.to_address, true));
+    let mut foreign_chain = base.clone();
+    foreign_chain.chain_id = "eip155:1".to_string();
     let mut foreign_target = base.clone();
     foreign_target.to_address = "0x00000000000000000000000000000000000000bd".to_string();
     let mut no_input = base.clone();
@@ -933,6 +936,7 @@ fn evidence_already_used_with_an_insufficient_observation_quarantines() {
             foreign_receipt,
             FindingImpairmentQuarantine::ReceiptTransactionMismatch,
         ),
+        (foreign_chain, FindingImpairmentQuarantine::ChainMismatch),
         (foreign_target, FindingImpairmentQuarantine::TargetMismatch),
         (
             no_input,

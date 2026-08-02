@@ -1547,6 +1547,11 @@ impl SqliteFindingChallengeStore {
                 liability_state_name(liability.state)
             )));
         }
+        if liability.quarantined {
+            return Err(FindingChallengeStoreError::Conflict(
+                "a quarantined liability cannot settle".to_owned(),
+            ));
+        }
         let (required, seller, root, retraction, unconfirmed): (i64, i64, i64, i64, i64) =
             transaction
                 .query_row(
@@ -2132,6 +2137,97 @@ impl SqliteFindingChallengeStore {
             .map_err(sqlite_error)?;
         if changed != 1 {
             return Err(invariant("effect intent transition did not affect one row"));
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingChallengeWriteOutcome::Inserted)
+    }
+
+    /// Confirm one seller impairment and quarantine its liability in the
+    /// same write transaction.
+    ///
+    /// This is the fail-closed terminal for a transaction that was proved
+    /// to match its intent but whose post-dispatch chain observation no
+    /// longer matches the signed snapshot. Publishing the confirmed intent
+    /// without the quarantine would create a window in which another
+    /// finalizer could settle the liability from stale state.
+    pub fn confirm_seller_impairment_and_quarantine(
+        &self,
+        intent_key: &str,
+        liability_key: &str,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        require_hex64(intent_key, "intent_key")?;
+        require_hex64(liability_key, "liability_key")?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let intent = load_effect_intent_tx(&transaction, intent_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if intent.kind != FindingEffectIntentKind::SellerImpair
+            || intent.liability_key.as_deref() != Some(liability_key)
+            || !intent.settlement_required
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "only the liability's required seller impairment may quarantine it".to_owned(),
+            ));
+        }
+        let liability = load_liability_tx(&transaction, liability_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if liability.state != FindingLiabilityState::Finalizing {
+            return Err(FindingChallengeStoreError::Conflict(format!(
+                "liability is in state {}, not the expected finalizing",
+                liability_state_name(liability.state)
+            )));
+        }
+
+        let mut changed = false;
+        if intent.state != FindingEffectIntentState::Confirmed {
+            if !effect_intent_edge_is_legal(intent.state, FindingEffectIntentState::Confirmed) {
+                return Err(FindingChallengeStoreError::Conflict(format!(
+                    "effect intent cannot move from {} to confirmed",
+                    effect_intent_state_name(intent.state)
+                )));
+            }
+            let updated = transaction
+                .execute(
+                    r#"
+                    UPDATE effect_intents
+                    SET state = 'confirmed', updated_at = ?3
+                    WHERE intent_key = ?1 AND state = ?2
+                    "#,
+                    params![
+                        intent_key,
+                        effect_intent_state_name(intent.state),
+                        sqlite_i64(now, "now")?,
+                    ],
+                )
+                .map_err(sqlite_error)?;
+            if updated != 1 {
+                return Err(invariant(
+                    "effect intent confirmation did not affect one row",
+                ));
+            }
+            changed = true;
+        }
+        if !liability.quarantined {
+            let updated = transaction
+                .execute(
+                    r#"
+                    UPDATE liability_heads
+                    SET quarantined = 1, updated_at = ?2
+                    WHERE liability_key = ?1 AND state = 'finalizing' AND quarantined = 0
+                    "#,
+                    params![liability_key, sqlite_i64(now, "now")?],
+                )
+                .map_err(sqlite_error)?;
+            if updated != 1 {
+                return Err(invariant("liability quarantine did not affect one row"));
+            }
+            changed = true;
+        }
+        if !changed {
+            return Ok(FindingChallengeWriteOutcome::ExistingSame);
         }
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
