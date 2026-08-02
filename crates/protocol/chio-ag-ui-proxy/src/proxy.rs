@@ -1212,7 +1212,9 @@ mod tests {
 
     #[test]
     fn delivery_carrier_constraints_are_never_satisfied_by_the_proxy_path() {
-        use chio_core::capability::scope::{FindingPurchaseMarkerV1, FindingSettlementSelector};
+        use chio_core::capability::scope::{
+            FindingPurchaseMarkerV1, FindingRecoveryMarkerV1, FindingSettlementSelector,
+        };
 
         let carrier_grant = |carrier: Constraint| ToolGrant {
             server_id: AG_UI_SERVER_ID.to_string(),
@@ -1235,6 +1237,15 @@ mod tests {
                 finding_id: "finding-1".to_string(),
                 listing_id: "listing-1".to_string(),
                 settlement: FindingSettlementSelector::LocalReversibleHold,
+            })),
+            Constraint::RequireFindingRecovery(Box::new(FindingRecoveryMarkerV1 {
+                recovery_id: "recovery-1".to_string(),
+                finding_id: "finding-1".to_string(),
+                listing_id: "listing-1".to_string(),
+                original_capability_id: "capability-1".to_string(),
+                original_delivery_receipt_id: "receipt-1".to_string(),
+                purchase_key: "purchase-1".to_string(),
+                max_recoveries: 1,
             })),
         ];
         for carrier in carriers {

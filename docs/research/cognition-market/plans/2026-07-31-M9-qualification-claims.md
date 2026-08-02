@@ -1,8 +1,10 @@
 # M9: Qualification, Claims, And Release Boundary
 
-Status: complete. The promoted-default cumulative workspace and release gates
-passed on 2026-07-31. This record names the exact bounded profile and
-deliberately leaves conditional M7 and usage-gated R&D extensions unshipped.
+Status: implementation complete; cumulative qualification in progress on
+2026-08-01. Focused promoted-default, proof-bundle, schema, registry, formal,
+and bounded-profile gates pass. This record names the exact bounded profile
+and deliberately leaves conditional M7 and usage-gated R&D extensions
+unshipped.
 
 ## Qualified Profile
 
@@ -15,7 +17,7 @@ transition, portable status rejection, and governed-memory quarantine. The
 same test name in `chio-transaction-passport` verifies the persisted proof
 bundle golden.
 
-M7 was re-evaluated on 2026-07-31. No real bilateral seller and buyer pair or
+M7 was re-evaluated on 2026-08-01. No real bilateral seller and buyer pair or
 deployment request is recorded in the repository or roadmap handoff. Its
 trigger is therefore false. `cognition_market_cross_org_escrow` remains an
 ignored fail-first test, and ADR-C remains unstarted.
@@ -82,10 +84,13 @@ and the full workspace build, test, Clippy, and formatting gates pass.
 | Gate | Result |
 |---|---|
 | `cognition_market_qualified_profile` control-plane composition | passed, 1 test |
-| transaction-passport positive and substitution-negative suite | passed |
+| Finding verifier evidence and portable-status suite | passed, 22 tests |
+| transaction-passport positive and substitution-negative suite | passed, 5 tests; 1 golden-regeneration helper ignored |
 | claim-registry integrity | passed, 10 tests |
 | bounded matrix contract and witness resolution | passed, 12 tests |
 | `cargo xtask qualify bounded-chio` | passed, 9 conditions |
-| strict formal proof report and public harness mapping | passed |
-| generated Rust, Python, TypeScript, and Go artifacts | passed, no drift |
-| final full workspace build, test, Clippy, and formatting | passed |
+| Lean proof build, strict Rust verification, and public harness mapping | passed; Lean built 27 jobs |
+| schema registry and deterministic schema manifest | passed |
+| promoted-default M8 marketplace and SQLite pool exits | passed, 38 and 4 tests; conditional M7 test ignored |
+| generated Rust, Python, TypeScript, and Go artifacts | pending cumulative gate |
+| final full workspace build, test, Clippy, and formatting | pending cumulative gate |

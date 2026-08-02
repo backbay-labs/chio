@@ -1679,7 +1679,7 @@ fn unnamed_production_receipt(world: &World) -> Built<ResolvedReceiptEvidence> {
         None,
     )?;
     let leaves = vec![canonical_json_bytes(&receipt)?];
-    resolve(receipt, &leaves, 0, 1, 100)
+    resolve(receipt, &leaves, 0, 1, 1)
 }
 
 fn clone_resolved(evidence: &ResolvedReceiptEvidence) -> Built<ResolvedReceiptEvidence> {

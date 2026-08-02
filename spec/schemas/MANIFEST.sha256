@@ -137,7 +137,7 @@ a4bc54088b6aef5d000ad717275342a966cd55fd0391e6c555aaa93bcc111395  spec/schemas/c
 63c46a632c4ccc94a15dc1bd56f550a6e062fb008200344d68ad09390df2a0c5  spec/schemas/chio-finding/v1/seller-authorization.schema.json
 4498e5306e60b5c38b0b903e8cce7b38e3e6b898523474d4fe6132eb6ef59d86  spec/schemas/chio-finding/v1/status-epoch.schema.json
 70f47c86ccbcc7eae777073a04c9d753116dddc0c2e56193f050eeaa1738ddca  spec/schemas/chio-finding/v1/status-proof-input.schema.json
-ae01c0aa018c45789a9d7b41ff4189d8134c15497dc0f3ade614201ea7f76d3f  spec/schemas/chio-finding/v1/verifier-report.schema.json
+521165dbefd5205e3c1f82cd24b42b460c262db33d2bf3329a439d65e74726f1  spec/schemas/chio-finding/v1/verifier-report.schema.json
 1cf7cb29f72bf81ef49a7219cb41050af8647f1fbe4ae8099be1e499eb5d8af3  spec/schemas/chio-fiscal/v1/activation.schema.json
 d3a03422771817cc1c2d4d1848a14eb8ac13fbf427308e4567e6bce3e4f1e5aa  spec/schemas/chio-fiscal/v1/approval.schema.json
 dda44c6c0ead952e77bbc6737811a0f1cf26f8262d538dc3c433204435194e17  spec/schemas/chio-fiscal/v1/charter.schema.json

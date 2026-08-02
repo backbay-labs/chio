@@ -124,13 +124,9 @@ fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
         }
     }
 
-    let conditions = matrix
-        .get("gateConditions")
-        .and_then(Value::as_array)
-        .map(|c| c.len())
-        .unwrap_or(0);
+    let condition_count = conditions.len();
     println!(
-        "qualify bounded-chio: {} in sync (scope={BOUNDED_SCOPE}, {conditions} gate conditions, entrypoint={BOUNDED_ENTRYPOINT}, profile={profile_doc})",
+        "qualify bounded-chio: {} in sync (scope={BOUNDED_SCOPE}, {condition_count} gate conditions, entrypoint={BOUNDED_ENTRYPOINT}, profile={profile_doc})",
         display(&matrix_path)
     );
     Ok(())

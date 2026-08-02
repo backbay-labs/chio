@@ -5,12 +5,13 @@ solved cognition: verified fixes and negative results). This extends the
 original spike memo and holds the architecture, mechanism, threat, and
 planning documents as they mature.
 
-Status: the cumulative implementation includes M0-M6, M8, and the completed M9
+Status: the cumulative implementation includes M0-M6, M8, and the M9
 qualification boundary. The named bounded-profile integration, approved scoped
 claims, audited assumptions, persisted transaction-passport golden, and
-promoted-default workspace gates have passed. M7 stays conditional and unbuilt
-because no bilateral seller/buyer deployment has triggered its ADR-C
-prerequisite. Usage-gated stochastic R&D extensions also remain unbuilt.
+focused promoted-default gates pass. Final cumulative workspace qualification
+is in progress. M7 stays conditional and unbuilt because no bilateral
+seller/buyer deployment has triggered its ADR-C prerequisite. Usage-gated
+stochastic R&D extensions also remain unbuilt.
 
 Reading order:
 

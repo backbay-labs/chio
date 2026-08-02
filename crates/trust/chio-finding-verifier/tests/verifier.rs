@@ -236,8 +236,8 @@ fn fixture_with_runtime_assurance(
     let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
     let checkpoint = build_checkpoint(
         1,
-        100,
-        101,
+        1,
+        2,
         &[first_bytes.clone(), second_bytes.clone()],
         &kernel,
     )?;
@@ -381,12 +381,12 @@ fn fixture_with_runtime_assurance(
         ResolvedReceiptEvidence {
             receipt: first,
             canonical_receipt_bytes: first_bytes,
-            inclusion_proof: build_inclusion_proof(&tree, 0, 1, 100)?,
+            inclusion_proof: build_inclusion_proof(&tree, 0, 1, 1)?,
         },
         ResolvedReceiptEvidence {
             receipt: second,
             canonical_receipt_bytes: second_bytes,
-            inclusion_proof: build_inclusion_proof(&tree, 1, 1, 101)?,
+            inclusion_proof: build_inclusion_proof(&tree, 1, 1, 2)?,
         },
     ];
 

@@ -126,7 +126,9 @@ fn custom_constraint_matches_if_present(grant: &ToolGrant, key: &str, expected: 
         // Delivery carriers require the output-aware durable terminal; the
         // proxy has no such terminal, so a grant carrying one never binds
         // an event.
-        Constraint::OutputDigestSha256(_) | Constraint::RequireFindingPurchase(_) => false,
+        Constraint::OutputDigestSha256(_)
+        | Constraint::RequireFindingPurchase(_)
+        | Constraint::RequireFindingRecovery(_) => false,
         Constraint::PathPrefix(_)
         | Constraint::DomainExact(_)
         | Constraint::DomainGlob(_)
