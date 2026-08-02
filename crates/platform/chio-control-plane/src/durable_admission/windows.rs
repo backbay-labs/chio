@@ -1,7 +1,7 @@
 use std::ffi::{OsStr, OsString};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle};
 use std::path::{Component, Path, PathBuf, Prefix};
 
@@ -16,11 +16,11 @@ use windows_sys::Win32::Foundation::{
     STATUS_NO_MORE_FILES, STATUS_REPARSE_POINT_ENCOUNTERED, STATUS_SUCCESS, UNICODE_STRING,
 };
 use windows_sys::Win32::Storage::FileSystem::{
-    FileAttributeTagInfo, GetFileInformationByHandleEx, FILE_ADD_FILE, FILE_ADD_SUBDIRECTORY,
-    FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
-    FILE_ATTRIBUTE_TAG_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-    FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE,
-    FILE_WRITE_DATA, SYNCHRONIZE,
+    FileAttributeTagInfo, FileIdInfo, GetFileInformationByHandleEx, FILE_ADD_FILE,
+    FILE_ADD_SUBDIRECTORY, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
+    FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO, FILE_FLAG_BACKUP_SEMANTICS,
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_INFO, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FILE_WRITE_DATA, SYNCHRONIZE,
 };
 use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 
@@ -35,15 +35,14 @@ pub(super) struct PreparedPrivateDirectory {
 
 impl PreparedPrivateDirectory {
     pub(super) fn validate_path_identity(&self, path: &Path) -> Result<(), std::io::Error> {
-        let pinned = self.directory.metadata()?;
-        let current = fs::symlink_metadata(path)?;
-        let pinned_identity = pinned.volume_serial_number().zip(pinned.file_index());
-        let current_identity = current.volume_serial_number().zip(current.file_index());
-        if current.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-            || !current.is_dir()
-            || pinned_identity.is_none()
-            || pinned_identity != current_identity
-        {
+        let mut options = OpenOptions::new();
+        options
+            .access_mode(FILE_READ_ATTRIBUTES)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
+        let current = options.open(path)?;
+        validate_directory_handle(&current)?;
+        if query_file_identity(&self.directory)? != query_file_identity(&current)? {
             return Err(invalid_data(format!(
                 "prepared private directory path `{}` no longer identifies the pinned directory",
                 path.display()
@@ -459,12 +458,32 @@ fn query_file_attributes(file: &File) -> Result<u32, std::io::Error> {
     Ok(attributes.FileAttributes)
 }
 
+fn query_file_identity(file: &File) -> Result<(u64, [u8; 16]), std::io::Error> {
+    let mut identity = FILE_ID_INFO::default();
+    let buffer_size = u32::try_from(std::mem::size_of::<FILE_ID_INFO>())
+        .map_err(|_| invalid_path("Windows file-identity buffer size overflow"))?;
+    // SAFETY: `file` owns a live handle, and `identity` points to a correctly
+    // sized writable FILE_ID_INFO buffer.
+    let queried = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle() as HANDLE,
+            FileIdInfo,
+            std::ptr::from_mut(&mut identity).cast(),
+            buffer_size,
+        )
+    };
+    if queried == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok((identity.VolumeSerialNumber, identity.FileId.Identifier))
+}
+
 fn invalid_path(message: &'static str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidInput, message)
 }
 
-fn invalid_data(message: &'static str) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidData, message)
+fn invalid_data(message: impl Into<String>) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, message.into())
 }
 
 fn ntstatus_error(status: i32) -> std::io::Error {
