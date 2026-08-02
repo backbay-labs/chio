@@ -90,6 +90,7 @@ const MAX_IDENTIFIER_BYTES: usize = 512;
 const MAX_CASE_STATE_BYTES: usize = 64;
 
 const DISPUTE_BOND_FUNDING_DOMAIN: &str = "chio.finding.dispute-bond-funding.v1";
+const DISPUTE_BOND_RETURN_DOMAIN: &str = "chio.finding.dispute-bond-return.v1";
 /// Retries one challenge may take after an indeterminate verdict. An
 /// indeterminate result is an infrastructure or authority failure rather
 /// than an answer, so the challenge is entitled to exactly one further
@@ -310,6 +311,33 @@ pub fn dispute_bond_funding_intent_digest(input: &FindingDisputeLockInput<'_>) -
     sha256_hex(
         format!(
             "{DISPUTE_BOND_FUNDING_DOMAIN}\0{challenge}\0{lock}\0{owner}\0{schedule}\0{units}\0{currency}\0{expiry}",
+            challenge = input.challenge_id,
+            lock = input.lock_id,
+            owner = input.owner_hex,
+            schedule = input.schedule_envelope_sha256,
+            units = input.amount_units,
+            currency = input.currency,
+            expiry = input.expires_at,
+        )
+        .as_bytes(),
+    )
+}
+
+/// Durable key for the independently confirmed return of one dispute lock.
+/// Funding and return use different domains so confirming the debit can
+/// never satisfy the credit fence.
+#[must_use]
+pub fn derive_dispute_bond_return_intent_key(challenge_id: &str, lock_id: &str) -> String {
+    sha256_hex(format!("{DISPUTE_BOND_RETURN_DOMAIN}\0{challenge_id}\0{lock_id}").as_bytes())
+}
+
+/// Commitment a confirmed return intent must carry before the store will
+/// report a dispute lock as returned.
+#[must_use]
+pub fn dispute_bond_return_intent_digest(input: &FindingDisputeLockInput<'_>) -> String {
+    sha256_hex(
+        format!(
+            "{DISPUTE_BOND_RETURN_DOMAIN}\0{challenge}\0{lock}\0{owner}\0{schedule}\0{units}\0{currency}\0{expiry}",
             challenge = input.challenge_id,
             lock = input.lock_id,
             owner = input.owner_hex,
@@ -952,6 +980,35 @@ impl SqliteFindingChallengeStore {
                 "a dispute bond cannot be forfeited against a challenge in state {}",
                 challenge_state_name(challenge.state)
             )));
+        }
+        if disposition == FindingDisputeLockDisposition::Returned {
+            let input = FindingDisputeLockInput {
+                lock_id: &lock.lock_id,
+                challenge_id: &lock.challenge_id,
+                owner_hex: &lock.owner_hex,
+                schedule_envelope_sha256: &lock.schedule_envelope_sha256,
+                amount_units: lock.amount_units,
+                currency: &lock.currency,
+                expires_at: lock.expires_at,
+                locked_at: lock.locked_at,
+            };
+            let return_key =
+                derive_dispute_bond_return_intent_key(input.challenge_id, input.lock_id);
+            let returned = load_effect_intent_tx(&transaction, &return_key)?.ok_or_else(|| {
+                FindingChallengeStoreError::Conflict(
+                    "dispute bond has no independently confirmed return intent".to_owned(),
+                )
+            })?;
+            if returned.kind != FindingEffectIntentKind::ChallengeBond
+                || returned.liability_key.is_some()
+                || returned.settlement_required
+                || returned.intent_digest != dispute_bond_return_intent_digest(&input)
+                || returned.state != FindingEffectIntentState::Confirmed
+            {
+                return Err(FindingChallengeStoreError::Conflict(
+                    "dispute bond return intent is not confirmed for this lock".to_owned(),
+                ));
+            }
         }
         let changed = transaction
             .execute(

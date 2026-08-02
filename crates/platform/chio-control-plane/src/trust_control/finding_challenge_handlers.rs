@@ -285,6 +285,7 @@ fn coordinator_unavailable(error: &ChallengeCoordinatorError) -> bool {
         error,
         ChallengeCoordinatorError::Configuration(_)
             | ChallengeCoordinatorError::AuthorityPinMismatch(_)
+            | ChallengeCoordinatorError::AuthorityLifecycle { .. }
             | ChallengeCoordinatorError::FeeRail(_)
             | ChallengeCoordinatorError::ChallengeStore(_)
             | ChallengeCoordinatorError::PurchaseStore(_)

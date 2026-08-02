@@ -49,6 +49,7 @@ use std::sync::Arc;
 use chio_core::canonical::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_core::capability::scope::MonetaryAmount;
 use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
+use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
     compute_enforcement_id, derive_outcome_id, ensure_challenge_class_compatibility,
@@ -98,15 +99,16 @@ use chio_settle::{
     VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
-    derive_dispute_bond_funding_intent_key, dispute_bond_funding_intent_digest,
+    derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
+    dispute_bond_funding_intent_digest, dispute_bond_return_intent_digest,
     FindingChallengeAuthorizationBranch, FindingChallengeEvaluationStart,
     FindingChallengeEvidenceClass, FindingChallengeState, FindingChallengeSubmission,
     FindingChallengeVerdict as StoreVerdict, FindingChallengeWriteOutcome,
     FindingClaimSnapshotInput, FindingDisputeLockDisposition, FindingDisputeLockInput,
-    FindingDisputeLockState, FindingEffectIntentKind, FindingEffectIntentState,
-    FindingGovernanceCaseInput, FindingGovernanceCaseKind, FindingLiabilityInput,
-    FindingLiabilityRecord, FindingLiabilityState, SqliteFindingChallengeStore,
-    SqliteFindingPurchaseStore,
+    FindingDisputeLockRecord, FindingDisputeLockState, FindingEffectIntentKind,
+    FindingEffectIntentState, FindingGovernanceCaseInput, FindingGovernanceCaseKind,
+    FindingLiabilityInput, FindingLiabilityRecord, FindingLiabilityState,
+    SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
 };
 
 use super::finding_handlers::{
@@ -171,6 +173,12 @@ const MAX_RAW_FINDING_BYTES: usize = 1_048_576;
 /// Past this the reading describes the reference as it used to be, and a
 /// key revoked since would still adjudicate under it.
 const MAX_REVOCATION_STATUS_AGE_SECS: u64 = 3_600;
+
+/// Signed assertion returned by the deployment's resolver for one pinned
+/// authority. The governance root authenticates both live and revoked
+/// answers, so a caller cannot manufacture non-revocation with a plain
+/// boolean.
+pub const FINDING_AUTHORITY_STATUS_SCHEMA_V1: &str = "chio.finding.authority-status.v1";
 
 /// Shortest seller-signed appeal window the venue will admit.
 const MIN_APPEAL_WINDOW_SECS: u64 = 24 * 60 * 60;
@@ -375,6 +383,11 @@ pub enum ChallengeCoordinatorError {
     EvaluatorRevocation(&'static str),
     #[error("settlement observer key is outside the lifecycle its pin declares: {0}")]
     SettlementObserverLifecycle(&'static str),
+    #[error("authority role {role} is outside its authenticated lifecycle: {reason}")]
+    AuthorityLifecycle {
+        role: &'static str,
+        reason: &'static str,
+    },
     #[error("dispute fee rail dispatch failed: {0}")]
     FeeRail(String),
     #[error("dispute bond funding rail dispatch failed: {0}")]
@@ -391,6 +404,8 @@ pub enum ChallengeCoordinatorError {
     AppealNotFinal(&'static str),
     #[error("outcome does not bind this challenge")]
     OutcomeBinding,
+    #[error("governance artifacts do not bind this liability: {0}")]
+    GovernanceBinding(&'static str),
     #[error("collateral facts do not name the allocation this liability is charged to")]
     CollateralAllocation,
     #[error("signed market terms rejected: {0}")]
@@ -487,10 +502,10 @@ pub trait FindingFilingResolver: Send + Sync {
 /// The pinned public roles this coordinator verifies against. None of
 /// them is ever read out of an artifact.
 struct ChallengeRolePins {
-    venue_authority: PublicKey,
-    audit_authority: PublicKey,
-    governance_authority: PublicKey,
-    purchase_authority: PublicKey,
+    venue_authority: FindingAuthorityPin,
+    audit_authority: FindingAuthorityPin,
+    governance_authority: FindingAuthorityPin,
+    purchase_authority: FindingAuthorityPin,
     settlement_observer: FindingAuthorityPin,
     settlement_finality_requirement: FindingFinalityRequirement,
 }
@@ -527,8 +542,6 @@ pub enum EvaluationAdmission {
 pub struct FindingCollateralFacts<'a> {
     /// Seller precommitment from the admitted market terms.
     pub base_finding_stake: &'a MonetaryAmount,
-    /// The signed listing bond requirement, which caps the candidate.
-    pub listing_required_amount: &'a MonetaryAmount,
     /// Live collateral the finalized bond snapshot observed.
     pub live_allocated_collateral_units: u64,
     /// Allocation whose open per-sale encumbrances the candidate adds.
@@ -538,22 +551,32 @@ pub struct FindingCollateralFacts<'a> {
     pub allocation_id: &'a str,
 }
 
-/// One resolved answer about a pinned key's revocation reference.
-///
-/// The reference a pin carries is external to this process and nothing
-/// here can dereference it, so the answer arrives as an input rather than
-/// as something the coordinator derives. It is bound rather than trusted:
-/// it must name the exact reference the pin carries, it must be a reading
-/// of the present rather than of an indefinite past, and it must say the
-/// key is live. A caller that cannot resolve the reference holds no status
-/// to present, and no outcome is signed without one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FindingKeyRevocationStatus<'a> {
-    /// The reference this reading answers for.
-    pub status_ref: &'a str,
-    pub revoked: bool,
-    /// When the reference was read.
+/// Governance-authenticated reading of one pinned authority's revocation
+/// source. `revoked_from` is compared with the instant the role acted, so
+/// a later revocation does not rewrite an earlier valid signature.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingAuthorityStatus {
+    pub schema: String,
+    pub status_ref: String,
+    pub authority_id: String,
+    pub key: PublicKey,
+    pub key_epoch: u64,
+    pub revoked_from: Option<u64>,
     pub observed_at: u64,
+}
+
+pub type SignedFindingAuthorityStatus = SignedExportEnvelope<FindingAuthorityStatus>;
+
+/// Trusted resolver for a pin's externally published revocation source.
+/// The returned envelope is still verified by the coordinator against the
+/// pinned governance root and exact pin fields.
+pub trait FindingAuthorityStatusResolver: Send + Sync {
+    fn resolve(
+        &self,
+        pin: &FindingAuthorityPin,
+        now: u64,
+    ) -> Result<SignedFindingAuthorityStatus, String>;
 }
 
 /// One adjudication request: the challenge, the artifacts it binds, and
@@ -568,8 +591,6 @@ pub struct ChallengeEvaluationRequest<'a> {
     /// The epoch the caller believes the evaluator key is in. It is
     /// checked against the pin rather than carried into the outcome.
     pub evaluator_key_epoch: u64,
-    /// The caller's reading of the evaluator pin's revocation reference.
-    pub evaluator_revocation: FindingKeyRevocationStatus<'a>,
     pub now: u64,
 }
 
@@ -709,13 +730,15 @@ pub struct FindingChallengeCoordinator {
     /// lane verifies against this roster and nothing else.
     fee_schedule_operators: Vec<PublicKey>,
     evaluator_authority: Keypair,
-    /// The evaluator role's full lifecycle pin. Every other role is
-    /// verified against its key alone, but this one signs, so its epoch,
-    /// its window, and its revocation reference all have to hold at the
-    /// instant an outcome is signed under it.
+    /// The evaluator role's full lifecycle pin. Like every other
+    /// value-bearing role, its key, epoch, window, and authenticated
+    /// revocation source all have to hold when it acts.
     evaluator_pin: FindingAuthorityPin,
     finalization_authority: Keypair,
+    finalization_pin: FindingAuthorityPin,
     penalty_authority: Keypair,
+    penalty_pin: FindingAuthorityPin,
+    authority_status: Arc<dyn FindingAuthorityStatusResolver>,
     rail: Arc<dyn FindingRailObserver>,
     /// Resolves the signed artifacts a filing binds by digest.
     filings: Arc<dyn FindingFilingResolver>,
@@ -744,6 +767,7 @@ impl FindingChallengeCoordinator {
         evaluator_authority: Keypair,
         finalization_authority: Keypair,
         penalty_authority: Keypair,
+        authority_status: Arc<dyn FindingAuthorityStatusResolver>,
         rail: Arc<dyn FindingRailObserver>,
         filings: Arc<dyn FindingFilingResolver>,
         failed_challenge_disposition: FindingDisputeLockDisposition,
@@ -793,17 +817,20 @@ impl FindingChallengeCoordinator {
             market_config: config.clone(),
             fee_schedule_operators,
             pins: ChallengeRolePins {
-                venue_authority: pin(&config.venue, "venue")?,
-                audit_authority: pin(&config.audit_authority, "audit")?,
-                governance_authority: pin(&config.governance_root, "governance")?,
-                purchase_authority: pin(&config.purchase, "purchase")?,
+                venue_authority: config.venue.clone(),
+                audit_authority: config.audit_authority.clone(),
+                governance_authority: config.governance_root.clone(),
+                purchase_authority: config.purchase.clone(),
                 settlement_observer: config.settlement_observer.clone(),
                 settlement_finality_requirement: config.settlement_finality_requirement,
             },
             evaluator_authority,
             evaluator_pin: config.challenge_evaluator.clone(),
             finalization_authority,
+            finalization_pin: config.venue_finalization.clone(),
             penalty_authority,
+            penalty_pin: config.market_penalty.clone(),
+            authority_status,
             rail,
             filings,
             venue_id: config.venue_id.clone(),
@@ -856,13 +883,23 @@ impl FindingChallengeCoordinator {
         raw_finding: &str,
         now: u64,
     ) -> Result<ChallengeSubmissionOutcome, ChallengeCoordinatorError> {
+        let body = &challenge.body;
         // The pinned audit authority is the only key that may file a
         // bondless audit; a buyer submission verifies against the
         // challenger it names, so neither branch can borrow the other's
         // authorization.
-        verify_signed_challenge(challenge, &self.pins.audit_authority)
+        let audit_authority = match &body.authorization {
+            FindingChallengeAuthorization::VenueAudit(_) => {
+                self.require_live_role(&self.pins.audit_authority, body.filed_at, now, "audit")?
+            }
+            FindingChallengeAuthorization::BuyerSubmission(_) => self
+                .pins
+                .audit_authority
+                .key()
+                .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("audit"))?,
+        };
+        verify_signed_challenge(challenge, &audit_authority)
             .map_err(|error| ChallengeCoordinatorError::ChallengeEnvelope(error.to_string()))?;
-        let body = &challenge.body;
         if body.filed_at > now {
             return Err(ChallengeCoordinatorError::FilingClock);
         }
@@ -911,7 +948,7 @@ impl FindingChallengeCoordinator {
                 if !terms.body.audit_eligible {
                     return Err(ChallengeCoordinatorError::AuditIneligible);
                 }
-                self.require_audit_selection(audit, body)?;
+                self.require_audit_selection(audit, body, now)?;
             }
         }
         let write = self
@@ -1013,21 +1050,45 @@ impl FindingChallengeCoordinator {
     ) -> Result<Option<ChallengeEvaluationOutcome>, ChallengeCoordinatorError> {
         self.require_live_evaluator_key(request)?;
         let body = &request.challenge.body;
-        let admission = self.resolve_admission(body)?;
+        let admission = self.resolve_admission(body, request.now)?;
         if request.collateral.allocation_id != admission.body.backing_allocation_id {
             return Err(ChallengeCoordinatorError::CollateralAllocation);
         }
+        let schedule = self.resolve_fee_schedule(&admission.body.fee_schedule_envelope_sha256)?;
+        let listing_requirement = Self::listing_bond_requirement(&schedule)?;
         let terms = self.resolve_market_terms(body)?;
         if self.admit_evaluation(&body.challenge_id, request.now)? != EvaluationAdmission::Admitted
         {
             return Ok(None);
         }
+        let audit_authority = self
+            .pins
+            .audit_authority
+            .key()
+            .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("audit"))?;
+        if matches!(
+            &body.authorization,
+            FindingChallengeAuthorization::VenueAudit(_)
+        ) {
+            self.require_live_role(
+                &self.pins.audit_authority,
+                body.filed_at,
+                request.now,
+                "audit",
+            )?;
+        }
+        let governance_authority = self.require_live_role(
+            &self.pins.governance_authority,
+            request.profile.body.issued_at,
+            request.now,
+            "governance",
+        )?;
         let input = FindingChallengeEvaluationInput {
             challenge: request.challenge,
-            pinned_audit_authority: &self.pins.audit_authority,
+            pinned_audit_authority: &audit_authority,
             raw_finding: request.raw_finding,
             profile: request.profile,
-            governance_authority: &self.pins.governance_authority,
+            governance_authority: &governance_authority,
             evidence: request.evidence,
         };
         let FindingChallengeEvaluation::Adjudicated(adjudication) =
@@ -1047,7 +1108,11 @@ impl FindingChallengeCoordinator {
             .map_or(0, |record| record.retry_count);
         let penalty_calculation = match verdict {
             chio_finding::FindingChallengeVerdict::Upheld => {
-                Some(self.checked_penalty_calculation(request.collateral, request.now)?)
+                Some(self.checked_penalty_calculation(
+                    request.collateral,
+                    listing_requirement,
+                    request.now,
+                )?)
             }
             _ => None,
         };
@@ -1131,7 +1196,7 @@ impl FindingChallengeCoordinator {
         challenge_id: &str,
         now: u64,
     ) -> Result<Option<FindingDisputeLockDisposition>, ChallengeCoordinatorError> {
-        let Some(_lock) = self
+        let Some(lock) = self
             .challenges
             .get_dispute_lock(challenge_id)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
@@ -1154,6 +1219,9 @@ impl FindingChallengeCoordinator {
             | FindingChallengeState::Evaluating
             | FindingChallengeState::IndeterminateRetryable => return Ok(None),
         };
+        if disposition == FindingDisputeLockDisposition::Returned {
+            self.return_dispute_bond(&lock, now)?;
+        }
         self.challenges
             .release_dispute_bond(challenge_id, disposition, now)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
@@ -1215,12 +1283,28 @@ impl FindingChallengeCoordinator {
         {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
         }
-        verify_signed_challenge(signed_challenge, &self.pins.audit_authority)
+        let audit_authority = self
+            .pins
+            .audit_authority
+            .key()
+            .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("audit"))?;
+        if matches!(
+            &signed_challenge.body.authorization,
+            FindingChallengeAuthorization::VenueAudit(_)
+        ) {
+            self.require_live_role(
+                &self.pins.audit_authority,
+                signed_challenge.body.filed_at,
+                now,
+                "audit",
+            )?;
+        }
+        verify_signed_challenge(signed_challenge, &audit_authority)
             .map_err(|error| ChallengeCoordinatorError::ChallengeEnvelope(error.to_string()))?;
         if signed_challenge.body.challenge_id != challenge_id {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
         }
-        let admission = self.resolve_admission(&signed_challenge.body)?;
+        let admission = self.resolve_admission(&signed_challenge.body, now)?;
         if admission.body.backing_allocation_id != identity.allocation_id {
             return Err(ChallengeCoordinatorError::AdmissionBinding(
                 "backing_allocation_id",
@@ -1278,9 +1362,23 @@ impl FindingChallengeCoordinator {
                 "base_finding_stake",
             ));
         }
-        self.require_pinned_governance(governance, sanction_case, None)?;
+        if sanction_case.body.listing_id != identity.listing_id {
+            return Err(ChallengeCoordinatorError::GovernanceBinding("listing_id"));
+        }
+        self.require_pinned_governance(governance, sanction_case, None, now)?;
+        if self.envelope_digest(governance.fee_schedule)?
+            != admission.body.fee_schedule_envelope_sha256
+        {
+            return Err(ChallengeCoordinatorError::GovernanceBinding(
+                "fee_schedule_envelope_sha256",
+            ));
+        }
+        let listing_requirement = Self::listing_bond_requirement(governance.fee_schedule)?;
+        self.require_live_role(&self.penalty_pin, now, now, "penalty")?;
+        self.require_purchase_authority_for_candidates(claim_candidates, now)?;
         self.require_impairable_collateral(collateral, now)?;
-        let authoritative_calculation = self.checked_penalty_calculation(collateral, now)?;
+        let authoritative_calculation =
+            self.checked_penalty_calculation(collateral, listing_requirement, now)?;
         if outcome.body.penalty_calculation.as_ref() != Some(&authoritative_calculation) {
             return Err(ChallengeCoordinatorError::PenaltyCalculationMismatch);
         }
@@ -1342,6 +1440,7 @@ impl FindingChallengeCoordinator {
             cutoff_slot,
             claim_candidates,
             collateral,
+            listing_requirement,
             &authoritative_calculation.penalty_amount,
             &admission.body.community_fund_destination,
             now,
@@ -1510,6 +1609,7 @@ impl FindingChallengeCoordinator {
                 })
             }
             AppealDisposition::Final { sanction_case } => {
+                self.require_live_role(&self.finalization_pin, now, now, "finalization")?;
                 self.require_appeal_window_closed(&record, sanction_case, sanction_case_id, now)?;
                 let slash = self.mint_penalty(
                     FindingPenaltyBranch::AppealFinalImpairment,
@@ -1577,7 +1677,6 @@ impl FindingChallengeCoordinator {
         penalty: &SignedOpenMarketPenalty,
         bond_snapshot: &SignedFindingFinalizedBondSnapshot,
         seller: &PublicKey,
-        settlement_observer_revocation: FindingKeyRevocationStatus<'_>,
         settlement_config: &SettlementChainConfig,
         operator_address: &str,
         vault_snapshot: &EvmBondSnapshot,
@@ -1628,13 +1727,20 @@ impl FindingChallengeCoordinator {
                 return Err(ChallengeCoordinatorError::LiabilityIdentity(label));
             }
         }
-        self.require_penalty_matches_enforcement(&liability, enforcement, penalty)?;
-        self.require_live_settlement_observer(bond_snapshot, settlement_observer_revocation, now)?;
-        let settlement_observer = self
-            .pins
-            .settlement_observer
-            .key()
-            .map_err(|error| ChallengeCoordinatorError::Configuration(error.to_string()))?;
+        self.require_penalty_matches_enforcement(&liability, enforcement, penalty, now)?;
+        self.require_live_role(
+            &self.finalization_pin,
+            enforcement.body.finalized_at,
+            now,
+            "finalization",
+        )?;
+        self.require_live_settlement_observer(bond_snapshot, now)?;
+        let settlement_observer = self.require_live_role(
+            &self.pins.settlement_observer,
+            bond_snapshot.body.observed_at,
+            now,
+            "settlement observer",
+        )?;
         let pins = FindingEnforcementPins {
             finalization_authority: self.finalization_authority.public_key(),
             settlement_observer,
@@ -1845,6 +1951,7 @@ impl FindingChallengeCoordinator {
     fn resolve_admission(
         &self,
         challenge: &FindingChallenge,
+        now: u64,
     ) -> Result<SignedFindingAdmission, ChallengeCoordinatorError> {
         let admission = self
             .filings
@@ -1859,7 +1966,13 @@ impl FindingChallengeCoordinator {
                 "venue_admission_envelope_sha256",
             ));
         }
-        verify_signed_admission(&admission, &self.pins.venue_authority, &self.venue_id)
+        let venue_authority = self.require_live_role(
+            &self.pins.venue_authority,
+            admission.body.issued_at,
+            now,
+            "venue",
+        )?;
+        verify_signed_admission(&admission, &venue_authority, &self.venue_id)
             .map_err(|error| ChallengeCoordinatorError::AdmissionEnvelope(error.to_string()))?;
         let bindings: [(&str, &str, &'static str); 6] = [
             (
@@ -2057,86 +2170,110 @@ impl FindingChallengeCoordinator {
     }
 
     /// Require the evaluator key to be live at the instant it would sign.
-    ///
-    /// A pin declares more than key material: it declares the epoch that
-    /// key is in, the window it may act in, and where its revocation
-    /// status is published. An outcome signed outside any of those is an
-    /// adjudication by a key the deployment has already retired, and the
-    /// signature on it is indistinguishable from a live one.
-    ///
-    /// The revocation reference is external to this process, so it is
-    /// resolved by the caller and bound here rather than trusted: an
-    /// answer to another reference, a stale answer, an answer from ahead
-    /// of the venue clock, and an answer that says revoked are all
-    /// refusals. There is no path that skips the check.
     fn require_live_evaluator_key(
         &self,
         request: &ChallengeEvaluationRequest<'_>,
     ) -> Result<(), ChallengeCoordinatorError> {
         let pin = &self.evaluator_pin;
-        if !pin.covers(request.now) {
-            return Err(ChallengeCoordinatorError::EvaluatorKeyWindow);
-        }
         if request.evaluator_key_epoch != pin.key_epoch {
             return Err(ChallengeCoordinatorError::EvaluatorKeyEpoch);
         }
-        let status = request.evaluator_revocation;
-        if status.status_ref != pin.revocation_status_ref {
-            return Err(ChallengeCoordinatorError::EvaluatorRevocation(
-                "status answers another reference",
-            ));
+        if !pin.covers(request.now) {
+            return Err(ChallengeCoordinatorError::EvaluatorKeyWindow);
         }
-        if status.revoked {
-            return Err(ChallengeCoordinatorError::EvaluatorRevocation(
-                "key is revoked",
-            ));
-        }
-        if status.observed_at > request.now
-            || request.now.saturating_sub(status.observed_at) > MAX_REVOCATION_STATUS_AGE_SECS
-        {
-            return Err(ChallengeCoordinatorError::EvaluatorRevocation(
-                "status is not a live reading",
-            ));
-        }
+        self.require_live_role(pin, request.now, request.now, "evaluator")
+            .map_err(|error| match error {
+                ChallengeCoordinatorError::AuthorityLifecycle { reason, .. } => {
+                    ChallengeCoordinatorError::EvaluatorRevocation(reason)
+                }
+                other => other,
+            })?;
         Ok(())
     }
 
     fn require_live_settlement_observer(
         &self,
         snapshot: &SignedFindingFinalizedBondSnapshot,
-        status: FindingKeyRevocationStatus<'_>,
         now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
         let pin = &self.pins.settlement_observer;
-        if !pin.covers(snapshot.body.observed_at) {
-            return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
-                "snapshot was signed outside the configured validity window",
-            ));
-        }
+        self.require_live_role(pin, snapshot.body.observed_at, now, "settlement observer")
+            .map_err(|error| match error {
+                ChallengeCoordinatorError::AuthorityLifecycle { reason, .. } => {
+                    ChallengeCoordinatorError::SettlementObserverLifecycle(reason)
+                }
+                other => other,
+            })?;
         if snapshot.body.operator_key_epoch != pin.key_epoch {
             return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
                 "snapshot names another key epoch",
             ));
         }
-        if status.status_ref != pin.revocation_status_ref {
-            return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
-                "status answers another revocation reference",
-            ));
-        }
-        if status.revoked {
-            return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
-                "key is revoked",
-            ));
-        }
-        if status.observed_at < snapshot.body.observed_at
-            || status.observed_at > now
-            || now.saturating_sub(status.observed_at) > MAX_REVOCATION_STATUS_AGE_SECS
-        {
-            return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
-                "status is not a live reading at or after the snapshot",
-            ));
-        }
         Ok(())
+    }
+
+    /// Authenticate one role's exact lifecycle policy against the
+    /// governance-signed reading returned by the deployment resolver.
+    fn require_live_role(
+        &self,
+        pin: &FindingAuthorityPin,
+        acted_at: u64,
+        now: u64,
+        role: &'static str,
+    ) -> Result<PublicKey, ChallengeCoordinatorError> {
+        let reject = |reason| ChallengeCoordinatorError::AuthorityLifecycle { role, reason };
+        if acted_at > now {
+            return Err(reject("role action is ahead of the venue clock"));
+        }
+        if !pin.covers(acted_at) {
+            return Err(reject(
+                "role action is outside the configured validity window",
+            ));
+        }
+        let signed = self
+            .authority_status
+            .resolve(pin, now)
+            .map_err(|_| reject("revocation source could not be resolved"))?;
+        let governance_key = self
+            .pins
+            .governance_authority
+            .key()
+            .map_err(|_| reject("governance status authority pin is invalid"))?;
+        verify_pinned_envelope(&signed, &governance_key, "authority status")
+            .map_err(|_| reject("revocation status signature is invalid"))?;
+        let body = &signed.body;
+        let key = pin.key().map_err(|_| reject("authority pin is invalid"))?;
+        if body.schema != FINDING_AUTHORITY_STATUS_SCHEMA_V1
+            || body.status_ref != pin.revocation_status_ref
+            || body.authority_id != pin.authority_id
+            || body.key != key
+            || body.key_epoch != pin.key_epoch
+        {
+            return Err(reject("revocation status does not bind the configured pin"));
+        }
+        if body.observed_at < acted_at
+            || body.observed_at > now
+            || now.saturating_sub(body.observed_at) > MAX_REVOCATION_STATUS_AGE_SECS
+        {
+            return Err(reject(
+                "revocation status is not a fresh post-action reading",
+            ));
+        }
+        if body
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from > body.observed_at)
+        {
+            return Err(reject(
+                "revocation status declares an unobserved future event",
+            ));
+        }
+        if body
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from <= acted_at)
+        {
+            return Err(reject("key was revoked when the role acted"));
+        }
+        Ok(key)
     }
 
     /// Require a bondless venue audit to be one the published round drew.
@@ -2151,6 +2288,7 @@ impl FindingChallengeCoordinator {
         &self,
         audit: &chio_finding::FindingVenueAuditAuthorization,
         challenge: &FindingChallenge,
+        now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
         let round = self
             .filings
@@ -2164,7 +2302,13 @@ impl FindingChallengeCoordinator {
                 "audit_epoch_envelope_sha256",
             ));
         }
-        verify_signed_audit_epoch(&round.epoch, &self.pins.audit_authority)
+        let audit_authority = self.require_live_role(
+            &self.pins.audit_authority,
+            round.epoch.body.committed_at,
+            now,
+            "audit",
+        )?;
+        verify_signed_audit_epoch(&round.epoch, &audit_authority)
             .map_err(|error| ChallengeCoordinatorError::AuditEpoch(error.to_string()))?;
         if round.epoch.body.authorization_digest != audit.authorization_digest {
             return Err(ChallengeCoordinatorError::AuditRoundBinding(
@@ -2229,6 +2373,22 @@ impl FindingChallengeCoordinator {
             .validate()
             .map_err(ChallengeCoordinatorError::FeeScheduleArtifact)?;
         Ok(schedule)
+    }
+
+    /// The listing-class requirement is unique in a validated schedule and
+    /// is the only ceiling the penalty calculation may use.
+    fn listing_bond_requirement(
+        schedule: &SignedOpenMarketFeeSchedule,
+    ) -> Result<&MonetaryAmount, ChallengeCoordinatorError> {
+        schedule
+            .body
+            .bond_requirements
+            .iter()
+            .find(|requirement| requirement.bond_class == OpenMarketBondClass::Listing)
+            .map(|requirement| &requirement.required_amount)
+            .ok_or(ChallengeCoordinatorError::DisputeTerms(
+                "listing bond requirement",
+            ))
     }
 
     /// Resolve the seller-signed market terms one filing binds by digest,
@@ -2344,8 +2504,14 @@ impl FindingChallengeCoordinator {
         governance: &FindingPenaltyGovernance<'_>,
         case: &SignedGenericGovernanceCase,
         prior_penalty: Option<&SignedOpenMarketPenalty>,
+        now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
-        let governance_key = &self.pins.governance_authority;
+        let governance_key = self.require_live_role(
+            &self.pins.governance_authority,
+            case.body.updated_at,
+            now,
+            "governance",
+        )?;
         // The listing authenticates against its own namespace owner rather
         // than a pinned key, so the case is what anchors it: a listing the
         // pinned case does not name cannot be the one being sanctioned.
@@ -2362,19 +2528,19 @@ impl FindingChallengeCoordinator {
                 "fee schedule",
             ));
         }
-        if &governance.charter.signer_key != governance_key {
+        if governance.charter.signer_key != governance_key {
             return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
                 "governance charter",
             ));
         }
-        if &case.signer_key != governance_key {
+        if case.signer_key != governance_key {
             return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
                 "governance case",
             ));
         }
         if governance
             .activation
-            .is_some_and(|activation| &activation.signer_key != governance_key)
+            .is_some_and(|activation| activation.signer_key != governance_key)
         {
             return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
                 "trust activation",
@@ -2857,6 +3023,7 @@ impl FindingChallengeCoordinator {
         liability: &FindingLiabilityRecord,
         enforcement: &SignedFindingChallengeEnforcement,
         penalty: &SignedOpenMarketPenalty,
+        now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
         penalty
             .body
@@ -2868,6 +3035,7 @@ impl FindingChallengeCoordinator {
             "market penalty",
         )
         .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        self.require_live_role(&self.penalty_pin, penalty.body.updated_at, now, "penalty")?;
         let digest = self.envelope_digest(penalty)?;
         if digest != enforcement.body.penalty_envelope_sha256 {
             return Err(ChallengeCoordinatorError::Settlement(
@@ -3109,6 +3277,92 @@ impl FindingChallengeCoordinator {
         }
     }
 
+    /// Reconcile the reverse rail instruction before reporting a funded
+    /// lock as returned. The distinct effect key makes the credit replay
+    /// safe without confusing it with the original debit.
+    fn return_dispute_bond(
+        &self,
+        lock: &FindingDisputeLockRecord,
+        now: u64,
+    ) -> Result<String, ChallengeCoordinatorError> {
+        let input = FindingDisputeLockInput {
+            lock_id: &lock.lock_id,
+            challenge_id: &lock.challenge_id,
+            owner_hex: &lock.owner_hex,
+            schedule_envelope_sha256: &lock.schedule_envelope_sha256,
+            amount_units: lock.amount_units,
+            currency: &lock.currency,
+            expires_at: lock.expires_at,
+            locked_at: lock.locked_at,
+        };
+        let intent_key = derive_dispute_bond_return_intent_key(&lock.challenge_id, &lock.lock_id);
+        let intent_digest = dispute_bond_return_intent_digest(&input);
+        let fenced = self
+            .challenges
+            .record_effect_intent(
+                &intent_key,
+                FindingEffectIntentKind::ChallengeBond,
+                &intent_digest,
+                None,
+                false,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        if fenced == FindingChallengeWriteOutcome::ExistingSame {
+            let state = self
+                .challenges
+                .get_effect_intent(&intent_key)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+                .map(|record| record.state);
+            if state == Some(FindingEffectIntentState::Confirmed) {
+                return Ok(intent_key);
+            }
+        }
+        self.challenges
+            .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, now)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        let instruction = FindingRailInstruction {
+            idempotency_key: intent_key.clone(),
+            payer: self.challenge_administration_pool.principal_id.clone(),
+            amount_units: lock.amount_units,
+            currency: lock.currency.clone(),
+            pool_principal_id: self.challenge_administration_pool.principal_id.clone(),
+            rail_destination: lock.owner_hex.clone(),
+        };
+        let instruction_digest = canonical_digest_of(&instruction)?;
+        match self.rail.dispatch(&instruction) {
+            Ok(observation)
+                if rail_observation_matches(&instruction, &instruction_digest, &observation) =>
+            {
+                self.challenges
+                    .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+                Ok(intent_key)
+            }
+            Ok(_) => {
+                let _ = self.challenges.advance_effect_intent(
+                    &intent_key,
+                    FindingEffectIntentState::Failed,
+                    now,
+                );
+                Err(ChallengeCoordinatorError::DisputeBondRail(
+                    "return observation does not reconcile to the dispatched instruction"
+                        .to_owned(),
+                ))
+            }
+            Err(reason) => {
+                let _ = self.challenges.advance_effect_intent(
+                    &intent_key,
+                    FindingEffectIntentState::Failed,
+                    now,
+                );
+                Err(ChallengeCoordinatorError::DisputeBondRail(reason))
+            }
+        }
+    }
+
     /// Compute the checked penalty calculation the outcome carries.
     ///
     /// The formula is predeclared and every member is recorded, so the
@@ -3118,6 +3372,7 @@ impl FindingChallengeCoordinator {
     fn checked_penalty_calculation(
         &self,
         collateral: &FindingCollateralFacts<'_>,
+        listing_required_amount: &MonetaryAmount,
         now: u64,
     ) -> Result<FindingPenaltyCalculation, ChallengeCoordinatorError> {
         let open = self.outstanding_exposure(collateral.allocation_id, now)?;
@@ -3134,7 +3389,7 @@ impl FindingChallengeCoordinator {
             base_finding_stake_units: collateral.base_finding_stake.units,
             open_per_sale_encumbrance_units: open,
             computed_exposure_units: computed,
-            listing_required_amount_units: collateral.listing_required_amount.units,
+            listing_required_amount_units: listing_required_amount.units,
             live_allocated_collateral_units: collateral.live_allocated_collateral_units,
             penalty_amount: MonetaryAmount {
                 units: computed.min(collateral.live_allocated_collateral_units),
@@ -3162,6 +3417,7 @@ impl FindingChallengeCoordinator {
         cutoff_slot: u64,
         claim_candidates: &[String],
         collateral: &FindingCollateralFacts<'_>,
+        listing_required_amount: &MonetaryAmount,
         expected_penalty: &MonetaryAmount,
         community_fund_destination: &str,
         now: u64,
@@ -3171,6 +3427,7 @@ impl FindingChallengeCoordinator {
             &collateral.base_finding_stake.currency,
             cutoff_slot,
             claim_candidates,
+            now,
         )?;
         let total_realized_spend_units = harms
             .iter()
@@ -3190,7 +3447,7 @@ impl FindingChallengeCoordinator {
                 base_finding_stake: collateral.base_finding_stake,
                 open_per_sale_encumbrances: open,
                 live_allocated_collateral: collateral.live_allocated_collateral_units,
-                listing_required_amount: collateral.listing_required_amount,
+                listing_required_amount,
                 community_fund_destination,
             },
             &harms,
@@ -3240,6 +3497,7 @@ impl FindingChallengeCoordinator {
         bond_currency: &str,
         cutoff_slot: u64,
         claim_candidates: &[String],
+        now: u64,
     ) -> Result<Vec<VerifiedHarm>, ChallengeCoordinatorError> {
         let admitted = self
             .purchases
@@ -3262,9 +3520,15 @@ impl FindingChallengeCoordinator {
                 .map_err(|error| {
                     ChallengeCoordinatorError::ArtifactValidation(error.to_string())
                 })?;
-            verify_signed_purchase_record(&signed, &self.pins.purchase_authority).map_err(
-                |error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()),
+            let purchase_authority = self.require_live_role(
+                &self.pins.purchase_authority,
+                signed.body.recorded_at,
+                now,
+                "purchase",
             )?;
+            verify_signed_purchase_record(&signed, &purchase_authority).map_err(|error| {
+                ChallengeCoordinatorError::ArtifactValidation(error.to_string())
+            })?;
             let record: &FindingPurchaseRecord = &signed.body;
             if record.finding_id != identity.finding_id
                 || record.listing_id != identity.listing_id
@@ -3342,6 +3606,42 @@ impl FindingChallengeCoordinator {
         let mut harms: Vec<VerifiedHarm> = folded.into_values().collect();
         harms.sort_by(|left, right| left.purchase_key.cmp(&right.purchase_key));
         Ok(harms)
+    }
+
+    /// Authenticate every candidate purchase before the liability
+    /// transaction blocks sales. The full listing, cutoff, allocation,
+    /// and payout checks still run while sealing.
+    fn require_purchase_authority_for_candidates(
+        &self,
+        claim_candidates: &[String],
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let mut keys: Vec<&String> = claim_candidates.iter().collect();
+        keys.sort();
+        keys.dedup();
+        for purchase_key in keys {
+            let row = self
+                .purchases
+                .get_purchase_record(purchase_key)
+                .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?
+                .ok_or_else(|| {
+                    ChallengeCoordinatorError::UnknownPurchaseRecord(purchase_key.clone())
+                })?;
+            let signed: SignedFindingPurchaseRecord = serde_json::from_slice(&row.record_json)
+                .map_err(|error| {
+                    ChallengeCoordinatorError::ArtifactValidation(error.to_string())
+                })?;
+            let purchase_authority = self.require_live_role(
+                &self.pins.purchase_authority,
+                signed.body.recorded_at,
+                now,
+                "purchase",
+            )?;
+            verify_signed_purchase_record(&signed, &purchase_authority).map_err(|error| {
+                ChallengeCoordinatorError::ArtifactValidation(error.to_string())
+            })?;
+        }
+        Ok(())
     }
 
     /// Require the carried accounting to be exactly what the store
@@ -3593,6 +3893,7 @@ impl FindingChallengeCoordinator {
         enforcement
             .validate()
             .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
+        self.require_live_role(&self.finalization_pin, now, now, "finalization")?;
         let signed =
             SignedFindingChallengeEnforcement::sign(enforcement, &self.finalization_authority)
                 .map_err(|_| ChallengeCoordinatorError::Signing)?;
@@ -3649,9 +3950,15 @@ impl FindingChallengeCoordinator {
         hold_penalty_id: Option<&str>,
         now: u64,
     ) -> Result<FindingPenaltyOutcome, ChallengeCoordinatorError> {
+        self.require_live_role(&self.penalty_pin, now, now, "penalty")?;
         let penalty_key = self.penalty_authority.public_key();
-        let governance_key = &self.pins.governance_authority;
-        self.require_pinned_governance(governance, case, prior_penalty)?;
+        let governance_key = self.require_live_role(
+            &self.pins.governance_authority,
+            case.body.updated_at,
+            now,
+            "governance",
+        )?;
+        self.require_pinned_governance(governance, case, prior_penalty, now)?;
         let outcome_envelope_sha256 = self.envelope_digest(outcome)?;
         let (action, state, supersedes) = match branch {
             FindingPenaltyBranch::PendingAppeal => (
@@ -3696,7 +4003,7 @@ impl FindingChallengeCoordinator {
             note: None,
         };
         let mut trusted = Vec::with_capacity(self.fee_schedule_operators.len().saturating_add(2));
-        trusted.push(governance_key.clone());
+        trusted.push(governance_key);
         trusted.extend(self.fee_schedule_operators.iter().cloned());
         trusted.push(penalty_key);
         let artifact = build_open_market_penalty_artifact_with_trusted_signers(

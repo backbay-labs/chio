@@ -67,10 +67,16 @@ const PROFILE_SCHEMA_JSON: &str = include_str!(
 #[serde(rename_all = "snake_case")]
 pub struct FindingRailInstruction {
     pub idempotency_key: String,
+    /// Principal debited by the instruction. For a bond return this is
+    /// the challenge-administration pool rather than the original buyer.
     pub payer: String,
     pub amount_units: u64,
     pub currency: String,
+    /// Governed pool participating in the movement. It is the destination
+    /// for a collection and the source for a return.
     pub pool_principal_id: String,
+    /// Credited rail destination. A bond return names the durable lock
+    /// owner here.
     pub rail_destination: String,
 }
 

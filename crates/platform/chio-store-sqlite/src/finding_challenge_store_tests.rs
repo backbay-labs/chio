@@ -456,6 +456,30 @@ fn fund_lock(fixture: &Fixture, input: &FindingDisputeLockInput<'_>) {
     }
 }
 
+fn confirm_lock_return(fixture: &Fixture, input: &FindingDisputeLockInput<'_>) {
+    let key = derive_dispute_bond_return_intent_key(input.challenge_id, input.lock_id);
+    fixture
+        .store
+        .record_effect_intent(
+            &key,
+            FindingEffectIntentKind::ChallengeBond,
+            &dispute_bond_return_intent_digest(input),
+            None,
+            false,
+            NOW,
+        )
+        .expect("fence dispute bond return");
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        fixture
+            .store
+            .advance_effect_intent(&key, state, NOW)
+            .expect("confirm dispute bond return");
+    }
+}
+
 fn lock_dispute_bond(
     fixture: &Fixture,
     input: &FindingDisputeLockInput<'_>,
@@ -1078,6 +1102,18 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
         ),
         "an upheld challenge's bond can never be forfeited"
     );
+    assert!(
+        matches!(
+            fixture.store.release_dispute_bond(
+                &upheld.challenge_id,
+                FindingDisputeLockDisposition::Returned,
+                NOW + 3
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "bookkeeping cannot report a return before its rail intent confirms"
+    );
+    confirm_lock_return(&fixture, &lock);
     assert_eq!(
         fixture
             .store
@@ -1180,6 +1216,7 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
         ),
         "an indeterminate close never forfeits a bond"
     );
+    confirm_lock_return(&fixture, &gamma_lock);
     assert_eq!(
         fixture
             .store
