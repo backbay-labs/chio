@@ -173,7 +173,7 @@ pub fn verify_finding_pool_allocation(
 }
 
 fn require_non_empty(value: &str, field: &str) -> Result<(), SwarmAuthorityError> {
-    if value.is_empty() || value.len() > 512 || value.chars().any(char::is_control) {
+    if value.trim().is_empty() || value.len() > 512 || value.chars().any(char::is_control) {
         Err(rejected(format!(
             "finding pool allocation {field} is invalid"
         )))
@@ -211,4 +211,15 @@ fn require_sha256(value: &str, field: &str) -> Result<(), SwarmAuthorityError> {
 
 fn rejected(message: impl Into<String>) -> SwarmAuthorityError {
     SwarmAuthorityError::Rejected(message.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_non_empty;
+
+    #[test]
+    fn allocation_identifiers_reject_whitespace_only_values() {
+        assert!(require_non_empty("   ", "pool_id").is_err());
+        assert!(require_non_empty("pool:one", "pool_id").is_ok());
+    }
 }

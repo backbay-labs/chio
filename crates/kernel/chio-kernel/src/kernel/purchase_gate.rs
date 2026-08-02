@@ -330,6 +330,33 @@ pub(crate) fn purchase_marked_grant(
 }
 
 impl ChioKernel {
+    pub(crate) fn verify_purchase_context_for_pool(
+        &self,
+        view: &FindingPurchaseContextView<'_>,
+        now_unix_secs: u64,
+        require_live_admission: bool,
+    ) -> Result<VerifiedFindingPurchase, String> {
+        let verifier = self.finding_purchase_verifier.as_ref().ok_or_else(|| {
+            "finding pool debit requires the kernel's configured purchase verifier".to_owned()
+        })?;
+        let verified = verifier
+            .verify_purchase(view)
+            .map_err(|error| format!("purchase context rejected: {error}"))?;
+        if verified.finding_id != view.marker.finding_id
+            || verified.listing_id != view.marker.listing_id
+            || verified.payload_sha256 != view.expected_output_digest
+            || verified.payer_key_hex != view.capability.subject.to_hex()
+        {
+            return Err("purchase context does not bind the pool debit request".to_owned());
+        }
+        if require_live_admission {
+            verifier
+                .verify_purchase_admission(view, &verified, now_unix_secs)
+                .map_err(|error| format!("purchase admission rejected: {error}"))?;
+        }
+        Ok(verified)
+    }
+
     /// Deterministically verify the purchase context for a marked grant
     /// and cross-check the result against the grant, the request, and the
     /// paying capability. Returns `Ok(None)` for an unmarked grant; every

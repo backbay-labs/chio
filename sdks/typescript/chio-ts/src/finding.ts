@@ -142,8 +142,10 @@ function parseU64(value: DecimalIntegerInput, field: string): bigint {
       );
     }
     canonical = String(value);
-  } else {
+  } else if (typeof value === "string") {
     canonical = value;
+  } else {
+    fail("invalid_decimal", `${field} must be a string or number`);
   }
   if (!/^(0|[1-9][0-9]*)$/.test(canonical)) {
     fail("invalid_decimal", `${field} must be a canonical unsigned decimal-string integer`);
@@ -156,7 +158,7 @@ function parseU64(value: DecimalIntegerInput, field: string): bigint {
 }
 
 function validateCurrency(value: string): void {
-  if (!/^[A-Z0-9]{1,16}$/.test(value)) {
+  if (typeof value !== "string" || !/^[A-Z0-9]{1,16}$/.test(value)) {
     fail("currency_mismatch", "currency must be 1 to 16 uppercase ASCII letters or digits");
   }
 }

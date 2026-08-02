@@ -12,9 +12,9 @@ use chio_listing::{
     GenericListingFreshnessState, GenericListingStatus, Listing,
 };
 use chio_pheromone::{
-    CostCommitmentPolicy, ObservationCostVerificationMode, PheromoneDeposit, PheromoneError,
-    PheromoneSubstrate, PheromoneValidationContext, Severity, SubjectClassPolicy,
-    OBSERVATION_COST_UNIT,
+    scarcity_admissions_for_deposit_treaty, validate_deposit_for_admission, CostCommitmentPolicy,
+    ObservationCostVerificationMode, PheromoneDeposit, PheromoneError, PheromoneSubstrate,
+    PheromoneValidationContext, Severity, SubjectClassPolicy, OBSERVATION_COST_UNIT,
 };
 use serde::{Deserialize, Serialize};
 
@@ -109,10 +109,20 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
         serde_json::from_value(deposit.body.indicator.clone())
             .map_err(|_| FindingPheromoneError::IndicatorMalformed)?;
     validate_indicator(&indicator)?;
+    // Authenticate the cheap generic carrier boundary before resolving the
+    // substantially larger signed listing and admission bundle. The final
+    // substrate call repeats this validation inside its atomic commit.
+    validate_deposit_for_admission(&deposit, pheromone_context)?;
     validate_convention(&deposit, pheromone_context, convention)?;
-    validate_current_listing(current_listing, admission_context.now)?;
-    let verified_admission = verify_finding_admission(current_admission, admission_context)?;
+    let now = pheromone_context.now_unix_ms / 1_000;
+    validate_current_listing(current_listing, now)?;
+    let mut current_admission_context = admission_context.clone();
+    current_admission_context.now = now;
+    let verified_admission =
+        verify_finding_admission(current_admission, &current_admission_context)?;
     let listing_sha256 = signed_envelope_sha256(&current_listing.listing)
+        .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
+    let pricing_sha256 = signed_envelope_sha256(&current_listing.pricing)
         .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
     let admission_sha256 = signed_envelope_sha256(current_admission)
         .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
@@ -124,6 +134,7 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
         || indicator.capability_scope != verified_admission.capability_scope()
         || current_admission.body.schema != FINDING_ADMISSION_SCHEMA_V1
         || current_admission.body.listing_envelope_sha256 != listing_sha256
+        || current_admission.body.pricing_hint_envelope_sha256 != pricing_sha256
     {
         return Err(FindingPheromoneError::CurrentBindingMismatch);
     }
@@ -185,14 +196,24 @@ fn validate_convention(
     {
         return Err(FindingPheromoneError::Convention("SubjectClassPolicy"));
     }
-    if !context.scarcity_policies.iter().any(|policy| {
-        policy.subject_class == FINDING_PHEROMONE_SUBJECT_CLASS
-            && policy.subject_class_namespace == FINDING_PHEROMONE_SUBJECT_NAMESPACE
+    let scarcity_admissions =
+        scarcity_admissions_for_deposit_treaty(deposit, context, &convention.treaty_id)?;
+    let active = scarcity_admissions.as_slice();
+    let [active] = active else {
+        return Err(FindingPheromoneError::Convention("active scarcity policy"));
+    };
+    let active_policy = context.scarcity_policies.iter().find(|policy| {
+        policy.reputation_epoch == active.reputation_epoch
+            && policy.window_id == active.window_id
+            && policy.subject_class == active.subject_class
+            && policy.subject_class_namespace == active.subject_class_namespace
             && policy
                 .treaty_scope
                 .iter()
-                .any(|treaty| treaty == &convention.treaty_id)
-            && policy.observation_cost_verification == ObservationCostVerificationMode::Required
+                .any(|treaty| treaty == &active.treaty_id)
+    });
+    if !active_policy.is_some_and(|policy| {
+        policy.observation_cost_verification == ObservationCostVerificationMode::Required
     }) {
         return Err(FindingPheromoneError::Convention(
             "verified observation cost policy",

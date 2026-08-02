@@ -64,7 +64,10 @@ impl SqliteFindingPoolLedger {
         let path_text = path.to_str().ok_or_else(|| {
             FindingPoolLedgerError::Storage("SQLite path is not valid UTF-8".to_string())
         })?;
-        if is_in_memory_sqlite_path(path_text) {
+        let empty_uri_filename = path_text == "file:"
+            || path_text.starts_with("file:?")
+            || path_text.starts_with("file:#");
+        if path_text.is_empty() || empty_uri_filename || is_in_memory_sqlite_path(path_text) {
             return Err(FindingPoolLedgerError::Storage(
                 "qualified finding pool ledger requires a durable SQLite path".to_string(),
             ));
@@ -187,6 +190,12 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                 remaining_after_units: remaining,
                 replayed: true,
             });
+        }
+
+        if debit.debit_requested_at_unix_ms() < debit.allocation_issued_at_unix_ms()
+            || debit.debit_requested_at_unix_ms() >= debit.allocation_expires_at_unix_ms()
+        {
+            return Err(FindingPoolLedgerError::AllocationNotLive);
         }
 
         let purchaser_key_json = serde_json::to_string(debit.purchaser_key())

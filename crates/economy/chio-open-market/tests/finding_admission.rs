@@ -959,6 +959,96 @@ fn finding_pheromone_positive_hint_re_resolves_current_listing_without_purchase_
 }
 
 #[test]
+fn finding_pheromone_binds_pricing_and_uses_the_pheromone_clock() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let deposit = finding_pheromone_deposit(&web, &listing, &passport, "hint-clock", 125);
+        let mut stale_caller_context = web.context(resolver);
+        stale_caller_context.now = ADMISSION_ISSUED_AT - 1;
+        admit_and_resolve_finding_pheromone_hint(
+            &InMemoryPheromoneSubstrate::new(),
+            deposit,
+            &finding_pheromone_context(&passport, &kernel),
+            &finding_pheromone_convention(),
+            &listing,
+            &web.admission,
+            &stale_caller_context,
+        )
+        .test_expect("pheromone clock governs admission currency");
+
+        let substituted_pricing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            901,
+        );
+        let deposit = finding_pheromone_deposit(
+            &web,
+            &substituted_pricing,
+            &passport,
+            "hint-pricing-substitution",
+            125,
+        );
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                deposit,
+                &finding_pheromone_context(&passport, &kernel),
+                &finding_pheromone_convention(),
+                &substituted_pricing,
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::CurrentBindingMismatch)
+        ));
+    });
+}
+
+#[test]
+fn finding_pheromone_requires_cost_verification_on_the_active_policy() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let deposit = finding_pheromone_deposit(&web, &listing, &passport, "hint-policy", 125);
+        let mut context = finding_pheromone_context(&passport, &kernel);
+        context.scarcity_policies[0].observation_cost_verification =
+            ObservationCostVerificationMode::NotRequired;
+        context.scarcity_policies[0].policy_sha256 =
+            scarcity_policy_sha256(&context.scarcity_policies[0])
+                .test_expect("not-required policy digest");
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                deposit,
+                &context,
+                &finding_pheromone_convention(),
+                &listing,
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Convention(
+                "verified observation cost policy"
+            ))
+        ));
+    });
+}
+
+#[test]
 fn finding_pheromone_rejects_stale_unadmitted_wrong_signer_and_wrong_passport() {
     with_fiscal(|resolver| {
         let web = base_web();
@@ -1069,7 +1159,7 @@ fn finding_pheromone_rejects_wrong_scope_replay_and_over_cost() {
                 &web.admission,
                 &web.context(resolver),
             ),
-            Err(FindingPheromoneError::Convention(_))
+            Err(FindingPheromoneError::Deposit(_))
         ));
 
         let over_cost = finding_pheromone_deposit(&web, &listing, &passport, "hint-over-cost", 126);

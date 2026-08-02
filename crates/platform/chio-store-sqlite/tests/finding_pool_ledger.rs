@@ -3,13 +3,23 @@
 use std::sync::Arc;
 use std::thread;
 
-use chio_core::capability::scope::MonetaryAmount;
+use chio_core::capability::scope::{
+    ChioScope, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount,
+};
+use chio_core::capability::token::{CapabilityToken, CHIO_CAPABILITY_SCHEMA};
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_kernel::finding_pool::{
     debit_finding_pool_purchase, FindingPoolDebitError, FindingPoolDebitRequest,
     FindingPoolLedgerError,
 };
-use chio_kernel::finding_purchase::VerifiedFindingPurchase;
+use chio_kernel::finding_purchase::{
+    FindingPurchaseContextView, FindingPurchaseVerifier, VerifiedFindingPurchase,
+};
+use chio_kernel::{
+    ChioKernel, HotPathDeadlineConfig, KernelConfig, MemoryBudgetConfig,
+    DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
+    DEFAULT_MAX_STREAM_TOTAL_BYTES,
+};
 use chio_store_sqlite::finding_pool_ledger::SqliteFindingPoolLedger;
 use chio_swarm_authority::finding_pool::{
     finding_pool_allocation_envelope_sha256, sign_finding_pool_allocation,
@@ -76,6 +86,39 @@ fn debit(
     purchase_id: &str,
     amount_units: u64,
 ) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
+    debit_at(ledger, fixture, purchase_id, amount_units, 2_000)
+}
+
+#[derive(Clone)]
+struct StaticPurchaseVerifier {
+    purchase: VerifiedFindingPurchase,
+}
+
+impl FindingPurchaseVerifier for StaticPurchaseVerifier {
+    fn verify_purchase(
+        &self,
+        _view: &FindingPurchaseContextView<'_>,
+    ) -> Result<VerifiedFindingPurchase, String> {
+        Ok(self.purchase.clone())
+    }
+
+    fn verify_purchase_admission(
+        &self,
+        _view: &FindingPurchaseContextView<'_>,
+        _verified: &VerifiedFindingPurchase,
+        _now_unix_secs: u64,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+fn debit_at(
+    ledger: &SqliteFindingPoolLedger,
+    fixture: &PoolFixture,
+    purchase_id: &str,
+    amount_units: u64,
+    now_unix_ms: u64,
+) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
     let verified_purchase = VerifiedFindingPurchase {
         finding_id: "a".repeat(64),
         listing_id: "listing:cognition-market:1".to_string(),
@@ -93,6 +136,51 @@ fn debit(
         venue_admission_envelope_sha256: "d".repeat(64),
         status_proof: None,
     };
+    let verifier = StaticPurchaseVerifier {
+        purchase: verified_purchase,
+    };
+    let mut kernel = ChioKernel::new(KernelConfig {
+        keypair: fixture.authority.clone(),
+        ca_public_keys: Vec::new(),
+        max_delegation_depth: 1,
+        policy_hash: "finding-pool-ledger-test".to_string(),
+        allow_sampling: false,
+        allow_sampling_tool_use: false,
+        allow_elicitation: false,
+        max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
+        max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
+        require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
+        allow_ephemeral_revocation_store: true,
+        checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
+        retention_config: None,
+        memory_budget: MemoryBudgetConfig::defaults(),
+        deadlines: HotPathDeadlineConfig::default(),
+    });
+    kernel.set_finding_purchase_verifier(Arc::new(verifier));
+    let marker = FindingPurchaseMarkerV1 {
+        finding_id: "a".repeat(64),
+        listing_id: "listing:cognition-market:1".to_string(),
+        settlement: FindingSettlementSelector::LocalReversibleHold,
+    };
+    let capability = CapabilityToken {
+        schema: CHIO_CAPABILITY_SCHEMA.to_string(),
+        id: format!("capability:{purchase_id}"),
+        issuer: fixture.authority.public_key(),
+        subject: fixture.purchaser.public_key(),
+        scope: ChioScope::default(),
+        issued_at: 1,
+        expires_at: u64::MAX,
+        delegation_chain: Vec::new(),
+        aggregate_invocation_budget: None,
+        algorithm: None,
+        caveats: Vec::new(),
+        scope_attenuations: None,
+        attenuation_proof: None,
+        budget_share_bps: None,
+        signature: fixture.authority.sign(purchase_id.as_bytes()),
+    };
+    let arguments = serde_json::Value::Null;
     debit_finding_pool_purchase(
         ledger,
         FindingPoolDebitRequest {
@@ -100,9 +188,18 @@ fn debit(
             pool: &fixture.pool,
             pinned_authority: &fixture.authority.public_key(),
             expected_allocation_envelope_sha256: &fixture.envelope_sha256,
-            purchaser_id: "buyer-agent-1",
-            verified_purchase: &verified_purchase,
-            now_unix_ms: 2_000,
+            purchaser_id: &fixture.allocation.body.purchaser_id,
+            kernel: &kernel,
+            purchase_context: FindingPurchaseContextView {
+                marker: &marker,
+                context_b64: "test-purchase-context",
+                capability: &capability,
+                server_id: "finding-server",
+                tool_name: "read_finding",
+                arguments: &arguments,
+                expected_output_digest: &"c".repeat(64),
+            },
+            now_unix_ms,
         },
     )
 }
@@ -241,36 +338,7 @@ fn cognition_market_pool_binds_one_purchaser_allocation_per_pool() {
     second.envelope_sha256 = finding_pool_allocation_envelope_sha256(&second.allocation)
         .test_expect("hash second allocation");
 
-    let verified_purchase = VerifiedFindingPurchase {
-        finding_id: "a".repeat(64),
-        listing_id: "listing:cognition-market:1".to_string(),
-        payload_sha256: "c".repeat(64),
-        payload_media_type: "application/json".to_string(),
-        accepted_price: MonetaryAmount {
-            units: 10,
-            currency: "USD".to_string(),
-        },
-        payer_key_hex: second.purchaser.public_key().to_hex(),
-        reservation_id: "reservation:second".to_string(),
-        purchase_intent_id: "purchase:second".to_string(),
-        authoritative_payment_operation_id: "payment:second".to_string(),
-        accepted_bid_envelope_sha256: sha256_hex(b"purchase:second"),
-        venue_admission_envelope_sha256: "d".repeat(64),
-        status_proof: None,
-    };
-
-    let error = debit_finding_pool_purchase(
-        &ledger,
-        FindingPoolDebitRequest {
-            allocation: &second.allocation,
-            pool: &second.pool,
-            pinned_authority: &second.authority.public_key(),
-            expected_allocation_envelope_sha256: &second.envelope_sha256,
-            purchaser_id: "buyer-agent-2",
-            verified_purchase: &verified_purchase,
-            now_unix_ms: 2_000,
-        },
-    );
+    let error = debit(&ledger, &second, "purchase:second", 10);
     assert!(matches!(
         error,
         Err(FindingPoolDebitError::Ledger(
@@ -280,9 +348,34 @@ fn cognition_market_pool_binds_one_purchaser_allocation_per_pool() {
 }
 
 #[test]
-fn cognition_market_qualified_pool_refuses_in_memory_storage() {
+fn cognition_market_pool_replays_after_expiry_but_rejects_new_spend() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
+        .test_expect("open qualified ledger");
+    let fixture = fixture(100);
+    debit_at(&ledger, &fixture, "purchase:committed", 10, 9_999)
+        .test_expect("commit before allocation expiry");
+
+    let replay = debit_at(&ledger, &fixture, "purchase:committed", 10, 10_000)
+        .test_expect("replay committed debit after expiry");
+    assert!(replay.replayed);
     assert!(matches!(
-        SqliteFindingPoolLedger::open_qualified(":memory:"),
-        Err(FindingPoolLedgerError::Storage(_))
+        debit_at(&ledger, &fixture, "purchase:new", 10, 10_000),
+        Err(FindingPoolDebitError::Ledger(
+            FindingPoolLedgerError::AllocationNotLive
+        ))
     ));
+}
+
+#[test]
+fn cognition_market_qualified_pool_refuses_in_memory_storage() {
+    for path in [":memory:", "", "file:", "file:?mode=rwc"] {
+        assert!(
+            matches!(
+                SqliteFindingPoolLedger::open_qualified(path),
+                Err(FindingPoolLedgerError::Storage(_))
+            ),
+            "temporary SQLite path {path:?} must not qualify"
+        );
+    }
 }

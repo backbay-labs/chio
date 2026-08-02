@@ -78,6 +78,17 @@ test("finding_bid_ceiling rejects encodings, bounds, currency, provenance, and r
   currency.policy.currency = "EUR";
   rejectsWith(currency, "currency_mismatch");
 
+  const numericCurrency = clone(first.input);
+  (numericCurrency.policy as unknown as { currency: unknown }).currency = 123;
+  (numericCurrency.estimate as unknown as { currency: unknown }).currency = 123;
+  rejectsWith(numericCurrency, "currency_mismatch");
+
+  const coercibleAmount = clone(first.input);
+  (coercibleAmount.estimate as unknown as { units: unknown }).units = {
+    toString: () => "100",
+  };
+  rejectsWith(coercibleAmount, "invalid_decimal");
+
   const provenance = clone(first.input);
   provenance.estimate.provenance = "operator_assertion_v1";
   rejectsWith(provenance, "provenance_unsupported");
