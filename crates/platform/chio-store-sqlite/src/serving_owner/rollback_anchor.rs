@@ -646,7 +646,7 @@ fn io_offset(offset: usize) -> std::io::Result<u64> {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use std::fs::{self, File, OpenOptions};
