@@ -10,8 +10,7 @@ use chio_core::capability::scope::{
 use chio_core::capability::token::{CapabilityToken, CHIO_CAPABILITY_SCHEMA};
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_kernel::finding_pool::{
-    debit_finding_pool_purchase, FindingPoolDebitError, FindingPoolDebitRequest,
-    FindingPoolLedgerError,
+    FindingPoolDebitError, FindingPoolDebitRequest, FindingPoolLedgerError,
 };
 use chio_kernel::finding_purchase::{
     FindingPurchaseContextView, FindingPurchaseVerifier, FindingStatusProofContextView,
@@ -208,14 +207,17 @@ fn debit_at_with_status(
         signature: fixture.authority.sign(purchase_id.as_bytes()),
     };
     let arguments = serde_json::Value::Null;
-    debit_finding_pool_purchase(
+    let _runtime = chio_kernel::scope_fixed_runtime_for_current_thread(
+        now_unix_ms / 1_000,
+        std::iter::empty::<String>(),
+    );
+    kernel.debit_finding_pool_purchase(
         ledger,
         FindingPoolDebitRequest {
             allocation: &fixture.allocation,
             pool: &fixture.pool,
             expected_allocation_envelope_sha256: &fixture.envelope_sha256,
             purchaser_id: &fixture.allocation.body.purchaser_id,
-            kernel: &kernel,
             purchase_context: FindingPurchaseContextView {
                 marker: &marker,
                 context_b64: "test-purchase-context",
@@ -226,7 +228,6 @@ fn debit_at_with_status(
                 expected_output_digest: &"c".repeat(64),
             },
             status_proof_b64,
-            now_unix_ms,
         },
     )
 }
