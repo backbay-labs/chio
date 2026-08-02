@@ -118,6 +118,11 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
     validate_current_listing(current_listing, now)?;
     let mut current_admission_context = admission_context.clone();
     current_admission_context.now = now;
+    current_admission_context.constituent_expiry_bounds.listing =
+        current_listing.listing.body.expires_at.unwrap_or(u64::MAX);
+    current_admission_context
+        .constituent_expiry_bounds
+        .pricing_hint = current_listing.pricing.body.expires_at;
     let verified_admission =
         verify_finding_admission(current_admission, &current_admission_context)?;
     let listing_sha256 = signed_envelope_sha256(&current_listing.listing)

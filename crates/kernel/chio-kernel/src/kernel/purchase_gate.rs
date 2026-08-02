@@ -5,6 +5,7 @@ use base64::Engine as _;
 use chio_core::capability::scope::{
     Constraint, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount, ToolGrant,
 };
+use chio_core::crypto::PublicKey;
 use serde::Deserialize;
 
 use crate::finding_purchase::{
@@ -330,6 +331,44 @@ pub(crate) fn purchase_marked_grant(
 }
 
 impl ChioKernel {
+    pub(crate) fn finding_pool_allocation_authority(&self) -> Option<&PublicKey> {
+        self.finding_pool_allocation_authority.as_ref()
+    }
+
+    pub(crate) fn verify_finding_status_for_pool(
+        &self,
+        proof_b64: Option<&str>,
+        expected_finding_id: &str,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        match (self.finding_status_proof_verifier.as_ref(), proof_b64) {
+            (Some(status_verifier), Some(proof_b64)) => {
+                if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
+                    return Err(
+                        "finding status proof carrier exceeds the kernel size bound".to_owned()
+                    );
+                }
+                let view = FindingStatusProofContextView {
+                    proof_b64,
+                    expected_finding_id,
+                };
+                let verified = status_verifier
+                    .verify_status_proof(&view)
+                    .map_err(|error| format!("finding status proof rejected: {error}"))?;
+                status_verifier
+                    .verify_status_admission(&view, &verified, now_unix_secs)
+                    .map_err(|error| format!("finding status admission rejected: {error}"))
+            }
+            (Some(_), None) => {
+                Err("M6-qualified finding pool debit requires a portable status proof".to_owned())
+            }
+            (None, Some(_)) => {
+                Err("finding status proof requires a configured kernel verifier".to_owned())
+            }
+            (None, None) => Ok(()),
+        }
+    }
+
     pub(crate) fn verify_purchase_context_for_pool(
         &self,
         view: &FindingPurchaseContextView<'_>,

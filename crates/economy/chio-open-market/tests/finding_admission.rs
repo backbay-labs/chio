@@ -1009,6 +1009,31 @@ fn finding_pheromone_binds_pricing_and_uses_the_pheromone_clock() {
             ),
             Err(FindingPheromoneError::CurrentBindingMismatch)
         ));
+
+        let subject = format!("finding:{}", web.finding.finding_id);
+        let mut short_lived_listing =
+            finding_listing_entry(&web.operator, &web.finding, &subject, 900);
+        let mut short_lived_pricing = short_lived_listing.pricing.body.clone();
+        short_lived_pricing.expires_at = ADMISSION_EXPIRES_AT - 1;
+        short_lived_listing.pricing =
+            SignedListingPricingHint::sign(short_lived_pricing, &web.operator)
+                .test_expect("sign short-lived current pricing hint");
+        let deposit =
+            finding_pheromone_deposit(&web, &short_lived_listing, &passport, "expiry", 125);
+        let mut forged_context = web.context(resolver);
+        forged_context.constituent_expiry_bounds.pricing_hint = WINDOW_EXPIRES_AT;
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                deposit,
+                &finding_pheromone_context(&passport, &kernel),
+                &finding_pheromone_convention(),
+                &short_lived_listing,
+                &web.admission,
+                &forged_context,
+            ),
+            Err(FindingPheromoneError::Admission(_))
+        ));
     });
 }
 

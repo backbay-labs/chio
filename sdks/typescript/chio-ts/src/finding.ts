@@ -164,7 +164,7 @@ function validateCurrency(value: string): void {
 }
 
 function validateDigest(value: string, field: string): void {
-  if (!/^[0-9a-f]{64}$/.test(value)) {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
     fail("digest_malformed", `${field} must be canonical lowercase 64-hex`);
   }
 }

@@ -151,14 +151,48 @@ pub fn is_in_memory_sqlite_path(path: &str) -> bool {
         Some((name, query)) => (name, Some(query)),
         None => (rest, None),
     };
-    if name.eq_ignore_ascii_case(":memory:") {
+    let decoded_name = percent_decode_sqlite_uri(name);
+    if decoded_name.eq_ignore_ascii_case(":memory:") {
         return true;
     }
     query.is_some_and(|query| {
-        query
+        percent_decode_sqlite_uri(query)
             .split('&')
-            .any(|param| param.eq_ignore_ascii_case("mode=memory"))
+            .filter_map(|parameter| parameter.split_once('='))
+            .any(|(key, value)| {
+                (key.eq_ignore_ascii_case("mode") && value.eq_ignore_ascii_case("memory"))
+                    || (key.eq_ignore_ascii_case("vfs") && value.eq_ignore_ascii_case("memdb"))
+            })
     })
+}
+
+fn percent_decode_sqlite_uri(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            if let (Some(high), Some(low)) =
+                (hex_nibble(bytes[index + 1]), hex_nibble(bytes[index + 2]))
+            {
+                decoded.push((high << 4) | low);
+                index += 3;
+                continue;
+            }
+        }
+        decoded.push(bytes[index]);
+        index += 1;
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+const fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 /// The directory that must exist before SQLite opens `path`, or `None` when
@@ -597,6 +631,10 @@ mod tests {
             "file::memory:",
             "file:receipts.db?mode=memory",
             "file:receipts.db?cache=shared&mode=memory",
+            "file:pool?vfs=memdb",
+            "file:pool?mode%3Dmemory",
+            "file:pool?mode=%6demory",
+            "file:%3Amemory%3A",
         ] {
             assert!(
                 is_in_memory_sqlite_path(path),

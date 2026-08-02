@@ -291,6 +291,7 @@ impl ChioKernel {
             finding_recovery_verifier: None,
             finding_status_proof_verifier: None,
             finding_delivery_receipt_authorities: Vec::new(),
+            finding_pool_allocation_authority: None,
             price_oracle: None,
             runtime_admission_hook: None,
             runtime_admission_readiness_timeout: Duration::from_millis(
@@ -929,6 +930,15 @@ impl ChioKernel {
         authorities: Vec<chio_core::crypto::PublicKey>,
     ) {
         self.finding_delivery_receipt_authorities = authorities;
+    }
+
+    /// Pin the authority permitted to sign cognition-market pool
+    /// allocations. Debit callers cannot override this trust root.
+    pub fn set_finding_pool_allocation_authority(
+        &mut self,
+        authority: chio_core::crypto::PublicKey,
+    ) {
+        self.finding_pool_allocation_authority = Some(authority);
     }
 
     pub fn set_price_oracle(&mut self, price_oracle: Box<dyn PriceOracle>) {

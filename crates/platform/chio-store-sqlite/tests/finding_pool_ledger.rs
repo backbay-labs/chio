@@ -1,5 +1,6 @@
 #![cfg(feature = "cognition-market-experimental")]
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 
@@ -13,7 +14,8 @@ use chio_kernel::finding_pool::{
     FindingPoolLedgerError,
 };
 use chio_kernel::finding_purchase::{
-    FindingPurchaseContextView, FindingPurchaseVerifier, VerifiedFindingPurchase,
+    FindingPurchaseContextView, FindingPurchaseVerifier, FindingStatusProofContextView,
+    FindingStatusProofVerifier, VerifiedFindingPurchase, VerifiedFindingStatusProof,
 };
 use chio_kernel::{
     ChioKernel, HotPathDeadlineConfig, KernelConfig, MemoryBudgetConfig,
@@ -119,6 +121,27 @@ fn debit_at(
     amount_units: u64,
     now_unix_ms: u64,
 ) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
+    debit_at_with_status(
+        ledger,
+        fixture,
+        purchase_id,
+        amount_units,
+        now_unix_ms,
+        None,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn debit_at_with_status(
+    ledger: &SqliteFindingPoolLedger,
+    fixture: &PoolFixture,
+    purchase_id: &str,
+    amount_units: u64,
+    now_unix_ms: u64,
+    status_verifier: Option<Arc<dyn FindingStatusProofVerifier>>,
+    status_proof_b64: Option<&str>,
+) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
     let verified_purchase = VerifiedFindingPurchase {
         finding_id: "a".repeat(64),
         listing_id: "listing:cognition-market:1".to_string(),
@@ -158,6 +181,10 @@ fn debit_at(
         deadlines: HotPathDeadlineConfig::default(),
     });
     kernel.set_finding_purchase_verifier(Arc::new(verifier));
+    kernel.set_finding_pool_allocation_authority(fixture.authority.public_key());
+    if let Some(status_verifier) = status_verifier {
+        kernel.set_finding_status_proof_verifier(status_verifier);
+    }
     let marker = FindingPurchaseMarkerV1 {
         finding_id: "a".repeat(64),
         listing_id: "listing:cognition-market:1".to_string(),
@@ -186,7 +213,6 @@ fn debit_at(
         FindingPoolDebitRequest {
             allocation: &fixture.allocation,
             pool: &fixture.pool,
-            pinned_authority: &fixture.authority.public_key(),
             expected_allocation_envelope_sha256: &fixture.envelope_sha256,
             purchaser_id: &fixture.allocation.body.purchaser_id,
             kernel: &kernel,
@@ -199,9 +225,46 @@ fn debit_at(
                 arguments: &arguments,
                 expected_output_digest: &"c".repeat(64),
             },
+            status_proof_b64,
             now_unix_ms,
         },
     )
+}
+
+#[derive(Clone)]
+struct StaticStatusVerifier {
+    admissions: Arc<AtomicU64>,
+}
+
+impl FindingStatusProofVerifier for StaticStatusVerifier {
+    fn verify_status_proof(
+        &self,
+        view: &FindingStatusProofContextView<'_>,
+    ) -> Result<VerifiedFindingStatusProof, String> {
+        if view.proof_b64 != "live-status-proof" || view.expected_finding_id != "a".repeat(64) {
+            return Err("status proof mismatch".to_owned());
+        }
+        Ok(VerifiedFindingStatusProof {
+            feed_id: "status-feed/test".to_owned(),
+            key_domain_nonce: 1,
+            map_epoch: 1,
+            status_epoch_id: "b".repeat(64),
+            status_epoch_artifact_sha256: "c".repeat(64),
+            proof_sha256: "d".repeat(64),
+            root_hash: "e".repeat(64),
+            non_inclusion_checked_at: 2,
+        })
+    }
+
+    fn verify_status_admission(
+        &self,
+        _view: &FindingStatusProofContextView<'_>,
+        _verified: &VerifiedFindingStatusProof,
+        _now_unix_secs: u64,
+    ) -> Result<(), String> {
+        self.admissions.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
 }
 
 #[test]
@@ -368,8 +431,86 @@ fn cognition_market_pool_replays_after_expiry_but_rejects_new_spend() {
 }
 
 #[test]
+fn cognition_market_pool_requires_live_status_before_new_debit_but_replays() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
+        .test_expect("open qualified ledger");
+    let fixture = fixture(100);
+    let admissions = Arc::new(AtomicU64::new(0));
+    let verifier = Arc::new(StaticStatusVerifier {
+        admissions: Arc::clone(&admissions),
+    });
+
+    assert!(matches!(
+        debit_at_with_status(
+            &ledger,
+            &fixture,
+            "purchase:status",
+            10,
+            2_000,
+            Some(verifier.clone()),
+            None,
+        ),
+        Err(FindingPoolDebitError::Allocation(_))
+    ));
+    assert_eq!(admissions.load(Ordering::SeqCst), 0);
+    let committed = debit_at_with_status(
+        &ledger,
+        &fixture,
+        "purchase:status",
+        10,
+        2_000,
+        Some(verifier.clone()),
+        Some("live-status-proof"),
+    )
+    .test_expect("live status admits new pool debit");
+    assert!(!committed.replayed);
+    assert_eq!(admissions.load(Ordering::SeqCst), 1);
+
+    let replay = debit_at_with_status(
+        &ledger,
+        &fixture,
+        "purchase:status",
+        10,
+        2_000,
+        Some(verifier.clone()),
+        None,
+    )
+    .test_expect("committed pool debit replays without a fresh status proof");
+    assert!(replay.replayed);
+    assert_eq!(admissions.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        debit_at_with_status(
+            &ledger,
+            &fixture,
+            "purchase:new-without-status",
+            10,
+            2_000,
+            Some(verifier),
+            None,
+        ),
+        Err(FindingPoolDebitError::Allocation(_))
+    ));
+    assert_eq!(
+        ledger
+            .spent_units(&fixture.envelope_sha256)
+            .test_expect("read status-qualified spend"),
+        Some(10)
+    );
+}
+
+#[test]
 fn cognition_market_qualified_pool_refuses_in_memory_storage() {
-    for path in [":memory:", "", "file:", "file:?mode=rwc"] {
+    for path in [
+        ":memory:",
+        "",
+        "file:",
+        "file:?mode=rwc",
+        "file:pool?vfs=memdb",
+        "file:pool?mode%3Dmemory",
+        "file:pool?mode=%6demory",
+        "file:%3Amemory%3A",
+    ] {
         assert!(
             matches!(
                 SqliteFindingPoolLedger::open_qualified(path),

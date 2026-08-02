@@ -121,6 +121,22 @@ impl SqliteFindingPoolLedger {
 }
 
 impl FindingPoolLedger for SqliteFindingPoolLedger {
+    fn contains_purchase(&self, purchase_id: &str) -> Result<bool, FindingPoolLedgerError> {
+        let connection = self
+            .pool
+            .get()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        connection
+            .query_row(
+                "SELECT 1 FROM finding_pool_debits WHERE purchase_id = ?1 LIMIT 1",
+                [purchase_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|row| row.is_some())
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+    }
+
     fn debit(
         &self,
         debit: &AuthorizedFindingPoolDebit,

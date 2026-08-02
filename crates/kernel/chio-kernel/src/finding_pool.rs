@@ -52,6 +52,8 @@ pub enum FindingPoolDebitError {
     CurrencyMismatch,
     #[error("finding pool debit amount must be positive")]
     ZeroAmount,
+    #[error("finding pool allocation authority is not configured")]
+    AllocationAuthorityMissing,
     #[error("finding pool debit {0} is invalid")]
     InvalidField(&'static str),
     #[error(transparent)]
@@ -61,7 +63,6 @@ pub enum FindingPoolDebitError {
 pub struct FindingPoolDebitRequest<'a> {
     pub allocation: &'a SignedFindingPoolAllocation,
     pub pool: &'a SwarmBudgetPool,
-    pub pinned_authority: &'a PublicKey,
     pub expected_allocation_envelope_sha256: &'a str,
     pub purchaser_id: &'a str,
     /// Kernel whose installed purchase verifier recovers facts from the exact
@@ -70,6 +71,10 @@ pub struct FindingPoolDebitRequest<'a> {
     pub kernel: &'a ChioKernel,
     /// Exact purchase inputs handed to the verifier.
     pub purchase_context: FindingPurchaseContextView<'a>,
+    /// Canonical portable status proof required whenever the kernel has an
+    /// M6 status verifier installed. An exact committed replay does not need
+    /// a fresh proof because it cannot consume the pool twice.
+    pub status_proof_b64: Option<&'a str>,
     pub now_unix_ms: u64,
 }
 
@@ -198,6 +203,11 @@ impl AuthorizedFindingPoolDebit {
 }
 
 pub trait FindingPoolLedger: Send + Sync {
+    /// Whether `purchase_id` is already durably committed. A `true` result
+    /// only selects the replay path; [`Self::debit`] must still compare every
+    /// authenticated field before returning the prior receipt.
+    fn contains_purchase(&self, purchase_id: &str) -> Result<bool, FindingPoolLedgerError>;
+
     fn debit(
         &self,
         debit: &AuthorizedFindingPoolDebit,
@@ -258,10 +268,14 @@ pub fn debit_finding_pool_purchase<L: QualifiedFindingPoolLedger + ?Sized>(
     } else {
         request.now_unix_ms
     };
+    let allocation_authority = request
+        .kernel
+        .finding_pool_allocation_authority()
+        .ok_or(FindingPoolDebitError::AllocationAuthorityMissing)?;
     let verified = verify_finding_pool_allocation(
         request.allocation,
         request.pool,
-        request.pinned_authority,
+        allocation_authority,
         structural_time,
     )
     .map_err(|error| FindingPoolDebitError::Allocation(error.runtime_detail()))?;
@@ -274,29 +288,42 @@ pub fn debit_finding_pool_purchase<L: QualifiedFindingPoolLedger + ?Sized>(
     if verified.currency != purchase.accepted_price.currency {
         return Err(FindingPoolDebitError::CurrencyMismatch);
     }
-    ledger
-        .debit(&AuthorizedFindingPoolDebit {
-            purchase_id: purchase.purchase_intent_id.clone(),
-            allocation_id: verified.allocation_id,
-            allocation_envelope_sha256: verified.envelope_sha256,
-            pool_id: verified.pool_id,
-            pool_sha256: verified.pool_sha256,
-            purchaser_id: verified.purchaser_id,
-            purchaser_key: verified.purchaser_key,
-            finding_id: purchase.finding_id.clone(),
-            listing_id: purchase.listing_id.clone(),
-            reservation_id: purchase.reservation_id.clone(),
-            authoritative_payment_operation_id: purchase.authoritative_payment_operation_id.clone(),
-            accepted_bid_envelope_sha256: purchase.accepted_bid_envelope_sha256.clone(),
-            venue_admission_envelope_sha256: purchase.venue_admission_envelope_sha256.clone(),
-            currency: verified.currency,
-            signed_amount_units: verified.amount_units,
-            debit_amount_units: purchase.accepted_price.units,
-            allocation_issued_at_unix_ms: allocation.issued_at_unix_ms,
-            allocation_expires_at_unix_ms: verified.expires_at_unix_ms,
-            debit_requested_at_unix_ms: request.now_unix_ms,
-        })
-        .map_err(FindingPoolDebitError::Ledger)
+    let debit = AuthorizedFindingPoolDebit {
+        purchase_id: purchase.purchase_intent_id.clone(),
+        allocation_id: verified.allocation_id,
+        allocation_envelope_sha256: verified.envelope_sha256,
+        pool_id: verified.pool_id,
+        pool_sha256: verified.pool_sha256,
+        purchaser_id: verified.purchaser_id,
+        purchaser_key: verified.purchaser_key,
+        finding_id: purchase.finding_id.clone(),
+        listing_id: purchase.listing_id.clone(),
+        reservation_id: purchase.reservation_id.clone(),
+        authoritative_payment_operation_id: purchase.authoritative_payment_operation_id.clone(),
+        accepted_bid_envelope_sha256: purchase.accepted_bid_envelope_sha256.clone(),
+        venue_admission_envelope_sha256: purchase.venue_admission_envelope_sha256.clone(),
+        currency: verified.currency,
+        signed_amount_units: verified.amount_units,
+        debit_amount_units: purchase.accepted_price.units,
+        allocation_issued_at_unix_ms: allocation.issued_at_unix_ms,
+        allocation_expires_at_unix_ms: verified.expires_at_unix_ms,
+        debit_requested_at_unix_ms: request.now_unix_ms,
+    };
+    if ledger
+        .contains_purchase(debit.purchase_id())
+        .map_err(FindingPoolDebitError::Ledger)?
+    {
+        return ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger);
+    }
+    request
+        .kernel
+        .verify_finding_status_for_pool(
+            request.status_proof_b64,
+            &purchase.finding_id,
+            request.now_unix_ms / 1_000,
+        )
+        .map_err(FindingPoolDebitError::Allocation)?;
+    ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger)
 }
 
 fn require_identifier(value: &str, field: &'static str) -> Result<(), FindingPoolDebitError> {

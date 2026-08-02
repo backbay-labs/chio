@@ -89,6 +89,13 @@ test("finding_bid_ceiling rejects encodings, bounds, currency, provenance, and r
   };
   rejectsWith(coercibleAmount, "invalid_decimal");
 
+  const coercibleDigest = clone(first.input);
+  const digestObject = { toString: () => "a".repeat(64) };
+  (coercibleDigest.estimate as unknown as { sourceSha256: unknown }).sourceSha256 = digestObject;
+  (coercibleDigest as unknown as { expectedSourceSha256: unknown }).expectedSourceSha256 =
+    digestObject;
+  rejectsWith(coercibleDigest, "digest_malformed");
+
   const provenance = clone(first.input);
   provenance.estimate.provenance = "operator_assertion_v1";
   rejectsWith(provenance, "provenance_unsupported");
