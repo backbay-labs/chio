@@ -6,7 +6,7 @@
 //! their exact canonical bytes and semantics independently before accepting
 //! any `claim.finding.*` ClaimSet row.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use chio_core_types::canonical_json_bytes_from_str;
 use chio_core_types::crypto::PublicKey;
@@ -147,6 +147,11 @@ pub fn verify_cognition_market_passport_artifacts(
         != recipe_digest
     {
         return Err(claim_failed("replay-recipe typed digest drift"));
+    }
+    if recipe.verifier_profile_envelope_sha256 != report.body.verifier_profile_envelope_sha256 {
+        return Err(claim_failed(
+            "replay recipe and signed report bind different verifier profiles",
+        ));
     }
 
     let status_bytes = artifact_bytes(artifacts, status_node.path)?;
@@ -360,14 +365,25 @@ fn validate_cognition_claim_set(
         (COGNITION_MARKET_CLAIMS[2], vec![report_path, status_path]),
         (COGNITION_MARKET_CLAIMS[3], vec![report_path]),
     ]);
-    let mut seen = BTreeSet::new();
+    for claim in &claim_set.claims {
+        if claim.claim_id.starts_with("claim.finding.")
+            && !expected.contains_key(claim.claim_id.as_str())
+        {
+            return Err(claim_failed(format!(
+                "ClaimSet contains unqualified Finding claim {}",
+                claim.claim_id
+            )));
+        }
+    }
     for (claim_id, required_paths) in &expected {
-        let claim = claim_set
+        let mut matching = claim_set
             .claims
             .iter()
-            .find(|candidate| candidate.claim_id == *claim_id)
+            .filter(|candidate| candidate.claim_id == *claim_id);
+        let claim = matching
+            .next()
             .ok_or_else(|| claim_failed(format!("ClaimSet missing {claim_id}")))?;
-        if !seen.insert(claim.claim_id.as_str())
+        if matching.next().is_some()
             || claim.status != "verified"
             || claim.verifier_module != FINDING_VERIFIER_MODULE
             || claim.failure_reason.is_some()

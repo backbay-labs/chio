@@ -710,6 +710,59 @@ fn portable_status_proof_verifies_and_is_pinned_into_signed_report() -> TestResu
 }
 
 #[test]
+fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> TestResult {
+    let fx = fixture()?;
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let (status_bytes, authorization, freshness) = portable_live_status_proof(&finding.finding_id)?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.status_proof_input = Some(&status_bytes);
+
+    let mut baseline_trust = trust_roots(&fx);
+    baseline_trust.status_operator_authorization = Some(authorization.clone());
+    baseline_trust.status_freshness_policy = Some(freshness);
+    let baseline = verify_finding_evidence(&fx.raw_finding, &baseline_trust, &evidence)?;
+    assert_eq!(
+        baseline.facet_outcome(FindingFacetKind::StatusLiveness),
+        Some(FindingFacetOutcome::Verified)
+    );
+
+    let mut alternate_authorization = authorization;
+    alternate_authorization.operator.rotation_policy_ref =
+        "status-rotation-policy/alternate".to_owned();
+    let mut authorization_trust = trust_roots(&fx);
+    authorization_trust.status_operator_authorization = Some(alternate_authorization);
+    authorization_trust.status_freshness_policy = Some(freshness);
+    let authorization_changed =
+        verify_finding_evidence(&fx.raw_finding, &authorization_trust, &evidence)?;
+    assert_eq!(
+        authorization_changed.facet_outcome(FindingFacetKind::StatusLiveness),
+        Some(FindingFacetOutcome::Verified)
+    );
+    assert_ne!(
+        baseline.resolved_evidence_bundle_sha256,
+        authorization_changed.resolved_evidence_bundle_sha256
+    );
+
+    let mut freshness_trust = trust_roots(&fx);
+    freshness_trust.status_operator_authorization =
+        baseline_trust.status_operator_authorization.clone();
+    freshness_trust.status_freshness_policy = Some(FindingStatusFreshnessPolicy {
+        now: freshness.now,
+        max_epoch_age_secs: freshness.max_epoch_age_secs + 1,
+    });
+    let freshness_changed = verify_finding_evidence(&fx.raw_finding, &freshness_trust, &evidence)?;
+    assert_eq!(
+        freshness_changed.facet_outcome(FindingFacetKind::StatusLiveness),
+        Some(FindingFacetOutcome::Verified)
+    );
+    assert_ne!(
+        baseline.resolved_evidence_bundle_sha256,
+        freshness_changed.resolved_evidence_bundle_sha256
+    );
+    Ok(())
+}
+
+#[test]
 fn failed_optional_facet_denies_the_draft() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);

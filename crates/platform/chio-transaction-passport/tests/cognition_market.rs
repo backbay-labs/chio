@@ -126,6 +126,13 @@ fn status_proof_bytes() -> TestResult<Vec<u8>> {
 }
 
 fn recipe_bytes(payload_suffix: &str) -> TestResult<Vec<u8>> {
+    recipe_bytes_for_profile(payload_suffix, "23")
+}
+
+fn recipe_bytes_for_profile(
+    payload_suffix: &str,
+    verifier_profile_prefix: &str,
+) -> TestResult<Vec<u8>> {
     let caps = FindingResourceCaps {
         max_recipe_bytes: 65_536,
         max_evidence_receipts: 8,
@@ -144,7 +151,7 @@ fn recipe_bytes(payload_suffix: &str) -> TestResult<Vec<u8>> {
     let recipe = FindingReplayRecipeInput {
         schema: FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1.to_string(),
         decision_rule_ref: "decision/baseline-fails-candidate-passes-v1".to_string(),
-        verifier_profile_envelope_sha256: "33".repeat(32),
+        verifier_profile_envelope_sha256: verifier_profile_prefix.repeat(32),
         context_sha256: "44".repeat(32),
         payload_sha256: format!("{payload_suffix}{}", "5".repeat(62)),
         runner_server: "qualified-replay-runner".to_string(),
@@ -366,6 +373,38 @@ fn resign_graph(bundle: &mut QualifiedBundle) -> TestResult {
     Ok(())
 }
 
+fn replace_graph_artifact(
+    bundle: &mut QualifiedBundle,
+    path: &str,
+    replacement: Vec<u8>,
+) -> TestResult<String> {
+    let old_id = sha256_hex(bundle.artifacts.get(path).ok_or("artifact missing")?);
+    let replacement_id = sha256_hex(&replacement);
+    bundle.artifacts.insert(path.to_string(), replacement);
+    let node = bundle.evidence_graph["nodes"]
+        .as_array_mut()
+        .and_then(|nodes| {
+            nodes
+                .iter_mut()
+                .find(|node| node.get("path").and_then(Value::as_str) == Some(path))
+        })
+        .ok_or("artifact node missing")?;
+    node["id"] = Value::String(replacement_id.clone());
+    node["sha256"] = Value::String(replacement_id.clone());
+    for edge in bundle.evidence_graph["edges"]
+        .as_array_mut()
+        .ok_or("edges missing")?
+    {
+        if edge.get("from").and_then(Value::as_str) == Some(old_id.as_str()) {
+            edge["from"] = Value::String(replacement_id.clone());
+        }
+        if edge.get("to").and_then(Value::as_str) == Some(old_id.as_str()) {
+            edge["to"] = Value::String(replacement_id.clone());
+        }
+    }
+    Ok(replacement_id)
+}
+
 #[test]
 fn cognition_market_qualified_profile() -> TestResult {
     verify(&build_bundle()?)
@@ -443,6 +482,66 @@ fn cognition_market_qualified_profile_rejects_substituted_attachment() -> TestRe
     }
     resign_graph(&mut bundle)?;
     assert!(verify(&bundle).is_err());
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_recipe_for_another_profile() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let status = bundle
+        .artifacts
+        .get("attachments/status-proof-input.json")
+        .ok_or("status attachment missing")?
+        .clone();
+    let recipe = recipe_bytes_for_profile("55", "33")?;
+    let report = report_bytes(&recipe, &status)?;
+    replace_graph_artifact(&mut bundle, "attachments/replay-recipe-input.json", recipe)?;
+    replace_graph_artifact(&mut bundle, "report.json", report)?;
+    resign_graph(&mut bundle)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("mismatched verifier profiles were accepted")?
+        .to_string();
+    assert!(
+        error.contains("different verifier profiles"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_extra_finding_claim() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let mut claim_set: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("claim-set.json")
+            .ok_or("claim set missing")?,
+    )?;
+    claim_set["claims"]
+        .as_array_mut()
+        .ok_or("claim rows missing")?
+        .push(json!({
+                "claim_id": "claim.finding.unqualified",
+                "status": "verified",
+                "required_evidence": ["report.json"],
+                "evidence_refs": ["report.json"],
+                "verifier_module": "chio-finding-verifier"
+        }));
+    let claim_set_bytes = canonical_json_bytes(&claim_set)?;
+    let claim_set_id = replace_graph_artifact(&mut bundle, "claim-set.json", claim_set_bytes)?;
+    bundle.passport.claim_set_sha256 = claim_set_id;
+    resign_graph(&mut bundle)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("unqualified Finding claim was accepted")?
+        .to_string();
+    assert!(
+        error.contains("unqualified Finding claim"),
+        "unexpected error: {error}"
+    );
     Ok(())
 }
 

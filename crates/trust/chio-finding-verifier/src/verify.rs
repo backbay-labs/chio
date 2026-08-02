@@ -1116,6 +1116,8 @@ fn bundle_digest(
         checkpoint_transparency_sha256: String,
         recipe_sha256: Option<String>,
         status_proof_sha256: Option<String>,
+        status_operator_authorization_sha256: Option<String>,
+        status_freshness_policy_sha256: Option<String>,
         runtime_attestation_sha256: Option<String>,
         runtime_appraisal_sha256: Option<String>,
         runtime_attestation_authority: Option<String>,
@@ -1153,6 +1155,24 @@ fn bundle_digest(
         }
         None => None,
     };
+    let status_operator_authorization_sha256 = trust
+        .status_operator_authorization
+        .as_ref()
+        .map(canonical_json_bytes)
+        .transpose()
+        .map_err(|_| FindingVerifierError::Canonicalization)?
+        .map(|bytes| sha256_hex(&bytes));
+    let status_freshness_policy_sha256 = trust
+        .status_freshness_policy
+        .map(|policy| {
+            canonical_json_bytes(&serde_json::json!({
+                "max_epoch_age_secs": policy.max_epoch_age_secs,
+                "now": policy.now,
+            }))
+        })
+        .transpose()
+        .map_err(|_| FindingVerifierError::Canonicalization)?
+        .map(|bytes| sha256_hex(&bytes));
     let commitment = BundleCommitment {
         receipt_sha256s,
         inclusion_proof_sha256s,
@@ -1160,6 +1180,8 @@ fn bundle_digest(
         checkpoint_transparency_sha256: sha256_hex(&checkpoint_transparency_bytes),
         recipe_sha256: bundle.recipe_preimage.map(sha256_hex),
         status_proof_sha256: bundle.status_proof_input.map(sha256_hex),
+        status_operator_authorization_sha256,
+        status_freshness_policy_sha256,
         runtime_attestation_sha256: bundle
             .runtime_attestation
             .as_ref()
