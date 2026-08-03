@@ -21,6 +21,7 @@ use crate::SqliteAuthorityStore;
 
 const LISTING_ID: &str = "challenge-listing-01";
 const OTHER_LISTING_ID: &str = "challenge-listing-02";
+const PAYOUT_DESTINATION: &str = "0x000000000000000000000000000000000000002a";
 const NOW: u64 = 1_750_000_000;
 const RETRY_DEADLINE: u64 = NOW + 3_600;
 /// Seller-signed claim window every upheld liability in these tests
@@ -631,7 +632,7 @@ fn reserve_slot(fixture: &Fixture, tag: &str, listing_id: &str, allocation_id: &
             authoritative_payment_operation_id: &payment_operation_id,
             payer_hex: &payer,
             agent_id: "agent-buyer-01",
-            payout_destination: "0x000000000000000000000000000000000000002a",
+            payout_destination: PAYOUT_DESTINATION,
             finding_id: &finding_id,
             listing_id,
             bid_envelope_sha256: &bid,
@@ -665,7 +666,7 @@ fn settle_slot(fixture: &Fixture, tag: &str, purchase_key: &str, now: u64) {
             record_json: &bytes,
             record_sha256: &record_sha256,
             delivery_receipt_id: "receipt-delivery",
-            payout_destination: "rail:venue-ledger:buyer-42",
+            payout_destination: PAYOUT_DESTINATION,
             retention_expires_at: NOW + 100_000,
             now,
         })
@@ -1848,7 +1849,7 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
             authoritative_payment_operation_id: "payment-gamma",
             payer_hex: &hex64('b'),
             agent_id: "agent-buyer-01",
-            payout_destination: "0x000000000000000000000000000000000000002a",
+            payout_destination: PAYOUT_DESTINATION,
             finding_id: &hex64('a'),
             listing_id: LISTING_ID,
             bid_envelope_sha256: &digest("bid-gamma"),

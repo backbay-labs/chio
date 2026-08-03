@@ -91,6 +91,10 @@ fn seed_settled_purchase(store: &SqliteFindingRecoveryStore) {
             ],
         )
         .expect("purchase record");
+    store
+        .serving_owner
+        .append_finding_challenge_projection_if_changed(&transaction)
+        .expect("authenticate settled purchase projection");
     store.commit(transaction).expect("commit");
     store.sync(&connection).expect("sync");
 }
