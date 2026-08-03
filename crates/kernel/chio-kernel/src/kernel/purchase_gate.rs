@@ -398,8 +398,6 @@ impl ChioKernel {
     pub(crate) fn verify_purchase_context_for_pool(
         &self,
         view: &FindingPurchaseContextView<'_>,
-        now_unix_secs: u64,
-        require_live_admission: bool,
     ) -> Result<VerifiedFindingPurchase, String> {
         let verifier = self.finding_purchase_verifier.as_ref().ok_or_else(|| {
             "finding pool debit requires the kernel's configured purchase verifier".to_owned()
@@ -414,12 +412,22 @@ impl ChioKernel {
         {
             return Err("purchase context does not bind the pool debit request".to_owned());
         }
-        if require_live_admission {
-            verifier
-                .verify_purchase_admission(view, &verified, now_unix_secs)
-                .map_err(|error| format!("purchase admission rejected: {error}"))?;
-        }
         Ok(verified)
+    }
+
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn verify_purchase_admission_for_pool(
+        &self,
+        view: &FindingPurchaseContextView<'_>,
+        verified: &VerifiedFindingPurchase,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        let verifier = self.finding_purchase_verifier.as_ref().ok_or_else(|| {
+            "finding pool debit requires the kernel's configured purchase verifier".to_owned()
+        })?;
+        verifier
+            .verify_purchase_admission(view, verified, now_unix_secs)
+            .map_err(|error| format!("purchase admission rejected: {error}"))
     }
 
     /// Deterministically verify the purchase context for a marked grant

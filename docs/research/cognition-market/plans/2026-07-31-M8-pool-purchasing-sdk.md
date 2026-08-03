@@ -42,8 +42,12 @@ The `QualifiedFindingPoolLedger` marker is restricted to audited atomic or
 linearizable durable backends. The shipped SQLite implementation refuses
 in-memory paths, serializes debits with `BEGIN IMMEDIATE`, stores full-domain
 `u64` values as canonical decimal text, binds one signed purchaser allocation
-per pool id, and persists exact replay. Advisory remote budget views do not
-qualify.
+per pool id, and persists exact replay. A new reservation has a 30 second
+claim window. The kernel atomically claims it only after immediate dispatch
+revalidation; unclaimed reservations are released at that deadline, while a
+claimed reservation remains encumbered until its authenticated delivery
+terminal. Exact debit replay is selected before mutable purchase or status
+admission checks. Advisory remote budget views do not qualify.
 
 ## Fully admitted finding hint
 

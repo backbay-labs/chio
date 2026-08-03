@@ -14,6 +14,10 @@ use chio_swarm_authority::SwarmBudgetPool;
 use crate::finding_purchase::FindingPurchaseContextView;
 use crate::ChioKernel;
 
+/// Maximum time a pool reservation may remain unclaimed before a durable
+/// purchase admission must take ownership of it.
+pub const FINDING_POOL_CLAIM_WINDOW_MS: u64 = 30_000;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingPoolDebitReceipt {
     pub purchase_id: String,
@@ -49,6 +53,8 @@ pub enum FindingPoolLedgerError {
     ReservationMissing,
     #[error("finding pool reservation conflicts with its recorded terminal")]
     TerminalConflict,
+    #[error("finding pool reservation expired before durable admission claimed it")]
+    ClaimDeadlineElapsed,
     #[error("finding pool ledger is already configured for this kernel")]
     AlreadyConfigured,
     #[error("finding pool ledger storage failed: {0}")]
@@ -115,6 +121,23 @@ pub struct AuthorizedFindingPoolDebit {
     allocation_issued_at_unix_ms: u64,
     allocation_expires_at_unix_ms: u64,
     debit_requested_at_unix_ms: u64,
+    claim_deadline_unix_ms: u64,
+}
+
+/// Kernel-authenticated claim that moves a short-lived pool reservation into
+/// the durable purchase lifecycle immediately before tool dispatch.
+#[derive(Debug, Clone)]
+pub struct AuthorizedFindingPoolClaim {
+    purchase_id: String,
+    finding_id: String,
+    listing_id: String,
+    reservation_id: String,
+    authoritative_payment_operation_id: String,
+    accepted_bid_envelope_sha256: String,
+    venue_admission_envelope_sha256: String,
+    amount_units: u64,
+    currency: String,
+    claimed_at_unix_ms: u64,
 }
 
 /// Kernel-authenticated delivery terminal for a prior pool reservation.
@@ -179,6 +202,58 @@ impl AuthorizedFindingPoolTerminal {
     #[must_use]
     pub fn decision(&self) -> FindingPoolTerminalDecision {
         self.decision
+    }
+}
+
+impl AuthorizedFindingPoolClaim {
+    #[must_use]
+    pub fn purchase_id(&self) -> &str {
+        &self.purchase_id
+    }
+
+    #[must_use]
+    pub fn finding_id(&self) -> &str {
+        &self.finding_id
+    }
+
+    #[must_use]
+    pub fn listing_id(&self) -> &str {
+        &self.listing_id
+    }
+
+    #[must_use]
+    pub fn reservation_id(&self) -> &str {
+        &self.reservation_id
+    }
+
+    #[must_use]
+    pub fn authoritative_payment_operation_id(&self) -> &str {
+        &self.authoritative_payment_operation_id
+    }
+
+    #[must_use]
+    pub fn accepted_bid_envelope_sha256(&self) -> &str {
+        &self.accepted_bid_envelope_sha256
+    }
+
+    #[must_use]
+    pub fn venue_admission_envelope_sha256(&self) -> &str {
+        &self.venue_admission_envelope_sha256
+    }
+
+    #[must_use]
+    pub fn amount_units(&self) -> u64 {
+        self.amount_units
+    }
+
+    #[must_use]
+    pub fn currency(&self) -> &str {
+        &self.currency
+    }
+
+    #[must_use]
+    pub fn claimed_at_unix_ms(&self) -> u64 {
+        self.claimed_at_unix_ms
     }
 }
 
@@ -277,6 +352,11 @@ impl AuthorizedFindingPoolDebit {
     pub fn debit_requested_at_unix_ms(&self) -> u64 {
         self.debit_requested_at_unix_ms
     }
+
+    #[must_use]
+    pub fn claim_deadline_unix_ms(&self) -> u64 {
+        self.claim_deadline_unix_ms
+    }
 }
 
 pub trait FindingPoolLedger: Send + Sync {
@@ -289,6 +369,10 @@ pub trait FindingPoolLedger: Send + Sync {
         &self,
         debit: &AuthorizedFindingPoolDebit,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError>;
+
+    /// Claim a pending reservation for the durable purchase lifecycle.
+    /// Exact replay is idempotent. A timed-out or terminal reservation rejects.
+    fn claim(&self, claim: &AuthorizedFindingPoolClaim) -> Result<(), FindingPoolLedgerError>;
 
     /// Finalize or release a reservation from the kernel's durable delivery
     /// terminal. Exact replay must return the recorded terminal, while an
@@ -327,11 +411,7 @@ impl ChioKernel {
         let allocation_is_live = trusted_now_unix_ms >= allocation.issued_at_unix_ms
             && trusted_now_unix_ms < allocation.expires_at_unix_ms;
         let purchase = self
-            .verify_purchase_context_for_pool(
-                &request.purchase_context,
-                trusted_now_unix_ms / 1_000,
-                allocation_is_live,
-            )
+            .verify_purchase_context_for_pool(&request.purchase_context)
             .map_err(FindingPoolDebitError::Allocation)?;
         require_identifier(&purchase.purchase_intent_id, "purchase_intent_id")?;
         require_identifier(&purchase.reservation_id, "reservation_id")?;
@@ -405,6 +485,9 @@ impl ChioKernel {
             allocation_issued_at_unix_ms: allocation.issued_at_unix_ms,
             allocation_expires_at_unix_ms: verified.expires_at_unix_ms,
             debit_requested_at_unix_ms: trusted_now_unix_ms,
+            claim_deadline_unix_ms: trusted_now_unix_ms
+                .saturating_add(FINDING_POOL_CLAIM_WINDOW_MS)
+                .min(verified.expires_at_unix_ms),
         };
         if ledger
             .contains_purchase(debit.purchase_id())
@@ -412,13 +495,63 @@ impl ChioKernel {
         {
             return ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger);
         }
-        self.verify_finding_status_for_pool(
+        if !allocation_is_live {
+            return Err(FindingPoolLedgerError::AllocationNotLive.into());
+        }
+        if let Err(reason) = self.verify_purchase_admission_for_pool(
+            &request.purchase_context,
+            &purchase,
+            trusted_now_unix_ms / 1_000,
+        ) {
+            if ledger
+                .contains_purchase(debit.purchase_id())
+                .map_err(FindingPoolDebitError::Ledger)?
+            {
+                return ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger);
+            }
+            return Err(FindingPoolDebitError::Allocation(reason));
+        }
+        if let Err(reason) = self.verify_finding_status_for_pool(
             request.status_proof_b64,
             &purchase.finding_id,
             trusted_now_unix_ms / 1_000,
-        )
-        .map_err(FindingPoolDebitError::Allocation)?;
+        ) {
+            if ledger
+                .contains_purchase(debit.purchase_id())
+                .map_err(FindingPoolDebitError::Ledger)?
+            {
+                return ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger);
+            }
+            return Err(FindingPoolDebitError::Allocation(reason));
+        }
         ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger)
+    }
+
+    /// Transfer a pending pool reservation into the durable delivery
+    /// lifecycle. This runs only after all immediate dispatch revalidation.
+    pub(crate) fn claim_finding_pool_delivery(
+        &self,
+        purchase: &crate::finding_purchase::VerifiedFindingPurchase,
+        trusted_now_unix_ms: u64,
+    ) -> Result<(), FindingPoolLedgerError> {
+        let Some(ledger) = self.finding_pool_ledger() else {
+            return Ok(());
+        };
+        if !ledger.contains_purchase(&purchase.purchase_intent_id)? {
+            return Ok(());
+        }
+        ledger.claim(&AuthorizedFindingPoolClaim {
+            purchase_id: purchase.purchase_intent_id.clone(),
+            finding_id: purchase.finding_id.clone(),
+            listing_id: purchase.listing_id.clone(),
+            reservation_id: purchase.reservation_id.clone(),
+            authoritative_payment_operation_id: purchase.authoritative_payment_operation_id.clone(),
+            accepted_bid_envelope_sha256: purchase.accepted_bid_envelope_sha256.clone(),
+            venue_admission_envelope_sha256: purchase.venue_admission_envelope_sha256.clone(),
+            amount_units: purchase.accepted_price.units,
+            currency: purchase.accepted_price.currency.clone(),
+            claimed_at_unix_ms: trusted_now_unix_ms,
+        })
     }
 
     /// Apply the pool reservation terminal derived from the kernel's frozen

@@ -830,6 +830,17 @@ impl ChioKernel {
                     "finding recovery dispatch revalidation failed: {reason}"
                 ))
             })?;
+        #[cfg(feature = "cognition-market-experimental")]
+        if !reserve_for_caller_preflight {
+            if let Some(purchase) = verified_purchase.as_ref() {
+                self.claim_finding_pool_delivery(purchase, now_unix_ms)
+                    .map_err(|error| {
+                        KernelError::DurableAdmission(format!(
+                            "finding pool reservation could not enter durable admission: {error}"
+                        ))
+                })?;
+            }
+        }
         Ok(VerifiedFindingDispatchAdmission {
             purchase: verified_purchase,
             recovery: verified_recovery,

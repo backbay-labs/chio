@@ -10,9 +10,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use chio_kernel::finding_pool::{
-    AuthorizedFindingPoolDebit, AuthorizedFindingPoolTerminal, FindingPoolDebitReceipt,
-    FindingPoolDebitState, FindingPoolLedger, FindingPoolLedgerError, FindingPoolTerminalDecision,
-    QualifiedFindingPoolLedger,
+    AuthorizedFindingPoolClaim, AuthorizedFindingPoolDebit, AuthorizedFindingPoolTerminal,
+    FindingPoolDebitReceipt, FindingPoolDebitState, FindingPoolLedger, FindingPoolLedgerError,
+    FindingPoolTerminalDecision, QualifiedFindingPoolLedger,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS finding_pool_debits (
     amount_units TEXT NOT NULL,
     currency TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('reserved', 'finalized', 'released')),
+    claim_deadline_unix_ms TEXT NOT NULL,
+    claimed_at_unix_ms TEXT,
     reserved_after_units TEXT NOT NULL,
     spent_after_units TEXT NOT NULL,
     FOREIGN KEY (allocation_envelope_sha256)
@@ -170,6 +172,12 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+
+        reclaim_expired_unclaimed(
+            &transaction,
+            debit.allocation_envelope_sha256(),
+            debit.debit_requested_at_unix_ms(),
+        )?;
 
         if let Some(existing) = transaction
             .query_row(
@@ -339,9 +347,10 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                     purchase_id, allocation_envelope_sha256, finding_id, listing_id, \
                     reservation_id, authoritative_payment_operation_id, \
                     accepted_bid_envelope_sha256, venue_admission_envelope_sha256, \
-                    amount_units, currency, state, reserved_after_units, spent_after_units\
+                    amount_units, currency, state, claim_deadline_unix_ms, \
+                    claimed_at_unix_ms, reserved_after_units, spent_after_units\
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, \
-                           'reserved', ?11, ?12)",
+                           'reserved', ?11, NULL, ?12, ?13)",
                 params![
                     debit.purchase_id(),
                     debit.allocation_envelope_sha256(),
@@ -353,6 +362,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                     debit.venue_admission_envelope_sha256(),
                     debit.debit_amount_units().to_string(),
                     debit.currency(),
+                    debit.claim_deadline_unix_ms().to_string(),
                     reserved_after.to_string(),
                     spent.to_string(),
                 ],
@@ -377,6 +387,90 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             )?,
             replayed: false,
         })
+    }
+
+    fn claim(&self, claim: &AuthorizedFindingPoolClaim) -> Result<(), FindingPoolLedgerError> {
+        let mut connection = self
+            .pool
+            .get()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let stored = transaction
+            .query_row(
+                "SELECT allocation_envelope_sha256, finding_id, listing_id, \
+                        reservation_id, authoritative_payment_operation_id, \
+                        accepted_bid_envelope_sha256, venue_admission_envelope_sha256, \
+                        amount_units, currency, state, claim_deadline_unix_ms, \
+                        claimed_at_unix_ms \
+                 FROM finding_pool_debits WHERE purchase_id = ?1",
+                [claim.purchase_id()],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, String>(9)?,
+                        row.get::<_, String>(10)?,
+                        row.get::<_, Option<String>>(11)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
+            .ok_or(FindingPoolLedgerError::ReservationMissing)?;
+        let amount = parse_units(&stored.7, "debit.amount_units")?;
+        let state = parse_state(&stored.9)?;
+        let claim_deadline = parse_units(&stored.10, "debit.claim_deadline_unix_ms")?;
+        if stored.1 != claim.finding_id()
+            || stored.2 != claim.listing_id()
+            || stored.3 != claim.reservation_id()
+            || stored.4 != claim.authoritative_payment_operation_id()
+            || stored.5 != claim.accepted_bid_envelope_sha256()
+            || stored.6 != claim.venue_admission_envelope_sha256()
+            || amount != claim.amount_units()
+            || stored.8 != claim.currency()
+        {
+            return Err(FindingPoolLedgerError::ReplayConflict);
+        }
+        if state != FindingPoolDebitState::Reserved {
+            return Err(FindingPoolLedgerError::TerminalConflict);
+        }
+        if let Some(claimed_at) = stored.11 {
+            parse_units(&claimed_at, "debit.claimed_at_unix_ms")?;
+            transaction
+                .commit()
+                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+            return Ok(());
+        }
+        if claim.claimed_at_unix_ms() >= claim_deadline {
+            reclaim_expired_unclaimed(&transaction, &stored.0, claim.claimed_at_unix_ms())?;
+            transaction
+                .commit()
+                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+            return Err(FindingPoolLedgerError::ClaimDeadlineElapsed);
+        }
+        let changed = transaction
+            .execute(
+                "UPDATE finding_pool_debits SET claimed_at_unix_ms = ?2 \
+                 WHERE purchase_id = ?1 AND state = 'reserved' \
+                   AND claimed_at_unix_ms IS NULL",
+                params![claim.purchase_id(), claim.claimed_at_unix_ms().to_string(),],
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        if changed != 1 {
+            return Err(invariant("reservation claim compare-and-set failed"));
+        }
+        transaction
+            .commit()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
     }
 
     fn settle(
@@ -536,6 +630,116 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
 
 impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {}
 
+fn reclaim_expired_unclaimed(
+    transaction: &rusqlite::Transaction<'_>,
+    allocation_envelope_sha256: &str,
+    trusted_now_unix_ms: u64,
+) -> Result<(), FindingPoolLedgerError> {
+    let Some((signed_text, reserved_text, spent_text)) = transaction
+        .query_row(
+            "SELECT signed_amount_units, reserved_units, spent_units \
+             FROM finding_pool_allocations WHERE allocation_envelope_sha256 = ?1",
+            [allocation_envelope_sha256],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
+    else {
+        return Ok(());
+    };
+    let signed = parse_units(&signed_text, "signed_amount_units")?;
+    let original_reserved = parse_units(&reserved_text, "reserved_units")?;
+    let spent = parse_units(&spent_text, "spent_units")?;
+    let mut statement = transaction
+        .prepare(
+            "SELECT purchase_id, amount_units, claim_deadline_unix_ms \
+             FROM finding_pool_debits \
+             WHERE allocation_envelope_sha256 = ?1 AND state = 'reserved' \
+               AND claimed_at_unix_ms IS NULL ORDER BY purchase_id",
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let mut rows = statement
+        .query([allocation_envelope_sha256])
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let mut expired = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
+    {
+        let purchase_id = row
+            .get::<_, String>(0)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let amount_text = row
+            .get::<_, String>(1)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let deadline_text = row
+            .get::<_, String>(2)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let amount = parse_units(&amount_text, "debit.amount_units")?;
+        let deadline = parse_units(&deadline_text, "debit.claim_deadline_unix_ms")?;
+        if trusted_now_unix_ms >= deadline {
+            expired.push((purchase_id, amount));
+        }
+    }
+    drop(rows);
+    drop(statement);
+    if expired.is_empty() {
+        return Ok(());
+    }
+    let mut reserved_after = original_reserved;
+    let mut releases = Vec::with_capacity(expired.len());
+    for (purchase_id, amount) in expired {
+        reserved_after = reserved_after
+            .checked_sub(amount)
+            .ok_or_else(|| invariant("expired reservation exceeds allocation reserve"))?;
+        releases.push((purchase_id, reserved_after));
+    }
+    remaining_units(signed, reserved_after, spent)?;
+    let changed = transaction
+        .execute(
+            "UPDATE finding_pool_allocations SET reserved_units = ?2 \
+             WHERE allocation_envelope_sha256 = ?1 AND reserved_units = ?3 \
+               AND spent_units = ?4",
+            params![
+                allocation_envelope_sha256,
+                reserved_after.to_string(),
+                original_reserved.to_string(),
+                spent.to_string(),
+            ],
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    if changed != 1 {
+        return Err(invariant(
+            "expired reservation allocation compare-and-set failed",
+        ));
+    }
+    for (purchase_id, release_reserved_after) in releases {
+        let changed = transaction
+            .execute(
+                "UPDATE finding_pool_debits \
+                 SET state = 'released', reserved_after_units = ?2, spent_after_units = ?3 \
+                 WHERE purchase_id = ?1 AND state = 'reserved' \
+                   AND claimed_at_unix_ms IS NULL",
+                params![
+                    purchase_id,
+                    release_reserved_after.to_string(),
+                    spent.to_string(),
+                ],
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        if changed != 1 {
+            return Err(invariant("expired reservation compare-and-set failed"));
+        }
+    }
+    Ok(())
+}
+
 fn ensure_lifecycle_columns(
     connection: &rusqlite::Connection,
 ) -> Result<(), FindingPoolLedgerError> {
@@ -559,7 +763,29 @@ fn ensure_lifecycle_columns(
         "reserved_after_units",
         "ALTER TABLE finding_pool_debits \
          ADD COLUMN reserved_after_units TEXT NOT NULL DEFAULT '0'",
-    )
+    )?;
+    ensure_column(
+        connection,
+        "finding_pool_debits",
+        "claim_deadline_unix_ms",
+        "ALTER TABLE finding_pool_debits \
+         ADD COLUMN claim_deadline_unix_ms TEXT NOT NULL DEFAULT '0'",
+    )?;
+    ensure_column(
+        connection,
+        "finding_pool_debits",
+        "claimed_at_unix_ms",
+        "ALTER TABLE finding_pool_debits ADD COLUMN claimed_at_unix_ms TEXT",
+    )?;
+    connection
+        .execute(
+            "UPDATE finding_pool_debits SET claimed_at_unix_ms = '0' \
+             WHERE state = 'reserved' AND claim_deadline_unix_ms = '0' \
+               AND claimed_at_unix_ms IS NULL",
+            [],
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    Ok(())
 }
 
 fn ensure_column(

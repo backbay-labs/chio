@@ -12,6 +12,7 @@ use crate::{
 #[derive(Default)]
 struct RecordingLedger {
     decisions: Mutex<Vec<FindingPoolTerminalDecision>>,
+    claims: Mutex<Vec<(String, u64)>>,
 }
 
 impl FindingPoolLedger for RecordingLedger {
@@ -26,6 +27,16 @@ impl FindingPoolLedger for RecordingLedger {
         Err(FindingPoolLedgerError::Storage(
             "unexpected test debit".to_owned(),
         ))
+    }
+
+    fn claim(&self, claim: &AuthorizedFindingPoolClaim) -> Result<(), FindingPoolLedgerError> {
+        let Ok(mut claims) = self.claims.lock() else {
+            return Err(FindingPoolLedgerError::Storage(
+                "test claim lock was poisoned".to_owned(),
+            ));
+        };
+        claims.push((claim.purchase_id().to_owned(), claim.claimed_at_unix_ms()));
+        Ok(())
     }
 
     fn settle(
@@ -122,6 +133,19 @@ fn delivery_capture_finalizes_the_configured_pool_reservation() {
         decisions.as_slice(),
         &[FindingPoolTerminalDecision::Finalize]
     );
+}
+
+#[test]
+fn dispatch_claims_the_configured_pool_reservation() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let kernel = kernel_with_ledger(Arc::clone(&ledger));
+    assert!(kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345)
+        .is_ok());
+    let Ok(claims) = ledger.claims.lock() else {
+        panic!("test claim lock was poisoned");
+    };
+    assert_eq!(claims.as_slice(), &[("purchase:test".to_owned(), 12_345)]);
 }
 
 #[test]

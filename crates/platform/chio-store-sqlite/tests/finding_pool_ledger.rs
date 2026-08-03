@@ -40,6 +40,10 @@ struct PoolFixture {
 }
 
 fn fixture(amount_units: u64) -> PoolFixture {
+    fixture_until(amount_units, 10_000)
+}
+
+fn fixture_until(amount_units: u64, expires_at_unix_ms: u64) -> PoolFixture {
     let authority = Keypair::from_seed(&[71_u8; 32]);
     let purchaser = Keypair::from_seed(&[72_u8; 32]);
     let pool = SwarmBudgetPool {
@@ -65,7 +69,7 @@ fn fixture(amount_units: u64) -> PoolFixture {
             nonce: "pool-allocation-nonce-1".to_string(),
             authority: authority.public_key(),
             issued_at_unix_ms: 1_000,
-            expires_at_unix_ms: 10_000,
+            expires_at_unix_ms,
         },
         &authority,
     )
@@ -93,6 +97,8 @@ fn debit(
 #[derive(Clone)]
 struct StaticPurchaseVerifier {
     purchase: VerifiedFindingPurchase,
+    admissions: Arc<AtomicU64>,
+    reject_admission: bool,
 }
 
 impl FindingPurchaseVerifier for StaticPurchaseVerifier {
@@ -109,7 +115,12 @@ impl FindingPurchaseVerifier for StaticPurchaseVerifier {
         _verified: &VerifiedFindingPurchase,
         _now_unix_secs: u64,
     ) -> Result<(), String> {
-        Ok(())
+        self.admissions.fetch_add(1, Ordering::SeqCst);
+        if self.reject_admission {
+            Err("purchase admission is no longer live".to_owned())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -141,6 +152,31 @@ fn debit_at_with_status(
     status_verifier: Option<Arc<dyn FindingStatusProofVerifier>>,
     status_proof_b64: Option<&str>,
 ) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
+    debit_at_with_policy(
+        ledger,
+        fixture,
+        purchase_id,
+        amount_units,
+        now_unix_ms,
+        status_verifier,
+        status_proof_b64,
+        Arc::new(AtomicU64::new(0)),
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn debit_at_with_policy(
+    ledger: &SqliteFindingPoolLedger,
+    fixture: &PoolFixture,
+    purchase_id: &str,
+    amount_units: u64,
+    now_unix_ms: u64,
+    status_verifier: Option<Arc<dyn FindingStatusProofVerifier>>,
+    status_proof_b64: Option<&str>,
+    purchase_admissions: Arc<AtomicU64>,
+    reject_purchase_admission: bool,
+) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
     let verified_purchase = VerifiedFindingPurchase {
         finding_id: "a".repeat(64),
         listing_id: "listing:cognition-market:1".to_string(),
@@ -160,6 +196,8 @@ fn debit_at_with_status(
     };
     let verifier = StaticPurchaseVerifier {
         purchase: verified_purchase,
+        admissions: purchase_admissions,
+        reject_admission: reject_purchase_admission,
     };
     let mut kernel = ChioKernel::new(KernelConfig {
         keypair: fixture.authority.clone(),
@@ -450,6 +488,89 @@ fn cognition_market_pool_replays_after_expiry_but_rejects_new_spend() {
             FindingPoolLedgerError::AllocationNotLive
         ))
     ));
+}
+
+#[test]
+fn cognition_market_pool_replay_skips_mutable_purchase_admission() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
+        .test_expect("open qualified ledger");
+    let fixture = fixture(100);
+    let admissions = Arc::new(AtomicU64::new(0));
+    debit_at_with_policy(
+        &ledger,
+        &fixture,
+        "purchase:committed",
+        10,
+        2_000,
+        None,
+        None,
+        Arc::clone(&admissions),
+        false,
+    )
+    .test_expect("commit live pool debit");
+    assert_eq!(admissions.load(Ordering::SeqCst), 1);
+
+    let replay = debit_at_with_policy(
+        &ledger,
+        &fixture,
+        "purchase:committed",
+        10,
+        2_001,
+        None,
+        None,
+        Arc::clone(&admissions),
+        true,
+    )
+    .test_expect("replay after mutable purchase admission expires");
+    assert!(replay.replayed);
+    assert_eq!(admissions.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        debit_at_with_policy(
+            &ledger,
+            &fixture,
+            "purchase:new-after-admission-expiry",
+            10,
+            2_001,
+            None,
+            None,
+            Arc::clone(&admissions),
+            true,
+        ),
+        Err(FindingPoolDebitError::Allocation(_))
+    ));
+    assert_eq!(admissions.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn cognition_market_pool_reclaims_unclaimed_reservations_at_the_claim_deadline() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
+        .test_expect("open qualified ledger");
+    let fixture = fixture_until(10, 100_000);
+    debit_at(&ledger, &fixture, "purchase:abandoned", 10, 2_000)
+        .test_expect("reserve the complete allocation");
+    assert!(matches!(
+        debit_at(&ledger, &fixture, "purchase:too-early", 10, 31_999),
+        Err(FindingPoolDebitError::Ledger(
+            FindingPoolLedgerError::AmountExceeded
+        ))
+    ));
+
+    let replacement = debit_at(&ledger, &fixture, "purchase:replacement", 10, 32_000)
+        .test_expect("reclaim the abandoned reservation at its claim deadline");
+    assert_eq!(replacement.state, FindingPoolDebitState::Reserved);
+    assert!(!replacement.replayed);
+    let abandoned = debit_at(&ledger, &fixture, "purchase:abandoned", 10, 32_000)
+        .test_expect("replay the reclaimed reservation terminal");
+    assert_eq!(abandoned.state, FindingPoolDebitState::Released);
+    assert!(abandoned.replayed);
+    assert_eq!(
+        ledger
+            .reserved_units(&fixture.envelope_sha256)
+            .test_expect("read replacement reservation"),
+        Some(10)
+    );
 }
 
 #[test]
