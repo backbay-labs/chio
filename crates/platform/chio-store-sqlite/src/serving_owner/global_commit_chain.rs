@@ -1229,6 +1229,19 @@ fn finding_challenge_snapshot_digest_v1(
 fn finding_market_snapshot_digest(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(connection, true)
+}
+
+fn finding_market_snapshot_digest_v2(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(connection, false)
+}
+
+fn finding_market_snapshot_digest_version(
+    connection: &Connection,
+    include_lock_reservations: bool,
+) -> Result<String, SqliteServingOwnerError> {
     let challenge_tables = [
         "challenges",
         "dispute_locks",
@@ -1238,9 +1251,16 @@ fn finding_market_snapshot_digest(
         "effect_intents",
         "listing_sales_blocks",
     ];
-    let mut snapshots = Vec::with_capacity(13);
+    let mut snapshots = Vec::with_capacity(if include_lock_reservations { 14 } else { 13 });
     for table in challenge_tables {
         snapshots.push(table_snapshot(connection, table, None)?);
+        if include_lock_reservations && table == "challenges" {
+            snapshots.push(table_snapshot(
+                connection,
+                "dispute_lock_reservations",
+                None,
+            )?);
+        }
     }
     snapshots.push(table_snapshot(connection, "purchase_records", None)?);
     for table in [
@@ -1272,7 +1292,11 @@ fn finding_market_snapshot_digest(
         "#,
     )?);
     digest(&AuthoritySnapshot {
-        format: "chio.sqlite-finding-market-snapshot.v2",
+        format: if include_lock_reservations {
+            "chio.sqlite-finding-market-snapshot.v3"
+        } else {
+            "chio.sqlite-finding-market-snapshot.v2"
+        },
         tables: snapshots,
     })
 }
@@ -1765,6 +1789,7 @@ fn verify_finding_challenge_projection_coverage(
     let has_state = connection.query_row(
         r#"
         SELECT EXISTS(SELECT 1 FROM challenges)
+            OR EXISTS(SELECT 1 FROM dispute_lock_reservations)
             OR EXISTS(SELECT 1 FROM dispute_locks)
             OR EXISTS(SELECT 1 FROM liability_heads)
             OR EXISTS(SELECT 1 FROM governance_case_index)
@@ -1780,8 +1805,12 @@ fn verify_finding_challenge_projection_coverage(
     match rows.last() {
         Some((_, _, snapshot_digest, _, _)) => {
             let current_market = finding_market_snapshot_digest(connection)?;
+            let current_market_v2 = finding_market_snapshot_digest_v2(connection)?;
             let current_legacy = finding_challenge_snapshot_digest_v1(connection)?;
-            if current_market != *snapshot_digest && current_legacy != *snapshot_digest {
+            if current_market != *snapshot_digest
+                && current_market_v2 != *snapshot_digest
+                && current_legacy != *snapshot_digest
+            {
                 return Err(invalid(
                     "finding challenge projection does not cover current state",
                 ));

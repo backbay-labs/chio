@@ -104,6 +104,41 @@ BEGIN
     SELECT RAISE(ABORT, 'finding challenge must be retained');
 END;
 
+CREATE TABLE IF NOT EXISTS dispute_lock_reservations (
+    lock_id TEXT NOT NULL PRIMARY KEY
+        CHECK (length(lock_id) BETWEEN 1 AND 512),
+    challenge_id TEXT NOT NULL UNIQUE REFERENCES challenges(challenge_id),
+    owner_hex TEXT NOT NULL
+        CHECK (length(owner_hex) = 64 AND owner_hex NOT GLOB '*[^0-9a-f]*'),
+    schedule_envelope_sha256 TEXT NOT NULL CHECK (
+        length(schedule_envelope_sha256) = 64
+        AND schedule_envelope_sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+    amount_units INTEGER NOT NULL CHECK (amount_units > 0),
+    currency TEXT NOT NULL
+        CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+    pool_principal_id TEXT NOT NULL
+        CHECK (length(pool_principal_id) BETWEEN 1 AND 512),
+    pool_rail_destination TEXT NOT NULL
+        CHECK (length(pool_rail_destination) BETWEEN 1 AND 512),
+    pool_authority_epoch INTEGER NOT NULL CHECK (pool_authority_epoch > 0),
+    expires_at INTEGER NOT NULL CHECK (expires_at > 0),
+    locked_at INTEGER NOT NULL CHECK (locked_at > 0),
+    reserved_at INTEGER NOT NULL CHECK (reserved_at > 0)
+);
+
+CREATE TRIGGER IF NOT EXISTS dispute_lock_reservations_immutable
+BEFORE UPDATE ON dispute_lock_reservations
+BEGIN
+    SELECT RAISE(ABORT, 'dispute lock reservation is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS dispute_lock_reservations_no_delete
+BEFORE DELETE ON dispute_lock_reservations
+BEGIN
+    SELECT RAISE(ABORT, 'dispute lock reservation must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS dispute_locks (
     lock_id TEXT NOT NULL PRIMARY KEY
         CHECK (length(lock_id) BETWEEN 1 AND 512),

@@ -2128,7 +2128,7 @@ fn rewind_to_revision_four_payout_binding(connection: &Connection, agent_id: &st
             crate::CHIO_SQLITE_APPLICATION_ID
         ))
         .expect("stamp the application id");
-    crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 4)
+    crate::stamp_schema_version(connection, FINDING_PURCHASE_SCHEMA_KEY, 4)
         .expect("stamp revision four");
 }
 
@@ -2182,6 +2182,46 @@ fn revision_four_opaque_agent_id_cannot_invent_a_payout_binding() {
         !binding_table,
         "the failed migration rolls back table creation"
     );
+}
+
+#[test]
+fn pre_v5_terminal_opaque_reservation_reopens_without_inventing_an_evm_address() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    rewind_to_revision_four_payout_binding(&connection, "agent-buyer-legacy");
+    connection
+        .execute(
+            r#"
+            UPDATE purchase_reservations
+            SET state = 'expired', updated_at = ?2
+            WHERE reservation_id = ?1
+            "#,
+            params![
+                "reservation-v4",
+                i64::try_from(NOW + 1).expect("test time fits")
+            ],
+        )
+        .expect("expire the retained legacy reservation");
+
+    initialize_finding_purchase_schema(&mut connection)
+        .expect("migrate a terminal opaque reservation");
+    let binding: (String, String) = connection
+        .query_row(
+            r#"
+            SELECT destination, binding_kind FROM purchase_payout_bindings
+            WHERE reservation_id = 'reservation-v4'
+            "#,
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read retained terminal binding");
+    assert_eq!(
+        binding,
+        (
+            "agent-buyer-legacy".to_owned(),
+            "legacy_terminal".to_owned()
+        )
+    );
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at revision seven");
 }
 
 #[test]

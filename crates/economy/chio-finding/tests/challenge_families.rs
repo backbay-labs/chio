@@ -1674,6 +1674,47 @@ fn audit_seed_commitment_reproduces_in_both_directions() -> TestResult {
 }
 
 #[test]
+fn audit_epoch_integer_bounds_match_the_registered_schema() -> TestResult {
+    const FIRST_UNSAFE_I_JSON_INTEGER: u64 = 9_007_199_254_740_992;
+    let audit_authority = keypair(42);
+    let base = audit_epoch_body()?;
+    let mut cases = Vec::new();
+
+    let mut epoch = base.clone();
+    epoch.epoch_index = FIRST_UNSAFE_I_JSON_INTEGER;
+    cases.push(("epoch_index", epoch));
+    let mut epoch = base.clone();
+    epoch.seed_witnessed_at = FIRST_UNSAFE_I_JSON_INTEGER;
+    cases.push(("seed_witnessed_at", epoch));
+    let mut epoch = base.clone();
+    epoch.eligible_snapshot_at = FIRST_UNSAFE_I_JSON_INTEGER;
+    cases.push(("eligible_snapshot_at", epoch));
+    let mut epoch = base.clone();
+    epoch.eligible_listing_count = FIRST_UNSAFE_I_JSON_INTEGER;
+    cases.push(("eligible_listing_count", epoch));
+    let mut epoch = base.clone();
+    epoch.published_rate_bps = FIRST_UNSAFE_I_JSON_INTEGER;
+    cases.push(("published_rate_bps", epoch));
+    let mut epoch = base.clone();
+    epoch.available_budget.units = FIRST_UNSAFE_I_JSON_INTEGER;
+    cases.push(("available_budget", epoch));
+    let mut epoch = base;
+    epoch.committed_at = FIRST_UNSAFE_I_JSON_INTEGER;
+    cases.push(("committed_at", epoch));
+
+    for (field, epoch) in cases {
+        assert_eq!(
+            epoch.validate(),
+            Err(FindingError::IJsonIntegerOutOfRange(field)),
+            "Rust validation must enforce the same I-JSON bound as the schema for {field}"
+        );
+        let value = serde_json::to_value(SignedExportEnvelope::sign(epoch, &audit_authority)?)?;
+        assert_family_schema_rejects("audit-epoch", &value, field)?;
+    }
+    Ok(())
+}
+
+#[test]
 fn audit_report_accounts_for_every_selection() -> TestResult {
     let mut unselected_miss = audit_report_body(HEX64)?;
     unselected_miss.missed_attempts[0].finding_id = HEX64_THIRD.to_string();

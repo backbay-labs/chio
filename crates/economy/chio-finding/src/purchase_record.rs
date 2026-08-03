@@ -142,6 +142,7 @@ pub fn validate_evm_payout_destination(destination: &str) -> Result<(), FindingE
         || !hex
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || hex.bytes().all(|byte| byte == b'0')
     {
         return Err(FindingError::InvalidField("payout_destination"));
     }

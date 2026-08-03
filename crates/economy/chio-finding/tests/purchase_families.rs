@@ -401,6 +401,10 @@ fn payout_destination_canonicalization_prevents_case_slot_aliases() -> TestResul
         record.validate(),
         Err(FindingError::InvalidField("payout_destination"))
     );
+    assert_eq!(
+        canonical_evm_payout_destination("0x0000000000000000000000000000000000000000"),
+        Err(FindingError::InvalidField("payout_destination"))
+    );
     Ok(())
 }
 

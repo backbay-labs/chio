@@ -369,8 +369,18 @@ fn remove_schema_fragment(schema: String, fragment: &str) -> String {
     schema.replacen(fragment, "", 1)
 }
 
+fn finding_challenge_v5_schema() -> String {
+    let (before, reservation_and_after) = FINDING_CHALLENGE_SCHEMA
+        .split_once("CREATE TABLE IF NOT EXISTS dispute_lock_reservations")
+        .expect("v6 reservation schema marker");
+    let (_, after) = reservation_and_after
+        .split_once("CREATE TABLE IF NOT EXISTS dispute_locks")
+        .expect("dispute lock schema marker");
+    format!("{before}CREATE TABLE IF NOT EXISTS dispute_locks{after}")
+}
+
 fn finding_challenge_v4_schema() -> String {
-    FINDING_CHALLENGE_SCHEMA
+    finding_challenge_v5_schema()
         .split_once("-- Immutable local history for the challenge projection.")
         .expect("v5 projection schema marker")
         .0
@@ -378,7 +388,7 @@ fn finding_challenge_v4_schema() -> String {
 }
 
 fn finding_challenge_v3_schema() -> String {
-    let schema = FINDING_CHALLENGE_SCHEMA.replace(
+    let schema = finding_challenge_v5_schema().replace(
         "OLD.state = 'submitted' AND NEW.state IN ('evaluating', 'indeterminate_closed')",
         "OLD.state = 'submitted' AND NEW.state = 'evaluating'",
     );
@@ -402,7 +412,7 @@ fn finding_challenge_v3_schema() -> String {
 }
 
 fn finding_challenge_v2_schema() -> String {
-    let mut schema = FINDING_CHALLENGE_SCHEMA.to_owned();
+    let mut schema = finding_challenge_v5_schema();
     for fragment in [
         r#"    -- The appeal window is derived from the seller-signed terms when the
     -- head enters pending_appeal, then frozen for the rest of the lifecycle.
@@ -519,6 +529,7 @@ fn lock_dispute_bond(
     fixture: &Fixture,
     input: &FindingDisputeLockInput<'_>,
 ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+    fixture.store.reserve_dispute_lock(input, NOW)?;
     fund_lock(fixture, input);
     fixture.store.lock_dispute_bond(input)
 }
@@ -1015,18 +1026,26 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
     let audit = Challenge::audit("audit");
     submit(&fixture, &audit);
     let audit_lock = lock_input("lock-audit", &audit.challenge_id, &owner, &schedule);
-    fund_lock(&fixture, &audit_lock);
     assert!(
         matches!(
-            fixture.store.lock_dispute_bond(&audit_lock),
+            fixture.store.reserve_dispute_lock(&audit_lock, NOW),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
         "a bondless venue audit posts no dispute bond"
     );
 
-    let upheld = Challenge::buyer("alpha");
-    submit(&fixture, &upheld);
-    let unfunded = lock_input("lock-unfunded", &upheld.challenge_id, &owner, &schedule);
+    let unfunded_challenge = Challenge::buyer("unfunded");
+    submit(&fixture, &unfunded_challenge);
+    let unfunded = lock_input(
+        "lock-unfunded",
+        &unfunded_challenge.challenge_id,
+        &owner,
+        &schedule,
+    );
+    fixture
+        .store
+        .reserve_dispute_lock(&unfunded, NOW)
+        .expect("reserve unfunded lock");
     assert!(
         matches!(
             fixture.store.lock_dispute_bond(&unfunded),
@@ -1035,21 +1054,24 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
         ),
         "a caller-provided lock id is not evidence of funded collateral"
     );
+    let wrong_owner_challenge = Challenge::buyer("wrong-owner");
+    submit(&fixture, &wrong_owner_challenge);
     let wrong_owner = hex64('c');
     let wrong_owner_lock = lock_input(
         "lock-wrong-owner",
-        &upheld.challenge_id,
+        &wrong_owner_challenge.challenge_id,
         &wrong_owner,
         &schedule,
     );
-    fund_lock(&fixture, &wrong_owner_lock);
     assert!(
         matches!(
-            fixture.store.lock_dispute_bond(&wrong_owner_lock),
+            fixture.store.reserve_dispute_lock(&wrong_owner_lock, NOW),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
         "a bond owned by anyone but the challenger must reject"
     );
+    let upheld = Challenge::buyer("alpha");
+    submit(&fixture, &upheld);
     let lock = lock_input("lock-alpha", &upheld.challenge_id, &owner, &schedule);
     assert_eq!(
         lock_dispute_bond(&fixture, &lock).expect("lock bond"),
@@ -1096,13 +1118,12 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
     let other = Challenge::buyer("beta");
     submit(&fixture, &other);
     let reused_lock = lock_input("lock-alpha", &other.challenge_id, &owner, &schedule);
-    fund_lock(&fixture, &reused_lock);
     assert!(
         matches!(
-            fixture.store.lock_dispute_bond(&reused_lock),
+            fixture.store.reserve_dispute_lock(&reused_lock, NOW),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
-        "one lock cannot back two challenges"
+        "one lock cannot be reserved for two challenges"
     );
 
     assert!(
@@ -3374,6 +3395,41 @@ fn v2_schema_migrates_to_frozen_appeals_and_required_effects() {
         )
         .expect("read migrated settlement gate");
     assert_eq!(settlement_required, 1);
+    verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
+fn v5_schema_adds_the_pre_funding_dispute_lock_reservation() {
+    let mut connection = Connection::open_in_memory().expect("open legacy database");
+    connection
+        .execute_batch(&finding_challenge_v5_schema())
+        .expect("install v5 challenge schema");
+    assert_eq!(
+        crate::check_schema_version(
+            &connection,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            FINDING_CHALLENGE_SCHEMA_ANCHORS,
+        )
+        .expect("adopt legacy database"),
+        0
+    );
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 5)
+        .expect("stamp previous schema");
+
+    initialize_finding_challenge_schema(&mut connection).expect("migrate v5 schema");
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_CHALLENGE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION);
+    assert!(
+        table_has_column(&connection, "dispute_lock_reservations", "reserved_at")
+            .expect("inspect migrated reservation table")
+    );
     verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
 }
 

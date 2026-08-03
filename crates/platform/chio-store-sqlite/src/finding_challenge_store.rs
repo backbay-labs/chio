@@ -5,14 +5,15 @@
 //! case, the sealed claim snapshot, and the domain-keyed effect intents
 //! fenced before anything leaves this operator.
 //!
-//! Six tables back the lane. `challenges` is the adjudication record:
+//! Seven tables back the lane. `challenges` is the adjudication record:
 //! one authorization branch, one evidence class, one bounded retry, and a
 //! lifecycle that only ever runs
 //! `submitted -> evaluating -> rejected | indeterminate_retryable |
 //! indeterminate_closed | upheld`, with `indeterminate_retryable` the one
-//! state that may re-enter evaluation. `dispute_locks` holds the bond a
-//! buyer submission puts up: exclusive per challenge, disposed exactly
-//! once, and never reused for a second challenge. `liability_heads` is
+//! state that may re-enter evaluation. `dispute_lock_reservations` fences a
+//! lock identity before any external debit, and `dispute_locks` holds the
+//! confirmed bond: exclusive per challenge, disposed exactly once, and
+//! never reused for a second challenge. `liability_heads` is
 //! the money-bearing head: one row per defect on one backed listing,
 //! advanced only by compare-and-set from `open` through
 //! `upheld_pending_claims`, `pending_appeal`, and `finalizing` to
@@ -76,7 +77,7 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 5;
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 6;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "challenges",
     "finding_challenge_projection_commits",
@@ -838,6 +839,90 @@ impl SqliteFindingChallengeStore {
         rows.into_iter().map(challenge_from_raw).collect()
     }
 
+    /// Reserve one buyer submission's dispute-lock identity before any
+    /// external funding is dispatched. The reservation is permanent and
+    /// idempotent for the exact same challenge and terms; reusing either
+    /// the lock id or challenge id with different terms rejects before
+    /// value can move.
+    pub fn reserve_dispute_lock(
+        &self,
+        input: &FindingDisputeLockInput<'_>,
+        reserved_at: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        validate_dispute_lock(input)?;
+        require_trusted_time(reserved_at, "reserved_at")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        if let Some(matches) = dispute_lock_reservation_matches(&transaction, input)? {
+            return if matches {
+                Ok(FindingChallengeWriteOutcome::ExistingSame)
+            } else {
+                Err(FindingChallengeStoreError::Conflict(
+                    "challenge is already bound to a different dispute-lock reservation".to_owned(),
+                ))
+            };
+        }
+        let challenge = load_challenge_tx(&transaction, input.challenge_id)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if challenge.authorization_branch != FindingChallengeAuthorizationBranch::BuyerSubmission {
+            return Err(FindingChallengeStoreError::Conflict(
+                "a venue audit posts no dispute bond".to_owned(),
+            ));
+        }
+        if challenge.challenger_hex.as_deref() != Some(input.owner_hex) {
+            return Err(FindingChallengeStoreError::Conflict(
+                "dispute bond owner is not the challenger the challenge names".to_owned(),
+            ));
+        }
+        if is_terminal_challenge_state(challenge.state) {
+            return Err(FindingChallengeStoreError::Conflict(
+                "a closed challenge cannot reserve a fresh dispute bond".to_owned(),
+            ));
+        }
+        reject_bound_identifier(
+            &transaction,
+            "SELECT challenge_id FROM dispute_lock_reservations WHERE lock_id = ?1",
+            input.lock_id,
+            "dispute lock id",
+        )?;
+        let inserted = transaction
+            .execute(
+                r#"
+                INSERT INTO dispute_lock_reservations (
+                    lock_id, challenge_id, owner_hex,
+                    schedule_envelope_sha256, amount_units, currency,
+                    pool_principal_id, pool_rail_destination,
+                    pool_authority_epoch, expires_at, locked_at, reserved_at
+                ) VALUES (
+                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
+                )
+                "#,
+                params![
+                    input.lock_id,
+                    input.challenge_id,
+                    input.owner_hex,
+                    input.schedule_envelope_sha256,
+                    sqlite_i64(input.amount_units, "amount_units")?,
+                    input.currency,
+                    input.pool_principal_id,
+                    input.pool_rail_destination,
+                    sqlite_i64(input.pool_authority_epoch, "pool_authority_epoch")?,
+                    sqlite_i64(input.expires_at, "expires_at")?,
+                    sqlite_i64(input.locked_at, "locked_at")?,
+                    sqlite_i64(reserved_at, "reserved_at")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        if inserted != 1 {
+            return Err(invariant(
+                "dispute lock reservation insert did not affect one row",
+            ));
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingChallengeWriteOutcome::Inserted)
+    }
+
     /// Lock one buyer submission's dispute bond. The bond is exclusive
     /// per challenge, is pinned to the dispute class, and must be owned by
     /// the challenger the challenge names, so a third party cannot post a
@@ -854,6 +939,11 @@ impl SqliteFindingChallengeStore {
         validate_dispute_lock(input)?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
+        if dispute_lock_reservation_matches(&transaction, input)? != Some(true) {
+            return Err(FindingChallengeStoreError::Conflict(
+                "dispute bond has no exact durable lock reservation".to_owned(),
+            ));
+        }
         let funding_key = derive_dispute_bond_funding_intent_key(input.challenge_id, input.lock_id);
         let funding = load_effect_intent_tx(&transaction, &funding_key)?.ok_or_else(|| {
             FindingChallengeStoreError::Conflict(
@@ -3149,6 +3239,61 @@ fn challenge_matches(
         && existing.challenger_hex.as_deref() == input.challenger_hex
 }
 
+fn dispute_lock_reservation_matches(
+    transaction: &Transaction<'_>,
+    input: &FindingDisputeLockInput<'_>,
+) -> Result<Option<bool>, FindingChallengeStoreError> {
+    let exists = transaction
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM dispute_lock_reservations WHERE challenge_id = ?1
+            )
+            "#,
+            [input.challenge_id],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(sqlite_error)?;
+    if !exists {
+        return Ok(None);
+    }
+    transaction
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM dispute_lock_reservations
+                WHERE challenge_id = ?1
+                  AND lock_id = ?2
+                  AND owner_hex = ?3
+                  AND schedule_envelope_sha256 = ?4
+                  AND amount_units = ?5
+                  AND currency = ?6
+                  AND pool_principal_id = ?7
+                  AND pool_rail_destination = ?8
+                  AND pool_authority_epoch = ?9
+                  AND expires_at = ?10
+                  AND locked_at = ?11
+            )
+            "#,
+            params![
+                input.challenge_id,
+                input.lock_id,
+                input.owner_hex,
+                input.schedule_envelope_sha256,
+                sqlite_i64(input.amount_units, "amount_units")?,
+                input.currency,
+                input.pool_principal_id,
+                input.pool_rail_destination,
+                sqlite_i64(input.pool_authority_epoch, "pool_authority_epoch")?,
+                sqlite_i64(input.expires_at, "expires_at")?,
+                sqlite_i64(input.locked_at, "locked_at")?,
+            ],
+            |row| row.get::<_, bool>(0),
+        )
+        .map(Some)
+        .map_err(sqlite_error)
+}
+
 /// Whether a stored dispute lock is the same bond the caller is locking.
 /// `expires_at` and `locked_at` are both clock-derived, so neither is
 /// part of identity; the durable row keeps the expiry the first lock
@@ -3564,6 +3709,41 @@ pub(crate) fn initialize_finding_challenge_schema(
             .map_err(sqlite_error)?;
         transaction
             .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .map_err(sqlite_error)?;
+        crate::stamp_schema_version(
+            &transaction,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| invariant(error.to_string()))?;
+        verify_finding_challenge_invariants(&transaction)?;
+        return transaction.commit().map_err(sqlite_error);
+    }
+
+    if on_disk == 5 {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+        transaction
+            .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .map_err(sqlite_error)?;
+        transaction
+            .execute(
+                r#"
+                INSERT INTO dispute_lock_reservations (
+                    lock_id, challenge_id, owner_hex,
+                    schedule_envelope_sha256, amount_units, currency,
+                    pool_principal_id, pool_rail_destination,
+                    pool_authority_epoch, expires_at, locked_at, reserved_at
+                )
+                SELECT lock_id, challenge_id, owner_hex,
+                       schedule_envelope_sha256, amount_units, currency,
+                       pool_principal_id, pool_rail_destination,
+                       pool_authority_epoch, expires_at, locked_at, locked_at
+                FROM dispute_locks
+                "#,
+                [],
+            )
             .map_err(sqlite_error)?;
         crate::stamp_schema_version(
             &transaction,

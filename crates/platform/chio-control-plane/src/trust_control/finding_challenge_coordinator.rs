@@ -1136,7 +1136,6 @@ impl FindingChallengeCoordinator {
             });
         };
         let lock = &submission.dispute_lock_ref;
-        let fee_intent_key = self.charge_dispute_fee(&body.challenge_id, submission, now)?;
         let recorded = self
             .challenges
             .get_challenge(&body.challenge_id)
@@ -1145,6 +1144,27 @@ impl FindingChallengeCoordinator {
                 ChallengeCoordinatorError::ChallengeStore("challenge is not recorded".to_owned())
             })?;
         let pool = &admission.body.challenge_administration_pool;
+        let owner_hex = recorded
+            .challenger_hex
+            .as_deref()
+            .ok_or(ChallengeCoordinatorError::DisputeFeePayer)?;
+        let lock_input = FindingDisputeLockInput {
+            lock_id: &lock.lock_id,
+            challenge_id: &body.challenge_id,
+            owner_hex,
+            schedule_envelope_sha256: &lock.fee_schedule_envelope_sha256,
+            amount_units: lock.amount.units,
+            currency: &lock.amount.currency,
+            pool_principal_id: &pool.principal_id,
+            pool_rail_destination: &pool.rail_destination,
+            pool_authority_epoch: pool.authority_epoch,
+            expires_at: lock.expiry,
+            locked_at: recorded.submitted_at,
+        };
+        self.challenges
+            .reserve_dispute_lock(&lock_input, now)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        let fee_intent_key = self.charge_dispute_fee(&body.challenge_id, submission, now)?;
         self.fund_dispute_bond(
             &body.challenge_id,
             submission,
@@ -1153,22 +1173,7 @@ impl FindingChallengeCoordinator {
             now,
         )?;
         self.challenges
-            .lock_dispute_bond(&FindingDisputeLockInput {
-                lock_id: &lock.lock_id,
-                challenge_id: &body.challenge_id,
-                owner_hex: recorded
-                    .challenger_hex
-                    .as_deref()
-                    .ok_or(ChallengeCoordinatorError::DisputeFeePayer)?,
-                schedule_envelope_sha256: &lock.fee_schedule_envelope_sha256,
-                amount_units: lock.amount.units,
-                currency: &lock.amount.currency,
-                pool_principal_id: &pool.principal_id,
-                pool_rail_destination: &pool.rail_destination,
-                pool_authority_epoch: pool.authority_epoch,
-                expires_at: lock.expiry,
-                locked_at: recorded.submitted_at,
-            })
+            .lock_dispute_bond(&lock_input)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         if lock.expiry <= now
             && matches!(

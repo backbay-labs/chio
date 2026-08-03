@@ -78,10 +78,15 @@ END;
 CREATE TABLE IF NOT EXISTS purchase_payout_bindings (
     reservation_id TEXT NOT NULL PRIMARY KEY
         REFERENCES purchase_reservations(reservation_id),
-    destination TEXT NOT NULL CHECK (
-        length(destination) = 42
-        AND substr(destination, 1, 2) = '0x'
-        AND substr(destination, 3) NOT GLOB '*[^0-9A-Fa-f]*'
+    destination TEXT NOT NULL CHECK (length(destination) BETWEEN 1 AND 512),
+    binding_kind TEXT NOT NULL CHECK (binding_kind IN ('evm', 'legacy_terminal')),
+    CHECK (
+        (binding_kind = 'evm'
+         AND length(destination) = 42
+         AND substr(destination, 1, 2) = '0x'
+         AND substr(destination, 3) NOT GLOB '*[^0-9a-f]*'
+         AND destination <> '0x0000000000000000000000000000000000000000')
+        OR binding_kind = 'legacy_terminal'
     )
 );
 

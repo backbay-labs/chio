@@ -3193,6 +3193,39 @@ fn finding_challenge_buyer_submission_charges_the_challenge_administration_pool(
 }
 
 #[test]
+fn finding_challenge_reused_lock_id_is_refused_before_any_second_charge() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let buyer = keypair(41);
+    let first = buyer_challenge(&buyer)?;
+    let (_, raw) = finding_artifact()?;
+    coordinator.submit(&first, &raw, NOW)?;
+    assert_eq!(deployment.rail.charges().len(), 2);
+
+    let mut second_body = first.body.clone();
+    second_body.filed_at = NOW + 1;
+    second_body.challenge_id = compute_challenge_id(&second_body)?;
+    let second = SignedExportEnvelope::sign(second_body, &buyer)?;
+    assert!(matches!(
+        coordinator
+            .submit(&second, &raw, NOW + 1)
+            .expect_err("a second challenge cannot reuse the funded lock id"),
+        ChallengeCoordinatorError::ChallengeStore(ref detail)
+            if detail.contains("dispute lock id")
+    ));
+    assert_eq!(
+        deployment.rail.charges().len(),
+        2,
+        "lock-id uniqueness is durable before either fee or bond dispatch"
+    );
+    assert!(deployment
+        .challenges
+        .get_dispute_lock(&second.body.challenge_id)?
+        .is_none());
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_pool_rotation_preserves_the_admission_pinned_rail() -> TestResult {
     let deployment = deployment()?;
     let mut rotated = market_config();
