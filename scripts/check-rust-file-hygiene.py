@@ -86,11 +86,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "proof dispatch with ClaimSet-routed family verification; capped to current size until split",
         max_lines=3_498,
     ),
-    "crates/products/chio-cli/src/cli/dispatch/finding/unit_tests.rs": allow(
-        "2026-08-31",
-        "finding CLI regression suite; capped to current size until split",
-        max_lines=2_124,
-    ),
     "crates/products/chio-mercury/tests/cli.rs": allow(
         "2026-08-31",
         "existing oversized Mercury CLI integration suite; capped to current size until split",
@@ -325,6 +320,11 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "2026-08-31",
         "kernel construction surface with M8 finding-pool ledger and receipt-flush lock wiring; capped to current size until split",
         max_lines=2_034,
+    ),
+    "crates/kernel/chio-kernel/src/kernel/dispatch.rs": allow(
+        "2026-08-31",
+        "dispatch revalidation with M6 status snapshots and M8 pool-delivery claims; capped to current size until split",
+        max_lines=2_054,
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
