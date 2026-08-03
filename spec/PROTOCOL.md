@@ -1610,7 +1610,8 @@ digest, settled fee terminals
 schedule, event, payer, amount, pool principal, rail destination, and the
 rail evidence digests), the distinct audit-pool and
 challenge-administration-pool principals with rail-tagged destinations and
-authority epochs, the community-fund destination, the status-feed
+authority epochs, the canonical lowercase 20-byte EVM community-fund
+destination, the status-feed
 operator reference, the purchase and failed-delivery authority snapshots,
 and a validity window. The body venue identity and the envelope signer
 MUST both equal the externally configured venue authority. Admission
@@ -1645,7 +1646,8 @@ intent, the authoritative payment operation, buyer and payer keys, the exact
 finding, listing, accepted-bid envelope, venue-admission envelope, and
 seller-backing envelope digests, the accepted price and the realized spend
 in one currency, the encumbrance, the delivery receipt, the payment
-reference, a rail-tagged payout destination, and the record time. Its
+reference, a canonical lowercase 20-byte EVM payout destination (`0x`
+followed by 40 lowercase hexadecimal digits), and the record time. Its
 `purchase_key` is the SHA-256 digest of the domain-separated preimage
 `"chio.finding.purchase.v1\0"` followed by the accepted-bid envelope digest,
 a NUL byte, and the authoritative payment operation identifier. That key is

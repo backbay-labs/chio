@@ -174,7 +174,8 @@
           "$ref": "#/$defs/poolBinding"
         },
         "community_fund_destination": {
-          "$ref": "#/$defs/nonBlankString"
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{40}$"
         },
         "status_feed_operator_ref": {
           "$ref": "#/$defs/nonBlankString"

@@ -168,7 +168,7 @@ const AUDIT_POOL_PRINCIPAL: &str = "pool:audit";
 const AUDIT_POOL_DESTINATION: &str = "rail:venue-ledger:audit-pool";
 const CHALLENGE_POOL_PRINCIPAL: &str = "pool:challenge-admin";
 const CHALLENGE_POOL_DESTINATION: &str = "rail:venue-ledger:challenge-admin";
-const COMMUNITY_FUND_RAIL: &str = "rail:venue-ledger:community-fund";
+const COMMUNITY_FUND_DESTINATION: &str = "0xcccccccccccccccccccccccccccccccccccccccc";
 const BUYER_ONE_DESTINATION: &str = "rail:venue-ledger:buyer-one";
 const BUYER_TWO_DESTINATION: &str = "rail:venue-ledger:buyer-two";
 const CHALLENGER_BOUNTY_DESTINATION: &str = "rail:venue-ledger:challenger-bounty";
@@ -377,7 +377,7 @@ fn market_config() -> FindingMarketConfig {
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: COMMUNITY_FUND_RAIL.to_string(),
+        community_fund_destination: COMMUNITY_FUND_DESTINATION.to_string(),
         status_feed_operator_ref: "status-feed/venue-challenge".to_string(),
         fee_schedule_operator_keys: vec![fee_schedule_keypair().public_key().to_hex()],
     }
@@ -472,6 +472,7 @@ struct PublishedArtifacts {
     fee_schedules: BTreeMap<String, SignedOpenMarketFeeSchedule>,
     audit_rounds: BTreeMap<String, FindingAuditRound>,
     admissions: BTreeMap<(String, String, String), SignedFindingAdmission>,
+    admissions_by_digest: BTreeMap<String, SignedFindingAdmission>,
     market_terms: BTreeMap<String, SignedFindingMarketTerms>,
 }
 
@@ -491,7 +492,9 @@ impl PublishedArtifacts {
         Ok(self)
     }
 
-    fn publish_admission(mut self, admission: &SignedFindingAdmission) -> Self {
+    fn publish_admission(mut self, admission: &SignedFindingAdmission) -> Result<Self, AnyError> {
+        self.admissions_by_digest
+            .insert(signed_envelope_sha256(admission)?, admission.clone());
         self.admissions.insert(
             (
                 admission.body.finding_id.clone(),
@@ -500,7 +503,7 @@ impl PublishedArtifacts {
             ),
             admission.clone(),
         );
-        self
+        Ok(self)
     }
 
     fn publish_terms(mut self, terms: &SignedFindingMarketTerms) -> Result<Self, AnyError> {
@@ -532,6 +535,13 @@ impl FindingFilingResolver for PublishedArtifacts {
                 backing_envelope_sha256.to_owned(),
             ))
             .cloned()
+    }
+
+    fn admission_by_envelope_sha256(
+        &self,
+        envelope_sha256: &str,
+    ) -> Option<SignedFindingAdmission> {
+        self.admissions_by_digest.get(envelope_sha256).cloned()
     }
 
     fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms> {
@@ -597,7 +607,11 @@ fn deployment_publishing_terms_and_rounds(
         NOW,
     )?;
     let allocation_id = consume_allocation(&market, LISTING_ID, &hex64('1'))?;
-    purchases.register_community_fund_destination(&allocation_id, COMMUNITY_FUND_RAIL, NOW)?;
+    purchases.register_community_fund_destination(
+        &allocation_id,
+        COMMUNITY_FUND_DESTINATION,
+        NOW,
+    )?;
     let terms = match extra_terms.first() {
         Some(terms) => terms.clone(),
         None => market_terms(CLAIM_WINDOW_SECS)?,
@@ -620,7 +634,7 @@ fn deployment_publishing_terms_and_rounds(
         .publish_terms(&lapsed_window_terms()?)?
         .publish_terms(&audit_disabled_terms()?)?
         .publish_terms(&narrow_bond_terms()?)?
-        .publish_admission(&admission);
+        .publish_admission(&admission)?;
     for terms in extra_terms {
         filings = filings.publish_terms(terms)?;
     }
@@ -1017,7 +1031,7 @@ fn signed_admission_with_backing(
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: COMMUNITY_FUND_RAIL.to_string(),
+        community_fund_destination: COMMUNITY_FUND_DESTINATION.to_string(),
         status_feed_operator_ref: "status-feed/venue-challenge".to_string(),
         purchase_authority: key_policy(&keypair(16).public_key(), "purchase"),
         failed_delivery_authority: key_policy(&keypair(17).public_key(), "failed-delivery"),
@@ -5068,6 +5082,43 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
 }
 
 #[test]
+fn finding_challenge_purchase_authority_rotation_preserves_historical_standing() -> TestResult {
+    let deployment = deployment()?;
+    let sale = settle_purchase(
+        &deployment,
+        "before-rotation",
+        BUYER_ONE_DESTINATION,
+        60,
+        NOW,
+    )?;
+    let mut rotated = market_config();
+    rotated.purchase = authority_pin(48, "purchase-rotated");
+    let coordinator =
+        deployment.coordinator_under(&rotated, FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let ready = ready_to_uphold_with_open_exposure(&deployment, &coordinator, 100)?;
+    let terms = market_terms(CLAIM_WINDOW_SECS)?;
+    let stake = usd(300);
+    let required = usd(5_000);
+
+    let upheld = uphold_across_claim_window(
+        &coordinator,
+        &terms,
+        &ready.challenge,
+        &ready.outcome,
+        &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+        1,
+        &[sale.purchase_key],
+        &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+        &governance.context(),
+        &governance.sanction_case,
+        NOW + 2,
+    )?;
+    assert_eq!(upheld.sealed.total_realized_spend_units, 60);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_harm_in_another_currency_seals_nothing() -> TestResult {
     // A verified harm carries bare units, so a bond denominated in
     // anything but the currency the sale realized would pay those units
@@ -5230,7 +5281,7 @@ fn finding_challenge_sealed_snapshot_distribution_sums_exactly() -> TestResult {
             .distribution
             .entries
             .iter()
-            .any(|entry| entry.destination == COMMUNITY_FUND_RAIL),
+            .any(|entry| entry.destination == COMMUNITY_FUND_DESTINATION),
         "the remainder goes only to the admission-pinned community fund"
     );
 
@@ -7494,7 +7545,7 @@ fn finding_challenge_digest_mismatch_reaches_an_enforced_sanction() -> TestResul
     assert_eq!(upheld.sealed.distribution.community_fund_units, 300);
     assert_eq!(
         allocation_by_destination(&upheld.sealed.distribution),
-        std::collections::BTreeMap::from([(COMMUNITY_FUND_RAIL.to_string(), 300)])
+        std::collections::BTreeMap::from([(COMMUNITY_FUND_DESTINATION.to_string(), 300)])
     );
 
     let authorized = impair_after_appeal(
@@ -7606,7 +7657,7 @@ fn finding_challenge_evidence_invalid_reaches_an_enforced_sanction() -> TestResu
         std::collections::BTreeMap::from([
             (buyer_destination(41), 50),
             (buyer_destination(42), 50),
-            (COMMUNITY_FUND_RAIL.to_string(), 400),
+            (COMMUNITY_FUND_DESTINATION.to_string(), 400),
         ]),
         "each harmed buyer takes exactly its pro rata share and the remainder goes to the fund"
     );
@@ -7714,7 +7765,7 @@ fn finding_challenge_replay_contradiction_reaches_an_enforced_sanction() -> Test
         allocation_by_destination(&upheld.sealed.distribution),
         std::collections::BTreeMap::from([
             (buyer_destination(41), 60),
-            (COMMUNITY_FUND_RAIL.to_string(), 340),
+            (COMMUNITY_FUND_DESTINATION.to_string(), 340),
         ])
     );
 

@@ -435,7 +435,7 @@ fn enforcement_body() -> Result<FindingChallengeEnforcement, FindingError> {
                 amount: usd(90_000),
             },
             FindingEnforcementDestination {
-                destination: "rail:venue-ledger:community-fund".to_string(),
+                destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
                 amount: usd(30_000),
             },
         ],

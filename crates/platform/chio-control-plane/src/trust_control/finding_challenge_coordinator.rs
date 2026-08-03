@@ -571,6 +571,12 @@ pub trait FindingFilingResolver: Send + Sync {
         backing_envelope_sha256: &str,
     ) -> Option<SignedFindingAdmission>;
 
+    /// The retained admission envelope named by a historical purchase
+    /// record. Purchase-authority rotation is resolved from this exact
+    /// venue-signed snapshot rather than from the deployment's current key.
+    fn admission_by_envelope_sha256(&self, envelope_sha256: &str)
+        -> Option<SignedFindingAdmission>;
+
     /// The seller-signed market terms this venue admitted under this
     /// envelope digest, or `None` when the venue admitted no such terms.
     fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms>;
@@ -584,7 +590,6 @@ struct ChallengeRolePins {
     audit_randomness_witness: FindingAuthorityPin,
     governance_authority: FindingAuthorityPin,
     authority_status: FindingAuthorityPin,
-    purchase_authority: FindingAuthorityPin,
     settlement_observer: FindingAuthorityPin,
     settlement_finality_requirement: FindingFinalityRequirement,
 }
@@ -904,7 +909,6 @@ impl FindingChallengeCoordinator {
                 audit_randomness_witness: config.audit_randomness_witness.clone(),
                 governance_authority: config.governance_root.clone(),
                 authority_status: config.authority_status.clone(),
-                purchase_authority: config.purchase.clone(),
                 settlement_observer: config.settlement_observer.clone(),
                 settlement_finality_requirement: config.settlement_finality_requirement,
             },
@@ -1617,7 +1621,7 @@ impl FindingChallengeCoordinator {
         if supplied_claims != authoritative_claims {
             return Err(ChallengeCoordinatorError::ClaimSetMismatch);
         }
-        self.require_purchase_authority_for_candidates(&authoritative_claims, now)?;
+        self.require_purchase_authority_for_candidates(identity, &authoritative_claims, now)?;
         self.require_impairable_collateral(collateral, now)?;
         let signed_calculation = outcome
             .body
@@ -1675,7 +1679,7 @@ impl FindingChallengeCoordinator {
         if supplied_claims != authoritative_claims {
             return Err(ChallengeCoordinatorError::ClaimSetMismatch);
         }
-        self.require_purchase_authority_for_candidates(&authoritative_claims, now)?;
+        self.require_purchase_authority_for_candidates(identity, &authoritative_claims, now)?;
         // The deadline the head froze when the window opened governs, not
         // the one this call just derived: a retry reads the instant harmed
         // buyers were promised rather than one measured from its own
@@ -4509,15 +4513,7 @@ impl FindingChallengeCoordinator {
                 .map_err(|error| {
                     ChallengeCoordinatorError::ArtifactValidation(error.to_string())
                 })?;
-            let purchase_authority = self.require_live_role(
-                &self.pins.purchase_authority,
-                signed.body.recorded_at,
-                now,
-                "purchase",
-            )?;
-            verify_signed_purchase_record(&signed, &purchase_authority).map_err(|error| {
-                ChallengeCoordinatorError::ArtifactValidation(error.to_string())
-            })?;
+            self.verify_purchase_record_from_retained_admission(identity, &signed, now)?;
             let record: &FindingPurchaseRecord = &signed.body;
             if record.finding_id != identity.finding_id
                 || record.listing_id != identity.listing_id
@@ -4602,6 +4598,7 @@ impl FindingChallengeCoordinator {
     /// and payout checks still run while sealing.
     fn require_purchase_authority_for_candidates(
         &self,
+        identity: &FindingLiabilityIdentity<'_>,
         claim_candidates: &[String],
         now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
@@ -4620,17 +4617,65 @@ impl FindingChallengeCoordinator {
                 .map_err(|error| {
                     ChallengeCoordinatorError::ArtifactValidation(error.to_string())
                 })?;
-            let purchase_authority = self.require_live_role(
-                &self.pins.purchase_authority,
-                signed.body.recorded_at,
-                now,
-                "purchase",
-            )?;
-            verify_signed_purchase_record(&signed, &purchase_authority).map_err(|error| {
-                ChallengeCoordinatorError::ArtifactValidation(error.to_string())
-            })?;
+            self.verify_purchase_record_from_retained_admission(identity, &signed, now)?;
         }
         Ok(())
+    }
+
+    /// Verify a historical purchase under the authority policy the venue
+    /// authenticated for that exact sale. A later deployment rotation does
+    /// not invalidate an earlier record, while the retained policy's own
+    /// validity window and independently signed revocation status still
+    /// fail closed.
+    fn verify_purchase_record_from_retained_admission(
+        &self,
+        identity: &FindingLiabilityIdentity<'_>,
+        signed: &SignedFindingPurchaseRecord,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let record = &signed.body;
+        let admission = self
+            .filings
+            .admission_by_envelope_sha256(&record.venue_admission_envelope_sha256)
+            .ok_or(ChallengeCoordinatorError::UnknownAdmission)?;
+        if self.envelope_digest(&admission)? != record.venue_admission_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::AdmissionBinding(
+                "venue_admission_envelope_sha256",
+            ));
+        }
+        let venue_authority = self.require_live_role(
+            &self.pins.venue_authority,
+            admission.body.issued_at,
+            now,
+            "venue",
+        )?;
+        verify_signed_admission(&admission, &venue_authority, &self.venue_id)
+            .map_err(|error| ChallengeCoordinatorError::AdmissionEnvelope(error.to_string()))?;
+        if admission.body.finding_id != record.finding_id
+            || admission.body.listing_id != record.listing_id
+            || admission.body.backing_allocation_id != identity.allocation_id
+            || admission.body.backing_envelope_sha256 != record.seller_backing_envelope_sha256
+        {
+            return Err(ChallengeCoordinatorError::AdmissionBinding(
+                "purchase_record",
+            ));
+        }
+        let policy = &admission.body.purchase_authority;
+        policy
+            .validate("purchase_authority")
+            .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
+        let retained_pin = FindingAuthorityPin {
+            authority_id: policy.authority_id.clone(),
+            key_hex: policy.key.to_hex(),
+            key_epoch: policy.key_epoch,
+            valid_from: policy.valid_from,
+            valid_until: policy.valid_until,
+            revocation_status_ref: policy.revocation_status_ref.clone(),
+        };
+        let purchase_authority =
+            self.require_live_role(&retained_pin, record.recorded_at, now, "retained purchase")?;
+        verify_signed_purchase_record(signed, &purchase_authority)
+            .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))
     }
 
     /// Require the carried accounting to be exactly what the store

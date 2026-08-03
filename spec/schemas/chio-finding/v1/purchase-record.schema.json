@@ -83,7 +83,8 @@
           "$ref": "#/$defs/boundedIdentifier"
         },
         "payout_destination": {
-          "$ref": "#/$defs/boundedIdentifier"
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{40}$"
         },
         "recorded_at": {
           "$ref": "#/$defs/iJsonU64Nonzero"

@@ -197,11 +197,14 @@ impl FindingMarketConfig {
                     .to_string(),
             ));
         }
-        if self.community_fund_destination.trim().is_empty() {
-            return Err(CliError::cli_other_error(
-                "finding-market community fund destination must be non-empty".to_string(),
-            ));
-        }
+        chio_finding::validate_evm_payout_destination(&self.community_fund_destination).map_err(
+            |_| {
+                CliError::cli_other_error(
+                    "finding-market community fund destination must be a canonical EVM address"
+                        .to_string(),
+                )
+            },
+        )?;
         if self.status_feed_operator_ref.trim().is_empty() {
             return Err(CliError::cli_other_error(
                 "finding-market status feed operator ref must be non-empty".to_string(),

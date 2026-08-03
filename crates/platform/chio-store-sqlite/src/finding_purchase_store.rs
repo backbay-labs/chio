@@ -64,13 +64,15 @@ use crate::admission_operation_store::verify_active_owner;
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-/// Revision 5 separates the buyer-signed payout address from agent identity;
+/// Revision 6 makes every payout slot an EVM destination and reserves a
+/// buyer destination before funds can move; revision 5 separated the
+/// buyer-signed payout address from agent identity;
 /// revision 4 gave community-fund and buyer payout slots their distinct
 /// durable shapes. The schema batch is a sequence of idempotent guards, so
 /// a revision-1 database adopts the new tables on its next open; a
 /// revision-2 database also carries its listing-keyed blocks across in
 /// [`carry_listing_sales_blocks_across`].
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 5;
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 6;
 /// Revision that introduced the listing-keyed, never-lifted sales block.
 const FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION: i32 = 2;
 /// Name the listing-keyed block table is parked under while the episode
@@ -387,6 +389,18 @@ impl SqliteFindingPurchaseStore {
         })
     }
 
+    /// Commit an irreversible settled-purchase claim and its complete
+    /// purchase projection under the authority-wide rollback anchor.
+    fn commit_claim_write(
+        &self,
+        transaction: Transaction<'_>,
+    ) -> Result<(), FindingPurchaseStoreError> {
+        self.serving_owner
+            .append_finding_challenge_projection_if_changed(&transaction)
+            .map_err(|error| FindingPurchaseStoreError::Unavailable(error.to_string()))?;
+        self.commit_write(transaction)
+    }
+
     fn sync_after_write(&self, connection: &Connection) -> Result<(), FindingPurchaseStoreError> {
         self.serving_owner
             .sync_authority_anchor(connection)
@@ -557,6 +571,16 @@ impl SqliteFindingPurchaseStore {
         if inserted != 1 {
             return Err(invariant("reservation insert did not affect one row"));
         }
+        // Claim an immutable payout slot in the same transaction that
+        // encumbers seller exposure. A purchase that cannot ever be paid
+        // out therefore rejects before payment dispatch, rather than
+        // discovering slot exhaustion after a durable capture.
+        admit_payout_destination_tx(
+            &transaction,
+            input.allocation_id,
+            input.payout_destination,
+            input.created_at,
+        )?;
         let payout_bound = transaction
             .execute(
                 r#"
@@ -719,8 +743,9 @@ impl SqliteFindingPurchaseStore {
     }
 
     /// Settle one purchase. In one immediate transaction this closes the
-    /// slot against the record, admits the payout destination against the
-    /// reservation's durable allocation, moves the reservation
+    /// slot against the record, rechecks the payout destination reserved
+    /// before payment against the reservation's durable allocation, moves
+    /// the reservation
     /// `slot_reserved` to `consumed`, retains the exposure encumbrance
     /// through `retention_expires_at`, and inserts the retained purchase
     /// record.
@@ -812,12 +837,17 @@ impl SqliteFindingPurchaseStore {
             input.purchase_key,
             "purchase key",
         )?;
-        admit_payout_destination_tx(
+        if load_destination_tx(
             &transaction,
             &encumbrance.allocation_id,
             input.payout_destination,
-            input.now,
-        )?;
+        )?
+        .is_none()
+        {
+            return Err(invariant(
+                "delivery payout destination lost its pre-payment slot",
+            ));
+        }
         close_reserved_slot_tx(
             &transaction,
             input.reservation_id,
@@ -869,7 +899,7 @@ impl SqliteFindingPurchaseStore {
         if inserted != 1 {
             return Err(invariant("purchase record insert did not affect one row"));
         }
-        self.commit_write(transaction)?;
+        self.commit_claim_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPurchaseWriteOutcome::Inserted)
     }
@@ -1210,7 +1240,7 @@ impl SqliteFindingPurchaseStore {
         admitted_at: u64,
     ) -> Result<FindingPayoutDestinationAdmission, FindingPurchaseStoreError> {
         require_hex64(allocation_id, "allocation_id")?;
-        require_rail_destination(destination)?;
+        require_evm_payout_destination(destination)?;
         require_trusted_time(admitted_at, "admitted_at")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
@@ -1248,7 +1278,7 @@ impl SqliteFindingPurchaseStore {
             COMMUNITY_FUND_SLOT_INDEX,
             admitted_at,
         )?;
-        self.commit_write(transaction)?;
+        self.commit_claim_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPayoutDestinationAdmission {
             slot_index: COMMUNITY_FUND_SLOT_INDEX,
@@ -2485,8 +2515,8 @@ fn carry_listing_sales_blocks_across(
     Ok(())
 }
 
-/// Park the rail-only payout table so the schema batch can create the
-/// slot-aware definition under the canonical name.
+/// Park an earlier payout table so the schema batch can create the
+/// all-EVM slot-aware definition under the canonical name.
 ///
 /// The migration is gated by shape rather than only by revision because
 /// unstamped legacy databases also report revision zero. Dropping the
@@ -2510,8 +2540,9 @@ fn park_rail_only_payout_destinations(
     let Some(definition) = definition else {
         return Ok(());
     };
-    if definition.contains("slot_index = 0")
+    if definition.contains("slot_index BETWEEN 0 AND 15")
         && definition.contains("substr(destination, 1, 2) = '0x'")
+        && definition.contains("substr(destination, 3) NOT GLOB '*[^0-9a-f]*'")
     {
         return Ok(());
     }
@@ -2531,10 +2562,10 @@ fn park_rail_only_payout_destinations(
 /// Copy every parked destination through the slot-aware constraints and
 /// drop the legacy table only after every row is present.
 ///
-/// Existing community destinations remain valid. A rail-tagged buyer row
-/// cannot be translated into an EVM destination without changing its
-/// authority, so the plain `INSERT` rejects it and rolls the entire schema
-/// transaction back rather than silently dropping or rewriting it.
+/// A rail-tagged legacy row cannot be translated into an EVM destination
+/// without changing its authority, so the plain `INSERT` rejects it and
+/// rolls the entire schema transaction back rather than silently dropping
+/// or rewriting it.
 fn carry_payout_destinations_across(
     transaction: &Transaction<'_>,
 ) -> Result<(), FindingPurchaseStoreError> {
@@ -2597,7 +2628,7 @@ fn carry_legacy_reservation_payout_bindings(
         .execute(
             r#"
             INSERT OR IGNORE INTO purchase_payout_bindings (reservation_id, destination)
-            SELECT reservation_id, agent_id FROM purchase_reservations
+            SELECT reservation_id, lower(agent_id) FROM purchase_reservations
             WHERE length(agent_id) = 42
               AND substr(agent_id, 1, 2) = '0x'
               AND substr(agent_id, 3) NOT GLOB '*[^0-9A-Fa-f]*'
@@ -2736,17 +2767,6 @@ fn require_identifier(value: &str, field: &'static str) -> Result<(), FindingPur
         return Err(invariant(format!("{field} byte length is out of bounds")));
     }
     Ok(())
-}
-
-/// The community-fund destination is rail-tagged: a nonempty rail prefix,
-/// a colon, and a nonempty account. An untagged destination cannot be
-/// routed, so it is refused rather than stored.
-fn require_rail_destination(value: &str) -> Result<(), FindingPurchaseStoreError> {
-    require_identifier(value, "destination")?;
-    match value.split_once(':') {
-        Some((rail, account)) if !rail.is_empty() && !account.is_empty() => Ok(()),
-        _ => Err(invariant("payout destination is not rail-tagged")),
-    }
 }
 
 fn require_evm_payout_destination(value: &str) -> Result<(), FindingPurchaseStoreError> {

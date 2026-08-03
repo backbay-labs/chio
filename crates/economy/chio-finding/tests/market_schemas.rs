@@ -114,9 +114,9 @@ const GOLDEN_REPORT_ID: &str = "fca3e0c0e15921c334ab431c40010ecc8e881423c529b297
 const GOLDEN_REPORT_ENVELOPE_SHA256: &str =
     "642276851f5c9ded9cefbfc701ecd95a1c7668ad58e929277ce94070ab5e16a5";
 const GOLDEN_ADMISSION_ID: &str =
-    "d54f98cf25f7e4ae5812ad1a38ee4b25fe0d007014d09e99c0d7d6f70ef883be";
+    "5953afeb3fefbb921a3b61db01a5c494f4a85f30da87ca6a607c517b928fe3de";
 const GOLDEN_ADMISSION_ENVELOPE_SHA256: &str =
-    "8a1e718a55f7500ab56c62f7f806e2d6ca4b4beb6eceebfa39e5b2d69d32fd5c";
+    "4c60d1d3d219be04bd98ca30e2b8e519391e468225d2087c3ba95872ea955d4b";
 const GOLDEN_RECIPE_SHA256: &str =
     "9ac1ef84a974f386b07ced3f0284da47744770e7ea119041c06b837c95e8ddf7";
 
@@ -449,7 +449,7 @@ fn admission_body(venue: &Keypair) -> Result<FindingAdmission, FindingError> {
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: "rail:venue-ledger:community-fund".to_string(),
+        community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
         status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
         purchase_authority: key_policy(16, "purchase"),
         failed_delivery_authority: key_policy(17, "failed-delivery"),

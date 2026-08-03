@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::envelope::require_ed25519;
 use crate::profile::FindingAuthorityKeyPolicy;
+use crate::purchase_record::validate_evm_payout_destination;
 use crate::validate::{
     require_bounded_id, require_currency, require_hex64, require_max_items, require_nonzero,
     require_window, FindingError, MAX_FINDING_ARTIFACT_ITEMS,
@@ -233,6 +234,8 @@ impl FindingAdmission {
             &self.community_fund_destination,
             "community_fund_destination",
         )?;
+        validate_evm_payout_destination(&self.community_fund_destination)
+            .map_err(|_| FindingError::InvalidField("community_fund_destination"))?;
         require_bounded_id(&self.status_feed_operator_ref, "status_feed_operator_ref")?;
         self.purchase_authority.validate("purchase_authority")?;
         self.failed_delivery_authority

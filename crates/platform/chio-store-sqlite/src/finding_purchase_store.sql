@@ -286,16 +286,10 @@ CREATE TABLE IF NOT EXISTS payout_destinations (
     admitted_at INTEGER NOT NULL CHECK (admitted_at > 0),
     PRIMARY KEY (allocation_id, destination),
     CHECK (
-        (
-            slot_index = 0
-            AND length(destination) BETWEEN 3 AND 512
-            AND destination GLOB '?*:?*'
-        ) OR (
-            slot_index BETWEEN 1 AND 15
-            AND length(destination) = 42
-            AND substr(destination, 1, 2) = '0x'
-            AND substr(destination, 3) NOT GLOB '*[^0-9A-Fa-f]*'
-        )
+        slot_index BETWEEN 0 AND 15
+        AND length(destination) = 42
+        AND substr(destination, 1, 2) = '0x'
+        AND substr(destination, 3) NOT GLOB '*[^0-9a-f]*'
     )
 );
 

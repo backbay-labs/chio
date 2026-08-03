@@ -138,10 +138,30 @@ pub fn validate_evm_payout_destination(destination: &str) -> Result<(), FindingE
     let Some(hex) = destination.strip_prefix("0x") else {
         return Err(FindingError::InvalidField("payout_destination"));
     };
-    if hex.len() != 40 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if hex.len() != 40
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         return Err(FindingError::InvalidField("payout_destination"));
     }
     Ok(())
+}
+
+/// Canonicalize a buyer-signed EVM destination before it occupies a
+/// bounded payout slot. Address comparison on the enforcement rail is
+/// case-insensitive, while the durable store is byte-keyed, so retaining
+/// lowercase prevents one address consuming several immutable slots.
+pub fn canonical_evm_payout_destination(destination: &str) -> Result<String, FindingError> {
+    let Some(hex) = destination.strip_prefix("0x") else {
+        return Err(FindingError::InvalidField("payout_destination"));
+    };
+    if hex.len() != 40 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(FindingError::InvalidField("payout_destination"));
+    }
+    let canonical = format!("0x{}", hex.to_ascii_lowercase());
+    validate_evm_payout_destination(&canonical)?;
+    Ok(canonical)
 }
 
 /// Derive the purchase key: sha256 over the domain-separated preimage of the

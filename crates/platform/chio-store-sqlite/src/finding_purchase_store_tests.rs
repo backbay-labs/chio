@@ -463,6 +463,57 @@ fn open_reservation_inserts_replays_and_rejects_conflicts() {
 }
 
 #[test]
+fn purchase_writes_advance_the_rollback_protected_market_projection() {
+    let fixture = fixture();
+    let purchase = Purchase::new("rollback-projection", LISTING_ID, 100);
+    open_reservation(&fixture, &purchase);
+    fixture
+        .store
+        .reserve_slot(&purchase.reservation_id, NOW + 1)
+        .expect("reserve slot");
+    let bytes = record_bytes("rollback-projection");
+    let record_sha256 = chio_core::sha256_hex(&bytes);
+    fixture
+        .store
+        .close_slot_with_record(&FindingPurchaseDeliveryInput {
+            reservation_id: &purchase.reservation_id,
+            purchase_key: &hex64('d'),
+            record_json: &bytes,
+            record_sha256: &record_sha256,
+            delivery_receipt_id: "receipt-rollback-projection",
+            payout_destination: PAYOUT_DESTINATION,
+            retention_expires_at: NOW + 100_000,
+            now: NOW + 2,
+        })
+        .expect("settle purchase");
+    let pending = Purchase::new("pending-after-settlement", LISTING_ID, 25);
+    let pending_destination = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    let mut pending_input = pending.input(&fixture.allocation_id);
+    pending_input.payout_destination = pending_destination;
+    fixture
+        .store
+        .open_reservation(&pending_input)
+        .expect("open a later pending reservation");
+
+    let connection = fixture.store.connection.lock().expect("purchase lock");
+    let (local, global): (i64, i64) = connection
+        .query_row(
+            r#"
+            SELECT
+                (SELECT COUNT(*) FROM finding_challenge_projection_commits),
+                (SELECT COUNT(*) FROM authority_global_commits
+                 WHERE projection_kind = 'finding_challenge'
+                   AND projection_key = 'market')
+            "#,
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read cognition-market projection coverage");
+    assert_eq!(local, 1, "the settled claim appends one local snapshot");
+    assert_eq!(global, 1, "the settled claim appends one global reference");
+}
+
+#[test]
 fn open_reservation_requires_a_matching_active_admission() {
     let fixture = fixture();
     let mut mismatched = Purchase::new("mismatched-admission", LISTING_ID, 10);
@@ -807,11 +858,13 @@ fn close_slot_with_record_settles_atomically_and_replays() {
         ),
         "record bytes that do not match the claimed digest must reject"
     );
-    assert!(fixture
-        .store
-        .list_payout_destinations(&fixture.allocation_id)
-        .expect("destinations after rejected close")
-        .is_empty());
+    assert!(
+        fixture
+            .store
+            .list_payout_destinations(&fixture.allocation_id)
+            .expect("destinations after rejected close")
+            == vec![(1, PAYOUT_DESTINATION.to_owned())]
+    );
 
     assert_eq!(
         fixture
@@ -1940,7 +1993,7 @@ fn rewind_to_rail_only_payout_destinations(connection: &Connection) {
 }
 
 #[test]
-fn rail_only_community_destination_carries_across_to_slot_aware_schema() {
+fn rail_only_community_destination_aborts_all_evm_schema_migration() {
     let mut connection = Connection::open_in_memory().expect("in-memory database");
     connection
         .execute_batch(FINDING_PURCHASE_SCHEMA)
@@ -1965,17 +2018,18 @@ fn rail_only_community_destination_carries_across_to_slot_aware_schema() {
     crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 3)
         .expect("stamp the earlier revision");
 
-    initialize_finding_purchase_schema(&mut connection).expect("migrate rail-only payout table");
-
+    assert!(
+        initialize_finding_purchase_schema(&mut connection).is_err(),
+        "a rail identity cannot be invented into an EVM address"
+    );
     let destination: String = connection
         .query_row(
             "SELECT destination FROM payout_destinations WHERE slot_index = 0",
             [],
             |row| row.get(0),
         )
-        .expect("read migrated community destination");
+        .expect("read rolled-back community destination");
     assert_eq!(destination, "rail:venue-ledger:community-fund");
-    initialize_finding_purchase_schema(&mut connection).expect("reopen at the current revision");
 }
 
 #[test]
@@ -2094,7 +2148,7 @@ fn revision_four_evm_agent_value_moves_to_separate_payout_binding() {
         )
         .expect("read migrated payout binding");
     assert_eq!(binding, destination);
-    initialize_finding_purchase_schema(&mut connection).expect("reopen at revision five");
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at revision six");
 }
 
 #[test]
@@ -2134,7 +2188,7 @@ fn revision_four_opaque_agent_id_cannot_invent_a_payout_binding() {
 fn payout_destination_slots_are_bounded_and_idempotent() {
     let fixture = fixture();
     let allocation_id = &fixture.allocation_id;
-    let community = "rail:venue-ledger:community-fund";
+    let community = "0xcccccccccccccccccccccccccccccccccccccccc";
     let admitted = fixture
         .store
         .register_community_fund_destination(allocation_id, community, NOW)
@@ -2155,7 +2209,7 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
         matches!(
             fixture.store.register_community_fund_destination(
                 allocation_id,
-                "rail:venue-ledger:other-fund",
+                "0xdddddddddddddddddddddddddddddddddddddddd",
                 NOW + 2
             ),
             Err(FindingPurchaseStoreError::Conflict(_))
@@ -2202,6 +2256,21 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
         ),
         "the sixteenth distinct destination has no slot left"
     );
+    let blocked_purchase = Purchase::new("slot-exhausted", LISTING_ID, 100);
+    let mut blocked_input = blocked_purchase.input(allocation_id);
+    blocked_input.payout_destination = "0x0000000000000000000000000000000000000010";
+    assert!(
+        matches!(
+            fixture.store.open_reservation(&blocked_input),
+            Err(FindingPurchaseStoreError::DestinationSlotsExhausted(_))
+        ),
+        "slot exhaustion rejects before a reservation or exposure is committed"
+    );
+    assert!(fixture
+        .store
+        .get_reservation(&blocked_purchase.reservation_id)
+        .expect("read rejected reservation")
+        .is_none());
     let listed = fixture
         .store
         .list_payout_destinations(allocation_id)

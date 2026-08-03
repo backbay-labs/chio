@@ -346,7 +346,7 @@ pub(crate) fn append_finding_challenge_projection_if_changed(
     transaction: &Transaction<'_>,
     fence: &StoreMutationFence,
 ) -> Result<bool, SqliteServingOwnerError> {
-    let snapshot_digest = finding_challenge_snapshot_digest(transaction)?;
+    let snapshot_digest = finding_market_snapshot_digest(transaction)?;
     let latest = transaction
         .query_row(
             r#"
@@ -1200,7 +1200,7 @@ fn baseline_projection_digest(connection: &Connection) -> Result<String, SqliteS
     baseline_projection_digest_for_tables(connection, table_names(connection, false)?)
 }
 
-fn finding_challenge_snapshot_digest(
+fn finding_challenge_snapshot_digest_v1(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     let tables = [
@@ -1218,6 +1218,61 @@ fn finding_challenge_snapshot_digest(
     }
     digest(&AuthoritySnapshot {
         format: "chio.sqlite-finding-challenge-snapshot.v1",
+        tables: snapshots,
+    })
+}
+
+/// Current rollback-protected cognition-market snapshot. Purchase claims
+/// and every durable relation used to admit them share the challenge
+/// projection, so restoring a database from before a settled purchase
+/// cannot silently shrink a later sealed distribution.
+fn finding_market_snapshot_digest(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    let challenge_tables = [
+        "challenges",
+        "dispute_locks",
+        "liability_heads",
+        "governance_case_index",
+        "claim_snapshots",
+        "effect_intents",
+        "listing_sales_blocks",
+    ];
+    let mut snapshots = Vec::with_capacity(13);
+    for table in challenge_tables {
+        snapshots.push(table_snapshot(connection, table, None)?);
+    }
+    snapshots.push(table_snapshot(connection, "purchase_records", None)?);
+    for table in [
+        "purchase_reservations",
+        "purchase_payout_bindings",
+        "seller_exposure_encumbrances",
+        "pending_purchase_slots",
+    ] {
+        snapshots.push(table_snapshot_where(
+            connection,
+            table,
+            "reservation_id IN (SELECT reservation_id FROM purchase_records)",
+        )?);
+    }
+    snapshots.push(table_snapshot_where(
+        connection,
+        "payout_destinations",
+        r#"
+        slot_index = 0 OR EXISTS (
+            SELECT 1
+            FROM purchase_records AS records
+            JOIN purchase_payout_bindings AS bindings
+              ON bindings.reservation_id = records.reservation_id
+            JOIN seller_exposure_encumbrances AS encumbrances
+              ON encumbrances.reservation_id = records.reservation_id
+            WHERE encumbrances.allocation_id = payout_destinations.allocation_id
+              AND bindings.destination = payout_destinations.destination
+        )
+        "#,
+    )?);
+    digest(&AuthoritySnapshot {
+        format: "chio.sqlite-finding-market-snapshot.v2",
         tables: snapshots,
     })
 }
@@ -1716,13 +1771,17 @@ fn verify_finding_challenge_projection_coverage(
             OR EXISTS(SELECT 1 FROM claim_snapshots)
             OR EXISTS(SELECT 1 FROM effect_intents)
             OR EXISTS(SELECT 1 FROM listing_sales_blocks)
+            OR EXISTS(SELECT 1 FROM purchase_records)
+            OR EXISTS(SELECT 1 FROM payout_destinations WHERE slot_index = 0)
         "#,
         [],
         |row| row.get::<_, bool>(0),
     )?;
     match rows.last() {
         Some((_, _, snapshot_digest, _, _)) => {
-            if finding_challenge_snapshot_digest(connection)? != *snapshot_digest {
+            let current_market = finding_market_snapshot_digest(connection)?;
+            let current_legacy = finding_challenge_snapshot_digest_v1(connection)?;
+            if current_market != *snapshot_digest && current_legacy != *snapshot_digest {
                 return Err(invalid(
                     "finding challenge projection does not cover current state",
                 ));
@@ -1887,6 +1946,47 @@ fn table_snapshot(
         Some((_, value)) => statement.query([value])?,
         None => statement.query([])?,
     };
+    let mut row_digests = Vec::new();
+    while let Some(row) = rows.next()? {
+        let mut values = Vec::with_capacity(columns.len());
+        for index in 0..columns.len() {
+            values.push(snapshot_value(row.get_ref(index)?));
+        }
+        row_digests.push(digest(&values)?);
+    }
+    Ok(TableSnapshot {
+        name: table.to_string(),
+        columns,
+        row_digests,
+    })
+}
+
+/// Snapshot one table under a fixed internal predicate. Callers supply
+/// only static predicates defined beside a projection, never external
+/// input; table identifiers are still quoted and rows retain the same
+/// canonical full-column ordering as an unfiltered snapshot.
+fn table_snapshot_where(
+    connection: &Connection,
+    table: &str,
+    predicate: &'static str,
+) -> Result<TableSnapshot, SqliteServingOwnerError> {
+    let table_identifier = quote_identifier(table);
+    let probe = connection.prepare(&format!("SELECT * FROM {table_identifier} LIMIT 0"))?;
+    let columns = probe
+        .column_names()
+        .into_iter()
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    drop(probe);
+    let order = columns
+        .iter()
+        .map(|column| quote_identifier(column))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut statement = connection.prepare(&format!(
+        "SELECT * FROM {table_identifier} WHERE {predicate} ORDER BY {order}"
+    ))?;
+    let mut rows = statement.query([])?;
     let mut row_digests = Vec::new();
     while let Some(row) = rows.next()? {
         let mut values = Vec::with_capacity(columns.len());

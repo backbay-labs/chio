@@ -369,7 +369,7 @@ mod tests {
             open_per_sale_encumbrances: 0,
             live_allocated_collateral: u64::MAX,
             listing_required_amount: required,
-            community_fund_destination: "rail:community",
+            community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc",
         }
     }
 

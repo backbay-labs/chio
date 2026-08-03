@@ -276,7 +276,7 @@ impl FindingPurchaseCoordinator {
                 "signed bid omits payout_destination".to_owned(),
             )
         })?;
-        validate_evm_payout_destination(payout_destination)
+        let payout_destination = chio_finding::canonical_evm_payout_destination(payout_destination)
             .map_err(|error| PurchaseCoordinatorError::PayoutDestination(error.to_string()))?;
         let payer = &ask.body.token_offer.subject;
         if bid.signer_key != *payer {
@@ -323,7 +323,7 @@ impl FindingPurchaseCoordinator {
             if policy.key != signing_key {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
             }
-            if now < policy.valid_from || now > policy.valid_until {
+            if now < policy.valid_from || now >= policy.valid_until {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
         }
@@ -476,7 +476,7 @@ impl FindingPurchaseCoordinator {
             authoritative_payment_operation_id: &derive_payment_operation_id(&reservation_id),
             payer_hex: &payer_hex,
             agent_id: &ask.body.agent_id,
-            payout_destination,
+            payout_destination: &payout_destination,
             finding_id: &admission.body.finding_id,
             listing_id: &ask.body.listing_id,
             bid_envelope_sha256: &bid_envelope_sha256,
