@@ -23,10 +23,11 @@ use std::collections::BTreeSet;
 use chio_core_types::crypto::PublicKey;
 use chio_core_types::hashing::sha256;
 use chio_finding::{
-    derive_audit_seed_commitment, signed_envelope_sha256, verify_signed_challenge_outcome,
-    FindingAuditEpoch, FindingAuditReport, FindingChallengeAuthorizationKind, FindingError,
-    SignedFindingChallengeOutcome, MAX_AUDIT_SELECTION, MAX_FINDING_IDENTIFIER_BYTES,
-    MAX_PUBLISHED_RATE_BPS,
+    derive_audit_seed_commitment, signed_envelope_sha256, verify_outcome_challenge_binding,
+    verify_signed_challenge, verify_signed_challenge_outcome, FindingAuditEpoch,
+    FindingAuditReport, FindingChallengeAuthorization, FindingChallengeAuthorizationKind,
+    FindingError, SignedFindingChallenge, SignedFindingChallengeOutcome, MAX_AUDIT_SELECTION,
+    MAX_FINDING_IDENTIFIER_BYTES, MAX_PUBLISHED_RATE_BPS,
 };
 
 use crate::capability::scope::MonetaryAmount;
@@ -110,6 +111,17 @@ pub struct AuditSelection {
     pub draw: String,
 }
 
+/// Externally resolved authorities and signed attempt/outcome artifacts for
+/// one report verification. Grouping the witness set keeps the verifier API
+/// explicit without an error-prone positional authority list.
+pub struct FindingAuditReportWitnesses<'a> {
+    pub pinned_seed_witness: PublicKey,
+    pub pinned_audit_authority: PublicKey,
+    pub pinned_evaluator_authority: PublicKey,
+    pub audit_attempts: &'a [SignedFindingChallenge],
+    pub resolved_outcomes: &'a [SignedFindingChallengeOutcome],
+}
+
 /// Typed rejections. Every variant refuses to produce or accept a selection
 /// rather than proceeding on an input the epoch did not commit to.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
@@ -168,6 +180,22 @@ pub enum FindingAuditError {
     MissingOutcome { attempted: usize, outcomes: usize },
     #[error("audit outcome rejected: {0}")]
     Outcome(FindingError),
+    #[error("audit attempt rejected: {0}")]
+    Attempt(FindingError),
+    #[error("audit attempt {0} did not use the venue-audit authorization branch")]
+    AttemptAuthorization(String),
+    #[error("audit attempt {0} does not bind this audit epoch envelope")]
+    AttemptRoundBinding(String),
+    #[error("audit attempt {0} was not filed inside the committed report interval")]
+    AttemptTimeBinding(String),
+    #[error("audit attempt {0} does not name one attempted selection")]
+    AttemptSelectionBinding(String),
+    #[error("more than one signed attempt names attempted finding {0}")]
+    DuplicateAttempt(String),
+    #[error("signed attempt envelope {0} is absent from the report")]
+    AttemptDigestMismatch(String),
+    #[error("audit outcome {0} does not resolve one reported attempt")]
+    OutcomeAttemptBinding(String),
     #[error("audit outcome {0} did not use the venue-audit authorization branch")]
     OutcomeAuthorization(String),
     #[error("audit outcome {0} does not bind this audit epoch envelope")]
@@ -318,12 +346,10 @@ pub fn select_audit_targets_within_budget(
 /// ordered form stays with [`select_audit_targets`].
 pub fn verify_audit_report(
     epoch: &FindingAuditEpoch,
-    pinned_seed_witness: &PublicKey,
-    pinned_evaluator_authority: &PublicKey,
     epoch_envelope_sha256: &str,
     report: &FindingAuditReport,
     eligible: &[EligibleListing],
-    resolved_outcomes: &[SignedFindingChallengeOutcome],
+    witnesses: &FindingAuditReportWitnesses<'_>,
 ) -> Result<(), FindingAuditError> {
     if !is_hex64(epoch_envelope_sha256) {
         return Err(FindingAuditError::InvalidEpochEnvelopeDigest);
@@ -333,8 +359,12 @@ pub fn verify_audit_report(
         return Err(FindingAuditError::EpochEnvelopeMismatch);
     }
 
-    let expected =
-        select_audit_targets(epoch, pinned_seed_witness, &report.revealed_seed, eligible)?;
+    let expected = select_audit_targets(
+        epoch,
+        &witnesses.pinned_seed_witness,
+        &report.revealed_seed,
+        eligible,
+    )?;
     if report.reported_at <= epoch.committed_at {
         return Err(FindingAuditError::ReportNotAfterEpoch);
     }
@@ -400,17 +430,17 @@ pub fn verify_audit_report(
         }
         Ordering::Equal => {}
     }
-    match resolved_outcomes.len().cmp(&attempted) {
+    match witnesses.resolved_outcomes.len().cmp(&attempted) {
         Ordering::Less => {
             return Err(FindingAuditError::MissingOutcome {
                 attempted,
-                outcomes: resolved_outcomes.len(),
+                outcomes: witnesses.resolved_outcomes.len(),
             })
         }
         Ordering::Greater => {
             return Err(FindingAuditError::ExtraneousOutcome {
                 attempted,
-                outcomes: resolved_outcomes.len(),
+                outcomes: witnesses.resolved_outcomes.len(),
             })
         }
         Ordering::Equal => {}
@@ -426,14 +456,73 @@ pub fn verify_audit_report(
         .filter(|selection| !missed.contains(selection.finding_id.as_str()))
         .map(|selection| (selection.finding_id.as_str(), selection.listing_id.as_str()))
         .collect();
+    match witnesses.audit_attempts.len().cmp(&attempted) {
+        Ordering::Less => {
+            return Err(FindingAuditError::UnaccountedSelection {
+                attempted,
+                attempt_receipts: witnesses.audit_attempts.len(),
+            })
+        }
+        Ordering::Greater => {
+            return Err(FindingAuditError::ExtraneousAttempt {
+                attempted,
+                attempt_receipts: witnesses.audit_attempts.len(),
+            })
+        }
+        Ordering::Equal => {}
+    }
+    let reported_attempt_digests: BTreeSet<&str> = report
+        .attempt_receipt_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let mut resolved_attempts = Vec::with_capacity(witnesses.audit_attempts.len());
+    let mut attempted_once = BTreeSet::new();
+    for signed in witnesses.audit_attempts {
+        verify_signed_challenge(signed, &witnesses.pinned_audit_authority)
+            .map_err(FindingAuditError::Attempt)?;
+        let challenge = &signed.body;
+        let FindingChallengeAuthorization::VenueAudit(authorization) = &challenge.authorization
+        else {
+            return Err(FindingAuditError::AttemptAuthorization(
+                challenge.challenge_id.clone(),
+            ));
+        };
+        if authorization.audit_epoch_envelope_sha256 != epoch_envelope_sha256 {
+            return Err(FindingAuditError::AttemptRoundBinding(
+                challenge.challenge_id.clone(),
+            ));
+        }
+        if challenge.filed_at <= epoch.committed_at || challenge.filed_at > report.reported_at {
+            return Err(FindingAuditError::AttemptTimeBinding(
+                challenge.challenge_id.clone(),
+            ));
+        }
+        let selection = (challenge.finding_id.as_str(), challenge.listing_id.as_str());
+        if !attempted_selections.contains(&selection) {
+            return Err(FindingAuditError::AttemptSelectionBinding(
+                challenge.challenge_id.clone(),
+            ));
+        }
+        if !attempted_once.insert(selection) {
+            return Err(FindingAuditError::DuplicateAttempt(
+                challenge.finding_id.clone(),
+            ));
+        }
+        let envelope_digest = signed_envelope_sha256(signed).map_err(FindingAuditError::Attempt)?;
+        if !reported_attempt_digests.contains(envelope_digest.as_str()) {
+            return Err(FindingAuditError::AttemptDigestMismatch(envelope_digest));
+        }
+        resolved_attempts.push((envelope_digest, signed));
+    }
     let reported_digests: BTreeSet<&str> = report
         .outcome_envelope_digests
         .iter()
         .map(String::as_str)
         .collect();
     let mut resolved_selections = BTreeSet::new();
-    for signed in resolved_outcomes {
-        verify_signed_challenge_outcome(signed, pinned_evaluator_authority)
+    for signed in witnesses.resolved_outcomes {
+        verify_signed_challenge_outcome(signed, &witnesses.pinned_evaluator_authority)
             .map_err(FindingAuditError::Outcome)?;
         let outcome = &signed.body;
         if outcome.authorization != FindingChallengeAuthorizationKind::VenueAudit {
@@ -460,6 +549,22 @@ pub fn verify_audit_report(
         if !resolved_selections.insert(selection) {
             return Err(FindingAuditError::DuplicateOutcome(
                 outcome.finding_id.clone(),
+            ));
+        }
+        let Some((_, attempt)) = resolved_attempts
+            .iter()
+            .find(|(digest, _)| digest == &outcome.challenge_envelope_sha256)
+        else {
+            return Err(FindingAuditError::OutcomeAttemptBinding(
+                outcome.outcome_id.clone(),
+            ));
+        };
+        verify_outcome_challenge_binding(outcome, attempt).map_err(FindingAuditError::Outcome)?;
+        if outcome.evidence_kind != attempt.body.evidence.kind()
+            || outcome.verifier_profile_envelope_sha256 != attempt.body.profile_envelope_sha256
+        {
+            return Err(FindingAuditError::OutcomeAttemptBinding(
+                outcome.outcome_id.clone(),
             ));
         }
         let envelope_digest = signed_envelope_sha256(signed).map_err(FindingAuditError::Outcome)?;

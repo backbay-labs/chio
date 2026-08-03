@@ -58,7 +58,9 @@ pub struct FindingPurchaseRecord {
     pub encumbrance_id: String,
     pub delivery_receipt_id: String,
     pub payment_reference: String,
-    /// Deterministic buyer-controlled destination for a later harm payout.
+    /// Buyer-selected EVM destination for a later harm payout. The purchase
+    /// authority copies this from the buyer-signed bid before signing the
+    /// record, so neither the seller nor a challenge can redirect it.
     pub payout_destination: String,
     pub recorded_at: u64,
 }
@@ -106,10 +108,7 @@ impl FindingPurchaseRecord {
         require_bounded_id(&self.encumbrance_id, "encumbrance_id")?;
         require_bounded_id(&self.delivery_receipt_id, "delivery_receipt_id")?;
         require_bounded_id(&self.payment_reference, "payment_reference")?;
-        require_bounded_id(&self.payout_destination, "payout_destination")?;
-        if self.payout_destination != buyer_refund_destination(&self.buyer) {
-            return Err(FindingError::InvalidField("payout_destination"));
-        }
+        validate_evm_payout_destination(&self.payout_destination)?;
         require_nonzero(self.recorded_at, "recorded_at")?;
         self.verify_purchase_key()
     }
@@ -128,14 +127,21 @@ impl FindingPurchaseRecord {
     }
 }
 
-/// Derive the only harm-payout destination a purchase record may name.
+/// Validate the EVM address shape consumed by the enforcement rail.
 ///
-/// The buyer key is authenticated by the purchase-authority signature, so
-/// a seller admission cannot redirect a later buyer reimbursement to the
-/// seller's ordinary sale-payee account.
-#[must_use]
-pub fn buyer_refund_destination(buyer: &PublicKey) -> String {
-    format!("buyer:{}", buyer.to_hex())
+/// Control of the address is established by the buyer-signed bid and the
+/// purchase-authority-signed record. This helper checks only the portable
+/// representation so an otherwise valid purchase cannot become impossible
+/// to settle after a challenge is upheld.
+pub fn validate_evm_payout_destination(destination: &str) -> Result<(), FindingError> {
+    require_bounded_id(destination, "payout_destination")?;
+    let Some(hex) = destination.strip_prefix("0x") else {
+        return Err(FindingError::InvalidField("payout_destination"));
+    };
+    if hex.len() != 40 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(FindingError::InvalidField("payout_destination"));
+    }
+    Ok(())
 }
 
 /// Derive the purchase key: sha256 over the domain-separated preimage of the

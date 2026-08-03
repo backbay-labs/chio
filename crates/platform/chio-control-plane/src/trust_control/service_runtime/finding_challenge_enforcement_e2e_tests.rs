@@ -43,8 +43,8 @@ use chio_core::receipt::metadata::{
 };
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
-    audit_seed_witness_signing_bytes, buyer_refund_destination, compute_admission_id,
-    compute_allocation_id, compute_audit_epoch_id, compute_challenge_id, compute_enforcement_id,
+    audit_seed_witness_signing_bytes, compute_admission_id, compute_allocation_id,
+    compute_audit_epoch_id, compute_challenge_id, compute_enforcement_id,
     compute_failed_delivery_id, compute_finding_id, compute_profile_id, compute_snapshot_id,
     compute_terms_id, derive_audit_seed_commitment, derive_purchase_key, sign_finding,
     signed_envelope_sha256, Finding, FindingAdmission, FindingAffectedDelivery, FindingAuditEpoch,
@@ -172,11 +172,9 @@ const BUYER_ONE_DESTINATION: &str = "rail:venue-ledger:buyer-one";
 const BUYER_TWO_DESTINATION: &str = "rail:venue-ledger:buyer-two";
 const CHALLENGER_BOUNTY_DESTINATION: &str = "rail:venue-ledger:challenger-bounty";
 const NOW: u64 = 1_750_000_000;
-
 fn buyer_destination(seed: u8) -> String {
-    buyer_refund_destination(&keypair(seed).public_key())
+    format!("0x{seed:040x}")
 }
-
 /// Seller-signed claim window the shared terms carry. The lane's clock in
 /// these tests is second-granular, so the shortest window that still has
 /// two distinct instants keeps the window-opening call and the sealing
@@ -186,12 +184,10 @@ const CLAIM_WINDOW_SECS: u64 = 1;
 // lock, so the lock expiry is the policy-derived retry cap in this fixture.
 const RETRY_POLICY_DEADLINE: u64 = NOW + 86_400;
 const REGISTERED_EXPOSURE_CAP: u64 = 450;
-
 // The epoch every pinned role is issued under and where its revocation
 // status is published. An adjudication has to hold against both.
 const PINNED_KEY_EPOCH: u64 = 1;
 const REVOCATION_STATUS_REF: &str = "revocations/finding-market";
-
 // What the published fee schedule charges to file a challenge and what it
 // requires the filer to stake. A filing that names anything else is not
 // priced by the schedule it binds.
@@ -2207,7 +2203,11 @@ fn settle_purchase_with(
     } else {
         keypair(41)
     };
-    let refund_destination = buyer_refund_destination(&buyer.public_key());
+    let refund_destination = buyer_destination(if destination == BUYER_TWO_DESTINATION {
+        42
+    } else {
+        41
+    });
     deployment
         .purchases
         .open_reservation(&FindingPurchaseReservationInput {

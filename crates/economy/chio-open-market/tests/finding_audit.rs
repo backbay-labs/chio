@@ -11,12 +11,14 @@
 
 use chio_finding::{
     audit_seed_witness_signing_bytes, compute_audit_epoch_id, compute_audit_report_id,
-    derive_audit_seed_commitment, derive_outcome_id, signed_envelope_sha256, FindingAuditEpoch,
-    FindingAuditReport, FindingChallengeAuthorizationKind, FindingChallengeEvidenceKind,
-    FindingChallengeFacet, FindingChallengeOutcome, FindingChallengeVerdict,
-    FindingEvidenceInvalidFacet, FindingEvidenceInvalidity, FindingMissedAudit,
-    SignedFindingChallengeOutcome, FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_REPORT_SCHEMA_V1,
-    FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
+    compute_challenge_id, derive_audit_seed_commitment, derive_outcome_id, signed_envelope_sha256,
+    FindingAuditEpoch, FindingAuditReport, FindingChallenge, FindingChallengeAuthorization,
+    FindingChallengeAuthorizationKind, FindingChallengeEvidence, FindingChallengeEvidenceKind,
+    FindingChallengeFacet, FindingChallengeOutcome, FindingChallengeVerdict, FindingCheckpointRef,
+    FindingEvidenceInvalidFacet, FindingEvidenceInvalidity, FindingMissedAudit, FindingReceiptRef,
+    FindingVenueAuditAuthorization, SignedFindingChallenge, SignedFindingChallengeOutcome,
+    FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_REPORT_SCHEMA_V1,
+    FINDING_CHALLENGE_OUTCOME_SCHEMA_V1, FINDING_CHALLENGE_SCHEMA_V1,
 };
 use chio_open_market::{
     capability::scope::MonetaryAmount,
@@ -26,7 +28,7 @@ use chio_open_market::{
         select_audit_targets as select_audit_targets_with_witness,
         select_audit_targets_within_budget as select_audit_targets_within_budget_with_witness,
         verify_audit_report as verify_audit_report_with_witness, AuditSelection, EligibleListing,
-        FindingAuditError, AUDIT_SELECTION_ALGORITHM_V1,
+        FindingAuditError, FindingAuditReportWitnesses, AUDIT_SELECTION_ALGORITHM_V1,
     },
     receipt::lineage::SignedExportEnvelope,
 };
@@ -81,16 +83,16 @@ fn verify_audit_report(
     report: &FindingAuditReport,
     eligible: &[EligibleListing],
 ) -> Result<(), FindingAuditError> {
-    let resolved_outcomes = resolved_outcomes_for_report(report, eligible);
-    verify_audit_report_with_witness(
-        epoch,
-        &seed_witness().public_key(),
-        &audit_evaluator().public_key(),
-        epoch_envelope_sha256,
-        report,
-        eligible,
-        &resolved_outcomes,
-    )
+    let audit_attempts = audit_attempts_for_report(report, eligible);
+    let resolved_outcomes = resolved_outcomes_for_report(report, eligible, &audit_attempts);
+    let witnesses = FindingAuditReportWitnesses {
+        pinned_seed_witness: seed_witness().public_key(),
+        pinned_audit_authority: audit_authority().public_key(),
+        pinned_evaluator_authority: audit_evaluator().public_key(),
+        audit_attempts: &audit_attempts,
+        resolved_outcomes: &resolved_outcomes,
+    };
+    verify_audit_report_with_witness(epoch, epoch_envelope_sha256, report, eligible, &witnesses)
 }
 
 fn usd(units: u64) -> MonetaryAmount {
@@ -188,9 +190,79 @@ fn signed_epoch_digest(epoch: &FindingAuditEpoch) -> String {
     signed_envelope_sha256(&signed).test_expect("epoch envelope digest")
 }
 
+fn audit_attempts_for_report(
+    report: &FindingAuditReport,
+    eligible: &[EligibleListing],
+) -> Vec<SignedFindingChallenge> {
+    report
+        .selected_finding_ids
+        .iter()
+        .filter(|finding_id| {
+            !report
+                .missed_attempts
+                .iter()
+                .any(|missed| missed.finding_id == **finding_id)
+        })
+        .map(|finding_id| {
+            let listing = eligible
+                .iter()
+                .find(|entry| entry.finding_id == *finding_id)
+                .test_expect("reported finding is eligible");
+            let profile = sha256_hex(b"audit verifier profile");
+            let receipt_sha256 = sha256_hex(format!("audit receipt:{finding_id}").as_bytes());
+            let checkpoint_sha256 = sha256_hex(format!("audit checkpoint:{finding_id}").as_bytes());
+            let mut challenge = FindingChallenge {
+                schema: FINDING_CHALLENGE_SCHEMA_V1.to_owned(),
+                challenge_id: String::new(),
+                finding_id: finding_id.clone(),
+                finding_artifact_sha256: sha256_hex(
+                    format!("audit finding artifact:{finding_id}").as_bytes(),
+                ),
+                listing_id: listing.listing_id.clone(),
+                terms_envelope_sha256: sha256_hex(b"audit terms envelope"),
+                profile_envelope_sha256: profile,
+                venue_admission_envelope_sha256: sha256_hex(b"audit venue admission"),
+                backing_envelope_sha256: sha256_hex(b"audit backing envelope"),
+                filed_at: report.reported_at.saturating_sub(2),
+                affected_deliveries: Vec::new(),
+                authorization: FindingChallengeAuthorization::VenueAudit(
+                    FindingVenueAuditAuthorization {
+                        audit_epoch_envelope_sha256: report.audit_epoch_envelope_sha256.clone(),
+                        selection_digest: sha256_hex(
+                            format!("audit selection:{finding_id}:{}", listing.listing_id)
+                                .as_bytes(),
+                        ),
+                        authorization_digest: sha256_hex(
+                            format!("audit authorization:{finding_id}").as_bytes(),
+                        ),
+                    },
+                ),
+                evidence: FindingChallengeEvidence::EvidenceInvalid {
+                    challenged_evidence_receipt_refs: vec![FindingReceiptRef {
+                        receipt_id: format!("audit-receipt-{finding_id}"),
+                        receipt_sha256,
+                    }],
+                    challenged_checkpoint_ref: FindingCheckpointRef {
+                        checkpoint_ref: format!("audit-checkpoint-{finding_id}"),
+                        checkpoint_sha256,
+                    },
+                    purchase_record_envelope_sha256: sha256_hex(
+                        format!("audit purchase:{finding_id}").as_bytes(),
+                    ),
+                },
+            };
+            challenge.challenge_id =
+                compute_challenge_id(&challenge).test_expect("audit challenge id");
+            SignedFindingChallenge::sign(challenge, &audit_authority())
+                .test_expect("sign audit attempt")
+        })
+        .collect()
+}
+
 fn resolved_outcomes_for_report(
     report: &FindingAuditReport,
     eligible: &[EligibleListing],
+    audit_attempts: &[SignedFindingChallenge],
 ) -> Vec<SignedFindingChallengeOutcome> {
     report
         .selected_finding_ids
@@ -206,12 +278,15 @@ fn resolved_outcomes_for_report(
                 .iter()
                 .find(|entry| entry.finding_id == *finding_id)
                 .test_expect("reported finding is eligible");
+            let attempt = audit_attempts
+                .iter()
+                .find(|attempt| attempt.body.finding_id == *finding_id)
+                .test_expect("reported finding has an audit attempt");
             let mut outcome = FindingChallengeOutcome {
                 schema: FINDING_CHALLENGE_OUTCOME_SCHEMA_V1.to_owned(),
                 outcome_id: String::new(),
-                challenge_envelope_sha256: sha256_hex(
-                    format!("audit challenge envelope:{finding_id}").as_bytes(),
-                ),
+                challenge_envelope_sha256: signed_envelope_sha256(attempt)
+                    .test_expect("audit attempt envelope digest"),
                 finding_id: finding_id.clone(),
                 listing_id: listing.listing_id.clone(),
                 backing_allocation_id: sha256_hex(
@@ -275,10 +350,16 @@ fn report_for(
             weight_or_none: Some(selected.weight),
         })
         .collect();
-    report.outcome_envelope_digests = resolved_outcomes_for_report(&report, &selected_entries)
+    let audit_attempts = audit_attempts_for_report(&report, &selected_entries);
+    report.attempt_receipt_ids = audit_attempts
         .iter()
-        .map(|outcome| signed_envelope_sha256(outcome).test_expect("outcome envelope digest"))
+        .map(|attempt| signed_envelope_sha256(attempt).test_expect("audit attempt envelope digest"))
         .collect();
+    report.outcome_envelope_digests =
+        resolved_outcomes_for_report(&report, &selected_entries, &audit_attempts)
+            .iter()
+            .map(|outcome| signed_envelope_sha256(outcome).test_expect("outcome envelope digest"))
+            .collect();
     report.audit_report_id = compute_audit_report_id(&report).test_expect("report id");
     report
 }
@@ -565,13 +646,29 @@ fn a_report_cannot_fabricate_an_outcome_envelope_digest() {
 }
 
 #[test]
+fn a_report_cannot_fabricate_an_attempt_receipt_id() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let mut report = report_for(&envelope, &selection);
+    report.attempt_receipt_ids[0] = sha256_hex(b"fabricated audit attempt envelope");
+    reseal(&mut report);
+
+    assert!(matches!(
+        verify_audit_report(&epoch, &envelope, &report, &eligible).test_unwrap_err(),
+        FindingAuditError::AttemptDigestMismatch(_)
+    ));
+}
+
+#[test]
 fn an_outcome_from_an_unpinned_evaluator_cannot_resolve_a_report() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
     let report = report_for(&envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible);
     let outcomes: Vec<SignedFindingChallengeOutcome> =
-        resolved_outcomes_for_report(&report, &eligible)
+        resolved_outcomes_for_report(&report, &eligible, &audit_attempts)
             .into_iter()
             .map(|signed| {
                 SignedFindingChallengeOutcome::sign(signed.body, &Keypair::from_seed(&[45_u8; 32]))
@@ -582,12 +679,16 @@ fn an_outcome_from_an_unpinned_evaluator_cannot_resolve_a_report() {
     assert!(matches!(
         verify_audit_report_with_witness(
             &epoch,
-            &seed_witness().public_key(),
-            &audit_evaluator().public_key(),
             &envelope,
             &report,
             &eligible,
-            &outcomes,
+            &FindingAuditReportWitnesses {
+                pinned_seed_witness: seed_witness().public_key(),
+                pinned_audit_authority: audit_authority().public_key(),
+                pinned_evaluator_authority: audit_evaluator().public_key(),
+                audit_attempts: &audit_attempts,
+                resolved_outcomes: &outcomes,
+            },
         )
         .test_unwrap_err(),
         FindingAuditError::Outcome(chio_finding::FindingError::AuthorityMismatch(
@@ -602,7 +703,8 @@ fn a_signed_outcome_for_an_unattempted_selection_cannot_resolve_a_report() {
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
     let mut report = report_for(&envelope, &selection);
-    let mut outcomes = resolved_outcomes_for_report(&report, &eligible);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let mut outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     outcomes[0].body.finding_id = report.missed_attempts[0].finding_id.clone();
     outcomes[0].body.listing_id = selection[2].listing_id.clone();
     outcomes[0].body.outcome_id = derive_outcome_id(&outcomes[0].body).test_expect("outcome id");
@@ -615,12 +717,16 @@ fn a_signed_outcome_for_an_unattempted_selection_cannot_resolve_a_report() {
     assert!(matches!(
         verify_audit_report_with_witness(
             &epoch,
-            &seed_witness().public_key(),
-            &audit_evaluator().public_key(),
             &envelope,
             &report,
             &eligible,
-            &outcomes,
+            &FindingAuditReportWitnesses {
+                pinned_seed_witness: seed_witness().public_key(),
+                pinned_audit_authority: audit_authority().public_key(),
+                pinned_evaluator_authority: audit_evaluator().public_key(),
+                audit_attempts: &audit_attempts,
+                resolved_outcomes: &outcomes,
+            },
         )
         .test_unwrap_err(),
         FindingAuditError::OutcomeSelectionBinding(_)
@@ -633,7 +739,8 @@ fn an_outcome_from_another_audit_round_cannot_resolve_a_report() {
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
     let mut report = report_for(&envelope, &selection);
-    let mut outcomes = resolved_outcomes_for_report(&report, &eligible);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let mut outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     outcomes[0].body.audit_epoch_envelope_sha256 =
         Some(sha256_hex(b"another audit epoch envelope"));
     outcomes[0].body.outcome_id = derive_outcome_id(&outcomes[0].body).test_expect("outcome id");
@@ -646,12 +753,16 @@ fn an_outcome_from_another_audit_round_cannot_resolve_a_report() {
     assert!(matches!(
         verify_audit_report_with_witness(
             &epoch,
-            &seed_witness().public_key(),
-            &audit_evaluator().public_key(),
             &envelope,
             &report,
             &eligible,
-            &outcomes,
+            &FindingAuditReportWitnesses {
+                pinned_seed_witness: seed_witness().public_key(),
+                pinned_audit_authority: audit_authority().public_key(),
+                pinned_evaluator_authority: audit_evaluator().public_key(),
+                audit_attempts: &audit_attempts,
+                resolved_outcomes: &outcomes,
+            },
         )
         .test_unwrap_err(),
         FindingAuditError::OutcomeRoundBinding(_)

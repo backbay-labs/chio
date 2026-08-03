@@ -27,12 +27,12 @@ use chio_core::receipt::metadata::{
     FINDING_DELIVERY_METADATA_KEY,
 };
 use chio_finding::{
-    buyer_refund_destination, compute_failed_delivery_id, derive_purchase_key, verify_finding,
-    verify_signed_bond_backing, verify_signed_seller_authorization, Finding, FindingFailedDelivery,
-    FindingHoldReleaseTerminal, FindingPurchaseRecord, SignedFindingAdmission,
-    SignedFindingBondBacking, SignedFindingFailedDelivery, SignedFindingPurchaseRecord,
-    SignedFindingSellerAuthorization, FINDING_FAILED_DELIVERY_SCHEMA_V1,
-    FINDING_PURCHASE_RECORD_SCHEMA_V1,
+    compute_failed_delivery_id, derive_purchase_key, validate_evm_payout_destination,
+    verify_finding, verify_signed_bond_backing, verify_signed_seller_authorization, Finding,
+    FindingFailedDelivery, FindingHoldReleaseTerminal, FindingPurchaseRecord,
+    SignedFindingAdmission, SignedFindingBondBacking, SignedFindingFailedDelivery,
+    SignedFindingPurchaseRecord, SignedFindingSellerAuthorization,
+    FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
 };
 use chio_kernel::admission_operation::{
     AdmissionOperationState, AdmissionOperationStore, AdmissionReceiptMetadataV1,
@@ -266,6 +266,13 @@ impl FindingPurchaseCoordinator {
         {
             return Err(PurchaseCoordinatorError::BidBinding);
         }
+        // Cognition-market bids use the buyer-authenticated agent id as the
+        // payout address. The bid signature authenticates it, the ask copies
+        // it, and the reservation retains it through terminal settlement.
+        // Reject any shape the EVM enforcement rail cannot consume before
+        // funds or seller exposure are reserved.
+        validate_evm_payout_destination(&bid.body.agent_id)
+            .map_err(|error| PurchaseCoordinatorError::PayoutDestination(error.to_string()))?;
         let payer = &ask.body.token_offer.subject;
         if bid.signer_key != *payer {
             return Err(PurchaseCoordinatorError::BidBinding);
@@ -820,7 +827,9 @@ impl FindingPurchaseCoordinator {
         let delivery_receipt_id = &receipt.id;
         let buyer = PublicKey::from_hex(&reservation.payer_hex)
             .map_err(|_| PurchaseCoordinatorError::Store("payer key malformed".to_owned()))?;
-        let payout_destination = buyer_refund_destination(&buyer);
+        let payout_destination = reservation.agent_id.clone();
+        validate_evm_payout_destination(&payout_destination)
+            .map_err(|error| PurchaseCoordinatorError::PayoutDestination(error.to_string()))?;
         let record = FindingPurchaseRecord {
             schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_owned(),
             purchase_key: derive_purchase_key(

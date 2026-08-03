@@ -633,7 +633,7 @@ impl World {
             encumbrance_id: "encumbrance-42".to_string(),
             delivery_receipt_id: "delivery-receipt-42".to_string(),
             payment_reference: "payment-reference-42".to_string(),
-            payout_destination: chio_finding::buyer_refund_destination(&buyer),
+            payout_destination: "0x1111111111111111111111111111111111111111".to_owned(),
             // The only difference of an unnamed record: it is a settled
             // record of the same sale that the challenge does not name.
             recorded_at: match shape {

@@ -46,15 +46,15 @@ use chio_core::receipt::metadata::{
 use chio_core::session::{RequestId, SessionAnchorReference};
 use chio_core::sha256_hex;
 use chio_finding::{
-    buyer_refund_destination, compute_admission_id, compute_allocation_id,
-    compute_authorization_id, compute_finding_id, compute_profile_id, compute_terms_id,
-    derive_finding_recovery_id, derive_purchase_key, sign_finding, verify_signed_failed_delivery,
-    verify_signed_purchase_record, Finding, FindingAdmission, FindingAuthorityKeyPolicy,
-    FindingBackingRequirement, FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass,
-    FindingChallengeBondLimit, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
-    FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor, FindingEvidenceClass,
-    FindingFacetKind, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
-    FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
+    compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
+    compute_profile_id, compute_terms_id, derive_finding_recovery_id, derive_purchase_key,
+    sign_finding, verify_signed_failed_delivery, verify_signed_purchase_record, Finding,
+    FindingAdmission, FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
+    FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
+    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
+    FindingCollateralVault, FindingDescriptor, FindingEvidenceClass, FindingFacetKind,
+    FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass, FindingMarketTerms,
+    FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
     FindingPurchaseContext, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
     FindingRecipePhase, FindingRecipePhaseKind, FindingRecoveryContext, FindingReplayRecipeInput,
     FindingResourceCaps, FindingSellerAuthorization, SignedFindingAdmission,
@@ -164,14 +164,14 @@ const PRICE_UNITS: u64 = 300;
 const RESERVATION_TTL_SECS: u64 = 3_600;
 const LIABILITY_RETENTION_SECS: u64 = 604_800 + 2_592_000 + 259_200 + 86_400;
 const TOKEN_ID: &str = "finding-purchase-token-0001";
+const BUYER_PAYOUT: &str = "0x1111111111111111111111111111111111111111";
+const OTHER_BUYER_PAYOUT: &str = "0x2222222222222222222222222222222222222222";
 const REVEAL_MEDIA_TYPE: &str = "application/json";
 const SEALED_PAYLOAD: &[u8] = br#"{"repro":"baseline fails, candidate passes"}"#;
 const OTHER_PAYLOAD: &[u8] = br#"{"repro":"a different payload entirely"}"#;
-
 // ---------------------------------------------------------------------------
 // Shared artifact builders
 // ---------------------------------------------------------------------------
-
 fn keypair(seed: u8) -> Keypair {
     Keypair::from_seed(&[seed; 32])
 }
@@ -2122,7 +2122,7 @@ async fn open_lane(options: LaneOptions) -> Result<Lane, AnyError> {
 
     let buyer = keypair(31);
     let coordinator = coordinator(&authority)?;
-    let exchange = handshake(&deployment.web, &witness, &buyer, "buyer-agent-7", TOKEN_ID)?;
+    let exchange = handshake(&deployment.web, &witness, &buyer, BUYER_PAYOUT, TOKEN_ID)?;
     let purchase = reserve_and_accept(&deployment.web, &witness, &coordinator, &buyer, exchange)?;
     Ok(Lane {
         deployment,
@@ -2202,7 +2202,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
             &self.web,
             &self.witness,
             &self.buyer,
-            &payer,
+            BUYER_PAYOUT,
             TOKEN_ID,
             self.exchange_now,
             request.max_price.clone(),
@@ -2599,7 +2599,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
         assert_eq!(witness.finding_id(), deployment.web.finding_id);
         assert_eq!(witness.listing_id(), LISTING_ID);
 
-        let exchange = handshake(&deployment.web, &witness, &buyer, "buyer-agent-7", TOKEN_ID)?;
+        let exchange = handshake(&deployment.web, &witness, &buyer, BUYER_PAYOUT, TOKEN_ID)?;
 
         // The provider, not the buyer, authored the delivery bindings.
         let grant = exchange
@@ -2817,7 +2817,7 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
     assert_eq!(record.body.accepted_price, usd(PRICE_UNITS));
     assert_eq!(record.body.realized_spend, usd(PRICE_UNITS));
     assert_eq!(record.body.delivery_receipt_id, response.receipt.id);
-    let refund_destination = buyer_refund_destination(&lane.buyer.public_key());
+    let refund_destination = BUYER_PAYOUT.to_owned();
     assert_eq!(record.body.payout_destination, refund_destination);
 
     let reservation = purchase_store
@@ -3224,7 +3224,7 @@ async fn wedge_purchase_alternate_token_denies() -> TestResult {
         &lane.deployment.web,
         &lane.witness,
         &lane.buyer,
-        "buyer-agent-7",
+        BUYER_PAYOUT,
         "finding-purchase-token-0002",
     )?;
     assert_ne!(
@@ -3647,7 +3647,7 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
     let witness = admission_witness(&deployment.web, accepted_at)?;
     let buyer = keypair(31);
     let coordinator = coordinator(&authority)?;
-    let exchange = handshake(&deployment.web, &witness, &buyer, "buyer-agent-7", TOKEN_ID)?;
+    let exchange = handshake(&deployment.web, &witness, &buyer, BUYER_PAYOUT, TOKEN_ID)?;
 
     // A signature by a key that is not the token subject never reserves.
     let interloper = keypair(9).sign(exchange.ask_digest.as_bytes()).to_hex();
@@ -3716,7 +3716,7 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         &deployment.web,
         &witness,
         &first_buyer,
-        "buyer-agent-7",
+        BUYER_PAYOUT,
         TOKEN_ID,
     )?;
     coordinator.reserve(
@@ -3736,7 +3736,7 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         &deployment.web,
         &witness,
         &second_buyer,
-        "buyer-agent-8",
+        OTHER_BUYER_PAYOUT,
         "finding-purchase-token-0003",
     )?;
     let overcommitted = coordinator.reserve(
@@ -3789,7 +3789,7 @@ async fn open_reserve_fixture() -> Result<ReserveFixture, AnyError> {
         &deployment.web,
         &witness,
         &keypair(31),
-        "buyer-agent-7",
+        BUYER_PAYOUT,
         TOKEN_ID,
     )?;
     Ok(ReserveFixture {
@@ -4431,7 +4431,7 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
         web,
         &lane.witness,
         &second_buyer,
-        "buyer-agent-8",
+        OTHER_BUYER_PAYOUT,
         "finding-purchase-token-0004",
     )?;
     let now = unix_timestamp_now();
