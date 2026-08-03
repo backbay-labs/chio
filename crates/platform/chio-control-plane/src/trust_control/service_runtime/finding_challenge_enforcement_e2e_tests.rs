@@ -149,13 +149,15 @@ use chio_store_sqlite::{
 };
 
 use crate::trust_control::finding_challenge_coordinator::{
-    anchor_evidence_intent_commitment, derive_anchor_evidence_intent_key, derive_defect_key,
-    derive_liability_key, require_admitted_replay_decision_rule, root_intent_commitment,
-    AppealDisposition, AppealResolution, AuthorizedImpairment, ChallengeCoordinatorError,
-    ChallengeEvaluationRequest, ChallengeSubmissionOutcome, EvaluationAdmission, FindingAuditRound,
-    FindingAuthorityStatus, FindingAuthorityStatusResolver, FindingChallengeCoordinator,
-    FindingCollateralFacts, FindingFilingResolver, FindingFinalization, FindingLiabilityIdentity,
-    FindingPenaltyGovernance, FindingPenaltyOutcome, UpheldLiability,
+    anchor_evidence_intent_commitment, audit_epoch_precommitment_sha256,
+    derive_anchor_evidence_intent_key, derive_defect_key, derive_liability_key,
+    require_admitted_replay_decision_rule, root_intent_commitment, AppealDisposition,
+    AppealResolution, AuthorizedImpairment, ChallengeCoordinatorError, ChallengeEvaluationRequest,
+    ChallengeSubmissionOutcome, EvaluationAdmission, FindingAuditRound,
+    FindingAuditRoundAuthorization, FindingAuthorityStatus, FindingAuthorityStatusResolver,
+    FindingChallengeCoordinator, FindingCollateralFacts, FindingFilingResolver,
+    FindingFinalization, FindingLiabilityIdentity, FindingPenaltyGovernance, FindingPenaltyOutcome,
+    UpheldLiability, FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1,
     FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
 use crate::trust_control::{
@@ -195,7 +197,7 @@ const AUDIT_POOL_PRINCIPAL: &str = "pool:audit";
 const AUDIT_POOL_DESTINATION: &str = "rail:venue-ledger:audit-pool";
 const CHALLENGE_POOL_PRINCIPAL: &str = "pool:challenge-admin";
 const CHALLENGE_POOL_DESTINATION: &str = "rail:venue-ledger:challenge-admin";
-const COMMUNITY_FUND_RAIL: &str = "rail:venue-ledger:community-fund";
+const COMMUNITY_FUND_DESTINATION: &str = "0xcccccccccccccccccccccccccccccccccccccccc";
 const BUYER_ONE_DESTINATION: &str = "rail:venue-ledger:buyer-one";
 const BUYER_TWO_DESTINATION: &str = "rail:venue-ledger:buyer-two";
 const CHALLENGER_BOUNTY_DESTINATION: &str = "rail:venue-ledger:challenger-bounty";
@@ -416,7 +418,7 @@ fn market_config() -> FindingMarketConfig {
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: COMMUNITY_FUND_RAIL.to_string(),
+        community_fund_destination: COMMUNITY_FUND_DESTINATION.to_string(),
         status_feed_operator_ref: "status-feed/venue-challenge".to_string(),
         status_feed_operator: FindingStatusOperatorPin {
             feed_id: "status-feed/venue-challenge".to_string(),
@@ -591,7 +593,7 @@ impl PublishedArtifacts {
             ),
             admission.clone(),
         );
-        self
+        Ok(self)
     }
 
     fn publish_terms(mut self, terms: &SignedFindingMarketTerms) -> Result<Self, AnyError> {
@@ -808,6 +810,13 @@ fn deployment() -> Result<Deployment, AnyError> {
 fn deployment_publishing_terms(
     extra_terms: &[SignedFindingMarketTerms],
 ) -> Result<Deployment, AnyError> {
+    deployment_publishing_terms_and_rounds(extra_terms, &[])
+}
+
+fn deployment_publishing_terms_and_rounds(
+    extra_terms: &[SignedFindingMarketTerms],
+    extra_rounds: &[FindingAuditRound],
+) -> Result<Deployment, AnyError> {
     let temp = tempfile::tempdir()?;
     secure_directory(temp.path())?;
     let database: PathBuf = temp.path().join("authority.db");
@@ -833,7 +842,11 @@ fn deployment_publishing_terms(
         NOW,
     )?;
     let allocation_id = consume_allocation(&market, LISTING_ID, &hex64('1'))?;
-    purchases.register_community_fund_destination(&allocation_id, COMMUNITY_FUND_RAIL, NOW)?;
+    purchases.register_community_fund_destination(
+        &allocation_id,
+        COMMUNITY_FUND_DESTINATION,
+        NOW,
+    )?;
     let terms = match extra_terms.first() {
         Some(terms) => terms.clone(),
         None => market_terms(CLAIM_WINDOW_SECS)?,
@@ -1318,7 +1331,7 @@ fn signed_admission_with_backing(
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: COMMUNITY_FUND_RAIL.to_string(),
+        community_fund_destination: COMMUNITY_FUND_DESTINATION.to_string(),
         status_feed_operator_ref: "status-feed/venue-challenge".to_string(),
         purchase_authority: key_policy(&keypair(16).public_key(), "purchase"),
         failed_delivery_authority: key_policy(&keypair(17).public_key(), "failed-delivery"),
@@ -2517,15 +2530,55 @@ fn audit_round_over(eligible: Vec<EligibleListing>) -> Result<FindingAuditRound,
         selection_algorithm_id: AUDIT_SELECTION_ALGORITHM_V1.to_string(),
         published_rate_bps: MAX_PUBLISHED_RATE_BPS,
         available_budget: usd(10_000),
-        authorization_digest: digest("audit-authorization"),
+        authorization_digest: String::new(),
         committed_at: NOW - 1_000,
     };
+    let authorization = SignedExportEnvelope::sign(
+        FindingAuditRoundAuthorization {
+            schema: FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1.to_string(),
+            epoch_precommitment_sha256: audit_epoch_precommitment_sha256(&epoch)?,
+            authorized_at: NOW - 1_250,
+            expires_at: NOW + 900_000,
+        },
+        &keypair(1),
+    )?;
+    epoch.authorization_digest = signed_envelope_sha256(&authorization)?;
     epoch.audit_epoch_id = compute_audit_epoch_id(&epoch)?;
     epoch.validate()?;
     Ok(FindingAuditRound {
         epoch: SignedExportEnvelope::sign(epoch, &audit_authority)?,
+        authorization,
         revealed_seed,
         eligible,
+    })
+}
+
+fn reseal_audit_round(
+    round: &FindingAuditRound,
+    rewrite_epoch: impl FnOnce(&mut FindingAuditEpoch),
+    authorization_signer: &Keypair,
+) -> Result<FindingAuditRound, AnyError> {
+    let mut epoch = round.epoch.body.clone();
+    rewrite_epoch(&mut epoch);
+    epoch.audit_epoch_id.clear();
+    epoch.authorization_digest.clear();
+    let authorization = SignedExportEnvelope::sign(
+        FindingAuditRoundAuthorization {
+            schema: FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1.to_string(),
+            epoch_precommitment_sha256: audit_epoch_precommitment_sha256(&epoch)?,
+            authorized_at: NOW - 1_250,
+            expires_at: NOW + 900_000,
+        },
+        authorization_signer,
+    )?;
+    epoch.authorization_digest = signed_envelope_sha256(&authorization)?;
+    epoch.audit_epoch_id = compute_audit_epoch_id(&epoch)?;
+    epoch.validate()?;
+    Ok(FindingAuditRound {
+        epoch: SignedExportEnvelope::sign(epoch, &keypair(35))?,
+        authorization,
+        revealed_seed: round.revealed_seed.clone(),
+        eligible: round.eligible.clone(),
     })
 }
 
@@ -4194,9 +4247,8 @@ fn finding_challenge_a_filing_whose_fee_never_settled_is_not_evaluable() -> Test
     let challenge_id = challenge.body.challenge_id.clone();
     let (_, raw) = finding_artifact()?;
 
-    // The row is recorded before the charge, so a rail that cannot move
-    // the fee leaves the challenge durable with nothing collected and
-    // nothing locked.
+    // The challenge and lock identity are recorded before the charge. A
+    // rail that cannot move the fee leaves both durable, but no funded lock.
     deployment.rail.refuse();
     let error = coordinator
         .submit(&challenge, &raw, NOW)
@@ -4210,6 +4262,15 @@ fn finding_challenge_a_filing_whose_fee_never_settled_is_not_evaluable() -> Test
         .challenges
         .get_dispute_lock(&challenge_id)?
         .is_none());
+    let reservation_exists = rusqlite::Connection::open(&deployment.database)?.query_row(
+        "SELECT EXISTS(SELECT 1 FROM dispute_lock_reservations WHERE challenge_id = ?1)",
+        [&challenge_id],
+        |row| row.get::<_, bool>(0),
+    )?;
+    assert!(
+        reservation_exists,
+        "the dispute lock identity must be fenced before fee dispatch"
+    );
 
     let error = coordinator
         .admit_evaluation(&challenge_id, NOW + 1)
@@ -4480,7 +4541,9 @@ fn finding_challenge_a_venue_audit_must_prove_the_round_drew_the_listing() -> Te
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let (_, raw) = finding_artifact()?;
-    let unrelated_epoch = signed_envelope_sha256(&unrelated_audit_round()?.epoch)?;
+    let unrelated_round = unrelated_audit_round()?;
+    let unrelated_epoch = signed_envelope_sha256(&unrelated_round.epoch)?;
+    let unrelated_authorization = unrelated_round.epoch.body.authorization_digest.clone();
 
     // The audit authority signs every one of these, so the signature is
     // never what is in question: what is in question is the draw.
@@ -4498,6 +4561,7 @@ fn finding_challenge_a_venue_audit_must_prove_the_round_drew_the_listing() -> Te
             // never contained this listing.
             venue_audit_challenge_with(|audit| {
                 audit.audit_epoch_envelope_sha256 = unrelated_epoch;
+                audit.authorization_digest = unrelated_authorization;
             })?,
             "selection",
         ),
@@ -4540,6 +4604,51 @@ fn finding_challenge_a_venue_audit_must_prove_the_round_drew_the_listing() -> Te
         .get_challenge(&drawn.body.challenge_id)?
         .is_some());
     assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_venue_audit_follows_its_authenticated_epoch() -> TestResult {
+    let reference = published_audit_round()?;
+    let wrong_schedule = reseal_audit_round(
+        &reference,
+        |epoch| epoch.fee_schedule_envelope_sha256 = digest("another fee schedule"),
+        &keypair(1),
+    )?;
+    let unauthorized = reseal_audit_round(&reference, |_| {}, &keypair(2))?;
+    let deployment = deployment_publishing_terms_and_rounds(
+        &[],
+        &[wrong_schedule.clone(), unauthorized.clone()],
+    )?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (_, raw) = finding_artifact()?;
+
+    let wrong_schedule_challenge = venue_audit_challenge_for_round(&wrong_schedule)?;
+    assert!(matches!(
+        coordinator
+            .submit(&wrong_schedule_challenge, &raw, NOW)
+            .expect_err("an admission cannot be audited under another fee schedule"),
+        ChallengeCoordinatorError::AuditRoundBinding("fee_schedule_envelope_sha256")
+    ));
+
+    let unauthorized_challenge = venue_audit_challenge_for_round(&unauthorized)?;
+    assert!(matches!(
+        coordinator
+            .submit(&unauthorized_challenge, &raw, NOW)
+            .expect_err("the audit authority cannot self-authorize a bondless round"),
+        ChallengeCoordinatorError::AuditRoundBinding("authorization_signature")
+    ));
+
+    let mut predating = venue_audit_challenge()?.body;
+    predating.filed_at = reference.epoch.body.committed_at;
+    predating.challenge_id = compute_challenge_id(&predating)?;
+    let predating = SignedExportEnvelope::sign(predating, &keypair(35))?;
+    assert!(matches!(
+        coordinator
+            .submit(&predating, &raw, NOW)
+            .expect_err("an audit filing cannot predate its round"),
+        ChallengeCoordinatorError::AuditRoundBinding("filing_after_epoch")
+    ));
     Ok(())
 }
 
@@ -4723,6 +4832,29 @@ fn finding_challenge_a_late_venue_audit_is_refused() -> TestResult {
         .challenges
         .get_challenge(&challenge.body.challenge_id)?
         .is_none());
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_an_accepted_audit_filing_replays_after_the_window() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (_, raw) = finding_artifact()?;
+    let challenge = venue_audit_challenge()?;
+
+    let first = coordinator.submit(&challenge, &raw, NOW)?;
+    assert_eq!(
+        first.write,
+        chio_store_sqlite::FindingChallengeWriteOutcome::Inserted
+    );
+    let terms = market_terms(CLAIM_WINDOW_SECS)?;
+    let after_deadline = terms.body.issued_at + terms.body.filing_window_secs + 1;
+    let replay = coordinator.submit(&challenge, &raw, after_deadline)?;
+    assert_eq!(
+        replay.write,
+        chio_store_sqlite::FindingChallengeWriteOutcome::ExistingSame,
+        "a lost response can recover the exact durable audit filing"
+    );
     Ok(())
 }
 
@@ -6051,7 +6183,7 @@ fn finding_challenge_sealed_snapshot_distribution_sums_exactly() -> TestResult {
             .distribution
             .entries
             .iter()
-            .any(|entry| entry.destination == COMMUNITY_FUND_RAIL),
+            .any(|entry| entry.destination == COMMUNITY_FUND_DESTINATION),
         "the remainder goes only to the admission-pinned community fund"
     );
 
@@ -8511,7 +8643,7 @@ fn finding_challenge_digest_mismatch_reaches_an_enforced_sanction() -> TestResul
     assert_eq!(upheld.sealed.distribution.community_fund_units, 300);
     assert_eq!(
         allocation_by_destination(&upheld.sealed.distribution),
-        std::collections::BTreeMap::from([(COMMUNITY_FUND_RAIL.to_string(), 300)])
+        std::collections::BTreeMap::from([(COMMUNITY_FUND_DESTINATION.to_string(), 300)])
     );
 
     let authorized = impair_after_appeal(
@@ -8623,7 +8755,7 @@ fn finding_challenge_evidence_invalid_reaches_an_enforced_sanction() -> TestResu
         std::collections::BTreeMap::from([
             (buyer_destination(41), 50),
             (buyer_destination(42), 50),
-            (COMMUNITY_FUND_RAIL.to_string(), 400),
+            (COMMUNITY_FUND_DESTINATION.to_string(), 400),
         ]),
         "each harmed buyer takes exactly its pro rata share and the remainder goes to the fund"
     );
@@ -8731,7 +8863,7 @@ fn finding_challenge_replay_contradiction_reaches_an_enforced_sanction() -> Test
         allocation_by_destination(&upheld.sealed.distribution),
         std::collections::BTreeMap::from([
             (buyer_destination(41), 60),
-            (COMMUNITY_FUND_RAIL.to_string(), 340),
+            (COMMUNITY_FUND_DESTINATION.to_string(), 340),
         ])
     );
 

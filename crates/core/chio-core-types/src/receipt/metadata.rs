@@ -324,6 +324,7 @@ pub enum FindingDeliverySettlementMode {
 /// delivery. All digest and root fields derive from the exact canonical
 /// portable proof and its embedded signed epoch, never from caller metadata.
 pub const FINDING_STATUS_KEY_DOMAIN_NONCE: u64 = 3_318_287_169_837_494;
+const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -357,9 +358,14 @@ impl FindingStatusProofMetadata {
                 "finding delivery status proof key_domain_nonce must equal {FINDING_STATUS_KEY_DOMAIN_NONCE}"
             )));
         }
-        if self.map_epoch == 0 || self.non_inclusion_checked_at == 0 {
+        if self.map_epoch == 0
+            || self.map_epoch > I_JSON_MAX_SAFE_INTEGER
+            || self.non_inclusion_checked_at == 0
+            || self.non_inclusion_checked_at > I_JSON_MAX_SAFE_INTEGER
+        {
             return Err(Error::CanonicalJson(
-                "finding delivery status proof numeric fields must be nonzero".to_string(),
+                "finding delivery status proof numeric fields must be positive I-JSON safe integers"
+                    .to_string(),
             ));
         }
         for (value, field) in [
@@ -567,5 +573,15 @@ mod tests {
         proof.key_domain_nonce = 1;
         assert!(proof.validate().is_err());
         assert!(status_proof().validate().is_ok());
+    }
+
+    #[test]
+    fn finding_status_metadata_rejects_non_i_json_integers() {
+        let mut proof = status_proof();
+        proof.map_epoch = I_JSON_MAX_SAFE_INTEGER + 1;
+        assert!(proof.validate().is_err());
+        proof = status_proof();
+        proof.non_inclusion_checked_at = I_JSON_MAX_SAFE_INTEGER + 1;
+        assert!(proof.validate().is_err());
     }
 }
