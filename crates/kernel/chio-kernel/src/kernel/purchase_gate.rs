@@ -5,6 +5,7 @@ use base64::Engine as _;
 use chio_core::capability::scope::{
     Constraint, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount, ToolGrant,
 };
+#[cfg(feature = "cognition-market-experimental")]
 use chio_core::crypto::PublicKey;
 use serde::Deserialize;
 
@@ -334,6 +335,7 @@ impl ChioKernel {
     /// Pin the single qualified pool ledger for this deployment kernel.
     /// Once installed it cannot be replaced, preventing callers from routing
     /// successive debits for one signed allocation through disjoint ledgers.
+    #[cfg(feature = "cognition-market-experimental")]
     pub fn set_finding_pool_ledger(
         &mut self,
         ledger: std::sync::Arc<dyn crate::finding_pool::QualifiedFindingPoolLedger>,
@@ -345,16 +347,19 @@ impl ChioKernel {
         Ok(())
     }
 
+    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) fn finding_pool_allocation_authority(&self) -> Option<&PublicKey> {
         self.finding_pool_allocation_authority.as_ref()
     }
 
+    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) fn finding_pool_ledger(
         &self,
     ) -> Option<&dyn crate::finding_pool::QualifiedFindingPoolLedger> {
         self.finding_pool_ledger.as_deref()
     }
 
+    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) fn verify_finding_status_for_pool(
         &self,
         proof_b64: Option<&str>,
@@ -389,6 +394,7 @@ impl ChioKernel {
         }
     }
 
+    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) fn verify_purchase_context_for_pool(
         &self,
         view: &FindingPurchaseContextView<'_>,

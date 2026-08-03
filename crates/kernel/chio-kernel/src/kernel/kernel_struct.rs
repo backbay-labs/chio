@@ -580,7 +580,9 @@ pub struct ChioKernel {
     /// Kernel keys explicitly trusted to issue Finding delivery receipts that
     /// may parent governed buyer-memory lineage.
     pub(super) finding_delivery_receipt_authorities: Vec<chio_core::crypto::PublicKey>,
+    #[cfg(feature = "cognition-market-experimental")]
     pub(super) finding_pool_allocation_authority: Option<chio_core::crypto::PublicKey>,
+    #[cfg(feature = "cognition-market-experimental")]
     pub(super) finding_pool_ledger:
         Option<Arc<dyn crate::finding_pool::QualifiedFindingPoolLedger>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
