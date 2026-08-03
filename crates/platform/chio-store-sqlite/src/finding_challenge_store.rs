@@ -77,7 +77,9 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 6;
+/// Revision 7 binds every liability to its admitted seller; revision 6
+/// reserved dispute-lock identities before any external funding dispatch.
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 7;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "challenges",
     "finding_challenge_projection_commits",
@@ -392,6 +394,7 @@ pub struct FindingLiabilityInput<'a> {
     pub finding_id: &'a str,
     pub listing_id: &'a str,
     pub allocation_id: &'a str,
+    pub seller_hex: &'a str,
     pub venue_id: &'a str,
     pub chain_id: &'a str,
     pub vault_contract: &'a str,
@@ -407,6 +410,7 @@ pub struct FindingLiabilityRecord {
     pub finding_id: String,
     pub listing_id: String,
     pub allocation_id: String,
+    pub seller_hex: String,
     pub venue_id: String,
     pub chain_id: String,
     pub vault_contract: String,
@@ -1302,15 +1306,17 @@ impl SqliteFindingChallengeStore {
                 r#"
                 INSERT INTO liability_heads (
                     liability_key, defect_key, finding_id, listing_id,
-                    allocation_id, venue_id, chain_id, vault_contract, vault_id,
+                    allocation_id, seller_hex, venue_id, chain_id,
+                    vault_contract, vault_id,
                     state, upheld_challenge_id, purchase_cutoff_slot,
                     claim_deadline, appeal_window_opened_at, appeal_deadline,
                     appeal_terms_envelope_sha256, snapshot_digest,
                     allocation_digest, publication_pending, quarantined,
                     opened_at, updated_at
                 ) VALUES (
-                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open', NULL, NULL,
-                    NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, ?10, ?10
+                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                    'open', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                    0, 0, ?11, ?11
                 )
                 "#,
                 params![
@@ -1319,6 +1325,7 @@ impl SqliteFindingChallengeStore {
                     input.finding_id,
                     input.listing_id,
                     input.allocation_id,
+                    input.seller_hex,
                     input.venue_id,
                     input.chain_id,
                     input.vault_contract,
@@ -2832,8 +2839,8 @@ fn load_dispute_lock_tx(
 }
 
 const LIABILITY_COLUMNS: &str = r#"
-    liability_key, defect_key, finding_id, listing_id, allocation_id, venue_id,
-    chain_id, vault_contract, vault_id, state, upheld_challenge_id,
+    liability_key, defect_key, finding_id, listing_id, allocation_id, seller_hex,
+    venue_id, chain_id, vault_contract, vault_id, state, upheld_challenge_id,
     purchase_cutoff_slot, claim_deadline, appeal_window_opened_at,
     appeal_deadline, appeal_terms_envelope_sha256, snapshot_digest,
     allocation_digest, publication_pending, quarantined, opened_at, updated_at
@@ -2845,6 +2852,7 @@ struct RawLiability {
     finding_id: String,
     listing_id: String,
     allocation_id: String,
+    seller_hex: String,
     venue_id: String,
     chain_id: String,
     vault_contract: String,
@@ -2871,23 +2879,24 @@ fn map_liability(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawLiability> {
         finding_id: row.get(2)?,
         listing_id: row.get(3)?,
         allocation_id: row.get(4)?,
-        venue_id: row.get(5)?,
-        chain_id: row.get(6)?,
-        vault_contract: row.get(7)?,
-        vault_id: row.get(8)?,
-        state: row.get(9)?,
-        upheld_challenge_id: row.get(10)?,
-        purchase_cutoff_slot: row.get(11)?,
-        claim_deadline: row.get(12)?,
-        appeal_window_opened_at: row.get(13)?,
-        appeal_deadline: row.get(14)?,
-        appeal_terms_envelope_sha256: row.get(15)?,
-        snapshot_digest: row.get(16)?,
-        allocation_digest: row.get(17)?,
-        publication_pending: row.get(18)?,
-        quarantined: row.get(19)?,
-        opened_at: row.get(20)?,
-        updated_at: row.get(21)?,
+        seller_hex: row.get(5)?,
+        venue_id: row.get(6)?,
+        chain_id: row.get(7)?,
+        vault_contract: row.get(8)?,
+        vault_id: row.get(9)?,
+        state: row.get(10)?,
+        upheld_challenge_id: row.get(11)?,
+        purchase_cutoff_slot: row.get(12)?,
+        claim_deadline: row.get(13)?,
+        appeal_window_opened_at: row.get(14)?,
+        appeal_deadline: row.get(15)?,
+        appeal_terms_envelope_sha256: row.get(16)?,
+        snapshot_digest: row.get(17)?,
+        allocation_digest: row.get(18)?,
+        publication_pending: row.get(19)?,
+        quarantined: row.get(20)?,
+        opened_at: row.get(21)?,
+        updated_at: row.get(22)?,
     })
 }
 
@@ -2900,6 +2909,7 @@ fn liability_from_raw(
         finding_id: raw.finding_id,
         listing_id: raw.listing_id,
         allocation_id: raw.allocation_id,
+        seller_hex: raw.seller_hex,
         venue_id: raw.venue_id,
         chain_id: raw.chain_id,
         vault_contract: raw.vault_contract,
@@ -3317,6 +3327,7 @@ fn liability_matches(existing: &FindingLiabilityRecord, input: &FindingLiability
         && existing.finding_id == input.finding_id
         && existing.listing_id == input.listing_id
         && existing.allocation_id == input.allocation_id
+        && existing.seller_hex == input.seller_hex
         && existing.venue_id == input.venue_id
         && existing.chain_id == input.chain_id
         && existing.vault_contract == input.vault_contract
@@ -3398,6 +3409,7 @@ fn validate_liability(input: &FindingLiabilityInput<'_>) -> Result<(), FindingCh
     require_hex64(input.defect_key, "defect_key")?;
     require_hex64(input.finding_id, "finding_id")?;
     require_hex64(input.allocation_id, "allocation_id")?;
+    require_hex64(input.seller_hex, "seller_hex")?;
     require_identifier(input.listing_id, "listing_id")?;
     require_identifier(input.venue_id, "venue_id")?;
     require_identifier(input.chain_id, "chain_id")?;
@@ -3720,39 +3732,8 @@ pub(crate) fn initialize_finding_challenge_schema(
         return transaction.commit().map_err(sqlite_error);
     }
 
-    if on_disk == 5 {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(sqlite_error)?;
-        transaction
-            .execute_batch(FINDING_CHALLENGE_SCHEMA)
-            .map_err(sqlite_error)?;
-        transaction
-            .execute(
-                r#"
-                INSERT INTO dispute_lock_reservations (
-                    lock_id, challenge_id, owner_hex,
-                    schedule_envelope_sha256, amount_units, currency,
-                    pool_principal_id, pool_rail_destination,
-                    pool_authority_epoch, expires_at, locked_at, reserved_at
-                )
-                SELECT lock_id, challenge_id, owner_hex,
-                       schedule_envelope_sha256, amount_units, currency,
-                       pool_principal_id, pool_rail_destination,
-                       pool_authority_epoch, expires_at, locked_at, locked_at
-                FROM dispute_locks
-                "#,
-                [],
-            )
-            .map_err(sqlite_error)?;
-        crate::stamp_schema_version(
-            &transaction,
-            FINDING_CHALLENGE_SCHEMA_KEY,
-            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
-        )
-        .map_err(|error| invariant(error.to_string()))?;
-        verify_finding_challenge_invariants(&transaction)?;
-        return transaction.commit().map_err(sqlite_error);
+    if matches!(on_disk, 5 | 6) {
+        return migrate_recent_finding_challenge_schema(connection, on_disk);
     }
 
     if on_disk == 4 {
@@ -3788,17 +3769,8 @@ pub(crate) fn initialize_finding_challenge_schema(
                 "v4 finding challenge state has no authenticated projection history",
             ));
         }
-        transaction
-            .execute_batch(FINDING_CHALLENGE_SCHEMA)
-            .map_err(sqlite_error)?;
-        crate::stamp_schema_version(
-            &transaction,
-            FINDING_CHALLENGE_SCHEMA_KEY,
-            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
-        )
-        .map_err(|error| invariant(error.to_string()))?;
-        verify_finding_challenge_invariants(&transaction)?;
-        return transaction.commit().map_err(sqlite_error);
+        drop(transaction);
+        return migrate_recent_finding_challenge_schema(connection, on_disk);
     }
 
     if !matches!(on_disk, 1..=3) {
@@ -3816,6 +3788,78 @@ pub(crate) fn initialize_finding_challenge_schema(
         .execute_batch("PRAGMA foreign_keys = OFF;")
         .map_err(sqlite_error)?;
     let migration = migrate_finding_challenge_schema(connection);
+    let foreign_keys = connection
+        .execute_batch("PRAGMA foreign_keys = ON;")
+        .map_err(sqlite_error);
+    match (migration, foreign_keys) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(error),
+    }
+}
+
+fn migrate_recent_finding_challenge_schema(
+    connection: &mut Connection,
+    on_disk: i32,
+) -> Result<(), FindingChallengeStoreError> {
+    connection
+        .execute_batch("PRAGMA foreign_keys = OFF;")
+        .map_err(sqlite_error)?;
+    let migration = (|| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+        if table_has_rows_where(&transaction, "liability_heads", "1 = 1")? {
+            return Err(invariant(
+                "legacy liability state cannot migrate without its admitted seller binding",
+            ));
+        }
+        transaction
+            .execute_batch("DROP TABLE liability_heads;")
+            .map_err(sqlite_error)?;
+        transaction
+            .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .map_err(sqlite_error)?;
+        if on_disk <= 5 {
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO dispute_lock_reservations (
+                        lock_id, challenge_id, owner_hex,
+                        schedule_envelope_sha256, amount_units, currency,
+                        pool_principal_id, pool_rail_destination,
+                        pool_authority_epoch, expires_at, locked_at, reserved_at
+                    )
+                    SELECT lock_id, challenge_id, owner_hex,
+                           schedule_envelope_sha256, amount_units, currency,
+                           pool_principal_id, pool_rail_destination,
+                           pool_authority_epoch, expires_at, locked_at, locked_at
+                    FROM dispute_locks
+                    "#,
+                    [],
+                )
+                .map_err(sqlite_error)?;
+        }
+        crate::stamp_schema_version(
+            &transaction,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| invariant(error.to_string()))?;
+        verify_finding_challenge_invariants(&transaction)?;
+        let foreign_key_violation: Option<String> = transaction
+            .query_row(
+                "SELECT 'foreign key violation in ' || \"table\" FROM pragma_foreign_key_check LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        if let Some(detail) = foreign_key_violation {
+            return Err(invariant(detail));
+        }
+        transaction.commit().map_err(sqlite_error)
+    })();
     let foreign_keys = connection
         .execute_batch("PRAGMA foreign_keys = ON;")
         .map_err(sqlite_error);
@@ -3861,6 +3905,11 @@ fn migrate_finding_challenge_schema(
     if (has_pool_principal || has_pool_destination || has_pool_epoch) && !has_dispute_pool {
         return Err(invariant(
             "legacy dispute lock schema has only part of the admitted pool binding",
+        ));
+    }
+    if table_has_rows_where(&transaction, "liability_heads", "1 = 1")? {
+        return Err(invariant(
+            "legacy liability state cannot migrate without its admitted seller binding",
         ));
     }
     if table_has_rows_where(&transaction, "dispute_locks", "1 = 1")? {
@@ -3929,7 +3978,8 @@ fn migrate_finding_challenge_schema(
             r#"
             CREATE TEMP TABLE finding_liability_heads_migration AS
             SELECT liability_key, defect_key, finding_id, listing_id,
-                   allocation_id, venue_id, chain_id, vault_contract, vault_id,
+                   allocation_id, '' AS seller_hex, venue_id, chain_id,
+                   vault_contract, vault_id,
                    state, upheld_challenge_id, purchase_cutoff_slot,
                    {claim_deadline} AS claim_deadline,
                    {appeal_window_opened_at} AS appeal_window_opened_at,
@@ -3974,7 +4024,8 @@ fn migrate_finding_challenge_schema(
             r#"
             INSERT INTO liability_heads (
                 liability_key, defect_key, finding_id, listing_id,
-                allocation_id, venue_id, chain_id, vault_contract, vault_id,
+                allocation_id, seller_hex, venue_id, chain_id,
+                vault_contract, vault_id,
                 state, upheld_challenge_id, purchase_cutoff_slot,
                 claim_deadline, appeal_window_opened_at, appeal_deadline,
                 appeal_terms_envelope_sha256, snapshot_digest,
@@ -3982,7 +4033,8 @@ fn migrate_finding_challenge_schema(
                 opened_at, updated_at
             )
             SELECT liability_key, defect_key, finding_id, listing_id,
-                   allocation_id, venue_id, chain_id, vault_contract, vault_id,
+                   allocation_id, seller_hex, venue_id, chain_id,
+                   vault_contract, vault_id,
                    state, upheld_challenge_id, purchase_cutoff_slot,
                    claim_deadline, appeal_window_opened_at, appeal_deadline,
                    appeal_terms_envelope_sha256, snapshot_digest,

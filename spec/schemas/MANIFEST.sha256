@@ -1,4 +1,4 @@
-88a2f50e06ed238fdb3d4950ec7ba0b4e76af88ddf4a13bdf39c22bb64b0dbe3  spec/schemas/MANIFEST.sha256
+93fcf017669c95cc429dcb0f838affc2cf18411d0d35d1211625b3721a6d32f4  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -112,7 +112,7 @@ ab4b1991f907ff0963fdf5617a27c497ac1455512ee563c3ede96535b0fe66c6  spec/schemas/c
 a090c94daf60128bfbb637c141d4c6eb97f6d7dabca256ed2fcaeeea1a5ad0b1  spec/schemas/chio-federation/v1/treaty-scope.schema.json
 d3cd392ecaca10668edd360b7ce1e5479f2bfab784f63499879914dd876524e8  spec/schemas/chio-federation/v1/verification-context.schema.json
 fb33f0a18894dc039ea4a2d71c01469e9ef5a691f850235f32797cdfc99cfb9e  spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json
-62c5150e0e8ad4002cb436c2fb795cf3b341cb06fc36eb56974b632dc3ef787e  spec/schemas/chio-finding/v1/admission.schema.json
+80f7c8231cc6b617b2da397b51c43faec7494ac70bc530c69a7f6b85665bac11  spec/schemas/chio-finding/v1/admission.schema.json
 bb592bbe8085abb35f430917f97f594170b9f1f13b5d1031c3ef6ecb19b0b19f  spec/schemas/chio-finding/v1/audit-epoch.schema.json
 56738bea367933c7c54ffb3c6b0d1e5aa29a3e283dd952b78443c69030d62968  spec/schemas/chio-finding/v1/audit-report.schema.json
 1cee09366510acf96f0c8603957807f784948d745411530b62361db68f4fb190  spec/schemas/chio-finding/v1/bond-backing.schema.json
@@ -127,7 +127,7 @@ c5bc56c8965281047d38e79a228b00ab427d4e97d8afa792a71297090cc6f53b  spec/schemas/c
 dd0bb78a638d0798450a524347cb82158aba382116de9fd5206bd31c88618df6  spec/schemas/chio-finding/v1/market-penalty.schema.json
 161f372dc1c5f89758bf2fd84253082e34058fc814d9580154e65a66cdf55d72  spec/schemas/chio-finding/v1/market-terms.schema.json
 87dc0f50befcda8ba0f347401161fedb3e6fbc2d9c4d1d59839574abdbdff398  spec/schemas/chio-finding/v1/purchase-context.schema.json
-a60a45efafe655cf31e281638c48e9e2382a24667b3951fa901f3aea2ff6cae6  spec/schemas/chio-finding/v1/purchase-record.schema.json
+a4bc54088b6aef5d000ad717275342a966cd55fd0391e6c555aaa93bcc111395  spec/schemas/chio-finding/v1/purchase-record.schema.json
 730eef07858d4d7e64749cfed9f617924d50d52d088181236f1a6a23299131a2  spec/schemas/chio-finding/v1/recovery-context.schema.json
 33a770b2bab56638c1160abd2afe8fba9d0b76c678fc0d0fc9c4ff5dbcf9a91d  spec/schemas/chio-finding/v1/replay-observation.schema.json
 1eb8be0325dd7762a919df4a563f166f8c0ec7c94c0fd1d219eb29541074e0bc  spec/schemas/chio-finding/v1/replay-recipe-input.schema.json

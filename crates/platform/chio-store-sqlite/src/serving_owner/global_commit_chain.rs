@@ -1214,7 +1214,11 @@ fn finding_challenge_snapshot_digest_v1(
     ];
     let mut snapshots = Vec::with_capacity(tables.len());
     for table in tables {
-        snapshots.push(table_snapshot(connection, table, None)?);
+        snapshots.push(if table == "liability_heads" {
+            table_snapshot_without_column(connection, table, "seller_hex")?
+        } else {
+            table_snapshot(connection, table, None)?
+        });
     }
     digest(&AuthoritySnapshot {
         format: "chio.sqlite-finding-challenge-snapshot.v1",
@@ -1229,18 +1233,25 @@ fn finding_challenge_snapshot_digest_v1(
 fn finding_market_snapshot_digest(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true)
+    finding_market_snapshot_digest_version(connection, true, true)
+}
+
+fn finding_market_snapshot_digest_v3(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(connection, true, false)
 }
 
 fn finding_market_snapshot_digest_v2(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, false)
+    finding_market_snapshot_digest_version(connection, false, false)
 }
 
 fn finding_market_snapshot_digest_version(
     connection: &Connection,
     include_lock_reservations: bool,
+    include_liability_seller: bool,
 ) -> Result<String, SqliteServingOwnerError> {
     let challenge_tables = [
         "challenges",
@@ -1253,7 +1264,11 @@ fn finding_market_snapshot_digest_version(
     ];
     let mut snapshots = Vec::with_capacity(if include_lock_reservations { 14 } else { 13 });
     for table in challenge_tables {
-        snapshots.push(table_snapshot(connection, table, None)?);
+        snapshots.push(if table == "liability_heads" && !include_liability_seller {
+            table_snapshot_without_column(connection, table, "seller_hex")?
+        } else {
+            table_snapshot(connection, table, None)?
+        });
         if include_lock_reservations && table == "challenges" {
             snapshots.push(table_snapshot(
                 connection,
@@ -1292,7 +1307,9 @@ fn finding_market_snapshot_digest_version(
         "#,
     )?);
     digest(&AuthoritySnapshot {
-        format: if include_lock_reservations {
+        format: if include_liability_seller {
+            "chio.sqlite-finding-market-snapshot.v4"
+        } else if include_lock_reservations {
             "chio.sqlite-finding-market-snapshot.v3"
         } else {
             "chio.sqlite-finding-market-snapshot.v2"
@@ -1805,9 +1822,11 @@ fn verify_finding_challenge_projection_coverage(
     match rows.last() {
         Some((_, _, snapshot_digest, _, _)) => {
             let current_market = finding_market_snapshot_digest(connection)?;
+            let current_market_v3 = finding_market_snapshot_digest_v3(connection)?;
             let current_market_v2 = finding_market_snapshot_digest_v2(connection)?;
             let current_legacy = finding_challenge_snapshot_digest_v1(connection)?;
             if current_market != *snapshot_digest
+                && current_market_v3 != *snapshot_digest
                 && current_market_v2 != *snapshot_digest
                 && current_legacy != *snapshot_digest
             {
@@ -1985,6 +2004,52 @@ fn table_snapshot(
     }
     Ok(TableSnapshot {
         name: table.to_string(),
+        columns,
+        row_digests,
+    })
+}
+
+/// Reproduce an older snapshot after a schema revision adds one column.
+/// This is verification-only compatibility for an authenticated prior
+/// head; every new commit uses the complete current table shape.
+fn table_snapshot_without_column(
+    connection: &Connection,
+    table: &str,
+    excluded: &str,
+) -> Result<TableSnapshot, SqliteServingOwnerError> {
+    let table_identifier = quote_identifier(table);
+    let probe = connection.prepare(&format!("SELECT * FROM {table_identifier} LIMIT 0"))?;
+    let columns = probe
+        .column_names()
+        .into_iter()
+        .filter(|column| *column != excluded)
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    drop(probe);
+    if columns.is_empty() {
+        return Err(invalid(format!(
+            "projection table `{table}` has no retained columns"
+        )));
+    }
+    let order = columns
+        .iter()
+        .map(|column| quote_identifier(column))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut statement = connection.prepare(&format!(
+        "SELECT {order} FROM {table_identifier} ORDER BY {order}"
+    ))?;
+    let mut rows = statement.query([])?;
+    let mut row_digests = Vec::new();
+    while let Some(row) = rows.next()? {
+        let mut values = Vec::with_capacity(columns.len());
+        for index in 0..columns.len() {
+            values.push(snapshot_value(row.get_ref(index)?));
+        }
+        row_digests.push(digest(&values)?);
+    }
+    Ok(TableSnapshot {
+        name: table.to_owned(),
         columns,
         row_digests,
     })

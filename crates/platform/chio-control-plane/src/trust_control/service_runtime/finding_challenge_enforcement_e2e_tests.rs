@@ -6519,6 +6519,8 @@ fn finalizing_liability_with(
     )?;
 
     let liability_key = byte_hex64(0xb1);
+    let seller = keypair(73).public_key();
+    let seller_hex = seller.to_hex();
     deployment
         .challenges
         .open_liability(&chio_store_sqlite::FindingLiabilityInput {
@@ -6527,6 +6529,7 @@ fn finalizing_liability_with(
             finding_id: &finding.finding_id,
             listing_id: LISTING_ID,
             allocation_id: &byte_hex64(0xa1),
+            seller_hex: &seller_hex,
             venue_id: VENUE_ID,
             chain_id: &settlement_config()?.chain_id,
             vault_contract: BOND_VAULT_CONTRACT,
@@ -6570,7 +6573,6 @@ fn finalizing_liability_with(
         NOW + 4,
     )?;
 
-    let seller = keypair(73).public_key();
     let intent_key = byte_hex64(0xc1);
     let penalty = fixture_slash_penalty()?;
     let penalty_envelope_sha256 = signed_envelope_sha256(&penalty)?;
@@ -7320,6 +7322,47 @@ fn finding_challenge_an_observer_cannot_weaken_deployment_finality() -> TestResu
     ));
     assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
     assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_snapshot_seller_must_match_the_durable_liability() -> TestResult {
+    let case = finalizing_liability()?;
+    let substituted_seller = keypair(74).public_key();
+    let mut snapshot_body = case.snapshot.body.clone();
+    snapshot_body.seller = substituted_seller.clone();
+    snapshot_body.snapshot_id = String::new();
+    snapshot_body.snapshot_id = compute_snapshot_id(&snapshot_body)?;
+    let snapshot = SignedExportEnvelope::sign(snapshot_body, &keypair(34))?;
+
+    let mut enforcement_body = case.enforcement.body.clone();
+    enforcement_body.bond_snapshot_envelope_sha256 = signed_envelope_sha256(&snapshot)?;
+    enforcement_body.enforcement_id = String::new();
+    enforcement_body.enforcement_id = compute_enforcement_id(&enforcement_body)?;
+    let enforcement = SignedExportEnvelope::sign(enforcement_body, &keypair(32))?;
+
+    let refused = case
+        .coordinator
+        .finalize(
+            &case.liability_key,
+            &enforcement,
+            &case.penalty,
+            &snapshot,
+            &substituted_seller,
+            &settlement_config()?,
+            &settlement_config()?.operator_address,
+            &evm_vault_snapshot(),
+            &anchor_proof()?,
+            &ScriptedObservations::qualified(),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )
+        .expect_err("an observer cannot substitute the liability's admitted seller");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::LiabilityIdentity("seller")
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
     Ok(())
 }
 

@@ -210,6 +210,9 @@ CREATE TABLE IF NOT EXISTS liability_heads (
     allocation_id TEXT NOT NULL CHECK (
         length(allocation_id) = 64 AND allocation_id NOT GLOB '*[^0-9a-f]*'
     ),
+    seller_hex TEXT NOT NULL CHECK (
+        length(seller_hex) = 64 AND seller_hex NOT GLOB '*[^0-9a-f]*'
+    ),
     venue_id TEXT NOT NULL CHECK (length(venue_id) BETWEEN 1 AND 512),
     chain_id TEXT NOT NULL CHECK (length(chain_id) BETWEEN 1 AND 512),
     vault_contract TEXT NOT NULL
@@ -291,6 +294,7 @@ WHEN NEW.liability_key <> OLD.liability_key
   OR NEW.finding_id <> OLD.finding_id
   OR NEW.listing_id <> OLD.listing_id
   OR NEW.allocation_id <> OLD.allocation_id
+  OR NEW.seller_hex <> OLD.seller_hex
   OR NEW.venue_id <> OLD.venue_id
   OR NEW.chain_id <> OLD.chain_id
   OR NEW.vault_contract <> OLD.vault_contract

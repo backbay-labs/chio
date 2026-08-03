@@ -247,6 +247,7 @@ struct Liability {
     finding_id: String,
     listing_id: String,
     allocation_id: String,
+    seller_hex: String,
     venue_id: String,
 }
 
@@ -258,6 +259,7 @@ impl Liability {
             finding_id: hex64('a'),
             listing_id: listing_id.to_owned(),
             allocation_id: allocation_id.to_owned(),
+            seller_hex: hex64('b'),
             venue_id: "venue-01".to_owned(),
         }
     }
@@ -269,6 +271,7 @@ impl Liability {
             finding_id: &self.finding_id,
             listing_id: &self.listing_id,
             allocation_id: &self.allocation_id,
+            seller_hex: &self.seller_hex,
             venue_id: &self.venue_id,
             chain_id: "eip155:8453",
             vault_contract: "0xvault",
@@ -369,8 +372,20 @@ fn remove_schema_fragment(schema: String, fragment: &str) -> String {
     schema.replacen(fragment, "", 1)
 }
 
+fn finding_challenge_v6_schema() -> String {
+    let schema = remove_schema_fragment(
+        FINDING_CHALLENGE_SCHEMA.to_owned(),
+        r#"    seller_hex TEXT NOT NULL CHECK (
+        length(seller_hex) = 64 AND seller_hex NOT GLOB '*[^0-9a-f]*'
+    ),
+"#,
+    );
+    remove_schema_fragment(schema, "  OR NEW.seller_hex <> OLD.seller_hex\n")
+}
+
 fn finding_challenge_v5_schema() -> String {
-    let (before, reservation_and_after) = FINDING_CHALLENGE_SCHEMA
+    let schema = finding_challenge_v6_schema();
+    let (before, reservation_and_after) = schema
         .split_once("CREATE TABLE IF NOT EXISTS dispute_lock_reservations")
         .expect("v6 reservation schema marker");
     let (_, after) = reservation_and_after
@@ -1317,6 +1332,7 @@ fn liability_head_advances_only_by_compare_and_set() {
             finding_id: head.finding_id.clone(),
             listing_id: LISTING_ID.to_string(),
             allocation_id: fixture.allocation_id.clone(),
+            seller_hex: head.seller_hex.clone(),
             venue_id: "venue-01".to_string(),
             chain_id: "eip155:8453".to_string(),
             vault_contract: "0xvault".to_string(),
@@ -3303,7 +3319,7 @@ fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
 }
 
 #[test]
-fn v2_schema_migrates_to_frozen_appeals_and_required_effects() {
+fn v2_liability_without_an_admitted_seller_binding_rejects_migration() {
     let mut connection = Connection::open_in_memory().expect("open legacy database");
     connection
         .execute_batch(&finding_challenge_v2_schema())
@@ -3347,59 +3363,13 @@ fn v2_schema_migrates_to_frozen_appeals_and_required_effects() {
             ],
         )
         .expect("insert v2 liability");
-    let intent_key = digest("legacy-v2-effect");
-    connection
-        .execute(
-            r#"
-            INSERT INTO effect_intents (
-                intent_key, liability_key, kind, intent_digest, state,
-                attempt_count, recorded_at, updated_at
-            ) VALUES (?1, ?2, 'seller_impair', ?3, 'pending', 0, ?4, ?4)
-            "#,
-            params![
-                intent_key,
-                liability_key,
-                digest("legacy-v2-effect-commitment"),
-                sqlite_i64(NOW, "now").expect("legacy time"),
-            ],
-        )
-        .expect("insert v2 effect");
-
-    initialize_finding_challenge_schema(&mut connection).expect("migrate legacy schema");
-
-    let version: i32 = connection
-        .query_row(
-            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
-            [FINDING_CHALLENGE_SCHEMA_KEY],
-            |row| row.get(0),
-        )
-        .expect("read migrated version");
-    assert_eq!(version, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION);
-    let appeal: (Option<i64>, Option<i64>, Option<String>) = connection
-        .query_row(
-            r#"
-            SELECT appeal_window_opened_at, appeal_deadline,
-                   appeal_terms_envelope_sha256
-            FROM liability_heads WHERE liability_key = ?1
-            "#,
-            [&liability_key],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .expect("read migrated appeal commitments");
-    assert_eq!(appeal, (None, None, None));
-    let settlement_required: i64 = connection
-        .query_row(
-            "SELECT settlement_required FROM effect_intents WHERE intent_key = ?1",
-            [&intent_key],
-            |row| row.get(0),
-        )
-        .expect("read migrated settlement gate");
-    assert_eq!(settlement_required, 1);
-    verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
+    let error = initialize_finding_challenge_schema(&mut connection)
+        .expect_err("an unbound legacy seller cannot become impairment authority");
+    assert!(error.to_string().contains("admitted seller binding"));
 }
 
 #[test]
-fn v5_schema_adds_the_pre_funding_dispute_lock_reservation() {
+fn v5_schema_adds_lock_reservation_and_durable_seller_binding() {
     let mut connection = Connection::open_in_memory().expect("open legacy database");
     connection
         .execute_batch(&finding_challenge_v5_schema())
@@ -3429,6 +3399,37 @@ fn v5_schema_adds_the_pre_funding_dispute_lock_reservation() {
     assert!(
         table_has_column(&connection, "dispute_lock_reservations", "reserved_at")
             .expect("inspect migrated reservation table")
+    );
+    assert!(
+        table_has_column(&connection, "liability_heads", "seller_hex")
+            .expect("inspect migrated seller binding")
+    );
+    verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
+fn v6_schema_adds_the_durable_seller_binding() {
+    let mut connection = Connection::open_in_memory().expect("open legacy database");
+    connection
+        .execute_batch(&finding_challenge_v6_schema())
+        .expect("install v6 challenge schema");
+    assert_eq!(
+        crate::check_schema_version(
+            &connection,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            FINDING_CHALLENGE_SCHEMA_ANCHORS,
+        )
+        .expect("adopt legacy database"),
+        0
+    );
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 6)
+        .expect("stamp previous schema");
+
+    initialize_finding_challenge_schema(&mut connection).expect("migrate v6 schema");
+    assert!(
+        table_has_column(&connection, "liability_heads", "seller_hex")
+            .expect("inspect migrated seller binding")
     );
     verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
 }
