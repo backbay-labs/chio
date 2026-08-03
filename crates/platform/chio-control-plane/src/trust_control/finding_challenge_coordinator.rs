@@ -134,7 +134,8 @@ use super::finding_handlers::{
     FindingRailInstruction, FindingRailObservation, FindingRailObserver,
 };
 use super::service_types::{
-    FindingAuthorityPin, FindingMarketConfig, FindingStatusOperatorPin, FindingStatusServiceBond,
+    require_status_feed_through, FindingAuthorityPin, FindingMarketConfig,
+    FindingStatusOperatorPin, FindingStatusServiceBond,
 };
 
 #[path = "finding_challenge_coordinator/anchor_publisher.rs"]
@@ -5809,14 +5810,6 @@ impl FindingChallengeCoordinator {
         let authorization_json =
             canonical_json_bytes(&retained).map_err(|_| ChallengeCoordinatorError::Canonical)?;
         let authorization_sha256 = sha256_hex(&authorization_json);
-        self.status_feed_operator
-            .require_live(&self.status_feed_operator_ref, now)
-            .map_err(|error| ChallengeCoordinatorError::Configuration(error.to_string()))?;
-        if !self.status_feed_service_bond.covers(now) {
-            return Err(ChallengeCoordinatorError::Configuration(
-                "finding status service bond is not live at appeal finality".to_owned(),
-            ));
-        }
         let inclusion_deadline = now
             .checked_add(self.status_feed_service_bond.inclusion_sla_secs)
             .ok_or_else(|| {
@@ -5824,6 +5817,14 @@ impl FindingChallengeCoordinator {
                     "finding status inclusion deadline overflowed".to_owned(),
                 )
             })?;
+        require_status_feed_through(
+            &self.status_feed_operator,
+            &self.status_feed_service_bond,
+            &self.status_feed_operator_ref,
+            now,
+            inclusion_deadline,
+        )
+        .map_err(|error| ChallengeCoordinatorError::Configuration(error.to_string()))?;
         let enforcement_bytes = chio_core::canonical_json_bytes(&signed)
             .map_err(|_| ChallengeCoordinatorError::Canonical)?;
         // The appeal-final transition and exact status outbox item share one

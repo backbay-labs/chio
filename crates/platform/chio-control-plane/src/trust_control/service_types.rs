@@ -49,6 +49,8 @@ pub use self::cluster_budget::{
 pub(crate) use self::config::validate_control_secret;
 pub use self::config::{TrustFiscalRuntimeConfig, TrustServiceConfig};
 #[cfg(feature = "cognition-market-experimental")]
+pub(crate) use self::finding_market_config::require_status_feed_through;
+#[cfg(feature = "cognition-market-experimental")]
 pub use self::finding_market_config::{
     FindingAuthorityPin, FindingMarketConfig, FindingPoolPin, FindingStatusOperatorPin,
     FindingStatusServiceBond, FINDING_STATUS_KEY_DOMAIN_NONCE, FINDING_STATUS_OPERATOR_ROLE,

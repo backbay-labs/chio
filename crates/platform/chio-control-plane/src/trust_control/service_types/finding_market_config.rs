@@ -156,9 +156,14 @@ pub struct FindingStatusOperatorPin {
 
 impl FindingStatusOperatorPin {
     fn validate(&self) -> Result<PublicKey, CliError> {
-        if self.feed_id.trim().is_empty() || self.feed_id.trim() != self.feed_id {
+        if self.feed_id.is_empty()
+            || self.feed_id.len() > 512
+            || !self.feed_id.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'/' | b'-')
+            })
+        {
             return Err(CliError::cli_other_error(
-                "finding-market status feed id must be canonical and non-empty".to_string(),
+                "finding-market status feed id is not a portable wire identifier".to_string(),
             ));
         }
         if self.role != FINDING_STATUS_OPERATOR_ROLE {
@@ -215,6 +220,32 @@ impl FindingStatusOperatorPin {
         }
         Ok(key)
     }
+}
+
+/// Require the configured operator authorization and service bond to cover
+/// both the issuance instant and the last instant promised by an inclusion
+/// SLA. This prevents a durable outbox item from becoming undispatchable
+/// before its own deadline.
+pub(crate) fn require_status_feed_through(
+    operator: &FindingStatusOperatorPin,
+    service_bond: &FindingStatusServiceBond,
+    feed_id: &str,
+    now: u64,
+    through: u64,
+) -> Result<PublicKey, CliError> {
+    if through < now {
+        return Err(CliError::cli_other_error(
+            "finding-market status inclusion deadline precedes issuance".to_string(),
+        ));
+    }
+    let key = operator.require_live(feed_id, now)?;
+    operator.require_live(feed_id, through)?;
+    if !service_bond.covers(now) || !service_bond.covers(through) {
+        return Err(CliError::cli_other_error(
+            "finding-market status service bond does not cover the inclusion deadline".to_string(),
+        ));
+    }
+    Ok(key)
 }
 
 /// Live service bond that makes missed inclusion and equivocation objective
@@ -532,13 +563,13 @@ impl FindingMarketConfig {
     /// Require the configured status operator authorization and its service
     /// bond to be live for an exact feed at the venue clock.
     pub fn require_live_status_feed(&self, feed_id: &str, now: u64) -> Result<PublicKey, CliError> {
-        let key = self.status_feed_operator.require_live(feed_id, now)?;
-        if !self.status_feed_service_bond.covers(now) {
-            return Err(CliError::cli_other_error(
-                "finding-market status operator service bond is missing or expired".to_string(),
-            ));
-        }
-        Ok(key)
+        require_status_feed_through(
+            &self.status_feed_operator,
+            &self.status_feed_service_bond,
+            feed_id,
+            now,
+            now,
+        )
     }
 }
 
@@ -595,6 +626,12 @@ mod status_feed_config_tests {
         assert!(pin.require_live(FEED_ID, 499).is_ok());
         assert!(pin.require_live(FEED_ID, 500).is_err());
         assert!(pin.require_live("status-feed/other", 200).is_err());
+
+        let mut invalid = operator();
+        invalid.feed_id = "status feed/test".to_string();
+        assert!(invalid.validate().is_err());
+        invalid.feed_id = "status-feed/café".to_string();
+        assert!(invalid.validate().is_err());
     }
 
     #[test]
@@ -619,6 +656,8 @@ mod status_feed_config_tests {
         assert!(service_bond.covers(100));
         assert!(service_bond.covers(399));
         assert!(!service_bond.covers(400));
+        assert!(require_status_feed_through(&pin, &service_bond, FEED_ID, 300, 399).is_ok());
+        assert!(require_status_feed_through(&pin, &service_bond, FEED_ID, 300, 400).is_err());
 
         let mut missing_sla = service_bond.clone();
         missing_sla.inclusion_sla_secs = 0;

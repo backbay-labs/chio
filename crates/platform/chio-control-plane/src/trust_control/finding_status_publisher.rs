@@ -198,10 +198,11 @@ impl FindingStatusEpochPublisher {
         }
         chio_finding::verify_signed_status_epoch(&signed, &current_authorization)
             .map_err(|error| error.to_string())?;
-        if !anchor_refs.is_empty() && signed.body.anchor_refs != anchor_refs {
-            return Err(
-                "point proof anchor references do not match the current signed epoch".to_owned(),
-            );
+        if signed.body.anchor_refs != anchor_refs {
+            // A newly finalized anchor set describes a new public commitment
+            // even when the sparse-map root is unchanged. Advance instead of
+            // pinning point-proof publication behind the prior epoch forever.
+            return Ok(None);
         }
         if now < signed.body.valid_from || now < signed.body.generated_at {
             return Err("finding status publisher clock precedes the current epoch".to_owned());

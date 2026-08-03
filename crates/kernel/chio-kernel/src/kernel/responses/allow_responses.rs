@@ -484,6 +484,51 @@ impl ChioKernel {
                     "Finding delivery receipt does not authorize this memory entry".to_owned(),
                 ));
             }
+            let contract_value = parent
+                .metadata
+                .as_ref()
+                .and_then(|metadata| {
+                    metadata.get(chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY)
+                })
+                .cloned()
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding delivery receipt has no typed delivery contract".to_owned(),
+                    )
+                })?;
+            let contract: chio_core::receipt::metadata::DeliveryContract =
+                serde_json::from_value(contract_value).map_err(|error| {
+                    KernelError::Internal(format!(
+                        "Finding delivery contract metadata is malformed: {error}"
+                    ))
+                })?;
+            contract.validate().map_err(|error| {
+                KernelError::Internal(format!(
+                    "Finding delivery contract metadata is invalid: {error}"
+                ))
+            })?;
+            let written_content = request.arguments.get("content").ok_or_else(|| {
+                KernelError::Internal(
+                    "Finding memory write requires the exact delivered content".to_owned(),
+                )
+            })?;
+            let written_content_bytes = chio_core::canonical::canonical_json_bytes(written_content)
+                .map_err(|error| {
+                    KernelError::Internal(format!(
+                        "Finding memory write content canonicalization failed: {error}"
+                    ))
+                })?;
+            let written_content_digest = chio_core::crypto::sha256_hex(&written_content_bytes);
+            if contract.result != chio_core::receipt::metadata::DeliveryResult::Matched
+                || contract.expected_digest != contract.observed_digest
+                || contract.expected_digest != parent.content_hash
+                || contract.expected_digest != written_content_digest
+            {
+                return Err(KernelError::Internal(
+                    "Finding memory write content differs from the authenticated delivery"
+                        .to_owned(),
+                ));
+            }
             let parent_request_id = parent
                 .metadata
                 .as_ref()

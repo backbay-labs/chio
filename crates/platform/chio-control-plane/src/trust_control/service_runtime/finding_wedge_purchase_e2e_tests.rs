@@ -2893,7 +2893,7 @@ fn buyer_memory_write(
     let arguments = serde_json::json!({
         "collection": "purchased-findings",
         "id": deployment.web.finding_id,
-        "content": STANDARD.encode(SEALED_PAYLOAD),
+        "content": reveal_envelope(REVEAL_MEDIA_TYPE, SEALED_PAYLOAD),
         (chio_kernel::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT):
             delivery_receipt.id,
     });
@@ -2955,6 +2955,27 @@ fn buyer_memory_write(
         statement.relation_kind,
         ReceiptLineageRelationKind::FindingMemoryWriteToDelivery
     );
+
+    let mut substituted = request.clone();
+    substituted.request_id = "wedge-memory-write-substituted".to_string();
+    substituted.arguments["content"] = serde_json::json!({
+        "media_type": REVEAL_MEDIA_TYPE,
+        "payload_b64": STANDARD.encode(OTHER_PAYLOAD),
+    });
+    if let Some(intent) = substituted.governed_intent.as_mut() {
+        intent.id = "intent-wedge-memory-write-substituted".to_string();
+    }
+    let error = match kernel.evaluate_tool_call_blocking(&substituted) {
+        Err(error) => error,
+        Ok(_) => {
+            return Err(missing(
+                "unrelated content inherited Finding delivery lineage",
+            ))
+        }
+    };
+    assert!(error
+        .to_string()
+        .contains("differs from the authenticated delivery"));
     Ok(())
 }
 

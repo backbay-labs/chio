@@ -373,15 +373,14 @@ fn validate_intent_submission(
             "status intent id does not match its canonical preimage",
         ));
     }
-    let pinned_key = operator
-        .require_live(feed_id, now)
-        .map_err(|error| plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error.to_string()))?;
-    if !service_bond.covers(now) {
-        return Err(plain_http_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "finding-market status operator service bond is missing or expired",
-        ));
-    }
+    let pinned_key = require_status_feed_through(
+        operator,
+        service_bond,
+        feed_id,
+        now,
+        body.inclusion_deadline,
+    )
+    .map_err(|error| plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error.to_string()))?;
     verify_pinned_envelope(signed, &pinned_key, "status intent operator").map_err(|_| {
         plain_http_error(
             StatusCode::UNAUTHORIZED,
@@ -418,6 +417,51 @@ fn validate_intent_submission(
         return Err(plain_http_error(
             StatusCode::BAD_REQUEST,
             "voluntary retraction source receipt digest differs",
+        ));
+    }
+    Ok(())
+}
+
+fn require_authorized_voluntary_source(
+    state: &TrustServiceState,
+    signed: &SignedFindingStatusIntentSubmission,
+) -> Result<(), Response> {
+    let Some(authority) = state.joint_authority_store.as_ref() else {
+        return Err(plain_http_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "voluntary retraction authorization requires the durable finding market",
+        ));
+    };
+    let raw = authority
+        .finding_market_store()
+        .get_finding_bytes(&signed.body.finding_id)
+        .map_err(|error| plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error.to_string()))?
+        .ok_or_else(|| {
+            plain_http_error(
+                StatusCode::FORBIDDEN,
+                "voluntary retraction source is not authorized for the retained finding",
+            )
+        })?;
+    let finding: chio_finding::Finding = serde_json::from_str(&raw).map_err(|_| {
+        plain_http_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "retained finding cannot be authenticated for voluntary retraction",
+        )
+    })?;
+    chio_finding::verify_finding(&finding).map_err(|_| {
+        plain_http_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "retained finding cannot be authenticated for voluntary retraction",
+        )
+    })?;
+    if finding.finding_id != signed.body.finding_id
+        || finding.status_feed_ref != signed.body.feed_id
+        || finding.issuer.to_hex() != signed.body.source_authority_id
+        || signed.body.source_receipt.signer_key != finding.issuer
+    {
+        return Err(plain_http_error(
+            StatusCode::FORBIDDEN,
+            "voluntary retraction source is not authorized for the retained finding",
         ));
     }
     Ok(())
@@ -574,6 +618,9 @@ pub(crate) async fn handle_submit_finding_status_intent(
         &feed_id,
         now,
     ) {
+        return response;
+    }
+    if let Err(response) = require_authorized_voluntary_source(&state, &signed) {
         return response;
     }
     let body = &signed.body;
@@ -937,6 +984,63 @@ mod tests {
         let response = validate_intent_submission(&signed, &operator, &bond, FEED_ID, NOW)
             .test_expect_err("expired status bond must reject");
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let (mut operator, mut bond) = config();
+        operator.authority.valid_until = NOW + bond.inclusion_sla_secs;
+        bond.valid_until = NOW + bond.inclusion_sla_secs;
+        let signed = SignedExportEnvelope::sign(submission(), &operator_key())
+            .test_expect("signed status intent at expiring SLA boundary");
+        let response = validate_intent_submission(&signed, &operator, &bond, FEED_ID, NOW)
+            .test_expect_err("operator and bond must cover the full inclusion SLA");
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn retained_finding_rejects_a_self_authorized_voluntary_source(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp, authority) = provision_authority()?;
+        let raw = include_str!(
+            "../../../../../fixtures/proof-room/finding/verified-fix-basic/finding.json"
+        );
+        let finding: chio_finding::Finding = serde_json::from_str(raw)?;
+        chio_finding::verify_finding(&finding)?;
+        authority.finding_market_store().put_finding(
+            &chio_store_sqlite::FindingRecordInput {
+                finding_id: &finding.finding_id,
+                artifact_json: raw,
+                topic: &finding.descriptor.topic,
+                context_sha256: &finding.descriptor.context_sha256,
+                issued_at: finding.issued_at,
+                expires_at: finding.expires_at,
+            },
+            NOW,
+        )?;
+
+        let seller = Keypair::from_seed(&[83; 32]);
+        let mut body = submission();
+        body.finding_id.clone_from(&finding.finding_id);
+        body.feed_id.clone_from(&finding.status_feed_ref);
+        body.source_receipt = SignedExportEnvelope::sign(
+            FindingVoluntaryRetractionReceipt {
+                schema: FINDING_VOLUNTARY_RETRACTION_RECEIPT_SCHEMA.to_string(),
+                feed_id: body.feed_id.clone(),
+                key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+                finding_id: body.finding_id.clone(),
+                source_authority_id: seller.public_key().to_hex(),
+                issued_at: NOW,
+            },
+            &seller,
+        )?;
+        body.source_authority_id = seller.public_key().to_hex();
+        body.source_receipt_sha256 = chio_finding::signed_envelope_sha256(&body.source_receipt)?;
+        body.intent_id = compute_intent_id(&body).test_expect("self-authorized intent id");
+        let signed = SignedExportEnvelope::sign(body, &operator_key())?;
+        let state = service_state(authority, live_market_config(NOW));
+
+        let response = require_authorized_voluntary_source(&state, &signed)
+            .test_expect_err("an arbitrary source key must not authorize its own retraction");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        Ok(())
     }
 
     #[test]
@@ -1047,6 +1151,29 @@ mod tests {
             proof_json["proof_input_b64"],
             serde_json::Value::String(STANDARD.encode(&proof_bytes))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_anchor_references_advance_an_unchanged_status_root(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp, authority) = provision_authority()?;
+        let (operator, bond) = config();
+        let store = authority.finding_status_store();
+        let publisher = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store.clone(),
+            operator,
+            bond,
+            operator_key(),
+            300,
+        )?;
+        let first = publisher.publish_non_inclusion(&sha256_hex(b"first"), &[], NOW)?;
+        let anchors = vec!["anchor/status-feed/1".to_string()];
+        let second = publisher.publish_non_inclusion(&sha256_hex(b"second"), &anchors, NOW + 1)?;
+        assert_eq!(second.map_epoch, first.map_epoch + 1);
+        let current = store.get_current_epoch(FEED_ID)?;
+        let signed = chio_finding::parse_signed_status_epoch(&current.signed_epoch_bytes)?;
+        assert_eq!(signed.body.anchor_refs, anchors);
         Ok(())
     }
 
