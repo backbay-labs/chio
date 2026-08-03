@@ -830,7 +830,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/capability/attenuation.rs->formal/lean4/Chio/Chio/Core/Capability.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/capability/attenuation.rs` -> `formal/lean4/Chio/Chio/Core/Capability.lean` (model_kind=lean, normalized_sha256=2cbdad355d1c53a739150989209cc8137caa7a7adb5ac0bb80cc9443b9245506, rust_symbols=Attenuation,DelegationLink)
 - `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/capability/attenuation.rs->formal/lean4/Chio/Chio/Core/Revocation.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/capability/attenuation.rs` -> `formal/lean4/Chio/Chio/Core/Revocation.lean` (model_kind=lean, normalized_sha256=8dd8cdd9896021ba46b285954e7c0aac21af2caa5b4875b23adff4bae5351d34, rust_symbols=validate_delegation_chain)
 - `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/capability/attenuation.rs->formal/tla/RevocationPropagation.tla` (`manual_mirror`, `abstraction_anchor`): `crates/core/chio-core-types/src/capability/attenuation.rs` -> `formal/tla/RevocationPropagation.tla` (model_kind=tla, normalized_sha256=8dd8cdd9896021ba46b285954e7c0aac21af2caa5b4875b23adff4bae5351d34, rust_symbols=validate_delegation_chain)
-- `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/capability/scope.rs->formal/lean4/Chio/Chio/Core/Capability.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/capability/scope.rs` -> `formal/lean4/Chio/Chio/Core/Capability.lean` (model_kind=lean, normalized_sha256=e83770e5511a61427695ec1d796fc30fe9392a32d4ad924fe32e1950d0b5048f, rust_symbols=Operation,Constraint,ToolGrant,ChioScope)
+- `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/capability/scope.rs->formal/lean4/Chio/Chio/Core/Capability.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/capability/scope.rs` -> `formal/lean4/Chio/Chio/Core/Capability.lean` (model_kind=lean, normalized_sha256=9f98db35ba254aabfb4727337408121f01c84b1720bd8c6f35d54bf5aadc7395, rust_symbols=Operation,Constraint,ToolGrant,ChioScope)
 - `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/capability/scope.rs->formal/lean4/Chio/Chio/Core/Scope.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/capability/scope.rs` -> `formal/lean4/Chio/Chio/Core/Scope.lean` (model_kind=lean, normalized_sha256=815162c7621073cb95d33b0e7256c1d8cc3fa07c392b55be379ee5328237cb56, rust_symbols=ToolGrant::is_subset_of,ChioScope::is_subset_of)
 - `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/capability/scope.rs->formal/tla/RevocationPropagation.tla` (`manual_mirror`, `abstraction_anchor`): `crates/core/chio-core-types/src/capability/scope.rs` -> `formal/tla/RevocationPropagation.tla` (model_kind=tla, normalized_sha256=1aa26746a7a28b7c5c9ce7a1e17e9ae0ec74ab50aa07e0ec5446b8283fac2d34, rust_symbols=ChioScope::is_subset_of)
 - `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/capability/token.rs->formal/lean4/Chio/Chio/Core/Capability.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/capability/token.rs` -> `formal/lean4/Chio/Chio/Core/Capability.lean` (model_kind=lean, normalized_sha256=68e729d7904b165e45044bd50eb9e3c831ce5b4b41c01f00dfd8584b20192098, rust_symbols=CapabilityToken,CapabilityToken::is_valid_at,CapabilityToken::is_expired_at)
@@ -947,7 +947,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `bae7870f3b316fd860bd3e7c3ef9b7ddb915d4d73c35302786a20a3a0759c393`
+- Input digest: `fdf30b3ce3f91ac8f81273855c984f69bf9813a1a7cfb50152e84f5947009cc9`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -1063,7 +1063,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/kernel/chio-kernel-core/src/fuzz.rs`: `184d1082d3ef20267a766e554bc0b4456159521d94f6ed82a7aeda453b019072`
 - `crates/kernel/chio-kernel-core/src/guard.rs`: `4734d658d8dd17759cf5c8ecc20dfb92ffc49eb6b0c0df22d79da67e6ed22c3c`
 - `crates/kernel/chio-kernel-core/src/kani_harnesses.rs`: `0c46814569e54b2eb67d8cc561d2c3af432919d147caba36e0a924e2a959a570`
-- `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`: `356b5fe9416625817f3a0dbc5e840be9f81889b75dd96289a1c66d1f2224c417`
+- `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`: `4c05f90c04d82ae125c0e02172878e8d7086251b6ad29af29f8c5b929c5e067a`
 - `crates/kernel/chio-kernel-core/src/lib.rs`: `0838ca9e5b3d32155636988be33bfc2008c0f073460250e7d94047502d82c79e`
 - `crates/kernel/chio-kernel-core/src/normalized.rs`: `c668733d0751570dce11c9d96c9aa0be55c9ded0b2f9ff0317bd841e82f1083d`
 - `crates/kernel/chio-kernel-core/src/passport_verify.rs`: `1f9840487c0c683a007962a5989aee0f1bee2bb9dd1ba023314e59c4c0770c2d`
@@ -1160,7 +1160,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/mutation/evidence/spec-mutants-7b24142e8523fe08e501063dbf3d4f6cea3397be.json`: `82878e03aaafa1ceeb1f791386cffd57f9f88453b24113bd51e43b67996a66c2`
 - `formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json`: `d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623`
 - `formal/mutation/registry.toml`: `48387345d00fe7c53e777326f73e31370f7bc3d362a09f1059cadc06c98b6bb6`
-- `formal/proof-manifest.toml`: `605bc601dd810f68e3bfe1da96a5b919254aaa00ed5a9408fba49ff2438de490`
+- `formal/proof-manifest.toml`: `44b7352047d17f5f63bf20e8c4bf30f3cccb6c4335be846c4b8c151de9849481`
 - `formal/rust-verification/creusot-contracts.toml`: `83000c98743013d3d6d468976a163edaf16d0d621070410d741f146bf61a28a5`
 - `formal/rust-verification/formal-mutants.toml`: `5f15de2f3833b11db3d783d05ab6efcd2c49840ede010fe7ec54fc2846c48fc6`
 - `formal/rust-verification/kani-harnesses.toml`: `f82442bef24ae67283c3f171cff15e8aa6cc4d808c7893b9e349b6bf315b50ce`
