@@ -840,7 +840,6 @@ impl ChioKernel {
     /// before the tool server receives control. Earlier revalidation remains
     /// pure so a later capture, payment, credential, or cancellation failure
     /// cannot strand a claimed reservation.
-    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) fn claim_finding_pool_immediately_before_dispatch(
         &self,
         matched_grant: &ToolGrant,

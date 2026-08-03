@@ -204,7 +204,6 @@ impl SqliteServingOwner {
         append_finding_challenge_projection_if_changed(transaction, &self.fence)
     }
 
-    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) fn append_finding_status_projection_if_changed(
         &self,
         transaction: &Transaction<'_>,

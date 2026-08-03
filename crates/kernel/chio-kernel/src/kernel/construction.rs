@@ -291,11 +291,8 @@ impl ChioKernel {
             finding_recovery_verifier: None,
             finding_status_proof_verifier: None,
             finding_delivery_receipt_authorities: Vec::new(),
-            #[cfg(feature = "cognition-market-experimental")]
             finding_pool_allocation_authority: None,
-            #[cfg(feature = "cognition-market-experimental")]
             finding_pool_receipt_authority: None,
-            #[cfg(feature = "cognition-market-experimental")]
             finding_pool_ledger: None,
             #[cfg(feature = "cognition-market-experimental")]
             finding_pool_outbox_worker_id: uuid::Uuid::now_v7().to_string(),
@@ -956,7 +953,6 @@ impl ChioKernel {
 
     /// Pin the authority permitted to sign cognition-market pool
     /// allocations. Debit callers cannot override this trust root.
-    #[cfg(feature = "cognition-market-experimental")]
     pub fn set_finding_pool_allocation_authority(
         &mut self,
         authority: chio_core::crypto::PublicKey,

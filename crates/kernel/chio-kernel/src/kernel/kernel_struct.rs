@@ -580,15 +580,12 @@ pub struct ChioKernel {
     /// Kernel keys explicitly trusted to issue Finding delivery receipts that
     /// may parent governed buyer-memory lineage.
     pub(super) finding_delivery_receipt_authorities: Vec<chio_core::crypto::PublicKey>,
-    #[cfg(feature = "cognition-market-experimental")]
     pub(super) finding_pool_allocation_authority: Option<chio_core::crypto::PublicKey>,
     /// Stable deployment authority for signed pool-mutation receipts. This is
     /// intentionally separate from the ordinary kernel receipt key so routine
     /// kernel-key rotation cannot strand an allocation between reserve, claim,
     /// and terminal settlement.
-    #[cfg(feature = "cognition-market-experimental")]
     pub(super) finding_pool_receipt_authority: Option<chio_core::crypto::Keypair>,
-    #[cfg(feature = "cognition-market-experimental")]
     pub(super) finding_pool_ledger:
         Option<Arc<dyn crate::finding_pool::QualifiedFindingPoolLedger>>,
     /// Unique owner for durable outbox delivery claims.

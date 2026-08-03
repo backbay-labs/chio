@@ -393,11 +393,9 @@ impl SqliteFindingStatusStore {
     }
 
     fn commit_write(&self, transaction: Transaction<'_>) -> Result<(), FindingStatusStoreError> {
-        #[cfg(feature = "cognition-market-experimental")]
         self.serving_owner
             .append_finding_challenge_projection_if_changed(&transaction)
             .map_err(|error| FindingStatusStoreError::Unavailable(error.to_string()))?;
-        #[cfg(feature = "cognition-market-experimental")]
         self.serving_owner
             .append_finding_status_projection_if_changed(&transaction)
             .map_err(|error| FindingStatusStoreError::Unavailable(error.to_string()))?;
