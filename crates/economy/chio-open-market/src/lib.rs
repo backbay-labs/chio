@@ -33,7 +33,7 @@ pub mod finding_penalty;
 pub mod finding_pheromone;
 pub mod finding_slash_amount;
 pub mod fiscal_adapter;
-#[cfg(all(kani, feature = "cognition-market-experimental"))]
+#[cfg(kani)]
 mod kani_public_harnesses;
 pub mod penalty;
 pub mod purchase_verification;
