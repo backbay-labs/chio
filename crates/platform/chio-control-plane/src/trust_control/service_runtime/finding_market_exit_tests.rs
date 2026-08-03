@@ -886,7 +886,7 @@ fn admission_body_from(
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: "rail:venue-ledger:community-fund".to_string(),
+        community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
         status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
         purchase_authority: key_policy(16, "purchase"),
         failed_delivery_authority: key_policy(17, "failed-delivery"),
@@ -961,8 +961,8 @@ impl MarketWeb {
         let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
         let checkpoint = build_checkpoint(
             1,
-            100,
-            101,
+            1,
+            2,
             &[first_bytes.clone(), second_bytes.clone()],
             &kernel,
         )?;
@@ -972,12 +972,12 @@ impl MarketWeb {
             ResolvedReceiptEvidence {
                 receipt: first.clone(),
                 canonical_receipt_bytes: first_bytes,
-                inclusion_proof: build_inclusion_proof(&tree, 0, 1, 100)?,
+                inclusion_proof: build_inclusion_proof(&tree, 0, 1, 1)?,
             },
             ResolvedReceiptEvidence {
                 receipt: second.clone(),
                 canonical_receipt_bytes: second_bytes,
-                inclusion_proof: build_inclusion_proof(&tree, 1, 1, 101)?,
+                inclusion_proof: build_inclusion_proof(&tree, 1, 1, 2)?,
             },
         ];
 

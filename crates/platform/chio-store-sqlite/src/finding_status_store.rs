@@ -1043,7 +1043,7 @@ impl SqliteFindingStatusStore {
                           ON proof.feed_id = floor.feed_id
                          AND proof.map_epoch = floor.map_epoch
                          AND proof.finding_id = intent.finding_id
-                         AND proof.kind = 'inclusion'
+                         AND proof.proof_kind = 'inclusion'
                          AND proof.valid_until > ?2
                         WHERE floor.feed_id = intent.feed_id
                       )

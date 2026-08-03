@@ -2639,12 +2639,12 @@ fn venue_audit_challenge_for_round(
     Ok(SignedExportEnvelope::sign(challenge, &keypair(35))?)
 }
 
-/// Whether the sale path admitted the record's payout destination. A
-/// destination that was never admitted must never reach a distribution.
+/// Whether the test preserves the sale path's payout standing or removes
+/// it afterward to model a corrupted retained purchase index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PayoutAdmission {
-    Admitted,
-    Withheld,
+enum PayoutStanding {
+    Intact,
+    RemovedAfterSettlement,
 }
 
 /// Open one reservation, take its slot, and close it against a real
@@ -2665,7 +2665,7 @@ fn settle_purchase(
         realized_spend_units,
         "USD",
         now,
-        PayoutAdmission::Admitted,
+        PayoutStanding::Intact,
     )
 }
 
@@ -2680,7 +2680,7 @@ fn settle_purchase_with(
     realized_spend_units: u64,
     record_currency: &str,
     now: u64,
-    admission: PayoutAdmission,
+    standing: PayoutStanding,
 ) -> Result<SettledPurchase, AnyError> {
     let (finding, _) = finding_artifact()?;
     let reservation_id = format!("reservation-{tag}");
@@ -2695,9 +2695,9 @@ fn settle_purchase_with(
         41
     });
     let withheld_destination = buyer_destination(99);
-    let settlement_destination = match admission {
-        PayoutAdmission::Admitted => &refund_destination,
-        PayoutAdmission::Withheld => &withheld_destination,
+    let settlement_destination = match standing {
+        PayoutStanding::Intact => &refund_destination,
+        PayoutStanding::RemovedAfterSettlement => &withheld_destination,
     };
     let buyer_hex = buyer.public_key().to_hex();
     let ask_digest = digest(&format!("ask-{tag}"));
@@ -2809,7 +2809,7 @@ fn settle_purchase_with(
     let signed = SignedFindingPurchaseRecord::sign(record, &keypair(16))?;
     let record_json = canonical_json_bytes(&signed)?;
     let record_sha256 = sha256_hex(&record_json);
-    if admission == PayoutAdmission::Admitted {
+    if standing == PayoutStanding::Intact {
         deployment
             .purchases
             .admit_payout_destination(allocation_id, &refund_destination, now)?;
@@ -2842,6 +2842,37 @@ fn settle_purchase_with(
         delivery_checkpoint_transparency: delivery.checkpoint_transparency,
         delivery_authority_status: delivery.authority_status,
     })
+}
+
+/// Corrupt the retained payout index after all legitimate preconditions have
+/// been established. Production code cannot delete this immutable row; the
+/// fixture proves the serving-owner integrity fence denies the later payout.
+fn remove_payout_standing_for_test(
+    deployment: &Deployment,
+    allocation_id: &str,
+    destination: &str,
+) -> TestResult {
+    let mut connection = rusqlite::Connection::open(&deployment.database)?;
+    let transaction = connection.transaction()?;
+    transaction.execute_batch("DROP TRIGGER payout_destinations_no_delete;")?;
+    let removed = transaction.execute(
+        "DELETE FROM payout_destinations WHERE allocation_id = ?1 AND destination = ?2",
+        rusqlite::params![allocation_id, destination],
+    )?;
+    if removed != 1 {
+        return Err("adversarial payout standing fixture removed no row".into());
+    }
+    transaction.execute_batch(
+        r#"
+        CREATE TRIGGER payout_destinations_no_delete
+        BEFORE DELETE ON payout_destinations
+        BEGIN
+            SELECT RAISE(ABORT, 'admitted payout destination must be retained');
+        END;
+        "#,
+    )?;
+    transaction.commit()?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -5884,7 +5915,7 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
         40,
         "USD",
         NOW + 1,
-        PayoutAdmission::Admitted,
+        PayoutStanding::Intact,
     )?;
     // The second buyer's destination is admitted under the liable
     // allocation as well, as it would be for a buyer this seller had
@@ -6042,7 +6073,7 @@ fn finding_challenge_harm_in_another_currency_seals_nothing() -> TestResult {
         60,
         "EUR",
         NOW,
-        PayoutAdmission::Admitted,
+        PayoutStanding::Intact,
     )?;
     let ready =
         ready_to_uphold_with_terms_and_penalty(&deployment, &coordinator, &terms, 100, "USD")?;
@@ -7241,10 +7272,7 @@ fn finding_challenge_a_rejected_outcome_never_authorizes_an_impairment() -> Test
 
     let refused = resolve_final(&case, &identity, &rejected, APPEAL_FINAL_AT)
         .expect_err("only an upheld adjudication reaches the penalty lane");
-    assert!(matches!(
-        refused,
-        ChallengeCoordinatorError::VerdictNotUpheld
-    ));
+    assert!(matches!(refused, ChallengeCoordinatorError::OutcomeBinding));
     assert!(case
         .deployment
         .challenges
@@ -9048,12 +9076,12 @@ fn finding_challenge_uphold_uses_the_recorded_historical_evaluator_policy() -> T
     let ready = ready_to_uphold(&deployment, &original)?;
 
     let mut rotated_config = market_config();
-    rotated_config.challenge_evaluator = authority_pin(38, "challenge-evaluator");
+    rotated_config.challenge_evaluator = authority_pin(39, "challenge-evaluator");
     rotated_config.challenge_evaluator.key_epoch = PINNED_KEY_EPOCH + 1;
     rotated_config.challenge_evaluator.valid_from = NOW + 2;
     let rotated = deployment.coordinator_under_with_evaluator_and_status(
         &rotated_config,
-        keypair(38),
+        keypair(39),
         Arc::new(TestAuthorityStatusResolver::live()),
         FindingDisputeLockDisposition::Forfeited,
     )?;
@@ -10076,7 +10104,7 @@ fn finding_challenge_harmed_buyer_allocation_is_capped_and_exactly_summed() -> T
 }
 
 #[test]
-fn finding_challenge_a_payout_destination_that_was_never_admitted_is_refused() -> TestResult {
+fn finding_challenge_a_purchase_that_lost_payout_standing_is_refused() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
@@ -10089,7 +10117,7 @@ fn finding_challenge_a_payout_destination_that_was_never_admitted_is_refused() -
         50,
         "USD",
         NOW,
-        PayoutAdmission::Withheld,
+        PayoutStanding::RemovedAfterSettlement,
     )?;
     let case = evidence_invalid_case(
         &challenged,
@@ -10113,34 +10141,39 @@ fn finding_challenge_a_payout_destination_that_was_never_admitted_is_refused() -
         ))?
         .ok_or("a receipt that does not verify is adjudicated")?;
 
+    remove_payout_standing_for_test(
+        &deployment,
+        &deployment.allocation_id,
+        &sale.record.body.payout_destination,
+    )?;
+
     let identity = liability_identity(&challenged.finding.finding_id, &deployment.allocation_id);
-    let refused = uphold_across_claim_window(
-        &coordinator,
-        &market_terms(CLAIM_WINDOW_SECS)?,
-        &case.challenge,
-        &evaluated.outcome,
-        &identity,
-        1,
-        std::slice::from_ref(&sale.purchase_key),
-        &collateral,
-        &governance.context(),
-        &governance.sanction_case,
-        NOW + 3,
-    )
-    .expect_err("an unadmitted destination cannot be paid");
+    let refused = coordinator
+        .uphold(
+            &case.challenge.body.challenge_id,
+            &case.challenge,
+            &evaluated.outcome,
+            &identity,
+            &market_terms(CLAIM_WINDOW_SECS)?,
+            1,
+            std::slice::from_ref(&sale.purchase_key),
+            &collateral,
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 3,
+        )
+        .expect_err("a purchase that lost payout standing cannot be paid");
     assert!(matches!(
         refused,
-        ChallengeCoordinatorError::UnadmittedPayoutDestination(_)
+        ChallengeCoordinatorError::ChallengeStore(reason)
+            if reason.contains("changed outside its serving-owner connection")
     ));
-    let liability_key = derive_liability_key(
-        &derive_defect_key(&challenged.finding.finding_id),
-        VENUE_ID,
-        &identity,
+    let snapshots = rusqlite::Connection::open(&deployment.database)?.query_row(
+        "SELECT COUNT(*) FROM claim_snapshots",
+        [],
+        |row| row.get::<_, i64>(0),
     );
-    assert!(
-        coordinator.sealed_claim(&liability_key)?.is_none(),
-        "no accounting is sealed against a distribution that cannot be computed"
-    );
+    assert_eq!(snapshots?, 0, "the corrupted index seals no accounting");
     Ok(())
 }
 

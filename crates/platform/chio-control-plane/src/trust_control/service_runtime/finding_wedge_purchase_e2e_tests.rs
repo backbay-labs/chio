@@ -2965,16 +2965,12 @@ fn buyer_memory_write(
     if let Some(intent) = substituted.governed_intent.as_mut() {
         intent.id = "intent-wedge-memory-write-substituted".to_string();
     }
-    let error = match kernel.evaluate_tool_call_blocking(&substituted) {
-        Err(error) => error,
-        Ok(_) => {
-            return Err(missing(
-                "unrelated content inherited Finding delivery lineage",
-            ))
-        }
-    };
-    assert!(error
-        .to_string()
+    let denied = kernel.evaluate_tool_call_blocking(&substituted)?;
+    assert_eq!(denied.verdict, Verdict::Deny);
+    assert!(denied
+        .reason
+        .as_deref()
+        .unwrap_or_default()
         .contains("differs from the authenticated delivery"));
     Ok(())
 }
@@ -4656,12 +4652,14 @@ async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> T
         Err(PurchaseCoordinatorError::TerminalEvidence(_))
     ));
 
-    // The refusal preceded every purchase-side durable step: no buyer
-    // destination took a slot, the purchase slot is still reserved, and
-    // no record exists.
+    // The refusal preserved the pre-payment payout admission, left the
+    // purchase slot reserved, and wrote no terminal record.
     assert_eq!(
         purchase_store.list_payout_destinations(&allocation_id)?,
-        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
+        vec![
+            (0_u8, COMMUNITY_FUND_DESTINATION.to_string()),
+            (1_u8, BUYER_PAYOUT.to_string()),
+        ]
     );
     let slot = purchase_store
         .get_slot(&reservation_id)?
@@ -4813,10 +4811,13 @@ async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestRe
         Err(PurchaseCoordinatorError::TerminalEvidence(_))
     ));
 
-    // Neither refusal moved the purchase or admitted a buyer destination.
+    // Neither refusal moved the purchase beyond its pre-payment admission.
     assert_eq!(
         purchase_store.list_payout_destinations(&allocation_id)?,
-        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
+        vec![
+            (0_u8, COMMUNITY_FUND_DESTINATION.to_string()),
+            (1_u8, BUYER_PAYOUT.to_string()),
+        ]
     );
     let slot = purchase_store
         .get_slot(&reservation_id)?

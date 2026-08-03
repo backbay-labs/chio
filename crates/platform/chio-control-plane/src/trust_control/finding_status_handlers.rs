@@ -812,7 +812,7 @@ mod tests {
                 currency: "USD".to_string(),
                 authority_epoch: 1,
             },
-            community_fund_destination: "rail:test:community".to_string(),
+            community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
             status_feed_operator_ref: FEED_ID.to_string(),
             status_feed_operator: status_operator,
             status_feed_service_bond: FindingStatusServiceBond {
