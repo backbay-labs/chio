@@ -205,6 +205,8 @@ pub fn verify_cognition_market_passport_artifacts(
     // The generic verifier performs the final passport signature, graph/root,
     // policy, and ClaimSet digest checks. Cognition-specific semantics above
     // are what make these four external claims eligible for acceptance.
+    // Generic transaction-integrity claims remain independently verified by
+    // that root verifier and must survive this family projection.
     let mut report = verify_passport_root_and_claim_set_artifacts(
         passport,
         passport_path,
@@ -215,11 +217,15 @@ pub fn verify_cognition_market_passport_artifacts(
     )?;
     report
         .verified_claims
-        .retain(|claim| COGNITION_MARKET_CLAIMS.contains(&claim.as_str()));
+        .retain(|claim| cognition_report_claim(claim));
     report
         .claim_results
-        .retain(|claim| COGNITION_MARKET_CLAIMS.contains(&claim.claim_id.as_str()));
+        .retain(|claim| cognition_report_claim(&claim.claim_id));
     Ok(report)
+}
+
+fn cognition_report_claim(claim_id: &str) -> bool {
+    COGNITION_MARKET_CLAIMS.contains(&claim_id) || claim_id.starts_with("claim.transaction.")
 }
 
 fn validate_every_graph_artifact(

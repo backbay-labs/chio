@@ -420,6 +420,69 @@ fn cognition_market_qualified_profile() -> TestResult {
 }
 
 #[test]
+fn cognition_market_qualified_profile_preserves_verified_transaction_claims() -> TestResult {
+    const TRANSACTION_CLAIM: &str = "claim.transaction.passport_root_verified";
+    let mut bundle = build_bundle()?;
+    let mut claim_set: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("claim-set.json")
+            .ok_or("claim set missing")?,
+    )?;
+    claim_set["claims"]
+        .as_array_mut()
+        .ok_or("claim rows missing")?
+        .push(json!({
+            "claim_id": TRANSACTION_CLAIM,
+            "status": "verified",
+            "required_evidence": [
+                "transaction-passport.json",
+                "evidence-graph.json",
+                "verifier-policy.json"
+            ],
+            "evidence_refs": [
+                "transaction-passport.json",
+                "evidence-graph.json",
+                "verifier-policy.json"
+            ],
+            "verifier_module": "chio-transaction-passport::minimal"
+        }));
+    let claim_set_bytes = canonical_json_bytes(&claim_set)?;
+    bundle.passport.claim_set_sha256 =
+        replace_graph_artifact(&mut bundle, "claim-set.json", claim_set_bytes)?;
+
+    let mut policy: Value = serde_json::from_slice(&bundle.verifier_policy_bytes)?;
+    policy["required_claims"]
+        .as_array_mut()
+        .ok_or("policy required claims missing")?
+        .push(Value::String(TRANSACTION_CLAIM.to_string()));
+    bundle.verifier_policy_bytes = canonical_json_bytes(&policy)?;
+    let policy_bytes = bundle.verifier_policy_bytes.clone();
+    bundle.passport.verifier_policy_sha256 =
+        replace_graph_artifact(&mut bundle, "verifier-policy.json", policy_bytes)?;
+    resign_graph(&mut bundle)?;
+
+    let report = verify_cognition_market_passport_artifacts(
+        &bundle.passport,
+        "transaction-passport.json".to_string(),
+        &bundle.evidence_graph_bytes,
+        &bundle.verifier_policy_bytes,
+        &bundle.artifacts,
+        &bundle.trust,
+    )?;
+    assert!(report.accepted);
+    assert!(report
+        .verified_claims
+        .iter()
+        .any(|claim| claim == TRANSACTION_CLAIM));
+    assert!(report
+        .claim_results
+        .iter()
+        .any(|claim| claim.claim_id == TRANSACTION_CLAIM && claim.status == "verified"));
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_wrong_role_and_schema() -> TestResult {
     let mut wrong_role = build_bundle()?;
     let recipe_node = wrong_role.evidence_graph["nodes"]
