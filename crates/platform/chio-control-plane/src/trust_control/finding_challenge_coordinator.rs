@@ -1361,10 +1361,18 @@ impl FindingChallengeCoordinator {
             ),
             penalty_calculation,
             retry_deadline,
+            evaluator_authority_id: self.evaluator_pin.authority_id.clone(),
+            evaluator_key: self.evaluator_authority.public_key(),
             // The epoch the outcome carries is the pinned one, which the
             // request has just been held to, so the signed artifact states
             // the deployment's epoch rather than the caller's claim.
             evaluator_key_epoch: self.evaluator_pin.key_epoch,
+            evaluator_valid_from: self.evaluator_pin.valid_from,
+            evaluator_valid_until: self.evaluator_pin.valid_until,
+            evaluator_revocation_status_ref: self
+                .evaluator_pin
+                .revocation_status_ref
+                .clone(),
             evaluated_at: request.now,
         };
         outcome.outcome_id =
@@ -1494,8 +1502,7 @@ impl FindingChallengeCoordinator {
         sanction_case: &SignedGenericGovernanceCase,
         now: u64,
     ) -> Result<UpheldLiability, ChallengeCoordinatorError> {
-        verify_signed_challenge_outcome(outcome, &self.evaluator_authority.public_key())
-            .map_err(|error| ChallengeCoordinatorError::OutcomeEnvelope(error.to_string()))?;
+        self.require_recorded_outcome_signature(challenge_id, outcome, now)?;
         if outcome.body.verdict != chio_finding::FindingChallengeVerdict::Upheld {
             return Err(ChallengeCoordinatorError::VerdictNotUpheld);
         }
@@ -1803,8 +1810,6 @@ impl FindingChallengeCoordinator {
         bond_snapshot_envelope_sha256: &str,
         now: u64,
     ) -> Result<AppealResolution, ChallengeCoordinatorError> {
-        verify_signed_challenge_outcome(outcome, &self.evaluator_authority.public_key())
-            .map_err(|error| ChallengeCoordinatorError::OutcomeEnvelope(error.to_string()))?;
         let record = self
             .challenges
             .get_liability(liability_key)
@@ -1812,6 +1817,11 @@ impl FindingChallengeCoordinator {
             .ok_or_else(|| {
                 ChallengeCoordinatorError::ChallengeStore("liability is not recorded".to_owned())
             })?;
+        let challenge_id = record
+            .upheld_challenge_id
+            .as_deref()
+            .ok_or(ChallengeCoordinatorError::LiabilityState("upheld"))?;
+        self.require_recorded_outcome_signature(challenge_id, outcome, now)?;
         self.require_identity_matches_head(liability_key, identity, &record)?;
         self.require_outcome_upheld_this_liability(outcome, &record)?;
         self.require_sealed_matches_store(liability_key, sealed)?;
@@ -4042,6 +4052,55 @@ impl FindingChallengeCoordinator {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
         }
         Ok(())
+    }
+
+    /// Verify the exact durable adjudication with the evaluator policy that
+    /// covered its historical signing time, not the coordinator's current
+    /// post-rotation key.
+    fn require_recorded_outcome_signature(
+        &self,
+        challenge_id: &str,
+        outcome: &SignedFindingChallengeOutcome,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let challenge = self
+            .challenges
+            .get_challenge(challenge_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore("challenge is not recorded".to_owned())
+            })?;
+        let presented = self.envelope_digest(outcome)?;
+        if challenge.outcome_envelope_sha256.as_deref() != Some(presented.as_str()) {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
+        outcome
+            .body
+            .validate()
+            .map_err(|error| ChallengeCoordinatorError::OutcomeEnvelope(error.to_string()))?;
+        let historical_pin = FindingAuthorityPin {
+            authority_id: outcome.body.evaluator_authority_id.clone(),
+            key_hex: outcome.body.evaluator_key.to_hex(),
+            key_epoch: outcome.body.evaluator_key_epoch,
+            valid_from: outcome.body.evaluator_valid_from,
+            valid_until: outcome.body.evaluator_valid_until,
+            revocation_status_ref: outcome.body.evaluator_revocation_status_ref.clone(),
+        };
+        let evaluator = self
+            .require_live_role(
+                &historical_pin,
+                outcome.body.evaluated_at,
+                now,
+                "historical evaluator",
+            )
+            .map_err(|error| match error {
+                ChallengeCoordinatorError::AuthorityLifecycle { reason, .. } => {
+                    ChallengeCoordinatorError::EvaluatorRevocation(reason)
+                }
+                other => other,
+            })?;
+        verify_signed_challenge_outcome(outcome, &evaluator)
+            .map_err(|error| ChallengeCoordinatorError::OutcomeEnvelope(error.to_string()))
     }
 
     /// Charge the dispute fee to the challenge-administration pool

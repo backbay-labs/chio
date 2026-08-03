@@ -316,6 +316,7 @@ fn recheck_from_snapshot(verified: &VerifiedFindingEnforcement) -> FindingBondOb
     let snapshot = verified.snapshot();
     FindingBondObservationRecheck {
         block_hash: Some(snapshot.block_hash.clone()),
+        observed_finality: snapshot.observed_finality,
         identity_registry_record: snapshot.identity_registry_record.clone(),
         operator_key_hash: snapshot.operator_key_hash.clone(),
         operator_key_epoch: snapshot.operator_key_epoch,
@@ -1219,6 +1220,21 @@ fn a_reorged_block_hash_returns_to_reconciliation() {
         FindingBondObservationVerdict::Reorged {
             expected_block_hash: verified.snapshot().block_hash.clone(),
             observed_block_hash: None,
+        }
+    );
+}
+
+#[test]
+fn a_regressed_confirmation_depth_returns_to_reconciliation() {
+    let verified = verified();
+    let mut observed = recheck_from_snapshot(&verified);
+    observed.observed_finality = FindingObservedFinality::Confirmations { depth: 63 };
+
+    assert_eq!(
+        recheck_finding_bond_observation(&verified, &observed),
+        FindingBondObservationVerdict::FinalityRegressed {
+            required: FindingFinalityRequirement::Confirmations { min_depth: 64 },
+            observed: FindingObservedFinality::Confirmations { depth: 63 },
         }
     );
 }

@@ -1733,7 +1733,13 @@ digest; a digest over the challenge body alone is a different identity and
 MUST reject. It further binds the finding, listing, and backing allocation,
 the authorization branch and evidence class tags, the verifier-profile
 envelope and evidence-bundle digests, the nested class facet, a reason, the
-trigger digest, the evaluator key epoch, and the evaluation time.
+trigger digest, the evaluator authority identifier and public key, the key
+epoch and validity interval, the revocation-status reference, and the
+evaluation time. The durable outcome-envelope digest pins that historical
+evaluator policy at adjudication. Later liability and appeal processing MUST
+verify the exact pinned envelope under that historical key and a fresh signed
+status reading covering the evaluation time; rotation of the deployment's
+current evaluator key MUST NOT invalidate an authentic recorded outcome.
 
 The facet is nested beneath the evidence branch that produced it and MUST
 match the class tag. The `digest_mismatch` facet carries the committed and

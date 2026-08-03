@@ -324,7 +324,12 @@ fn resolved_outcomes_for_report(
                 trigger_digest: report.audit_epoch_envelope_sha256.clone(),
                 retry_deadline: None,
                 penalty_calculation: None,
+                evaluator_authority_id: "audit-evaluator".to_owned(),
+                evaluator_key: audit_evaluator().public_key(),
                 evaluator_key_epoch: 1,
+                evaluator_valid_from: COMMITTED_AT.saturating_sub(1),
+                evaluator_valid_until: REPORTED_AT.saturating_add(1),
+                evaluator_revocation_status_ref: "revocations/audit-evaluator".to_owned(),
                 evaluated_at: report.reported_at.saturating_sub(1),
             };
             outcome.outcome_id = derive_outcome_id(&outcome).test_expect("outcome id");

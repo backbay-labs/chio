@@ -1571,7 +1571,12 @@ pub fn outcome_for(
         trigger_digest: HEX64_THIRD.to_string(),
         retry_deadline: None,
         penalty_calculation,
+        evaluator_authority_id: "challenge-evaluator".to_string(),
+        evaluator_key: keypair(31).public_key(),
         evaluator_key_epoch: 1,
+        evaluator_valid_from: KEY_VALID_FROM,
+        evaluator_valid_until: KEY_VALID_UNTIL,
+        evaluator_revocation_status_ref: "revocations/challenge-evaluator".to_string(),
         evaluated_at: 1_750_000_500,
     };
     outcome.outcome_id = derive_outcome_id(&outcome)?;

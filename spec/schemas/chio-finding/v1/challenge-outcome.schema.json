@@ -28,7 +28,12 @@
         "facet",
         "reason",
         "trigger_digest",
+        "evaluator_authority_id",
+        "evaluator_key",
         "evaluator_key_epoch",
+        "evaluator_valid_from",
+        "evaluator_valid_until",
+        "evaluator_revocation_status_ref",
         "evaluated_at"
       ],
       "properties": {
@@ -94,8 +99,23 @@
         "penalty_calculation": {
           "$ref": "#/$defs/penaltyCalculation"
         },
+        "evaluator_authority_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "evaluator_key": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
         "evaluator_key_epoch": {
           "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "evaluator_valid_from": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "evaluator_valid_until": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "evaluator_revocation_status_ref": {
+          "$ref": "#/$defs/nonBlankString"
         },
         "evaluated_at": {
           "$ref": "#/$defs/iJsonU64NonZero"
@@ -180,6 +200,10 @@
     }
   },
   "$defs": {
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "boundedIdentifier": {
       "type": "string",
       "pattern": "\\S",

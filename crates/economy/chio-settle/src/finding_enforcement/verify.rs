@@ -112,6 +112,7 @@ pub struct VerifiedFindingEnforcement {
     live_allocated_collateral: u64,
     seller_impair_intent_id: String,
     root_intent_id: String,
+    finality_requirement: FindingFinalityRequirement,
 }
 
 impl VerifiedFindingEnforcement {
@@ -162,6 +163,12 @@ impl VerifiedFindingEnforcement {
     #[must_use]
     pub fn root_intent_id(&self) -> &str {
         &self.root_intent_id
+    }
+
+    /// Deployment-pinned finality requirement authenticated with the pair.
+    #[must_use]
+    pub const fn finality_requirement(&self) -> FindingFinalityRequirement {
+        self.finality_requirement
     }
 }
 
@@ -319,6 +326,7 @@ fn verify_finding_enforcement_inner(
         live_allocated_collateral,
         seller_impair_intent_id,
         root_intent_id,
+        finality_requirement: pins.finality_requirement,
     })
 }
 
@@ -381,15 +389,26 @@ fn ensure_observed_finality_satisfies_policy(
             "bond snapshot finality policy does not match the pinned finality requirement",
         ));
     }
-    match (requirement, snapshot.observed_finality) {
-        (FindingFinalityRequirement::Deterministic, FindingObservedFinality::Finalized) => Ok(()),
+    if observed_finality_satisfies(requirement, snapshot.observed_finality) {
+        Ok(())
+    } else {
+        Err(reject(
+            "observed finality does not satisfy the snapshot finality policy",
+        ))
+    }
+}
+
+const fn observed_finality_satisfies(
+    requirement: FindingFinalityRequirement,
+    observed: FindingObservedFinality,
+) -> bool {
+    match (requirement, observed) {
+        (FindingFinalityRequirement::Deterministic, FindingObservedFinality::Finalized) => true,
         (
             FindingFinalityRequirement::Confirmations { min_depth },
             FindingObservedFinality::Confirmations { depth },
-        ) if depth >= min_depth => Ok(()),
-        _ => Err(reject(
-            "observed finality does not satisfy the snapshot finality policy",
-        )),
+        ) => depth >= min_depth,
+        _ => false,
     }
 }
 
@@ -485,6 +504,8 @@ pub struct FindingBondObservationRecheck {
     /// Block hash currently canonical at the snapshot's block number, or
     /// `None` when the chain no longer carries a block at that height.
     pub block_hash: Option<String>,
+    /// Current finality assessment for that same canonical block.
+    pub observed_finality: FindingObservedFinality,
     /// Identity registry record currently naming the observing operator.
     pub identity_registry_record: String,
     /// Operator key hash currently bound to that record.
@@ -514,6 +535,12 @@ pub enum FindingBondObservationVerdict {
         /// gone entirely.
         observed_block_hash: Option<String>,
     },
+    /// The block remains canonical but no longer meets the deployment's
+    /// pinned finality requirement.
+    FinalityRegressed {
+        required: FindingFinalityRequirement,
+        observed: FindingObservedFinality,
+    },
     /// The operator identity behind the observation rotated.
     OperatorRotated {
         /// Which part of the qualification moved.
@@ -538,6 +565,9 @@ impl FindingBondObservationVerdict {
         match self {
             Self::Qualified => "observation still qualifies",
             Self::Reorged { .. } => "the block the bond snapshot observed is no longer canonical",
+            Self::FinalityRegressed { .. } => {
+                "the bond snapshot block no longer meets the pinned finality requirement"
+            }
             Self::OperatorRotated {
                 field: FindingOperatorQualification::IdentityRegistryRecord,
             } => "the identity registry record behind the observation changed",
@@ -596,6 +626,13 @@ pub fn recheck_finding_bond_observation(
         return FindingBondObservationVerdict::Reorged {
             expected_block_hash: snapshot.block_hash.clone(),
             observed_block_hash: observed.block_hash.clone(),
+        };
+    }
+    let required = verified.finality_requirement();
+    if !observed_finality_satisfies(required, observed.observed_finality) {
+        return FindingBondObservationVerdict::FinalityRegressed {
+            required,
+            observed: observed.observed_finality,
         };
     }
     if !observed.operator_active {

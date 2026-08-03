@@ -370,7 +370,12 @@ fn outcome_body(
         trigger_digest: HEX64_ALT.to_string(),
         retry_deadline: None,
         penalty_calculation,
+        evaluator_authority_id: "challenge-evaluator".to_string(),
+        evaluator_key: keypair(43).public_key(),
         evaluator_key_epoch: 7,
+        evaluator_valid_from: 1_700_000_000,
+        evaluator_valid_until: 1_800_000_000,
+        evaluator_revocation_status_ref: "revocations/challenge-evaluator".to_string(),
         evaluated_at: 1_750_000_500,
     };
     outcome.outcome_id = derive_outcome_id(&outcome)?;

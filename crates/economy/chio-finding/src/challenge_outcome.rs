@@ -22,7 +22,7 @@
 //! to the envelope digest as two independent facts.
 
 use chio_core_types::capability::scope::MonetaryAmount;
-use chio_core_types::crypto::PublicKey;
+use chio_core_types::crypto::{PublicKey, SigningAlgorithm};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -383,7 +383,16 @@ pub struct FindingChallengeOutcome {
     /// the penalty lane, so nothing else carries a calculation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub penalty_calculation: Option<FindingPenaltyCalculation>,
+    /// Stable identity and exact historical key policy that authorized this
+    /// evaluator signature. The durable outcome-envelope digest pins these
+    /// fields after adjudication, allowing later stages to re-resolve the
+    /// policy even after the deployment rotates to a newer evaluator key.
+    pub evaluator_authority_id: String,
+    pub evaluator_key: PublicKey,
     pub evaluator_key_epoch: u64,
+    pub evaluator_valid_from: u64,
+    pub evaluator_valid_until: u64,
+    pub evaluator_revocation_status_ref: String,
     pub evaluated_at: u64,
 }
 
@@ -426,8 +435,28 @@ impl FindingChallengeOutcome {
                 return Err(FindingError::MissingEntry("penalty_calculation"))
             }
         }
+        require_bounded_id(&self.evaluator_authority_id, "evaluator_authority_id")?;
+        if self.evaluator_key.algorithm() != SigningAlgorithm::Ed25519
+            || self.evaluator_key.is_weak_ed25519()
+        {
+            return Err(FindingError::InvalidField("evaluator_key"));
+        }
         require_nonzero(self.evaluator_key_epoch, "evaluator_key_epoch")?;
+        require_i_json_u64(self.evaluator_valid_from, "evaluator_valid_from")?;
+        require_nonzero(self.evaluator_valid_until, "evaluator_valid_until")?;
+        if self.evaluator_valid_until <= self.evaluator_valid_from {
+            return Err(FindingError::InvalidField("evaluator_valid_until"));
+        }
+        require_bounded_id(
+            &self.evaluator_revocation_status_ref,
+            "evaluator_revocation_status_ref",
+        )?;
         require_nonzero(self.evaluated_at, "evaluated_at")?;
+        if self.evaluated_at < self.evaluator_valid_from
+            || self.evaluated_at >= self.evaluator_valid_until
+        {
+            return Err(FindingError::InvalidField("evaluated_at"));
+        }
         match (self.verdict, self.retry_deadline) {
             (FindingChallengeVerdict::Indeterminate, Some(deadline)) => {
                 require_i_json_u64(deadline, "retry_deadline")?;

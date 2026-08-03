@@ -782,7 +782,8 @@ normative scope statement.
   challenge-envelope digest, Finding/listing/backing, source authorization
   branch, class, verifier-profile and evidence-bundle digests, nested facet
   result, reason, trigger digest, checked penalty calculation, evaluator key
-  epoch, and evaluation time. Derive `outcome_id` from a domain-separated
+  identity, key, epoch, validity interval, revocation-status reference, and
+  evaluation time. Derive `outcome_id` from a domain-separated
   canonical body preimage excluding only `outcome_id` and the envelope
   signature. Only an evaluator key authorized for that role by the committed
   profile, valid in its epoch, and not revoked at evaluation may sign.

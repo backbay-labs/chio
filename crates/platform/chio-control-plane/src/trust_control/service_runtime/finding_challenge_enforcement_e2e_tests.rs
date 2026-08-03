@@ -188,6 +188,7 @@ const REGISTERED_EXPOSURE_CAP: u64 = 450;
 // The epoch every pinned role is issued under and where its revocation
 // status is published. An adjudication has to hold against both.
 const PINNED_KEY_EPOCH: u64 = 1;
+const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
 const REVOCATION_STATUS_REF: &str = "revocations/finding-market";
 // What the published fee schedule charges to file a challenge and what it
 // requires the filer to stake. A filing that names anything else is not
@@ -290,7 +291,7 @@ fn authority_pin(seed: u8, id: &str) -> FindingAuthorityPin {
         key_hex: keypair(seed).public_key().to_hex(),
         key_epoch: PINNED_KEY_EPOCH,
         valid_from: 1,
-        valid_until: u64::MAX,
+        valid_until: I_JSON_MAX_SAFE_INTEGER,
         revocation_status_ref: REVOCATION_STATUS_REF.to_string(),
     }
 }
@@ -684,11 +685,26 @@ impl Deployment {
         authority_status: Arc<dyn FindingAuthorityStatusResolver>,
         failed_challenge_disposition: FindingDisputeLockDisposition,
     ) -> Result<FindingChallengeCoordinator, AnyError> {
+        self.coordinator_under_with_evaluator_and_status(
+            config,
+            keypair(31),
+            authority_status,
+            failed_challenge_disposition,
+        )
+    }
+
+    fn coordinator_under_with_evaluator_and_status(
+        &self,
+        config: &FindingMarketConfig,
+        evaluator: Keypair,
+        authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+        failed_challenge_disposition: FindingDisputeLockDisposition,
+    ) -> Result<FindingChallengeCoordinator, AnyError> {
         Ok(FindingChallengeCoordinator::new(
             self.challenges.clone(),
             self.purchases.clone(),
             config,
-            keypair(31),
+            evaluator,
             keypair(32),
             keypair(33),
             authority_status,
@@ -3008,7 +3024,12 @@ fn upheld_outcome(
             },
         }),
         retry_deadline: None,
+        evaluator_authority_id: "challenge-evaluator".to_string(),
+        evaluator_key: keypair(31).public_key(),
         evaluator_key_epoch: PINNED_KEY_EPOCH,
+        evaluator_valid_from: 1,
+        evaluator_valid_until: I_JSON_MAX_SAFE_INTEGER,
+        evaluator_revocation_status_ref: REVOCATION_STATUS_REF.to_string(),
         evaluated_at: NOW,
     };
     outcome.outcome_id = chio_finding::derive_outcome_id(&outcome)?;
@@ -6184,6 +6205,7 @@ fn evm_vault_snapshot_for(vault_id: &str) -> EvmBondSnapshot {
 fn qualified_observation() -> FindingBondObservationRecheck {
     FindingBondObservationRecheck {
         block_hash: Some(chain_hash(0xbb)),
+        observed_finality: FindingObservedFinality::Confirmations { depth: 96 },
         identity_registry_record: "registry/operators/venue-42".to_string(),
         operator_key_hash: OPERATOR_KEY_HASH.to_string(),
         operator_key_epoch: PINNED_KEY_EPOCH,
@@ -7367,6 +7389,30 @@ fn finding_challenge_snapshot_seller_must_match_the_durable_liability() -> TestR
 }
 
 #[test]
+fn finding_challenge_regressed_confirmation_depth_never_reaches_the_publisher() -> TestResult {
+    let case = finalizing_liability()?;
+    let shallow = FindingBondObservationRecheck {
+        observed_finality: FindingObservedFinality::Confirmations { depth: 63 },
+        ..qualified_observation()
+    };
+
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::then_qualified(vec![shallow]),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )?
+        .expect_err("a snapshot below the current confirmation floor authorizes nothing");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::BondObservation(_)
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+    assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_an_operator_rotation_across_the_broadcast_never_settles() -> TestResult {
     let case = finalizing_liability()?;
     let publisher = MiningPublisher::new();
@@ -7885,6 +7931,10 @@ fn finding_market_configuration_validates_listing_and_snapshot_pins() -> TestRes
     let mut unbounded_snapshot = market_config();
     unbounded_snapshot.max_snapshot_age_secs = 0;
     assert!(unbounded_snapshot.validate().is_err());
+
+    let mut non_i_json_evaluator = market_config();
+    non_i_json_evaluator.challenge_evaluator.key_epoch = I_JSON_MAX_SAFE_INTEGER + 1;
+    assert!(non_i_json_evaluator.validate().is_err());
     Ok(())
 }
 
@@ -8012,6 +8062,50 @@ fn finding_challenge_an_evaluator_key_outside_its_pinned_lifecycle_signs_nothing
         .ok_or("a live evaluator key adjudicates")?;
     assert_eq!(evaluated.state, FindingChallengeState::Upheld);
     assert_eq!(evaluated.outcome.body.evaluator_key_epoch, PINNED_KEY_EPOCH);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_uphold_uses_the_recorded_historical_evaluator_policy() -> TestResult {
+    let deployment = deployment()?;
+    let original = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let ready = ready_to_uphold(&deployment, &original)?;
+
+    let mut rotated_config = market_config();
+    rotated_config.challenge_evaluator = authority_pin(38, "challenge-evaluator");
+    rotated_config.challenge_evaluator.key_epoch = PINNED_KEY_EPOCH + 1;
+    rotated_config.challenge_evaluator.valid_from = NOW + 2;
+    let rotated = deployment.coordinator_under_with_evaluator_and_status(
+        &rotated_config,
+        keypair(38),
+        Arc::new(TestAuthorityStatusResolver::live()),
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+
+    let governance = governance()?;
+    let stake = usd(300);
+    let required = usd(5_000);
+    let upheld = uphold_across_claim_window(
+        &rotated,
+        &market_terms(CLAIM_WINDOW_SECS)?,
+        &ready.challenge,
+        &ready.outcome,
+        &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+        0,
+        &[],
+        &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+        &governance.context(),
+        &governance.sanction_case,
+        NOW + 4,
+    )?;
+    assert_eq!(
+        upheld.liability_key,
+        derive_liability_key(
+            &derive_defect_key(&ready.finding.finding_id),
+            VENUE_ID,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+        )
+    );
     Ok(())
 }
 

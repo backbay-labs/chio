@@ -13,6 +13,8 @@ use chio_settle::FindingFinalityRequirement;
 
 use crate::CliError;
 
+const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
+
 /// One pinned authority key with its lifecycle policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingAuthorityPin {
@@ -46,6 +48,14 @@ impl FindingAuthorityPin {
         if self.key_epoch == 0 {
             return Err(CliError::cli_other_error(format!(
                 "finding-market {label} key epoch must be nonzero"
+            )));
+        }
+        if self.key_epoch > I_JSON_MAX_SAFE_INTEGER
+            || self.valid_from > I_JSON_MAX_SAFE_INTEGER
+            || self.valid_until > I_JSON_MAX_SAFE_INTEGER
+        {
+            return Err(CliError::cli_other_error(format!(
+                "finding-market {label} lifecycle values must be I-JSON integers"
             )));
         }
         if self.valid_until <= self.valid_from {
