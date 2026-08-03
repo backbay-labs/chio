@@ -361,6 +361,8 @@ jobs:
           })"
           test "$(jq -r '.path' <<< "${capture_workflow}")" = ".github/workflows/enterprise-linux-capture.yml"
           test "$(jq -r '.state' <<< "${capture_workflow}")" = "active"
+          capture_workflow_id="$(jq -r '.id' <<< "${capture_workflow}")"
+          [[ "${capture_workflow_id}" =~ ^[1-9][0-9]*$ ]]
 
           dispatch_nonce="$(openssl rand -hex 32)"
           [[ "${dispatch_nonce}" =~ ^[0-9a-f]{64}$ ]]
@@ -464,8 +466,9 @@ jobs:
                 --arg head_branch "${default_branch}" \
                 --arg head_sha "${default_commit_sha}" \
                 --arg started_at "${dispatch_started_at}" \
+                --argjson capture_workflow_id "${capture_workflow_id}" \
                 '[.[] | select(
-                  .name == "Enterprise Linux capture" and
+                  .workflow_id == $capture_workflow_id and
                   .path == ".github/workflows/enterprise-linux-capture.yml" and
                   .event == "workflow_dispatch" and
                   .display_title == $display_title and
@@ -505,7 +508,7 @@ jobs:
           capture_run_id="$(jq -r '.id' <<< "${dispatched_run}")"
           [[ "${capture_run_id}" =~ ^[1-9][0-9]*$ ]]
           dispatched_run="$(gh api -H "Accept: application/vnd.github+json" "repos/${GITHUB_REPOSITORY}/actions/runs/${capture_run_id}")"
-          test "$(jq -r '.name' <<< "${dispatched_run}")" = "Enterprise Linux capture"
+          test "$(jq -r '.workflow_id' <<< "${dispatched_run}")" = "${capture_workflow_id}"
           test "$(jq -r '.path' <<< "${dispatched_run}")" = ".github/workflows/enterprise-linux-capture.yml"
           test "$(jq -r '.event' <<< "${dispatched_run}")" = "workflow_dispatch"
           test "$(jq -r '.display_title' <<< "${dispatched_run}")" = "${display_title}"
