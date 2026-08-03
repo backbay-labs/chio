@@ -393,9 +393,9 @@ impl SqliteFindingPurchaseStore {
         })
     }
 
-    /// Commit an irreversible settled-purchase claim and its complete
-    /// purchase projection under the authority-wide rollback anchor.
-    fn commit_claim_write(
+    /// Commit every settlement-capable purchase lifecycle mutation and
+    /// its complete projection under the authority-wide rollback anchor.
+    fn commit_market_write(
         &self,
         transaction: Transaction<'_>,
     ) -> Result<(), FindingPurchaseStoreError> {
@@ -535,7 +535,7 @@ impl SqliteFindingPurchaseStore {
                 requested: input.amount_units,
                 maximum: input.maximum_sale_exposure_units,
             };
-            self.commit_write(transaction)?;
+            self.commit_market_write(transaction)?;
             self.sync_after_write(&connection)?;
             return Err(error);
         }
@@ -621,7 +621,7 @@ impl SqliteFindingPurchaseStore {
                 "exposure encumbrance insert did not affect one row",
             ));
         }
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPurchaseWriteOutcome::Inserted)
     }
@@ -742,7 +742,7 @@ impl SqliteFindingPurchaseStore {
             return Err(invariant("slot insert did not affect one row"));
         }
         advance_reservation_tx(&transaction, reservation_id, "open", "slot_reserved", now)?;
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(ordinal)
     }
@@ -904,7 +904,7 @@ impl SqliteFindingPurchaseStore {
         if inserted != 1 {
             return Err(invariant("purchase record insert did not affect one row"));
         }
-        self.commit_claim_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPurchaseWriteOutcome::Inserted)
     }
@@ -995,7 +995,7 @@ impl SqliteFindingPurchaseStore {
                 "failed delivery record insert did not affect one row",
             ));
         }
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPurchaseWriteOutcome::Inserted)
     }
@@ -1027,7 +1027,7 @@ impl SqliteFindingPurchaseStore {
             }
         };
         abandon_reservation_tx(&transaction, reservation_id, from, "released", now)?;
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(())
     }
@@ -1048,7 +1048,7 @@ impl SqliteFindingPurchaseStore {
         for (reservation_id, state) in &due {
             abandon_reservation_tx(&transaction, reservation_id, state, "expired", now)?;
         }
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(due.len())
     }
@@ -1100,10 +1100,7 @@ impl SqliteFindingPurchaseStore {
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         let outcome = block_new_slots_tx(&transaction, listing_id, now)?;
-        self.serving_owner
-            .append_finding_challenge_projection_if_changed(&transaction)
-            .map_err(|error| FindingPurchaseStoreError::Unavailable(error.to_string()))?;
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(outcome)
     }
@@ -1283,7 +1280,7 @@ impl SqliteFindingPurchaseStore {
             COMMUNITY_FUND_SLOT_INDEX,
             admitted_at,
         )?;
-        self.commit_claim_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPayoutDestinationAdmission {
             slot_index: COMMUNITY_FUND_SLOT_INDEX,
@@ -1312,7 +1309,7 @@ impl SqliteFindingPurchaseStore {
         if admission.outcome == FindingPurchaseWriteOutcome::ExistingSame {
             return Ok(admission);
         }
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(admission)
     }

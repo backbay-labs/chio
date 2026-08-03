@@ -471,6 +471,68 @@ fn finding_challenge_v2_schema() -> String {
     schema
 }
 
+fn insert_legacy_terminal_liability(connection: &Connection, state: &str) -> String {
+    let challenge_id = format!("legacy-{state}-challenge");
+    connection
+        .execute(
+            r#"
+            INSERT INTO challenges (
+                challenge_id, finding_id, listing_id,
+                challenge_envelope_sha256, authorization_branch,
+                evidence_class, challenger_hex, state, retry_count,
+                retry_deadline, outcome_envelope_sha256, submitted_at,
+                updated_at
+            ) VALUES (
+                ?1, ?2, ?3, ?4, 'buyer_submission', 'evidence_invalid',
+                ?5, 'upheld', 0, NULL, ?6, ?7, ?7
+            )
+            "#,
+            params![
+                challenge_id,
+                hex64('a'),
+                LISTING_ID,
+                digest(&format!("legacy-{state}-challenge-envelope")),
+                hex64('b'),
+                digest(&format!("legacy-{state}-outcome")),
+                sqlite_i64(NOW, "now").expect("legacy challenge time"),
+            ],
+        )
+        .expect("insert legacy terminal challenge");
+    let liability_key = digest(&format!("legacy-{state}-liability"));
+    connection
+        .execute(
+            r#"
+            INSERT INTO liability_heads (
+                liability_key, defect_key, finding_id, listing_id,
+                allocation_id, venue_id, chain_id, vault_contract, vault_id,
+                state, upheld_challenge_id, purchase_cutoff_slot,
+                claim_deadline, appeal_window_opened_at, appeal_deadline,
+                appeal_terms_envelope_sha256, snapshot_digest,
+                allocation_digest, publication_pending, quarantined,
+                opened_at, updated_at
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, 'venue-legacy', 'eip155:8453',
+                '0xlegacy', 'vault-legacy', ?6, ?7, 1, ?8, ?8, ?9,
+                ?10, NULL, NULL, 0, 0, ?8, ?9
+            )
+            "#,
+            params![
+                liability_key,
+                digest(&format!("legacy-{state}-defect")),
+                hex64('a'),
+                LISTING_ID,
+                digest(&format!("legacy-{state}-allocation")),
+                state,
+                challenge_id,
+                sqlite_i64(NOW, "now").expect("legacy liability time"),
+                sqlite_i64(NOW + 1, "deadline").expect("legacy liability deadline"),
+                digest(&format!("legacy-{state}-appeal-terms")),
+            ],
+        )
+        .expect("insert legacy terminal liability");
+    liability_key
+}
+
 fn lock_input<'a>(
     tag: &'a str,
     challenge_id: &'a str,
@@ -3366,6 +3428,109 @@ fn v2_liability_without_an_admitted_seller_binding_rejects_migration() {
     let error = initialize_finding_challenge_schema(&mut connection)
         .expect_err("an unbound legacy seller cannot become impairment authority");
     assert!(error.to_string().contains("admitted seller binding"));
+}
+
+#[test]
+fn projected_actionable_liability_without_a_seller_binding_requires_recovery() {
+    let mut connection = Connection::open_in_memory().expect("open legacy database");
+    connection
+        .execute_batch(&finding_challenge_v6_schema())
+        .expect("install projected legacy challenge schema");
+    assert_eq!(
+        crate::check_schema_version(
+            &connection,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            FINDING_CHALLENGE_SCHEMA_ANCHORS,
+        )
+        .expect("adopt projected legacy database"),
+        0
+    );
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 6)
+        .expect("stamp projected legacy schema");
+    connection
+        .execute(
+            r#"
+            INSERT INTO liability_heads (
+                liability_key, defect_key, finding_id, listing_id,
+                allocation_id, venue_id, chain_id, vault_contract, vault_id,
+                state, upheld_challenge_id, purchase_cutoff_slot,
+                claim_deadline, appeal_window_opened_at, appeal_deadline,
+                appeal_terms_envelope_sha256, snapshot_digest,
+                allocation_digest, publication_pending, quarantined,
+                opened_at, updated_at
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, 'venue-legacy', 'eip155:8453',
+                '0xlegacy', 'vault-legacy', 'open', NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL, NULL, 0, 0, ?6, ?6
+            )
+            "#,
+            params![
+                digest("legacy-v6-actionable-liability"),
+                digest("legacy-v6-actionable-defect"),
+                hex64('a'),
+                LISTING_ID,
+                digest("legacy-v6-actionable-allocation"),
+                sqlite_i64(NOW, "now").expect("legacy liability time"),
+            ],
+        )
+        .expect("insert actionable legacy liability");
+
+    let error = initialize_finding_challenge_schema(&mut connection)
+        .expect_err("an actionable unbound liability must require recovery");
+    assert!(error.to_string().contains("actionable legacy liability"));
+}
+
+#[test]
+fn projected_v5_and_v6_terminal_liabilities_survive_schema_upgrade() {
+    for (version, schema, state) in [
+        (5, finding_challenge_v5_schema(), "settled"),
+        (
+            6,
+            finding_challenge_v6_schema(),
+            "reversed_before_impairment",
+        ),
+    ] {
+        let mut connection = Connection::open_in_memory().expect("open legacy database");
+        connection
+            .execute_batch(&schema)
+            .expect("install projected legacy challenge schema");
+        assert_eq!(
+            crate::check_schema_version(
+                &connection,
+                FINDING_CHALLENGE_SCHEMA_KEY,
+                FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+                FINDING_CHALLENGE_SCHEMA_ANCHORS,
+            )
+            .expect("adopt projected legacy database"),
+            0
+        );
+        crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, version)
+            .expect("stamp projected legacy schema");
+        let liability_key = insert_legacy_terminal_liability(&connection, state);
+
+        initialize_finding_challenge_schema(&mut connection)
+            .expect("migrate projected terminal liability");
+        let (stored_state, seller_hex): (String, String) = connection
+            .query_row(
+                "SELECT state, seller_hex FROM liability_heads WHERE liability_key = ?1",
+                [&liability_key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read migrated terminal liability");
+        assert_eq!(stored_state, state);
+        assert_eq!(seller_hex, LEGACY_TERMINAL_UNBOUND_SELLER_HEX);
+        assert!(
+            connection
+                .execute(
+                    "UPDATE liability_heads SET state = 'finalizing' WHERE liability_key = ?1",
+                    [&liability_key],
+                )
+                .is_err(),
+            "the preserved terminal row stays non-actionable"
+        );
+        verify_finding_challenge_invariants(&connection).expect("verify migrated terminal schema");
+    }
 }
 
 #[test]

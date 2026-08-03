@@ -467,10 +467,20 @@ fn purchase_writes_advance_the_rollback_protected_market_projection() {
     let fixture = fixture();
     let purchase = Purchase::new("rollback-projection", LISTING_ID, 100);
     open_reservation(&fixture, &purchase);
+    assert_eq!(
+        finding_projection_counts(&fixture.store),
+        (1, 1),
+        "the pre-dispatch reservation is rollback protected"
+    );
     fixture
         .store
         .reserve_slot(&purchase.reservation_id, NOW + 1)
         .expect("reserve slot");
+    assert_eq!(
+        finding_projection_counts(&fixture.store),
+        (2, 2),
+        "the reserved purchase is protected before delivery closes"
+    );
     let bytes = record_bytes("rollback-projection");
     let record_sha256 = chio_core::sha256_hex(&bytes);
     fixture
@@ -495,8 +505,16 @@ fn purchase_writes_advance_the_rollback_protected_market_projection() {
         .open_reservation(&pending_input)
         .expect("open a later pending reservation");
 
-    let connection = fixture.store.connection.lock().expect("purchase lock");
-    let (local, global): (i64, i64) = connection
+    assert_eq!(
+        finding_projection_counts(&fixture.store),
+        (4, 4),
+        "every settlement-capable lifecycle change advances both chains"
+    );
+}
+
+fn finding_projection_counts(store: &SqliteFindingPurchaseStore) -> (i64, i64) {
+    let connection = store.connection.lock().expect("purchase lock");
+    connection
         .query_row(
             r#"
             SELECT
@@ -508,9 +526,7 @@ fn purchase_writes_advance_the_rollback_protected_market_projection() {
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
-        .expect("read cognition-market projection coverage");
-    assert_eq!(local, 1, "the settled claim appends one local snapshot");
-    assert_eq!(global, 1, "the settled claim appends one global reference");
+        .expect("read cognition-market projection coverage")
 }
 
 #[test]

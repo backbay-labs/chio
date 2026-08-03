@@ -1233,25 +1233,32 @@ fn finding_challenge_snapshot_digest_v1(
 fn finding_market_snapshot_digest(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, true)
+    finding_market_snapshot_digest_version(connection, true, true, true)
+}
+
+fn finding_market_snapshot_digest_v4(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(connection, true, true, false)
 }
 
 fn finding_market_snapshot_digest_v3(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, false)
+    finding_market_snapshot_digest_version(connection, true, false, false)
 }
 
 fn finding_market_snapshot_digest_v2(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, false, false)
+    finding_market_snapshot_digest_version(connection, false, false, false)
 }
 
 fn finding_market_snapshot_digest_version(
     connection: &Connection,
     include_lock_reservations: bool,
     include_liability_seller: bool,
+    include_inflight_purchases: bool,
 ) -> Result<String, SqliteServingOwnerError> {
     let challenge_tables = [
         "challenges",
@@ -1287,27 +1294,59 @@ fn finding_market_snapshot_digest_version(
         snapshots.push(table_snapshot_where(
             connection,
             table,
-            "reservation_id IN (SELECT reservation_id FROM purchase_records)",
+            if include_inflight_purchases {
+                r#"
+                reservation_id IN (
+                    SELECT reservation_id FROM purchase_records
+                    UNION
+                    SELECT reservation_id FROM purchase_reservations
+                    WHERE state IN ('open', 'slot_reserved')
+                )
+                "#
+            } else {
+                "reservation_id IN (SELECT reservation_id FROM purchase_records)"
+            },
         )?);
     }
     snapshots.push(table_snapshot_where(
         connection,
         "payout_destinations",
-        r#"
-        slot_index = 0 OR EXISTS (
-            SELECT 1
-            FROM purchase_records AS records
-            JOIN purchase_payout_bindings AS bindings
-              ON bindings.reservation_id = records.reservation_id
-            JOIN seller_exposure_encumbrances AS encumbrances
-              ON encumbrances.reservation_id = records.reservation_id
-            WHERE encumbrances.allocation_id = payout_destinations.allocation_id
-              AND bindings.destination = payout_destinations.destination
-        )
-        "#,
+        if include_inflight_purchases {
+            r#"
+            slot_index = 0 OR EXISTS (
+                SELECT 1
+                FROM purchase_payout_bindings AS bindings
+                JOIN seller_exposure_encumbrances AS encumbrances
+                  ON encumbrances.reservation_id = bindings.reservation_id
+                WHERE bindings.reservation_id IN (
+                    SELECT reservation_id FROM purchase_records
+                    UNION
+                    SELECT reservation_id FROM purchase_reservations
+                    WHERE state IN ('open', 'slot_reserved')
+                )
+                  AND encumbrances.allocation_id = payout_destinations.allocation_id
+                  AND bindings.destination = payout_destinations.destination
+            )
+            "#
+        } else {
+            r#"
+            slot_index = 0 OR EXISTS (
+                SELECT 1
+                FROM purchase_records AS records
+                JOIN purchase_payout_bindings AS bindings
+                  ON bindings.reservation_id = records.reservation_id
+                JOIN seller_exposure_encumbrances AS encumbrances
+                  ON encumbrances.reservation_id = records.reservation_id
+                WHERE encumbrances.allocation_id = payout_destinations.allocation_id
+                  AND bindings.destination = payout_destinations.destination
+            )
+            "#
+        },
     )?);
     digest(&AuthoritySnapshot {
-        format: if include_liability_seller {
+        format: if include_inflight_purchases {
+            "chio.sqlite-finding-market-snapshot.v5"
+        } else if include_liability_seller {
             "chio.sqlite-finding-market-snapshot.v4"
         } else if include_lock_reservations {
             "chio.sqlite-finding-market-snapshot.v3"
@@ -1814,6 +1853,10 @@ fn verify_finding_challenge_projection_coverage(
             OR EXISTS(SELECT 1 FROM effect_intents)
             OR EXISTS(SELECT 1 FROM listing_sales_blocks)
             OR EXISTS(SELECT 1 FROM purchase_records)
+            OR EXISTS(
+                SELECT 1 FROM purchase_reservations
+                WHERE state IN ('open', 'slot_reserved')
+            )
             OR EXISTS(SELECT 1 FROM payout_destinations WHERE slot_index = 0)
         "#,
         [],
@@ -1822,13 +1865,29 @@ fn verify_finding_challenge_projection_coverage(
     match rows.last() {
         Some((_, _, snapshot_digest, _, _)) => {
             let current_market = finding_market_snapshot_digest(connection)?;
+            let current_market_v4 = finding_market_snapshot_digest_v4(connection)?;
             let current_market_v3 = finding_market_snapshot_digest_v3(connection)?;
             let current_market_v2 = finding_market_snapshot_digest_v2(connection)?;
             let current_legacy = finding_challenge_snapshot_digest_v1(connection)?;
+            let has_uncommitted_purchase_state = connection.query_row(
+                r#"
+                SELECT EXISTS(
+                    SELECT 1 FROM purchase_reservations
+                    WHERE state IN ('open', 'slot_reserved')
+                      AND reservation_id NOT IN (
+                          SELECT reservation_id FROM purchase_records
+                      )
+                )
+                "#,
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
             if current_market != *snapshot_digest
-                && current_market_v3 != *snapshot_digest
-                && current_market_v2 != *snapshot_digest
-                && current_legacy != *snapshot_digest
+                && (has_uncommitted_purchase_state
+                    || (current_market_v4 != *snapshot_digest
+                        && current_market_v3 != *snapshot_digest
+                        && current_market_v2 != *snapshot_digest
+                        && current_legacy != *snapshot_digest))
             {
                 return Err(invalid(
                     "finding challenge projection does not cover current state",

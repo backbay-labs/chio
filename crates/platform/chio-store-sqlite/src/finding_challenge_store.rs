@@ -87,6 +87,11 @@ const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "chio_serving_owner",
 ];
 const FINDING_CHALLENGE_SCHEMA: &str = include_str!("finding_challenge_store.sql");
+/// Explicit non-key carried only by projected legacy terminal liabilities.
+/// Those rows remain auditable, but this value cannot authorize a future
+/// seller impairment and terminal lifecycle triggers forbid any transition.
+const LEGACY_TERMINAL_UNBOUND_SELLER_HEX: &str =
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
 /// Upper bound on every opaque identifier this store persists. An
 /// unbounded identifier is an amplification vector rather than a name.
@@ -3809,16 +3814,61 @@ fn migrate_recent_finding_challenge_schema(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;
-        if table_has_rows_where(&transaction, "liability_heads", "1 = 1")? {
+        if table_has_rows_where(
+            &transaction,
+            "liability_heads",
+            "state NOT IN ('settled', 'reversed_before_impairment')",
+        )? {
             return Err(invariant(
-                "legacy liability state cannot migrate without its admitted seller binding",
+                "actionable legacy liability state cannot migrate without its admitted seller binding",
             ));
         }
         transaction
-            .execute_batch("DROP TABLE liability_heads;")
+            .execute_batch(&format!(
+                r#"
+                CREATE TEMP TABLE finding_terminal_liabilities_migration AS
+                SELECT liability_key, defect_key, finding_id, listing_id,
+                       allocation_id,
+                       '{LEGACY_TERMINAL_UNBOUND_SELLER_HEX}' AS seller_hex,
+                       venue_id, chain_id, vault_contract, vault_id,
+                       state, upheld_challenge_id, purchase_cutoff_slot,
+                       claim_deadline, appeal_window_opened_at, appeal_deadline,
+                       appeal_terms_envelope_sha256, snapshot_digest,
+                       allocation_digest, publication_pending, quarantined,
+                       opened_at, updated_at
+                FROM liability_heads;
+                DROP TABLE liability_heads;
+                "#
+            ))
             .map_err(sqlite_error)?;
         transaction
             .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .map_err(sqlite_error)?;
+        transaction
+            .execute_batch(
+                r#"
+                INSERT INTO liability_heads (
+                    liability_key, defect_key, finding_id, listing_id,
+                    allocation_id, seller_hex, venue_id, chain_id,
+                    vault_contract, vault_id,
+                    state, upheld_challenge_id, purchase_cutoff_slot,
+                    claim_deadline, appeal_window_opened_at, appeal_deadline,
+                    appeal_terms_envelope_sha256, snapshot_digest,
+                    allocation_digest, publication_pending, quarantined,
+                    opened_at, updated_at
+                )
+                SELECT liability_key, defect_key, finding_id, listing_id,
+                       allocation_id, seller_hex, venue_id, chain_id,
+                       vault_contract, vault_id,
+                       state, upheld_challenge_id, purchase_cutoff_slot,
+                       claim_deadline, appeal_window_opened_at, appeal_deadline,
+                       appeal_terms_envelope_sha256, snapshot_digest,
+                       allocation_digest, publication_pending, quarantined,
+                       opened_at, updated_at
+                FROM finding_terminal_liabilities_migration;
+                DROP TABLE finding_terminal_liabilities_migration;
+                "#,
+            )
             .map_err(sqlite_error)?;
         if on_disk <= 5 {
             transaction
