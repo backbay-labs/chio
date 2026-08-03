@@ -376,6 +376,14 @@ impl SqliteFindingStatusStore {
     }
 
     fn commit_write(&self, transaction: Transaction<'_>) -> Result<(), FindingStatusStoreError> {
+        #[cfg(feature = "cognition-market-experimental")]
+        self.serving_owner
+            .append_finding_challenge_projection_if_changed(&transaction)
+            .map_err(|error| FindingStatusStoreError::Unavailable(error.to_string()))?;
+        #[cfg(feature = "cognition-market-experimental")]
+        self.serving_owner
+            .append_finding_status_projection_if_changed(&transaction)
+            .map_err(|error| FindingStatusStoreError::Unavailable(error.to_string()))?;
         transaction.commit().map_err(|error| {
             FindingStatusStoreError::OutcomeUnknown(
                 self.serving_owner
@@ -983,6 +991,79 @@ impl SqliteFindingStatusStore {
         let rows = statement
             .query_map(
                 params![feed_id, sqlite_i64(limit as u64, "limit")?],
+                raw_intent_from_row,
+            )
+            .map_err(sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sqlite_error)?;
+        drop(statement);
+        let intents = rows
+            .into_iter()
+            .map(intent_from_raw)
+            .collect::<Result<Vec<_>, _>>()?;
+        transaction.commit().map_err(sqlite_error)?;
+        Ok(intents)
+    }
+
+    /// Return work the cadence publisher must revisit. This includes newly
+    /// dispatch-eligible intents and published sticky leaves whose inclusion
+    /// proof is absent at the current floor or is no longer fresh.
+    pub fn list_publication_candidates(
+        &self,
+        feed_id: &str,
+        trusted_now: u64,
+        limit: usize,
+    ) -> Result<Vec<FindingRetractionIntentRecord>, FindingStatusStoreError> {
+        require_identifier(feed_id, "feed_id")?;
+        require_positive(trusted_now, "trusted_now")?;
+        if limit == 0 || limit > 200 {
+            return Err(invariant("intent query limit must be between 1 and 200"));
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        ensure_feed_registered_tx(&transaction, feed_id)?;
+        let mut statement = transaction
+            .prepare(
+                r#"
+                SELECT intent_id, feed_id, operator_id, finding_id, source,
+                       intent_sha256, intent_bytes, issued_at, inclusion_deadline,
+                       state, finality_evidence_sha256, finality_evidence_bytes,
+                       dispatch_eligible_at, published_map_epoch,
+                       published_epoch_id, created_at, updated_at
+                FROM finding_retraction_intents AS intent
+                WHERE intent.feed_id = ?1
+                  AND (
+                    intent.state = 'dispatch_eligible'
+                    OR (
+                      intent.state = 'published'
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM finding_status_feed_floors AS floor
+                        JOIN finding_status_proofs AS proof
+                          ON proof.feed_id = floor.feed_id
+                         AND proof.map_epoch = floor.map_epoch
+                         AND proof.finding_id = intent.finding_id
+                         AND proof.kind = 'inclusion'
+                         AND proof.valid_until > ?2
+                        WHERE floor.feed_id = intent.feed_id
+                      )
+                    )
+                  )
+                ORDER BY CASE intent.state
+                           WHEN 'dispatch_eligible' THEN 0 ELSE 1
+                         END,
+                         intent.created_at, intent.intent_id
+                LIMIT ?3
+                "#,
+            )
+            .map_err(sqlite_error)?;
+        let rows = statement
+            .query_map(
+                params![
+                    feed_id,
+                    sqlite_i64(trusted_now, "trusted_now")?,
+                    sqlite_i64(limit as u64, "limit")?,
+                ],
                 raw_intent_from_row,
             )
             .map_err(sqlite_error)?

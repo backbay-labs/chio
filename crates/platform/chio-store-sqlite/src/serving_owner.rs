@@ -26,7 +26,9 @@ mod path_identity;
 mod rollback_anchor;
 
 #[cfg(feature = "cognition-market-experimental")]
-use global_commit_chain::append_finding_challenge_projection_if_changed;
+use global_commit_chain::{
+    append_finding_challenge_projection_if_changed, append_finding_status_projection_if_changed,
+};
 use global_commit_chain::{
     append_global_commit, initialize_global_commit_schema, reset_derived_budget_ack_cache,
     seed_global_baseline, verify_global_commit_schema, verify_pristine_authority_tables,
@@ -202,6 +204,14 @@ impl SqliteServingOwner {
         transaction: &Transaction<'_>,
     ) -> Result<bool, SqliteServingOwnerError> {
         append_finding_challenge_projection_if_changed(transaction, &self.fence)
+    }
+
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn append_finding_status_projection_if_changed(
+        &self,
+        transaction: &Transaction<'_>,
+    ) -> Result<bool, SqliteServingOwnerError> {
+        append_finding_status_projection_if_changed(transaction, &self.fence)
     }
 
     pub(crate) fn sync_authority_anchor(

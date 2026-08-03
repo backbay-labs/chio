@@ -369,6 +369,154 @@ impl ChioKernel {
         }
     }
 
+    /// Validate the authenticated delivery, exact content, and durable parent
+    /// receipt for a governed Finding memory write before tool dispatch.
+    pub(crate) fn validate_finding_memory_write_admission(
+        &self,
+        request: &ToolCallRequest,
+    ) -> Result<(), KernelError> {
+        let Some(binding) = request
+            .arguments
+            .get(crate::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT)
+        else {
+            return Ok(());
+        };
+        let Some(crate::memory_provenance::MemoryActionKind::Write { key, .. }) =
+            crate::memory_provenance::classify_memory_action(
+                &request.tool_name,
+                &request.arguments,
+            )
+        else {
+            return Err(KernelError::Internal(
+                "Finding delivery lineage requires a governed memory write".to_owned(),
+            ));
+        };
+        if request.governed_intent.is_none() {
+            return Err(KernelError::Internal(
+                "Finding delivery lineage requires a governed memory write".to_owned(),
+            ));
+        }
+        if self.memory_provenance_store().is_none() {
+            return Err(KernelError::Internal(
+                "Finding memory write requires a memory provenance store".to_owned(),
+            ));
+        }
+        let parent_receipt_id = binding
+            .as_str()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                KernelError::Internal(
+                    "Finding delivery receipt binding must be a nonempty string".to_owned(),
+                )
+            })?;
+        let Some(()) = self.with_receipt_store(|store| {
+            let parent = store.load_chio_receipt(parent_receipt_id)?.ok_or_else(|| {
+                KernelError::Internal(
+                    "Finding delivery receipt binding is not durably available".to_owned(),
+                )
+            })?;
+            if parent.id != parent_receipt_id
+                || !parent.is_allowed()
+                || !parent.verify_signature().map_err(|error| {
+                    KernelError::Internal(format!(
+                        "Finding delivery receipt signature verification failed: {error}"
+                    ))
+                })?
+            {
+                return Err(KernelError::Internal(
+                    "Finding delivery receipt binding is not an authentic allow receipt".to_owned(),
+                ));
+            }
+            let delivery: chio_core::receipt::metadata::FindingDelivery = parent
+                .metadata
+                .as_ref()
+                .and_then(|metadata| {
+                    metadata.get(chio_core::receipt::metadata::FINDING_DELIVERY_METADATA_KEY)
+                })
+                .cloned()
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding delivery receipt binding has no typed delivery metadata"
+                            .to_owned(),
+                    )
+                })
+                .and_then(|value| {
+                    serde_json::from_value(value).map_err(|error| {
+                        KernelError::Internal(format!(
+                            "Finding delivery receipt metadata is malformed: {error}"
+                        ))
+                    })
+                })?;
+            delivery.validate().map_err(|error| {
+                KernelError::Internal(format!(
+                    "Finding delivery receipt metadata is invalid: {error}"
+                ))
+            })?;
+            if delivery.finding_id != key
+                || delivery.digest_check != chio_core::receipt::metadata::DeliveryResult::Matched
+                || delivery.media_type_check
+                    != chio_core::receipt::metadata::FindingMediaTypeCheck::Matched
+            {
+                return Err(KernelError::Internal(
+                    "Finding delivery receipt does not authorize this memory entry".to_owned(),
+                ));
+            }
+            let contract: chio_core::receipt::metadata::DeliveryContract = parent
+                .metadata
+                .as_ref()
+                .and_then(|metadata| {
+                    metadata.get(chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY)
+                })
+                .cloned()
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding delivery receipt has no typed delivery contract".to_owned(),
+                    )
+                })
+                .and_then(|value| {
+                    serde_json::from_value(value).map_err(|error| {
+                        KernelError::Internal(format!(
+                            "Finding delivery contract metadata is malformed: {error}"
+                        ))
+                    })
+                })?;
+            contract.validate().map_err(|error| {
+                KernelError::Internal(format!(
+                    "Finding delivery contract metadata is invalid: {error}"
+                ))
+            })?;
+            let written_content = request.arguments.get("content").ok_or_else(|| {
+                KernelError::Internal(
+                    "Finding memory write requires the exact delivered content".to_owned(),
+                )
+            })?;
+            let written_content_bytes = chio_core::canonical::canonical_json_bytes(written_content)
+                .map_err(|error| {
+                    KernelError::Internal(format!(
+                        "Finding memory write content canonicalization failed: {error}"
+                    ))
+                })?;
+            let written_content_digest = chio_core::crypto::sha256_hex(&written_content_bytes);
+            if contract.result != chio_core::receipt::metadata::DeliveryResult::Matched
+                || contract.expected_digest != contract.observed_digest
+                || contract.expected_digest != parent.content_hash
+                || contract.expected_digest != written_content_digest
+            {
+                return Err(KernelError::Internal(
+                    "Finding memory write content differs from the authenticated delivery"
+                        .to_owned(),
+                ));
+            }
+            Ok(())
+        })?
+        else {
+            return Err(KernelError::Internal(
+                "Finding delivery lineage requires a durable receipt store".to_owned(),
+            ));
+        };
+        Ok(())
+    }
+
     /// Append a provenance entry for a governed memory write once the allow
     /// receipt is signed. Fails closed on chain-store errors.
     pub(crate) fn append_memory_provenance_for_write(

@@ -124,11 +124,21 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
         delivery
             .validate()
             .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?;
+        let status_feed_id = delivery
+            .status_proof
+            .as_ref()
+            .map(|proof| proof.feed_id.clone())
+            .ok_or_else(|| {
+                FindingRetractionResolveError::InvalidLineage(
+                    "M6 Finding delivery lineage has no authenticated status feed".to_owned(),
+                )
+            })?;
         Ok(Some(VerifiedFindingDeliveryLineage {
             memory_write_receipt_id: child.id,
             memory_write_capability_id: child.capability_id,
             delivery_receipt_id: parent.id,
             finding_id: delivery.finding_id,
+            status_feed_id,
         }))
     }
 }

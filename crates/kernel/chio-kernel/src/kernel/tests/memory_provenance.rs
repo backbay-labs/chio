@@ -230,3 +230,51 @@ fn memory_provenance_hook_is_noop_when_store_absent() {
         .and_then(|m| m.get("memory_provenance"))
         .is_none());
 }
+
+#[test]
+fn finding_memory_binding_denies_before_tool_dispatch() {
+    let mut kernel = make_kernel(make_config());
+    let invocations = Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-mem",
+        vec!["memory_write"],
+        Arc::clone(&invocations),
+    )));
+    install_provenance_store(&mut kernel);
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-mem", "memory_write")]),
+        300,
+    );
+    let mut request = memory_write_request("req-finding-binding-deny", &cap, "finding-1");
+    request.arguments[crate::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT] =
+        serde_json::json!("missing-delivery-receipt");
+    request.governed_intent = Some(GovernedTransactionIntent {
+        id: "intent-finding-memory-write".to_owned(),
+        server_id: request.server_id.clone(),
+        tool_name: request.tool_name.clone(),
+        purpose: "retain an authenticated Finding delivery".to_owned(),
+        max_amount: None,
+        commerce: None,
+        metered_billing: None,
+        runtime_attestation: None,
+        call_chain: None,
+        autonomy: None,
+        context: None,
+        body: Default::default(),
+    });
+    let admission_error = kernel
+        .validate_finding_memory_write_admission(&request)
+        .expect_err("missing delivery receipt must fail admission");
+    assert!(admission_error
+        .to_string()
+        .contains("durable receipt"));
+
+    let response = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect("invalid Finding write returns a signed deny");
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+}

@@ -152,6 +152,12 @@ impl ChioKernel {
             return self.build_deny_response(request, &msg, now, None);
         }
 
+        if let Err(error) = self.validate_finding_memory_write_admission(request) {
+            let msg = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "Finding memory write rejected pre-dispatch (nested flow)");
+            return self.build_deny_response(request, &msg, now, None);
+        }
+
         let cap = &request.capability;
 
         // Signature first; the budget admission is deferred until

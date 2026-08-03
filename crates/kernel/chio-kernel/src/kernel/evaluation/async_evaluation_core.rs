@@ -215,6 +215,18 @@ impl ChioKernel {
             );
         }
 
+        if let Err(error) = self.validate_finding_memory_write_admission(request) {
+            let msg = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "Finding memory write rejected pre-dispatch");
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
+        }
+
         let cap = &request.capability;
 
         // Signature is verified first (no budget mutation); the actual

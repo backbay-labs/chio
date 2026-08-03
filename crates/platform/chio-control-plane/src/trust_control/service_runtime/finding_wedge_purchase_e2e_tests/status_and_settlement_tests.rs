@@ -279,12 +279,24 @@ async fn finding_status_retraction() -> TestResult {
     )?;
     let second_included =
         status_gate_publisher.publish_retraction(&second_intent_id, &[], now + 1)?;
+    let refresh_candidates = status_gate_store.list_publication_candidates(
+        &config.status_feed_operator_ref,
+        now + 1,
+        200,
+    )?;
+    assert!(refresh_candidates
+        .iter()
+        .any(|candidate| candidate.intent_id == intent_id));
     let refreshed_included = status_gate_publisher.publish_retraction(&intent_id, &[], now + 1)?;
     assert_eq!(refreshed_included.map_epoch, second_included.map_epoch);
     assert_eq!(
         refreshed_included.kind,
         chio_store_sqlite::FindingStatusProofKind::Inclusion
     );
+    assert!(!status_gate_store
+        .list_publication_candidates(&config.status_feed_operator_ref, now + 1, 200)?
+        .iter()
+        .any(|candidate| candidate.intent_id == intent_id));
 
     let mut rotated_operator = config.status_feed_operator.clone();
     rotated_operator.authority.key_hex = keypair(46).public_key().to_hex();

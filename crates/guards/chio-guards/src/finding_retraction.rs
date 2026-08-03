@@ -36,6 +36,7 @@ pub struct VerifiedFindingDeliveryLineage {
     pub memory_write_capability_id: String,
     pub delivery_receipt_id: String,
     pub finding_id: String,
+    pub status_feed_id: String,
 }
 
 /// Durable verified-lineage lookup used by the resolver.
@@ -247,10 +248,16 @@ impl FindingRetractionResolver for VerifiedFindingRetractionResolver {
             || lineage.memory_write_capability_id != provenance.capability_id
             || lineage.delivery_receipt_id.trim().is_empty()
             || lineage.finding_id.trim().is_empty()
+            || lineage.status_feed_id.trim().is_empty()
         {
             return Err(FindingRetractionResolveError::InvalidLineage(
                 "write receipt, capability, delivery receipt, or finding binding differs"
                     .to_owned(),
+            ));
+        }
+        if lineage.status_feed_id != self.feed_id {
+            return Err(FindingRetractionResolveError::InvalidLineage(
+                "delivery status feed differs from the resolver's pinned feed".to_owned(),
             ));
         }
         let status = self
@@ -336,6 +343,15 @@ mod tests {
         valid_until: u64,
         now: u64,
     ) -> VerifiedFindingRetractionResolver {
+        resolver_with_lineage_feed(status_value, valid_until, now, "feed-1")
+    }
+
+    fn resolver_with_lineage_feed(
+        status_value: FindingStatusValue,
+        valid_until: u64,
+        now: u64,
+        lineage_feed_id: &str,
+    ) -> VerifiedFindingRetractionResolver {
         let provenance = Arc::new(InMemoryMemoryProvenanceStore::new());
         provenance
             .append(MemoryProvenanceAppend {
@@ -352,6 +368,7 @@ mod tests {
                 memory_write_capability_id: "cap-1".to_owned(),
                 delivery_receipt_id: "delivery-receipt-1".to_owned(),
                 finding_id: "finding-1".to_owned(),
+                status_feed_id: lineage_feed_id.to_owned(),
             }),
         });
         let status = Arc::new(StaticStatus {
@@ -406,6 +423,22 @@ mod tests {
         assert_eq!(
             missing,
             Err(FindingRetractionResolveError::MissingProvenance)
+        );
+    }
+
+    #[test]
+    fn cross_feed_delivery_lineage_fails_before_status_lookup() {
+        let mismatch =
+            resolver_with_lineage_feed(FindingStatusValue::Live, 20, 10, "status-feed/other-venue")
+                .resolve(FindingRetractionQuery {
+                    store: "memory",
+                    key: "key-1",
+                });
+        assert_eq!(
+            mismatch,
+            Err(FindingRetractionResolveError::InvalidLineage(
+                "delivery status feed differs from the resolver's pinned feed".to_owned(),
+            ))
         );
     }
 

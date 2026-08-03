@@ -46,7 +46,10 @@ the configured feed.
 
 Each cadence run performs this order:
 
-1. Read the durable feed floor and all eligible pending intents.
+1. Read the durable feed floor and a bounded batch from
+   `list_publication_candidates`. The batch includes eligible pending intents
+   and published sticky leaves whose current-floor inclusion proof needs
+   refresh.
 2. Confirm that an enforced intent's exact seller impairment is final. A bare
    outcome, bond hold, root publication, failed transaction, or ambiguous
    receipt is not eligible.

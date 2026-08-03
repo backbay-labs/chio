@@ -182,6 +182,41 @@ fn floor_epoch_and_non_inclusion_survive_restart_with_exact_bytes() {
 }
 
 #[test]
+fn status_writes_advance_the_rollback_protected_projection() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('1');
+    let epoch_id = hex64('2');
+    let root_hash = hex64('3');
+    let epoch = epoch(1, &epoch_id, &root_hash, b"signed-epoch", 1);
+    store
+        .observe_verified_epoch(&epoch)
+        .expect("persist rollback-protected epoch");
+    let proof = non_inclusion(1, &epoch_id, &root_hash, &finding_id, b"non-inclusion");
+    store
+        .observe_verified_non_inclusion(&proof)
+        .expect("persist rollback-protected proof");
+
+    let connection = Connection::open(&fixture.database).expect("open projection reader");
+    let (local, global): (i64, i64) = connection
+        .query_row(
+            r#"
+            SELECT
+                (SELECT COUNT(*) FROM finding_status_projection_commits),
+                (SELECT COUNT(*) FROM authority_global_commits
+                 WHERE projection_kind = 'finding_status'
+                   AND projection_key = 'status')
+            "#,
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read status projection coverage");
+    assert_eq!(local, 2);
+    assert_eq!(global, 2);
+}
+
+#[test]
 fn exact_status_artifacts_replay_at_a_later_observation_time() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();
