@@ -25,10 +25,11 @@ mod lease_history;
 mod path_identity;
 mod rollback_anchor;
 
+#[cfg(feature = "cognition-market-experimental")]
+use global_commit_chain::append_finding_challenge_projection_if_changed;
 use global_commit_chain::{
-    append_finding_challenge_projection_if_changed, append_global_commit,
-    initialize_global_commit_schema, reset_derived_budget_ack_cache, seed_global_baseline,
-    verify_global_commit_schema, verify_pristine_authority_tables,
+    append_global_commit, initialize_global_commit_schema, reset_derived_budget_ack_cache,
+    seed_global_baseline, verify_global_commit_schema, verify_pristine_authority_tables,
 };
 use lease_history::{initialize_serving_lease_schema, verify_serving_lease_history};
 use rollback_anchor::RollbackAnchor;
@@ -188,6 +189,7 @@ impl SqliteServingOwner {
         )
     }
 
+    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) fn append_finding_challenge_projection_if_changed(
         &self,
         transaction: &Transaction<'_>,
