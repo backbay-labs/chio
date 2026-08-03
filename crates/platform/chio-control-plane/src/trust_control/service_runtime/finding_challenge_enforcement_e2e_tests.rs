@@ -1619,7 +1619,7 @@ fn digest_mismatch_case(
             purchase_intent_id: DENY_INTENT_ID,
             authoritative_payment_operation_id: DENY_PAYMENT_ID,
             payer_hex: &keypair(41).public_key().to_hex(),
-            agent_id: "agent-buyer-01",
+            agent_id: EVM_BUYER_DESTINATION,
             finding_id: &challenged.finding.finding_id,
             listing_id: LISTING_ID,
             bid_envelope_sha256: &hex64('c'),
@@ -2215,7 +2215,7 @@ fn settle_purchase_with(
             purchase_intent_id: &format!("intent-{tag}"),
             authoritative_payment_operation_id: &payment_operation_id,
             payer_hex: &buyer.public_key().to_hex(),
-            agent_id: "agent-buyer-01",
+            agent_id: EVM_BUYER_DESTINATION,
             finding_id: &finding.finding_id,
             listing_id: LISTING_ID,
             bid_envelope_sha256: &bid,
@@ -2266,6 +2266,7 @@ fn settle_purchase_with(
             .purchases
             .admit_payout_destination(allocation_id, &refund_destination, now)?;
     }
+    let withheld_destination = buyer_destination(99);
     deployment
         .purchases
         .close_slot_with_record(&FindingPurchaseDeliveryInput {
@@ -2276,7 +2277,7 @@ fn settle_purchase_with(
             delivery_receipt_id: &format!("receipt-delivery-{tag}"),
             payout_destination: match admission {
                 PayoutAdmission::Admitted => &refund_destination,
-                PayoutAdmission::Withheld => "rail:venue-ledger:withheld-test-placeholder",
+                PayoutAdmission::Withheld => &withheld_destination,
             },
             retention_expires_at: now + 100_000,
             now,
@@ -9144,7 +9145,7 @@ fn finding_challenge_an_expired_reservation_neither_wedges_nor_inflates_the_clai
             purchase_intent_id: "intent-abandoned",
             authoritative_payment_operation_id: "payment-abandoned",
             payer_hex: &keypair(41).public_key().to_hex(),
-            agent_id: "agent-buyer-01",
+            agent_id: EVM_BUYER_DESTINATION,
             finding_id: &finding.finding_id,
             listing_id: LISTING_ID,
             bid_envelope_sha256: &digest("bid-abandoned"),

@@ -23,8 +23,8 @@
 //! `purchase_records` and `failed_delivery_records` are the two terminal
 //! outcomes, retained without deletion and content-addressed against their
 //! stored digests. `payout_destinations` is the bounded sixteen-slot
-//! destination set per allocation, with slot zero reserved for the
-//! community fund.
+//! destination set per allocation, with a rail-tagged community fund in
+//! slot zero and EVM buyer destinations in the remaining slots.
 //!
 //! Writes run under `TransactionBehavior::Immediate` behind the
 //! serving-owner fence; reads run `Deferred`; a commit whose outcome
@@ -53,6 +53,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use chio_core::{sha256_hex, StoreMutationFence};
+use chio_finding::validate_evm_payout_destination;
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use thiserror::Error;
@@ -61,17 +62,20 @@ use crate::admission_operation_store::verify_active_owner;
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-/// Revision 3 turns the per-listing sales block into an episode line that
-/// an exonerating reversal can lift. The schema batch is a sequence of
-/// idempotent guards, so a revision-1 database adopts the new table on its
-/// next open; a revision-2 database carries its listing-keyed blocks
-/// across in [`carry_listing_sales_blocks_across`].
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 3;
+/// Revision 4 gives community-fund and buyer payout slots their distinct
+/// durable shapes. The schema batch is a sequence of idempotent guards, so
+/// a revision-1 database adopts the new tables on its next open; a
+/// revision-2 database also carries its listing-keyed blocks across in
+/// [`carry_listing_sales_blocks_across`].
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 4;
 /// Revision that introduced the listing-keyed, never-lifted sales block.
 const FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION: i32 = 2;
 /// Name the listing-keyed block table is parked under while the episode
 /// line is created beside it.
 const LEGACY_SALES_BLOCK_TABLE: &str = "listing_sales_blocks_legacy";
+/// Name the rail-only payout table is parked under while the slot-aware
+/// definition is created beside it.
+const LEGACY_PAYOUT_DESTINATIONS_TABLE: &str = "payout_destinations_legacy";
 const FINDING_PURCHASE_SCHEMA_ANCHORS: &[&str] = &[
     "purchase_reservations",
     "admission_operations",
@@ -715,7 +719,7 @@ impl SqliteFindingPurchaseStore {
         require_hex64(input.record_sha256, "record_sha256")?;
         require_identifier(input.reservation_id, "reservation_id")?;
         require_identifier(input.delivery_receipt_id, "delivery_receipt_id")?;
-        require_rail_destination(input.payout_destination)?;
+        require_evm_payout_destination(input.payout_destination)?;
         require_terminal_record(input.record_json, input.record_sha256)?;
         require_trusted_time(input.now, "now")?;
         require_trusted_time(input.retention_expires_at, "retention_expires_at")?;
@@ -1230,8 +1234,8 @@ impl SqliteFindingPurchaseStore {
         })
     }
 
-    /// Admit one buyer payout destination for an allocation, returning the
-    /// slot it occupies. An already-admitted destination replays with its
+    /// Admit one EVM buyer payout destination for an allocation, returning
+    /// the slot it occupies. An already-admitted destination replays with its
     /// existing slot; otherwise the lowest free slot in 1..=15 is taken,
     /// and an allocation whose buyer slots are full rejects.
     pub fn admit_payout_destination(
@@ -1241,7 +1245,7 @@ impl SqliteFindingPurchaseStore {
         admitted_at: u64,
     ) -> Result<FindingPayoutDestinationAdmission, FindingPurchaseStoreError> {
         require_hex64(allocation_id, "allocation_id")?;
-        require_rail_destination(destination)?;
+        require_evm_payout_destination(destination)?;
         require_trusted_time(admitted_at, "admitted_at")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
@@ -2317,10 +2321,12 @@ pub(crate) fn initialize_finding_purchase_schema(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(sqlite_error)?;
     park_listing_keyed_sales_blocks(&transaction, on_disk)?;
+    park_rail_only_payout_destinations(&transaction)?;
     transaction
         .execute_batch(FINDING_PURCHASE_SCHEMA)
         .map_err(sqlite_error)?;
     carry_listing_sales_blocks_across(&transaction)?;
+    carry_payout_destinations_across(&transaction)?;
     crate::stamp_schema_version(
         &transaction,
         FINDING_PURCHASE_SCHEMA_KEY,
@@ -2439,6 +2445,105 @@ fn carry_listing_sales_blocks_across(
     Ok(())
 }
 
+/// Park the rail-only payout table so the schema batch can create the
+/// slot-aware definition under the canonical name.
+///
+/// The migration is gated by shape rather than only by revision because
+/// unstamped legacy databases also report revision zero. Dropping the
+/// explicit index and triggers before the rename releases the names the
+/// canonical table reuses. All of this runs in the schema transaction, so
+/// a later copy failure restores the old table and its protections.
+fn park_rail_only_payout_destinations(
+    transaction: &Transaction<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let definition: Option<String> = transaction
+        .query_row(
+            r#"
+            SELECT sql FROM sqlite_schema
+            WHERE type = 'table' AND name = 'payout_destinations'
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some(definition) = definition else {
+        return Ok(());
+    };
+    if definition.contains("slot_index = 0")
+        && definition.contains("substr(destination, 1, 2) = '0x'")
+    {
+        return Ok(());
+    }
+    transaction
+        .execute_batch(&format!(
+            r#"
+            DROP TRIGGER IF EXISTS payout_destinations_immutable;
+            DROP TRIGGER IF EXISTS payout_destinations_no_delete;
+            DROP INDEX IF EXISTS payout_destinations_slot;
+            ALTER TABLE payout_destinations RENAME TO {LEGACY_PAYOUT_DESTINATIONS_TABLE};
+            "#
+        ))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Copy every parked destination through the slot-aware constraints and
+/// drop the legacy table only after every row is present.
+///
+/// Existing community destinations remain valid. A rail-tagged buyer row
+/// cannot be translated into an EVM destination without changing its
+/// authority, so the plain `INSERT` rejects it and rolls the entire schema
+/// transaction back rather than silently dropping or rewriting it.
+fn carry_payout_destinations_across(
+    transaction: &Transaction<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let parked: bool = transaction
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1
+            )
+            "#,
+            [LEGACY_PAYOUT_DESTINATIONS_TABLE],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    if !parked {
+        return Ok(());
+    }
+    let expected: i64 = transaction
+        .query_row(
+            &format!("SELECT COUNT(*) FROM {LEGACY_PAYOUT_DESTINATIONS_TABLE}"),
+            [],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    let carried = transaction
+        .execute(
+            &format!(
+                r#"
+                INSERT INTO payout_destinations (
+                    allocation_id, destination, slot_index, admitted_at
+                )
+                SELECT allocation_id, destination, slot_index, admitted_at
+                FROM {LEGACY_PAYOUT_DESTINATIONS_TABLE}
+                "#
+            ),
+            [],
+        )
+        .map_err(sqlite_error)?;
+    if i64::try_from(carried).unwrap_or(i64::MAX) != expected {
+        return Err(invariant(format!(
+            "payout destination migration carried {carried} of {expected} rows"
+        )));
+    }
+    transaction
+        .execute_batch(&format!("DROP TABLE {LEGACY_PAYOUT_DESTINATIONS_TABLE};"))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
 /// Verify the purchase schema's shape: this database's table, index, and
 /// trigger definitions against a freshly created canonical schema. The
 /// cost is a handful of `sqlite_schema` rows, independent of how many
@@ -2552,15 +2657,20 @@ fn require_identifier(value: &str, field: &'static str) -> Result<(), FindingPur
     Ok(())
 }
 
-/// A payout destination is rail-tagged: a nonempty rail prefix, a colon,
-/// and a nonempty account. An untagged destination cannot be routed, so it
-/// is refused rather than stored.
+/// The community-fund destination is rail-tagged: a nonempty rail prefix,
+/// a colon, and a nonempty account. An untagged destination cannot be
+/// routed, so it is refused rather than stored.
 fn require_rail_destination(value: &str) -> Result<(), FindingPurchaseStoreError> {
     require_identifier(value, "destination")?;
     match value.split_once(':') {
         Some((rail, account)) if !rail.is_empty() && !account.is_empty() => Ok(()),
         _ => Err(invariant("payout destination is not rail-tagged")),
     }
+}
+
+fn require_evm_payout_destination(value: &str) -> Result<(), FindingPurchaseStoreError> {
+    validate_evm_payout_destination(value)
+        .map_err(|_| invariant("payout destination is not a valid EVM address"))
 }
 
 fn require_currency(currency: &str) -> Result<(), FindingPurchaseStoreError> {

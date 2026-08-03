@@ -18,7 +18,7 @@ const LISTING_ID: &str = "purchase-listing-01";
 const OTHER_LISTING_ID: &str = "purchase-listing-02";
 const NOW: u64 = 1_750_000_000;
 const EXPIRES_AT: u64 = NOW + 3_600;
-const PAYOUT_DESTINATION: &str = "rail:venue-ledger:buyer-42";
+const PAYOUT_DESTINATION: &str = "0x000000000000000000000000000000000000002a";
 /// The exposure cap `backing_body` registers for every fixture allocation.
 const REGISTERED_EXPOSURE_CAP: u64 = 450;
 
@@ -871,7 +871,7 @@ fn close_slot_with_record_settles_atomically_and_replays() {
     );
 
     let mut conflicting_destination = delivery;
-    conflicting_destination.payout_destination = "rail:venue-ledger:buyer-other";
+    conflicting_destination.payout_destination = "0x000000000000000000000000000000000000002b";
     assert!(
         matches!(
             fixture
@@ -1891,6 +1891,135 @@ fn a_listing_keyed_sales_block_carries_across_to_the_episode_line() {
     initialize_finding_purchase_schema(&mut connection).expect("reopen at the current revision");
 }
 
+fn rewind_to_rail_only_payout_destinations(connection: &Connection) {
+    connection
+        .execute_batch(
+            r#"
+            DROP TABLE payout_destinations;
+
+            CREATE TABLE payout_destinations (
+                allocation_id TEXT NOT NULL
+                    CHECK (length(allocation_id) = 64 AND allocation_id NOT GLOB '*[^0-9a-f]*'),
+                destination TEXT NOT NULL CHECK (
+                    length(destination) BETWEEN 3 AND 512
+                    AND destination GLOB '?*:?*'
+                ),
+                slot_index INTEGER NOT NULL CHECK (slot_index BETWEEN 0 AND 15),
+                admitted_at INTEGER NOT NULL CHECK (admitted_at > 0),
+                PRIMARY KEY (allocation_id, destination)
+            );
+
+            CREATE UNIQUE INDEX payout_destinations_slot
+                ON payout_destinations(allocation_id, slot_index);
+
+            CREATE TRIGGER payout_destinations_immutable
+            BEFORE UPDATE ON payout_destinations
+            BEGIN
+                SELECT RAISE(ABORT, 'admitted payout destination is immutable');
+            END;
+
+            CREATE TRIGGER payout_destinations_no_delete
+            BEFORE DELETE ON payout_destinations
+            BEGIN
+                SELECT RAISE(ABORT, 'admitted payout destination must be retained');
+            END;
+            "#,
+        )
+        .expect("rewind to the rail-only payout table");
+}
+
+#[test]
+fn rail_only_community_destination_carries_across_to_slot_aware_schema() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    rewind_to_rail_only_payout_destinations(&connection);
+    connection
+        .execute(
+            r#"
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES (?1, 'rail:venue-ledger:community-fund', 0, ?2)
+            "#,
+            params![hex64('a'), i64::try_from(NOW).expect("test time fits")],
+        )
+        .expect("insert legacy community destination");
+    connection
+        .execute_batch(&format!(
+            "PRAGMA application_id = {};",
+            crate::CHIO_SQLITE_APPLICATION_ID
+        ))
+        .expect("stamp the application id");
+    crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 3)
+        .expect("stamp the earlier revision");
+
+    initialize_finding_purchase_schema(&mut connection).expect("migrate rail-only payout table");
+
+    let destination: String = connection
+        .query_row(
+            "SELECT destination FROM payout_destinations WHERE slot_index = 0",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read migrated community destination");
+    assert_eq!(destination, "rail:venue-ledger:community-fund");
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at the current revision");
+}
+
+#[test]
+fn rail_only_buyer_destination_aborts_schema_migration() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    rewind_to_rail_only_payout_destinations(&connection);
+    connection
+        .execute(
+            r#"
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES (?1, 'rail:venue-ledger:legacy-buyer', 1, ?2)
+            "#,
+            params![hex64('a'), i64::try_from(NOW).expect("test time fits")],
+        )
+        .expect("insert legacy buyer destination");
+    connection
+        .execute_batch(&format!(
+            "PRAGMA application_id = {};",
+            crate::CHIO_SQLITE_APPLICATION_ID
+        ))
+        .expect("stamp the application id");
+    crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 3)
+        .expect("stamp the earlier revision");
+
+    assert!(
+        initialize_finding_purchase_schema(&mut connection).is_err(),
+        "an unauthenticated destination translation must fail closed"
+    );
+    let retained: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM payout_destinations WHERE slot_index = 1",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read rolled-back legacy destination");
+    assert_eq!(retained, 1, "the failed migration preserves the legacy row");
+    let parked: bool = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema
+                WHERE type = 'table' AND name = 'payout_destinations_legacy'
+            )
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .expect("check migration rollback");
+    assert!(!parked, "the failed migration rolls back its table rename");
+}
+
 #[test]
 fn payout_destination_slots_are_bounded_and_idempotent() {
     let fixture = fixture();
@@ -1930,11 +2059,11 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
                 .admit_payout_destination(allocation_id, "untagged-destination", NOW),
             Err(FindingPurchaseStoreError::Invariant(_))
         ),
-        "a destination without a rail tag cannot be routed"
+        "a destination without an EVM address cannot be routed"
     );
 
     for index in 1..=15_u8 {
-        let destination = format!("rail:venue-ledger:buyer-{index}");
+        let destination = format!("0x{index:040x}");
         let slot = fixture
             .store
             .admit_payout_destination(allocation_id, &destination, NOW + u64::from(index))
@@ -1944,7 +2073,11 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
     }
     let repeat = fixture
         .store
-        .admit_payout_destination(allocation_id, "rail:venue-ledger:buyer-7", NOW + 100)
+        .admit_payout_destination(
+            allocation_id,
+            "0x0000000000000000000000000000000000000007",
+            NOW + 100,
+        )
         .expect("repeat destination");
     assert_eq!(repeat.slot_index, 7);
     assert_eq!(repeat.outcome, FindingPurchaseWriteOutcome::ExistingSame);
@@ -1952,23 +2085,12 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
         matches!(
             fixture.store.admit_payout_destination(
                 allocation_id,
-                "rail:venue-ledger:buyer-16",
+                "0x0000000000000000000000000000000000000010",
                 NOW + 101
             ),
             Err(FindingPurchaseStoreError::DestinationSlotsExhausted(_))
         ),
         "the sixteenth distinct destination has no slot left"
-    );
-    assert!(
-        matches!(
-            fixture.store.register_community_fund_destination(
-                allocation_id,
-                "rail:venue-ledger:buyer-3",
-                NOW + 102
-            ),
-            Err(FindingPurchaseStoreError::Conflict(_))
-        ),
-        "a buyer destination cannot be promoted to the community slot"
     );
     let listed = fixture
         .store
@@ -1976,7 +2098,10 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
         .expect("list destinations");
     assert_eq!(listed.len(), 16);
     assert_eq!(listed[0], (0, community.to_string()));
-    assert_eq!(listed[15], (15, "rail:venue-ledger:buyer-15".to_string()));
+    assert_eq!(
+        listed[15],
+        (15, "0x000000000000000000000000000000000000000f".to_string())
+    );
 
     // Slots are per allocation, so a second allocation starts empty.
     let other = consume_allocation(&fixture.market, "vault:finding-collateral-2", LISTING_ID);
@@ -1988,7 +2113,7 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
     assert_eq!(
         fixture
             .store
-            .admit_payout_destination(&other, "rail:venue-ledger:buyer-1", NOW)
+            .admit_payout_destination(&other, "0x0000000000000000000000000000000000000001", NOW)
             .expect("admit on a fresh allocation")
             .slot_index,
         1
