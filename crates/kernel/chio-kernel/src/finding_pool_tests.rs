@@ -13,6 +13,25 @@ use crate::{
 struct RecordingLedger {
     decisions: Mutex<Vec<FindingPoolTerminalDecision>>,
     claims: Mutex<Vec<(String, u64)>>,
+    outbox: Mutex<Vec<ChioReceipt>>,
+    acknowledged: Mutex<Vec<String>>,
+}
+
+impl RecordingLedger {
+    fn store_attestation(
+        &self,
+        mutation: FindingPoolMutation,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError> {
+        let receipt = attestor(&mutation)?;
+        let Ok(mut outbox) = self.outbox.lock() else {
+            return Err(FindingPoolLedgerError::Storage(
+                "test outbox lock was poisoned".to_owned(),
+            ));
+        };
+        outbox.push(receipt);
+        Ok(())
+    }
 }
 
 impl FindingPoolLedger for RecordingLedger {
@@ -23,25 +42,49 @@ impl FindingPoolLedger for RecordingLedger {
     fn debit(
         &self,
         _debit: &AuthorizedFindingPoolDebit,
+        _attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
         Err(FindingPoolLedgerError::Storage(
             "unexpected test debit".to_owned(),
         ))
     }
 
-    fn claim(&self, claim: &AuthorizedFindingPoolClaim) -> Result<(), FindingPoolLedgerError> {
+    fn claim(
+        &self,
+        claim: &AuthorizedFindingPoolClaim,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError> {
         let Ok(mut claims) = self.claims.lock() else {
             return Err(FindingPoolLedgerError::Storage(
                 "test claim lock was poisoned".to_owned(),
             ));
         };
         claims.push((claim.purchase_id().to_owned(), claim.claimed_at_unix_ms()));
+        drop(claims);
+        self.store_attestation(
+            FindingPoolMutation {
+                schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
+                kind: FindingPoolMutationKind::Claim,
+                purchase_id: claim.purchase_id().to_owned(),
+                allocation_id: "allocation:test".to_owned(),
+                allocation_envelope_sha256: "a".repeat(64),
+                amount_units: claim.amount_units().to_string(),
+                currency: claim.currency().to_owned(),
+                state: FindingPoolDebitState::Reserved,
+                reserved_after_units: claim.amount_units().to_string(),
+                spent_after_units: "0".to_owned(),
+                remaining_after_units: "75".to_owned(),
+                occurred_at_unix_ms: claim.claimed_at_unix_ms().to_string(),
+            },
+            attestor,
+        )?;
         Ok(())
     }
 
     fn settle(
         &self,
         terminal: &AuthorizedFindingPoolTerminal,
+        attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
         let Ok(mut decisions) = self.decisions.lock() else {
             return Err(FindingPoolLedgerError::Storage(
@@ -49,6 +92,38 @@ impl FindingPoolLedger for RecordingLedger {
             ));
         };
         decisions.push(terminal.decision());
+        drop(decisions);
+        let (kind, state, spent_after, remaining_after) = match terminal.decision() {
+            FindingPoolTerminalDecision::Finalize => (
+                FindingPoolMutationKind::Finalize,
+                FindingPoolDebitState::Finalized,
+                terminal.amount_units(),
+                75,
+            ),
+            FindingPoolTerminalDecision::Release => (
+                FindingPoolMutationKind::Release,
+                FindingPoolDebitState::Released,
+                0,
+                100,
+            ),
+        };
+        self.store_attestation(
+            FindingPoolMutation {
+                schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
+                kind,
+                purchase_id: terminal.purchase_id().to_owned(),
+                allocation_id: "allocation:test".to_owned(),
+                allocation_envelope_sha256: "a".repeat(64),
+                amount_units: terminal.amount_units().to_string(),
+                currency: terminal.currency().to_owned(),
+                state,
+                reserved_after_units: "0".to_owned(),
+                spent_after_units: spent_after.to_string(),
+                remaining_after_units: remaining_after.to_string(),
+                occurred_at_unix_ms: terminal.occurred_at_unix_ms().to_string(),
+            },
+            attestor,
+        )?;
         Ok(FindingPoolDebitReceipt {
             purchase_id: terminal.purchase_id().to_owned(),
             allocation_id: "allocation:test".to_owned(),
@@ -64,6 +139,43 @@ impl FindingPoolLedger for RecordingLedger {
             remaining_after_units: 0,
             replayed: false,
         })
+    }
+
+    fn pending_mutation_receipts(&self) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
+        let outbox = self.outbox.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test outbox lock was poisoned".to_owned())
+        })?;
+        let acknowledged = self.acknowledged.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test ack lock was poisoned".to_owned())
+        })?;
+        Ok(outbox
+            .iter()
+            .filter(|receipt| !acknowledged.contains(&receipt.id))
+            .cloned()
+            .collect())
+    }
+
+    fn acknowledge_mutation_receipt(
+        &self,
+        receipt_id: &str,
+        _acknowledged_at_unix_ms: u64,
+    ) -> Result<(), FindingPoolLedgerError> {
+        let outbox = self.outbox.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test outbox lock was poisoned".to_owned())
+        })?;
+        if !outbox.iter().any(|receipt| receipt.id == receipt_id) {
+            return Err(FindingPoolLedgerError::Receipt(
+                "test tried to acknowledge an unknown receipt".to_owned(),
+            ));
+        }
+        drop(outbox);
+        let mut acknowledged = self.acknowledged.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test ack lock was poisoned".to_owned())
+        })?;
+        if !acknowledged.iter().any(|existing| existing == receipt_id) {
+            acknowledged.push(receipt_id.to_owned());
+        }
+        Ok(())
     }
 }
 
@@ -112,6 +224,25 @@ fn purchase() -> crate::finding_purchase::VerifiedFindingPurchase {
     }
 }
 
+fn pool_mutation_from_receipt(receipt: &ChioReceipt) -> FindingPoolMutation {
+    assert!(matches!(receipt.verify_signature(), Ok(true)));
+    serde_json::from_value(
+        receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("finding_pool_mutation"))
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    )
+    .unwrap_or_else(|error| panic!("signed pool mutation metadata must decode: {error}"))
+}
+
+fn recorded_pool_mutation(kernel: &ChioKernel) -> FindingPoolMutation {
+    let receipts = kernel.receipt_log().receipts();
+    assert_eq!(receipts.len(), 1);
+    pool_mutation_from_receipt(&receipts[0])
+}
+
 #[test]
 fn delivery_capture_finalizes_the_configured_pool_reservation() {
     let ledger = Arc::new(RecordingLedger::default());
@@ -133,6 +264,10 @@ fn delivery_capture_finalizes_the_configured_pool_reservation() {
         decisions.as_slice(),
         &[FindingPoolTerminalDecision::Finalize]
     );
+    assert_eq!(
+        recorded_pool_mutation(&kernel).kind,
+        FindingPoolMutationKind::Finalize
+    );
 }
 
 #[test]
@@ -146,6 +281,16 @@ fn dispatch_claims_the_configured_pool_reservation() {
         panic!("test claim lock was poisoned");
     };
     assert_eq!(claims.as_slice(), &[("purchase:test".to_owned(), 12_345)]);
+    drop(claims);
+    let pending = ledger
+        .pending_mutation_receipts()
+        .unwrap_or_else(|error| panic!("signed claim outbox must be readable: {error}"));
+    assert_eq!(pending.len(), 1);
+    assert_eq!(
+        pool_mutation_from_receipt(&pending[0]).kind,
+        FindingPoolMutationKind::Claim
+    );
+    assert!(kernel.receipt_log().is_empty());
 }
 
 #[test]
@@ -165,6 +310,10 @@ fn delivery_zero_charge_releases_the_configured_pool_reservation() {
     assert_eq!(
         decisions.as_slice(),
         &[FindingPoolTerminalDecision::Release]
+    );
+    assert_eq!(
+        recorded_pool_mutation(&kernel).kind,
+        FindingPoolMutationKind::Release
     );
 }
 

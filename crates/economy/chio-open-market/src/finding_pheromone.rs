@@ -194,11 +194,11 @@ fn validate_convention(
         return Err(FindingPheromoneError::Convention("nonce or listing scope"));
     }
     let expected_policy = finding_pheromone_subject_policy(&convention.treaty_id);
-    if !context
-        .subject_classes
-        .iter()
-        .any(|policy| policy == &expected_policy)
-    {
+    let selected_policy = context.subject_classes.iter().find(|policy| {
+        policy.subject_class == body.subject_class
+            && policy.subject_class_namespace == body.subject_class_namespace
+    });
+    if selected_policy != Some(&expected_policy) {
         return Err(FindingPheromoneError::Convention("SubjectClassPolicy"));
     }
     let scarcity_admissions =

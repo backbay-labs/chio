@@ -9,10 +9,12 @@
 use std::path::Path;
 use std::time::Duration;
 
+use chio_core::receipt::body::ChioReceipt;
 use chio_kernel::finding_pool::{
     AuthorizedFindingPoolClaim, AuthorizedFindingPoolDebit, AuthorizedFindingPoolTerminal,
     FindingPoolDebitReceipt, FindingPoolDebitState, FindingPoolLedger, FindingPoolLedgerError,
-    FindingPoolTerminalDecision, QualifiedFindingPoolLedger,
+    FindingPoolMutation, FindingPoolMutationAttestor, FindingPoolMutationKind,
+    FindingPoolTerminalDecision, QualifiedFindingPoolLedger, FINDING_POOL_MUTATION_SCHEMA_V1,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -53,6 +55,16 @@ CREATE TABLE IF NOT EXISTS finding_pool_debits (
     spent_after_units TEXT NOT NULL,
     FOREIGN KEY (allocation_envelope_sha256)
         REFERENCES finding_pool_allocations(allocation_envelope_sha256)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS finding_pool_receipt_outbox (
+    receipt_id TEXT PRIMARY KEY,
+    purchase_id TEXT NOT NULL,
+    allocation_envelope_sha256 TEXT NOT NULL,
+    mutation_kind TEXT NOT NULL,
+    signed_receipt_json TEXT NOT NULL,
+    occurred_at_unix_ms TEXT NOT NULL,
+    acknowledged_at_unix_ms TEXT
 ) STRICT;
 "#;
 
@@ -164,6 +176,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
     fn debit(
         &self,
         debit: &AuthorizedFindingPoolDebit,
+        attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
         let mut connection = self
             .pool
@@ -177,6 +190,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             &transaction,
             debit.allocation_envelope_sha256(),
             debit.debit_requested_at_unix_ms(),
+            attestor,
         )?;
 
         if let Some(existing) = transaction
@@ -368,6 +382,16 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                 ],
             )
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        record_mutation_receipt(
+            &transaction,
+            mutation_for_purchase(
+                &transaction,
+                debit.purchase_id(),
+                FindingPoolMutationKind::Reserve,
+                debit.debit_requested_at_unix_ms(),
+            )?,
+            attestor,
+        )?;
         transaction
             .commit()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
@@ -389,7 +413,11 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         })
     }
 
-    fn claim(&self, claim: &AuthorizedFindingPoolClaim) -> Result<(), FindingPoolLedgerError> {
+    fn claim(
+        &self,
+        claim: &AuthorizedFindingPoolClaim,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError> {
         let mut connection = self
             .pool
             .get()
@@ -451,7 +479,12 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             return Ok(());
         }
         if claim.claimed_at_unix_ms() >= claim_deadline {
-            reclaim_expired_unclaimed(&transaction, &stored.0, claim.claimed_at_unix_ms())?;
+            reclaim_expired_unclaimed(
+                &transaction,
+                &stored.0,
+                claim.claimed_at_unix_ms(),
+                attestor,
+            )?;
             transaction
                 .commit()
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
@@ -468,6 +501,16 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         if changed != 1 {
             return Err(invariant("reservation claim compare-and-set failed"));
         }
+        record_mutation_receipt(
+            &transaction,
+            mutation_for_purchase(
+                &transaction,
+                claim.purchase_id(),
+                FindingPoolMutationKind::Claim,
+                claim.claimed_at_unix_ms(),
+            )?,
+            attestor,
+        )?;
         transaction
             .commit()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
@@ -476,6 +519,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
     fn settle(
         &self,
         terminal: &AuthorizedFindingPoolTerminal,
+        attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
         let mut connection = self
             .pool
@@ -610,6 +654,20 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         if changed != 1 {
             return Err(invariant("reservation terminal compare-and-set failed"));
         }
+        let mutation_kind = match terminal.decision() {
+            FindingPoolTerminalDecision::Finalize => FindingPoolMutationKind::Finalize,
+            FindingPoolTerminalDecision::Release => FindingPoolMutationKind::Release,
+        };
+        record_mutation_receipt(
+            &transaction,
+            mutation_for_purchase(
+                &transaction,
+                terminal.purchase_id(),
+                mutation_kind,
+                terminal.occurred_at_unix_ms(),
+            )?,
+            attestor,
+        )?;
         transaction
             .commit()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
@@ -626,14 +684,238 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             replayed: false,
         })
     }
+
+    fn pending_mutation_receipts(&self) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
+        let connection = self
+            .pool
+            .get()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut statement = connection
+            .prepare(
+                "SELECT receipt_id, signed_receipt_json \
+                 FROM finding_pool_receipt_outbox \
+                 WHERE acknowledged_at_unix_ms IS NULL ORDER BY rowid",
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut rows = statement
+            .query([])
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut receipts = Vec::new();
+        while let Some(row) = rows
+            .next()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
+        {
+            let receipt_id = row
+                .get::<_, String>(0)
+                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+            let receipt_json = row
+                .get::<_, String>(1)
+                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+            let receipt: ChioReceipt = serde_json::from_str(&receipt_json)
+                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
+            if receipt.id != receipt_id {
+                return Err(FindingPoolLedgerError::Receipt(
+                    "stored receipt id does not match its signed body".to_string(),
+                ));
+            }
+            let signature_valid = receipt
+                .verify_signature()
+                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
+            if !signature_valid {
+                return Err(FindingPoolLedgerError::Receipt(
+                    "stored mutation receipt signature is invalid".to_string(),
+                ));
+            }
+            receipts.push(receipt);
+        }
+        Ok(receipts)
+    }
+
+    fn acknowledge_mutation_receipt(
+        &self,
+        receipt_id: &str,
+        acknowledged_at_unix_ms: u64,
+    ) -> Result<(), FindingPoolLedgerError> {
+        let connection = self
+            .pool
+            .get()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let changed = connection
+            .execute(
+                "UPDATE finding_pool_receipt_outbox \
+                 SET acknowledged_at_unix_ms = ?2 \
+                 WHERE receipt_id = ?1 AND acknowledged_at_unix_ms IS NULL",
+                params![receipt_id, acknowledged_at_unix_ms.to_string()],
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        if changed == 1 {
+            return Ok(());
+        }
+        let exists = connection
+            .query_row(
+                "SELECT 1 FROM finding_pool_receipt_outbox WHERE receipt_id = ?1",
+                [receipt_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
+            .is_some();
+        if exists {
+            Ok(())
+        } else {
+            Err(FindingPoolLedgerError::Receipt(
+                "cannot acknowledge an unknown mutation receipt".to_string(),
+            ))
+        }
+    }
 }
 
 impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {}
+
+fn mutation_for_purchase(
+    transaction: &rusqlite::Transaction<'_>,
+    purchase_id: &str,
+    kind: FindingPoolMutationKind,
+    occurred_at_unix_ms: u64,
+) -> Result<FindingPoolMutation, FindingPoolLedgerError> {
+    let stored = transaction
+        .query_row(
+            "SELECT d.purchase_id, a.allocation_id, d.allocation_envelope_sha256, \
+                    d.amount_units, d.currency, d.state, a.reserved_units, \
+                    a.spent_units, a.signed_amount_units \
+             FROM finding_pool_debits d \
+             JOIN finding_pool_allocations a \
+               ON a.allocation_envelope_sha256 = d.allocation_envelope_sha256 \
+             WHERE d.purchase_id = ?1",
+            [purchase_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                ))
+            },
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let amount = parse_units(&stored.3, "debit.amount_units")?;
+    let reserved = parse_units(&stored.6, "reserved_units")?;
+    let spent = parse_units(&stored.7, "spent_units")?;
+    let signed = parse_units(&stored.8, "signed_amount_units")?;
+    Ok(FindingPoolMutation {
+        schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_string(),
+        kind,
+        purchase_id: stored.0,
+        allocation_id: stored.1,
+        allocation_envelope_sha256: stored.2,
+        amount_units: amount.to_string(),
+        currency: stored.4,
+        state: parse_state(&stored.5)?,
+        reserved_after_units: reserved.to_string(),
+        spent_after_units: spent.to_string(),
+        remaining_after_units: remaining_units(signed, reserved, spent)?.to_string(),
+        occurred_at_unix_ms: occurred_at_unix_ms.to_string(),
+    })
+}
+
+fn record_mutation_receipt(
+    transaction: &rusqlite::Transaction<'_>,
+    mutation: FindingPoolMutation,
+    attestor: &FindingPoolMutationAttestor<'_>,
+) -> Result<(), FindingPoolLedgerError> {
+    let receipt = attestor(&mutation)?;
+    let expected_parameters = serde_json::to_value(&mutation)
+        .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
+    let expected_content = chio_core::canonical::canonical_json_bytes(&mutation)
+        .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
+    let expected_content_hash = chio_core::crypto::sha256_hex(&expected_content);
+    let signature_valid = receipt
+        .verify_signature()
+        .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
+    if !signature_valid
+        || receipt.capability_id != mutation.allocation_envelope_sha256
+        || receipt.tool_server != "chio-kernel"
+        || receipt.tool_name != "finding_pool_mutation"
+        || receipt.decision != Some(chio_core::receipt::decision::Decision::Allow)
+        || receipt.action.parameters != expected_parameters
+        || receipt.content_hash != expected_content_hash
+        || receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("finding_pool_mutation"))
+            != Some(&expected_parameters)
+    {
+        return Err(FindingPoolLedgerError::Receipt(
+            "signed mutation receipt does not bind the committed transition".to_string(),
+        ));
+    }
+    let prior_authority = transaction
+        .query_row(
+            "SELECT signed_receipt_json FROM finding_pool_receipt_outbox \
+             WHERE allocation_envelope_sha256 = ?1 ORDER BY rowid LIMIT 1",
+            [&mutation.allocation_envelope_sha256],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
+        .map(|json| {
+            serde_json::from_str::<ChioReceipt>(&json)
+                .map(|prior| prior.kernel_key)
+                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
+        })
+        .transpose()?;
+    if prior_authority
+        .as_ref()
+        .is_some_and(|authority| authority != &receipt.kernel_key)
+    {
+        return Err(FindingPoolLedgerError::Receipt(
+            "finding pool mutation receipt authority changed".to_string(),
+        ));
+    }
+    let receipt_json = String::from_utf8(
+        chio_core::canonical::canonical_json_bytes(&receipt)
+            .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?,
+    )
+    .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
+    transaction
+        .execute(
+            "INSERT INTO finding_pool_receipt_outbox (\
+                receipt_id, purchase_id, allocation_envelope_sha256, mutation_kind, \
+                signed_receipt_json, occurred_at_unix_ms, acknowledged_at_unix_ms\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+            params![
+                receipt.id,
+                mutation.purchase_id,
+                mutation.allocation_envelope_sha256,
+                mutation_kind_text(mutation.kind),
+                receipt_json,
+                mutation.occurred_at_unix_ms,
+            ],
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    Ok(())
+}
+
+const fn mutation_kind_text(kind: FindingPoolMutationKind) -> &'static str {
+    match kind {
+        FindingPoolMutationKind::Reserve => "reserve",
+        FindingPoolMutationKind::Claim => "claim",
+        FindingPoolMutationKind::Finalize => "finalize",
+        FindingPoolMutationKind::Release => "release",
+        FindingPoolMutationKind::ExpiredRelease => "expired_release",
+    }
+}
 
 fn reclaim_expired_unclaimed(
     transaction: &rusqlite::Transaction<'_>,
     allocation_envelope_sha256: &str,
     trusted_now_unix_ms: u64,
+    attestor: &FindingPoolMutationAttestor<'_>,
 ) -> Result<(), FindingPoolLedgerError> {
     let Some((signed_text, reserved_text, spent_text)) = transaction
         .query_row(
@@ -692,50 +974,53 @@ fn reclaim_expired_unclaimed(
     if expired.is_empty() {
         return Ok(());
     }
-    let mut reserved_after = original_reserved;
-    let mut releases = Vec::with_capacity(expired.len());
+    let mut current_reserved = original_reserved;
     for (purchase_id, amount) in expired {
-        reserved_after = reserved_after
+        let reserved_after = current_reserved
             .checked_sub(amount)
             .ok_or_else(|| invariant("expired reservation exceeds allocation reserve"))?;
-        releases.push((purchase_id, reserved_after));
-    }
-    remaining_units(signed, reserved_after, spent)?;
-    let changed = transaction
-        .execute(
-            "UPDATE finding_pool_allocations SET reserved_units = ?2 \
-             WHERE allocation_envelope_sha256 = ?1 AND reserved_units = ?3 \
-               AND spent_units = ?4",
-            params![
-                allocation_envelope_sha256,
-                reserved_after.to_string(),
-                original_reserved.to_string(),
-                spent.to_string(),
-            ],
-        )
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    if changed != 1 {
-        return Err(invariant(
-            "expired reservation allocation compare-and-set failed",
-        ));
-    }
-    for (purchase_id, release_reserved_after) in releases {
+        remaining_units(signed, reserved_after, spent)?;
+        let changed = transaction
+            .execute(
+                "UPDATE finding_pool_allocations SET reserved_units = ?2 \
+                 WHERE allocation_envelope_sha256 = ?1 AND reserved_units = ?3 \
+                   AND spent_units = ?4",
+                params![
+                    allocation_envelope_sha256,
+                    reserved_after.to_string(),
+                    current_reserved.to_string(),
+                    spent.to_string(),
+                ],
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        if changed != 1 {
+            return Err(invariant(
+                "expired reservation allocation compare-and-set failed",
+            ));
+        }
         let changed = transaction
             .execute(
                 "UPDATE finding_pool_debits \
                  SET state = 'released', reserved_after_units = ?2, spent_after_units = ?3 \
                  WHERE purchase_id = ?1 AND state = 'reserved' \
                    AND claimed_at_unix_ms IS NULL",
-                params![
-                    purchase_id,
-                    release_reserved_after.to_string(),
-                    spent.to_string(),
-                ],
+                params![purchase_id, reserved_after.to_string(), spent.to_string(),],
             )
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         if changed != 1 {
             return Err(invariant("expired reservation compare-and-set failed"));
         }
+        record_mutation_receipt(
+            transaction,
+            mutation_for_purchase(
+                transaction,
+                &purchase_id,
+                FindingPoolMutationKind::ExpiredRelease,
+                trusted_now_unix_ms,
+            )?,
+            attestor,
+        )?;
+        current_reserved = reserved_after;
     }
     Ok(())
 }

@@ -9,6 +9,7 @@ use chio_core::capability::scope::{
 };
 use chio_core::capability::token::{CapabilityToken, CHIO_CAPABILITY_SCHEMA};
 use chio_core::crypto::{sha256_hex, Keypair};
+use chio_core::receipt::body::ChioReceipt;
 use chio_kernel::finding_pool::{
     FindingPoolDebitError, FindingPoolDebitRequest, FindingPoolDebitState, FindingPoolLedgerError,
 };
@@ -545,8 +546,9 @@ fn cognition_market_pool_replay_skips_mutable_purchase_admission() {
 #[test]
 fn cognition_market_pool_reclaims_unclaimed_reservations_at_the_claim_deadline() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
-    let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
-        .test_expect("open qualified ledger");
+    let database = directory.path().join("pool.sqlite3");
+    let ledger =
+        SqliteFindingPoolLedger::open_qualified(&database).test_expect("open qualified ledger");
     let fixture = fixture_until(10, 100_000);
     debit_at(&ledger, &fixture, "purchase:abandoned", 10, 2_000)
         .test_expect("reserve the complete allocation");
@@ -571,6 +573,33 @@ fn cognition_market_pool_reclaims_unclaimed_reservations_at_the_claim_deadline()
             .test_expect("read replacement reservation"),
         Some(10)
     );
+
+    let connection = rusqlite::Connection::open(&database).test_expect("open receipt outbox");
+    let mut statement = connection
+        .prepare(
+            "SELECT mutation_kind, signed_receipt_json, acknowledged_at_unix_ms \
+             FROM finding_pool_receipt_outbox ORDER BY rowid",
+        )
+        .test_expect("prepare receipt outbox query");
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .test_expect("query receipt outbox");
+    let mut kinds = Vec::new();
+    for row in rows {
+        let (kind, receipt_json, acknowledged_at) = row.test_expect("read receipt outbox row");
+        let receipt: ChioReceipt =
+            serde_json::from_str(&receipt_json).test_expect("decode signed pool receipt");
+        assert!(matches!(receipt.verify_signature(), Ok(true)));
+        assert!(acknowledged_at.is_some());
+        kinds.push(kind);
+    }
+    assert_eq!(kinds, ["reserve", "expired_release", "reserve"]);
 }
 
 #[test]

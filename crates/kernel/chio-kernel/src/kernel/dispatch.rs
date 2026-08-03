@@ -830,21 +830,39 @@ impl ChioKernel {
                     "finding recovery dispatch revalidation failed: {reason}"
                 ))
             })?;
-        #[cfg(feature = "cognition-market-experimental")]
-        if !reserve_for_caller_preflight {
-            if let Some(purchase) = verified_purchase.as_ref() {
-                self.claim_finding_pool_delivery(purchase, now_unix_ms)
-                    .map_err(|error| {
-                        KernelError::DurableAdmission(format!(
-                            "finding pool reservation could not enter durable admission: {error}"
-                        ))
-                })?;
-            }
-        }
         Ok(VerifiedFindingDispatchAdmission {
             purchase: verified_purchase,
             recovery: verified_recovery,
         })
+    }
+
+    /// Claim a finding-pool reservation at the final synchronous boundary
+    /// before the tool server receives control. Earlier revalidation remains
+    /// pure so a later capture, payment, credential, or cancellation failure
+    /// cannot strand a claimed reservation.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn claim_finding_pool_immediately_before_dispatch(
+        &self,
+        matched_grant: &ToolGrant,
+        request: &ToolCallRequest,
+        now_unix_ms: u64,
+    ) -> Result<Option<crate::finding_purchase::VerifiedFindingPurchase>, KernelError> {
+        let purchase = self
+            .verify_purchase_admission(matched_grant, request, now_unix_ms / 1_000)
+            .map_err(|reason| {
+                KernelError::GuardDenied(format!(
+                    "finding purchase final dispatch verification failed: {reason}"
+                ))
+            })?;
+        if let Some(purchase) = purchase.as_ref() {
+            self.claim_finding_pool_delivery(purchase, now_unix_ms)
+                .map_err(|error| {
+                    KernelError::DurableAdmission(format!(
+                        "finding pool reservation could not enter durable dispatch: {error}"
+                    ))
+                })?;
+        }
+        Ok(purchase)
     }
 
     pub(crate) fn validate_parent_request_continuation(

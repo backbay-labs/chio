@@ -22,6 +22,45 @@ fn receipts_match(left: &ChioReceipt, right: &ChioReceipt) -> Result<bool, Kerne
 }
 
 impl ChioKernel {
+    /// Sign the exact state transition a qualified finding-pool backend is
+    /// about to commit. The backend stores this receipt in its transaction,
+    /// then the kernel copies the durable outbox entry into the ordinary
+    /// receipt log.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn build_finding_pool_mutation_receipt(
+        &self,
+        mutation: &crate::finding_pool::FindingPoolMutation,
+    ) -> Result<ChioReceipt, KernelError> {
+        let parameters = serde_json::to_value(mutation)
+            .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?;
+        let action = ToolCallAction::from_parameters(parameters.clone())
+            .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?;
+        let canonical_content = chio_core::canonical::canonical_json_bytes(mutation)
+            .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?;
+        let content_hash = chio_core::crypto::sha256_hex(&canonical_content);
+        let timestamp = mutation
+            .occurred_at_unix_ms
+            .parse::<u64>()
+            .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?
+            / 1_000;
+        self.build_and_sign_receipt(ReceiptParams {
+            request_id: None,
+            capability_id: &mutation.allocation_envelope_sha256,
+            tool_name: "finding_pool_mutation",
+            server_id: "chio-kernel",
+            decision: Decision::Allow,
+            action,
+            content_hash,
+            canonical_content,
+            metadata: Some(serde_json::json!({
+                "finding_pool_mutation": parameters,
+            })),
+            timestamp,
+            trust_level: chio_core::receipt::kinds::TrustLevel::Mediated,
+            tenant_id: None,
+        })
+    }
+
     /// Build and sign a receipt from a `ReceiptParams` descriptor.
     pub(crate) fn build_and_sign_receipt(
         &self,

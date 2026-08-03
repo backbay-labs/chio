@@ -6,6 +6,7 @@
 //! Advisory remote budget views must not implement the marker trait.
 
 use chio_core_types::crypto::PublicKey;
+use chio_core_types::receipt::body::ChioReceipt;
 use chio_swarm_authority::finding_pool::{
     verify_finding_pool_allocation, SignedFindingPoolAllocation,
 };
@@ -17,6 +18,42 @@ use crate::ChioKernel;
 /// Maximum time a pool reservation may remain unclaimed before a durable
 /// purchase admission must take ownership of it.
 pub const FINDING_POOL_CLAIM_WINDOW_MS: u64 = 30_000;
+pub const FINDING_POOL_MUTATION_SCHEMA_V1: &str = "chio.finding.pool-mutation.v1";
+
+/// Exact state transition committed by a qualified finding-pool ledger.
+///
+/// Numeric values are decimal strings so the attestation remains I-JSON safe
+/// over the complete `u64` domain. A qualifying backend stores the signed Chio
+/// receipt for this value in the same transaction as the mutation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingPoolMutation {
+    pub schema: String,
+    pub kind: FindingPoolMutationKind,
+    pub purchase_id: String,
+    pub allocation_id: String,
+    pub allocation_envelope_sha256: String,
+    pub amount_units: String,
+    pub currency: String,
+    pub state: FindingPoolDebitState,
+    pub reserved_after_units: String,
+    pub spent_after_units: String,
+    pub remaining_after_units: String,
+    pub occurred_at_unix_ms: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingPoolMutationKind {
+    Reserve,
+    Claim,
+    Finalize,
+    Release,
+    ExpiredRelease,
+}
+
+pub type FindingPoolMutationAttestor<'a> =
+    dyn Fn(&FindingPoolMutation) -> Result<ChioReceipt, FindingPoolLedgerError> + 'a;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingPoolDebitReceipt {
@@ -32,7 +69,8 @@ pub struct FindingPoolDebitReceipt {
     pub replayed: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FindingPoolDebitState {
     Reserved,
     Finalized,
@@ -59,6 +97,8 @@ pub enum FindingPoolLedgerError {
     AlreadyConfigured,
     #[error("finding pool ledger storage failed: {0}")]
     Storage(String),
+    #[error("finding pool mutation receipt failed: {0}")]
+    Receipt(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -155,6 +195,7 @@ pub struct AuthorizedFindingPoolTerminal {
     amount_units: u64,
     currency: String,
     decision: FindingPoolTerminalDecision,
+    occurred_at_unix_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,6 +243,11 @@ impl AuthorizedFindingPoolTerminal {
     #[must_use]
     pub fn decision(&self) -> FindingPoolTerminalDecision {
         self.decision
+    }
+
+    #[must_use]
+    pub fn occurred_at_unix_ms(&self) -> u64 {
+        self.occurred_at_unix_ms
     }
 }
 
@@ -368,11 +414,16 @@ pub trait FindingPoolLedger: Send + Sync {
     fn debit(
         &self,
         debit: &AuthorizedFindingPoolDebit,
+        attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError>;
 
     /// Claim a pending reservation for the durable purchase lifecycle.
     /// Exact replay is idempotent. A timed-out or terminal reservation rejects.
-    fn claim(&self, claim: &AuthorizedFindingPoolClaim) -> Result<(), FindingPoolLedgerError>;
+    fn claim(
+        &self,
+        claim: &AuthorizedFindingPoolClaim,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError>;
 
     /// Finalize or release a reservation from the kernel's durable delivery
     /// terminal. Exact replay must return the recorded terminal, while an
@@ -380,7 +431,19 @@ pub trait FindingPoolLedger: Send + Sync {
     fn settle(
         &self,
         terminal: &AuthorizedFindingPoolTerminal,
+        attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError>;
+
+    /// Signed mutation receipts not yet copied into the kernel's ordinary
+    /// receipt log. The durable outbox itself remains append-only after ack.
+    fn pending_mutation_receipts(&self) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError>;
+
+    /// Mark an outbox receipt as copied to the ordinary receipt log.
+    fn acknowledge_mutation_receipt(
+        &self,
+        receipt_id: &str,
+        acknowledged_at_unix_ms: u64,
+    ) -> Result<(), FindingPoolLedgerError>;
 }
 
 /// Marker for an audited atomic or linearizable durable backend.
@@ -493,7 +556,9 @@ impl ChioKernel {
             .contains_purchase(debit.purchase_id())
             .map_err(FindingPoolDebitError::Ledger)?
         {
-            return ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger);
+            return self
+                .commit_finding_pool_debit(ledger, &debit)
+                .map_err(FindingPoolDebitError::Ledger);
         }
         if !allocation_is_live {
             return Err(FindingPoolLedgerError::AllocationNotLive.into());
@@ -507,7 +572,9 @@ impl ChioKernel {
                 .contains_purchase(debit.purchase_id())
                 .map_err(FindingPoolDebitError::Ledger)?
             {
-                return ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger);
+                return self
+                    .commit_finding_pool_debit(ledger, &debit)
+                    .map_err(FindingPoolDebitError::Ledger);
             }
             return Err(FindingPoolDebitError::Allocation(reason));
         }
@@ -520,11 +587,44 @@ impl ChioKernel {
                 .contains_purchase(debit.purchase_id())
                 .map_err(FindingPoolDebitError::Ledger)?
             {
-                return ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger);
+                return self
+                    .commit_finding_pool_debit(ledger, &debit)
+                    .map_err(FindingPoolDebitError::Ledger);
             }
             return Err(FindingPoolDebitError::Allocation(reason));
         }
-        ledger.debit(&debit).map_err(FindingPoolDebitError::Ledger)
+        self.commit_finding_pool_debit(ledger, &debit)
+            .map_err(FindingPoolDebitError::Ledger)
+    }
+
+    fn commit_finding_pool_debit(
+        &self,
+        ledger: &dyn QualifiedFindingPoolLedger,
+        debit: &AuthorizedFindingPoolDebit,
+    ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
+        self.flush_finding_pool_mutation_receipts(ledger)?;
+        let attestor = |mutation: &FindingPoolMutation| {
+            self.build_finding_pool_mutation_receipt(mutation)
+                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
+        };
+        let result = ledger.debit(debit, &attestor);
+        self.flush_finding_pool_mutation_receipts(ledger)?;
+        result
+    }
+
+    fn flush_finding_pool_mutation_receipts(
+        &self,
+        ledger: &dyn QualifiedFindingPoolLedger,
+    ) -> Result<(), FindingPoolLedgerError> {
+        for receipt in ledger.pending_mutation_receipts()? {
+            self.record_chio_receipt(&receipt)
+                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
+            ledger.acknowledge_mutation_receipt(
+                &receipt.id,
+                crate::kernel::current_unix_timestamp_ms(),
+            )?;
+        }
+        Ok(())
     }
 
     /// Transfer a pending pool reservation into the durable delivery
@@ -540,7 +640,7 @@ impl ChioKernel {
         if !ledger.contains_purchase(&purchase.purchase_intent_id)? {
             return Ok(());
         }
-        ledger.claim(&AuthorizedFindingPoolClaim {
+        let claim = AuthorizedFindingPoolClaim {
             purchase_id: purchase.purchase_intent_id.clone(),
             finding_id: purchase.finding_id.clone(),
             listing_id: purchase.listing_id.clone(),
@@ -551,7 +651,18 @@ impl ChioKernel {
             amount_units: purchase.accepted_price.units,
             currency: purchase.accepted_price.currency.clone(),
             claimed_at_unix_ms: trusted_now_unix_ms,
-        })
+        };
+        self.flush_finding_pool_mutation_receipts(ledger)?;
+        let attestor = |mutation: &FindingPoolMutation| {
+            self.build_finding_pool_mutation_receipt(mutation)
+                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
+        };
+        // The claim and its signed outbox receipt are one backend transaction.
+        // Do not copy the outbox into the ordinary receipt log here: that copy
+        // is fallible work after the claim and before tool dispatch. The next
+        // pool operation drains it, while the durable signed outbox already
+        // preserves the audit record across a crash.
+        ledger.claim(&claim, &attestor)
     }
 
     /// Apply the pool reservation terminal derived from the kernel's frozen
@@ -585,7 +696,7 @@ impl ChioKernel {
                 return Err(FindingPoolLedgerError::TerminalConflict);
             }
         };
-        ledger.settle(&AuthorizedFindingPoolTerminal {
+        let terminal = AuthorizedFindingPoolTerminal {
             purchase_id: purchase.purchase_intent_id.clone(),
             finding_id: purchase.finding_id.clone(),
             listing_id: purchase.listing_id.clone(),
@@ -594,7 +705,16 @@ impl ChioKernel {
             amount_units: purchase.accepted_price.units,
             currency: purchase.accepted_price.currency.clone(),
             decision,
-        })?;
+            occurred_at_unix_ms: crate::kernel::current_unix_timestamp_ms(),
+        };
+        self.flush_finding_pool_mutation_receipts(ledger)?;
+        let attestor = |mutation: &FindingPoolMutation| {
+            self.build_finding_pool_mutation_receipt(mutation)
+                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
+        };
+        let result = ledger.settle(&terminal, &attestor);
+        self.flush_finding_pool_mutation_receipts(ledger)?;
+        result?;
         Ok(())
     }
 

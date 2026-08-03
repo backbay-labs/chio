@@ -1475,6 +1475,36 @@ impl ChioKernel {
             }
         }
 
+        #[cfg(feature = "cognition-market-experimental")]
+        let pool_claim = self.claim_finding_pool_immediately_before_dispatch(
+            matched_grant,
+            request,
+            current_unix_timestamp_ms(),
+        );
+        #[cfg(feature = "cognition-market-experimental")]
+        if let Ok(purchase) = &pool_claim {
+            verified_purchase.clone_from(purchase);
+        }
+        #[cfg(feature = "cognition-market-experimental")]
+        if let Err(error) = pool_claim {
+            let reason = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding pool nested dispatch claim denied");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_deny_response_with_metadata_and_payee_binding(
+                    request,
+                    &reason,
+                    current_unix_timestamp(),
+                    Some(matched_grant_index),
+                    self.ambiguous_dispatch_receipt_metadata(
+                        &budget_mutation,
+                        payment_authorization.as_ref(),
+                        runtime_admission_metadata,
+                    ),
+                    verified_governed_payee_binding.as_ref(),
+                )
+            });
+        }
+
         let tool_started_at = Instant::now();
         let mut post_admission_drop_guard = PostAdmissionDropGuard::new(
             self,

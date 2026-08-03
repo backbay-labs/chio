@@ -959,6 +959,40 @@ fn finding_pheromone_positive_hint_re_resolves_current_listing_without_purchase_
 }
 
 #[test]
+fn finding_pheromone_requires_the_policy_selected_by_generic_admission() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let deposit =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-selected-policy", 125);
+        let mut context = finding_pheromone_context(&passport, &kernel);
+        let mut weaker_selected_policy = finding_pheromone_subject_policy(FINDING_PHEROMONE_TREATY);
+        weaker_selected_policy.destructive = true;
+        context.subject_classes.insert(0, weaker_selected_policy);
+
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                deposit,
+                &context,
+                &finding_pheromone_convention(),
+                &listing,
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Convention("SubjectClassPolicy"))
+        ));
+    });
+}
+
+#[test]
 fn finding_pheromone_binds_pricing_and_uses_the_pheromone_clock() {
     with_fiscal(|resolver| {
         let web = base_web();
