@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, Keypair};
@@ -24,7 +25,8 @@ use chio_revocation_oracle::{
 };
 use chio_transaction_passport::{
     sign_transaction_passport, verify_cognition_market_passport_artifacts,
-    CognitionMarketProofTrust, TransactionPassport, COGNITION_MARKET_CLAIMS,
+    CognitionMarketProofTrust, CognitionMarketStatusObservation, CognitionMarketStatusTrustStore,
+    TransactionPassport, COGNITION_MARKET_CLAIMS,
 };
 use serde_json::{json, Value};
 
@@ -46,6 +48,85 @@ struct QualifiedBundle {
     verifier_policy_bytes: Vec<u8>,
     artifacts: BTreeMap<String, Vec<u8>>,
     trust: CognitionMarketProofTrust,
+}
+
+#[derive(Default)]
+struct TestStatusState {
+    floor: Option<(String, String, u64, String, String)>,
+    retracted_findings: std::collections::BTreeSet<String>,
+}
+
+#[derive(Default)]
+struct TestStatusStore {
+    state: Mutex<TestStatusState>,
+}
+
+impl TestStatusStore {
+    fn with_floor(map_epoch: u64) -> Self {
+        Self {
+            state: Mutex::new(TestStatusState {
+                floor: Some((
+                    "qualified-finding-status".to_owned(),
+                    "qualified-status-operator".to_owned(),
+                    map_epoch,
+                    HEX64.to_owned(),
+                    "34".repeat(32),
+                )),
+                retracted_findings: std::collections::BTreeSet::new(),
+            }),
+        }
+    }
+
+    fn with_retracted(finding_id: &str) -> Self {
+        let mut retracted_findings = std::collections::BTreeSet::new();
+        retracted_findings.insert(finding_id.to_owned());
+        Self {
+            state: Mutex::new(TestStatusState {
+                floor: None,
+                retracted_findings,
+            }),
+        }
+    }
+}
+
+impl CognitionMarketStatusTrustStore for TestStatusStore {
+    fn admit_verified_non_inclusion(
+        &self,
+        observation: &CognitionMarketStatusObservation<'_>,
+    ) -> Result<(), String> {
+        let epoch = &observation.signed_epoch.body;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "test status trust lock poisoned".to_owned())?;
+        if state
+            .retracted_findings
+            .contains(&observation.proof.finding_id)
+        {
+            return Err("non-inclusion contradicts sticky retracted state".to_owned());
+        }
+        if let Some((feed_id, operator_id, map_epoch, epoch_id, root_hash)) = &state.floor {
+            if feed_id != &epoch.feed_id || operator_id != &epoch.operator_id {
+                return Err("status feed operator identity changed".to_owned());
+            }
+            if epoch.map_epoch < *map_epoch {
+                return Err("status epoch rollback".to_owned());
+            }
+            if epoch.map_epoch == *map_epoch
+                && (epoch.status_epoch_id != *epoch_id || epoch.root_hash != *root_hash)
+            {
+                return Err("status epoch equivocation".to_owned());
+            }
+        }
+        state.floor = Some((
+            epoch.feed_id.clone(),
+            epoch.operator_id.clone(),
+            epoch.map_epoch,
+            epoch.status_epoch_id.clone(),
+            epoch.root_hash.clone(),
+        ));
+        Ok(())
+    }
 }
 
 fn workspace_root() -> PathBuf {
@@ -345,6 +426,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
             now: CHECKED_AT,
             max_epoch_age_secs: 60,
         },
+        status_store: Arc::new(TestStatusStore::default()),
     };
     Ok(QualifiedBundle {
         passport,
@@ -618,6 +700,38 @@ fn cognition_market_qualified_profile_rejects_inconsistent_status_clock() -> Tes
         .to_string();
     assert!(
         error.contains("status freshness clock"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_durable_status_rollback() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle.trust.status_store = Arc::new(TestStatusStore::with_floor(2));
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("durable status rollback was accepted")?
+        .to_string();
+    assert!(
+        error.contains("status epoch rollback"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_sticky_retraction() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle.trust.status_store = Arc::new(TestStatusStore::with_retracted(FINDING_ID));
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("sticky retraction was accepted")?
+        .to_string();
+    assert!(
+        error.contains("sticky retracted state"),
         "unexpected error: {error}"
     );
     Ok(())

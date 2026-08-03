@@ -9,7 +9,8 @@ mod validation;
 mod verifier_policy;
 
 pub use cognition_market::{
-    verify_cognition_market_passport_artifacts, CognitionMarketProofTrust, COGNITION_MARKET_CLAIMS,
+    verify_cognition_market_passport_artifacts, CognitionMarketProofTrust,
+    CognitionMarketStatusObservation, CognitionMarketStatusTrustStore, COGNITION_MARKET_CLAIMS,
 };
 pub use error::TransactionPassportError;
 pub use evidence_graph::validate_transaction_evidence_graph;

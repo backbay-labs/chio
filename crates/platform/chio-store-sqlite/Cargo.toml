@@ -41,6 +41,7 @@ chio-kernel-core = { workspace = true }
 chio-settle = { workspace = true }
 chio-sqlite-file-identity = { path = "../chio-sqlite-file-identity" }
 chio-supervisor = { workspace = true }
+chio-transaction-passport = { workspace = true }
 hex = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }

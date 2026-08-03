@@ -14,6 +14,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use chio_core::{sha256_hex, StoreMutationFence};
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
+use chio_transaction_passport::{
+    CognitionMarketStatusObservation, CognitionMarketStatusTrustStore,
+};
 use rusqlite::{
     params, Connection, ErrorCode, OptionalExtension, Row, Transaction, TransactionBehavior,
 };
@@ -1480,6 +1483,73 @@ impl SqliteFindingStatusStore {
             .collect::<Result<Vec<_>, _>>()?;
         transaction.commit().map_err(sqlite_error)?;
         Ok(leaves)
+    }
+}
+
+impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
+    fn admit_verified_non_inclusion(
+        &self,
+        observation: &CognitionMarketStatusObservation<'_>,
+    ) -> Result<(), String> {
+        let epoch = &observation.signed_epoch.body;
+        let proof = observation.proof;
+        self.advance_epoch(&FindingStatusEpochAdvance {
+            epoch: VerifiedFindingStatusEpochInput {
+                feed_id: &epoch.feed_id,
+                operator_id: &epoch.operator_id,
+                key_domain_nonce: epoch.key_domain_nonce,
+                map_epoch: epoch.map_epoch,
+                epoch_id: &epoch.status_epoch_id,
+                root_hash: &epoch.root_hash,
+                signed_epoch_bytes: observation.signed_epoch_bytes,
+                operator_key: &epoch.operator_key.to_hex(),
+                operator_key_epoch: epoch.operator_key_epoch,
+                operator_authorization_sha256: observation.operator_authorization_sha256,
+                generated_at: epoch.generated_at,
+                valid_until: epoch.valid_until,
+                recorded_at: observation.recorded_at,
+            },
+            leaves: &[],
+            proofs: &[VerifiedFindingStatusProofInput {
+                feed_id: &proof.feed_id,
+                operator_id: &epoch.operator_id,
+                key_domain_nonce: proof.key_domain_nonce,
+                map_epoch: proof.map_epoch,
+                epoch_id: &proof.status_epoch_id,
+                root_hash: &proof.root_hash,
+                finding_id: &proof.finding_id,
+                kind: FindingStatusProofKind::NonInclusion,
+                proof_bytes: observation.proof_bytes,
+                status_value_bytes: None,
+                retraction_intent_sha256: None,
+                checked_at: proof.checked_at,
+                valid_until: epoch.valid_until,
+                recorded_at: observation.recorded_at,
+            }],
+        })
+        .map_err(|error| error.to_string())?;
+
+        let expected_proof_sha256 = sha256_hex(observation.proof_bytes);
+        match self
+            .status_for_purchase(&proof.feed_id, &proof.finding_id, observation.recorded_at)
+            .map_err(|error| error.to_string())?
+        {
+            FindingStatusDecision::VerifiedLive(record)
+                if record.proof_sha256 == expected_proof_sha256
+                    && record.map_epoch == proof.map_epoch
+                    && record.epoch_id == proof.status_epoch_id
+                    && record.root_hash == proof.root_hash =>
+            {
+                Ok(())
+            }
+            FindingStatusDecision::VerifiedLive(_) => {
+                Err("durable finding status evidence differs from the verified proof".to_owned())
+            }
+            FindingStatusDecision::Pending(_) => {
+                Err("finding retraction publication is pending".to_owned())
+            }
+            FindingStatusDecision::Retracted(_) => Err("finding is retracted".to_owned()),
+        }
     }
 }
 

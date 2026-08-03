@@ -20,6 +20,9 @@ const FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV: &str =
     "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256";
 const FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV: &str =
     "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH";
+const FINDING_STATUS_AUTHORITY_DATABASE_PATH_ENV: &str =
+    "CHIO_FINDING_STATUS_AUTHORITY_DATABASE_PATH";
+const FINDING_STATUS_AUTHORITY_LOCK_ROOT_ENV: &str = "CHIO_FINDING_STATUS_AUTHORITY_LOCK_ROOT";
 const FINDING_STATUS_NOW_UNIX_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_NOW_UNIX_SECONDS";
 const FINDING_STATUS_MAX_AGE_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_MAX_AGE_SECONDS";
 const FINDING_STATUS_AUTHORIZATION_MAX_BYTES: usize = 64 * 1024;
@@ -256,6 +259,18 @@ pub(super) fn cognition_market_proof_trust_from_env(
     })?;
     let now = required_positive_u64_env(FINDING_STATUS_NOW_UNIX_SECONDS_ENV)?;
     let max_epoch_age_secs = required_positive_u64_env(FINDING_STATUS_MAX_AGE_SECONDS_ENV)?;
+    let authority_database = required_utf8_env(FINDING_STATUS_AUTHORITY_DATABASE_PATH_ENV)?;
+    let authority_lock_root = required_utf8_env(FINDING_STATUS_AUTHORITY_LOCK_ROOT_ENV)?;
+    let authority = chio_store_sqlite::SqliteAuthorityStore::open_serving(
+        &authority_database,
+        &authority_lock_root,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "durable Finding status authority store could not be opened: {error}"
+        ))
+    })?;
+    let status_store = authority.finding_status_store();
     Ok(
         chio_control_plane::transaction_passport::CognitionMarketProofTrust {
             trusted_passport_signer_keys: trusted_passport_signer_keys.to_vec(),
@@ -266,6 +281,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
                 now,
                 max_epoch_age_secs,
             },
+            status_store: Arc::new(status_store),
         },
     )
 }

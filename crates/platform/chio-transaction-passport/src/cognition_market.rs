@@ -7,13 +7,15 @@
 //! any `claim.finding.*` ClaimSet row.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use chio_core_types::canonical_json_bytes_from_str;
 use chio_core_types::crypto::PublicKey;
+use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
     verify_signed_verifier_report, verify_status_proof_input, FindingFacetKind,
     FindingFacetOutcome, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
-    FindingStatusOperatorAuthorization, FindingStatusProofInput, SignedFindingVerifierReport,
+    FindingStatusNonInclusionProofInput, FindingStatusOperatorAuthorization,
+    FindingStatusProofInput, SignedFindingStatusEpoch, SignedFindingVerifierReport,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
@@ -34,6 +36,30 @@ pub const COGNITION_MARKET_CLAIMS: [&str; 4] = [
 
 const FINDING_VERIFIER_MODULE: &str = "chio-finding-verifier";
 
+/// Exact verified status material that must cross a durable trust boundary
+/// before a cognition-market claim can be granted.
+pub struct CognitionMarketStatusObservation<'a> {
+    pub signed_epoch: &'a SignedFindingStatusEpoch,
+    pub signed_epoch_bytes: &'a [u8],
+    pub proof: &'a FindingStatusNonInclusionProofInput,
+    pub proof_bytes: &'a [u8],
+    pub operator_authorization_sha256: &'a str,
+    pub recorded_at: u64,
+}
+
+/// Deployment-owned durable status memory.
+///
+/// Implementations must atomically enforce a monotonic epoch floor for the
+/// feed and stable operator identity, reject same-epoch conflicts, retain
+/// sticky pending or retracted state, and accept only an exact current-floor
+/// non-inclusion proof for the named Finding.
+pub trait CognitionMarketStatusTrustStore: Send + Sync {
+    fn admit_verified_non_inclusion(
+        &self,
+        observation: &CognitionMarketStatusObservation<'_>,
+    ) -> Result<(), String>;
+}
+
 /// Deployment-owned roots used to recheck the proof bundle. Neither the
 /// report nor the status proof may self-authorize these keys or time bounds.
 #[derive(Clone)]
@@ -43,6 +69,7 @@ pub struct CognitionMarketProofTrust {
     pub trusted_verifier_profile_envelope_sha256: String,
     pub status_operator_authorization: FindingStatusOperatorAuthorization,
     pub status_freshness: FindingStatusFreshnessPolicy,
+    pub status_store: Arc<dyn CognitionMarketStatusTrustStore>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -176,17 +203,17 @@ pub fn verify_cognition_market_passport_artifacts(
             "status-proof attachment does not name the report Finding",
         ));
     }
-    if !matches!(status, FindingStatusProofInput::NonInclusion(_)) {
+    let FindingStatusProofInput::NonInclusion(non_inclusion) = &status else {
         return Err(claim_failed(
             "qualified status-fresh claim requires a non-inclusion proof",
         ));
-    }
+    };
     if trust.status_freshness.now != report.body.evaluation_time {
         return Err(claim_failed(
             "status freshness clock does not match the signed report evaluation time",
         ));
     }
-    verify_status_proof_input(
+    let signed_epoch = verify_status_proof_input(
         &status,
         &trust.status_operator_authorization,
         trust.status_freshness,
@@ -221,6 +248,29 @@ pub fn verify_cognition_market_passport_artifacts(
     report
         .claim_results
         .retain(|claim| cognition_report_claim(&claim.claim_id));
+
+    // Advance durable status memory only after every passport, graph, report,
+    // and ClaimSet check succeeds, but before any claim leaves this verifier.
+    let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
+        .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
+    let authorization_bytes = canonical_json_bytes(&trust.status_operator_authorization)
+        .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
+    let operator_authorization_sha256 = crate::sha256_hex(&authorization_bytes);
+    trust
+        .status_store
+        .admit_verified_non_inclusion(&CognitionMarketStatusObservation {
+            signed_epoch: &signed_epoch,
+            signed_epoch_bytes: &signed_epoch_bytes,
+            proof: non_inclusion,
+            proof_bytes: status_bytes,
+            operator_authorization_sha256: &operator_authorization_sha256,
+            recorded_at: trust.status_freshness.now,
+        })
+        .map_err(|error| {
+            claim_failed(format!(
+                "durable finding status trust rejected proof: {error}"
+            ))
+        })?;
     Ok(report)
 }
 

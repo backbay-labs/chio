@@ -4685,6 +4685,7 @@ dependencies = [
  "chio-supervisor",
  "chio-swarm-authority",
  "chio-test-support",
+ "chio-transaction-passport",
  "criterion",
  "frost-ed25519",
  "hex",

@@ -206,6 +206,37 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         ),
         "write status authorization",
     );
+    let authority_database = tempdir.path().join("status-authority.db");
+    let authority_lock_root = tempdir.path().join("status-authority-locks");
+    proof_test_ok(
+        std::fs::create_dir(&authority_lock_root),
+        "create status authority lock root",
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        proof_test_ok(
+            std::fs::set_permissions(
+                tempdir.path(),
+                std::fs::Permissions::from_mode(0o700),
+            ),
+            "secure status authority parent",
+        );
+        proof_test_ok(
+            std::fs::set_permissions(
+                &authority_lock_root,
+                std::fs::Permissions::from_mode(0o700),
+            ),
+            "secure status authority lock root",
+        );
+    }
+    proof_test_ok(
+        chio_store_sqlite::SqliteAuthorityStore::provision(
+            &authority_database,
+            &authority_lock_root,
+        ),
+        "provision status authority store",
+    );
     let _env = TestEnvGuard::set(&[
         (
             "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS",
@@ -228,6 +259,14 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         (
             "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH",
             authorization_path.as_os_str(),
+        ),
+        (
+            "CHIO_FINDING_STATUS_AUTHORITY_DATABASE_PATH",
+            authority_database.as_os_str(),
+        ),
+        (
+            "CHIO_FINDING_STATUS_AUTHORITY_LOCK_ROOT",
+            authority_lock_root.as_os_str(),
         ),
         (
             "CHIO_FINDING_STATUS_NOW_UNIX_SECONDS",
