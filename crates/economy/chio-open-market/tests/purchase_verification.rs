@@ -399,6 +399,7 @@ fn bid_request_body(spec: &BidSpec<'_>) -> BidRequest {
     BidRequest {
         schema: BID_REQUEST_SCHEMA.to_string(),
         agent_id: AGENT_ID.to_string(),
+        payout_destination: None,
         listing_id: spec.listing_id.to_string(),
         max_price_per_call: usd(PRICE_UNITS),
         window_seconds: 3_600,

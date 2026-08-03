@@ -101,6 +101,10 @@ fn validate_required_field(value: &str, field: &str) -> Result<(), BiddingError>
 pub struct BidRequest {
     pub schema: String,
     pub agent_id: String,
+    /// Buyer-signed settlement address. Generic bids may omit it, while
+    /// cognition-market purchase coordinators require a valid EVM address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_destination: Option<String>,
     pub listing_id: String,
     pub max_price_per_call: MonetaryAmount,
     pub window_seconds: u64,
@@ -117,6 +121,9 @@ impl BidRequest {
             )));
         }
         validate_required_field(&self.agent_id, "agent_id")?;
+        if let Some(destination) = self.payout_destination.as_deref() {
+            validate_required_field(destination, "payout_destination")?;
+        }
         validate_required_field(&self.listing_id, "listing_id")?;
         if self.max_price_per_call.units == 0 {
             return Err(invalid_request(

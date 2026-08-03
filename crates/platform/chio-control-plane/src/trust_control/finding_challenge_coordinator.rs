@@ -479,8 +479,71 @@ pub enum ChallengeCoordinatorError {
 #[derive(Debug, Clone)]
 pub struct FindingAuditRound {
     pub epoch: SignedFindingAuditEpoch,
+    /// Governance-root-signed authorization for every epoch field other
+    /// than the authorization digest and content-addressed epoch id.
+    pub authorization: SignedFindingAuditRoundAuthorization,
     pub revealed_seed: String,
     pub eligible: Vec<EligibleListing>,
+}
+
+/// Governance authorization for one exact audit epoch precommitment.
+///
+/// The digest clears the epoch's authorization digest and content address,
+/// avoiding a circular hash while still binding every independently chosen
+/// round input. The signed authorization envelope digest is then inserted
+/// into the epoch before its final content address is computed.
+pub const FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1: &str =
+    "chio.finding.audit-round-authorization.v1";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingAuditRoundAuthorization {
+    pub schema: String,
+    pub epoch_precommitment_sha256: String,
+    pub authorized_at: u64,
+    pub expires_at: u64,
+}
+
+pub type SignedFindingAuditRoundAuthorization =
+    SignedExportEnvelope<FindingAuditRoundAuthorization>;
+
+impl FindingAuditRoundAuthorization {
+    fn validate(&self) -> Result<(), ChallengeCoordinatorError> {
+        if self.schema != FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1 {
+            return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                "authorization_schema",
+            ));
+        }
+        if self.epoch_precommitment_sha256.len() != 64
+            || !self
+                .epoch_precommitment_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                "epoch_precommitment_sha256",
+            ));
+        }
+        if self.authorized_at == 0 || self.expires_at <= self.authorized_at {
+            return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                "authorization_window",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Digest every independently chosen epoch field without creating a hash
+/// cycle through the authorization envelope or final epoch id.
+pub fn audit_epoch_precommitment_sha256(
+    epoch: &chio_finding::FindingAuditEpoch,
+) -> Result<String, ChallengeCoordinatorError> {
+    let mut precommitment = epoch.clone();
+    precommitment.audit_epoch_id.clear();
+    precommitment.authorization_digest.clear();
+    canonical_json_bytes(&precommitment)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|_| ChallengeCoordinatorError::Canonical)
 }
 
 /// Resolution of the signed artifacts a filing binds by digest.
@@ -955,11 +1018,7 @@ impl FindingChallengeCoordinator {
             .challenges
             .get_challenge(&body.challenge_id)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
-        if matches!(
-            &body.authorization,
-            FindingChallengeAuthorization::BuyerSubmission(_)
-        ) && prior_filing.is_none()
-        {
+        if prior_filing.is_none() {
             self.require_filing_window(&terms.body, body.filed_at, now)?;
         }
         match &body.authorization {
@@ -970,15 +1029,13 @@ impl FindingChallengeCoordinator {
                     finding.guarantee_class,
                 )?;
             }
-            FindingChallengeAuthorization::VenueAudit(audit) => {
-                self.require_filing_window(&terms.body, body.filed_at, now)?;
+            FindingChallengeAuthorization::VenueAudit(_) => {
                 // A seller may sign terms that never enter the audit
                 // rotation; a bondless audit against those terms has no
                 // authorization to stand on, whatever round drew it.
                 if !terms.body.audit_eligible {
                     return Err(ChallengeCoordinatorError::AuditIneligible);
                 }
-                self.require_audit_selection(audit, body, now)?;
             }
         }
         // Resolve the retained admission before any durable row or money
@@ -996,6 +1053,9 @@ impl FindingChallengeCoordinator {
             })
             .map_or(now, |recorded| recorded.submitted_at);
         let admission = self.resolve_admission(body, admission_validation_at)?;
+        if let FindingChallengeAuthorization::VenueAudit(audit) = &body.authorization {
+            self.require_audit_selection(audit, body, &admission, now)?;
+        }
         let mut recovered_received_at = match &body.authorization {
             FindingChallengeAuthorization::BuyerSubmission(submission) => self
                 .confirmed_funded_submission_received_at(
@@ -1026,7 +1086,11 @@ impl FindingChallengeCoordinator {
                     ExpiredFeeOnlyRecovery::Unchanged => {}
                 }
             }
-            if recovered_received_at.is_none() {
+            let exact_audit_replay = matches!(
+                &body.authorization,
+                FindingChallengeAuthorization::VenueAudit(_)
+            ) && admission_validation_at != now;
+            if recovered_received_at.is_none() && !exact_audit_replay {
                 if admission_validation_at != now {
                     self.resolve_admission(body, now)?;
                 }
@@ -2963,6 +3027,7 @@ impl FindingChallengeCoordinator {
         &self,
         audit: &chio_finding::FindingVenueAuditAuthorization,
         challenge: &FindingChallenge,
+        admission: &SignedFindingAdmission,
         now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
         let round = self
@@ -2991,9 +3056,46 @@ impl FindingChallengeCoordinator {
         )?;
         verify_signed_audit_epoch(&round.epoch, &audit_authority, &randomness_witness)
             .map_err(|error| ChallengeCoordinatorError::AuditEpoch(error.to_string()))?;
-        if round.epoch.body.authorization_digest != audit.authorization_digest {
+        let authorization_digest = self.envelope_digest(&round.authorization)?;
+        if round.epoch.body.authorization_digest != authorization_digest
+            || audit.authorization_digest != authorization_digest
+        {
             return Err(ChallengeCoordinatorError::AuditRoundBinding(
                 "authorization_digest",
+            ));
+        }
+        round.authorization.body.validate()?;
+        let governance_authority = self.require_live_role(
+            &self.pins.governance_authority,
+            round.authorization.body.authorized_at,
+            now,
+            "governance",
+        )?;
+        verify_pinned_envelope(
+            &round.authorization,
+            &governance_authority,
+            "audit round authorization",
+        )
+        .map_err(|_| ChallengeCoordinatorError::AuditRoundBinding("authorization_signature"))?;
+        if round.authorization.body.authorized_at > round.epoch.body.committed_at
+            || round.authorization.body.expires_at <= round.epoch.body.committed_at
+            || round.authorization.body.epoch_precommitment_sha256
+                != audit_epoch_precommitment_sha256(&round.epoch.body)?
+        {
+            return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                "authorization_epoch",
+            ));
+        }
+        if challenge.filed_at <= round.epoch.body.committed_at {
+            return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                "filing_after_epoch",
+            ));
+        }
+        if round.epoch.body.fee_schedule_envelope_sha256
+            != admission.body.fee_schedule_envelope_sha256
+        {
+            return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                "fee_schedule_envelope_sha256",
             ));
         }
         // The selection is a pure function of inputs the epoch committed

@@ -644,6 +644,7 @@ fn finding_bid_request(finding: &Finding, max_price_units: u64) -> BidRequest {
     BidRequest {
         schema: BID_REQUEST_SCHEMA.to_string(),
         agent_id: "buyer-agent-7".to_string(),
+        payout_destination: None,
         listing_id: FINDING_LISTING_ID.to_string(),
         max_price_per_call: usd(max_price_units),
         window_seconds: 3_600,

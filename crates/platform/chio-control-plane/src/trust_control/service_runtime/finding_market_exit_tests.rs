@@ -1951,6 +1951,7 @@ async fn finding_publish_discover_admission() -> TestResult {
         BidRequest {
             schema: BID_REQUEST_SCHEMA.to_string(),
             agent_id: "buyer-agent-7".to_string(),
+            payout_destination: None,
             listing_id: LISTING_ID.to_string(),
             max_price_per_call: usd(900),
             window_seconds: 3_600,

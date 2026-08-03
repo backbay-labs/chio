@@ -280,6 +280,7 @@ impl Purchase {
             authoritative_payment_operation_id: &self.payment_operation_id,
             payer_hex: &self.payer_hex,
             agent_id: "agent-buyer-01",
+            payout_destination: PAYOUT_DESTINATION,
             finding_id: &self.finding_id,
             listing_id: &self.listing_id,
             bid_envelope_sha256: &self.bid_envelope_sha256,
@@ -362,6 +363,7 @@ fn open_reservation_inserts_replays_and_rejects_conflicts() {
             authoritative_payment_operation_id: purchase.payment_operation_id.clone(),
             payer_hex: purchase.payer_hex.clone(),
             agent_id: "agent-buyer-01".to_string(),
+            payout_destination: PAYOUT_DESTINATION.to_string(),
             finding_id: purchase.finding_id.clone(),
             listing_id: LISTING_ID.to_string(),
             bid_envelope_sha256: purchase.bid_envelope_sha256.clone(),
@@ -401,6 +403,15 @@ fn open_reservation_inserts_replays_and_rejects_conflicts() {
             Err(FindingPurchaseStoreError::Conflict(_))
         ),
         "conflicting parameters under an existing reservation id must reject"
+    );
+    let mut conflicting_payout = purchase.input(&fixture.allocation_id);
+    conflicting_payout.payout_destination = "0x000000000000000000000000000000000000002b";
+    assert!(
+        matches!(
+            fixture.store.open_reservation(&conflicting_payout),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "a replay cannot rebind the buyer-signed payout destination"
     );
 
     let mut reused_intent = Purchase::new("beta", LISTING_ID, 10);
@@ -2018,6 +2029,105 @@ fn rail_only_buyer_destination_aborts_schema_migration() {
         )
         .expect("check migration rollback");
     assert!(!parked, "the failed migration rolls back its table rename");
+}
+
+fn insert_revision_four_reservation(connection: &Connection, agent_id: &str) {
+    connection
+        .execute(
+            r#"
+            INSERT INTO purchase_reservations (
+                reservation_id, purchase_intent_id,
+                authoritative_payment_operation_id, payer_hex, agent_id,
+                finding_id, listing_id, bid_envelope_sha256, ask_digest,
+                admission_envelope_sha256, amount_units, currency,
+                expires_at, state, created_at, updated_at
+            ) VALUES (
+                'reservation-v4', 'intent-v4', 'payment-v4', ?1, ?2, ?3,
+                'listing-v4', ?4, ?5, ?6, 10, 'USD', ?7, 'open', ?8, ?8
+            )
+            "#,
+            params![
+                hex64('b'),
+                agent_id,
+                hex64('a'),
+                hex64('c'),
+                hex64('d'),
+                hex64('e'),
+                i64::try_from(EXPIRES_AT).expect("test expiry fits"),
+                i64::try_from(NOW).expect("test time fits"),
+            ],
+        )
+        .expect("insert revision-four reservation");
+}
+
+fn rewind_to_revision_four_payout_binding(connection: &Connection, agent_id: &str) {
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    connection
+        .execute_batch("DROP TABLE purchase_payout_bindings;")
+        .expect("remove the separate payout binding");
+    insert_revision_four_reservation(connection, agent_id);
+    connection
+        .execute_batch(&format!(
+            "PRAGMA application_id = {};",
+            crate::CHIO_SQLITE_APPLICATION_ID
+        ))
+        .expect("stamp the application id");
+    crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 4)
+        .expect("stamp revision four");
+}
+
+#[test]
+fn revision_four_evm_agent_value_moves_to_separate_payout_binding() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    let destination = "0x000000000000000000000000000000000000002a";
+    rewind_to_revision_four_payout_binding(&connection, destination);
+
+    initialize_finding_purchase_schema(&mut connection).expect("migrate revision-four binding");
+
+    let binding: String = connection
+        .query_row(
+            "SELECT destination FROM purchase_payout_bindings WHERE reservation_id = 'reservation-v4'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read migrated payout binding");
+    assert_eq!(binding, destination);
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at revision five");
+}
+
+#[test]
+fn revision_four_opaque_agent_id_cannot_invent_a_payout_binding() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    rewind_to_revision_four_payout_binding(&connection, "agent-buyer-01");
+
+    assert!(
+        initialize_finding_purchase_schema(&mut connection).is_err(),
+        "an opaque agent identity supplies no authenticated payout address"
+    );
+    let reservation: i64 = connection
+        .query_row("SELECT COUNT(*) FROM purchase_reservations", [], |row| {
+            row.get(0)
+        })
+        .expect("read rolled-back reservation");
+    assert_eq!(reservation, 1);
+    let binding_table: bool = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema
+                WHERE type = 'table' AND name = 'purchase_payout_bindings'
+            )
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .expect("check migration rollback");
+    assert!(
+        !binding_table,
+        "the failed migration rolls back table creation"
+    );
 }
 
 #[test]

@@ -75,6 +75,28 @@ BEGIN
     SELECT RAISE(ABORT, 'purchase reservation must be retained');
 END;
 
+CREATE TABLE IF NOT EXISTS purchase_payout_bindings (
+    reservation_id TEXT NOT NULL PRIMARY KEY
+        REFERENCES purchase_reservations(reservation_id),
+    destination TEXT NOT NULL CHECK (
+        length(destination) = 42
+        AND substr(destination, 1, 2) = '0x'
+        AND substr(destination, 3) NOT GLOB '*[^0-9A-Fa-f]*'
+    )
+);
+
+CREATE TRIGGER IF NOT EXISTS purchase_payout_bindings_immutable
+BEFORE UPDATE ON purchase_payout_bindings
+BEGIN
+    SELECT RAISE(ABORT, 'purchase payout binding is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS purchase_payout_bindings_no_delete
+BEFORE DELETE ON purchase_payout_bindings
+BEGIN
+    SELECT RAISE(ABORT, 'purchase payout binding must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS seller_exposure_encumbrances (
     encumbrance_id TEXT NOT NULL PRIMARY KEY
         CHECK (length(encumbrance_id) BETWEEN 1 AND 512),

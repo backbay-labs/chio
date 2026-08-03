@@ -851,9 +851,10 @@ fn make_signed_report(
     };
     let draft = verify_finding_evidence(inputs.raw_finding, &trust, &bundle)?;
     if !draft.satisfies_required_facets(&trust.profile.body) {
-        return Err(missing(
-            "draft does not satisfy the required profile facets",
-        ));
+        return Err(Box::new(std::io::Error::other(format!(
+            "draft does not satisfy the required profile facets: {:?}",
+            draft.facets
+        ))));
     }
     Ok(sign_finding_verifier_report(
         &draft,
@@ -1736,7 +1737,7 @@ fn handshake(
     web: &MarketWeb,
     witness: &VerifiedFindingAdmission,
     buyer: &Keypair,
-    agent_id: &str,
+    payout_destination: &str,
     token_id: &str,
 ) -> Result<Handshake, AnyError> {
     let now = unix_timestamp_now();
@@ -1744,7 +1745,7 @@ fn handshake(
         web,
         witness,
         buyer,
-        agent_id,
+        payout_destination,
         token_id,
         now,
         usd(PRICE_UNITS),
@@ -1757,7 +1758,7 @@ fn handshake_at(
     web: &MarketWeb,
     witness: &VerifiedFindingAdmission,
     buyer: &Keypair,
-    agent_id: &str,
+    payout_destination: &str,
     token_id: &str,
     now: u64,
     max_price_per_call: MonetaryAmount,
@@ -1766,7 +1767,8 @@ fn handshake_at(
     let bid = SignedBidRequest::sign(
         BidRequest {
             schema: BID_REQUEST_SCHEMA.to_string(),
-            agent_id: agent_id.to_string(),
+            agent_id: buyer.public_key().to_hex(),
+            payout_destination: Some(payout_destination.to_string()),
             listing_id: LISTING_ID.to_string(),
             max_price_per_call,
             window_seconds,
@@ -3697,6 +3699,13 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         canonical_json_bytes(&second)?
     );
     assert_eq!(first.body.receipt_id, exchange.reservation_id);
+    let stored = authority
+        .finding_purchase_store()
+        .get_reservation(&exchange.reservation_id)?
+        .ok_or_else(|| missing("reserved purchase"))?;
+    assert_eq!(stored.agent_id, buyer.public_key().to_hex());
+    assert_eq!(stored.payout_destination, BUYER_PAYOUT);
+    assert_ne!(stored.agent_id, stored.payout_destination);
     Ok(())
 }
 

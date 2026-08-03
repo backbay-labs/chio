@@ -24,10 +24,11 @@ use chio_core_types::crypto::PublicKey;
 use chio_core_types::hashing::sha256;
 use chio_finding::{
     derive_audit_seed_commitment, signed_envelope_sha256, verify_outcome_challenge_binding,
-    verify_signed_challenge, verify_signed_challenge_outcome, FindingAuditEpoch,
-    FindingAuditReport, FindingChallengeAuthorization, FindingChallengeAuthorizationKind,
-    FindingError, SignedFindingChallenge, SignedFindingChallengeOutcome, MAX_AUDIT_SELECTION,
-    MAX_FINDING_IDENTIFIER_BYTES, MAX_PUBLISHED_RATE_BPS,
+    verify_signed_audit_epoch, verify_signed_audit_report, verify_signed_challenge,
+    verify_signed_challenge_outcome, FindingAuditEpoch, FindingChallengeAuthorization,
+    FindingChallengeAuthorizationKind, FindingError, SignedFindingAuditEpoch,
+    SignedFindingAuditReport, SignedFindingChallenge, SignedFindingChallengeOutcome,
+    MAX_AUDIT_SELECTION, MAX_FINDING_IDENTIFIER_BYTES, MAX_PUBLISHED_RATE_BPS,
 };
 
 use crate::capability::scope::MonetaryAmount;
@@ -158,8 +159,6 @@ pub enum FindingAuditError {
     EpochEnvelopeMismatch,
     #[error("audit report must be published strictly after its epoch commitment")]
     ReportNotAfterEpoch,
-    #[error("epoch envelope digest is not a 64 character lowercase hex value")]
-    InvalidEpochEnvelopeDigest,
     #[error("report selects finding {0}, which this round did not select")]
     UnexpectedSelection(String),
     #[error("report omits selected finding {0}")]
@@ -317,8 +316,8 @@ pub fn select_audit_targets_within_budget(
     )
 }
 
-/// Verify a published audit report against its epoch, as an independent
-/// auditor.
+/// Verify a published signed audit report against its signed epoch, as an
+/// independent auditor.
 ///
 /// The report is bound to its epoch by ENVELOPE digest, so the round it
 /// answers for is the exact signed artifact the caller presents, not merely
@@ -345,16 +344,22 @@ pub fn select_audit_targets_within_budget(
 /// list carries no ordering semantics, so set equality is required and the
 /// ordered form stays with [`select_audit_targets`].
 pub fn verify_audit_report(
-    epoch: &FindingAuditEpoch,
-    epoch_envelope_sha256: &str,
-    report: &FindingAuditReport,
+    epoch: &SignedFindingAuditEpoch,
+    report: &SignedFindingAuditReport,
     eligible: &[EligibleListing],
     witnesses: &FindingAuditReportWitnesses<'_>,
 ) -> Result<(), FindingAuditError> {
-    if !is_hex64(epoch_envelope_sha256) {
-        return Err(FindingAuditError::InvalidEpochEnvelopeDigest);
-    }
-    report.validate().map_err(FindingAuditError::Report)?;
+    verify_signed_audit_epoch(
+        epoch,
+        &witnesses.pinned_audit_authority,
+        &witnesses.pinned_seed_witness,
+    )
+    .map_err(FindingAuditError::Epoch)?;
+    verify_signed_audit_report(report, &witnesses.pinned_audit_authority)
+        .map_err(FindingAuditError::Report)?;
+    let epoch_envelope_sha256 = signed_envelope_sha256(epoch).map_err(FindingAuditError::Epoch)?;
+    let epoch = &epoch.body;
+    let report = &report.body;
     if report.audit_epoch_envelope_sha256 != epoch_envelope_sha256 {
         return Err(FindingAuditError::EpochEnvelopeMismatch);
     }
@@ -530,7 +535,7 @@ pub fn verify_audit_report(
                 outcome.outcome_id.clone(),
             ));
         }
-        if outcome.audit_epoch_envelope_sha256.as_deref() != Some(epoch_envelope_sha256) {
+        if outcome.audit_epoch_envelope_sha256.as_deref() != Some(epoch_envelope_sha256.as_str()) {
             return Err(FindingAuditError::OutcomeRoundBinding(
                 outcome.outcome_id.clone(),
             ));
@@ -559,6 +564,11 @@ pub fn verify_audit_report(
                 outcome.outcome_id.clone(),
             ));
         };
+        if outcome.evaluated_at < attempt.body.filed_at {
+            return Err(FindingAuditError::OutcomeTimeBinding(
+                outcome.outcome_id.clone(),
+            ));
+        }
         verify_outcome_challenge_binding(outcome, attempt).map_err(FindingAuditError::Outcome)?;
         if outcome.evidence_kind != attempt.body.evidence.kind()
             || outcome.verifier_profile_envelope_sha256 != attempt.body.profile_envelope_sha256

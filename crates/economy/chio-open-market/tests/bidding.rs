@@ -161,6 +161,7 @@ fn bid_request(agent_id: &str, max_units: u64, window_seconds: u64, now: u64) ->
     BidRequest {
         schema: BID_REQUEST_SCHEMA.to_string(),
         agent_id: agent_id.to_string(),
+        payout_destination: None,
         listing_id: "listing-1".to_string(),
         max_price_per_call: MonetaryAmount {
             units: max_units,

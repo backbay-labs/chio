@@ -3,11 +3,13 @@
 //! per-listing sales block, settled purchase records, failed-delivery
 //! records, and payout destinations.
 //!
-//! Seven tables back the purchase path. `purchase_reservations` is the
+//! Eight tables back the purchase path. `purchase_reservations` is the
 //! durable fence a coordinator writes before it moves money: the row is
 //! keyed by the reservation id the compatibility receipt carries, and it
 //! is unique on both the purchase intent and the authoritative payment
 //! operation, so no two reservations can name one payment.
+//! `purchase_payout_bindings` retains the separately buyer-signed EVM
+//! settlement address without overloading the agent's capability identity.
 //! `seller_exposure_encumbrances` holds the exposure that reservation
 //! places against a consumed collateral allocation, which is what bounds a
 //! seller's liability: exposure counts while the reservation is live and
@@ -62,12 +64,13 @@ use crate::admission_operation_store::verify_active_owner;
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-/// Revision 4 gives community-fund and buyer payout slots their distinct
+/// Revision 5 separates the buyer-signed payout address from agent identity;
+/// revision 4 gave community-fund and buyer payout slots their distinct
 /// durable shapes. The schema batch is a sequence of idempotent guards, so
 /// a revision-1 database adopts the new tables on its next open; a
 /// revision-2 database also carries its listing-keyed blocks across in
 /// [`carry_listing_sales_blocks_across`].
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 4;
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 5;
 /// Revision that introduced the listing-keyed, never-lifted sales block.
 const FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION: i32 = 2;
 /// Name the listing-keyed block table is parked under while the episode
@@ -191,6 +194,7 @@ pub struct FindingPurchaseReservationInput<'a> {
     pub authoritative_payment_operation_id: &'a str,
     pub payer_hex: &'a str,
     pub agent_id: &'a str,
+    pub payout_destination: &'a str,
     pub finding_id: &'a str,
     pub listing_id: &'a str,
     pub bid_envelope_sha256: &'a str,
@@ -213,6 +217,7 @@ pub struct FindingPurchaseReservationRecord {
     pub authoritative_payment_operation_id: String,
     pub payer_hex: String,
     pub agent_id: String,
+    pub payout_destination: String,
     pub finding_id: String,
     pub listing_id: String,
     pub bid_envelope_sha256: String,
@@ -552,6 +557,18 @@ impl SqliteFindingPurchaseStore {
         if inserted != 1 {
             return Err(invariant("reservation insert did not affect one row"));
         }
+        let payout_bound = transaction
+            .execute(
+                r#"
+                INSERT INTO purchase_payout_bindings (reservation_id, destination)
+                VALUES (?1, ?2)
+                "#,
+                params![input.reservation_id, input.payout_destination],
+            )
+            .map_err(sqlite_error)?;
+        if payout_bound != 1 {
+            return Err(invariant("purchase payout binding did not affect one row"));
+        }
         let encumbered = transaction
             .execute(
                 r#"
@@ -727,6 +744,12 @@ impl SqliteFindingPurchaseStore {
         let transaction = self.begin_write(&mut connection)?;
         let reservation = load_reservation_tx(&transaction, input.reservation_id)?
             .ok_or(FindingPurchaseStoreError::NotFound)?;
+        if reservation.payout_destination != input.payout_destination {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "delivery payout destination differs from the buyer-signed reservation binding"
+                    .to_owned(),
+            ));
+        }
         let encumbrance = load_encumbrance_tx(&transaction, input.reservation_id)?
             .ok_or_else(|| invariant("reservation lost its exposure encumbrance"))?;
         match reservation.state {
@@ -1338,6 +1361,7 @@ fn map_reservation(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawReservation> 
 
 fn reservation_from_raw(
     raw: RawReservation,
+    payout_destination: String,
 ) -> Result<FindingPurchaseReservationRecord, FindingPurchaseStoreError> {
     Ok(FindingPurchaseReservationRecord {
         reservation_id: raw.reservation_id,
@@ -1345,6 +1369,7 @@ fn reservation_from_raw(
         authoritative_payment_operation_id: raw.authoritative_payment_operation_id,
         payer_hex: raw.payer_hex,
         agent_id: raw.agent_id,
+        payout_destination,
         finding_id: raw.finding_id,
         listing_id: raw.listing_id,
         bid_envelope_sha256: raw.bid_envelope_sha256,
@@ -1381,7 +1406,19 @@ fn load_reservation_row_tx(
         )
         .optional()
         .map_err(sqlite_error)?;
-    raw.map(reservation_from_raw).transpose()
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let payout_destination = transaction
+        .query_row(
+            "SELECT destination FROM purchase_payout_bindings WHERE reservation_id = ?1",
+            [&raw.reservation_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?
+        .ok_or_else(|| invariant("reservation lost its buyer-signed payout binding"))?;
+    reservation_from_raw(raw, payout_destination).map(Some)
 }
 
 fn load_encumbrance_tx(
@@ -2209,6 +2246,7 @@ fn reservation_matches(
         && existing.authoritative_payment_operation_id == input.authoritative_payment_operation_id
         && existing.payer_hex == input.payer_hex
         && existing.agent_id == input.agent_id
+        && existing.payout_destination == input.payout_destination
         && existing.finding_id == input.finding_id
         && existing.listing_id == input.listing_id
         && existing.bid_envelope_sha256 == input.bid_envelope_sha256
@@ -2238,6 +2276,7 @@ fn validate_reservation_input(
         "authoritative_payment_operation_id",
     )?;
     require_identifier(input.agent_id, "agent_id")?;
+    require_evm_payout_destination(input.payout_destination)?;
     require_identifier(input.listing_id, "listing_id")?;
     require_identifier(input.encumbrance_id, "encumbrance_id")?;
     require_hex64(input.payer_hex, "payer_hex")?;
@@ -2327,6 +2366,7 @@ pub(crate) fn initialize_finding_purchase_schema(
         .map_err(sqlite_error)?;
     carry_listing_sales_blocks_across(&transaction)?;
     carry_payout_destinations_across(&transaction)?;
+    carry_legacy_reservation_payout_bindings(&transaction)?;
     crate::stamp_schema_version(
         &transaction,
         FINDING_PURCHASE_SCHEMA_KEY,
@@ -2544,6 +2584,45 @@ fn carry_payout_destinations_across(
     Ok(())
 }
 
+/// Recover the short-lived revision-4 representation where a cognition
+/// purchase stored its EVM payout address in `agent_id` itself.
+///
+/// Only values that already have the exact EVM shape are copied. A normal
+/// capability identity has no authenticated address that can be invented
+/// during migration, so any such retained reservation aborts the upgrade.
+fn carry_legacy_reservation_payout_bindings(
+    transaction: &Transaction<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    transaction
+        .execute(
+            r#"
+            INSERT OR IGNORE INTO purchase_payout_bindings (reservation_id, destination)
+            SELECT reservation_id, agent_id FROM purchase_reservations
+            WHERE length(agent_id) = 42
+              AND substr(agent_id, 1, 2) = '0x'
+              AND substr(agent_id, 3) NOT GLOB '*[^0-9A-Fa-f]*'
+            "#,
+            [],
+        )
+        .map_err(sqlite_error)?;
+    let reservations: i64 = transaction
+        .query_row("SELECT COUNT(*) FROM purchase_reservations", [], |row| {
+            row.get(0)
+        })
+        .map_err(sqlite_error)?;
+    let bindings: i64 = transaction
+        .query_row("SELECT COUNT(*) FROM purchase_payout_bindings", [], |row| {
+            row.get(0)
+        })
+        .map_err(sqlite_error)?;
+    if bindings != reservations {
+        return Err(invariant(format!(
+            "purchase payout migration bound {bindings} of {reservations} reservations"
+        )));
+    }
+    Ok(())
+}
+
 /// Verify the purchase schema's shape: this database's table, index, and
 /// trigger definitions against a freshly created canonical schema. The
 /// cost is a handful of `sqlite_schema` rows, independent of how many
@@ -2581,6 +2660,8 @@ fn finding_purchase_schema_catalog(
             FROM sqlite_schema
             WHERE name GLOB 'purchase_reservations*'
                OR tbl_name GLOB 'purchase_reservations*'
+               OR name GLOB 'purchase_payout_bindings*'
+               OR tbl_name GLOB 'purchase_payout_bindings*'
                OR name GLOB 'seller_exposure_encumbrances*'
                OR tbl_name GLOB 'seller_exposure_encumbrances*'
                OR name GLOB 'pending_purchase_slots*'

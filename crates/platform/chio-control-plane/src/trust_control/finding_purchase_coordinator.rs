@@ -266,12 +266,17 @@ impl FindingPurchaseCoordinator {
         {
             return Err(PurchaseCoordinatorError::BidBinding);
         }
-        // Cognition-market bids use the buyer-authenticated agent id as the
-        // payout address. The bid signature authenticates it, the ask copies
-        // it, and the reservation retains it through terminal settlement.
-        // Reject any shape the EVM enforcement rail cannot consume before
-        // funds or seller exposure are reserved.
-        validate_evm_payout_destination(&bid.body.agent_id)
+        // Agent identity remains the capability subject. Cognition-market
+        // bids separately carry the buyer's settlement address inside the
+        // signed bid body, which the reservation retains through terminal
+        // settlement. Reject an absent or unusable address before funds or
+        // seller exposure are reserved.
+        let payout_destination = bid.body.payout_destination.as_deref().ok_or_else(|| {
+            PurchaseCoordinatorError::PayoutDestination(
+                "signed bid omits payout_destination".to_owned(),
+            )
+        })?;
+        validate_evm_payout_destination(payout_destination)
             .map_err(|error| PurchaseCoordinatorError::PayoutDestination(error.to_string()))?;
         let payer = &ask.body.token_offer.subject;
         if bid.signer_key != *payer {
@@ -471,6 +476,7 @@ impl FindingPurchaseCoordinator {
             authoritative_payment_operation_id: &derive_payment_operation_id(&reservation_id),
             payer_hex: &payer_hex,
             agent_id: &ask.body.agent_id,
+            payout_destination,
             finding_id: &admission.body.finding_id,
             listing_id: &ask.body.listing_id,
             bid_envelope_sha256: &bid_envelope_sha256,
@@ -827,7 +833,7 @@ impl FindingPurchaseCoordinator {
         let delivery_receipt_id = &receipt.id;
         let buyer = PublicKey::from_hex(&reservation.payer_hex)
             .map_err(|_| PurchaseCoordinatorError::Store("payer key malformed".to_owned()))?;
-        let payout_destination = reservation.agent_id.clone();
+        let payout_destination = reservation.payout_destination.clone();
         validate_evm_payout_destination(&payout_destination)
             .map_err(|error| PurchaseCoordinatorError::PayoutDestination(error.to_string()))?;
         let record = FindingPurchaseRecord {
