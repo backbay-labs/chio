@@ -26,7 +26,6 @@ impl ChioKernel {
     /// about to commit. The backend stores this receipt in its transaction,
     /// then the kernel copies the durable outbox entry into the ordinary
     /// receipt log.
-    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) fn build_finding_pool_mutation_receipt(
         &self,
         mutation: &crate::finding_pool::FindingPoolMutation,
