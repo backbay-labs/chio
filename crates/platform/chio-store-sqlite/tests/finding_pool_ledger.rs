@@ -356,6 +356,19 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
 }
 
 #[test]
+fn qualified_pool_rejects_percent_decoded_nul_uris() {
+    for path in ["file:%00", "file::memory:%00", "file:pool?mode=memory%00"] {
+        assert!(
+            matches!(
+                SqliteFindingPoolLedger::open_qualified(path),
+                Err(FindingPoolLedgerError::Storage(_))
+            ),
+            "{path} must be rejected before SQLite opens it"
+        );
+    }
+}
+
+#[test]
 fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitution() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))

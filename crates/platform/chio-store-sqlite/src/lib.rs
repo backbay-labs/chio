@@ -150,6 +150,12 @@ pub fn is_in_memory_sqlite_path(path: &str) -> bool {
     // SQLite URI fragments do not participate in either the filename or the
     // query. Strip them before interpreting the durability-sensitive parts.
     let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
+    // SQLite terminates a percent-decoded filename or URI parameter at NUL.
+    // Classify any such URI as non-durable so qualified stores reject it
+    // before SQLite can silently open a temporary or in-memory database.
+    if percent_decode_sqlite_uri(rest).contains('\0') {
+        return true;
+    }
     let (name, query) = match rest.split_once('?') {
         Some((name, query)) => (name, Some(query)),
         None => (rest, None),
@@ -638,6 +644,9 @@ mod tests {
             "file:pool?mode%3Dmemory",
             "file:pool?mode=%6demory",
             "file:%3Amemory%3A",
+            "file:%00",
+            "file::memory:%00",
+            "file:pool?mode=memory%00",
         ] {
             assert!(
                 is_in_memory_sqlite_path(path),
