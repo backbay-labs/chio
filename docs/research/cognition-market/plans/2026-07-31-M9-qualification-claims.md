@@ -3,9 +3,12 @@
 Status: implementation and stack-owned cumulative qualification complete on
 2026-08-01. Promoted-default, proof-bundle, schema, registry, formal, strict
 Rust verification, build, Clippy, formatting, code-generation, and
-bounded-profile gates pass. The workspace test sweep records one unrelated
-baseline exception below. This record names the exact bounded profile and
-deliberately leaves conditional M7 and usage-gated R&D extensions unshipped.
+bounded-profile gates pass. The workspace test sweep completed every
+non-xtask suite, then exposed one stale proof-mapping assertion in its final
+`xtask` package. The assertion was corrected and the exact `xtask` suite
+passed; the full sweep was not repeated after that test-only repair. This
+record names the exact bounded profile and deliberately leaves conditional M7
+and usage-gated R&D extensions unshipped.
 
 ## Qualified Profile
 
@@ -95,4 +98,4 @@ and strict Rust verification, and cumulative workspace gates recorded below.
 | promoted-default M8 marketplace and SQLite pool exits | passed, 38 and 4 tests; conditional M7 test ignored |
 | generated Rust, Python, TypeScript, and Go artifacts | passed, `make codegen-check` |
 | full workspace build, Clippy, and formatting | passed |
-| full workspace test sweep | stack-owned targets passed; five receipt-retention repair fixtures fail identically on `origin/main` at `a768ff73a` with `RetentionArchiveIncomplete` |
+| full workspace test sweep | every non-xtask suite passed; the final `xtask` mapping assertion was corrected and the exact `xtask` suite passed; the full sweep was not repeated after the test-only repair |

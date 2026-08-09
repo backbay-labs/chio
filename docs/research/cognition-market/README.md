@@ -10,9 +10,10 @@ qualification boundary. The named bounded-profile integration, approved scoped
 claims, audited assumptions, persisted transaction-passport golden, and
 focused promoted-default gates pass. The production workspace build, Clippy,
 formatting, code generation, formal proofs, and strict Rust verification pass.
-The workspace test sweep remains blocked by five receipt-retention repair
-fixtures that fail identically on the rebased `origin/main` baseline at
-`a768ff73a`; the stack-owned tests pass. M7 stays conditional and unbuilt
+The workspace test sweep completed every non-xtask suite, then its final
+`xtask` package exposed a stale proof-mapping assertion. That assertion was
+corrected and the exact `xtask` suite passed; the full roughly 80-minute sweep
+was not repeated after the test-only repair. M7 stays conditional and unbuilt
 because no bilateral seller/buyer deployment has triggered its ADR-C
 prerequisite. Usage-gated stochastic R&D extensions also remain unbuilt.
 

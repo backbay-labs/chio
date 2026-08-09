@@ -105,7 +105,7 @@ production surface half-wired.
 | M6 | Status feed and retraction | oracle instance; control-plane root/proof surfaces; purchase-time non-inclusion; challenge-outcome outbox; quarantine guard rule; ops runbook | M4, M5 | implemented; plan and recorded results [plans/2026-07-31-M6-status-feed-retraction.md](plans/2026-07-31-M6-status-feed-retraction.md) |
 | M7 | Cross-org escrow path | delivery-receipt settlement-authority bridge; bilateral evidence flow; funded escrow and watchdog runbook | M4, M5, M6 | conditional and unbuilt: trigger re-evaluated false on 2026-08-01; ignored exit retained |
 | M8 | Pool purchasing and SDK | swarm purchasing convention; elicitation ceiling in SDKs; pheromone hint convention | M4 | implemented; plan and recorded results [plans/2026-07-31-M8-pool-purchasing-sdk.md](plans/2026-07-31-M8-pool-purchasing-sdk.md) |
-| M9 | Qualification and claims | bounded-matrix entries; CLAIM_REGISTRY rows; RC guarantee entries; proof passport and release promotion | M5, M6 | implemented; cumulative qualification in progress; plan [plans/2026-07-31-M9-qualification-claims.md](plans/2026-07-31-M9-qualification-claims.md) |
+| M9 | Qualification and claims | bounded-matrix entries; CLAIM_REGISTRY rows; RC guarantee entries; proof passport and release promotion | M5, M6 | implemented; stack-owned cumulative qualification complete; plan [plans/2026-07-31-M9-qualification-claims.md](plans/2026-07-31-M9-qualification-claims.md) |
 
 ## 2. Per-milestone definition
 
