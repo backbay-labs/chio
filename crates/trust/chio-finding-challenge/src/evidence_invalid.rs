@@ -5,7 +5,8 @@
 //! checkpoint the finding actually named. Then the subset is re-verified, and
 //! only affirmative invalidity under the profile effective at publication can
 //! support fraud: a signature that does not verify, a receipt whose own
-//! commitment contradicts its content, or a key the pinned governance root
+//! commitment contradicts its content, a receipt created only after the
+//! finding claimed it as evidence, or a key the pinned governance root
 //! withdrew as of publication time.
 //!
 //! Everything else that can go wrong here is an operational fact rather than
@@ -180,6 +181,18 @@ pub(crate) fn evaluate_evidence_invalid(
         // carries. A receipt that contradicts itself does not bind the claim
         // it was offered for.
         if !matches!(resolved.receipt.action.verify_hash(), Ok(true)) {
+            return Ok(adjudication(
+                &challenged_ids,
+                FindingEvidenceInvalidity::SemanticCrossBindingFailure,
+                FindingChallengeReason::EvidenceSemanticCrossBindingFailure,
+            ));
+        }
+        // A finding cannot have relied on evidence that did not exist when it
+        // was issued. Because the venue's checkpoint already established
+        // these exact signed bytes as the seller's artifact, a later receipt
+        // timestamp is an affirmative cross-binding failure rather than a
+        // resolver outage or an unknown authority fact.
+        if resolved.receipt.timestamp > context.finding.issued_at {
             return Ok(adjudication(
                 &challenged_ids,
                 FindingEvidenceInvalidity::SemanticCrossBindingFailure,

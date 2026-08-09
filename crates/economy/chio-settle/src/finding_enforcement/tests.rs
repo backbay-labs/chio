@@ -86,15 +86,7 @@ fn sample_config() -> SettlementChainConfig {
         .as_ref()
         .test_expect("anchor inclusion proof example carries a chain anchor");
     let rpc_url = "http://127.0.0.1:8545".to_string();
-    let policy = SettlementPolicyConfig {
-        finding_impairment_destination_allowlist: [
-            BUYER_DESTINATION.to_string(),
-            COMMUNITY_FUND_DESTINATION.to_string(),
-        ]
-        .into_iter()
-        .collect(),
-        ..SettlementPolicyConfig::default()
-    };
+    let policy = SettlementPolicyConfig::default();
     SettlementChainConfig {
         chain_id: anchor.chain_id.clone(),
         network_name: "Devnet".to_string(),
@@ -818,29 +810,6 @@ fn plan_rejects_a_config_that_does_not_match_the_snapshot() {
         error
             .to_string()
             .contains("bond_vault_contract does not match"),
-        "unexpected rejection: {error}"
-    );
-}
-
-#[test]
-fn plan_refuses_destinations_outside_the_operator_allowlist() {
-    let verified = verified();
-    let mut config = sample_config();
-    config
-        .policy
-        .finding_impairment_destination_allowlist
-        .remove(BUYER_DESTINATION);
-
-    let error = plan_finding_impairment(
-        &config,
-        &verified,
-        &operator_address(),
-        &vault_snapshot(),
-        &sample_anchor_proof(),
-    )
-    .test_expect_err("an unallowlisted payout destination must not reach the vault");
-    assert!(
-        error.to_string().contains("not in the operator allowlist"),
         "unexpected rejection: {error}"
     );
 }

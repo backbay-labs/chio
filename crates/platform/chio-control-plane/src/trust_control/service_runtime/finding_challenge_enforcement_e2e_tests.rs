@@ -6151,15 +6151,7 @@ fn settlement_config() -> Result<SettlementChainConfig, AnyError> {
         .as_ref()
         .ok_or("anchor inclusion proof example carries a chain anchor")?;
     let rpc_url = "http://127.0.0.1:8545".to_string();
-    let policy = SettlementPolicyConfig {
-        finding_impairment_destination_allowlist: [
-            EVM_BUYER_DESTINATION.to_string(),
-            EVM_COMMUNITY_FUND.to_string(),
-        ]
-        .into_iter()
-        .collect(),
-        ..SettlementPolicyConfig::default()
-    };
+    let policy = SettlementPolicyConfig::default();
     Ok(SettlementChainConfig {
         chain_id: anchor.chain_id.clone(),
         network_name: "Devnet".to_string(),
@@ -8454,6 +8446,50 @@ fn finding_challenge_listing_ceiling_comes_from_the_signed_schedule() -> TestRes
             .listing_required_amount_units,
         5_000,
         "the caller's inflated ceiling is not part of the calculation"
+    );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_evaluation_refuses_an_unsigned_penalty_stake() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenged = challenged_finding()?;
+    let sale = settle_purchase(&deployment, "stake-binding", BUYER_ONE_DESTINATION, 50, NOW)?;
+    let case = evidence_invalid_case(
+        &challenged,
+        ProductionShape::ForeignSignature,
+        &sale,
+        Filing::Buyer,
+    )?;
+    coordinator.submit(&case.challenge, &challenged.raw_finding, NOW + 1)?;
+
+    let unsigned_stake = usd(301);
+    let required = usd(5_000);
+    let collateral = collateral_facts(&unsigned_stake, &required, &deployment.allocation_id, 5_000);
+    let evidence = case.evidence();
+    let refused = coordinator
+        .evaluate(&evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &collateral,
+            NOW + 2,
+        ))
+        .expect_err("a seller-unsigned stake must not produce a verdict");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::TermsBinding("base_finding_stake")
+    ));
+    let record = deployment
+        .challenges
+        .get_challenge(&case.challenge.body.challenge_id)?
+        .ok_or("submitted challenge remains recorded")?;
+    assert_eq!(record.state, FindingChallengeState::Submitted);
+    assert!(record.outcome_envelope_sha256.is_none());
+    assert!(
+        !deployment.purchases.sales_blocked(LISTING_ID)?,
+        "a refused evaluation must not wedge the listing"
     );
     Ok(())
 }

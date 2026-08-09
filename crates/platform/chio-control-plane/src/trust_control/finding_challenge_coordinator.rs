@@ -1261,6 +1261,7 @@ impl FindingChallengeCoordinator {
         let schedule = self.resolve_fee_schedule(&admission.body.fee_schedule_envelope_sha256)?;
         let listing_requirement = Self::listing_bond_requirement(&schedule)?;
         let terms = self.resolve_market_terms(body)?;
+        Self::require_signed_base_stake(&terms, request.collateral)?;
         // Funding is still the admission ticket to evaluator work. The
         // lifecycle transition itself waits until the pure evaluator has
         // produced an adjudication, so an immutable refusal cannot strand
@@ -1595,18 +1596,8 @@ impl FindingChallengeCoordinator {
             ));
         }
         let appeal_terms_envelope_sha256 = terms_envelope_sha256.clone();
-        // The stake the slash math starts from is a seller precommitment,
-        // so the signed terms are its only source of truth: facts carrying
-        // any other figure would size the penalty from a number nothing
-        // was signed over.
+        Self::require_signed_base_stake(terms, collateral)?;
         let signed_stake = &terms.body.backing_requirement.base_finding_stake;
-        if collateral.base_finding_stake.units != signed_stake.units
-            || collateral.base_finding_stake.currency != signed_stake.currency
-        {
-            return Err(ChallengeCoordinatorError::TermsBinding(
-                "base_finding_stake",
-            ));
-        }
         if sanction_case.body.listing_id != identity.listing_id {
             return Err(ChallengeCoordinatorError::GovernanceBinding("listing_id"));
         }
@@ -3481,6 +3472,27 @@ impl FindingChallengeCoordinator {
         }
         now.checked_add(terms.body.claim_window_secs)
             .ok_or(ChallengeCoordinatorError::TermsBinding("claim_window_secs"))
+    }
+
+    /// Require penalty facts to carry the seller's signed base stake before
+    /// either an outcome or a liability transition can become durable.
+    ///
+    /// The evaluation and liability-opening paths consume the same facts at
+    /// different times. Checking only when the liability opens would let the
+    /// evaluator sign and record an upheld verdict that can never progress.
+    fn require_signed_base_stake(
+        terms: &SignedFindingMarketTerms,
+        collateral: &FindingCollateralFacts<'_>,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let signed_stake = &terms.body.backing_requirement.base_finding_stake;
+        if collateral.base_finding_stake.units != signed_stake.units
+            || collateral.base_finding_stake.currency != signed_stake.currency
+        {
+            return Err(ChallengeCoordinatorError::TermsBinding(
+                "base_finding_stake",
+            ));
+        }
+        Ok(())
     }
 
     /// Exposure still outstanding against one allocation, read after the

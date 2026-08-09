@@ -97,6 +97,13 @@ impl PlannedFindingImpairment {
 /// `verified` is the observer's attestation. Both are required and both must
 /// name the same vault and operator key: the attestation bounds the money and
 /// the contract read bounds the call.
+///
+/// The ordered destinations are already part of the verified enforcement.
+/// Its finalization authority signs a distribution derived from authenticated
+/// purchase records and the admission-pinned community fund. Rechecking those
+/// immutable destinations against a mutable settlement allowlist could strand
+/// value that the market already accepted, so the planner preserves the signed
+/// instruction instead of applying a second authorization source.
 pub fn plan_finding_impairment(
     config: &SettlementChainConfig,
     verified: &VerifiedFindingEnforcement,
@@ -139,32 +146,14 @@ pub fn plan_finding_impairment(
         ));
     }
 
-    let allowed_destinations = config
-        .policy
-        .finding_impairment_destination_allowlist
-        .iter()
-        .map(|destination| {
-            parse_evm_address(
-                destination,
-                "finding impairment destination allowlist entry",
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
     let mut beneficiaries = Vec::with_capacity(enforcement.destinations.len());
     let mut shares = Vec::with_capacity(enforcement.destinations.len());
     let mut destinations = Vec::with_capacity(enforcement.destinations.len());
     for destination in &enforcement.destinations {
-        let parsed = parse_evm_address(
+        parse_evm_address(
             &destination.destination,
             "finding impairment enforcement destination",
         )?;
-        if !allowed_destinations.contains(&parsed) {
-            return Err(reject(format!(
-                "finding impairment destination {} is not in the operator allowlist",
-                destination.destination
-            )));
-        }
         beneficiaries.push(destination.destination.clone());
         shares.push(destination.amount.clone());
         destinations.push(FindingImpairmentDestination {

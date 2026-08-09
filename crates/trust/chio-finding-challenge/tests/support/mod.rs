@@ -247,6 +247,9 @@ pub enum ProductionShape {
     /// The first receipt is signed before the production key's validity
     /// window opens.
     SignedBeforeKeyWindow,
+    /// The first receipt is created only after the finding claims it as
+    /// production evidence.
+    SignedAfterPublication,
 }
 
 pub fn world() -> Built<World> {
@@ -285,6 +288,7 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
     };
     let first_signed_at = match production {
         ProductionShape::SignedBeforeKeyWindow => KEY_VALID_FROM - 1,
+        ProductionShape::SignedAfterPublication => PUBLISHED_AT + 2,
         _ => 1_690_000_000,
     };
     let mut first = signed_receipt(

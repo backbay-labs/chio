@@ -104,6 +104,35 @@ fn an_evidence_receipt_that_contradicts_its_own_action_upholds() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn evidence_created_after_the_finding_issuance_upholds() -> TestResult {
+    let world = world_with(
+        FindingClasses::default(),
+        ProductionShape::SignedAfterPublication,
+    )?;
+    // The key is withdrawn after publication but before the receipt can be
+    // treated as evidence. Previously the publication-time revocation check
+    // classified this as merely indeterminate even though the receipt itself
+    // proved it did not exist when the finding was issued.
+    let revoked = vec![world.revocation(
+        &world.production_kernel.public_key(),
+        PUBLISHED_AT + 1,
+        RevocationShape::Sound,
+    )?];
+    let case = evidence_case_with_revocations(&world, EvidenceShape::Sound, revoked)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::EvidenceSemanticCrossBindingFailure,
+    )?;
+    assert_eq!(adjudication.verdict(), FindingChallengeVerdict::Upheld);
+    outcome_for(&world, &case.challenge, &adjudication)?;
+    Ok(())
+}
+
 /// Only the inclusion path settles membership. The wrapper carrying it is
 /// unsigned and resolver-supplied, so a wrapper that disagrees with the
 /// venue's signed checkpoint is a defect of whoever assembled it and cannot

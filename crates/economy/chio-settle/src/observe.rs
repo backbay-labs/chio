@@ -536,7 +536,6 @@ mod tests {
             policy: crate::SettlementPolicyConfig {
                 chio_minor_unit_decimals: 2,
                 token_minor_unit_decimals: 6,
-                finding_impairment_destination_allowlist: std::collections::BTreeSet::new(),
                 tiers: vec![
                     crate::SettlementAmountTier {
                         upper_bound_units: 1_000,
