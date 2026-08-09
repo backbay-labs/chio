@@ -5,12 +5,14 @@
 //! case, the sealed claim snapshot, and the domain-keyed effect intents
 //! fenced before anything leaves this operator.
 //!
-//! Eight tables back the lane. `challenges` is the adjudication record:
+//! Nine tables back the lane. `challenges` is the adjudication record:
 //! one authorization branch, one evidence class, one bounded retry, and a
 //! lifecycle that only ever runs
 //! `submitted -> evaluating -> rejected | indeterminate_retryable |
 //! indeterminate_closed | upheld`, with `indeterminate_retryable` the one
-//! state that may re-enter evaluation. `dispute_lock_reservations` fences a
+//! state that may re-enter evaluation. `finding_challenge_outcomes` retains
+//! every exact signed outcome in the same transaction that records its
+//! verdict. `dispute_lock_reservations` fences a
 //! lock identity before any external debit, and `dispute_locks` holds the
 //! confirmed bond: exclusive per challenge, disposed exactly once, and
 //! never reused for a second challenge. `liability_heads` is
@@ -79,10 +81,10 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-/// Revision 8 binds root publication to its concrete anchor proof; revision 7
-/// binds every liability to its admitted seller; revision 6 reserved
-/// dispute-lock identities before any external funding dispatch.
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 8;
+/// Revision 9 retains exact signed evaluator outcomes with their verdict;
+/// revision 8 binds root publication to its concrete anchor proof; revision
+/// 7 binds every liability to its admitted seller.
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 9;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "challenges",
     "finding_challenge_projection_commits",
@@ -103,6 +105,8 @@ const MAX_IDENTIFIER_BYTES: usize = 512;
 /// surface owns that vocabulary; the store only refuses one too long to
 /// be a state name.
 const MAX_CASE_STATE_BYTES: usize = 64;
+/// Bound on one retained signed outcome envelope.
+const MAX_OUTCOME_ENVELOPE_BYTES: usize = 1_048_576;
 
 const DISPUTE_BOND_FUNDING_DOMAIN: &str = "chio.finding.dispute-bond-funding.v1";
 const DISPUTE_BOND_RETURN_DOMAIN: &str = "chio.finding.dispute-bond-return.v1";
@@ -294,6 +298,15 @@ pub struct FindingChallengeRecord {
     pub outcome_envelope_sha256: Option<String>,
     pub submitted_at: u64,
     pub updated_at: u64,
+}
+
+/// One exact signed evaluator outcome retained with a verdict transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FindingChallengeOutcomeRecord {
+    pub challenge_id: String,
+    pub outcome_envelope_sha256: String,
+    pub outcome_envelope_json: Vec<u8>,
+    pub recorded_at: u64,
 }
 
 /// The dispute bond one buyer submission locks. `bond_class` is not a
@@ -748,10 +761,11 @@ impl SqliteFindingChallengeStore {
         challenge_id: &str,
         verdict: FindingChallengeVerdict,
         outcome_envelope_sha256: &str,
+        outcome_envelope_json: &[u8],
         now: u64,
     ) -> Result<FindingChallengeState, FindingChallengeStoreError> {
         require_identifier(challenge_id, "challenge_id")?;
-        require_hex64(outcome_envelope_sha256, "outcome_envelope_sha256")?;
+        require_outcome_envelope(outcome_envelope_sha256, outcome_envelope_json)?;
         require_trusted_time(now, "now")?;
         if let FindingChallengeVerdict::Indeterminate {
             retry_deadline: Some(deadline),
@@ -766,6 +780,7 @@ impl SqliteFindingChallengeStore {
             challenge_id,
             verdict,
             outcome_envelope_sha256,
+            outcome_envelope_json,
             now,
         )?;
         self.commit_write(transaction)?;
@@ -786,12 +801,13 @@ impl SqliteFindingChallengeStore {
         &self,
         challenge_id: &str,
         outcome_envelope_sha256: &str,
+        outcome_envelope_json: &[u8],
         allocation_id: &str,
         expected_open_exposure_units: u64,
         now: u64,
     ) -> Result<FindingChallengeState, FindingChallengeStoreError> {
         require_identifier(challenge_id, "challenge_id")?;
-        require_hex64(outcome_envelope_sha256, "outcome_envelope_sha256")?;
+        require_outcome_envelope(outcome_envelope_sha256, outcome_envelope_json)?;
         require_hex64(allocation_id, "allocation_id")?;
         require_trusted_time(now, "now")?;
         let mut connection = self.connection()?;
@@ -813,6 +829,7 @@ impl SqliteFindingChallengeStore {
             challenge_id,
             FindingChallengeVerdict::Upheld,
             outcome_envelope_sha256,
+            outcome_envelope_json,
             now,
         )?;
         self.commit_write(transaction)?;
@@ -828,6 +845,49 @@ impl SqliteFindingChallengeStore {
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
         load_challenge_tx(&transaction, challenge_id)
+    }
+
+    /// Exact signed outcome retained under its envelope digest.
+    pub fn get_outcome_envelope(
+        &self,
+        outcome_envelope_sha256: &str,
+    ) -> Result<Option<FindingChallengeOutcomeRecord>, FindingChallengeStoreError> {
+        require_hex64(outcome_envelope_sha256, "outcome_envelope_sha256")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let outcome = transaction
+            .query_row(
+                r#"
+                SELECT challenge_id, outcome_envelope_sha256,
+                       outcome_envelope_json, recorded_at
+                FROM finding_challenge_outcomes
+                WHERE outcome_envelope_sha256 = ?1
+                "#,
+                [outcome_envelope_sha256],
+                |row| {
+                    Ok(FindingChallengeOutcomeRecord {
+                        challenge_id: row.get(0)?,
+                        outcome_envelope_sha256: row.get(1)?,
+                        outcome_envelope_json: row.get(2)?,
+                        recorded_at: stored_u64(row.get(3)?, "recorded_at").map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                3,
+                                rusqlite::types::Type::Integer,
+                                Box::new(error),
+                            )
+                        })?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        if let Some(outcome) = &outcome {
+            require_outcome_envelope(
+                &outcome.outcome_envelope_sha256,
+                &outcome.outcome_envelope_json,
+            )?;
+        }
+        Ok(outcome)
     }
 
     /// Every challenge against one finding on one listing, oldest first.
@@ -2793,10 +2853,18 @@ fn record_verdict_tx(
     challenge_id: &str,
     verdict: FindingChallengeVerdict,
     outcome_envelope_sha256: &str,
+    outcome_envelope_json: &[u8],
     now: u64,
 ) -> Result<FindingChallengeState, FindingChallengeStoreError> {
     let challenge = load_challenge_tx(transaction, challenge_id)?
         .ok_or(FindingChallengeStoreError::NotFound)?;
+    store_outcome_envelope_tx(
+        transaction,
+        challenge_id,
+        outcome_envelope_sha256,
+        outcome_envelope_json,
+        now,
+    )?;
     match challenge.state {
         FindingChallengeState::Evaluating => {}
         FindingChallengeState::Submitted => {
@@ -2872,6 +2940,59 @@ fn record_verdict_tx(
         return Err(invariant("challenge verdict did not affect one row"));
     }
     Ok(target)
+}
+
+fn store_outcome_envelope_tx(
+    transaction: &Transaction<'_>,
+    challenge_id: &str,
+    outcome_envelope_sha256: &str,
+    outcome_envelope_json: &[u8],
+    now: u64,
+) -> Result<(), FindingChallengeStoreError> {
+    let inserted = transaction
+        .execute(
+            r#"
+            INSERT OR IGNORE INTO finding_challenge_outcomes (
+                outcome_envelope_sha256, challenge_id,
+                outcome_envelope_json, recorded_at
+            ) VALUES (?1, ?2, ?3, ?4)
+            "#,
+            params![
+                outcome_envelope_sha256,
+                challenge_id,
+                outcome_envelope_json,
+                sqlite_i64(now, "recorded_at")?,
+            ],
+        )
+        .map_err(sqlite_error)?;
+    if inserted == 1 {
+        return Ok(());
+    }
+    let existing: Option<(String, Vec<u8>)> = transaction
+        .query_row(
+            r#"
+            SELECT challenge_id, outcome_envelope_json
+            FROM finding_challenge_outcomes
+            WHERE outcome_envelope_sha256 = ?1
+            "#,
+            [outcome_envelope_sha256],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    match existing {
+        Some((stored_challenge_id, stored_json))
+            if stored_challenge_id == challenge_id && stored_json == outcome_envelope_json =>
+        {
+            Ok(())
+        }
+        Some(_) => Err(FindingChallengeStoreError::Conflict(
+            "outcome envelope digest is already bound to different bytes or challenge".to_owned(),
+        )),
+        None => Err(invariant(
+            "ignored outcome insert did not resolve an existing outcome",
+        )),
+    }
 }
 
 struct RawChallenge {
@@ -3933,7 +4054,7 @@ pub(crate) fn initialize_finding_challenge_schema(
     if on_disk == FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
         return verify_finding_challenge_invariants(connection);
     }
-    if on_disk == 7 {
+    if matches!(on_disk, 7 | 8) {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;
@@ -4424,6 +4545,8 @@ fn finding_challenge_schema_catalog(
             SELECT type, name, tbl_name, sql
             FROM sqlite_schema
             WHERE name GLOB 'challenges*' OR tbl_name GLOB 'challenges*'
+               OR name GLOB 'finding_challenge_outcomes*'
+               OR tbl_name GLOB 'finding_challenge_outcomes*'
                OR name GLOB 'dispute_locks*' OR tbl_name GLOB 'dispute_locks*'
                OR name GLOB 'liability_heads*'
                OR tbl_name GLOB 'liability_heads*'
@@ -4464,6 +4587,23 @@ fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingChalleng
     Err(invariant(format!(
         "{field} is not 64 lowercase hex characters"
     )))
+}
+
+fn require_outcome_envelope(
+    outcome_envelope_sha256: &str,
+    outcome_envelope_json: &[u8],
+) -> Result<(), FindingChallengeStoreError> {
+    require_hex64(outcome_envelope_sha256, "outcome_envelope_sha256")?;
+    if outcome_envelope_json.is_empty() || outcome_envelope_json.len() > MAX_OUTCOME_ENVELOPE_BYTES
+    {
+        return Err(invariant("outcome envelope byte length is out of bounds"));
+    }
+    if sha256_hex(outcome_envelope_json) != outcome_envelope_sha256 {
+        return Err(invariant(
+            "outcome envelope bytes do not match their recorded digest",
+        ));
+    }
+    Ok(())
 }
 
 fn require_chain_hash(value: &str, field: &'static str) -> Result<(), FindingChallengeStoreError> {

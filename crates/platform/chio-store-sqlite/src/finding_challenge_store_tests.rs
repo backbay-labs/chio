@@ -305,12 +305,14 @@ fn close_challenge(
         .store
         .begin_evaluation(&challenge.challenge_id, now)
         .expect("begin evaluation");
+    let outcome = format!("outcome-{}", challenge.challenge_id);
     fixture
         .store
         .record_verdict(
             &challenge.challenge_id,
             verdict,
-            &digest(&format!("outcome-{}", challenge.challenge_id)),
+            &digest(&outcome),
+            outcome.as_bytes(),
             now + 1,
         )
         .expect("record verdict")
@@ -898,12 +900,18 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
                 &upheld.challenge_id,
                 FindingChallengeVerdict::Upheld,
                 &outcome,
+                b"outcome-alpha",
                 NOW + 1
             ),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
         "a verdict without an evaluation in progress must reject"
     );
+    assert!(fixture
+        .store
+        .get_outcome_envelope(&outcome)
+        .expect("read rolled-back outcome")
+        .is_none());
     assert_eq!(
         fixture
             .store
@@ -925,11 +933,19 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
                 &upheld.challenge_id,
                 FindingChallengeVerdict::Upheld,
                 &outcome,
+                b"outcome-alpha",
                 NOW + 3
             )
             .expect("record upheld"),
         FindingChallengeState::Upheld
     );
+    let retained = fixture
+        .store
+        .get_outcome_envelope(&outcome)
+        .expect("read retained outcome")
+        .expect("verdict and outcome commit together");
+    assert_eq!(retained.challenge_id, upheld.challenge_id);
+    assert_eq!(retained.outcome_envelope_json, b"outcome-alpha");
     assert_eq!(
         fixture
             .store
@@ -937,6 +953,7 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
                 &upheld.challenge_id,
                 FindingChallengeVerdict::Upheld,
                 &outcome,
+                b"outcome-alpha",
                 NOW + 4
             )
             .expect("replay upheld"),
@@ -948,6 +965,7 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
                 &upheld.challenge_id,
                 FindingChallengeVerdict::Rejected,
                 &outcome,
+                b"outcome-alpha",
                 NOW + 5
             ),
             Err(FindingChallengeStoreError::Conflict(_))
@@ -960,12 +978,18 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
                 &upheld.challenge_id,
                 FindingChallengeVerdict::Upheld,
                 &digest("outcome-other"),
+                b"outcome-other",
                 NOW + 5
             ),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
         "a closed challenge cannot be rebound to a different outcome"
     );
+    assert!(fixture
+        .store
+        .get_outcome_envelope(&digest("outcome-other"))
+        .expect("read conflicting outcome")
+        .is_none());
     assert!(
         matches!(
             fixture
@@ -999,6 +1023,7 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
                 "challenge-absent",
                 FindingChallengeVerdict::Upheld,
                 &outcome,
+                b"outcome-alpha",
                 NOW
             ),
             Err(FindingChallengeStoreError::NotFound)
@@ -1050,6 +1075,7 @@ fn bounded_retry_reaches_indeterminate_closed() {
                     retry_deadline: Some(RETRY_DEADLINE),
                 },
                 &digest("outcome-alpha-retry"),
+                b"outcome-alpha-retry",
                 NOW + 11
             )
             .expect("record the retry verdict"),
@@ -1254,6 +1280,7 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
             &upheld.challenge_id,
             FindingChallengeVerdict::Upheld,
             &digest("outcome-alpha"),
+            b"outcome-alpha",
             NOW + 2,
         )
         .expect("record upheld");
@@ -1327,6 +1354,7 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
             &other.challenge_id,
             FindingChallengeVerdict::Rejected,
             &digest("outcome-beta"),
+            b"outcome-beta",
             NOW + 2,
         )
         .expect("record rejected");
@@ -1368,6 +1396,7 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
                 retry_deadline: None,
             },
             &digest("outcome-gamma"),
+            b"outcome-gamma",
             NOW + 2,
         )
         .expect("record indeterminate");
@@ -2018,6 +2047,7 @@ fn upheld_verdict_fences_exposure_before_becoming_terminal() {
         fixture.store.record_upheld_verdict_with_exposure_fence(
             &challenge.challenge_id,
             &outcome_digest,
+            b"verdict-exposure-race-outcome",
             &fixture.allocation_id,
             0,
             NOW + 2,
@@ -2039,6 +2069,7 @@ fn upheld_verdict_fences_exposure_before_becoming_terminal() {
             .record_upheld_verdict_with_exposure_fence(
                 &challenge.challenge_id,
                 &outcome_digest,
+                b"verdict-exposure-race-outcome",
                 &fixture.allocation_id,
                 10,
                 NOW + 2,
@@ -3757,7 +3788,7 @@ fn v6_schema_adds_the_durable_seller_binding() {
 }
 
 #[test]
-fn v7_schema_adds_exact_effect_root_bindings() {
+fn v7_schema_adds_exact_effect_root_bindings_and_outcome_retention() {
     let mut connection = Connection::open_in_memory().expect("open previous database");
     connection
         .execute_batch(FINDING_CHALLENGE_SCHEMA)
@@ -3770,6 +3801,7 @@ fn v7_schema_adds_exact_effect_root_bindings() {
             DROP TRIGGER effect_root_bindings_no_delete;
             DROP TRIGGER effect_intents_root_binding_before_dispatch;
             DROP TABLE effect_root_bindings;
+            DROP TABLE finding_challenge_outcomes;
             "#,
         )
         .expect("rewind exact-root schema objects");
@@ -3793,6 +3825,45 @@ fn v7_schema_adds_exact_effect_root_bindings() {
             |row| row.get::<_, bool>(0),
         )
         .expect("inspect exact-root table"));
+    assert!(connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'finding_challenge_outcomes')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect outcome-retention table"));
+    verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
+fn v8_schema_adds_exact_outcome_retention() {
+    let mut connection = Connection::open_in_memory().expect("open previous database");
+    connection
+        .execute_batch(FINDING_CHALLENGE_SCHEMA)
+        .expect("install current challenge schema");
+    connection
+        .execute_batch("DROP TABLE finding_challenge_outcomes;")
+        .expect("rewind outcome-retention schema objects");
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 8)
+        .expect("stamp previous schema");
+
+    initialize_finding_challenge_schema(&mut connection).expect("migrate revision eight");
+
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_CHALLENGE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION);
+    assert!(connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'finding_challenge_outcomes')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect outcome-retention table"));
     verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
 }
 

@@ -104,6 +104,38 @@ BEGIN
     SELECT RAISE(ABORT, 'finding challenge must be retained');
 END;
 
+-- Exact signed evaluator outcomes are retained before the challenge can
+-- become terminal. A response lost after the verdict commit can therefore
+-- recover the same artifact rather than asking a terminal row to re-enter
+-- evaluation.
+CREATE TABLE IF NOT EXISTS finding_challenge_outcomes (
+    outcome_envelope_sha256 TEXT NOT NULL PRIMARY KEY CHECK (
+        length(outcome_envelope_sha256) = 64
+        AND outcome_envelope_sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+    challenge_id TEXT NOT NULL REFERENCES challenges(challenge_id),
+    outcome_envelope_json BLOB NOT NULL CHECK (
+        length(outcome_envelope_json) BETWEEN 1 AND 1048576
+    ),
+    recorded_at INTEGER NOT NULL CHECK (recorded_at > 0),
+    UNIQUE (challenge_id, outcome_envelope_sha256)
+);
+
+CREATE INDEX IF NOT EXISTS finding_challenge_outcomes_challenge
+    ON finding_challenge_outcomes(challenge_id, recorded_at);
+
+CREATE TRIGGER IF NOT EXISTS finding_challenge_outcomes_immutable
+BEFORE UPDATE ON finding_challenge_outcomes
+BEGIN
+    SELECT RAISE(ABORT, 'finding challenge outcome is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS finding_challenge_outcomes_no_delete
+BEFORE DELETE ON finding_challenge_outcomes
+BEGIN
+    SELECT RAISE(ABORT, 'finding challenge outcome must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS dispute_lock_reservations (
     lock_id TEXT NOT NULL PRIMARY KEY
         CHECK (length(lock_id) BETWEEN 1 AND 512),

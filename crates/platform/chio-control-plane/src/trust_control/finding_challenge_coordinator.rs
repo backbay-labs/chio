@@ -432,6 +432,8 @@ pub enum ChallengeCoordinatorError {
     ClaimSetMismatch,
     #[error("purchase record {0} is not resolvable in the authoritative index")]
     UnknownPurchaseRecord(String),
+    #[error("purchase standing rejected: {0}")]
+    PurchaseStanding(String),
     #[error("purchase record {0} does not belong to this liability at the frozen cutoff")]
     PurchaseOutsideCutoff(String),
     #[error("purchase record {0} charged its exposure to a different collateral allocation")]
@@ -1191,9 +1193,13 @@ impl FindingChallengeCoordinator {
         &self,
         request: &ChallengeEvaluationRequest<'_>,
     ) -> Result<Option<ChallengeEvaluationOutcome>, ChallengeCoordinatorError> {
+        if let Some(recovered) = self.recover_terminal_evaluation(request)? {
+            return Ok(Some(recovered));
+        }
         self.require_live_evaluator_key(request)?;
         let body = &request.challenge.body;
         let admission = self.resolve_admission(body, request.now)?;
+        self.require_authoritative_purchase_standing(&admission, request.evidence, request.now)?;
         self.require_failed_delivery_reservation_binding(body, request.evidence, &admission)?;
         if request.collateral.bond_snapshot.body.allocation_id
             != admission.body.backing_allocation_id
@@ -1329,12 +1335,15 @@ impl FindingChallengeCoordinator {
             .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
         let signed = SignedFindingChallengeOutcome::sign(outcome, &self.evaluator_authority)
             .map_err(|_| ChallengeCoordinatorError::Signing)?;
-        let outcome_envelope_sha256 = self.envelope_digest(&signed)?;
+        let outcome_envelope_json =
+            canonical_json_bytes(&signed).map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        let outcome_envelope_sha256 = sha256_hex(&outcome_envelope_json);
 
         let state = match signed.body.penalty_calculation.as_ref() {
             Some(calculation) => self.challenges.record_upheld_verdict_with_exposure_fence(
                 &body.challenge_id,
                 &outcome_envelope_sha256,
+                &outcome_envelope_json,
                 &admission.body.backing_allocation_id,
                 calculation.open_per_sale_encumbrance_units,
                 request.now,
@@ -1343,6 +1352,7 @@ impl FindingChallengeCoordinator {
                 &body.challenge_id,
                 store_verdict(verdict, signed.body.retry_deadline),
                 &outcome_envelope_sha256,
+                &outcome_envelope_json,
                 request.now,
             ),
         }
@@ -1352,6 +1362,75 @@ impl FindingChallengeCoordinator {
             state,
             outcome: signed,
             outcome_envelope_sha256,
+            bond_disposition,
+        }))
+    }
+
+    /// Recover the exact signed artifact for a terminal verdict whose
+    /// response or bond disposition was interrupted after the atomic verdict
+    /// commit. No re-evaluation occurs and the historical evaluator policy is
+    /// authenticated before the retained bytes are returned.
+    fn recover_terminal_evaluation(
+        &self,
+        request: &ChallengeEvaluationRequest<'_>,
+    ) -> Result<Option<ChallengeEvaluationOutcome>, ChallengeCoordinatorError> {
+        let challenge_id = &request.challenge.body.challenge_id;
+        let Some(challenge) = self
+            .challenges
+            .get_challenge(challenge_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+        else {
+            return Ok(None);
+        };
+        if !matches!(
+            challenge.state,
+            FindingChallengeState::Upheld
+                | FindingChallengeState::Rejected
+                | FindingChallengeState::IndeterminateClosed
+        ) {
+            return Ok(None);
+        }
+        let challenge_envelope_sha256 = self.envelope_digest(request.challenge)?;
+        if challenge.challenge_envelope_sha256 != challenge_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
+        let outcome_envelope_sha256 =
+            challenge
+                .outcome_envelope_sha256
+                .as_deref()
+                .ok_or_else(|| {
+                    ChallengeCoordinatorError::ChallengeStore(
+                        "terminal challenge has no outcome digest".to_owned(),
+                    )
+                })?;
+        let retained = self
+            .challenges
+            .get_outcome_envelope(outcome_envelope_sha256)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore(
+                    "terminal challenge has no retained outcome envelope".to_owned(),
+                )
+            })?;
+        if retained.challenge_id != *challenge_id {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
+        let outcome: SignedFindingChallengeOutcome =
+            serde_json::from_slice(&retained.outcome_envelope_json)
+                .map_err(|error| ChallengeCoordinatorError::OutcomeEnvelope(error.to_string()))?;
+        let canonical =
+            canonical_json_bytes(&outcome).map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        if canonical != retained.outcome_envelope_json
+            || outcome.body.challenge_envelope_sha256 != challenge_envelope_sha256
+        {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
+        self.require_recorded_outcome_signature(challenge_id, &outcome, request.now)?;
+        let bond_disposition = self.dispose_dispute_bond(challenge_id, request.now)?;
+        Ok(Some(ChallengeEvaluationOutcome {
+            state: challenge.state,
+            outcome,
+            outcome_envelope_sha256: outcome_envelope_sha256.to_owned(),
             bond_disposition,
         }))
     }
@@ -4745,6 +4824,65 @@ impl FindingChallengeCoordinator {
             self.verify_purchase_record_from_retained_admission(identity, &signed, now)?;
         }
         Ok(())
+    }
+
+    /// Authenticate purchase standing against both durable existence and
+    /// the admission-pinned authority lifecycle before pure adjudication.
+    /// A caller-supplied signed record is not standing merely because its
+    /// signer can backdate `recorded_at`: the exact envelope must be the one
+    /// the purchase authority retained when the sale settled.
+    fn require_authoritative_purchase_standing(
+        &self,
+        admission: &SignedFindingAdmission,
+        evidence: &FindingChallengeClassEvidence<'_>,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let signed = match evidence {
+            FindingChallengeClassEvidence::EvidenceInvalid(evidence) => evidence.purchase_record,
+            FindingChallengeClassEvidence::ReplayContradiction(evidence) => {
+                evidence.purchase_record
+            }
+            FindingChallengeClassEvidence::DigestMismatch(_) => return Ok(()),
+        };
+        let record = &signed.body;
+        let stored = self
+            .purchases
+            .get_purchase_record(&record.purchase_key)
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::UnknownPurchaseRecord(record.purchase_key.clone())
+            })?;
+        let presented_json =
+            canonical_json_bytes(signed).map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        if stored.record_json != presented_json
+            || stored.record_sha256 != sha256_hex(&presented_json)
+            || stored.recorded_at != record.recorded_at
+        {
+            return Err(ChallengeCoordinatorError::PurchaseStanding(
+                "the supplied envelope is not the retained settled record".to_owned(),
+            ));
+        }
+        if self.envelope_digest(admission)? != record.venue_admission_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::PurchaseStanding(
+                "the retained record names another venue admission".to_owned(),
+            ));
+        }
+        let policy = &admission.body.purchase_authority;
+        policy
+            .validate("purchase_authority")
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStanding(error.to_string()))?;
+        let standing_pin = FindingAuthorityPin {
+            authority_id: policy.authority_id.clone(),
+            key_hex: policy.key.to_hex(),
+            key_epoch: policy.key_epoch,
+            valid_from: policy.valid_from,
+            valid_until: policy.valid_until,
+            revocation_status_ref: policy.revocation_status_ref.clone(),
+        };
+        let purchase_authority =
+            self.require_live_role(&standing_pin, record.recorded_at, now, "purchase standing")?;
+        verify_signed_purchase_record(signed, &purchase_authority)
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStanding(error.to_string()))
     }
 
     /// Verify a historical purchase under the authority policy the venue

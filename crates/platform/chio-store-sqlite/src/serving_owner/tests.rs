@@ -396,6 +396,56 @@ fn finding_challenge_projection_rejects_offline_state_tampering() {
     ));
 }
 
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn finding_challenge_projection_covers_retained_outcome_bytes() {
+    use crate::finding_challenge_store::{
+        FindingChallengeAuthorizationBranch, FindingChallengeEvidenceClass,
+        FindingChallengeSubmission,
+    };
+
+    let (_temp, database, lock_root) = fixture();
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision");
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open");
+    authority
+        .finding_challenge_store()
+        .submit_challenge(&FindingChallengeSubmission {
+            challenge_id: "outcome-tamper-challenge",
+            finding_id: &"a".repeat(64),
+            listing_id: "outcome-tamper-listing",
+            challenge_envelope_sha256: &sha256_hex(b"outcome-tamper-challenge-envelope"),
+            authorization_branch: FindingChallengeAuthorizationBranch::BuyerSubmission,
+            evidence_class: FindingChallengeEvidenceClass::EvidenceInvalid,
+            challenger_hex: Some(&"b".repeat(64)),
+            submitted_at: 1_750_000_000,
+        })
+        .expect("challenge mutation");
+    drop(authority);
+
+    let outcome = br#"{"outcome":"offline-tamper"}"#;
+    Connection::open(&database)
+        .expect("open authority offline")
+        .execute(
+            r#"
+            INSERT INTO finding_challenge_outcomes (
+                outcome_envelope_sha256, challenge_id,
+                outcome_envelope_json, recorded_at
+            ) VALUES (?1, ?2, ?3, ?4)
+            "#,
+            params![
+                sha256_hex(outcome),
+                "outcome-tamper-challenge",
+                outcome.as_slice(),
+                1_750_000_001_i64,
+            ],
+        )
+        .expect("tamper retained outcome");
+    assert!(matches!(
+        SqliteAuthorityStore::open_serving(&database, &lock_root),
+        Err(SqliteServingOwnerError::Invalid(_))
+    ));
+}
+
 #[test]
 fn budget_database_ahead_of_anchor_recovers_only_a_valid_chain_extension() {
     let (_temp, database, lock_root) = fixture();

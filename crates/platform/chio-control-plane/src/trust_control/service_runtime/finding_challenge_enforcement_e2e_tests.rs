@@ -2970,12 +2970,17 @@ fn close_challenge(
     challenge_id: &str,
     verdict: FindingChallengeVerdict,
     outcome_envelope_sha256: &str,
+    outcome_envelope_json: &[u8],
     now: u64,
 ) -> Result<FindingChallengeState, AnyError> {
     deployment.challenges.begin_evaluation(challenge_id, now)?;
-    Ok(deployment
-        .challenges
-        .record_verdict(challenge_id, verdict, outcome_envelope_sha256, now)?)
+    Ok(deployment.challenges.record_verdict(
+        challenge_id,
+        verdict,
+        outcome_envelope_sha256,
+        outcome_envelope_json,
+        now,
+    )?)
 }
 
 /// The evaluator-signed upheld outcome the uphold transaction consumes.
@@ -3280,6 +3285,7 @@ fn finding_challenge_pool_rotation_preserves_the_admission_pinned_rail() -> Test
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &digest("rotated-pool-upheld"),
+        b"rotated-pool-upheld",
         NOW + 1,
     )?;
     assert_eq!(
@@ -4380,6 +4386,7 @@ fn finding_challenge_upheld_verdict_returns_the_dispute_bond() -> TestResult {
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &digest("upheld-outcome"),
+        b"upheld-outcome",
         NOW + 10,
     )?;
     assert_eq!(
@@ -4415,6 +4422,7 @@ fn finding_challenge_a_failed_refund_never_reports_the_bond_returned() -> TestRe
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &digest("upheld-refund-retry"),
+        b"upheld-refund-retry",
         NOW + 10,
     )?;
 
@@ -4449,6 +4457,80 @@ fn finding_challenge_a_failed_refund_never_reports_the_bond_returned() -> TestRe
 }
 
 #[test]
+fn finding_challenge_terminal_evaluation_recovers_its_signed_outcome() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenged = challenged_finding()?;
+    let sale = settle_purchase(
+        &deployment,
+        "outcome-recovery",
+        BUYER_ONE_DESTINATION,
+        50,
+        NOW,
+    )?;
+    let case = evidence_invalid_case(
+        &challenged,
+        ProductionShape::ForeignSignature,
+        &sale,
+        Filing::Buyer,
+    )?;
+    coordinator.submit(&case.challenge, &challenged.raw_finding, NOW + 1)?;
+    let stake = usd(300);
+    let required = usd(5_000);
+    let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
+    let evidence = case.evidence();
+
+    deployment.rail.refuse();
+    assert!(matches!(
+        coordinator
+            .evaluate(&evaluation_request(
+                &case.challenge,
+                &challenged,
+                &evidence,
+                &collateral,
+                NOW + 2,
+            ))
+            .expect_err("the refused bond return interrupts the response"),
+        ChallengeCoordinatorError::DisputeBondRail(_)
+    ));
+    let terminal = deployment
+        .challenges
+        .get_challenge(&case.challenge.body.challenge_id)?
+        .ok_or("the verdict committed before the interrupted return")?;
+    assert_eq!(terminal.state, FindingChallengeState::Upheld);
+    let retained_digest = terminal
+        .outcome_envelope_sha256
+        .as_deref()
+        .ok_or("the terminal verdict retains its outcome digest")?;
+    let retained = deployment
+        .challenges
+        .get_outcome_envelope(retained_digest)?
+        .ok_or("the signed outcome bytes commit atomically with the verdict")?;
+
+    deployment.rail.accept();
+    let recovered = coordinator
+        .evaluate(&evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &collateral,
+            NOW + 3,
+        ))?
+        .ok_or("the terminal retry returns the retained signed outcome")?;
+    assert_eq!(recovered.state, FindingChallengeState::Upheld);
+    assert_eq!(recovered.outcome_envelope_sha256, retained_digest);
+    assert_eq!(
+        canonical_json_bytes(&recovered.outcome)?,
+        retained.outcome_envelope_json
+    );
+    assert_eq!(
+        recovered.bond_disposition,
+        Some(FindingDisputeLockDisposition::Returned)
+    );
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_rejected_verdict_applies_the_predeclared_forfeit() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -4461,6 +4543,7 @@ fn finding_challenge_rejected_verdict_applies_the_predeclared_forfeit() -> TestR
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Rejected,
         &digest("rejected-outcome"),
+        b"rejected-outcome",
         NOW + 10,
     )?;
     assert_eq!(
@@ -4499,6 +4582,7 @@ fn finding_challenge_indeterminate_never_forfeits_and_closes_by_returning_the_lo
             retry_deadline: Some(lock_expiry),
         },
         &digest("indeterminate-outcome"),
+        b"indeterminate-outcome",
         NOW + 10,
     )?;
     assert_eq!(state, FindingChallengeState::IndeterminateRetryable);
@@ -4581,11 +4665,13 @@ fn upheld_liability() -> Result<Upheld, AnyError> {
     let challenge = buyer_challenge(&keypair(41))?;
     coordinator.submit(&challenge, &raw, NOW + 2)?;
     let outcome = upheld_outcome(&challenge, &deployment.allocation_id, 200, "USD")?;
+    let outcome_json = canonical_json_bytes(&outcome)?;
     close_challenge(
         &deployment,
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &signed_envelope_sha256(&outcome)?,
+        &outcome_json,
         NOW + 3,
     )?;
     assert_eq!(
@@ -4716,11 +4802,13 @@ fn ready_to_uphold_with_terms_and_penalty(
         open_per_sale_encumbrance_units,
         currency,
     )?;
+    let outcome_json = canonical_json_bytes(&outcome)?;
     close_challenge(
         deployment,
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &signed_envelope_sha256(&outcome)?,
+        &outcome_json,
         NOW + 1,
     )?;
     Ok(ReadyToUphold {
@@ -4751,11 +4839,13 @@ fn finding_challenge_uphold_rejects_a_different_authoritative_penalty_calculatio
     });
     body.outcome_id = chio_finding::derive_outcome_id(&body)?;
     let outcome = SignedFindingChallengeOutcome::sign(body, &keypair(31))?;
+    let outcome_json = canonical_json_bytes(&outcome)?;
     close_challenge(
         &deployment,
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &signed_envelope_sha256(&outcome)?,
+        &outcome_json,
         NOW + 1,
     )?;
 
@@ -6530,6 +6620,7 @@ fn finalizing_liability_with(
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &digest("upheld-outcome"),
+        b"upheld-outcome",
         NOW + 1,
     )?;
 
@@ -8451,6 +8542,99 @@ fn finding_challenge_listing_ceiling_comes_from_the_signed_schedule() -> TestRes
 }
 
 #[test]
+fn finding_challenge_purchase_standing_requires_retention_and_live_authority() -> TestResult {
+    // A valid signature over a record that the venue never settled is not
+    // standing, even when another deployment retained those same bytes.
+    {
+        let source = deployment()?;
+        let unretained = settle_purchase(
+            &source,
+            "unretained-standing",
+            BUYER_ONE_DESTINATION,
+            50,
+            NOW,
+        )?;
+        let deployment = deployment()?;
+        let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+        let challenged = challenged_finding()?;
+        let case = evidence_invalid_case(
+            &challenged,
+            ProductionShape::ForeignSignature,
+            &unretained,
+            Filing::Buyer,
+        )?;
+        coordinator.submit(&case.challenge, &challenged.raw_finding, NOW + 1)?;
+        let stake = usd(300);
+        let required = usd(5_000);
+        let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
+        let evidence = case.evidence();
+        assert!(matches!(
+            coordinator
+                .evaluate(&evaluation_request(
+                    &case.challenge,
+                    &challenged,
+                    &evidence,
+                    &collateral,
+                    NOW + 2,
+                ))
+                .expect_err("an unretained record establishes no standing"),
+            ChallengeCoordinatorError::UnknownPurchaseRecord(_)
+        ));
+    }
+
+    // A retained record still fails closed when its admission-pinned
+    // purchase authority was revoked when the record claims it settled.
+    {
+        let deployment = deployment()?;
+        let sale = settle_purchase(
+            &deployment,
+            "revoked-standing",
+            BUYER_ONE_DESTINATION,
+            50,
+            NOW,
+        )?;
+        let coordinator = deployment
+            .coordinator_with_revoked_role("purchase", FindingDisputeLockDisposition::Forfeited)?;
+        let challenged = challenged_finding()?;
+        let case = evidence_invalid_case(
+            &challenged,
+            ProductionShape::ForeignSignature,
+            &sale,
+            Filing::Buyer,
+        )?;
+        coordinator.submit(&case.challenge, &challenged.raw_finding, NOW + 1)?;
+        let stake = usd(300);
+        let required = usd(5_000);
+        let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
+        let evidence = case.evidence();
+        assert!(matches!(
+            coordinator
+                .evaluate(&evaluation_request(
+                    &case.challenge,
+                    &challenged,
+                    &evidence,
+                    &collateral,
+                    NOW + 2,
+                ))
+                .expect_err("revoked purchase authority establishes no standing"),
+            ChallengeCoordinatorError::AuthorityLifecycle {
+                role: "purchase standing",
+                ..
+            }
+        ));
+        assert_eq!(
+            deployment
+                .challenges
+                .get_challenge(&case.challenge.body.challenge_id)?
+                .ok_or("the refused challenge remains submitted")?
+                .state,
+            FindingChallengeState::Submitted
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_evaluation_refuses_an_unsigned_penalty_stake() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -9702,11 +9886,13 @@ fn finding_challenge_an_expired_reservation_neither_wedges_nor_inflates_the_clai
     let challenge = buyer_challenge(&keypair(41))?;
     coordinator.submit(&challenge, &raw, NOW + 2)?;
     let outcome = upheld_outcome(&challenge, &deployment.allocation_id, 100, "USD")?;
+    let outcome_json = canonical_json_bytes(&outcome)?;
     close_challenge(
         &deployment,
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &signed_envelope_sha256(&outcome)?,
+        &outcome_json,
         NOW + 3,
     )?;
 
@@ -9774,11 +9960,13 @@ fn finding_challenge_uphold_refuses_an_outcome_for_a_different_challenge() -> Te
                 submitted_at: at,
             })?;
         let outcome = upheld_outcome(challenge, &deployment.allocation_id, 0, "USD")?;
+        let outcome_json = canonical_json_bytes(&outcome)?;
         close_challenge(
             &deployment,
             &challenge.body.challenge_id,
             FindingChallengeVerdict::Upheld,
             &signed_envelope_sha256(&outcome)?,
+            &outcome_json,
             at + 2,
         )?;
         outcomes.push(outcome);
