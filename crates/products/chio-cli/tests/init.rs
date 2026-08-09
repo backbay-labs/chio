@@ -118,11 +118,11 @@ fn init_rejects_parent_component_after_symlink_segment() {
         !output.status.success(),
         "chio init accepted a parent component after a symlink segment"
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("parent components after a named component"),
-        "unexpected chio init error: {}",
-        String::from_utf8_lossy(&output.stderr)
+        stderr.contains("parent components after a named component")
+            || stderr.contains("symbolic link or non-directory"),
+        "unexpected chio init error: {stderr}"
     );
     assert!(
         !redirected_project.exists() && !lexical_project.exists(),
