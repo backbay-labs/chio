@@ -10,6 +10,9 @@
 //! operation, so no two reservations can name one payment.
 //! `purchase_payout_bindings` retains the separately buyer-signed EVM
 //! settlement address without overloading the agent's capability identity.
+//! A live reservation counts that binding against provisional payout
+//! capacity, but only a settled purchase promotes it into the immutable
+//! payout roster.
 //! `seller_exposure_encumbrances` holds the exposure that reservation
 //! places against a consumed collateral allocation, which is what bounds a
 //! seller's liability: exposure counts while the reservation is live and
@@ -24,9 +27,9 @@
 //! a lifted listing still shows when and for how long it was blocked.
 //! `purchase_records` and `failed_delivery_records` are the two terminal
 //! outcomes, retained without deletion and content-addressed against their
-//! stored digests. `payout_destinations` is the bounded sixteen-slot
-//! destination set per allocation, with a rail-tagged community fund in
-//! slot zero and EVM buyer destinations in the remaining slots.
+//! stored digests. `payout_destinations` is the bounded sixteen-slot settled
+//! destination set per allocation, with a rail-tagged community fund in slot
+//! zero and EVM buyer destinations in the remaining slots.
 //!
 //! Writes run under `TransactionBehavior::Immediate` behind the
 //! serving-owner fence; reads run `Deferred`; a commit whose outcome
@@ -64,7 +67,9 @@ use crate::admission_operation_store::verify_active_owner;
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-/// Revision 7 distinguishes retained legacy terminal bindings from live
+/// Revision 8 makes reservation payout capacity provisional until a
+/// settlement-capable purchase promotes it; revision 7 distinguishes retained
+/// legacy terminal bindings from live
 /// EVM bindings; revision 6 made every payout slot an EVM destination and
 /// reserved a buyer destination before funds can move; revision 5 separated the
 /// buyer-signed payout address from agent identity;
@@ -73,7 +78,10 @@ const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
 /// a revision-1 database adopts the new tables on its next open; a
 /// revision-2 database also carries its listing-keyed blocks across in
 /// [`carry_listing_sales_blocks_across`].
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 7;
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 8;
+/// Revision whose eagerly admitted reservation destinations must be reduced
+/// to the settled roster when upgrading.
+const FINDING_PURCHASE_EAGER_PAYOUT_VERSION: i32 = 7;
 /// Revision that introduced the listing-keyed, never-lifted sales block.
 const FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION: i32 = 2;
 /// Name the listing-keyed block table is parked under while the episode
@@ -575,16 +583,11 @@ impl SqliteFindingPurchaseStore {
         if inserted != 1 {
             return Err(invariant("reservation insert did not affect one row"));
         }
-        // Claim an immutable payout slot in the same transaction that
-        // encumbers seller exposure. A purchase that cannot ever be paid
-        // out therefore rejects before payment dispatch, rather than
-        // discovering slot exhaustion after a durable capture.
-        admit_payout_destination_tx(
-            &transaction,
-            input.allocation_id,
-            input.payout_destination,
-            input.created_at,
-        )?;
+        // Reserve bounded provisional capacity in the same transaction that
+        // encumbers seller exposure. Abandoning this reservation releases
+        // that capacity because only settlement promotes the destination to
+        // the immutable roster.
+        reserve_payout_destination_tx(&transaction, input.allocation_id, input.payout_destination)?;
         let payout_bound = transaction
             .execute(
                 r#"
@@ -842,17 +845,15 @@ impl SqliteFindingPurchaseStore {
             input.purchase_key,
             "purchase key",
         )?;
-        if load_destination_tx(
+        // Promotion happens in the same transaction as the settlement
+        // record. A denial, expiry, or explicit release therefore never
+        // consumes an immutable buyer slot.
+        admit_payout_destination_tx(
             &transaction,
             &encumbrance.allocation_id,
             input.payout_destination,
-        )?
-        .is_none()
-        {
-            return Err(invariant(
-                "delivery payout destination lost its pre-payment slot",
-            ));
-        }
+            input.now,
+        )?;
         close_reserved_slot_tx(
             &transaction,
             input.reservation_id,
@@ -1695,6 +1696,63 @@ fn load_destination_tx(
     }))
 }
 
+/// Reserve one distinct buyer-destination position while a purchase is live.
+///
+/// The binding row is retained for replay, but only bindings whose reservation
+/// is still live count here. Settled destinations already occupy immutable
+/// slots, while released and expired reservations release provisional
+/// capacity without deleting their audit history.
+fn reserve_payout_destination_tx(
+    transaction: &Transaction<'_>,
+    allocation_id: &str,
+    destination: &str,
+) -> Result<(), FindingPurchaseStoreError> {
+    if let Some(existing) = load_destination_tx(transaction, allocation_id, destination)? {
+        if existing.slot_index == COMMUNITY_FUND_SLOT_INDEX {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "community fund destination cannot be used as a buyer payout".to_owned(),
+            ));
+        }
+        return Ok(());
+    }
+    let (occupied, already_provisional): (i64, i64) = transaction
+        .query_row(
+            r#"
+            WITH occupied(destination) AS (
+                SELECT destination
+                FROM payout_destinations
+                WHERE allocation_id = ?1 AND slot_index BETWEEN 1 AND 15
+                UNION
+                SELECT bindings.destination
+                FROM purchase_payout_bindings AS bindings
+                JOIN purchase_reservations AS reservations
+                  ON reservations.reservation_id = bindings.reservation_id
+                JOIN seller_exposure_encumbrances AS encumbrances
+                  ON encumbrances.reservation_id = reservations.reservation_id
+                WHERE encumbrances.allocation_id = ?1
+                  AND bindings.binding_kind = 'evm'
+                  AND reservations.state IN ('open', 'slot_reserved')
+            )
+            SELECT
+                COUNT(*),
+                EXISTS(SELECT 1 FROM occupied WHERE destination = ?2)
+            FROM occupied
+            "#,
+            params![allocation_id, destination],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(sqlite_error)?;
+    if already_provisional != 0 {
+        return Ok(());
+    }
+    if occupied >= i64::from(PAYOUT_DESTINATION_SLOTS - 1) {
+        return Err(FindingPurchaseStoreError::DestinationSlotsExhausted(
+            allocation_id.to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn admit_payout_destination_tx(
     transaction: &Transaction<'_>,
     allocation_id: &str,
@@ -1702,11 +1760,17 @@ fn admit_payout_destination_tx(
     admitted_at: u64,
 ) -> Result<FindingPayoutDestinationAdmission, FindingPurchaseStoreError> {
     if let Some(existing) = load_destination_tx(transaction, allocation_id, destination)? {
+        if existing.slot_index == COMMUNITY_FUND_SLOT_INDEX {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "community fund destination cannot be used as a buyer payout".to_owned(),
+            ));
+        }
         return Ok(FindingPayoutDestinationAdmission {
             outcome: FindingPurchaseWriteOutcome::ExistingSame,
             ..existing
         });
     }
+    reserve_payout_destination_tx(transaction, allocation_id, destination)?;
     let mut taken = [false; PAYOUT_DESTINATION_SLOTS as usize];
     {
         let mut statement = transaction
@@ -2394,6 +2458,7 @@ pub(crate) fn initialize_finding_purchase_schema(
     park_listing_keyed_sales_blocks(&transaction, on_disk)?;
     park_rail_only_payout_destinations(&transaction)?;
     park_untyped_purchase_payout_bindings(&transaction)?;
+    release_eager_reservation_payout_destinations(&transaction, on_disk)?;
     transaction
         .execute_batch(FINDING_PURCHASE_SCHEMA)
         .map_err(sqlite_error)?;
@@ -2408,6 +2473,60 @@ pub(crate) fn initialize_finding_purchase_schema(
     .map_err(|error| invariant(error.to_string()))?;
     verify_finding_purchase_invariants(&transaction)?;
     transaction.commit().map_err(sqlite_error)
+}
+
+/// Remove buyer slots revision 7 admitted solely for reservations that
+/// never settled.
+///
+/// Revision 7 promoted a buyer destination while opening its reservation.
+/// Those immutable rows outlived release and expiry, eventually exhausting
+/// an allocation even though no purchase had paid to them. A destination
+/// used by any consumed reservation remains settled history; slot zero is
+/// always the community fund and remains untouched. Dropping and recreating
+/// the retention triggers happens inside the schema transaction, so any
+/// later migration failure restores both the rows and their protections.
+fn release_eager_reservation_payout_destinations(
+    transaction: &Transaction<'_>,
+    on_disk_version: i32,
+) -> Result<(), FindingPurchaseStoreError> {
+    if on_disk_version != FINDING_PURCHASE_EAGER_PAYOUT_VERSION {
+        return Ok(());
+    }
+    transaction
+        .execute_batch(
+            r#"
+            DROP TRIGGER IF EXISTS payout_destinations_immutable;
+            DROP TRIGGER IF EXISTS payout_destinations_no_delete;
+
+            DELETE FROM payout_destinations AS destinations
+            WHERE destinations.slot_index BETWEEN 1 AND 15
+              AND EXISTS (
+                  SELECT 1
+                  FROM purchase_payout_bindings AS bindings
+                  JOIN purchase_reservations AS reservations
+                    ON reservations.reservation_id = bindings.reservation_id
+                  JOIN seller_exposure_encumbrances AS encumbrances
+                    ON encumbrances.reservation_id = reservations.reservation_id
+                  WHERE encumbrances.allocation_id = destinations.allocation_id
+                    AND bindings.destination = destinations.destination
+                    AND bindings.binding_kind = 'evm'
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM purchase_payout_bindings AS bindings
+                  JOIN purchase_reservations AS reservations
+                    ON reservations.reservation_id = bindings.reservation_id
+                  JOIN seller_exposure_encumbrances AS encumbrances
+                    ON encumbrances.reservation_id = reservations.reservation_id
+                  WHERE encumbrances.allocation_id = destinations.allocation_id
+                    AND bindings.destination = destinations.destination
+                    AND bindings.binding_kind = 'evm'
+                    AND reservations.state = 'consumed'
+              );
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    Ok(())
 }
 
 /// Park a listing-keyed sales block table beside the schema batch so the

@@ -7413,7 +7413,7 @@ fn finding_challenge_regressed_confirmation_depth_never_reaches_the_publisher() 
 }
 
 #[test]
-fn finding_challenge_an_operator_rotation_across_the_broadcast_never_settles() -> TestResult {
+fn finding_challenge_confirmed_impairment_recovers_across_operator_rotation() -> TestResult {
     let case = finalizing_liability()?;
     let publisher = MiningPublisher::new();
 
@@ -7458,23 +7458,10 @@ fn finding_challenge_an_operator_rotation_across_the_broadcast_never_settles() -
         operator_key_epoch: 4,
         ..qualified_observation()
     };
-    let refused = case
-        .finalize_observing(
-            &ScriptedObservations::then_qualified(vec![still_rotated]),
-            &UnreachablePublisher,
-            SETTLEMENT_NOW + 120,
-        )?
-        .expect_err("confirmed recovery must not bypass a quarantined observation");
-    assert!(matches!(
-        refused,
-        ChallengeCoordinatorError::BondObservation(_)
-    ));
-    assert!(case.head()?.quarantined);
-
     let recovered = case.finalize_observing(
-        &ScriptedObservations::qualified(),
+        &ScriptedObservations::then_qualified(vec![still_rotated]),
         &UnreachablePublisher,
-        SETTLEMENT_NOW + 180,
+        SETTLEMENT_NOW + 120,
     )??;
     assert_eq!(recovered, FindingFinalization::AlreadyConfirmed);
     let settled = case.head()?;
@@ -8266,6 +8253,46 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
             }
         ));
     }
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_governance_charter_must_be_issued_inside_the_pinned_window() -> TestResult {
+    let deployment = deployment()?;
+    let live = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let ready = ready_to_uphold(&deployment, &live)?;
+    let governance = governance()?;
+    let mut config = market_config();
+    config.governance_root.valid_from = NOW - 650;
+    let coordinator =
+        deployment.coordinator_under(&config, FindingDisputeLockDisposition::Forfeited)?;
+    let stake = usd(300);
+    let required = usd(5_000);
+
+    let refused = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.challenge,
+            &ready.outcome,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+            &market_terms(CLAIM_WINDOW_SECS)?,
+            0,
+            &[],
+            &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2,
+        )
+        .expect_err("a same-key charter predating the configured lifecycle opens no liability");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::AuthorityLifecycle {
+            role: "governance charter",
+            ..
+        }
+    ));
+    assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
+    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 

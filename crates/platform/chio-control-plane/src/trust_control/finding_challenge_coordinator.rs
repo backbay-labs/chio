@@ -2053,11 +2053,12 @@ impl FindingChallengeCoordinator {
     /// finishes the settlement instead.
     ///
     /// Live state. A signed snapshot attests what an observer saw at one
-    /// block, which is not the same as what is true now. The injected
-    /// observation source is read twice against that snapshot, once before
-    /// the call is prepared and once before the head settles, so a reorg
-    /// or an operator rotation that lands across the broadcast is observed
-    /// rather than assumed away.
+    /// block, which is not the same as what is true now. Before dispatch,
+    /// the injected observation source is read against that snapshot both
+    /// before the call is prepared and before the head settles. Recovery
+    /// instead re-observes the exact confirmed transaction, so an operator
+    /// rotation cannot either authorize a new dispatch or strand collateral
+    /// that already moved.
     ///
     /// Authorization to broadcast. The vault verifies the impairment
     /// against a published root, so both effects the instruction binds are
@@ -2167,13 +2168,22 @@ impl FindingChallengeCoordinator {
             return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
         }
         let seller_was_confirmed = seller_intent.state == FindingEffectIntentState::Confirmed;
-        self.require_live_settlement_observer(bond_snapshot, now)?;
-        let settlement_observer = self.require_live_role(
-            &self.pins.settlement_observer,
-            bond_snapshot.body.observed_at,
-            now,
-            "settlement observer",
-        )?;
+        let settlement_observer = if seller_was_confirmed {
+            // The finalization authority content-bound this exact signed
+            // snapshot before dispatch. Recovery authenticates that frozen
+            // history under its original observer even after the configured
+            // operator rotates; the confirmed transaction itself is
+            // independently re-observed below.
+            bond_snapshot.signer_key.clone()
+        } else {
+            self.require_live_settlement_observer(bond_snapshot, now)?;
+            self.require_live_role(
+                &self.pins.settlement_observer,
+                bond_snapshot.body.observed_at,
+                now,
+                "settlement observer",
+            )?
+        };
         let pins = FindingEnforcementPins {
             finalization_authority: self.finalization_authority.public_key(),
             settlement_observer,
@@ -2190,13 +2200,13 @@ impl FindingChallengeCoordinator {
             verify_finding_enforcement(enforcement, bond_snapshot, &pins, now)
         }
         .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-        // The snapshot's signature proves who observed the collateral, not
-        // that what they observed is still true. A block reorged out from
-        // under it, a rotated operator key, or a registry that no longer
-        // qualifies the observer all leave the figure the amount was
-        // checked against unknown, so the chain is re-read before the call
-        // is prepared.
-        self.require_qualified_observation(&verified, observations)?;
+        if !seller_was_confirmed {
+            // Before dispatch, the snapshot's signature proves who observed
+            // the collateral, not that what they observed is still true. A
+            // reorg or operator rotation leaves the authorized amount
+            // unknown, so the chain is re-read before preparing the call.
+            self.require_qualified_observation(&verified, observations)?;
+        }
         let planned = plan_finding_impairment(
             settlement_config,
             &verified,
@@ -2232,7 +2242,6 @@ impl FindingChallengeCoordinator {
                 liability_key,
                 enforcement,
                 bond_snapshot,
-                observations,
                 now,
             );
         }
@@ -3335,6 +3344,12 @@ impl FindingChallengeCoordinator {
             now,
             "governance",
         )?;
+        let charter_governance_key = self.require_live_role(
+            &self.pins.governance_authority,
+            governance.charter.body.issued_at,
+            now,
+            "governance charter",
+        )?;
         // The listing authenticates against its own namespace owner rather
         // than a pinned key, so the case is what anchors it: a listing the
         // pinned case does not name cannot be the one being sanctioned.
@@ -3351,7 +3366,7 @@ impl FindingChallengeCoordinator {
                 "fee schedule",
             ));
         }
-        if governance.charter.signer_key != governance_key {
+        if governance.charter.signer_key != charter_governance_key {
             return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
                 "governance charter",
             ));
@@ -3660,7 +3675,6 @@ impl FindingChallengeCoordinator {
         liability_key: &str,
         enforcement: &SignedFindingChallengeEnforcement,
         bond_snapshot: &SignedFindingFinalizedBondSnapshot,
-        observations: &dyn FindingBondObservationSource,
         now: u64,
     ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
         let liability = self
@@ -3671,17 +3685,11 @@ impl FindingChallengeCoordinator {
                 ChallengeCoordinatorError::ChallengeStore("liability is not recorded".to_owned())
             })?;
         // If a post-dispatch chain recheck quarantined the liability,
-        // recovery must explicitly authenticate the original snapshot and
-        // re-observe its block and operator qualification before the
-        // quarantine can be cleared.
+        // recovery must explicitly authenticate the original snapshot. The
+        // caller has already re-observed the exact confirmed transaction at
+        // current finality, so a later observer-key rotation cannot strand
+        // an impairment that already moved collateral.
         if liability.quarantined {
-            self.require_live_settlement_observer(bond_snapshot, now)?;
-            let settlement_observer = self.require_live_role(
-                &self.pins.settlement_observer,
-                bond_snapshot.body.observed_at,
-                now,
-                "settlement observer",
-            )?;
             let seller = PublicKey::from_hex(&liability.seller_hex).map_err(|_| {
                 ChallengeCoordinatorError::ChallengeStore(
                     "liability carries an invalid durable seller key".to_owned(),
@@ -3689,19 +3697,13 @@ impl FindingChallengeCoordinator {
             })?;
             let pins = FindingEnforcementPins {
                 finalization_authority: self.finalization_authority.public_key(),
-                settlement_observer,
+                settlement_observer: bond_snapshot.signer_key.clone(),
                 seller,
                 finality_requirement: self.pins.settlement_finality_requirement,
                 max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
             };
-            let verified = verify_finding_enforcement_for_reconciliation(
-                enforcement,
-                bond_snapshot,
-                &pins,
-                now,
-            )
-            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-            self.require_qualified_observation(&verified, observations)?;
+            verify_finding_enforcement_for_reconciliation(enforcement, bond_snapshot, &pins, now)
+                .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
             self.challenges
                 .set_liability_quarantine(liability_key, false, now)
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
