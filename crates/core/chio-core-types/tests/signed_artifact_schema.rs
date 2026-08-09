@@ -802,6 +802,12 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/audit-report.schema.json",
         ),
         (
+            "chio.finding.audit-round-authorization.v1",
+            "finding_audit_round_authorization",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/audit-round-authorization.schema.json",
+        ),
+        (
             "chio.finding.bond-backing.v1",
             "finding_bond_backing",
             "finding-market-v1",
@@ -883,6 +889,7 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
     const EXPECTED_REGISTRY_ONLY: &[&str] = &[
         "chio.finding.delivery.v1",
         "chio.finding.purchase-context.v1",
+        "chio.finding.recovery-context.v1",
         "chio.finding.replay-observation.v1",
         "chio.finding.replay-recipe-input.v1",
     ];

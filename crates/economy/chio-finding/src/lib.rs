@@ -9,8 +9,9 @@
 //! purchase context, the settled purchase record, and the failed-delivery
 //! terminal, and the challenge and audit lane: the class-gated challenge,
 //! its signed outcome and enforcement instruction, the finalized bond
-//! snapshot, the audit epoch and report, the governance-signed authority
-//! key revocation, and the unsigned replay observation preimage.
+//! snapshot, the audit epoch, report, and round authorization, the
+//! governance-signed authority key revocation, the unsigned replay observation
+//! preimage, and the unsigned recovery evidence carrier.
 //! Status-feed artifacts have no resolver in this crate; callers that need
 //! them resolve the feeds a profile pins and supply what they find. Design:
 //! docs/research/cognition-market/ARCHITECTURE.md sections 4-5 and
@@ -23,6 +24,7 @@ pub use chio_core_types::{canonical_json_bytes, crypto};
 mod admission;
 mod audit_epoch;
 mod audit_report;
+mod audit_round_authorization;
 mod authorization;
 mod backing;
 mod challenge;
@@ -46,6 +48,7 @@ mod validate;
 pub use admission::*;
 pub use audit_epoch::*;
 pub use audit_report::*;
+pub use audit_round_authorization::*;
 pub use authorization::*;
 pub use backing::*;
 pub use challenge::*;

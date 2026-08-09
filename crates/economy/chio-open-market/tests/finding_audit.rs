@@ -362,7 +362,7 @@ fn resolved_outcomes_for_report(
 }
 
 /// A report that accounts for the standard round exactly: three selected,
-/// one recorded as missed, two attempted with one receipt each.
+/// one recorded as missed, two attempted with one signed envelope each.
 fn report_for(
     epoch_envelope_sha256: &str,
     selection: &[AuditSelection],
@@ -374,9 +374,9 @@ fn report_for(
         audit_epoch_envelope_sha256: epoch_envelope_sha256.to_owned(),
         revealed_seed: SEED.to_owned(),
         selected_finding_ids: ids.clone(),
-        attempt_receipt_ids: vec![
-            "audit-attempt-0001".to_owned(),
-            "audit-attempt-0002".to_owned(),
+        attempt_envelope_sha256s: vec![
+            sha256_hex(b"audit attempt envelope 1"),
+            sha256_hex(b"audit attempt envelope 2"),
         ],
         missed_attempts: vec![FindingMissedAudit {
             finding_id: ids[2].clone(),
@@ -394,7 +394,7 @@ fn report_for(
         })
         .collect();
     let audit_attempts = audit_attempts_for_report(&report, &selected_entries);
-    report.attempt_receipt_ids = audit_attempts
+    report.attempt_envelope_sha256s = audit_attempts
         .iter()
         .map(|attempt| signed_envelope_sha256(attempt).test_expect("audit attempt envelope digest"))
         .collect();
@@ -771,12 +771,12 @@ fn a_report_cannot_fabricate_an_outcome_envelope_digest() {
 }
 
 #[test]
-fn a_report_cannot_fabricate_an_attempt_receipt_id() {
+fn a_report_cannot_fabricate_an_attempt_envelope_digest() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
     let mut report = report_for(&envelope, &selection);
-    report.attempt_receipt_ids[0] = sha256_hex(b"fabricated audit attempt envelope");
+    report.attempt_envelope_sha256s[0] = sha256_hex(b"fabricated audit attempt envelope");
     reseal(&mut report);
 
     assert!(matches!(
@@ -1025,7 +1025,7 @@ fn a_report_with_a_dropped_selection_rejects() {
     let envelope = signed_epoch_digest(&epoch);
     let mut report = report_for(&envelope, &selection);
     let dropped = report.selected_finding_ids.remove(0);
-    report.attempt_receipt_ids.truncate(1);
+    report.attempt_envelope_sha256s.truncate(1);
     reseal(&mut report);
     assert_eq!(
         verify_audit_report(&epoch, &envelope, &report, &eligible).test_unwrap_err(),
@@ -1039,30 +1039,30 @@ fn a_report_leaving_a_target_unaccounted_rejects() {
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
 
-    // Two of three targets attempted, but only one attempt receipt: the
+    // Two of three targets attempted, but only one attempt envelope: the
     // third is neither attempted nor recorded as missed.
     let mut short = report_for(&envelope, &selection);
-    short.attempt_receipt_ids.truncate(1);
+    short.attempt_envelope_sha256s.truncate(1);
     reseal(&mut short);
     assert_eq!(
         verify_audit_report(&epoch, &envelope, &short, &eligible).test_unwrap_err(),
         FindingAuditError::UnaccountedSelection {
             attempted: 2,
-            attempt_receipts: 1,
+            attempt_envelopes: 1,
         }
     );
 
     // Padding the receipts past the attempted count fails just as loudly.
     let mut padded = report_for(&envelope, &selection);
     padded
-        .attempt_receipt_ids
-        .push("audit-attempt-0003".to_owned());
+        .attempt_envelope_sha256s
+        .push(sha256_hex(b"audit attempt envelope 3"));
     reseal(&mut padded);
     assert_eq!(
         verify_audit_report(&epoch, &envelope, &padded, &eligible).test_unwrap_err(),
         FindingAuditError::ExtraneousAttempt {
             attempted: 2,
-            attempt_receipts: 3,
+            attempt_envelopes: 3,
         }
     );
 

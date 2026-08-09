@@ -168,15 +168,17 @@ pub enum FindingAuditError {
     UnexpectedSelection(String),
     #[error("report omits selected finding {0}")]
     MissingSelection(String),
-    #[error("{attempted} selected findings were attempted but only {attempt_receipts} attempt receipts account for them")]
+    #[error("{attempted} selected findings were attempted but only {attempt_envelopes} signed attempt envelopes account for them")]
     UnaccountedSelection {
         attempted: usize,
-        attempt_receipts: usize,
+        attempt_envelopes: usize,
     },
-    #[error("{attempt_receipts} attempt receipts exceed the {attempted} attempted selections")]
+    #[error(
+        "{attempt_envelopes} signed attempt envelopes exceed the {attempted} attempted selections"
+    )]
     ExtraneousAttempt {
         attempted: usize,
-        attempt_receipts: usize,
+        attempt_envelopes: usize,
     },
     #[error("{outcomes} signed outcomes exceed the {attempted} attempted selections")]
     ExtraneousOutcome { attempted: usize, outcomes: usize },
@@ -340,8 +342,8 @@ pub fn select_audit_targets_within_budget(
 ///
 /// Accounting is then complete in both directions. Every selected finding is
 /// either recorded as a missed attempt with a reason or attempted, and each
-/// attempted selection owes exactly one attempt receipt and one resolved,
-/// evaluator-signed outcome. The outcome must name that selection, use the
+/// attempted selection owes exactly one signed attempt envelope and one
+/// resolved, evaluator-signed outcome. The outcome must name that selection, use the
 /// venue-audit authorization branch, carry this exact epoch envelope from its
 /// signed challenge authorization, and be evaluated after commitment but no
 /// later than publication.
@@ -410,18 +412,18 @@ pub fn verify_audit_report(
         .len()
         .checked_sub(report.missed_attempts.len())
         .ok_or(FindingAuditError::Overflow)?;
-    let attempt_receipts = report.attempt_receipt_ids.len();
-    match attempt_receipts.cmp(&attempted) {
+    let attempt_envelopes = report.attempt_envelope_sha256s.len();
+    match attempt_envelopes.cmp(&attempted) {
         Ordering::Less => {
             return Err(FindingAuditError::UnaccountedSelection {
                 attempted,
-                attempt_receipts,
+                attempt_envelopes,
             })
         }
         Ordering::Greater => {
             return Err(FindingAuditError::ExtraneousAttempt {
                 attempted,
-                attempt_receipts,
+                attempt_envelopes,
             })
         }
         Ordering::Equal => {}
@@ -472,19 +474,19 @@ pub fn verify_audit_report(
         Ordering::Less => {
             return Err(FindingAuditError::UnaccountedSelection {
                 attempted,
-                attempt_receipts: witnesses.audit_attempts.len(),
+                attempt_envelopes: witnesses.audit_attempts.len(),
             })
         }
         Ordering::Greater => {
             return Err(FindingAuditError::ExtraneousAttempt {
                 attempted,
-                attempt_receipts: witnesses.audit_attempts.len(),
+                attempt_envelopes: witnesses.audit_attempts.len(),
             })
         }
         Ordering::Equal => {}
     }
     let reported_attempt_digests: BTreeSet<&str> = report
-        .attempt_receipt_ids
+        .attempt_envelope_sha256s
         .iter()
         .map(String::as_str)
         .collect();

@@ -14,30 +14,33 @@ use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, canonical_json_string};
 use chio_finding::{
-    audit_seed_witness_signing_bytes, compute_audit_epoch_id, compute_audit_report_id,
-    compute_challenge_id, compute_enforcement_id, compute_snapshot_id,
+    audit_epoch_precommitment_sha256, audit_seed_witness_signing_bytes, compute_audit_epoch_id,
+    compute_audit_report_id, compute_challenge_id, compute_enforcement_id, compute_snapshot_id,
     derive_audit_seed_commitment, derive_outcome_id, ensure_challenge_class_compatibility,
     signed_envelope_sha256, verdict_for_replay_predicate, verify_audit_report_epoch_binding,
     verify_outcome_challenge_binding, verify_signed_audit_epoch, verify_signed_audit_report,
-    verify_signed_challenge, verify_signed_challenge_enforcement, verify_signed_challenge_outcome,
+    verify_signed_audit_round_authorization, verify_signed_challenge,
+    verify_signed_challenge_enforcement, verify_signed_challenge_outcome,
     verify_signed_finalized_bond_snapshot, FindingAffectedDelivery, FindingAuditEpoch,
-    FindingAuditReport, FindingBuyerSubmission, FindingChallenge, FindingChallengeAuthorization,
-    FindingChallengeAuthorizationKind, FindingChallengeEnforcement, FindingChallengeEvidence,
-    FindingChallengeEvidenceKind, FindingChallengeFacet, FindingChallengeOutcome,
-    FindingChallengeStanding, FindingChallengeVerdict, FindingCheckpointRef,
-    FindingDigestMismatchFacet, FindingDisputeBondClass, FindingDisputeFeeEvent,
-    FindingDisputeFeeTerminal, FindingDisputeLockRef, FindingEffectIntentBinding,
-    FindingEffectIntentKind, FindingEnforcementDestination, FindingError, FindingEvidenceClass,
-    FindingEvidenceInvalidFacet, FindingEvidenceInvalidity, FindingFinalizedBondSnapshot,
-    FindingGuaranteeClass, FindingMissedAudit, FindingObservedFinality, FindingPenaltyCalculation,
-    FindingPredicate, FindingReceiptRef, FindingRecipeEnvironment, FindingRecipePhase,
-    FindingRecipePhaseKind, FindingReplayContradictionFacet, FindingReplayObservation,
-    FindingReplayPredicateResult, FindingReplayRecipeInput, FindingReplayReproduction,
-    FindingReplayTerminalResult, FindingResourceCaps, FindingVaultReference,
-    FindingVenueAuditAuthorization, FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_REPORT_SCHEMA_V1,
-    FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1, FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
-    FINDING_CHALLENGE_SCHEMA_V1, FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1,
-    FINDING_REPLAY_OBSERVATION_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+    FindingAuditReport, FindingAuditRoundAuthorization, FindingBuyerSubmission, FindingChallenge,
+    FindingChallengeAuthorization, FindingChallengeAuthorizationKind, FindingChallengeEnforcement,
+    FindingChallengeEvidence, FindingChallengeEvidenceKind, FindingChallengeFacet,
+    FindingChallengeOutcome, FindingChallengeStanding, FindingChallengeVerdict,
+    FindingCheckpointRef, FindingDigestMismatchFacet, FindingDisputeBondClass,
+    FindingDisputeFeeEvent, FindingDisputeFeeTerminal, FindingDisputeLockRef,
+    FindingEffectIntentBinding, FindingEffectIntentKind, FindingEnforcementDestination,
+    FindingError, FindingEvidenceClass, FindingEvidenceInvalidFacet, FindingEvidenceInvalidity,
+    FindingFinalizedBondSnapshot, FindingGuaranteeClass, FindingMissedAudit,
+    FindingObservedFinality, FindingPenaltyCalculation, FindingPredicate, FindingReceiptRef,
+    FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind,
+    FindingReplayContradictionFacet, FindingReplayObservation, FindingReplayPredicateResult,
+    FindingReplayRecipeInput, FindingReplayReproduction, FindingReplayTerminalResult,
+    FindingResourceCaps, FindingVaultReference, FindingVenueAuditAuthorization,
+    FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_REPORT_SCHEMA_V1,
+    FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1, FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1,
+    FINDING_CHALLENGE_OUTCOME_SCHEMA_V1, FINDING_CHALLENGE_SCHEMA_V1,
+    FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1, FINDING_REPLAY_OBSERVATION_SCHEMA_V1,
+    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
 };
 use serde_json::{json, Value};
 
@@ -47,13 +50,15 @@ const HEX64: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789a
 const HEX64_ALT: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
 const HEX64_THIRD: &str = "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd";
 const SEED: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+const ABOVE_I_JSON_MAX: u64 = 9_007_199_254_740_992;
 
 /// Every artifact family this lane registers. The round-trip coverage
 /// assertion is keyed on this list, so a family added to the lane without a
 /// value that reaches its registered schema fails here.
-const CHALLENGE_LANE_FAMILIES: [&str; 7] = [
+const CHALLENGE_LANE_FAMILIES: [&str; 8] = [
     "audit-epoch",
     "audit-report",
+    "audit-round-authorization",
     "challenge",
     "challenge-enforcement",
     "challenge-outcome",
@@ -538,7 +543,7 @@ fn audit_report_body(epoch_envelope_sha256: &str) -> Result<FindingAuditReport, 
         audit_epoch_envelope_sha256: epoch_envelope_sha256.to_string(),
         revealed_seed: SEED.to_string(),
         selected_finding_ids: vec![HEX64.to_string(), HEX64_ALT.to_string()],
-        attempt_receipt_ids: vec!["audit-attempt-1".to_string()],
+        attempt_envelope_sha256s: vec![HEX64.to_string()],
         missed_attempts: vec![FindingMissedAudit {
             finding_id: HEX64_ALT.to_string(),
             reason: "retained replay inputs expired before the attempt".to_string(),
@@ -1591,6 +1596,40 @@ fn bond_snapshot_arithmetic_is_checked() -> TestResult {
         zero_depth.validate(),
         Err(FindingError::NonZeroRequired("observed_finality.depth"))
     );
+
+    // `require_nonzero` also enforces the I-JSON maximum. Keep every
+    // nonzero integer that the registered schema bounds covered explicitly,
+    // so a future helper refactor cannot admit Rust values schema consumers
+    // must reject.
+    let out_of_range_cases: [(&'static str, fn(&mut FindingFinalizedBondSnapshot)); 5] = [
+        ("locked_amount", |snapshot| {
+            snapshot.locked_amount = ABOVE_I_JSON_MAX;
+        }),
+        ("block_number", |snapshot| {
+            snapshot.block_number = ABOVE_I_JSON_MAX;
+        }),
+        ("operator_key_epoch", |snapshot| {
+            snapshot.operator_key_epoch = ABOVE_I_JSON_MAX;
+        }),
+        ("observed_at", |snapshot| {
+            snapshot.observed_at = ABOVE_I_JSON_MAX;
+        }),
+        ("observed_finality.depth", |snapshot| {
+            snapshot.observed_finality = FindingObservedFinality::Confirmations {
+                depth: ABOVE_I_JSON_MAX,
+            };
+        }),
+    ];
+    for (field, mutate) in out_of_range_cases {
+        let mut snapshot = bond_snapshot_body(&seller)?;
+        mutate(&mut snapshot);
+        snapshot.snapshot_id = compute_snapshot_id(&snapshot)?;
+        assert_eq!(
+            snapshot.validate(),
+            Err(FindingError::IJsonIntegerOutOfRange(field)),
+            "{field} must match the registered schema's I-JSON bound"
+        );
+    }
     Ok(())
 }
 
@@ -1736,16 +1775,16 @@ fn audit_report_accounts_for_every_selection() -> TestResult {
     );
 
     let mut no_attempts = audit_report_body(HEX64)?;
-    no_attempts.attempt_receipt_ids.clear();
+    no_attempts.attempt_envelope_sha256s.clear();
     no_attempts.audit_report_id = compute_audit_report_id(&no_attempts)?;
     assert_eq!(
         no_attempts.validate(),
-        Err(FindingError::MissingEntry("attempt_receipt_ids"))
+        Err(FindingError::MissingEntry("attempt_envelope_sha256s"))
     );
 
     // Every selection missed is a complete account with no attempts.
     let mut all_missed = audit_report_body(HEX64)?;
-    all_missed.attempt_receipt_ids.clear();
+    all_missed.attempt_envelope_sha256s.clear();
     all_missed.missed_attempts.push(FindingMissedAudit {
         finding_id: HEX64.to_string(),
         reason: "runner unavailable for the whole window".to_string(),
@@ -1767,6 +1806,7 @@ fn audit_report_accounts_for_every_selection() -> TestResult {
 fn audit_artifacts_sign_and_conform_to_their_schemas() -> TestResult {
     let audit_authority = keypair(42);
     let seed_witness = keypair(43);
+    let governance_authority = keypair(44);
     let interloper = keypair(9);
 
     let signed_epoch = SignedExportEnvelope::sign(audit_epoch_body()?, &audit_authority)?;
@@ -1801,6 +1841,39 @@ fn audit_artifacts_sign_and_conform_to_their_schemas() -> TestResult {
     let mut over_rate = epoch_value;
     over_rate["body"]["published_rate_bps"] = json!(10_001);
     assert_family_schema_rejects("audit-epoch", &over_rate, "rate above one hundred percent")?;
+
+    let authorization = FindingAuditRoundAuthorization {
+        schema: FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1.to_string(),
+        epoch_precommitment_sha256: audit_epoch_precommitment_sha256(&signed_epoch.body)?,
+        authorized_at: signed_epoch.body.committed_at - 100,
+        expires_at: signed_epoch.body.committed_at + 100,
+    };
+    (authorization.validate())?;
+    let mut invalid_authorization = authorization.clone();
+    invalid_authorization.expires_at = ABOVE_I_JSON_MAX;
+    assert_eq!(
+        invalid_authorization.validate(),
+        Err(FindingError::IJsonIntegerOutOfRange("expires_at"))
+    );
+    let signed_authorization = SignedExportEnvelope::sign(authorization, &governance_authority)?;
+    (verify_signed_audit_round_authorization(
+        &signed_authorization,
+        &governance_authority.public_key(),
+    ))?;
+    assert_eq!(
+        verify_signed_audit_round_authorization(&signed_authorization, &interloper.public_key(),),
+        Err(FindingError::AuthorityMismatch("audit_round_authorization"))
+    );
+    let authorization_value = serde_json::to_value(&signed_authorization)?;
+    validate_family_schema("audit-round-authorization", &authorization_value)?;
+
+    let mut out_of_range = authorization_value;
+    out_of_range["body"]["expires_at"] = json!(ABOVE_I_JSON_MAX);
+    assert_family_schema_rejects(
+        "audit-round-authorization",
+        &out_of_range,
+        "expiry above the I-JSON maximum",
+    )?;
 
     let epoch_envelope_sha256 = signed_envelope_sha256(&signed_epoch)?;
     let signed_report =
@@ -2003,6 +2076,21 @@ fn every_challenge_family_round_trips_its_registered_schema() -> TestResult {
     (epoch.validate())?;
     let signed_epoch = SignedExportEnvelope::sign(epoch, &audit_authority)?;
     documents.push(("audit-epoch", canonical_document(&signed_epoch)?));
+
+    let authorization = FindingAuditRoundAuthorization {
+        schema: FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1.to_string(),
+        epoch_precommitment_sha256: audit_epoch_precommitment_sha256(&signed_epoch.body)?,
+        authorized_at: signed_epoch.body.committed_at - 100,
+        expires_at: signed_epoch.body.committed_at + 100,
+    };
+    (authorization.validate())?;
+    documents.push((
+        "audit-round-authorization",
+        canonical_document(&SignedExportEnvelope::sign(
+            authorization,
+            &finalization_authority,
+        )?)?,
+    ));
 
     let report = audit_report_body(&signed_envelope_sha256(&signed_epoch)?)?;
     (report.validate())?;

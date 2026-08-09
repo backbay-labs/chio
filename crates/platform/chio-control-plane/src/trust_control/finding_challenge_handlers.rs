@@ -148,6 +148,11 @@ impl FindingChallengeSubmissionRuntime {
         &self.market_config
     }
 
+    #[must_use]
+    pub fn mutation_fence(&self) -> chio_kernel::admission_operation::StoreMutationFence {
+        self.joint_authority_store.mutation_fence()
+    }
+
     pub(crate) fn into_parts(
         self,
     ) -> (

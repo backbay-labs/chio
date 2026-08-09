@@ -2178,6 +2178,10 @@ impl RoutedPurchaseExecutor {
 
 #[async_trait::async_trait]
 impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
+    fn mutation_fence(&self) -> chio_kernel::admission_operation::StoreMutationFence {
+        self.authority.mutation_fence()
+    }
+
     async fn execute(
         &self,
         request: FindingPurchaseRequest,

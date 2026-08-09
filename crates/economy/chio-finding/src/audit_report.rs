@@ -3,9 +3,9 @@
 //!
 //! The report reveals the seed its epoch committed, names the listings the
 //! selection algorithm produced from it, and accounts for every one of them
-//! with either an attempt receipt or a recorded miss. A round that reports
-//! only its successes is not an enforceable rate, so misses are first-class
-//! members with their own reasons rather than an absence.
+//! with either a signed attempt-envelope digest or a recorded miss. A round
+//! that reports only its successes is not an enforceable rate, so misses are
+//! first-class members with their own reasons rather than an absence.
 //!
 //! The epoch and the report are two artifacts, never one mutable one:
 //! [`verify_audit_report_epoch_binding`] re-derives the epoch's commitment
@@ -19,9 +19,7 @@ use std::collections::BTreeSet;
 
 use crate::audit_epoch::{derive_audit_seed_commitment, SignedFindingAuditEpoch};
 use crate::envelope::signed_envelope_sha256;
-use crate::validate::{
-    require_bounded_id, require_hex64, require_non_empty, require_nonzero, FindingError,
-};
+use crate::validate::{require_hex64, require_non_empty, require_nonzero, FindingError};
 
 /// Venue-signed audit round result.
 pub const FINDING_AUDIT_REPORT_SCHEMA_V1: &str =
@@ -51,7 +49,9 @@ pub struct FindingAuditReport {
     /// The seed whose commitment the epoch published.
     pub revealed_seed: String,
     pub selected_finding_ids: Vec<String>,
-    pub attempt_receipt_ids: Vec<String>,
+    /// SHA-256 digests of the exact signed challenge envelopes used as audit
+    /// attempts. These are envelope identities, not kernel receipt ids.
+    pub attempt_envelope_sha256s: Vec<String>,
     pub missed_attempts: Vec<FindingMissedAudit>,
     pub outcome_envelope_digests: Vec<String>,
     pub reported_at: u64,
@@ -81,14 +81,14 @@ impl FindingAuditReport {
                 return Err(FindingError::DuplicateEntry("selected_finding_ids[]"));
             }
         }
-        if self.attempt_receipt_ids.len() > MAX_AUDIT_SELECTION {
-            return Err(FindingError::SizeLimitExceeded("attempt_receipt_ids"));
+        if self.attempt_envelope_sha256s.len() > MAX_AUDIT_SELECTION {
+            return Err(FindingError::SizeLimitExceeded("attempt_envelope_sha256s"));
         }
         let mut attempts = BTreeSet::new();
-        for receipt_id in &self.attempt_receipt_ids {
-            require_bounded_id(receipt_id, "attempt_receipt_ids[]")?;
-            if !attempts.insert(receipt_id.as_str()) {
-                return Err(FindingError::DuplicateEntry("attempt_receipt_ids[]"));
+        for envelope_sha256 in &self.attempt_envelope_sha256s {
+            require_hex64(envelope_sha256, "attempt_envelope_sha256s[]")?;
+            if !attempts.insert(envelope_sha256.as_str()) {
+                return Err(FindingError::DuplicateEntry("attempt_envelope_sha256s[]"));
             }
         }
         if self.missed_attempts.len() > self.selected_finding_ids.len() {
@@ -106,9 +106,9 @@ impl FindingAuditReport {
             }
         }
         // Every selection is accounted for: a round that recorded no miss
-        // for a selected listing owes at least one attempt receipt.
-        if missed.len() < selected.len() && self.attempt_receipt_ids.is_empty() {
-            return Err(FindingError::MissingEntry("attempt_receipt_ids"));
+        // for a selected listing owes at least one signed attempt envelope.
+        if missed.len() < selected.len() && self.attempt_envelope_sha256s.is_empty() {
+            return Err(FindingError::MissingEntry("attempt_envelope_sha256s"));
         }
         if self.outcome_envelope_digests.len() > MAX_AUDIT_SELECTION {
             return Err(FindingError::SizeLimitExceeded("outcome_envelope_digests"));

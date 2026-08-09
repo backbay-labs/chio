@@ -19,7 +19,7 @@
         "audit_epoch_envelope_sha256",
         "revealed_seed",
         "selected_finding_ids",
-        "attempt_receipt_ids",
+        "attempt_envelope_sha256s",
         "missed_attempts",
         "outcome_envelope_digests",
         "reported_at"
@@ -45,12 +45,12 @@
             "$ref": "#/$defs/sha256"
           }
         },
-        "attempt_receipt_ids": {
+        "attempt_envelope_sha256s": {
           "type": "array",
           "maxItems": 256,
           "uniqueItems": true,
           "items": {
-            "$ref": "#/$defs/boundedIdentifier"
+            "$ref": "#/$defs/sha256"
           }
         },
         "missed_attempts": {

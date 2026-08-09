@@ -1,4 +1,4 @@
-fbaacb7c6856543fd388cfab52fe9d51a3be32b2820f9c56133c2173d3b079b3  spec/schemas/MANIFEST.sha256
+d833186111801251d68cb6eb5f2dd13db54cec08f31bc4ab076951c9cde1af6b  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -114,7 +114,8 @@ d3cd392ecaca10668edd360b7ce1e5479f2bfab784f63499879914dd876524e8  spec/schemas/c
 fb33f0a18894dc039ea4a2d71c01469e9ef5a691f850235f32797cdfc99cfb9e  spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json
 80f7c8231cc6b617b2da397b51c43faec7494ac70bc530c69a7f6b85665bac11  spec/schemas/chio-finding/v1/admission.schema.json
 bb592bbe8085abb35f430917f97f594170b9f1f13b5d1031c3ef6ecb19b0b19f  spec/schemas/chio-finding/v1/audit-epoch.schema.json
-56738bea367933c7c54ffb3c6b0d1e5aa29a3e283dd952b78443c69030d62968  spec/schemas/chio-finding/v1/audit-report.schema.json
+1ea2d5bfa168cb62bd3ce87a299e1b53d96829f2dd6a76733bcbc7c2850cb0a3  spec/schemas/chio-finding/v1/audit-report.schema.json
+2eebdba575bb7c73b22e02b671b42c3ed1c0a42074b743497d237e6c55e87ca2  spec/schemas/chio-finding/v1/audit-round-authorization.schema.json
 1cee09366510acf96f0c8603957807f784948d745411530b62361db68f4fb190  spec/schemas/chio-finding/v1/bond-backing.schema.json
 4ea3302b14802b6ec8c06c6532f0595bdbb140efac14ac1f15fac86fd75dd46a  spec/schemas/chio-finding/v1/challenge-enforcement.schema.json
 9b638cb3ff1433b939ac4dfafae99e6ab9077c7594af8023893b563288713d87  spec/schemas/chio-finding/v1/challenge-outcome.schema.json
@@ -428,4 +429,4 @@ ff4f655a0f0c7afda5c0674f3afde1e3961f1d58292584ed39f8bb5b96e30c8b  spec/schemas/c
 f109672e496e5e3bb56c5a3d61ed882b922d8bbade45899975d1852921f7890e  spec/schemas/financial-credential-defs.v1.schema.json
 049d7788253b57ddf472ebed0e8e6cb1a26e2249e9645e9e18cfdc3606a2b669  spec/schemas/fiscal-defs.v1.schema.json
 216ca7d9c174f728a1931f84791858702bb365cb5f5acba24c5e936bc923955e  spec/schemas/policy/analysis-report.schema.json
-f45f427ddf075a1c69e6f59d0d11ded36cbab7c479cccef5957432a5720395aa  spec/schemas/registry.json
+f461ebbf0a80d1c3b86b6605124ebb505bbb2dda2d3a6988998a1e1cb2361834  spec/schemas/registry.json

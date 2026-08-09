@@ -52,17 +52,19 @@ use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
-    compute_enforcement_id, derive_outcome_id, ensure_challenge_class_compatibility,
-    signed_envelope_sha256, verify_finding, verify_pinned_envelope, verify_signed_admission,
-    verify_signed_audit_epoch, verify_signed_challenge, verify_signed_challenge_outcome,
-    verify_signed_market_terms, verify_signed_purchase_record, Finding, FindingChallenge,
-    FindingChallengeAuthorization, FindingChallengeEnforcement, FindingChallengeEvidenceKind,
-    FindingChallengeOutcome, FindingEffectIntentBinding, FindingEnforcementDestination,
-    FindingPenaltyCalculation, FindingPurchaseRecord, SignedFindingAdmission,
-    SignedFindingAuditEpoch, SignedFindingChallenge, SignedFindingChallengeEnforcement,
-    SignedFindingChallengeOutcome, SignedFindingChallengeVerifierProfile,
-    SignedFindingFinalizedBondSnapshot, SignedFindingMarketTerms, SignedFindingPurchaseRecord,
-    FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1, FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
+    audit_epoch_precommitment_sha256, compute_enforcement_id, derive_outcome_id,
+    ensure_challenge_class_compatibility, signed_envelope_sha256, verify_finding,
+    verify_pinned_envelope, verify_signed_admission, verify_signed_audit_epoch,
+    verify_signed_audit_round_authorization, verify_signed_challenge,
+    verify_signed_challenge_outcome, verify_signed_market_terms, verify_signed_purchase_record,
+    Finding, FindingChallenge, FindingChallengeAuthorization, FindingChallengeEnforcement,
+    FindingChallengeEvidenceKind, FindingChallengeOutcome, FindingEffectIntentBinding,
+    FindingEnforcementDestination, FindingPenaltyCalculation, FindingPurchaseRecord,
+    SignedFindingAdmission, SignedFindingAuditEpoch, SignedFindingAuditRoundAuthorization,
+    SignedFindingChallenge, SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
+    SignedFindingChallengeVerifierProfile, SignedFindingFinalizedBondSnapshot,
+    SignedFindingMarketTerms, SignedFindingPurchaseRecord, FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1,
+    FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
 };
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeEvaluation,
@@ -484,66 +486,6 @@ pub struct FindingAuditRound {
     pub authorization: SignedFindingAuditRoundAuthorization,
     pub revealed_seed: String,
     pub eligible: Vec<EligibleListing>,
-}
-
-/// Governance authorization for one exact audit epoch precommitment.
-///
-/// The digest clears the epoch's authorization digest and content address,
-/// avoiding a circular hash while still binding every independently chosen
-/// round input. The signed authorization envelope digest is then inserted
-/// into the epoch before its final content address is computed.
-pub const FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1: &str =
-    "chio.finding.audit-round-authorization.v1";
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub struct FindingAuditRoundAuthorization {
-    pub schema: String,
-    pub epoch_precommitment_sha256: String,
-    pub authorized_at: u64,
-    pub expires_at: u64,
-}
-
-pub type SignedFindingAuditRoundAuthorization =
-    SignedExportEnvelope<FindingAuditRoundAuthorization>;
-
-impl FindingAuditRoundAuthorization {
-    fn validate(&self) -> Result<(), ChallengeCoordinatorError> {
-        if self.schema != FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1 {
-            return Err(ChallengeCoordinatorError::AuditRoundBinding(
-                "authorization_schema",
-            ));
-        }
-        if self.epoch_precommitment_sha256.len() != 64
-            || !self
-                .epoch_precommitment_sha256
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        {
-            return Err(ChallengeCoordinatorError::AuditRoundBinding(
-                "epoch_precommitment_sha256",
-            ));
-        }
-        if self.authorized_at == 0 || self.expires_at <= self.authorized_at {
-            return Err(ChallengeCoordinatorError::AuditRoundBinding(
-                "authorization_window",
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// Digest every independently chosen epoch field without creating a hash
-/// cycle through the authorization envelope or final epoch id.
-pub fn audit_epoch_precommitment_sha256(
-    epoch: &chio_finding::FindingAuditEpoch,
-) -> Result<String, ChallengeCoordinatorError> {
-    let mut precommitment = epoch.clone();
-    precommitment.audit_epoch_id.clear();
-    precommitment.authorization_digest.clear();
-    canonical_json_bytes(&precommitment)
-        .map(|bytes| sha256_hex(&bytes))
-        .map_err(|_| ChallengeCoordinatorError::Canonical)
 }
 
 /// Resolution of the signed artifacts a filing binds by digest.
@@ -3090,23 +3032,24 @@ impl FindingChallengeCoordinator {
                 "authorization_digest",
             ));
         }
-        round.authorization.body.validate()?;
+        round
+            .authorization
+            .body
+            .validate()
+            .map_err(|_| ChallengeCoordinatorError::AuditRoundBinding("authorization_body"))?;
         let governance_authority = self.require_live_role(
             &self.pins.governance_authority,
             round.authorization.body.authorized_at,
             now,
             "governance",
         )?;
-        verify_pinned_envelope(
-            &round.authorization,
-            &governance_authority,
-            "audit round authorization",
-        )
-        .map_err(|_| ChallengeCoordinatorError::AuditRoundBinding("authorization_signature"))?;
+        verify_signed_audit_round_authorization(&round.authorization, &governance_authority)
+            .map_err(|_| ChallengeCoordinatorError::AuditRoundBinding("authorization_signature"))?;
         if round.authorization.body.authorized_at > round.epoch.body.committed_at
             || round.authorization.body.expires_at <= round.epoch.body.committed_at
             || round.authorization.body.epoch_precommitment_sha256
-                != audit_epoch_precommitment_sha256(&round.epoch.body)?
+                != audit_epoch_precommitment_sha256(&round.epoch.body)
+                    .map_err(|_| ChallengeCoordinatorError::Canonical)?
         {
             return Err(ChallengeCoordinatorError::AuditRoundBinding(
                 "authorization_epoch",

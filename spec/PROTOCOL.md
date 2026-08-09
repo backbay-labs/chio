@@ -1461,7 +1461,7 @@ perform those checks separately before relying on the corresponding claim.
 
 #### 6.4.7.1 Market envelope discipline
 
-Fifteen families travel as signed export envelopes
+Sixteen families travel as signed export envelopes
 (`{body, signerKey, signature}`): `chio.finding.challenge-verifier-profile.v1`,
 `chio.finding.market-terms.v1`, `chio.finding.seller-authorization.v1`,
 `chio.finding.bond-backing.v1`, `chio.finding.verifier-report.v1`,
@@ -1470,14 +1470,16 @@ Fifteen families travel as signed export envelopes
 `chio.finding.challenge-outcome.v1`,
 `chio.finding.challenge-enforcement.v1`,
 `chio.finding.finalized-bond-snapshot.v1`,
-`chio.finding.audit-epoch.v1`, `chio.finding.audit-report.v1`, and
+`chio.finding.audit-epoch.v1`, `chio.finding.audit-report.v1`,
+`chio.finding.audit-round-authorization.v1`, and
 `chio.finding.key-revocation.v1`. This
 differs from the inline-signed
 `chio.finding.v1` and from the unsigned
 `chio.finding.replay-recipe-input.v1`,
 `chio.finding.purchase-context.v1`, and
-`chio.finding.replay-observation.v1`, which carry no envelope at all. Each
-of the fifteen envelope bodies is strict snake_case JSON that rejects
+`chio.finding.replay-observation.v1`, and
+`chio.finding.recovery-context.v1`, which carry no envelope at all. Each
+of the sixteen envelope bodies is strict snake_case JSON that rejects
 unknown members. Fourteen carry a stable identifier, and twelve of those
 are content-addressed exactly like `finding_id`: the SHA-256 digest of
 canonical JSON for the body after setting only the id member to the empty
@@ -1486,11 +1488,13 @@ JSON string `""`, with every other member present. Two are exceptions:
 domain-separated preimage over two members (6.4.7.10), and
 `chio.finding.challenge-outcome.v1` derives its `outcome_id` from a
 domain-separated preimage over the whole canonical body (6.4.7.13).
-`chio.finding.key-revocation.v1` carries no identifier at all: a revocation
-is named by the envelope digest of the statement itself (6.4.7.20). The
+`chio.finding.key-revocation.v1` and
+`chio.finding.audit-round-authorization.v1` carry no identifier at all: each
+is named by the envelope digest of the statement itself (6.4.7.20 and
+6.4.7.21). The
 first six additionally name their own signing authority in the body, as
 does a `buyer_submission` challenge through its `challenger`; the two
-purchase terminals, a `venue_audit` challenge, the five remaining
+purchase terminals, a `venue_audit` challenge, the six remaining
 challenge and audit artifacts, and the key revocation name other subjects
 and are authorized only by the external role pin. Envelope
 verification
@@ -1827,6 +1831,13 @@ selection algorithm, the published rate in basis points (nonzero and at most
 commitment time. The seed itself has no encoding in this artifact and MUST
 NOT be published with its commitment.
 
+The `authorization_digest` MUST be the SHA-256 digest of the exact signed
+`chio.finding.audit-round-authorization.v1` envelope. Its precommitment digest
+is computed over the canonical epoch body after clearing only
+`audit_epoch_id` and `authorization_digest`. This breaks the hash cycle while
+binding every independently chosen round input before the final epoch is
+content-addressed.
+
 Under the selection algorithm `chio.finding.audit-selection.weighted-draw.v1`
 each eligible listing draws the SHA-256 digest of the domain-separated
 preimage `"chio.finding.audit-draw.v1\0"` followed by the revealed seed, a
@@ -1845,15 +1856,17 @@ grind for from the whole digest down to that prefix.
 
 The venue's signed result for the same round, published AFTER the reveal: the
 exact signed epoch ENVELOPE digest, the revealed seed, the selected finding
-identifiers, the attempt receipt identifiers, the missed attempts with their
-reasons, the outcome envelope digests, and the report time. The revealed seed
+identifiers, the SHA-256 digests of the exact signed attempt challenge
+envelopes, the missed attempts with their reasons, the outcome envelope
+digests, and the report time. The revealed seed
 MUST reproduce the epoch's commitment as the SHA-256 digest of the
 domain-separated preimage `"chio.finding.audit-seed.v1\0"` followed by the
 seed. Every missed attempt MUST name a selected finding, and a round with a
 selection that is not fully accounted for by misses MUST carry at least one
-attempt receipt. The epoch and the report are two artifacts, never one
-mutable one: without both, a published audit rate is an operator assumption
-rather than an enforceable one.
+signed attempt-envelope digest. These values are envelope identities, not
+kernel receipt identifiers. The epoch and the report are two artifacts, never
+one mutable one: without both, a published audit rate is an operator
+assumption rather than an enforceable one.
 
 #### 6.4.7.18 `chio.finding.replay-observation.v1`
 
@@ -1923,8 +1936,38 @@ signed is a fact about that instant. A verifier that cannot establish a
 revocation offered for a key MUST leave the question open rather than
 resolve it in either direction.
 
-The finding family registers `chio.finding.v1`, the fifteen signed
-artifacts above, the three unsigned carriers, and the open-market penalty
+#### 6.4.7.21 `chio.finding.audit-round-authorization.v1`
+
+The governance-root-signed authorization for one exact audit round. Its body
+contains the schema identifier, `epoch_precommitment_sha256`, `authorized_at`,
+and `expires_at`. Both timestamps MUST be positive I-JSON safe integers,
+`expires_at` MUST be strictly later than `authorized_at`, and the exact signed
+envelope MUST verify against the governance authority pinned for the round.
+The authorization MUST be live when the epoch is committed.
+
+`epoch_precommitment_sha256` is the SHA-256 digest of the canonical
+`chio.finding.audit-epoch.v1` body after clearing only `audit_epoch_id` and
+`authorization_digest`. The final epoch's `authorization_digest` is the
+SHA-256 digest of this exact signed authorization envelope. Implementations
+MUST re-derive both bindings. This two-step construction avoids a hash cycle
+without permitting the venue to alter the eligible snapshot, fee schedule,
+randomness commitment, selection algorithm, rate, budget, authority, or time
+after governance authorization.
+
+#### 6.4.7.22 `chio.finding.recovery-context.v1`
+
+The UNSIGNED evidence carrier for bounded no-charge redelivery of one already
+settled finding. It contains `recovery_id` and the exact canonical JSON bytes
+of the original signed capability, purchase context, purchase-authority-signed
+settled record, and trusted-kernel-signed original Allow receipt. The carrier
+is evidence transport, never bearer authority. A recovery verifier MUST
+strict-parse and independently authenticate every embedded artifact, re-derive
+their identities and cross-bindings, and mint only a bounded recovery grant.
+Unknown members, noncanonical embedded bytes, an identity mismatch, or an
+unverifiable signature MUST reject before any recovery admission mutation.
+
+The finding family registers `chio.finding.v1`, the sixteen signed
+artifacts above, the four unsigned carriers, and the open-market penalty
 envelope at this stage. Status-epoch artifacts remain unsupported until a
 future revision of this specification defines and registers them.
 

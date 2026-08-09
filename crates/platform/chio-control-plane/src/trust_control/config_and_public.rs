@@ -65,6 +65,10 @@ pub fn serve_with_finding_market_runtime(
     purchase_executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
 ) -> Result<(), CliError> {
     validate_finding_challenge_runtime(&config, &challenge_runtime)?;
+    validate_finding_market_mutation_fence(
+        &challenge_runtime.mutation_fence(),
+        &purchase_executor.mutation_fence(),
+    )?;
     let (joint_authority_store, challenge_executor) = challenge_runtime.into_parts();
     serve_with_optional_finding_challenge_executor(
         config,
@@ -72,6 +76,19 @@ pub fn serve_with_finding_market_runtime(
         Some(purchase_executor),
         Some(challenge_executor),
     )
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+fn validate_finding_market_mutation_fence(
+    challenge_fence: &chio_kernel::admission_operation::StoreMutationFence,
+    purchase_fence: &chio_kernel::admission_operation::StoreMutationFence,
+) -> Result<(), CliError> {
+    if challenge_fence != purchase_fence {
+        return Err(CliError::cli_other_error(
+            "finding purchase executor does not share the challenge serving authority".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(feature = "cognition-market-experimental")]
@@ -136,6 +153,40 @@ pub fn serve_with_finding_purchase_executor(
     executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
 ) -> Result<(), CliError> {
     serve_with_optional_finding_challenge_executor(config, None, Some(executor), None)
+}
+
+#[cfg(all(test, feature = "cognition-market-experimental"))]
+mod finding_market_runtime_tests {
+    use chio_kernel::admission_operation::StoreMutationFence;
+
+    use super::validate_finding_market_mutation_fence;
+
+    fn fence(store: &str, lease: &str, owner_epoch: u64) -> StoreMutationFence {
+        StoreMutationFence {
+            store_uuid: store.to_owned(),
+            lease_id: lease.to_owned(),
+            owner_epoch,
+        }
+    }
+
+    #[test]
+    fn combined_market_runtime_requires_one_serving_fence() {
+        let challenge = fence("store-a", "lease-a", 7);
+        assert!(validate_finding_market_mutation_fence(&challenge, &challenge).is_ok());
+
+        for purchase in [
+            fence("store-b", "lease-a", 7),
+            fence("store-a", "lease-b", 7),
+            fence("store-a", "lease-a", 8),
+        ] {
+            let Err(error) = validate_finding_market_mutation_fence(&challenge, &purchase) else {
+                panic!("a different purchase authority fence must fail closed");
+            };
+            assert!(error
+                .to_string()
+                .contains("does not share the challenge serving authority"));
+        }
+    }
 }
 
 pub(crate) fn load_enterprise_provider_registry(

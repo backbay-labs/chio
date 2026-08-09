@@ -288,6 +288,12 @@
       "schemaFile": "spec/schemas/chio-finding/v1/audit-report.schema.json"
     },
     {
+      "schema": "chio.finding.audit-round-authorization.v1",
+      "artifactKind": "finding_audit_round_authorization",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/audit-round-authorization.schema.json"
+    },
+    {
       "schema": "chio.finding.bond-backing.v1",
       "artifactKind": "finding_bond_backing",
       "introducedBy": "finding-market-v1",
