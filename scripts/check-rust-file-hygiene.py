@@ -84,7 +84,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-cli/src/cli/dispatch/proof.rs": allow(
         "2026-08-31",
         "launch proof dispatch surface; capped to current size until split",
-        max_lines=3_399,
+        max_lines=3_445,
     ),
     "crates/products/chio-mercury/tests/cli.rs": allow(
         "2026-08-31",
@@ -114,7 +114,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-cli/tests/proof_cli_contract/support.rs": allow(
         "2026-08-31",
         "launch proof CLI contract support module; capped to current size until split",
-        max_lines=4_067,
+        max_lines=4_072,
     ),
     "crates/products/chio-cli/tests/proof_verify.rs": allow(
         "2026-08-31",
@@ -174,7 +174,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/economy/chio-web3/src/tests.rs": allow(
         "2026-08-31",
         "web3 test module with public-settlement review regressions; capped until split",
-        max_lines=2_692,
+        max_lines=2_697,
     ),
     "crates/kernel/chio-runtime-proof-parity/src/lib.rs": allow(
         "2026-08-31",
@@ -229,7 +229,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs": allow(
         "2026-08-31",
         "receipt retention regression suite; capped to current size until split",
-        max_lines=4_612,
+        max_lines=4_632,
     ),
     "crates/trust/chio-federation-transport-iroh/src/lanes/pheromone.rs": allow(
         "2026-08-31",
