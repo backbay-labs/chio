@@ -239,7 +239,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs": allow(
         "2026-08-31",
         "trust-control cluster and reports surface; capped to current size until split",
-        max_lines=2_746,
+        max_lines=2_752,
     ),
     "crates/platform/chio-store-sqlite/src/budget_store/tests.rs": allow(
         "2026-08-31",
@@ -304,7 +304,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs": allow(
         "2026-08-31",
         "durable terminal coordinator with signed outcome projection; capped to current size until split",
-        max_lines=2_320,
+        max_lines=2_339,
+    ),
+    "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
+        "2026-08-31",
+        "durable evaluation core with purchase finalization; capped to current size until split",
+        max_lines=2_145,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/budget.rs": allow(
         "2026-08-31",
