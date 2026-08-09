@@ -2010,7 +2010,7 @@ fn rewind_to_rail_only_payout_destinations(connection: &Connection) {
 }
 
 #[test]
-fn rail_only_community_destination_aborts_all_evm_schema_migration() {
+fn rail_only_community_destination_is_retained_as_non_actionable_history() {
     let mut connection = Connection::open_in_memory().expect("in-memory database");
     connection
         .execute_batch(FINDING_PURCHASE_SCHEMA)
@@ -2035,22 +2035,25 @@ fn rail_only_community_destination_aborts_all_evm_schema_migration() {
     crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 3)
         .expect("stamp the earlier revision");
 
-    assert!(
-        initialize_finding_purchase_schema(&mut connection).is_err(),
-        "a rail identity cannot be invented into an EVM address"
-    );
+    initialize_finding_purchase_schema(&mut connection).expect("retain legacy community payout");
     let destination: String = connection
         .query_row(
-            "SELECT destination FROM payout_destinations WHERE slot_index = 0",
+            "SELECT destination FROM legacy_payout_destinations WHERE slot_index = 0",
             [],
             |row| row.get(0),
         )
-        .expect("read rolled-back community destination");
+        .expect("read retained community destination");
     assert_eq!(destination, "rail:venue-ledger:community-fund");
+    let actionable: i64 = connection
+        .query_row("SELECT COUNT(*) FROM payout_destinations", [], |row| {
+            row.get(0)
+        })
+        .expect("count actionable destinations");
+    assert_eq!(actionable, 0);
 }
 
 #[test]
-fn rail_only_buyer_destination_aborts_schema_migration() {
+fn rail_only_buyer_destination_is_retained_as_non_actionable_history() {
     let mut connection = Connection::open_in_memory().expect("in-memory database");
     connection
         .execute_batch(FINDING_PURCHASE_SCHEMA)
@@ -2075,18 +2078,15 @@ fn rail_only_buyer_destination_aborts_schema_migration() {
     crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 3)
         .expect("stamp the earlier revision");
 
-    assert!(
-        initialize_finding_purchase_schema(&mut connection).is_err(),
-        "an unauthenticated destination translation must fail closed"
-    );
+    initialize_finding_purchase_schema(&mut connection).expect("retain legacy buyer payout");
     let retained: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM payout_destinations WHERE slot_index = 1",
+            "SELECT COUNT(*) FROM legacy_payout_destinations WHERE slot_index = 1",
             [],
             |row| row.get(0),
         )
-        .expect("read rolled-back legacy destination");
-    assert_eq!(retained, 1, "the failed migration preserves the legacy row");
+        .expect("read retained legacy destination");
+    assert_eq!(retained, 1, "the migration preserves the legacy row");
     let parked: bool = connection
         .query_row(
             r#"
@@ -2099,7 +2099,8 @@ fn rail_only_buyer_destination_aborts_schema_migration() {
             |row| row.get(0),
         )
         .expect("check migration rollback");
-    assert!(!parked, "the failed migration rolls back its table rename");
+    assert!(!parked, "the temporary migration table is removed");
+    initialize_finding_purchase_schema(&mut connection).expect("reopen retained legacy payout");
 }
 
 fn insert_revision_four_reservation(connection: &Connection, agent_id: &str) {
@@ -2238,7 +2239,7 @@ fn pre_v5_terminal_opaque_reservation_reopens_without_inventing_an_evm_address()
             "legacy_terminal".to_owned()
         )
     );
-    initialize_finding_purchase_schema(&mut connection).expect("reopen at revision eight");
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at current revision");
 }
 
 #[test]
@@ -2337,7 +2338,55 @@ fn revision_seven_releases_only_unsettled_eager_payout_destinations() {
         "the abandoned eager slot is released while community and settled history remain"
     );
     drop(statement);
-    initialize_finding_purchase_schema(&mut connection).expect("reopen at revision eight");
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at current revision");
+}
+
+#[test]
+fn revision_eight_adds_legacy_history_without_rewriting_actionable_payouts() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("install current purchase schema");
+    connection
+        .execute(
+            r#"
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES (?1, '0x000000000000000000000000000000000000002a', 1, ?2)
+            "#,
+            params![hex64('a'), sqlite_i64(NOW, "now").expect("time")],
+        )
+        .expect("insert actionable revision-eight payout");
+    connection
+        .execute_batch("DROP TABLE legacy_payout_destinations;")
+        .expect("rewind legacy-history table");
+    crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 8)
+        .expect("stamp revision eight");
+
+    initialize_finding_purchase_schema(&mut connection).expect("migrate revision eight");
+
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_PURCHASE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION);
+    let actionable: i64 = connection
+        .query_row("SELECT COUNT(*) FROM payout_destinations", [], |row| {
+            row.get(0)
+        })
+        .expect("count actionable payouts");
+    assert_eq!(actionable, 1);
+    assert!(connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'legacy_payout_destinations')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect legacy-history table"));
+    verify_finding_purchase_invariants(&connection).expect("verify canonical schema");
 }
 
 #[test]

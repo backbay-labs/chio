@@ -2225,6 +2225,7 @@ impl FindingChallengeCoordinator {
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
             .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
         if intent.state == FindingEffectIntentState::Confirmed {
+            self.require_confirmed_enforcement_root(liability_key, &verified, planned.intent())?;
             // The impairment already landed and was proved to be this
             // intent. Dispatching again would ask the vault to move the
             // same collateral twice. Re-read the stored transaction before
@@ -2246,7 +2247,8 @@ impl FindingChallengeCoordinator {
             );
         }
         self.require_sanction_governs(liability_key, &penalty.body.case_id)?;
-        self.require_confirmed_enforcement_root(liability_key, &verified)?;
+        self.bind_enforcement_root(liability_key, &verified, planned.intent(), now)?;
+        self.require_confirmed_enforcement_root(liability_key, &verified, planned.intent())?;
         self.fence_anchor_evidence(liability_key, &verified, planned.intent(), now)?;
         self.challenges
             .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, now)
@@ -3618,8 +3620,51 @@ impl FindingChallengeCoordinator {
         Ok(())
     }
 
-    /// Require the enforcement root this impairment is verified against to
-    /// be published and confirmed.
+    /// Bind a still-pending root intent to the concrete proof this finalize
+    /// attempt prepared. The generic liability and penalty commitment is
+    /// checked first, so a mismatched intent cannot be poisoned with a
+    /// binding that belongs elsewhere.
+    fn bind_enforcement_root(
+        &self,
+        liability_key: &str,
+        verified: &VerifiedFindingEnforcement,
+        planned: &chio_settle::FindingImpairmentIntent,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let root = self
+            .challenges
+            .get_effect_intent(verified.root_intent_id())
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        let expected = sha256_hex(
+            root_intent_commitment(
+                liability_key,
+                &verified.enforcement().penalty_envelope_sha256,
+            )
+            .as_bytes(),
+        );
+        if root.kind != FindingEffectIntentKind::RootIntent
+            || root.liability_key.as_deref() != Some(liability_key)
+            || root.intent_digest != expected
+        {
+            return Err(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
+                "the named root intent does not fence this liability and penalty",
+            ));
+        }
+        self.challenges
+            .bind_effect_root(
+                verified.root_intent_id(),
+                liability_key,
+                &planned.merkle_root,
+                &planned.evidence_hash,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        Ok(())
+    }
+
+    /// Require the exact root this impairment carries to be published and
+    /// confirmed.
     ///
     /// The vault checks the impairment proof against a root, so the call
     /// is only authorized once that root is on chain. The instruction
@@ -3630,6 +3675,7 @@ impl FindingChallengeCoordinator {
         &self,
         liability_key: &str,
         verified: &VerifiedFindingEnforcement,
+        planned: &chio_settle::FindingImpairmentIntent,
     ) -> Result<(), ChallengeCoordinatorError> {
         let root = self
             .challenges
@@ -3653,6 +3699,21 @@ impl FindingChallengeCoordinator {
         if root.intent_digest != expected {
             return Err(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
                 "the fenced root does not commit to the penalty this enforcement pays",
+            ));
+        }
+        let binding = self
+            .challenges
+            .get_effect_root_binding(verified.root_intent_id())
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
+                "the enforcement root has no prepared anchor binding",
+            ))?;
+        if binding.liability_key != liability_key
+            || binding.merkle_root != planned.merkle_root
+            || binding.evidence_hash != planned.evidence_hash
+        {
+            return Err(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
+                "the confirmed root does not bind this Merkle root and evidence hash",
             ));
         }
         if root.state != FindingEffectIntentState::Confirmed {

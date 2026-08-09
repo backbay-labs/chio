@@ -1090,9 +1090,11 @@ impl SqliteFindingMarketStore {
     /// transaction this asserts every fee terminal against its reconciled
     /// event, confirms the prepared attempt still owns the consumed
     /// allocation, inserts the active admission, supersedes any prior
-    /// active admission, and marks the prepare record activated. A crash
-    /// after rail settlement can replay this transaction without charging
-    /// again.
+    /// active admission, and marks the prepare record activated. The
+    /// prepared row owns the pre-fee sales-block decision: a block committed
+    /// after preparation remains effective for purchases but does not strand
+    /// already reconciled fees. A crash after rail settlement can replay this
+    /// transaction without charging again.
     pub fn activate_listing(
         &self,
         admission_envelope_json: &str,
@@ -1149,13 +1151,6 @@ impl SqliteFindingMarketStore {
             }
             return Err(FindingMarketStoreError::Conflict(
                 "admission id is already bound to different bytes".to_owned(),
-            ));
-        }
-        if sales_blocked_tx(&transaction, &admission.listing_id)
-            .map_err(|error| FindingMarketStoreError::Unavailable(error.to_string()))?
-        {
-            return Err(FindingMarketStoreError::Conflict(
-                "listing activation is blocked by an enforced penalty".to_owned(),
             ));
         }
         transaction

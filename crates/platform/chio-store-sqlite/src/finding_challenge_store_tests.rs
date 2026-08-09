@@ -96,6 +96,10 @@ fn digest(tag: &str) -> String {
     sha256_hex(tag.as_bytes())
 }
 
+fn chain_hash(tag: &str) -> String {
+    format!("0x{}", digest(tag))
+}
+
 fn keypair(seed: u8) -> Keypair {
     Keypair::from_seed(&[seed; 32])
 }
@@ -354,14 +358,38 @@ fn confirm_settlement_effects(fixture: &Fixture, liability_key: &str, now: u64) 
                 now,
             )
             .expect("record required settlement effect");
+        if kind == FindingEffectIntentKind::RootIntent {
+            fixture
+                .store
+                .bind_effect_root(
+                    &intent_key,
+                    liability_key,
+                    &chain_hash(&format!("{liability_key}-{tag}-root")),
+                    &chain_hash(&format!("{liability_key}-{tag}-evidence")),
+                    now,
+                )
+                .expect("bind required settlement root");
+        }
         fixture
             .store
             .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, now)
             .expect("dispatch required settlement effect");
-        fixture
-            .store
-            .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
-            .expect("confirm required settlement effect");
+        if kind == FindingEffectIntentKind::RootIntent {
+            fixture
+                .store
+                .confirm_effect_root(
+                    &intent_key,
+                    &chain_hash(&format!("{liability_key}-{tag}-root")),
+                    &chain_hash(&format!("{liability_key}-{tag}-evidence")),
+                    now,
+                )
+                .expect("confirm required settlement root");
+        } else {
+            fixture
+                .store
+                .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
+                .expect("confirm required settlement effect");
+        }
     }
 }
 
@@ -3037,6 +3065,18 @@ fn settlement_waits_for_every_required_effect_confirmation() {
     );
 
     for (intent_key, kind, _) in &required[..2] {
+        if *kind == FindingEffectIntentKind::RootIntent {
+            fixture
+                .store
+                .bind_effect_root(
+                    intent_key,
+                    &head.liability_key,
+                    &chain_hash("settlement-gate-root"),
+                    &chain_hash("settlement-gate-evidence"),
+                    NOW + 7,
+                )
+                .expect("bind required root effect");
+        }
         fixture
             .store
             .advance_effect_intent(intent_key, FindingEffectIntentState::Dispatched, NOW + 7)
@@ -3049,8 +3089,13 @@ fn settlement_waits_for_every_required_effect_confirmation() {
         } else {
             fixture
                 .store
-                .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, NOW + 7)
-                .expect("confirm required effect");
+                .confirm_effect_root(
+                    intent_key,
+                    &chain_hash("settlement-gate-root"),
+                    &chain_hash("settlement-gate-evidence"),
+                    NOW + 7,
+                )
+                .expect("confirm required root effect");
         }
     }
     assert!(
@@ -3382,6 +3427,117 @@ fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
 }
 
 #[test]
+fn root_effect_intents_bind_exact_anchor_before_dispatch() {
+    let fixture = fixture();
+    let head = Liability::new("root-binding", LISTING_ID, &fixture.allocation_id);
+    open_liability(&fixture, &head);
+    let intent_key = digest("root-binding-intent");
+    let merkle_root = chain_hash("root-binding-merkle-root");
+    let evidence_hash = chain_hash("root-binding-evidence");
+    fixture
+        .store
+        .record_effect_intent(
+            &intent_key,
+            FindingEffectIntentKind::RootIntent,
+            &digest("root-binding-commitment"),
+            Some(&head.liability_key),
+            true,
+            NOW,
+        )
+        .expect("record root intent");
+
+    assert!(
+        matches!(
+            fixture.store.advance_effect_intent(
+                &intent_key,
+                FindingEffectIntentState::Dispatched,
+                NOW + 1,
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "a generic root intent cannot dispatch before its exact proof is bound"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .bind_effect_root(
+                &intent_key,
+                &head.liability_key,
+                &merkle_root,
+                &evidence_hash,
+                NOW + 2,
+            )
+            .expect("bind exact anchor proof"),
+        FindingChallengeWriteOutcome::Inserted
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_effect_root_binding(&intent_key)
+            .expect("read root binding")
+            .expect("root binding present"),
+        FindingEffectRootBindingRecord {
+            intent_key: intent_key.clone(),
+            liability_key: head.liability_key.clone(),
+            merkle_root: merkle_root.clone(),
+            evidence_hash: evidence_hash.clone(),
+            bound_at: NOW + 2,
+        }
+    );
+    assert_eq!(
+        fixture
+            .store
+            .bind_effect_root(
+                &intent_key,
+                &head.liability_key,
+                &merkle_root,
+                &evidence_hash,
+                NOW + 3,
+            )
+            .expect("replay exact anchor proof"),
+        FindingChallengeWriteOutcome::ExistingSame
+    );
+    assert!(
+        matches!(
+            fixture.store.bind_effect_root(
+                &intent_key,
+                &head.liability_key,
+                &chain_hash("different-root"),
+                &evidence_hash,
+                NOW + 3,
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "one root intent cannot authorize a different Merkle root"
+    );
+    fixture
+        .store
+        .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, NOW + 4)
+        .expect("dispatch bound root");
+    assert!(matches!(
+        fixture.store.advance_effect_intent(
+            &intent_key,
+            FindingEffectIntentState::Confirmed,
+            NOW + 5,
+        ),
+        Err(FindingChallengeStoreError::Conflict(_))
+    ));
+    assert!(matches!(
+        fixture.store.confirm_effect_root(
+            &intent_key,
+            &chain_hash("different-root"),
+            &evidence_hash,
+            NOW + 5,
+        ),
+        Err(FindingChallengeStoreError::Conflict(_))
+    ));
+    fixture
+        .store
+        .confirm_effect_root(&intent_key, &merkle_root, &evidence_hash, NOW + 5)
+        .expect("confirm bound root");
+}
+
+#[test]
 fn v2_liability_without_an_admitted_seller_binding_rejects_migration() {
     let mut connection = Connection::open_in_memory().expect("open legacy database");
     connection
@@ -3597,6 +3753,46 @@ fn v6_schema_adds_the_durable_seller_binding() {
         table_has_column(&connection, "liability_heads", "seller_hex")
             .expect("inspect migrated seller binding")
     );
+    verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
+fn v7_schema_adds_exact_effect_root_bindings() {
+    let mut connection = Connection::open_in_memory().expect("open previous database");
+    connection
+        .execute_batch(FINDING_CHALLENGE_SCHEMA)
+        .expect("install current challenge schema");
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER effect_root_bindings_valid_intent;
+            DROP TRIGGER effect_root_bindings_immutable;
+            DROP TRIGGER effect_root_bindings_no_delete;
+            DROP TRIGGER effect_intents_root_binding_before_dispatch;
+            DROP TABLE effect_root_bindings;
+            "#,
+        )
+        .expect("rewind exact-root schema objects");
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 7)
+        .expect("stamp previous schema");
+
+    initialize_finding_challenge_schema(&mut connection).expect("migrate revision seven");
+
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_CHALLENGE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION);
+    assert!(connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'effect_root_bindings')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect exact-root table"));
     verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
 }
 

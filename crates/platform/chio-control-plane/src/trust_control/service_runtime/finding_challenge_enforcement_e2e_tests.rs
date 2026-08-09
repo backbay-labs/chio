@@ -6491,6 +6491,7 @@ impl FindingImpairmentPublisher for ReorgedReceiptPublisher {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EnforcementRoot {
     Confirmed,
+    Mismatched,
     Unpublished,
 }
 
@@ -6617,17 +6618,27 @@ fn finalizing_liability_with(
         true,
         NOW + 5,
     )?;
-    if root == EnforcementRoot::Confirmed {
-        for state in [
+    if root == EnforcementRoot::Mismatched {
+        let merkle_root = chain_hash(0xee);
+        let evidence_hash = anchor_evidence_hash()?;
+        deployment.challenges.bind_effect_root(
+            &enforcement_root_intent_key(),
+            &liability_key,
+            &merkle_root,
+            &evidence_hash,
+            NOW + 5,
+        )?;
+        deployment.challenges.advance_effect_intent(
+            &enforcement_root_intent_key(),
             FindingEffectIntentState::Dispatched,
-            FindingEffectIntentState::Confirmed,
-        ] {
-            deployment.challenges.advance_effect_intent(
-                &enforcement_root_intent_key(),
-                state,
-                NOW + 6,
-            )?;
-        }
+            NOW + 6,
+        )?;
+        deployment.challenges.confirm_effect_root(
+            &enforcement_root_intent_key(),
+            &merkle_root,
+            &evidence_hash,
+            NOW + 6,
+        )?;
     }
     let retraction_key = byte_hex64(0xc3);
     deployment.challenges.record_effect_intent(
@@ -6645,7 +6656,7 @@ fn finalizing_liability_with(
         &intent_key,
         &penalty_envelope_sha256,
     )?;
-    Ok(FinalizingLiability {
+    let case = FinalizingLiability {
         deployment,
         coordinator,
         liability_key,
@@ -6656,7 +6667,39 @@ fn finalizing_liability_with(
         penalty,
         snapshot,
         confirm_retraction_after_impairment,
-    })
+    };
+    if root == EnforcementRoot::Confirmed {
+        let refused = case
+            .finalize_observing(
+                &ScriptedObservations::qualified(),
+                &UnreachablePublisher,
+                SETTLEMENT_NOW,
+            )?
+            .expect_err("the first attempt prepares the root before publication");
+        if !matches!(
+            refused,
+            ChallengeCoordinatorError::EnforcementRootUnconfirmed(_)
+        ) {
+            return Err(format!("unexpected root preparation result: {refused:?}").into());
+        }
+        let binding = case
+            .deployment
+            .challenges
+            .get_effect_root_binding(&enforcement_root_intent_key())?
+            .ok_or("root preparation binds the concrete proof")?;
+        case.deployment.challenges.advance_effect_intent(
+            &enforcement_root_intent_key(),
+            FindingEffectIntentState::Dispatched,
+            NOW + 6,
+        )?;
+        case.deployment.challenges.confirm_effect_root(
+            &enforcement_root_intent_key(),
+            &binding.merkle_root,
+            &binding.evidence_hash,
+            NOW + 6,
+        )?;
+    }
+    Ok(case)
 }
 
 impl FinalizingLiability {
@@ -7222,10 +7265,13 @@ fn finding_challenge_an_unpublished_enforcement_root_never_reaches_the_publisher
             SETTLEMENT_NOW,
         )?
         .expect_err("the vault call is authorized by a root that has not been published");
-    assert!(matches!(
-        refused,
-        ChallengeCoordinatorError::EnforcementRootUnconfirmed(_)
-    ));
+    assert!(
+        matches!(
+            refused,
+            ChallengeCoordinatorError::EnforcementRootUnconfirmed(_)
+        ),
+        "unexpected refusal: {refused:?}"
+    );
     assert_eq!(
         case.intent_state()?,
         FindingEffectIntentState::Pending,
@@ -7233,6 +7279,25 @@ fn finding_challenge_an_unpublished_enforcement_root_never_reaches_the_publisher
     );
     assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
     assert!(case.deployment.purchases.sales_blocked(LISTING_ID)?);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_confirmed_different_merkle_root_never_reaches_the_publisher() -> TestResult {
+    let case = finalizing_liability_rooted(EnforcementRoot::Mismatched)?;
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::qualified(),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )?
+        .expect_err("a confirmation for another Merkle root authorizes no vault call");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::ChallengeStore(_)
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+    assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
     Ok(())
 }
 

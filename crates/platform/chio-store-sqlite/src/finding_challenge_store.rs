@@ -5,7 +5,7 @@
 //! case, the sealed claim snapshot, and the domain-keyed effect intents
 //! fenced before anything leaves this operator.
 //!
-//! Seven tables back the lane. `challenges` is the adjudication record:
+//! Eight tables back the lane. `challenges` is the adjudication record:
 //! one authorization branch, one evidence class, one bounded retry, and a
 //! lifecycle that only ever runs
 //! `submitted -> evaluating -> rejected | indeterminate_retryable |
@@ -22,7 +22,9 @@
 //! target a liability and resolves the single live head among them.
 //! `claim_snapshots` seals the frozen accounting the payout derives from.
 //! `effect_intents` is the durable fence every external effect passes
-//! through before it is dispatched.
+//! through before it is dispatched. `effect_root_bindings` immutably
+//! refines a root intent with the exact Merkle root and evidence hash that
+//! publication must confirm.
 //!
 //! Writes run under `TransactionBehavior::Immediate` behind the
 //! serving-owner fence; reads run `Deferred`; a commit whose outcome
@@ -77,9 +79,10 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-/// Revision 7 binds every liability to its admitted seller; revision 6
-/// reserved dispute-lock identities before any external funding dispatch.
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 7;
+/// Revision 8 binds root publication to its concrete anchor proof; revision 7
+/// binds every liability to its admitted seller; revision 6 reserved
+/// dispute-lock identities before any external funding dispatch.
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 8;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "challenges",
     "finding_challenge_projection_commits",
@@ -515,6 +518,16 @@ pub struct FindingEffectIntentRecord {
     pub attempt_count: u64,
     pub recorded_at: u64,
     pub updated_at: u64,
+}
+
+/// Immutable anchor-proof refinement for one root effect intent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FindingEffectRootBindingRecord {
+    pub intent_key: String,
+    pub liability_key: String,
+    pub merkle_root: String,
+    pub evidence_hash: String,
+    pub bound_at: u64,
 }
 
 #[derive(Clone)]
@@ -1654,32 +1667,45 @@ impl SqliteFindingChallengeStore {
                 "a quarantined liability cannot settle".to_owned(),
             ));
         }
-        let (required, seller, root, retraction, unconfirmed): (i64, i64, i64, i64, i64) =
-            transaction
-                .query_row(
-                    r#"
+        let (required, seller, root, bound_root, retraction, unconfirmed): (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = transaction
+            .query_row(
+                r#"
                     SELECT
                         COUNT(*),
                         COALESCE(SUM(kind = 'seller_impair'), 0),
                         COALESCE(SUM(kind = 'root_intent'), 0),
+                        COALESCE(SUM(
+                            kind = 'root_intent' AND EXISTS(
+                                SELECT 1 FROM effect_root_bindings AS bindings
+                                WHERE bindings.intent_key = effect_intents.intent_key
+                            )
+                        ), 0),
                         COALESCE(SUM(kind = 'retraction'), 0),
                         COALESCE(SUM(state <> 'confirmed'), 0)
                     FROM effect_intents
                     WHERE liability_key = ?1 AND settlement_required = 1
                     "#,
-                    [liability_key],
-                    |row| {
-                        Ok((
-                            row.get(0)?,
-                            row.get(1)?,
-                            row.get(2)?,
-                            row.get(3)?,
-                            row.get(4)?,
-                        ))
-                    },
-                )
-                .map_err(sqlite_error)?;
-        if required < 3 || seller != 1 || root != 1 || retraction != 1 {
+                [liability_key],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .map_err(sqlite_error)?;
+        if required < 3 || seller != 1 || root != 1 || bound_root != 1 || retraction != 1 {
             return Err(FindingChallengeStoreError::Conflict(
                 "liability does not carry the required finalization effect set".to_owned(),
             ));
@@ -2188,6 +2214,130 @@ impl SqliteFindingChallengeStore {
         Ok(FindingChallengeWriteOutcome::Inserted)
     }
 
+    /// Refine a pending root intent with the exact proof values that will be
+    /// published and passed to the vault. The binding is immutable and must
+    /// exist before the root intent can enter `dispatched`.
+    pub fn bind_effect_root(
+        &self,
+        intent_key: &str,
+        liability_key: &str,
+        merkle_root: &str,
+        evidence_hash: &str,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        require_hex64(intent_key, "intent_key")?;
+        require_hex64(liability_key, "liability_key")?;
+        require_chain_hash(merkle_root, "merkle_root")?;
+        require_chain_hash(evidence_hash, "evidence_hash")?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let intent = load_effect_intent_tx(&transaction, intent_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if let Some(existing) = load_effect_root_binding_tx(&transaction, intent_key)? {
+            if existing.liability_key == liability_key
+                && existing.merkle_root == merkle_root
+                && existing.evidence_hash == evidence_hash
+            {
+                return Ok(FindingChallengeWriteOutcome::ExistingSame);
+            }
+            return Err(FindingChallengeStoreError::Conflict(
+                "root intent is already bound to a different anchor proof".to_owned(),
+            ));
+        }
+        if intent.kind != FindingEffectIntentKind::RootIntent
+            || intent.liability_key.as_deref() != Some(liability_key)
+            || intent.state != FindingEffectIntentState::Pending
+            || intent.attempt_count != 0
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "only an undispatched pending root intent can bind an anchor proof".to_owned(),
+            ));
+        }
+        let inserted = transaction
+            .execute(
+                r#"
+                INSERT INTO effect_root_bindings (
+                    intent_key, liability_key, merkle_root, evidence_hash, bound_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+                params![
+                    intent_key,
+                    liability_key,
+                    merkle_root,
+                    evidence_hash,
+                    sqlite_i64(now, "now")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        if inserted != 1 {
+            return Err(invariant(
+                "effect root binding insert did not affect one row",
+            ));
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingChallengeWriteOutcome::Inserted)
+    }
+
+    /// Confirm publication of the exact proof bound to one root intent.
+    /// The observed root and evidence hash are required again at the
+    /// terminal transition so a caller cannot confirm a different root
+    /// through the generic effect lifecycle.
+    pub fn confirm_effect_root(
+        &self,
+        intent_key: &str,
+        merkle_root: &str,
+        evidence_hash: &str,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        require_hex64(intent_key, "intent_key")?;
+        require_chain_hash(merkle_root, "merkle_root")?;
+        require_chain_hash(evidence_hash, "evidence_hash")?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let intent = load_effect_intent_tx(&transaction, intent_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        let binding = load_effect_root_binding_tx(&transaction, intent_key)?.ok_or_else(|| {
+            FindingChallengeStoreError::Conflict(
+                "root intent has no exact anchor-proof binding".to_owned(),
+            )
+        })?;
+        if intent.kind != FindingEffectIntentKind::RootIntent
+            || binding.merkle_root != merkle_root
+            || binding.evidence_hash != evidence_hash
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "root confirmation does not match its exact anchor-proof binding".to_owned(),
+            ));
+        }
+        if intent.state == FindingEffectIntentState::Confirmed {
+            return Ok(FindingChallengeWriteOutcome::ExistingSame);
+        }
+        if intent.state != FindingEffectIntentState::Dispatched {
+            return Err(FindingChallengeStoreError::Conflict(format!(
+                "root intent cannot confirm from {}",
+                effect_intent_state_name(intent.state)
+            )));
+        }
+        let changed = transaction
+            .execute(
+                r#"
+                UPDATE effect_intents SET state = 'confirmed', updated_at = ?2
+                WHERE intent_key = ?1 AND state = 'dispatched'
+                "#,
+                params![intent_key, sqlite_i64(now, "now")?],
+            )
+            .map_err(sqlite_error)?;
+        if changed != 1 {
+            return Err(invariant("root confirmation did not affect one intent"));
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingChallengeWriteOutcome::Inserted)
+    }
+
     /// Advance one effect intent along its dispatch lifecycle. Entering
     /// `dispatched` counts one attempt. Idempotent on the state already
     /// recorded; an illegal edge rejects.
@@ -2203,6 +2353,13 @@ impl SqliteFindingChallengeStore {
         let transaction = self.begin_write(&mut connection)?;
         let intent = load_effect_intent_tx(&transaction, intent_key)?
             .ok_or(FindingChallengeStoreError::NotFound)?;
+        if intent.kind == FindingEffectIntentKind::RootIntent
+            && state == FindingEffectIntentState::Confirmed
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "root confirmation requires its exact anchor-proof values".to_owned(),
+            ));
+        }
         if intent.state == state {
             return Ok(FindingChallengeWriteOutcome::ExistingSame);
         }
@@ -2212,6 +2369,14 @@ impl SqliteFindingChallengeStore {
                 effect_intent_state_name(intent.state),
                 effect_intent_state_name(state)
             )));
+        }
+        if intent.kind == FindingEffectIntentKind::RootIntent
+            && state == FindingEffectIntentState::Dispatched
+            && load_effect_root_binding_tx(&transaction, intent_key)?.is_none()
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "root intent must bind its anchor proof before dispatch".to_owned(),
+            ));
         }
         if intent.kind == FindingEffectIntentKind::Retraction
             && state == FindingEffectIntentState::Dispatched
@@ -2374,6 +2539,17 @@ impl SqliteFindingChallengeStore {
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
         load_effect_intent_tx(&transaction, intent_key)
+    }
+
+    /// The immutable anchor-proof binding for one root effect intent.
+    pub fn get_effect_root_binding(
+        &self,
+        intent_key: &str,
+    ) -> Result<Option<FindingEffectRootBindingRecord>, FindingChallengeStoreError> {
+        require_hex64(intent_key, "intent_key")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        load_effect_root_binding_tx(&transaction, intent_key)
     }
 
     /// Every effect intent fenced for one liability, oldest first.
@@ -3186,6 +3362,43 @@ fn load_effect_intent_tx(
     raw.map(effect_intent_from_raw).transpose()
 }
 
+fn load_effect_root_binding_tx(
+    transaction: &Transaction<'_>,
+    intent_key: &str,
+) -> Result<Option<FindingEffectRootBindingRecord>, FindingChallengeStoreError> {
+    transaction
+        .query_row(
+            r#"
+            SELECT intent_key, liability_key, merkle_root, evidence_hash, bound_at
+            FROM effect_root_bindings WHERE intent_key = ?1
+            "#,
+            [intent_key],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(sqlite_error)?
+        .map(
+            |(intent_key, liability_key, merkle_root, evidence_hash, bound_at)| {
+                Ok(FindingEffectRootBindingRecord {
+                    intent_key,
+                    liability_key,
+                    merkle_root,
+                    evidence_hash,
+                    bound_at: stored_u64(bound_at, "bound_at")?,
+                })
+            },
+        )
+        .transpose()
+}
+
 fn advance_challenge_state_tx(
     transaction: &Transaction<'_>,
     challenge_id: &str,
@@ -3720,6 +3933,22 @@ pub(crate) fn initialize_finding_challenge_schema(
     if on_disk == FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
         return verify_finding_challenge_invariants(connection);
     }
+    if on_disk == 7 {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+        transaction
+            .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .map_err(sqlite_error)?;
+        crate::stamp_schema_version(
+            &transaction,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| invariant(error.to_string()))?;
+        verify_finding_challenge_invariants(&transaction)?;
+        return transaction.commit().map_err(sqlite_error);
+    }
     if on_disk == 0 {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -4204,6 +4433,8 @@ fn finding_challenge_schema_catalog(
                OR tbl_name GLOB 'claim_snapshots*'
                OR name GLOB 'effect_intents*'
                OR tbl_name GLOB 'effect_intents*'
+               OR name GLOB 'effect_root_bindings*'
+               OR tbl_name GLOB 'effect_root_bindings*'
                ORDER BY type, name, tbl_name
             "#,
         )
@@ -4232,6 +4463,20 @@ fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingChalleng
     }
     Err(invariant(format!(
         "{field} is not 64 lowercase hex characters"
+    )))
+}
+
+fn require_chain_hash(value: &str, field: &'static str) -> Result<(), FindingChallengeStoreError> {
+    if value.len() == 66
+        && value.starts_with("0x")
+        && value[2..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Ok(());
+    }
+    Err(invariant(format!(
+        "{field} is not a 0x-prefixed 32-byte lowercase hash"
     )))
 }
 

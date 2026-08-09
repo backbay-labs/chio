@@ -312,3 +312,29 @@ BEFORE DELETE ON payout_destinations
 BEGIN
     SELECT RAISE(ABORT, 'admitted payout destination must be retained');
 END;
+
+-- Retained pre-EVM payout rows are historical evidence only. They are never
+-- returned by the actionable destination API or accepted for a new purchase.
+CREATE TABLE IF NOT EXISTS legacy_payout_destinations (
+    allocation_id TEXT NOT NULL
+        CHECK (length(allocation_id) = 64 AND allocation_id NOT GLOB '*[^0-9a-f]*'),
+    destination TEXT NOT NULL CHECK (length(destination) BETWEEN 3 AND 512),
+    slot_index INTEGER NOT NULL CHECK (slot_index BETWEEN 0 AND 15),
+    admitted_at INTEGER NOT NULL CHECK (admitted_at > 0),
+    PRIMARY KEY (allocation_id, destination)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS legacy_payout_destinations_slot
+    ON legacy_payout_destinations(allocation_id, slot_index);
+
+CREATE TRIGGER IF NOT EXISTS legacy_payout_destinations_immutable
+BEFORE UPDATE ON legacy_payout_destinations
+BEGIN
+    SELECT RAISE(ABORT, 'legacy payout destination is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS legacy_payout_destinations_no_delete
+BEFORE DELETE ON legacy_payout_destinations
+BEGIN
+    SELECT RAISE(ABORT, 'legacy payout destination must be retained');
+END;

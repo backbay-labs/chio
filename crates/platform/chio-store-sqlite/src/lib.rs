@@ -250,9 +250,9 @@ pub use finding_challenge_store::{
     FindingChallengeWriteOutcome, FindingClaimSnapshotInput, FindingClaimSnapshotRecord,
     FindingDisputeLockDisposition, FindingDisputeLockInput, FindingDisputeLockRecord,
     FindingDisputeLockState, FindingEffectIntentKind, FindingEffectIntentRecord,
-    FindingEffectIntentState, FindingGovernanceCaseInput, FindingGovernanceCaseKind,
-    FindingGovernanceCaseRecord, FindingLiabilityInput, FindingLiabilityRecord,
-    FindingLiabilityState, SqliteFindingChallengeStore,
+    FindingEffectIntentState, FindingEffectRootBindingRecord, FindingGovernanceCaseInput,
+    FindingGovernanceCaseKind, FindingGovernanceCaseRecord, FindingLiabilityInput,
+    FindingLiabilityRecord, FindingLiabilityState, SqliteFindingChallengeStore,
 };
 #[cfg(feature = "cognition-market-experimental")]
 pub use finding_market_store::{

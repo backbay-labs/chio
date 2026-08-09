@@ -511,6 +511,63 @@ BEGIN
     SELECT RAISE(ABORT, 'effect intent must be retained');
 END;
 
+-- The root intent is liability-scoped before the anchor proof exists. This
+-- immutable refinement is installed before publication and binds that intent
+-- to the exact Merkle root and evidence leaf the vault call will carry.
+CREATE TABLE IF NOT EXISTS effect_root_bindings (
+    intent_key TEXT NOT NULL PRIMARY KEY REFERENCES effect_intents(intent_key),
+    liability_key TEXT NOT NULL REFERENCES liability_heads(liability_key),
+    merkle_root TEXT NOT NULL CHECK (
+        length(merkle_root) = 66
+        AND substr(merkle_root, 1, 2) = '0x'
+        AND substr(merkle_root, 3) NOT GLOB '*[^0-9a-f]*'
+    ),
+    evidence_hash TEXT NOT NULL CHECK (
+        length(evidence_hash) = 66
+        AND substr(evidence_hash, 1, 2) = '0x'
+        AND substr(evidence_hash, 3) NOT GLOB '*[^0-9a-f]*'
+    ),
+    bound_at INTEGER NOT NULL CHECK (bound_at > 0)
+);
+
+CREATE TRIGGER IF NOT EXISTS effect_root_bindings_valid_intent
+BEFORE INSERT ON effect_root_bindings
+WHEN NOT EXISTS (
+    SELECT 1 FROM effect_intents
+    WHERE intent_key = NEW.intent_key
+      AND liability_key = NEW.liability_key
+      AND kind = 'root_intent'
+      AND state = 'pending'
+      AND attempt_count = 0
+)
+BEGIN
+    SELECT RAISE(ABORT, 'effect root binding requires its pending root intent');
+END;
+
+CREATE TRIGGER IF NOT EXISTS effect_intents_root_binding_before_dispatch
+BEFORE UPDATE OF state ON effect_intents
+WHEN OLD.kind = 'root_intent'
+  AND NEW.state = 'dispatched'
+  AND NOT EXISTS (
+      SELECT 1 FROM effect_root_bindings
+      WHERE intent_key = OLD.intent_key
+  )
+BEGIN
+    SELECT RAISE(ABORT, 'root intent must bind its anchor proof before dispatch');
+END;
+
+CREATE TRIGGER IF NOT EXISTS effect_root_bindings_immutable
+BEFORE UPDATE ON effect_root_bindings
+BEGIN
+    SELECT RAISE(ABORT, 'effect root binding is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS effect_root_bindings_no_delete
+BEFORE DELETE ON effect_root_bindings
+BEGIN
+    SELECT RAISE(ABORT, 'effect root binding must be retained');
+END;
+
 -- Immutable local history for the challenge projection. Every mutation of
 -- challenge state, including its composed listing sales block, appends one
 -- row here and one exact reference in the authority-wide commit chain.

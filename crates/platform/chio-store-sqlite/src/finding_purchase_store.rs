@@ -3,7 +3,7 @@
 //! per-listing sales block, settled purchase records, failed-delivery
 //! records, and payout destinations.
 //!
-//! Eight tables back the purchase path. `purchase_reservations` is the
+//! Nine tables back the purchase path. `purchase_reservations` is the
 //! durable fence a coordinator writes before it moves money: the row is
 //! keyed by the reservation id the compatibility receipt carries, and it
 //! is unique on both the purchase intent and the authoritative payment
@@ -28,8 +28,9 @@
 //! `purchase_records` and `failed_delivery_records` are the two terminal
 //! outcomes, retained without deletion and content-addressed against their
 //! stored digests. `payout_destinations` is the bounded sixteen-slot settled
-//! destination set per allocation, with a rail-tagged community fund in slot
-//! zero and EVM buyer destinations in the remaining slots.
+//! EVM destination set per allocation, with the community fund in slot zero
+//! and buyer destinations in the remaining slots. Pre-EVM rail destinations
+//! survive upgrades in `legacy_payout_destinations` as non-actionable history.
 //!
 //! Writes run under `TransactionBehavior::Immediate` behind the
 //! serving-owner fence; reads run `Deferred`; a commit whose outcome
@@ -67,18 +68,18 @@ use crate::admission_operation_store::verify_active_owner;
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-/// Revision 8 makes reservation payout capacity provisional until a
-/// settlement-capable purchase promotes it; revision 7 distinguishes retained
-/// legacy terminal bindings from live
-/// EVM bindings; revision 6 made every payout slot an EVM destination and
-/// reserved a buyer destination before funds can move; revision 5 separated the
+/// Revision 9 retains pre-EVM payout rows as non-actionable history; revision
+/// 8 makes reservation payout capacity provisional until a settlement-capable
+/// purchase promotes it; revision 7 distinguishes retained legacy terminal
+/// bindings from live EVM bindings; revision 6 made every payout slot an EVM
+/// destination and reserved a buyer destination before funds can move; revision 5 separated the
 /// buyer-signed payout address from agent identity;
 /// revision 4 gave community-fund and buyer payout slots their distinct
 /// durable shapes. The schema batch is a sequence of idempotent guards, so
 /// a revision-1 database adopts the new tables on its next open; a
 /// revision-2 database also carries its listing-keyed blocks across in
 /// [`carry_listing_sales_blocks_across`].
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 8;
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 9;
 /// Revision whose eagerly admitted reservation destinations must be reduced
 /// to the settled roster when upgrading.
 const FINDING_PURCHASE_EAGER_PAYOUT_VERSION: i32 = 7;
@@ -2681,13 +2682,10 @@ fn park_rail_only_payout_destinations(
     Ok(())
 }
 
-/// Copy every parked destination through the slot-aware constraints and
-/// drop the legacy table only after every row is present.
-///
-/// A rail-tagged legacy row cannot be translated into an EVM destination
-/// without changing its authority, so the plain `INSERT` rejects it and
-/// rolls the entire schema transaction back rather than silently dropping
-/// or rewriting it.
+/// Retain every destination parked from a pre-EVM schema as non-actionable
+/// history. Syntax alone cannot authenticate an old row as an EVM payout, so
+/// none is promoted into the actionable roster. The parked table is dropped
+/// only after every row is retained.
 fn carry_payout_destinations_across(
     transaction: &Transaction<'_>,
 ) -> Result<(), FindingPurchaseStoreError> {
@@ -2716,7 +2714,7 @@ fn carry_payout_destinations_across(
         .execute(
             &format!(
                 r#"
-                INSERT INTO payout_destinations (
+                INSERT INTO legacy_payout_destinations (
                     allocation_id, destination, slot_index, admitted_at
                 )
                 SELECT allocation_id, destination, slot_index, admitted_at
@@ -2956,6 +2954,8 @@ fn finding_purchase_schema_catalog(
                OR tbl_name GLOB 'failed_delivery_records*'
                OR name GLOB 'payout_destinations*'
                OR tbl_name GLOB 'payout_destinations*'
+               OR name GLOB 'legacy_payout_destinations*'
+               OR tbl_name GLOB 'legacy_payout_destinations*'
                OR name GLOB 'listing_sales_blocks*'
                OR tbl_name GLOB 'listing_sales_blocks*'
                ORDER BY type, name, tbl_name

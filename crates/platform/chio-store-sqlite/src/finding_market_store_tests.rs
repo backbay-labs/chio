@@ -978,10 +978,26 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     );
     assert_eq!(
         fixture
+            ._authority
+            .finding_purchase_store()
+            .block_new_slots(LISTING_ID, NOW + 21)
+            .expect("block after activation preparation"),
+        crate::finding_purchase_store::FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        fixture
             .store
-            .activate_listing(&second_envelope, &second_admission, NOW + 20)
-            .expect("superseding activation"),
+            .activate_listing(&second_envelope, &second_admission, NOW + 22)
+            .expect("prepared activation survives a later sales block"),
         FindingActivationOutcome::Activated
+    );
+    assert!(
+        fixture
+            ._authority
+            .finding_purchase_store()
+            .sales_blocked(LISTING_ID)
+            .expect("read sales block"),
+        "the later block remains effective after the prepared activation completes"
     );
     let superseding = fixture
         .store
@@ -1017,11 +1033,6 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     // (v) Admission and the sales block contend under the same immediate
     // transaction. Once the block lands, a fresh activation cannot
     // consume its collateral or replace the active admission.
-    fixture
-        ._authority
-        .finding_purchase_store()
-        .block_new_slots(LISTING_ID, NOW + 21)
-        .expect("block listing sales");
     let third_backing = backing_body(&finding_id, "vault:finding-collateral-3");
     let third_backing_envelope = envelope_string(&third_backing, &collateral);
     let third_backing_sha256 = chio_core::sha256_hex(third_backing_envelope.as_bytes());
