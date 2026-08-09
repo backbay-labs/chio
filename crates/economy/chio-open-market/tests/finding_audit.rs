@@ -12,10 +12,11 @@
 use chio_finding::{
     audit_seed_witness_signing_bytes, compute_audit_epoch_id, compute_audit_report_id,
     compute_challenge_id, derive_audit_seed_commitment, derive_outcome_id, signed_envelope_sha256,
-    FindingAuditEpoch, FindingAuditReport, FindingChallenge, FindingChallengeAuthorization,
-    FindingChallengeAuthorizationKind, FindingChallengeEvidence, FindingChallengeEvidenceKind,
-    FindingChallengeFacet, FindingChallengeOutcome, FindingChallengeVerdict, FindingCheckpointRef,
-    FindingEvidenceInvalidFacet, FindingEvidenceInvalidity, FindingMissedAudit, FindingReceiptRef,
+    FindingAuditEpoch, FindingAuditReport, FindingAuthorityKeyPolicy, FindingChallenge,
+    FindingChallengeAuthorization, FindingChallengeAuthorizationKind, FindingChallengeEvidence,
+    FindingChallengeEvidenceKind, FindingChallengeFacet, FindingChallengeOutcome,
+    FindingChallengeVerdict, FindingCheckpointRef, FindingEvidenceInvalidFacet,
+    FindingEvidenceInvalidity, FindingMissedAudit, FindingReceiptRef,
     FindingVenueAuditAuthorization, SignedFindingAuditEpoch, SignedFindingAuditReport,
     SignedFindingChallenge, SignedFindingChallengeOutcome, FINDING_AUDIT_EPOCH_SCHEMA_V1,
     FINDING_AUDIT_REPORT_SCHEMA_V1, FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
@@ -55,6 +56,26 @@ fn audit_evaluator() -> Keypair {
     Keypair::from_seed(&[44_u8; 32])
 }
 
+fn evaluator_policy(
+    authority_id: &str,
+    key: chio_open_market::crypto::PublicKey,
+    key_epoch: u64,
+) -> FindingAuthorityKeyPolicy {
+    FindingAuthorityKeyPolicy {
+        authority_id: authority_id.to_owned(),
+        key,
+        key_epoch,
+        valid_from: COMMITTED_AT.saturating_sub(1),
+        valid_until: REPORTED_AT.saturating_add(1),
+        rotation_policy_ref: "rotation/audit-evaluator".to_owned(),
+        revocation_status_ref: format!("revocations/{authority_id}"),
+    }
+}
+
+fn audit_evaluator_policy() -> FindingAuthorityKeyPolicy {
+    evaluator_policy("audit-evaluator", audit_evaluator().public_key(), 1)
+}
+
 fn select_audit_targets(
     epoch: &FindingAuditEpoch,
     seed: &str,
@@ -86,10 +107,11 @@ fn verify_audit_report(
 ) -> Result<(), FindingAuditError> {
     let audit_attempts = audit_attempts_for_report(report, eligible);
     let resolved_outcomes = resolved_outcomes_for_report(report, eligible, &audit_attempts);
+    let evaluator_policies = [audit_evaluator_policy()];
     let witnesses = FindingAuditReportWitnesses {
         pinned_seed_witness: seed_witness().public_key(),
         pinned_audit_authority: audit_authority().public_key(),
-        pinned_evaluator_authority: audit_evaluator().public_key(),
+        pinned_evaluator_policies: &evaluator_policies,
         audit_attempts: &audit_attempts,
         resolved_outcomes: &resolved_outcomes,
     };
@@ -662,7 +684,7 @@ fn report_verification_requires_pinned_epoch_and_report_signatures() {
     let witnesses = FindingAuditReportWitnesses {
         pinned_seed_witness: seed_witness().public_key(),
         pinned_audit_authority: audit_authority().public_key(),
-        pinned_evaluator_authority: audit_evaluator().public_key(),
+        pinned_evaluator_policies: &[audit_evaluator_policy()],
         audit_attempts: &audit_attempts,
         resolved_outcomes: &resolved_outcomes,
     };
@@ -716,7 +738,7 @@ fn an_outcome_cannot_predate_its_signed_audit_attempt() {
     let witnesses = FindingAuditReportWitnesses {
         pinned_seed_witness: seed_witness().public_key(),
         pinned_audit_authority: audit_authority().public_key(),
-        pinned_evaluator_authority: audit_evaluator().public_key(),
+        pinned_evaluator_policies: &[audit_evaluator_policy()],
         audit_attempts: &audit_attempts,
         resolved_outcomes: &resolved_outcomes,
     };
@@ -787,7 +809,7 @@ fn an_outcome_from_an_unpinned_evaluator_cannot_resolve_a_report() {
             &FindingAuditReportWitnesses {
                 pinned_seed_witness: seed_witness().public_key(),
                 pinned_audit_authority: audit_authority().public_key(),
-                pinned_evaluator_authority: audit_evaluator().public_key(),
+                pinned_evaluator_policies: &[audit_evaluator_policy()],
                 audit_attempts: &audit_attempts,
                 resolved_outcomes: &outcomes,
             },
@@ -797,6 +819,52 @@ fn an_outcome_from_an_unpinned_evaluator_cannot_resolve_a_report() {
             "challenge_outcome"
         ))
     ));
+}
+
+#[test]
+fn a_report_authenticates_each_historical_evaluator_across_rotation() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let mut report = report_for(&envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let mut outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+    let rotated = Keypair::from_seed(&[46_u8; 32]);
+    let rotated_policy = evaluator_policy("audit-evaluator-rotated", rotated.public_key(), 2);
+    let old_digest = signed_envelope_sha256(&outcomes[1]).test_expect("old outcome digest");
+    outcomes[1].body.evaluator_authority_id = rotated_policy.authority_id.clone();
+    outcomes[1].body.evaluator_key = rotated_policy.key.clone();
+    outcomes[1].body.evaluator_key_epoch = rotated_policy.key_epoch;
+    outcomes[1].body.evaluator_valid_from = rotated_policy.valid_from;
+    outcomes[1].body.evaluator_valid_until = rotated_policy.valid_until;
+    outcomes[1].body.evaluator_revocation_status_ref = rotated_policy.revocation_status_ref.clone();
+    outcomes[1].body.outcome_id =
+        derive_outcome_id(&outcomes[1].body).test_expect("rotated outcome id");
+    outcomes[1] = SignedFindingChallengeOutcome::sign(outcomes[1].body.clone(), &rotated)
+        .test_expect("sign rotated outcome");
+    let rotated_digest = signed_envelope_sha256(&outcomes[1]).test_expect("rotated outcome digest");
+    let reported = report
+        .outcome_envelope_digests
+        .iter_mut()
+        .find(|digest| **digest == old_digest)
+        .test_expect("report names old outcome");
+    *reported = rotated_digest;
+    reseal(&mut report);
+    let policies = [audit_evaluator_policy(), rotated_policy];
+
+    verify_audit_report_with_witness(
+        &sign_epoch(&epoch),
+        &sign_report(&report),
+        &eligible,
+        &FindingAuditReportWitnesses {
+            pinned_seed_witness: seed_witness().public_key(),
+            pinned_audit_authority: audit_authority().public_key(),
+            pinned_evaluator_policies: &policies,
+            audit_attempts: &audit_attempts,
+            resolved_outcomes: &outcomes,
+        },
+    )
+    .test_expect("each outcome resolves its historical evaluator policy");
 }
 
 #[test]
@@ -824,7 +892,7 @@ fn a_signed_outcome_for_an_unattempted_selection_cannot_resolve_a_report() {
             &FindingAuditReportWitnesses {
                 pinned_seed_witness: seed_witness().public_key(),
                 pinned_audit_authority: audit_authority().public_key(),
-                pinned_evaluator_authority: audit_evaluator().public_key(),
+                pinned_evaluator_policies: &[audit_evaluator_policy()],
                 audit_attempts: &audit_attempts,
                 resolved_outcomes: &outcomes,
             },
@@ -859,7 +927,7 @@ fn an_outcome_from_another_audit_round_cannot_resolve_a_report() {
             &FindingAuditReportWitnesses {
                 pinned_seed_witness: seed_witness().public_key(),
                 pinned_audit_authority: audit_authority().public_key(),
-                pinned_evaluator_authority: audit_evaluator().public_key(),
+                pinned_evaluator_policies: &[audit_evaluator_policy()],
                 audit_attempts: &audit_attempts,
                 resolved_outcomes: &outcomes,
             },

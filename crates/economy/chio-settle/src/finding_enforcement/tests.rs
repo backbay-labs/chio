@@ -86,13 +86,15 @@ fn sample_config() -> SettlementChainConfig {
         .as_ref()
         .test_expect("anchor inclusion proof example carries a chain anchor");
     let rpc_url = "http://127.0.0.1:8545".to_string();
-    let mut policy = SettlementPolicyConfig::default();
-    policy.finding_impairment_destination_allowlist = [
-        BUYER_DESTINATION.to_string(),
-        COMMUNITY_FUND_DESTINATION.to_string(),
-    ]
-    .into_iter()
-    .collect();
+    let policy = SettlementPolicyConfig {
+        finding_impairment_destination_allowlist: [
+            BUYER_DESTINATION.to_string(),
+            COMMUNITY_FUND_DESTINATION.to_string(),
+        ]
+        .into_iter()
+        .collect(),
+        ..SettlementPolicyConfig::default()
+    };
     SettlementChainConfig {
         chain_id: anchor.chain_id.clone(),
         network_name: "Devnet".to_string(),
@@ -190,6 +192,12 @@ fn enforcement_body(bond_snapshot_envelope_sha256: &str) -> FindingChallengeEnfo
                 intent_id: hex64(0xc3),
             },
         ],
+        finalization_authority_id: "venue-finalization".to_owned(),
+        finalization_key: finalization_keypair().public_key(),
+        finalization_key_epoch: 1,
+        finalization_valid_from: 1,
+        finalization_valid_until: 1_800_000_000,
+        finalization_revocation_status_ref: "revocations/venue-finalization".to_owned(),
         finalized_at: 1_750_090_100,
     }
 }

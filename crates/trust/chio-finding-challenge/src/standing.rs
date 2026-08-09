@@ -28,7 +28,7 @@ pub(crate) fn bind_purchase_record<'a>(
             "purchase_record_envelope_sha256",
         ));
     }
-    let purchase_authority = &context.profile.purchase_authority;
+    let purchase_authority = context.purchase_authority;
     verify_signed_purchase_record(record, &purchase_authority.key)
         .map_err(FindingChallengeInadmissible::StandingRejected)?;
     let body = &record.body;

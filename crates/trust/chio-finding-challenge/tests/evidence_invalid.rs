@@ -16,15 +16,21 @@ use support::{
 };
 
 #[test]
-fn sound_evidence_is_rejected_rather_than_left_open() -> TestResult {
+fn sound_evidence_without_authenticated_revocation_status_is_indeterminate() -> TestResult {
     let world = world()?;
     let case = evidence_case(&world, EvidenceShape::Sound)?;
     let proofs = case.revocation_proofs();
     let evidence = case.evidence(&proofs);
     let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
 
-    let adjudication = expect_reason(&evaluation, FindingChallengeReason::ChallengedEvidenceValid)?;
-    assert_eq!(adjudication.verdict(), FindingChallengeVerdict::Rejected);
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::EvidenceKeyRevocationNotEstablished,
+    )?;
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
     assert!(!evaluation.authorizes_penalty());
     outcome_for(&world, &case.challenge, &adjudication)?;
     Ok(())
@@ -286,10 +292,10 @@ fn one_unestablished_revocation_outweighs_an_established_one() -> TestResult {
     Ok(())
 }
 
-/// A statement about some other key is inert. It cannot uphold, and it cannot
-/// unsettle a subset whose own signing key nobody withdrew.
+/// A statement about some other key cannot establish the challenged key's
+/// non-revocation status.
 #[test]
-fn a_revocation_of_another_key_leaves_the_subset_clean() -> TestResult {
+fn a_revocation_of_another_key_leaves_the_challenged_key_unestablished() -> TestResult {
     let world = world()?;
     let revoked = vec![world.revocation(
         &world.replay_kernel.public_key(),
@@ -301,8 +307,14 @@ fn a_revocation_of_another_key_leaves_the_subset_clean() -> TestResult {
     let evidence = case.evidence(&proofs);
     let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
 
-    let adjudication = expect_reason(&evaluation, FindingChallengeReason::ChallengedEvidenceValid)?;
-    assert_eq!(adjudication.verdict(), FindingChallengeVerdict::Rejected);
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::EvidenceKeyRevocationNotEstablished,
+    )?;
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
     Ok(())
 }
 

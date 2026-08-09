@@ -508,6 +508,7 @@ impl World {
             raw_finding: &self.raw_finding,
             profile: &self.profile,
             governance_authority: &self.governance_key,
+            pinned_purchase_authority: &self.profile.body.purchase_authority,
             evidence,
         }
     }
@@ -644,6 +645,7 @@ impl World {
         };
         let authority = match shape {
             StandingShape::ForeignAuthority => &self.buyer,
+            StandingShape::AdmissionAuthority => &self.delivery_kernel,
             _ => &self.purchase_authority,
         };
         Ok(SignedExportEnvelope::sign(record, authority)?)
@@ -950,6 +952,8 @@ pub enum StandingShape {
     Sound,
     /// Signed by a key the profile does not pin as the purchase authority.
     ForeignAuthority,
+    /// Signed by a rotated key pinned by the exact venue admission.
+    AdmissionAuthority,
     /// The evidence carries a settled record other than the one the challenge
     /// names.
     UnnamedRecord,

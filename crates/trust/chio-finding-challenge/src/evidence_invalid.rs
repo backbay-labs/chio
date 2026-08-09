@@ -218,15 +218,13 @@ pub(crate) fn evaluate_evidence_invalid(
             ));
         }
         let reason = match standing_of(context, evidence, resolved, Some(production_policy)) {
-            KeyRevocationStanding::NotEstablished => {
-                FindingChallengeReason::EvidenceKeyRevocationNotEstablished
-            }
             KeyRevocationStanding::RevokedAfter => {
                 FindingChallengeReason::EvidenceKeyRevokedAfterPublication
             }
-            KeyRevocationStanding::NoneOffered | KeyRevocationStanding::RevokedAtOrBefore => {
-                continue
+            KeyRevocationStanding::NoneOffered | KeyRevocationStanding::NotEstablished => {
+                FindingChallengeReason::EvidenceKeyRevocationNotEstablished
             }
+            KeyRevocationStanding::RevokedAtOrBefore => continue,
         };
         return Ok(adjudication(
             &challenged_ids,

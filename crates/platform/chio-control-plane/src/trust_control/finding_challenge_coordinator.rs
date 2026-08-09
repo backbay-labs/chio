@@ -1294,6 +1294,7 @@ impl FindingChallengeCoordinator {
             raw_finding: request.raw_finding,
             profile: request.profile,
             governance_authority: &governance_authority,
+            pinned_purchase_authority: &admission.body.purchase_authority,
             evidence: request.evidence,
         };
         let FindingChallengeEvaluation::Adjudicated(adjudication) =
@@ -1944,12 +1945,7 @@ impl FindingChallengeCoordinator {
         now: u64,
     ) -> Result<AuthorizedImpairment, ChallengeCoordinatorError> {
         let old = &authorized.enforcement;
-        verify_pinned_envelope(
-            old,
-            &self.finalization_authority.public_key(),
-            "finding challenge enforcement",
-        )
-        .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        self.require_enforcement_signature(old, now)?;
         if self.envelope_digest(old)? != authorized.enforcement_envelope_sha256 {
             return Err(ChallengeCoordinatorError::Settlement(
                 "authorized impairment digest does not match its enforcement".to_owned(),
@@ -1998,6 +1994,13 @@ impl FindingChallengeCoordinator {
         let mut body = old.body.clone();
         body.bond_snapshot_envelope_sha256 = self.envelope_digest(bond_snapshot)?;
         body.finalized_at = now;
+        body.finalization_authority_id = self.finalization_pin.authority_id.clone();
+        body.finalization_key = self.finalization_authority.public_key();
+        body.finalization_key_epoch = self.finalization_pin.key_epoch;
+        body.finalization_valid_from = self.finalization_pin.valid_from;
+        body.finalization_valid_until = self.finalization_pin.valid_until;
+        body.finalization_revocation_status_ref =
+            self.finalization_pin.revocation_status_ref.clone();
         body.enforcement_id.clear();
         body.enforcement_id =
             compute_enforcement_id(&body).map_err(|_| ChallengeCoordinatorError::Canonical)?;
@@ -2132,23 +2135,8 @@ impl FindingChallengeCoordinator {
                 return Err(ChallengeCoordinatorError::LiabilityIdentity(label));
             }
         }
-        enforcement
-            .body
-            .validate()
-            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-        verify_pinned_envelope(
-            enforcement,
-            &self.finalization_authority.public_key(),
-            "finding challenge enforcement",
-        )
-        .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        let finalization_authority = self.require_enforcement_signature(enforcement, now)?;
         self.require_penalty_matches_enforcement(&liability, enforcement, penalty, now)?;
-        self.require_live_role(
-            &self.finalization_pin,
-            enforcement.body.finalized_at,
-            now,
-            "finalization",
-        )?;
         let seller_intent_id = enforcement
             .body
             .effect_intents
@@ -2185,7 +2173,7 @@ impl FindingChallengeCoordinator {
             )?
         };
         let pins = FindingEnforcementPins {
-            finalization_authority: self.finalization_authority.public_key(),
+            finalization_authority,
             settlement_observer,
             seller: durable_seller,
             finality_requirement: self.pins.settlement_finality_requirement,
@@ -3756,8 +3744,9 @@ impl FindingChallengeCoordinator {
                     "liability carries an invalid durable seller key".to_owned(),
                 )
             })?;
+            let finalization_authority = self.require_enforcement_signature(enforcement, now)?;
             let pins = FindingEnforcementPins {
-                finalization_authority: self.finalization_authority.public_key(),
+                finalization_authority,
                 settlement_observer: bond_snapshot.signer_key.clone(),
                 seller,
                 finality_requirement: self.pins.settlement_finality_requirement,
@@ -4164,6 +4153,39 @@ impl FindingChallengeCoordinator {
             })?;
         verify_signed_challenge_outcome(outcome, &evaluator)
             .map_err(|error| ChallengeCoordinatorError::OutcomeEnvelope(error.to_string()))
+    }
+
+    /// Authenticate one retained enforcement under the exact historical
+    /// finalization policy its signed body commits, then verify the envelope
+    /// under the resulting key. The externally authenticated status resolver
+    /// keeps these body fields from self-authorizing a signer.
+    fn require_enforcement_signature(
+        &self,
+        enforcement: &SignedFindingChallengeEnforcement,
+        now: u64,
+    ) -> Result<PublicKey, ChallengeCoordinatorError> {
+        enforcement
+            .body
+            .validate()
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        let body = &enforcement.body;
+        let historical_pin = FindingAuthorityPin {
+            authority_id: body.finalization_authority_id.clone(),
+            key_hex: body.finalization_key.to_hex(),
+            key_epoch: body.finalization_key_epoch,
+            valid_from: body.finalization_valid_from,
+            valid_until: body.finalization_valid_until,
+            revocation_status_ref: body.finalization_revocation_status_ref.clone(),
+        };
+        let authority = self.require_live_role(
+            &historical_pin,
+            body.finalized_at,
+            now,
+            "historical finalization",
+        )?;
+        verify_pinned_envelope(enforcement, &authority, "finding challenge enforcement")
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        Ok(authority)
     }
 
     /// Charge the dispute fee to the challenge-administration pool
@@ -5068,6 +5090,12 @@ impl FindingChallengeCoordinator {
             amount: sealed.distribution.slash.clone(),
             destinations,
             effect_intents: bindings,
+            finalization_authority_id: self.finalization_pin.authority_id.clone(),
+            finalization_key: self.finalization_authority.public_key(),
+            finalization_key_epoch: self.finalization_pin.key_epoch,
+            finalization_valid_from: self.finalization_pin.valid_from,
+            finalization_valid_until: self.finalization_pin.valid_until,
+            finalization_revocation_status_ref: self.finalization_pin.revocation_status_ref.clone(),
             finalized_at: now,
         };
         enforcement.enforcement_id = compute_enforcement_id(&enforcement)

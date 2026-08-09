@@ -9,8 +9,9 @@
 use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_finding::{
     ensure_challenge_class_compatibility, signed_envelope_sha256, verify_finding,
-    verify_signed_challenge, verify_signed_profile, Finding, FindingChallenge,
-    FindingChallengeAuthorization, FindingChallengeEvidence, FindingChallengeVerifierProfile,
+    verify_signed_challenge, verify_signed_profile, Finding, FindingAuthorityKeyPolicy,
+    FindingChallenge, FindingChallengeAuthorization, FindingChallengeEvidence,
+    FindingChallengeVerifierProfile,
 };
 use chio_finding_verifier::MAX_RAW_FINDING_BYTES;
 
@@ -32,6 +33,8 @@ pub(crate) struct EvaluationContext<'a> {
     /// The deployment's pinned governance root, the authority that signed
     /// this profile and the only one that may withdraw a key it pins.
     pub(crate) governance_authority: &'a PublicKey,
+    /// Authority policy frozen by the exact retained venue admission.
+    pub(crate) purchase_authority: &'a FindingAuthorityKeyPolicy,
     /// The buyer whose standing the submission rests on, when the submission
     /// is a buyer filing. A venue audit has no challenger and no standing.
     pub(crate) challenger: Option<&'a PublicKey>,
@@ -108,6 +111,7 @@ fn adjudicate(
         profile: &input.profile.body,
         profile_envelope_sha256: &profile_envelope_sha256,
         governance_authority: input.governance_authority,
+        purchase_authority: input.pinned_purchase_authority,
         challenger,
     };
 

@@ -26,9 +26,11 @@ use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+use crate::envelope::require_ed25519;
 use crate::finalized_bond_snapshot::FindingVaultReference;
 use crate::validate::{
-    require_bounded_id, require_currency, require_hex64, require_nonzero, FindingError,
+    require_bounded_id, require_currency, require_hex64, require_nonzero, require_window,
+    FindingError,
 };
 
 /// Venue-finalization-authority-signed enforcement instruction.
@@ -115,6 +117,15 @@ pub struct FindingChallengeEnforcement {
     /// `amount`.
     pub destinations: Vec<FindingEnforcementDestination>,
     pub effect_intents: Vec<FindingEffectIntentBinding>,
+    /// Exact historical lifecycle policy that authorized this signature.
+    /// Recovery resolves this policy after deployment rotation instead of
+    /// verifying an old enforcement under the current key.
+    pub finalization_authority_id: String,
+    pub finalization_key: PublicKey,
+    pub finalization_key_epoch: u64,
+    pub finalization_valid_from: u64,
+    pub finalization_valid_until: u64,
+    pub finalization_revocation_status_ref: String,
     pub finalized_at: u64,
 }
 
@@ -148,7 +159,25 @@ impl FindingChallengeEnforcement {
         require_currency(&self.amount.currency, "amount.currency")?;
         self.validate_destinations()?;
         self.validate_effect_intents()?;
+        require_bounded_id(&self.finalization_authority_id, "finalization_authority_id")?;
+        require_ed25519(&self.finalization_key, "finalization_key")?;
+        require_nonzero(self.finalization_key_epoch, "finalization_key_epoch")?;
+        require_window(
+            self.finalization_valid_from,
+            self.finalization_valid_until,
+            "finalization_valid_from",
+            "finalization_valid_until",
+        )?;
+        require_bounded_id(
+            &self.finalization_revocation_status_ref,
+            "finalization_revocation_status_ref",
+        )?;
         require_nonzero(self.finalized_at, "finalized_at")?;
+        if self.finalized_at < self.finalization_valid_from
+            || self.finalized_at >= self.finalization_valid_until
+        {
+            return Err(FindingError::InvalidField("finalized_at"));
+        }
         self.verify_enforcement_id()
     }
 

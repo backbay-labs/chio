@@ -8,9 +8,9 @@
 
 use chio_core_types::crypto::PublicKey;
 use chio_finding::{
-    FindingChallengeFacet, FindingChallengeVerdict, FindingError, SignedFindingChallenge,
-    SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery, SignedFindingKeyRevocation,
-    SignedFindingPurchaseRecord,
+    FindingAuthorityKeyPolicy, FindingChallengeFacet, FindingChallengeVerdict, FindingError,
+    SignedFindingChallenge, SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery,
+    SignedFindingKeyRevocation, SignedFindingPurchaseRecord,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_kernel::checkpoint::{CheckpointTransparencySummary, KernelCheckpoint};
@@ -37,6 +37,10 @@ pub struct FindingChallengeEvaluationInput<'a> {
     pub profile: &'a SignedFindingChallengeVerifierProfile,
     /// The governance root that must have signed the profile envelope.
     pub governance_authority: &'a PublicKey,
+    /// Purchase-authority policy from the exact retained, venue-signed
+    /// admission the challenge names. This may differ from the reusable
+    /// verifier profile after an admission-specific rotation.
+    pub pinned_purchase_authority: &'a FindingAuthorityKeyPolicy,
     /// Exactly the evidence the challenge's evidence class selects. A branch
     /// that does not match the challenge's class is inadmissible.
     pub evidence: &'a FindingChallengeClassEvidence<'a>,

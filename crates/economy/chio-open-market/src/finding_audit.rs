@@ -25,10 +25,11 @@ use chio_core_types::hashing::sha256;
 use chio_finding::{
     derive_audit_seed_commitment, signed_envelope_sha256, verify_outcome_challenge_binding,
     verify_signed_audit_epoch, verify_signed_audit_report, verify_signed_challenge,
-    verify_signed_challenge_outcome, FindingAuditEpoch, FindingChallengeAuthorization,
-    FindingChallengeAuthorizationKind, FindingError, SignedFindingAuditEpoch,
-    SignedFindingAuditReport, SignedFindingChallenge, SignedFindingChallengeOutcome,
-    MAX_AUDIT_SELECTION, MAX_FINDING_IDENTIFIER_BYTES, MAX_PUBLISHED_RATE_BPS,
+    verify_signed_challenge_outcome, FindingAuditEpoch, FindingAuthorityKeyPolicy,
+    FindingChallengeAuthorization, FindingChallengeAuthorizationKind, FindingError,
+    SignedFindingAuditEpoch, SignedFindingAuditReport, SignedFindingChallenge,
+    SignedFindingChallengeOutcome, MAX_AUDIT_SELECTION, MAX_FINDING_IDENTIFIER_BYTES,
+    MAX_PUBLISHED_RATE_BPS,
 };
 
 use crate::capability::scope::MonetaryAmount;
@@ -118,7 +119,11 @@ pub struct AuditSelection {
 pub struct FindingAuditReportWitnesses<'a> {
     pub pinned_seed_witness: PublicKey,
     pub pinned_audit_authority: PublicKey,
-    pub pinned_evaluator_authority: PublicKey,
+    /// Governance-authenticated historical evaluator policies. Every
+    /// outcome resolves its own exact policy from this set, so a rotation
+    /// during a round does not invalidate earlier outcomes or let an
+    /// outcome self-authorize its signer.
+    pub pinned_evaluator_policies: &'a [FindingAuthorityKeyPolicy],
     pub audit_attempts: &'a [SignedFindingChallenge],
     pub resolved_outcomes: &'a [SignedFindingChallengeOutcome],
 }
@@ -179,6 +184,8 @@ pub enum FindingAuditError {
     MissingOutcome { attempted: usize, outcomes: usize },
     #[error("audit outcome rejected: {0}")]
     Outcome(FindingError),
+    #[error("audit outcome {0} has no exact authenticated evaluator policy")]
+    OutcomeAuthorityNotEstablished(String),
     #[error("audit attempt rejected: {0}")]
     Attempt(FindingError),
     #[error("audit attempt {0} did not use the venue-audit authorization branch")]
@@ -527,9 +534,23 @@ pub fn verify_audit_report(
         .collect();
     let mut resolved_selections = BTreeSet::new();
     for signed in witnesses.resolved_outcomes {
-        verify_signed_challenge_outcome(signed, &witnesses.pinned_evaluator_authority)
-            .map_err(FindingAuditError::Outcome)?;
         let outcome = &signed.body;
+        let Some(policy) = witnesses.pinned_evaluator_policies.iter().find(|policy| {
+            policy.authority_id == outcome.evaluator_authority_id
+                && policy.key == outcome.evaluator_key
+                && policy.key_epoch == outcome.evaluator_key_epoch
+                && policy.valid_from == outcome.evaluator_valid_from
+                && policy.valid_until == outcome.evaluator_valid_until
+                && policy.revocation_status_ref == outcome.evaluator_revocation_status_ref
+        }) else {
+            return Err(FindingAuditError::OutcomeAuthorityNotEstablished(
+                outcome.outcome_id.clone(),
+            ));
+        };
+        policy
+            .validate("audit evaluator policy")
+            .map_err(FindingAuditError::Outcome)?;
+        verify_signed_challenge_outcome(signed, &policy.key).map_err(FindingAuditError::Outcome)?;
         if outcome.authorization != FindingChallengeAuthorizationKind::VenueAudit {
             return Err(FindingAuditError::OutcomeAuthorization(
                 outcome.outcome_id.clone(),

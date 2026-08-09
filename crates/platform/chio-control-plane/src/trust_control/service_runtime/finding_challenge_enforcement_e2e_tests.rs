@@ -6951,6 +6951,12 @@ fn enforcement_pair_at_vault(
                 intent_id: byte_hex64(0xc3),
             },
         ],
+        finalization_authority_id: "venue-finalization".to_owned(),
+        finalization_key: keypair(32).public_key(),
+        finalization_key_epoch: PINNED_KEY_EPOCH,
+        finalization_valid_from: 1,
+        finalization_valid_until: I_JSON_MAX_SAFE_INTEGER,
+        finalization_revocation_status_ref: REVOCATION_STATUS_REF.to_owned(),
         finalized_at: OBSERVED_AT + 100,
     };
     enforcement.enforcement_id = compute_enforcement_id(&enforcement)?;
@@ -7532,6 +7538,52 @@ fn finding_challenge_confirmed_impairment_recovers_across_operator_rotation() ->
     let settled = case.head()?;
     assert_eq!(settled.state, FindingLiabilityState::Settled);
     assert!(!settled.quarantined);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_enforcement_recovers_across_finalization_authority_rotation() -> TestResult {
+    let case = finalizing_liability()?;
+    let mut rotated = market_config();
+    rotated.venue_finalization = authority_pin(49, "venue-finalization-rotated");
+    let coordinator = FindingChallengeCoordinator::new(
+        case.deployment.challenges.clone(),
+        case.deployment.purchases.clone(),
+        &rotated,
+        keypair(31),
+        keypair(49),
+        keypair(33),
+        Arc::new(TestAuthorityStatusResolver::live()),
+        case.deployment.rail.clone(),
+        case.deployment.filings.clone(),
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+    let publisher = MiningPublisher::new();
+    let finalize = || -> Result<FindingFinalization, AnyError> {
+        Ok(coordinator.finalize(
+            &case.liability_key,
+            &case.enforcement,
+            &case.penalty,
+            &case.snapshot,
+            &case.seller,
+            &settlement_config()?,
+            &settlement_config()?.operator_address,
+            &evm_vault_snapshot(),
+            &anchor_proof()?,
+            &ScriptedObservations::qualified(),
+            &publisher,
+            SETTLEMENT_NOW,
+        )?)
+    };
+
+    finalize()?;
+    let recovered = finalize()?;
+    assert!(matches!(
+        recovered,
+        FindingFinalization::Reconciled(FindingImpairmentOutcome::Confirmed { .. })
+    ));
+    assert_eq!(publisher.attempts(), 2);
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Confirmed);
     Ok(())
 }
 

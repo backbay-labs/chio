@@ -116,7 +116,7 @@ fb33f0a18894dc039ea4a2d71c01469e9ef5a691f850235f32797cdfc99cfb9e  spec/schemas/c
 bb592bbe8085abb35f430917f97f594170b9f1f13b5d1031c3ef6ecb19b0b19f  spec/schemas/chio-finding/v1/audit-epoch.schema.json
 56738bea367933c7c54ffb3c6b0d1e5aa29a3e283dd952b78443c69030d62968  spec/schemas/chio-finding/v1/audit-report.schema.json
 1cee09366510acf96f0c8603957807f784948d745411530b62361db68f4fb190  spec/schemas/chio-finding/v1/bond-backing.schema.json
-bc9d931368901f010543817f8cca9d45edd946213315e16e2e40d3608092c63a  spec/schemas/chio-finding/v1/challenge-enforcement.schema.json
+4ea3302b14802b6ec8c06c6532f0595bdbb140efac14ac1f15fac86fd75dd46a  spec/schemas/chio-finding/v1/challenge-enforcement.schema.json
 9b638cb3ff1433b939ac4dfafae99e6ab9077c7594af8023893b563288713d87  spec/schemas/chio-finding/v1/challenge-outcome.schema.json
 406ffc4cca09025d7b031f6ecab47db338b89d87d442822cdf9926f12bcb5586  spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json
 56b97c686857abed44619fd1c62763890d7dded3298b0b8b6e9d5b456a5eabfd  spec/schemas/chio-finding/v1/challenge.schema.json

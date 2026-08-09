@@ -458,6 +458,12 @@ fn enforcement_body() -> Result<FindingChallengeEnforcement, FindingError> {
                 intent_id: HEX64_THIRD.to_string(),
             },
         ],
+        finalization_authority_id: "venue-finalization".to_owned(),
+        finalization_key: keypair(44).public_key(),
+        finalization_key_epoch: 1,
+        finalization_valid_from: 1,
+        finalization_valid_until: 1_800_000_000,
+        finalization_revocation_status_ref: "revocations/venue-finalization".to_owned(),
         finalized_at: 1_750_100_000,
     };
     enforcement.enforcement_id = compute_enforcement_id(&enforcement)?;

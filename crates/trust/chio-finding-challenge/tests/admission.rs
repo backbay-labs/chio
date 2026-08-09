@@ -162,6 +162,7 @@ fn the_raw_finding_must_be_its_own_canonical_serialization() -> TestResult {
         raw_finding: &padded,
         profile: &world.profile,
         governance_authority: &world.governance_key,
+        pinned_purchase_authority: &world.profile.body.purchase_authority,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -184,6 +185,7 @@ fn the_profile_must_be_the_one_the_challenge_names() -> TestResult {
         raw_finding: &world.raw_finding,
         profile: &other_profile,
         governance_authority: &world.governance_key,
+        pinned_purchase_authority: &world.profile.body.purchase_authority,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -206,6 +208,7 @@ fn the_profile_must_verify_under_the_pinned_governance_root() -> TestResult {
         raw_finding: &world.raw_finding,
         profile: &world.profile,
         governance_authority: &interloper,
+        pinned_purchase_authority: &world.profile.body.purchase_authority,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -231,6 +234,7 @@ fn the_profile_body_must_name_the_pinned_governance_root() -> TestResult {
         raw_finding: &world.raw_finding,
         profile: &profile,
         governance_authority: &world.governance_key,
+        pinned_purchase_authority: &world.profile.body.purchase_authority,
         evidence: &evidence,
     };
 
@@ -256,6 +260,7 @@ fn a_venue_audit_must_verify_under_the_pinned_audit_authority() -> TestResult {
         raw_finding: &world.raw_finding,
         profile: &world.profile,
         governance_authority: &world.governance_key,
+        pinned_purchase_authority: &world.profile.body.purchase_authority,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -280,6 +285,7 @@ fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
         raw_finding: &tampered,
         profile: &world.profile,
         governance_authority: &world.governance_key,
+        pinned_purchase_authority: &world.profile.body.purchase_authority,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -311,6 +317,34 @@ fn standing_must_be_signed_by_the_profiles_purchase_authority() -> TestResult {
         other => panic!("expected the standing artifact to be rejected, got {other:?}"),
     }
     assert!(evaluation.verdict().is_none());
+    Ok(())
+}
+
+#[test]
+fn standing_uses_the_exact_admission_purchase_authority_after_rotation() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::AdmissionAuthority)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let mut admission_policy = world.profile.body.purchase_authority.clone();
+    admission_policy.authority_id = "purchase-rotated".to_owned();
+    admission_policy.key = world.delivery_kernel.public_key();
+    admission_policy.key_epoch += 1;
+    let mut input = world.input(&case.challenge, &evidence);
+    input.pinned_purchase_authority = &admission_policy;
+
+    let evaluation = evaluate_finding_challenge(&input);
+    let adjudication = evaluation
+        .adjudication()
+        .ok_or("the admission-pinned purchase authority establishes standing")?;
+    assert_eq!(
+        adjudication.reason(),
+        FindingChallengeReason::EvidenceKeyRevocationNotEstablished
+    );
+    assert_eq!(
+        adjudication.verdict(),
+        chio_finding::FindingChallengeVerdict::Indeterminate
+    );
     Ok(())
 }
 
