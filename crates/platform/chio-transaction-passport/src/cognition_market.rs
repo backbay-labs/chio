@@ -69,6 +69,8 @@ pub struct CognitionMarketProofTrust {
     pub finding_verifier_authority: PublicKey,
     pub finding_verifier_signer: FindingAuthorityKeyPolicy,
     pub trusted_verifier_profile_envelope_sha256: String,
+    pub trusted_verifier_profile_required_facets: Vec<FindingFacetKind>,
+    pub trusted_trust_root_snapshot_sha256: String,
     pub status: Option<CognitionMarketStatusTrust>,
 }
 
@@ -245,6 +247,11 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "signed verifier report does not bind the deployment-pinned verifier profile",
         ));
     }
+    if report.body.trust_root_snapshot_sha256 != trust.trusted_trust_root_snapshot_sha256 {
+        return Err(claim_failed(
+            "signed verifier report does not bind the deployment-pinned trust-root snapshot",
+        ));
+    }
 
     if let Some(recipe_node) = &recipe_node {
         let recipe_bytes = artifact_bytes(artifacts, recipe_node.path)?;
@@ -311,7 +318,11 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         None
     };
 
-    require_report_facets(&report, &selected_claims)?;
+    require_report_facets(
+        &report,
+        &selected_claims,
+        &trust.trusted_verifier_profile_required_facets,
+    )?;
     validate_selected_cognition_claim_rows(
         &claim_set,
         &selected_claims,
@@ -485,6 +496,7 @@ fn require_digest_bound_attachment_edges(
 fn require_report_facets(
     report: &SignedFindingVerifierReport,
     selected_claims: &BTreeSet<&'static str>,
+    profile_required_facets: &[FindingFacetKind],
 ) -> Result<(), TransactionPassportError> {
     if let Some(failed) = report
         .body
@@ -496,6 +508,13 @@ fn require_report_facets(
             "signed verifier report contains failed facet {:?}",
             failed.facet
         )));
+    }
+    for facet in profile_required_facets {
+        if report.body.facet_outcome(*facet) != Some(FindingFacetOutcome::Verified) {
+            return Err(claim_failed(format!(
+                "deployment-pinned verifier profile requires verified facet {facet:?}"
+            )));
+        }
     }
     if selected_claims.contains(COGNITION_MARKET_CLAIMS[0])
         && report.body.finding_delivery_receipt_id.is_none()

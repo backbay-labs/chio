@@ -437,6 +437,8 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         finding_verifier_authority: verifier_keypair().public_key(),
         finding_verifier_signer: verifier_signer_policy(),
         trusted_verifier_profile_envelope_sha256: "23".repeat(32),
+        trusted_verifier_profile_required_facets: vec![FindingFacetKind::KernelAndRevocationTrust],
+        trusted_trust_root_snapshot_sha256: "45".repeat(32),
         status: Some(CognitionMarketStatusTrust {
             status_operator_authorization: status_authorization(&status_keypair),
             status_freshness: FindingStatusFreshnessPolicy {
@@ -1068,6 +1070,58 @@ fn cognition_market_qualified_profile_rejects_unpinned_profile() -> TestResult {
         .to_string();
     assert!(
         error.contains("deployment-pinned verifier profile"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_enforces_required_facet_floor() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let report_bytes = bundle
+        .artifacts
+        .get("report.json")
+        .ok_or("report missing")?;
+    let signed: SignedExportEnvelope<FindingVerifierReport> = serde_json::from_slice(report_bytes)?;
+    let mut report = signed.body;
+    let required = report
+        .facets
+        .iter_mut()
+        .find(|facet| facet.facet == FindingFacetKind::KernelAndRevocationTrust)
+        .ok_or("kernel-and-revocation-trust facet missing")?;
+    required.outcome = FindingFacetOutcome::Unavailable;
+    required.reason = "trusted profile floor was not evaluated".to_string();
+    report.report_id = compute_report_id(&report)?;
+    let replacement = SignedExportEnvelope::sign(report, &verifier_keypair())?;
+    replace_graph_artifact(
+        &mut bundle,
+        "report.json",
+        canonical_json_bytes(&replacement)?,
+    )?;
+    resign_graph(&mut bundle)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("report below the trusted profile facet floor was accepted")?
+        .to_string();
+    assert!(
+        error.contains("profile requires verified facet KernelAndRevocationTrust"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_unpinned_trust_root_snapshot() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle.trust.trusted_trust_root_snapshot_sha256 = "ab".repeat(32);
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("report from an unpinned trust-root snapshot was accepted")?
+        .to_string();
+    assert!(
+        error.contains("deployment-pinned trust-root snapshot"),
         "unexpected error: {error}"
     );
     Ok(())

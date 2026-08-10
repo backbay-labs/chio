@@ -135,7 +135,6 @@ fn durable_server_url_elicitation_finalizes_the_pool_claim() {
     );
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn durable_startup_reconciliation_rejects_late_pool_ledger_installation() {
     use crate::finding_pool::tests::RecordingLedger;

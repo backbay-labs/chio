@@ -140,6 +140,16 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
             std::ffi::OsStr::new(&profile_digest),
         ),
         (
+            "CHIO_FINDING_VERIFIER_PROFILE_REQUIRED_FACETS",
+            std::ffi::OsStr::new("[]"),
+        ),
+        (
+            "CHIO_FINDING_TRUST_ROOT_SNAPSHOT_SHA256",
+            std::ffi::OsStr::new(
+                "4545454545454545454545454545454545454545454545454545454545454545",
+            ),
+        ),
+        (
             "CHIO_FINDING_VERIFIER_SIGNER_POLICY_PATH",
             signer_policy_path.as_os_str(),
         ),
@@ -338,6 +348,16 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
             "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256",
             std::ffi::OsStr::new(
                 "2323232323232323232323232323232323232323232323232323232323232323",
+            ),
+        ),
+        (
+            "CHIO_FINDING_VERIFIER_PROFILE_REQUIRED_FACETS",
+            std::ffi::OsStr::new("[\"kernel_and_revocation_trust\"]"),
+        ),
+        (
+            "CHIO_FINDING_TRUST_ROOT_SNAPSHOT_SHA256",
+            std::ffi::OsStr::new(
+                "4545454545454545454545454545454545454545454545454545454545454545",
             ),
         ),
         (

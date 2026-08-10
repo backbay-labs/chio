@@ -146,7 +146,6 @@ impl DurableAdmissionRuntime {
     }
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 impl ChioKernel {
     pub(super) fn ensure_finding_pool_configuration_precedes_startup_reconciliation(
         &self,
