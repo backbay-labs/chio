@@ -46,17 +46,21 @@ the configured feed.
 
 Each cadence run performs this order:
 
-1. Read the durable feed floor and a bounded batch from
-   `list_publication_candidates`. The batch includes eligible pending intents
-   and published sticky leaves whose current-floor inclusion proof needs
-   refresh.
+1. Read the durable feed floor and bounded batches from
+   `list_publication_candidates` and
+   `list_non_inclusion_refresh_candidates`. The batches include eligible
+   pending intents, published sticky leaves whose current-floor inclusion
+   proof needs refresh, and live findings whose non-inclusion proof was
+   displaced by an epoch advance or expired.
 2. Confirm that an enforced intent's exact seller impairment is final. A bare
    outcome, bond hold, root publication, failed transaction, or ambiguous
    receipt is not eligible.
 3. Insert every eligible key in one transactional sparse-map update.
 4. Advance `map_epoch` exactly once, sign the complete status epoch, and store
    its exact canonical bytes before making it current.
-5. Generate and verify the portable inclusion proof for each inserted key.
+5. Generate and verify the portable inclusion proof for each inserted key,
+   then mint current-floor non-inclusion proofs for every live refresh
+   candidate before the cadence completes.
 6. Record the signed epoch and proof against each outbox item, then clear its
    pending marker exactly once.
 7. Leave failed items retryable. Quarantine conflicting identities or

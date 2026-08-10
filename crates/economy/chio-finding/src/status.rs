@@ -262,6 +262,9 @@ impl FindingStatusOperatorAuthorization {
         self.operator.validate("status_operator.operator")?;
         if let Some(revoked_from) = self.revoked_from {
             require_nonzero(revoked_from, "status_operator.revoked_from")?;
+            if revoked_from <= self.operator.valid_from {
+                return Err(FindingError::InvalidValidityWindow);
+            }
         }
         Ok(())
     }

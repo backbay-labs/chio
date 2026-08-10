@@ -182,6 +182,56 @@ fn floor_epoch_and_non_inclusion_survive_restart_with_exact_bytes() {
 }
 
 #[test]
+fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('1');
+    let epoch_one_id = hex64('2');
+    let epoch_one_root = hex64('3');
+    let epoch_one = epoch(1, &epoch_one_id, &epoch_one_root, b"epoch-one", 1);
+    let proof_one = non_inclusion(1, &epoch_one_id, &epoch_one_root, &finding_id, b"proof-one");
+    store
+        .advance_epoch(&FindingStatusEpochAdvance {
+            epoch: epoch_one,
+            leaves: &[],
+            proofs: &[proof_one],
+        })
+        .expect("persist first live proof");
+    assert!(store
+        .list_non_inclusion_refresh_candidates(FEED, NOW + 10, 200)
+        .expect("fresh candidates")
+        .is_empty());
+
+    let epoch_two_id = hex64('4');
+    let epoch_two_root = hex64('5');
+    store
+        .observe_verified_epoch(&epoch(2, &epoch_two_id, &epoch_two_root, b"epoch-two", 1))
+        .expect("advance feed floor");
+    let displaced = store
+        .list_non_inclusion_refresh_candidates(FEED, NOW + 10, 200)
+        .expect("displaced candidates");
+    assert_eq!(displaced.len(), 1);
+    assert_eq!(displaced[0].finding_id, finding_id);
+    assert_eq!(displaced[0].map_epoch, 1);
+
+    let proof_two = non_inclusion(2, &epoch_two_id, &epoch_two_root, &finding_id, b"proof-two");
+    store
+        .observe_verified_non_inclusion(&proof_two)
+        .expect("refresh live proof");
+    assert!(store
+        .list_non_inclusion_refresh_candidates(FEED, NOW + 10, 200)
+        .expect("refreshed candidates")
+        .is_empty());
+    let expired = store
+        .list_non_inclusion_refresh_candidates(FEED, proof_two.valid_until, 200)
+        .expect("expired candidates");
+    assert_eq!(expired.len(), 1);
+    assert_eq!(expired[0].finding_id, finding_id);
+    assert_eq!(expired[0].map_epoch, 2);
+}
+
+#[test]
 fn status_writes_advance_the_rollback_protected_projection() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();

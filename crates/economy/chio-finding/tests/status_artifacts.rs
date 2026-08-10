@@ -274,6 +274,23 @@ fn operator_role_key_epoch_validity_and_revocation_are_pinned() -> TestResult {
 }
 
 #[test]
+fn operator_authorization_requires_a_nonempty_live_window() {
+    let keypair = operator();
+    let mut authorization = authorization(&keypair);
+    authorization.revoked_from = Some(authorization.operator.valid_from);
+    assert_eq!(
+        authorization.validate(),
+        Err(chio_finding::FindingError::InvalidValidityWindow)
+    );
+
+    authorization.revoked_from = Some(authorization.operator.valid_from - 1);
+    assert_eq!(
+        authorization.validate(),
+        Err(chio_finding::FindingError::InvalidValidityWindow)
+    );
+}
+
+#[test]
 fn every_portable_cross_binding_and_freshness_mutation_rejects() -> TestResult {
     let (proof, auth, _) = inclusion_fixture()?;
     let mut cases = Vec::new();

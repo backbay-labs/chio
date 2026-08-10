@@ -1121,6 +1121,78 @@ impl SqliteFindingStatusStore {
         Ok(intents)
     }
 
+    /// Return live findings whose retained non-inclusion proof cannot satisfy
+    /// the current durable floor. This includes proofs displaced by any epoch
+    /// advance and current-floor proofs whose signed validity has expired.
+    pub fn list_non_inclusion_refresh_candidates(
+        &self,
+        feed_id: &str,
+        trusted_now: u64,
+        limit: usize,
+    ) -> Result<Vec<FindingStatusProofRecord>, FindingStatusStoreError> {
+        require_identifier(feed_id, "feed_id")?;
+        require_positive(trusted_now, "trusted_now")?;
+        if limit == 0 || limit > 200 {
+            return Err(invariant("proof query limit must be between 1 and 200"));
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        ensure_feed_registered_tx(&transaction, feed_id)?;
+        let query = format!(
+            r#"
+            {PROOF_SELECT}
+            JOIN finding_status_feed_floors AS floor
+              ON floor.feed_id = p.feed_id
+            WHERE p.feed_id = ?1
+              AND p.proof_kind = 'non_inclusion'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM finding_status_states AS status
+                WHERE status.feed_id = p.feed_id
+                  AND status.finding_id = p.finding_id
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM finding_status_proofs AS current
+                WHERE current.feed_id = p.feed_id
+                  AND current.finding_id = p.finding_id
+                  AND current.map_epoch = floor.map_epoch
+                  AND current.proof_kind = 'non_inclusion'
+                  AND current.valid_until > ?2
+              )
+              AND p.map_epoch = (
+                SELECT MAX(latest.map_epoch)
+                FROM finding_status_proofs AS latest
+                WHERE latest.feed_id = p.feed_id
+                  AND latest.finding_id = p.finding_id
+                  AND latest.proof_kind = 'non_inclusion'
+              )
+            ORDER BY p.recorded_at, p.finding_id
+            LIMIT ?3
+            "#
+        );
+        let mut statement = transaction.prepare(&query).map_err(sqlite_error)?;
+        let rows = statement
+            .query_map(
+                params![
+                    feed_id,
+                    sqlite_i64(trusted_now, "trusted_now")?,
+                    sqlite_i64(limit as u64, "limit")?,
+                ],
+                raw_proof_from_row,
+            )
+            .map_err(sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sqlite_error)?;
+        drop(statement);
+        let proofs = rows
+            .into_iter()
+            .map(proof_from_raw)
+            .collect::<Result<Vec<_>, _>>()?;
+        transaction.commit().map_err(sqlite_error)?;
+        Ok(proofs)
+    }
+
     /// Load one retained retracted leaf.
     pub fn get_leaf(
         &self,
