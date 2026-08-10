@@ -10369,7 +10369,8 @@ fn finding_challenge_a_purchase_that_lost_payout_standing_is_refused() -> TestRe
 // ---------------------------------------------------------------------------
 
 #[test]
-fn finding_challenge_a_clean_venue_audit_transfers_nothing() -> TestResult {
+fn finding_challenge_a_clean_venue_audit_without_revocation_status_transfers_nothing() -> TestResult
+{
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let challenged = challenged_finding()?;
@@ -10398,8 +10399,14 @@ fn finding_challenge_a_clean_venue_audit_transfers_nothing() -> TestResult {
             NOW + 2,
         ))?
         .ok_or("a resolvable audit is adjudicated")?;
-    assert_eq!(evaluated.state, FindingChallengeState::Rejected);
-    assert_eq!(evaluated.outcome.body.reason, "challenged_evidence_valid");
+    assert_eq!(
+        evaluated.state,
+        FindingChallengeState::IndeterminateRetryable
+    );
+    assert_eq!(
+        evaluated.outcome.body.reason,
+        "evidence_key_revocation_not_established"
+    );
     assert!(evaluated.outcome.body.penalty_calculation.is_none());
     assert_eq!(
         evaluated.bond_disposition, None,
@@ -10427,7 +10434,76 @@ fn finding_challenge_a_clean_venue_audit_transfers_nothing() -> TestResult {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn finding_challenge_an_indeterminate_result_retries_into_a_normal_verdict() -> TestResult {
+fn finding_challenge_evidence_bundle_commits_resolved_membership_inputs() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenged = challenged_finding()?;
+    let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 50, NOW)?;
+    let case = evidence_invalid_case(&challenged, ProductionShape::Sound, &sale, Filing::Buyer)?;
+    let status_resolver = TestAuthorityStatusResolver::live();
+    let purchase_pin = market_config().purchase;
+    let purchase_status = status_resolver
+        .resolve(&purchase_pin, NOW + 2)
+        .map_err(std::io::Error::other)?;
+    let later_purchase_status = status_resolver
+        .resolve(&purchase_pin, NOW + 3)
+        .map_err(std::io::Error::other)?;
+
+    let resolved = case.evidence();
+    let unresolved = case.unresolved_evidence();
+    let resolved_digest = coordinator.evidence_bundle_digest(
+        &case.challenge.body,
+        &resolved,
+        Some(&purchase_status),
+    )?;
+    let unresolved_digest = coordinator.evidence_bundle_digest(
+        &case.challenge.body,
+        &unresolved,
+        Some(&purchase_status),
+    )?;
+
+    assert_ne!(
+        resolved_digest, unresolved_digest,
+        "checkpoint and transparency substitutions must change the signed evidence commitment"
+    );
+    assert_ne!(
+        resolved_digest,
+        coordinator.evidence_bundle_digest(
+            &case.challenge.body,
+            &resolved,
+            Some(&later_purchase_status),
+        )?,
+        "purchase standing substitutions must change the evidence-invalid commitment"
+    );
+
+    let replay = replay_case(
+        &challenged,
+        "bundle-status",
+        &[PhaseShape::baseline_fails(), PhaseShape::candidate_passes()],
+        None,
+        &sale,
+    )?;
+    let reproductions = replay.reproductions();
+    let replay_evidence = replay.evidence(&reproductions);
+    let replay_digest = coordinator.evidence_bundle_digest(
+        &replay.challenge.body,
+        &replay_evidence,
+        Some(&purchase_status),
+    )?;
+    assert_ne!(
+        replay_digest,
+        coordinator.evidence_bundle_digest(
+            &replay.challenge.body,
+            &replay_evidence,
+            Some(&later_purchase_status),
+        )?,
+        "purchase standing substitutions must change the replay commitment"
+    );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_an_indeterminate_result_closes_without_revocation_status() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let challenged = challenged_finding()?;
@@ -10485,7 +10561,10 @@ fn finding_challenge_an_indeterminate_result_retries_into_a_normal_verdict() -> 
         "an indeterminate result never forfeits an infrastructure failure"
     );
 
-    // The retry resolves the same challenge against the artifact it names.
+    // The retry resolves the checkpoint but still has no authenticated
+    // revocation status for the production key. The bounded retry closes
+    // indeterminate and returns the buyer's lock rather than treating an
+    // unknown authority fact as innocence.
     let resolved = case.evidence();
     let second = coordinator
         .evaluate(&evaluation_request(
@@ -10496,16 +10575,19 @@ fn finding_challenge_an_indeterminate_result_retries_into_a_normal_verdict() -> 
             NOW + 3,
         ))?
         .ok_or("the retry adjudicates")?;
-    assert_eq!(second.state, FindingChallengeState::Rejected);
-    assert_eq!(second.outcome.body.reason, "challenged_evidence_valid");
+    assert_eq!(second.state, FindingChallengeState::IndeterminateClosed);
+    assert_eq!(
+        second.outcome.body.reason,
+        "evidence_key_revocation_not_established"
+    );
     assert_eq!(
         second.bond_disposition,
-        Some(FindingDisputeLockDisposition::Forfeited)
+        Some(FindingDisputeLockDisposition::Returned)
     );
     assert_eq!(
         deployment.rail.charges().len(),
-        2,
-        "a retry reuses the fee and bond funding identities"
+        3,
+        "the retry adds only the terminal bond return to the original fee and funding"
     );
     Ok(())
 }

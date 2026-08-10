@@ -489,7 +489,6 @@ fn finding_challenge_projection_rejects_offline_state_tampering() {
     ));
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn finding_challenge_projection_covers_retained_outcome_bytes() {
     use crate::finding_challenge_store::{

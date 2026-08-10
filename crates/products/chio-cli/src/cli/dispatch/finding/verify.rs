@@ -2,6 +2,7 @@ use super::*;
 
 use std::io::Read;
 
+use base64::Engine as _;
 use chio_appraisal::SignedRuntimeAttestationAppraisalReport;
 use chio_core_types::capability::runtime_attestation::RuntimeAttestationEvidence;
 use chio_core_types::capability::trust_policy::AttestationTrustPolicy;
@@ -103,6 +104,24 @@ pub(super) fn cmd_finding_verify(
         Some(trusted_time) => trusted_time,
         None => unix_seconds_now()?,
     };
+    if let Some(authorization) = &roots.status_operator_authorization {
+        authorization.validate().map_err(|error| {
+            CliError::cli_other_error(format!(
+                "finding status operator authorization is invalid: {error}"
+            ))
+        })?;
+    }
+    let status_freshness_policy = resolve_status_freshness_policy(
+        roots.status_operator_authorization.is_some(),
+        roots.status_freshness_policy.as_ref(),
+        evidence_file.status_proof_input_b64.is_some(),
+        trusted_time,
+    )?;
+    let status_proof_input = evidence_file
+        .status_proof_input_b64
+        .as_deref()
+        .map(decode_status_proof_input)
+        .transpose()?;
     let trust = FindingVerifierTrustRoots {
         governance_authority: roots.governance_authority,
         profile: roots.profile,
@@ -111,13 +130,15 @@ pub(super) fn cmd_finding_verify(
         runtime_attestation_authority: roots.runtime_attestation_authority,
         appraisal_authority: roots.appraisal_authority,
         attestation_trust_policy: roots.attestation_trust_policy,
-        status_operator_authorization: None,
-        status_freshness_policy: None,
+        status_operator_authorization: roots.status_operator_authorization,
+        status_freshness_policy,
         trusted_time,
         trust_root_snapshot_sha256,
         resolver_policy_sha256: resolver_policy_digest(
             evidence.is_some(),
             recipe_preimage.is_some(),
+            status_proof_input.is_some(),
+            status_freshness_policy.is_some(),
         )?,
         trusted_time_input_sha256: trusted_time_input_digest(trusted_time, roots.trusted_time)?,
     };
@@ -137,7 +158,7 @@ pub(super) fn cmd_finding_verify(
         checkpoints: evidence_file.checkpoints,
         checkpoint_transparency: evidence_file.checkpoint_transparency,
         recipe_preimage: recipe_preimage.as_deref(),
-        status_proof_input: None,
+        status_proof_input: status_proof_input.as_deref(),
         runtime_attestation: evidence_file.runtime_attestation,
         runtime_appraisal: evidence_file.runtime_appraisal,
         bond_snapshot: evidence_file.bond_snapshot.map(FindingBondSnapshot::from),
@@ -239,6 +260,16 @@ struct FindingTrustRootsFile {
     attestation_trust_policy: Option<AttestationTrustPolicy>,
     #[serde(default)]
     trusted_time: Option<u64>,
+    #[serde(default)]
+    status_operator_authorization: Option<chio_finding::FindingStatusOperatorAuthorization>,
+    #[serde(default)]
+    status_freshness_policy: Option<FindingStatusFreshnessPolicyFile>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FindingStatusFreshnessPolicyFile {
+    max_epoch_age_secs: u64,
 }
 
 #[derive(Default, serde::Deserialize)]
@@ -256,6 +287,10 @@ struct FindingEvidenceFile {
     runtime_appraisal: Option<SignedRuntimeAttestationAppraisalReport>,
     #[serde(default)]
     bond_snapshot: Option<FindingBondSnapshotEntry>,
+    /// Exact canonical `chio.finding.status-proof-input.v1` bytes, encoded for
+    /// transport inside this JSON evidence document.
+    #[serde(default)]
+    status_proof_input_b64: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -307,6 +342,62 @@ fn load_evidence_file(path: &Path) -> Result<FindingEvidenceFile, CliError> {
     )?)?)
 }
 
+fn resolve_status_freshness_policy(
+    authorization_present: bool,
+    policy: Option<&FindingStatusFreshnessPolicyFile>,
+    proof_present: bool,
+    trusted_time: u64,
+) -> Result<Option<chio_finding::FindingStatusFreshnessPolicy>, CliError> {
+    if authorization_present != policy.is_some() {
+        return Err(CliError::cli_other_error(
+            "finding status operator authorization and freshness policy must be supplied together"
+                .to_string(),
+        ));
+    }
+    if proof_present && !authorization_present {
+        return Err(CliError::cli_other_error(
+            "finding status proof requires a pinned operator authorization and freshness policy"
+                .to_string(),
+        ));
+    }
+    let Some(policy) = policy else {
+        return Ok(None);
+    };
+    if policy.max_epoch_age_secs == 0 {
+        return Err(CliError::cli_other_error(
+            "finding status max_epoch_age_secs must be nonzero".to_string(),
+        ));
+    }
+    Ok(Some(chio_finding::FindingStatusFreshnessPolicy {
+        now: trusted_time,
+        max_epoch_age_secs: policy.max_epoch_age_secs,
+    }))
+}
+
+fn decode_status_proof_input(encoded: &str) -> Result<Vec<u8>, CliError> {
+    if encoded.len() > chio_finding::MAX_FINDING_STATUS_ENCODED_BYTES {
+        return Err(CliError::cli_other_error(
+            "finding status proof exceeds the encoded size bound".to_string(),
+        ));
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| {
+            CliError::cli_other_error("finding status proof is not valid base64".to_string())
+        })?;
+    if bytes.len() > chio_finding::MAX_FINDING_STATUS_PROOF_BYTES {
+        return Err(CliError::cli_other_error(
+            "finding status proof exceeds the decoded size bound".to_string(),
+        ));
+    }
+    chio_finding::parse_status_proof_input(&bytes).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "finding status proof is not strict canonical input: {error}"
+        ))
+    })?;
+    Ok(bytes)
+}
+
 fn read_bounded_support_file(path: &Path, kind: &str) -> Result<Vec<u8>, CliError> {
     let mut reader = std::fs::File::open(path)?
         .take((FINDING_VERIFY_SUPPORT_MAX_BYTES as u64).saturating_add(1));
@@ -340,11 +431,15 @@ fn digest_of(value: &serde_json::Value) -> Result<String, CliError> {
 fn resolver_policy_digest(
     evidence_supplied: bool,
     recipe_supplied: bool,
+    status_proof_supplied: bool,
+    status_trust_configured: bool,
 ) -> Result<String, CliError> {
     digest_of(&serde_json::json!({
         "resolver": RESOLVER_POLICY_ID,
         "evidence_bundle_supplied": evidence_supplied,
         "recipe_preimage_supplied": recipe_supplied,
+        "status_proof_supplied": status_proof_supplied,
+        "status_trust_configured": status_trust_configured,
         "nonce_evidence_resolved": false,
     }))
 }
@@ -491,5 +586,51 @@ fn emit_evidence_report(
             "required facets not verified: {}",
             unverified.join(", ")
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const QUALIFIED_STATUS_PROOF: &[u8] = include_bytes!(
+        "../../../../../../../fixtures/proof-room/finding/cognition-market-qualified-profile/attachments/status-proof-input.json"
+    );
+
+    #[test]
+    fn finding_verify_preserves_exact_canonical_status_proof_bytes() -> Result<(), CliError> {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(QUALIFIED_STATUS_PROOF);
+        let decoded = decode_status_proof_input(&encoded)?;
+        assert_eq!(decoded, QUALIFIED_STATUS_PROOF);
+        Ok(())
+    }
+
+    #[test]
+    fn finding_verify_binds_status_freshness_to_report_clock() -> Result<(), CliError> {
+        let resolved = resolve_status_freshness_policy(
+            true,
+            Some(&FindingStatusFreshnessPolicyFile {
+                max_epoch_age_secs: 90,
+            }),
+            true,
+            1_750_000_030,
+        )?
+        .ok_or_else(|| CliError::cli_other_error("status policy was not resolved".to_string()))?;
+        assert_eq!(resolved.now, 1_750_000_030);
+        assert_eq!(resolved.max_epoch_age_secs, 90);
+        Ok(())
+    }
+
+    #[test]
+    fn finding_verify_rejects_status_proof_without_pinned_trust() -> Result<(), CliError> {
+        let error = resolve_status_freshness_policy(false, None, true, 1_750_000_030)
+            .err()
+            .ok_or_else(|| {
+                CliError::cli_other_error(
+                    "status proof without pinned trust was accepted".to_string(),
+                )
+            })?;
+        assert!(error.to_string().contains("requires a pinned operator"));
+        Ok(())
     }
 }

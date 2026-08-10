@@ -502,6 +502,90 @@ fn cognition_market_qualified_profile() -> TestResult {
 }
 
 #[test]
+fn cognition_market_delivery_claim_verifies_without_unselected_attachments() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let selected_claim = COGNITION_MARKET_CLAIMS[0];
+
+    let mut claim_set: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("claim-set.json")
+            .ok_or("claim set missing")?,
+    )?;
+    claim_set["claims"]
+        .as_array_mut()
+        .ok_or("claim rows missing")?
+        .retain(|claim| claim.get("claim_id").and_then(Value::as_str) == Some(selected_claim));
+    let claim_set_bytes = canonical_json_bytes(&claim_set)?;
+    bundle.passport.claim_set_sha256 =
+        replace_graph_artifact(&mut bundle, "claim-set.json", claim_set_bytes)?;
+
+    let mut policy: Value = serde_json::from_slice(&bundle.verifier_policy_bytes)?;
+    policy["required_claims"] = json!([selected_claim]);
+    policy["required_evidence_roles"] = json!(["report"]);
+    bundle.verifier_policy_bytes = canonical_json_bytes(&policy)?;
+    let policy_bytes = bundle.verifier_policy_bytes.clone();
+    bundle.passport.verifier_policy_sha256 =
+        replace_graph_artifact(&mut bundle, "verifier-policy.json", policy_bytes)?;
+
+    let removed_ids = bundle.evidence_graph["nodes"]
+        .as_array()
+        .ok_or("graph nodes missing")?
+        .iter()
+        .filter(|node| {
+            matches!(
+                node.get("schema").and_then(Value::as_str),
+                Some(FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1)
+                    | Some(FINDING_STATUS_PROOF_INPUT_SCHEMA_V1)
+            )
+        })
+        .filter_map(|node| node.get("id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    bundle.evidence_graph["nodes"]
+        .as_array_mut()
+        .ok_or("graph nodes missing")?
+        .retain(|node| {
+            !matches!(
+                node.get("schema").and_then(Value::as_str),
+                Some(FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1)
+                    | Some(FINDING_STATUS_PROOF_INPUT_SCHEMA_V1)
+            )
+        });
+    bundle.evidence_graph["edges"]
+        .as_array_mut()
+        .ok_or("graph edges missing")?
+        .retain(|edge| {
+            !["from", "to"].iter().any(|field| {
+                edge.get(field)
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| removed_ids.iter().any(|removed| removed == id))
+            })
+        });
+    bundle
+        .artifacts
+        .remove("attachments/replay-recipe-input.json");
+    bundle
+        .artifacts
+        .remove("attachments/status-proof-input.json");
+    resign_graph(&mut bundle)?;
+
+    let report = verify_cognition_market_passport_artifacts(
+        &bundle.passport,
+        "transaction-passport.json".to_string(),
+        &bundle.evidence_graph_bytes,
+        &bundle.verifier_policy_bytes,
+        &bundle.artifacts,
+        &bundle.trust,
+    )?;
+    assert!(report.accepted);
+    assert_eq!(report.verified_claims, vec![selected_claim.to_string()]);
+    assert_eq!(report.claim_results.len(), 1);
+    assert_eq!(report.claim_results[0].claim_id, selected_claim);
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_preserves_verified_transaction_claims() -> TestResult {
     const TRANSACTION_CLAIM: &str = "claim.transaction.passport_root_verified";
     let mut bundle = build_bundle()?;

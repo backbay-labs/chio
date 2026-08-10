@@ -6,7 +6,7 @@
 //! their exact canonical bytes and semantics independently before accepting
 //! any `claim.finding.*` ClaimSet row.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use chio_core_types::crypto::PublicKey;
@@ -134,18 +134,40 @@ pub fn verify_cognition_market_passport_artifacts(
         })?;
     validate_every_graph_artifact(nodes, artifacts)?;
 
+    let claim_set = parse_cognition_claim_set(passport, artifacts)?;
+    let selected_claims = selected_cognition_claims(&claim_set)?;
+    if selected_claims.is_empty() {
+        return Err(claim_failed(
+            "ClaimSet has no verified cognition-market claim",
+        ));
+    }
+
     let report_node = unique_node(nodes, "report", FINDING_VERIFIER_REPORT_SCHEMA_V1)?;
-    let recipe_node = unique_node(
-        nodes,
-        "advisory-observation",
-        FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
-    )?;
-    let status_node = unique_node(
-        nodes,
-        "advisory-observation",
-        FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
-    )?;
-    require_digest_bound_attachment_edges(&graph, &report_node, [&recipe_node, &status_node])?;
+    let recipe_node = selected_claims
+        .contains(COGNITION_MARKET_CLAIMS[1])
+        .then(|| {
+            unique_node(
+                nodes,
+                "advisory-observation",
+                FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+            )
+        })
+        .transpose()?;
+    let status_node = selected_claims
+        .contains(COGNITION_MARKET_CLAIMS[2])
+        .then(|| {
+            unique_node(
+                nodes,
+                "advisory-observation",
+                FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
+            )
+        })
+        .transpose()?;
+    let attachment_nodes = recipe_node
+        .iter()
+        .chain(status_node.iter())
+        .collect::<Vec<_>>();
+    require_digest_bound_attachment_edges(&graph, &report_node, &attachment_nodes)?;
 
     let report_bytes = artifact_bytes(artifacts, report_node.path)?;
     require_exact_canonical_json(report_node.path, report_bytes)?;
@@ -166,67 +188,75 @@ pub fn verify_cognition_market_passport_artifacts(
         ));
     }
 
-    let recipe_bytes = artifact_bytes(artifacts, recipe_node.path)?;
-    let recipe = parse_recipe(recipe_node.path, recipe_bytes)?;
-    let recipe_digest = crate::sha256_hex(recipe_bytes);
-    if report.body.replay_recipe_input_sha256.as_deref() != Some(recipe_digest.as_str()) {
-        return Err(claim_failed(
-            "signed verifier report does not bind the exact replay-recipe attachment",
-        ));
-    }
-    // Recompute through the typed artifact too. This catches any future parser
-    // drift even though strict canonical raw bytes already pin the node.
-    if recipe
-        .canonical_sha256()
-        .map_err(|error| invalid_artifact(recipe_node.path, error.to_string()))?
-        != recipe_digest
-    {
-        return Err(claim_failed("replay-recipe typed digest drift"));
-    }
-    if recipe.verifier_profile_envelope_sha256 != report.body.verifier_profile_envelope_sha256 {
-        return Err(claim_failed(
-            "replay recipe and signed report bind different verifier profiles",
-        ));
+    if let Some(recipe_node) = &recipe_node {
+        let recipe_bytes = artifact_bytes(artifacts, recipe_node.path)?;
+        let recipe = parse_recipe(recipe_node.path, recipe_bytes)?;
+        let recipe_digest = crate::sha256_hex(recipe_bytes);
+        if report.body.replay_recipe_input_sha256.as_deref() != Some(recipe_digest.as_str()) {
+            return Err(claim_failed(
+                "signed verifier report does not bind the exact replay-recipe attachment",
+            ));
+        }
+        // Recompute through the typed artifact too. This catches any future
+        // parser drift even though strict canonical raw bytes already pin the
+        // node.
+        if recipe
+            .canonical_sha256()
+            .map_err(|error| invalid_artifact(recipe_node.path, error.to_string()))?
+            != recipe_digest
+        {
+            return Err(claim_failed("replay-recipe typed digest drift"));
+        }
+        if recipe.verifier_profile_envelope_sha256 != report.body.verifier_profile_envelope_sha256 {
+            return Err(claim_failed(
+                "replay recipe and signed report bind different verifier profiles",
+            ));
+        }
     }
 
-    let status_bytes = artifact_bytes(artifacts, status_node.path)?;
-    let status = chio_finding::parse_status_proof_input(status_bytes)
+    let verified_status = if let Some(status_node) = &status_node {
+        let status_bytes = artifact_bytes(artifacts, status_node.path)?;
+        let status = chio_finding::parse_status_proof_input(status_bytes)
+            .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
+        let status_digest = crate::sha256_hex(status_bytes);
+        if report.body.status_proof_input_sha256.as_deref() != Some(status_digest.as_str()) {
+            return Err(claim_failed(
+                "signed verifier report does not bind the exact status-proof attachment",
+            ));
+        }
+        if status.finding_id() != report.body.finding_id {
+            return Err(claim_failed(
+                "status-proof attachment does not name the report Finding",
+            ));
+        }
+        if !matches!(status, FindingStatusProofInput::NonInclusion(_)) {
+            return Err(claim_failed(
+                "qualified status-fresh claim requires a non-inclusion proof",
+            ));
+        }
+        if trust.status_freshness.now != report.body.evaluation_time {
+            return Err(claim_failed(
+                "status freshness clock does not match the signed report evaluation time",
+            ));
+        }
+        let signed_epoch = verify_status_proof_input(
+            &status,
+            &trust.status_operator_authorization,
+            trust.status_freshness,
+        )
         .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
-    let status_digest = crate::sha256_hex(status_bytes);
-    if report.body.status_proof_input_sha256.as_deref() != Some(status_digest.as_str()) {
-        return Err(claim_failed(
-            "signed verifier report does not bind the exact status-proof attachment",
-        ));
-    }
-    if status.finding_id() != report.body.finding_id {
-        return Err(claim_failed(
-            "status-proof attachment does not name the report Finding",
-        ));
-    }
-    let FindingStatusProofInput::NonInclusion(non_inclusion) = &status else {
-        return Err(claim_failed(
-            "qualified status-fresh claim requires a non-inclusion proof",
-        ));
+        Some((status_node.path, status_bytes, status, signed_epoch))
+    } else {
+        None
     };
-    if trust.status_freshness.now != report.body.evaluation_time {
-        return Err(claim_failed(
-            "status freshness clock does not match the signed report evaluation time",
-        ));
-    }
-    let signed_epoch = verify_status_proof_input(
-        &status,
-        &trust.status_operator_authorization,
-        trust.status_freshness,
-    )
-    .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
 
-    require_report_facets(&report)?;
-    validate_cognition_claim_set(
-        passport,
-        artifacts,
+    require_report_facets(&report, &selected_claims)?;
+    validate_selected_cognition_claim_rows(
+        &claim_set,
+        &selected_claims,
         report_node.path,
-        recipe_node.path,
-        status_node.path,
+        recipe_node.as_ref().map(|node| node.path),
+        status_node.as_ref().map(|node| node.path),
     )?;
 
     // The generic verifier performs the final passport signature, graph/root,
@@ -244,38 +274,48 @@ pub fn verify_cognition_market_passport_artifacts(
     )?;
     report
         .verified_claims
-        .retain(|claim| cognition_report_claim(claim));
+        .retain(|claim| selected_cognition_report_claim(&selected_claims, claim));
     report
         .claim_results
-        .retain(|claim| cognition_report_claim(&claim.claim_id));
+        .retain(|claim| selected_cognition_report_claim(&selected_claims, &claim.claim_id));
 
     // Advance durable status memory only after every passport, graph, report,
     // and ClaimSet check succeeds, but before any claim leaves this verifier.
-    let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
-        .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
-    let authorization_bytes = canonical_json_bytes(&trust.status_operator_authorization)
-        .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
-    let operator_authorization_sha256 = crate::sha256_hex(&authorization_bytes);
-    trust
-        .status_store
-        .admit_verified_non_inclusion(&CognitionMarketStatusObservation {
-            signed_epoch: &signed_epoch,
-            signed_epoch_bytes: &signed_epoch_bytes,
-            proof: non_inclusion,
-            proof_bytes: status_bytes,
-            operator_authorization_sha256: &operator_authorization_sha256,
-            recorded_at: trust.status_freshness.now,
-        })
-        .map_err(|error| {
-            claim_failed(format!(
-                "durable finding status trust rejected proof: {error}"
-            ))
-        })?;
+    if let Some((status_path, status_bytes, status, signed_epoch)) = verified_status {
+        let FindingStatusProofInput::NonInclusion(non_inclusion) = &status else {
+            return Err(claim_failed(
+                "qualified status-fresh claim requires a non-inclusion proof",
+            ));
+        };
+        let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
+            .map_err(|error| invalid_artifact(status_path, error.to_string()))?;
+        let authorization_bytes = canonical_json_bytes(&trust.status_operator_authorization)
+            .map_err(|error| invalid_artifact(status_path, error.to_string()))?;
+        let operator_authorization_sha256 = crate::sha256_hex(&authorization_bytes);
+        trust
+            .status_store
+            .admit_verified_non_inclusion(&CognitionMarketStatusObservation {
+                signed_epoch: &signed_epoch,
+                signed_epoch_bytes: &signed_epoch_bytes,
+                proof: non_inclusion,
+                proof_bytes: status_bytes,
+                operator_authorization_sha256: &operator_authorization_sha256,
+                recorded_at: trust.status_freshness.now,
+            })
+            .map_err(|error| {
+                claim_failed(format!(
+                    "durable finding status trust rejected proof: {error}"
+                ))
+            })?;
+    }
     Ok(report)
 }
 
-fn cognition_report_claim(claim_id: &str) -> bool {
-    COGNITION_MARKET_CLAIMS.contains(&claim_id) || claim_id.starts_with("claim.transaction.")
+fn selected_cognition_report_claim(
+    selected_claims: &BTreeSet<&'static str>,
+    claim_id: &str,
+) -> bool {
+    selected_claims.contains(claim_id) || claim_id.starts_with("claim.transaction.")
 }
 
 fn validate_every_graph_artifact(
@@ -346,7 +386,7 @@ fn graph_node(value: &Value) -> Result<GraphNode<'_>, TransactionPassportError> 
 fn require_digest_bound_attachment_edges(
     graph: &Value,
     report: &GraphNode<'_>,
-    attachments: [&GraphNode<'_>; 2],
+    attachments: &[&GraphNode<'_>],
 ) -> Result<(), TransactionPassportError> {
     let edges = graph
         .get("edges")
@@ -376,6 +416,7 @@ fn require_digest_bound_attachment_edges(
 
 fn require_report_facets(
     report: &SignedFindingVerifierReport,
+    selected_claims: &BTreeSet<&'static str>,
 ) -> Result<(), TransactionPassportError> {
     for (claim, required) in [
         (
@@ -404,6 +445,9 @@ fn require_report_facets(
             &[FindingFacetKind::BondBacking][..],
         ),
     ] {
+        if !selected_claims.contains(claim) {
+            continue;
+        }
         for facet in required {
             if report.body.facet_outcome(*facet) != Some(FindingFacetOutcome::Verified) {
                 return Err(claim_failed(format!(
@@ -415,13 +459,10 @@ fn require_report_facets(
     Ok(())
 }
 
-fn validate_cognition_claim_set(
+fn parse_cognition_claim_set(
     passport: &TransactionPassport,
     artifacts: &BTreeMap<String, Vec<u8>>,
-    report_path: &str,
-    recipe_path: &str,
-    status_path: &str,
-) -> Result<(), TransactionPassportError> {
+) -> Result<ClaimSet, TransactionPassportError> {
     let bytes = artifact_bytes(artifacts, &passport.claim_set_path)?;
     let claim_set: ClaimSet = serde_json::from_slice(bytes).map_err(|error| {
         invalid_artifact(
@@ -435,15 +476,9 @@ fn validate_cognition_claim_set(
     {
         return Err(claim_failed("invalid cognition-market ClaimSet header"));
     }
-    let expected: BTreeMap<&str, Vec<&str>> = BTreeMap::from([
-        (COGNITION_MARKET_CLAIMS[0], vec![report_path]),
-        (COGNITION_MARKET_CLAIMS[1], vec![report_path, recipe_path]),
-        (COGNITION_MARKET_CLAIMS[2], vec![report_path, status_path]),
-        (COGNITION_MARKET_CLAIMS[3], vec![report_path]),
-    ]);
     for claim in &claim_set.claims {
         if claim.claim_id.starts_with("claim.finding.")
-            && !expected.contains_key(claim.claim_id.as_str())
+            && !COGNITION_MARKET_CLAIMS.contains(&claim.claim_id.as_str())
         {
             return Err(claim_failed(format!(
                 "ClaimSet contains unqualified Finding claim {}",
@@ -451,11 +486,43 @@ fn validate_cognition_claim_set(
             )));
         }
     }
-    for (claim_id, required_paths) in &expected {
+    Ok(claim_set)
+}
+
+fn selected_cognition_claims(
+    claim_set: &ClaimSet,
+) -> Result<BTreeSet<&'static str>, TransactionPassportError> {
+    let mut selected = BTreeSet::new();
+    for claim_id in COGNITION_MARKET_CLAIMS {
         let mut matching = claim_set
             .claims
             .iter()
-            .filter(|candidate| candidate.claim_id == *claim_id);
+            .filter(|candidate| candidate.claim_id == claim_id);
+        let first = matching.next();
+        if matching.next().is_some() {
+            return Err(claim_failed(format!(
+                "ClaimSet contains duplicate rows for {claim_id}"
+            )));
+        }
+        if first.is_some_and(|claim| claim.status == "verified") {
+            selected.insert(claim_id);
+        }
+    }
+    Ok(selected)
+}
+
+fn validate_selected_cognition_claim_rows(
+    claim_set: &ClaimSet,
+    selected_claims: &BTreeSet<&'static str>,
+    report_path: &str,
+    recipe_path: Option<&str>,
+    status_path: Option<&str>,
+) -> Result<(), TransactionPassportError> {
+    for claim_id in selected_claims {
+        let mut matching = claim_set
+            .claims
+            .iter()
+            .filter(|candidate| candidate.claim_id == **claim_id);
         let claim = matching
             .next()
             .ok_or_else(|| claim_failed(format!("ClaimSet missing {claim_id}")))?;
@@ -468,10 +535,27 @@ fn validate_cognition_claim_set(
                 "ClaimSet has invalid verified row for {claim_id}"
             )));
         }
-        let expected_paths = required_paths
-            .iter()
-            .map(|path| (*path).to_string())
-            .collect::<Vec<_>>();
+        let expected_paths = match *claim_id {
+            claim if claim == COGNITION_MARKET_CLAIMS[0] => vec![report_path.to_string()],
+            claim if claim == COGNITION_MARKET_CLAIMS[1] => vec![
+                report_path.to_string(),
+                recipe_path
+                    .ok_or_else(|| claim_failed("evidence-bound claim is missing its recipe"))?
+                    .to_string(),
+            ],
+            claim if claim == COGNITION_MARKET_CLAIMS[2] => vec![
+                report_path.to_string(),
+                status_path
+                    .ok_or_else(|| claim_failed("status-fresh claim is missing its proof"))?
+                    .to_string(),
+            ],
+            claim if claim == COGNITION_MARKET_CLAIMS[3] => vec![report_path.to_string()],
+            _ => {
+                return Err(claim_failed(format!(
+                    "unsupported cognition-market claim {claim_id}"
+                )))
+            }
+        };
         if claim.required_evidence != expected_paths || claim.evidence_refs != expected_paths {
             return Err(claim_failed(format!(
                 "ClaimSet evidence pins do not match {claim_id}"

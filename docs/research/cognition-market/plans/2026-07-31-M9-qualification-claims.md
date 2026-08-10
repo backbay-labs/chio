@@ -1,14 +1,13 @@
 # M9: Qualification, Claims, And Release Boundary
 
-Status: implementation and stack-owned cumulative qualification complete on
-2026-08-01. Promoted-default, proof-bundle, schema, registry, formal, strict
-Rust verification, build, Clippy, formatting, code-generation, and
-bounded-profile gates pass. The workspace test sweep completed every
-non-xtask suite, then exposed one stale proof-mapping assertion in its final
-`xtask` package. The assertion was corrected and the exact `xtask` suite
-passed; the full sweep was not repeated after that test-only repair. This
-record names the exact bounded profile and deliberately leaves conditional M7
-and usage-gated R&D extensions unshipped.
+Status: implementation and stack-owned cumulative qualification were completed
+on 2026-08-01 and requalified after the stack rebase and security repair on
+2026-08-10. Promoted-default, proof-bundle, schema, registry, build, test,
+Clippy, formatting, code-generation, and bounded-profile gates pass on the
+current tree. Earlier formal and strict Rust verification evidence remains
+cumulative and was not rerun during the rebase. This record names the exact
+bounded profile and deliberately leaves conditional M7 and usage-gated R&D
+extensions unshipped.
 
 ## Qualified Profile
 
@@ -21,10 +20,12 @@ transition, portable status rejection, and governed-memory quarantine. The
 same test name in `chio-transaction-passport` verifies the persisted proof
 bundle golden.
 
-M7 was re-evaluated on 2026-08-01. No real bilateral seller and buyer pair or
-deployment request is recorded in the repository or roadmap handoff. Its
-trigger is therefore false. `cognition_market_cross_org_escrow` remains an
-ignored fail-first test, and ADR-C remains unstarted.
+M7 was re-evaluated on 2026-08-01 and rechecked during the 2026-08-10 stack
+rebase. No real bilateral seller and buyer pair or deployment request is
+recorded in the repository or roadmap handoff, and no M7 branch or pull
+request exists. Its trigger is therefore false.
+`cognition_market_cross_org_escrow` remains an ignored fail-first test, and
+ADR-C remains unstarted.
 
 No wedge usage dataset exists for stochastic replication policy, experiment
 descriptor taxonomy, evidence-cost bucketing, or cross-organization feed
@@ -60,10 +61,14 @@ delivery/bond non-claims.
 `chio-transaction-passport` owns cognition-market proof-bundle integration.
 The verifier requires one signed registered
 `chio.finding.verifier-report.v1` authority node, exact ClaimSet evidence
-references, and content-addressed replay-recipe and status-proof attachments.
-The signed report commits both attachment digests. An independent verifier
-strict-parses and rechecks their types, signatures, digest pins, replay
-recipe, status authorization, freshness, sparse path, and required facets.
+references, and only the content-addressed attachments selected by the
+verified Finding claim rows. The evidence-bound claim selects the replay
+recipe, the status-fresh claim selects the portable status proof, and the
+delivery-digest and bond-backed claims require only the signed report. The
+signed report commits each selected attachment digest. An independent
+verifier strict-parses and rechecks the selected types, signatures, digest
+pins, replay recipe, status authorization, freshness, sparse path, and claim
+specific facets.
 
 Unsigned recipe and status inputs are accepted only under the
 `advisory-observation` role. Wrong role, wrong schema, wrong graph digest, and
@@ -88,14 +93,16 @@ and strict Rust verification, and cumulative workspace gates recorded below.
 | Gate | Result |
 |---|---|
 | `cognition_market_qualified_profile` control-plane composition | passed, 1 test |
-| Finding verifier evidence and portable-status suite | passed, 22 tests |
-| transaction-passport positive and substitution-negative suite | passed, 5 tests; 1 golden-regeneration helper ignored |
+| Finding verifier evidence and portable-status suite | passed, 27 tests |
+| transaction-passport cognition-market suite | passed, 13 tests; 1 golden-regeneration helper ignored |
 | claim-registry integrity | passed, 10 tests |
 | bounded matrix contract and witness resolution | passed, 12 tests |
 | `cargo xtask qualify bounded-chio` | passed, 9 conditions |
-| Lean proof build, strict Rust verification, and public harness mapping | passed; 1,532 Lean jobs, 32 Creusot files, 44 core Kani harnesses, 30 public-core Kani harnesses, and 17 non-core PR harnesses |
+| Lean proof build, strict Rust verification, and public harness mapping | inherited cumulative evidence from 2026-08-01; 1,532 Lean jobs, 32 Creusot files, 44 core Kani harnesses, 30 public-core Kani harnesses, and 17 non-core PR harnesses; not rerun during the rebase |
 | schema registry and deterministic schema manifest | passed |
-| promoted-default M8 marketplace and SQLite pool exits | passed, 38 and 4 tests; conditional M7 test ignored |
+| promoted-default marketplace and SQLite pool exits | passed, 41 and 11 focused tests; conditional M7 test ignored |
 | generated Rust, Python, TypeScript, and Go artifacts | passed, `make codegen-check` |
-| full workspace build, Clippy, and formatting | passed |
-| full workspace test sweep | every non-xtask suite passed; the final `xtask` mapping assertion was corrected and the exact `xtask` suite passed; the full sweep was not repeated after the test-only repair |
+| full workspace build | passed, `cargo build --workspace` |
+| full workspace test sweep | passed, `cargo test --workspace`; explicitly ignored tests remain reported as ignored |
+| full workspace Clippy | passed, `cargo clippy --workspace --lib --bins --examples -- -D warnings` |
+| formatting | passed, `cargo fmt --all -- --check` |

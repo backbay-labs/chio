@@ -134,6 +134,18 @@ impl FindingChallengeCoordinator {
             .get_effect_intent(intent_key)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
             .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        let root_binding = if intent.kind == FindingEffectIntentKind::RootIntent {
+            Some(
+                self.challenges
+                    .get_effect_root_binding(intent_key)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?
+                    .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?,
+            )
+        } else {
+            None
+        };
         match intent.state {
             FindingEffectIntentState::Pending | FindingEffectIntentState::Failed => {
                 self.challenges
@@ -150,12 +162,7 @@ impl FindingChallengeCoordinator {
                 ));
             }
         }
-        if intent.kind == FindingEffectIntentKind::RootIntent {
-            let binding = self
-                .challenges
-                .get_effect_root_binding(intent_key)
-                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
-                .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if let Some(binding) = root_binding {
             self.challenges
                 .confirm_effect_root(
                     intent_key,

@@ -128,7 +128,7 @@ pub fn serve_with_finding_purchase_executor(
     serve_with_optional_finding_challenge_executor(config, None, Some(executor), None)
 }
 
-#[cfg(all(test, feature = "cognition-market-experimental"))]
+#[cfg(test)]
 mod finding_market_runtime_tests {
     use chio_kernel::admission_operation::StoreMutationFence;
 

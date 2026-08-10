@@ -110,13 +110,19 @@ meaningful against exact bytes.
 `chio.finding.challenge-verifier-profile.v1` envelope), `admitted_kernel_keys`
 (an array of bare Ed25519 hex keys), `collateral_authority`, and an optional
 `trusted_time` in unix seconds. Without `trusted_time` the local clock is
-used and the report says so.
+used and the report says so. Status verification additionally requires the
+paired `status_operator_authorization` and `status_freshness_policy` object;
+the latter carries a nonzero `max_epoch_age_secs`, while its evaluation clock
+is the same trusted time recorded in the report.
 
 `chio finding verify --evidence <FILE>` supplies resolved evidence:
 `receipts` (each `{receipt, inclusion_proof}`), `checkpoints`, and an
-optional `bond_snapshot` of `{backing, live, accepted_at}`. Every member is
-optional; a facet whose evidence is absent reports unavailable and is never
-collapsed into a verified badge.
+optional `bond_snapshot` of `{backing, live, accepted_at}`. A portable status
+proof is carried as `status_proof_input_b64`, preserving the exact canonical
+`chio.finding.status-proof-input.v1` bytes. It is accepted only when the paired
+status trust fields above are pinned. Every member is optional; a facet whose
+evidence is absent reports unavailable and is never collapsed into a verified
+badge.
 
 `chio finding challenge --evidence <FILE>` supplies the operator half of a
 challenge. It is exactly the registered `chio.finding.challenge.v1` body
