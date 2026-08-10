@@ -2349,7 +2349,7 @@ fn settle_purchase_with(
         seller_backing_envelope_sha256: hex64('6'),
         encumbrance_id: format!("encumbrance-{tag}"),
         delivery_receipt_id: format!("receipt-delivery-{tag}"),
-        payment_reference: payment_operation_id,
+        payment_reference: payment_operation_id.clone(),
         payout_destination: refund_destination.clone(),
         recorded_at: now,
     };
@@ -2363,6 +2363,9 @@ fn settle_purchase_with(
             .purchases
             .admit_payout_destination(allocation_id, &refund_destination, now)?;
     }
+    deployment
+        .purchases
+        .mark_capture_pending(&reservation_id, &payment_operation_id, now)?;
     deployment
         .purchases
         .close_slot_with_record(&FindingPurchaseDeliveryInput {

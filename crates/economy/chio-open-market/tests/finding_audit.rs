@@ -151,6 +151,7 @@ fn report_witnesses<'a>(
         pinned_governance_policy: governance_policy(),
         round_authorization: round_authorization(epoch),
         pinned_status_authority: status_authority().public_key(),
+        governance_status: evaluator_status(&governance_policy(), None),
         pinned_evaluator_policies: policies,
         evaluator_statuses: policies
             .iter()
@@ -816,6 +817,70 @@ fn report_verification_authenticates_the_governance_round_authorization() {
         .test_unwrap_err(),
         FindingAuditError::RoundAuthorizationWindow
     );
+
+    witnesses.pinned_governance_policy = governance_policy();
+    witnesses.governance_status = SignedFindingAuthorityStatus::sign(
+        evaluator_status(&governance_policy(), None).body,
+        &Keypair::from_seed(&[49_u8; 32]),
+    )
+    .test_expect("sign governance status with an unpinned key");
+    assert!(matches!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::GovernanceStatus(chio_finding::FindingError::AuthorityMismatch(
+            "authority_status"
+        ))
+    ));
+
+    let mut other_policy = governance_policy();
+    other_policy.authority_id = "other-governance".to_owned();
+    witnesses.governance_status = evaluator_status(&other_policy, None);
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::GovernanceStatusBinding
+    );
+
+    witnesses.governance_status = evaluator_status_observed_at(
+        &governance_policy(),
+        None,
+        REPORTED_AT.saturating_sub(3_601),
+    );
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::GovernanceStatusStale
+    );
+
+    witnesses.governance_status = evaluator_status(
+        &governance_policy(),
+        Some(witnesses.round_authorization.body.authorized_at),
+    );
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::GovernanceAuthorityRevoked
+    );
 }
 
 #[test]
@@ -877,6 +942,8 @@ fn report_verification_requires_fresh_authenticated_evaluator_status() {
     let mut stale_report = report;
     stale_report.reported_at = REPORTED_AT + 3_601;
     reseal(&mut stale_report);
+    witnesses.governance_status =
+        evaluator_status_observed_at(&governance_policy(), None, stale_report.reported_at);
     witnesses.evaluator_statuses = vec![evaluator_status(&policies[0], None)];
     assert!(matches!(
         verify_audit_report_with_witness(

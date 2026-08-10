@@ -49,7 +49,6 @@ use std::sync::Arc;
 use chio_core::canonical::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_core::capability::scope::MonetaryAmount;
 use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
-use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
     audit_epoch_precommitment_sha256, compute_enforcement_id, derive_outcome_id,

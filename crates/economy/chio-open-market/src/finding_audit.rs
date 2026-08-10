@@ -127,6 +127,10 @@ pub struct FindingAuditReportWitnesses<'a> {
     pub pinned_governance_policy: FindingAuthorityKeyPolicy,
     pub round_authorization: SignedFindingAuditRoundAuthorization,
     pub pinned_status_authority: PublicKey,
+    /// Fresh status reading for the exact governance policy that authorized
+    /// this round. It must cover the authorization instant and remain fresh
+    /// at report publication.
+    pub governance_status: SignedFindingAuthorityStatus,
     /// Governance-authenticated historical evaluator policies. Every
     /// outcome resolves its own exact policy from this set, so a rotation
     /// during a round does not invalidate earlier outcomes or let an
@@ -154,6 +158,14 @@ pub enum FindingAuditError {
     RoundAuthorizationBinding,
     #[error("audit governance authorization was not live at epoch commitment")]
     RoundAuthorizationWindow,
+    #[error("audit governance status rejected: {0}")]
+    GovernanceStatus(FindingError),
+    #[error("audit governance status does not bind the authorization policy")]
+    GovernanceStatusBinding,
+    #[error("audit governance status is not a fresh post-authorization reading")]
+    GovernanceStatusStale,
+    #[error("audit governance authority was revoked when it authorized the round")]
+    GovernanceAuthorityRevoked,
     #[error("epoch names selection algorithm {0}, which this module does not implement")]
     UnsupportedAlgorithm(String),
     #[error("revealed seed is not a 64 character lowercase hex value")]
@@ -439,6 +451,35 @@ pub fn verify_audit_report(
     )?;
     if report.reported_at <= epoch.committed_at {
         return Err(FindingAuditError::ReportNotAfterEpoch);
+    }
+    verify_signed_authority_status(
+        &witnesses.governance_status,
+        &witnesses.pinned_status_authority,
+    )
+    .map_err(FindingAuditError::GovernanceStatus)?;
+    let governance_status = &witnesses.governance_status.body;
+    if governance_status.status_ref != witnesses.pinned_governance_policy.revocation_status_ref
+        || governance_status.authority_id != witnesses.pinned_governance_policy.authority_id
+        || governance_status.key != witnesses.pinned_governance_policy.key
+        || governance_status.key_epoch != witnesses.pinned_governance_policy.key_epoch
+    {
+        return Err(FindingAuditError::GovernanceStatusBinding);
+    }
+    let authorized_at = witnesses.round_authorization.body.authorized_at;
+    if governance_status.observed_at < authorized_at
+        || governance_status.observed_at > report.reported_at
+        || report
+            .reported_at
+            .saturating_sub(governance_status.observed_at)
+            > MAX_AUDIT_STATUS_AGE_SECS
+    {
+        return Err(FindingAuditError::GovernanceStatusStale);
+    }
+    if governance_status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= authorized_at)
+    {
+        return Err(FindingAuditError::GovernanceAuthorityRevoked);
     }
     let expected_ids: BTreeSet<&str> = expected
         .iter()

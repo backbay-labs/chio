@@ -75,6 +75,26 @@ BEGIN
     SELECT RAISE(ABORT, 'purchase reservation must be retained');
 END;
 
+CREATE TABLE IF NOT EXISTS purchase_capture_intents (
+    reservation_id TEXT NOT NULL PRIMARY KEY
+        REFERENCES purchase_reservations(reservation_id),
+    authoritative_payment_operation_id TEXT NOT NULL UNIQUE
+        CHECK (length(authoritative_payment_operation_id) BETWEEN 1 AND 512),
+    marked_at INTEGER NOT NULL CHECK (marked_at > 0)
+);
+
+CREATE TRIGGER IF NOT EXISTS purchase_capture_intents_immutable
+BEFORE UPDATE ON purchase_capture_intents
+BEGIN
+    SELECT RAISE(ABORT, 'purchase capture intent is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS purchase_capture_intents_no_delete
+BEFORE DELETE ON purchase_capture_intents
+BEGIN
+    SELECT RAISE(ABORT, 'purchase capture intent must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS purchase_payout_bindings (
     reservation_id TEXT NOT NULL PRIMARY KEY
         REFERENCES purchase_reservations(reservation_id),

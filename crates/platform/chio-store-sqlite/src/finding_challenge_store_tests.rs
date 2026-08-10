@@ -685,6 +685,10 @@ fn reserve_slot(fixture: &Fixture, tag: &str, listing_id: &str, allocation_id: &
 
 fn settle_slot(fixture: &Fixture, tag: &str, purchase_key: &str, now: u64) {
     let reservation_id = format!("reservation-{tag}");
+    fixture
+        .purchases
+        .mark_capture_pending(&reservation_id, &format!("payment-{tag}"), now)
+        .expect("mark capture pending");
     let bytes = format!("{{\"schema\":\"chio.finding.purchase-record.v1\",\"tag\":\"{tag}\"}}")
         .into_bytes();
     let record_sha256 = sha256_hex(&bytes);

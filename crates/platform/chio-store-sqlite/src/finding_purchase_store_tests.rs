@@ -304,6 +304,17 @@ fn open_reservation(fixture: &Fixture, purchase: &Purchase) -> FindingPurchaseWr
         .expect("open reservation")
 }
 
+fn mark_capture(fixture: &Fixture, purchase: &Purchase, now: u64) {
+    fixture
+        .store
+        .mark_capture_pending(
+            &purchase.reservation_id,
+            &purchase.payment_operation_id,
+            now,
+        )
+        .expect("mark capture pending");
+}
+
 /// Exposure the fixture allocation still carries at `now`, which is the
 /// quantity its registered cap bounds.
 fn outstanding_exposure(fixture: &Fixture, now: u64) -> u64 {
@@ -483,6 +494,7 @@ fn purchase_writes_advance_the_rollback_protected_market_projection() {
     );
     let bytes = record_bytes("rollback-projection");
     let record_sha256 = chio_core::sha256_hex(&bytes);
+    mark_capture(&fixture, &purchase, NOW + 2);
     fixture
         .store
         .close_slot_with_record(&FindingPurchaseDeliveryInput {
@@ -493,7 +505,7 @@ fn purchase_writes_advance_the_rollback_protected_market_projection() {
             delivery_receipt_id: "receipt-rollback-projection",
             payout_destination: PAYOUT_DESTINATION,
             retention_expires_at: NOW + 100_000,
-            now: NOW + 2,
+            now: NOW + 3,
         })
         .expect("settle purchase");
     let pending = Purchase::new("pending-after-settlement", LISTING_ID, 25);
@@ -507,7 +519,7 @@ fn purchase_writes_advance_the_rollback_protected_market_projection() {
 
     assert_eq!(
         finding_projection_counts(&fixture.store),
-        (4, 4),
+        (5, 5),
         "every settlement-capable lifecycle change advances both chains"
     );
 }
@@ -882,6 +894,33 @@ fn close_slot_with_record_settles_atomically_and_replays() {
             .is_empty(),
         "a rejected close must not promote the provisional destination"
     );
+    assert!(matches!(
+        fixture.store.close_slot_with_record(&delivery),
+        Err(FindingPurchaseStoreError::Conflict(_))
+    ));
+
+    assert_eq!(
+        fixture
+            .store
+            .mark_capture_pending(
+                &purchase.reservation_id,
+                &purchase.payment_operation_id,
+                NOW + 2,
+            )
+            .expect("mark capture pending"),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        fixture
+            .store
+            .mark_capture_pending(
+                &purchase.reservation_id,
+                &purchase.payment_operation_id,
+                NOW + 50,
+            )
+            .expect("replay capture marker"),
+        FindingPurchaseWriteOutcome::ExistingSame
+    );
 
     assert_eq!(
         fixture
@@ -1034,6 +1073,7 @@ fn retained_exposure_counts_until_its_retention_horizon_lapses() {
     let bytes = record_bytes("alpha");
     let digest = chio_core::sha256_hex(&bytes);
     let horizon = NOW + 1_000;
+    mark_capture(&fixture, &settled, NOW + 2);
     fixture
         .store
         .close_slot_with_record(&FindingPurchaseDeliveryInput {
@@ -1375,6 +1415,7 @@ fn release_and_expiry_never_leave_a_slot_reserved() {
         .expect("reserve slot");
     let bytes = record_bytes("gamma");
     let digest = chio_core::sha256_hex(&bytes);
+    mark_capture(&fixture, &settled, NOW + 6);
     fixture
         .store
         .close_slot_with_record(&FindingPurchaseDeliveryInput {
@@ -1451,6 +1492,62 @@ fn release_and_expiry_never_leave_a_slot_reserved() {
             .open_slot_floor(LISTING_ID)
             .expect("slot floor"),
         None
+    );
+}
+
+#[test]
+fn capture_intent_survives_expiry_until_delivery_finalization() {
+    let fixture = fixture();
+    let purchase = Purchase::new("captured-crash", LISTING_ID, 100).expiring_at(NOW + 10);
+    open_reservation(&fixture, &purchase);
+    fixture
+        .store
+        .reserve_slot(&purchase.reservation_id, NOW + 1)
+        .expect("reserve capture slot");
+    mark_capture(&fixture, &purchase, NOW + 2);
+
+    assert_eq!(
+        fixture
+            .store
+            .expire_reservations(NOW + 10, 16)
+            .expect("sweep around captured reservation"),
+        0,
+        "a durable capture intent is never classified as abandonment"
+    );
+    assert_eq!(
+        reservation_state(&fixture, &purchase.reservation_id),
+        FindingPurchaseReservationState::SlotReserved
+    );
+    assert_eq!(
+        slot(&fixture, &purchase.reservation_id).state,
+        FindingPurchaseSlotState::Reserved
+    );
+    assert_eq!(outstanding_exposure(&fixture, NOW + 10), 100);
+    assert!(matches!(
+        fixture
+            .store
+            .release_reservation(&purchase.reservation_id, NOW + 11),
+        Err(FindingPurchaseStoreError::Conflict(_))
+    ));
+
+    let bytes = record_bytes("captured-crash");
+    let digest = chio_core::sha256_hex(&bytes);
+    fixture
+        .store
+        .close_slot_with_record(&FindingPurchaseDeliveryInput {
+            reservation_id: &purchase.reservation_id,
+            purchase_key: &hex64('d'),
+            record_json: &bytes,
+            record_sha256: &digest,
+            delivery_receipt_id: "receipt-captured-crash",
+            payout_destination: PAYOUT_DESTINATION,
+            retention_expires_at: NOW + 100_000,
+            now: NOW + 12,
+        })
+        .expect("recover delivery finalization after expiry");
+    assert_eq!(
+        reservation_state(&fixture, &purchase.reservation_id),
+        FindingPurchaseReservationState::Consumed
     );
 }
 
@@ -1544,6 +1641,7 @@ fn the_exposure_query_follows_reservation_expiry_without_a_sweep() {
     let bytes = record_bytes("beta");
     let digest = chio_core::sha256_hex(&bytes);
     let purchase_key = hex64('d');
+    mark_capture(&fixture, &in_flight, EXPIRES_AT);
     fixture
         .store
         .close_slot_with_record(&FindingPurchaseDeliveryInput {
@@ -1735,6 +1833,7 @@ fn blocking_sales_stops_the_slot_line_and_the_wait_predicate_is_exact() {
     // the predicate flips exactly when the last pre-cutoff slot closes.
     let bytes = record_bytes("alpha");
     let digest = chio_core::sha256_hex(&bytes);
+    mark_capture(&fixture, &first, NOW + 5);
     fixture
         .store
         .close_slot_with_record(&FindingPurchaseDeliveryInput {
@@ -2390,6 +2489,36 @@ fn revision_eight_adds_legacy_history_without_rewriting_actionable_payouts() {
 }
 
 #[test]
+fn revision_nine_adds_the_immutable_capture_intent_fence() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("install current purchase schema");
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER purchase_capture_intents_immutable;
+            DROP TRIGGER purchase_capture_intents_no_delete;
+            DROP TABLE purchase_capture_intents;
+            "#,
+        )
+        .expect("rewind capture intent fence");
+    crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 9)
+        .expect("stamp revision nine");
+
+    initialize_finding_purchase_schema(&mut connection).expect("migrate revision nine");
+
+    assert!(connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'purchase_capture_intents')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect capture intent table"));
+    verify_finding_purchase_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
 fn payout_destination_slots_are_bounded_and_idempotent() {
     let fixture = fixture();
     let allocation_id = &fixture.allocation_id;
@@ -2594,6 +2723,7 @@ fn abandoned_reservations_release_provisional_payout_capacity() {
         .reserve_slot(&replacement.reservation_id, NOW + 11)
         .expect("reserve replacement slot");
     let record = record_bytes("provisional-16-replacement");
+    mark_capture(&fixture, &replacement, NOW + 12);
     fixture
         .store
         .close_slot_with_record(&FindingPurchaseDeliveryInput {

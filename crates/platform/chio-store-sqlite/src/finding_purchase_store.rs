@@ -3,7 +3,7 @@
 //! per-listing sales block, settled purchase records, failed-delivery
 //! records, and payout destinations.
 //!
-//! Nine tables back the purchase path. `purchase_reservations` is the
+//! Ten tables back the purchase path. `purchase_reservations` is the
 //! durable fence a coordinator writes before it moves money: the row is
 //! keyed by the reservation id the compatibility receipt carries, and it
 //! is unique on both the purchase intent and the authoritative payment
@@ -68,7 +68,9 @@ use crate::admission_operation_store::verify_active_owner;
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-/// Revision 9 retains pre-EVM payout rows as non-actionable history; revision
+/// Revision 10 records an immutable capture intent before a payment rail can
+/// move funds, preventing expiry from abandoning a captured purchase; revision
+/// 9 retains pre-EVM payout rows as non-actionable history; revision
 /// 8 makes reservation payout capacity provisional until a settlement-capable
 /// purchase promotes it; revision 7 distinguishes retained legacy terminal
 /// bindings from live EVM bindings; revision 6 made every payout slot an EVM
@@ -79,7 +81,7 @@ const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
 /// a revision-1 database adopts the new tables on its next open; a
 /// revision-2 database also carries its listing-keyed blocks across in
 /// [`carry_listing_sales_blocks_across`].
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 9;
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 10;
 /// Revision whose eagerly admitted reservation destinations must be reduced
 /// to the settled roster when upgrading.
 const FINDING_PURCHASE_EAGER_PAYOUT_VERSION: i32 = 7;
@@ -751,6 +753,92 @@ impl SqliteFindingPurchaseStore {
         Ok(ordinal)
     }
 
+    /// Durably fence a purchase whose payment journal has selected capture.
+    ///
+    /// The kernel calls this after sealing its replayable capture intent and
+    /// before invoking the payment rail. Once present, the marker is retained
+    /// forever and excludes the reservation from expiry, explicit release,
+    /// and denial close. This makes a crash after rail capture recoverable by
+    /// the ordinary delivery finalizer instead of converting paid value into
+    /// an expired reservation. Idempotent for the exact reservation/payment
+    /// binding.
+    pub fn mark_capture_pending(
+        &self,
+        reservation_id: &str,
+        authoritative_payment_operation_id: &str,
+        now: u64,
+    ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+        require_identifier(reservation_id, "reservation_id")?;
+        require_identifier(
+            authoritative_payment_operation_id,
+            "authoritative_payment_operation_id",
+        )?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let reservation = load_reservation_tx(&transaction, reservation_id)?
+            .ok_or(FindingPurchaseStoreError::NotFound)?;
+        if reservation.authoritative_payment_operation_id != authoritative_payment_operation_id {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "capture intent names another payment operation".to_owned(),
+            ));
+        }
+        if !matches!(
+            reservation.state,
+            FindingPurchaseReservationState::SlotReserved
+                | FindingPurchaseReservationState::Consumed
+        ) {
+            return Err(FindingPurchaseStoreError::Conflict(format!(
+                "reservation cannot begin capture from state {}",
+                reservation_state_name(reservation.state)
+            )));
+        }
+        let existing: Option<(String, u64)> = transaction
+            .query_row(
+                r#"
+                SELECT authoritative_payment_operation_id, marked_at
+                FROM purchase_capture_intents WHERE reservation_id = ?1
+                "#,
+                [reservation_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(sqlite_error)?
+            .map(|(operation_id, marked_at): (String, i64)| {
+                stored_u64(marked_at, "capture intent marked_at")
+                    .map(|marked_at| (operation_id, marked_at))
+            })
+            .transpose()?;
+        if let Some((operation_id, _)) = existing {
+            if operation_id == authoritative_payment_operation_id {
+                return Ok(FindingPurchaseWriteOutcome::ExistingSame);
+            }
+            return Err(FindingPurchaseStoreError::Conflict(
+                "reservation is already capture-fenced under another payment operation".to_owned(),
+            ));
+        }
+        let inserted = transaction
+            .execute(
+                r#"
+                INSERT INTO purchase_capture_intents (
+                    reservation_id, authoritative_payment_operation_id, marked_at
+                ) VALUES (?1, ?2, ?3)
+                "#,
+                params![
+                    reservation_id,
+                    authoritative_payment_operation_id,
+                    sqlite_i64(now, "now")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        if inserted != 1 {
+            return Err(invariant("capture intent insert did not affect one row"));
+        }
+        self.commit_market_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingPurchaseWriteOutcome::Inserted)
+    }
+
     /// Settle one purchase. In one immediate transaction this closes the
     /// slot against the record, rechecks the payout destination reserved
     /// before payment against the reservation's durable allocation, moves
@@ -822,6 +910,11 @@ impl SqliteFindingPurchaseStore {
                 ));
             }
             FindingPurchaseReservationState::SlotReserved => {
+                require_capture_intent_tx(
+                    &transaction,
+                    input.reservation_id,
+                    &reservation.authoritative_payment_operation_id,
+                )?;
                 if encumbrance.state != FindingPurchaseEncumbranceState::Open {
                     return Err(invariant(
                         "slot-reserved reservation does not hold open exposure",
@@ -959,6 +1052,11 @@ impl SqliteFindingPurchaseStore {
                 )));
             }
         }
+        if capture_intent_exists_tx(&transaction, input.reservation_id)? {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "capture-fenced reservation cannot close as a delivery denial".to_owned(),
+            ));
+        }
         reject_bound_identifier(
             &transaction,
             "SELECT reservation_id FROM failed_delivery_records WHERE failed_delivery_id = ?1",
@@ -1028,6 +1126,11 @@ impl SqliteFindingPurchaseStore {
                 )));
             }
         };
+        if capture_intent_exists_tx(&transaction, reservation_id)? {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "capture-fenced reservation cannot be released".to_owned(),
+            ));
+        }
         abandon_reservation_tx(&transaction, reservation_id, from, "released", now)?;
         self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
@@ -2019,6 +2122,10 @@ fn due_reservations_tx(
             r#"
             SELECT reservation_id, state FROM purchase_reservations
             WHERE state IN ('open', 'slot_reserved') AND expires_at <= ?1
+              AND NOT EXISTS (
+                  SELECT 1 FROM purchase_capture_intents AS capture
+                  WHERE capture.reservation_id = purchase_reservations.reservation_id
+              )
             ORDER BY expires_at ASC, reservation_id ASC
             LIMIT ?2
             "#,
@@ -2056,6 +2163,10 @@ fn expire_due_allocation_reservations_tx(
               AND encumbrances.state = 'open'
               AND reservations.state IN ('open', 'slot_reserved')
               AND reservations.expires_at <= ?2
+              AND NOT EXISTS (
+                  SELECT 1 FROM purchase_capture_intents AS capture
+                  WHERE capture.reservation_id = reservations.reservation_id
+              )
             ORDER BY reservations.expires_at ASC, reservations.reservation_id ASC
             LIMIT ?3
             "#,
@@ -2259,6 +2370,46 @@ fn advance_reservation_tx(
         return Err(invariant("reservation transition did not affect one row"));
     }
     Ok(())
+}
+
+fn capture_intent_exists_tx(
+    transaction: &Transaction<'_>,
+    reservation_id: &str,
+) -> Result<bool, FindingPurchaseStoreError> {
+    transaction
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM purchase_capture_intents WHERE reservation_id = ?1)",
+            [reservation_id],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)
+}
+
+fn require_capture_intent_tx(
+    transaction: &Transaction<'_>,
+    reservation_id: &str,
+    authoritative_payment_operation_id: &str,
+) -> Result<(), FindingPurchaseStoreError> {
+    let operation_id: Option<String> = transaction
+        .query_row(
+            r#"
+            SELECT authoritative_payment_operation_id
+            FROM purchase_capture_intents WHERE reservation_id = ?1
+            "#,
+            [reservation_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    match operation_id {
+        Some(operation_id) if operation_id == authoritative_payment_operation_id => Ok(()),
+        Some(_) => Err(invariant(
+            "capture intent conflicts with the reservation payment operation",
+        )),
+        None => Err(FindingPurchaseStoreError::Conflict(
+            "purchase delivery has no durable pre-capture intent".to_owned(),
+        )),
+    }
 }
 
 fn close_reserved_slot_tx(
@@ -2945,6 +3096,8 @@ fn finding_purchase_schema_catalog(
                OR tbl_name GLOB 'purchase_reservations*'
                OR name GLOB 'purchase_payout_bindings*'
                OR tbl_name GLOB 'purchase_payout_bindings*'
+               OR name GLOB 'purchase_capture_intents*'
+               OR tbl_name GLOB 'purchase_capture_intents*'
                OR name GLOB 'seller_exposure_encumbrances*'
                OR tbl_name GLOB 'seller_exposure_encumbrances*'
                OR name GLOB 'pending_purchase_slots*'

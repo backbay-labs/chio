@@ -1234,37 +1234,43 @@ fn finding_challenge_snapshot_digest_v1(
 fn finding_market_snapshot_digest(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, true, true, true, true)
+    finding_market_snapshot_digest_version(connection, true, true, true, true, true, true)
+}
+
+fn finding_market_snapshot_digest_v7(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(connection, true, true, true, true, true, false)
 }
 
 fn finding_market_snapshot_digest_v6(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, true, true, true, false)
+    finding_market_snapshot_digest_version(connection, true, true, true, true, false, false)
 }
 
 fn finding_market_snapshot_digest_v5(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, true, true, false, false)
+    finding_market_snapshot_digest_version(connection, true, true, true, false, false, false)
 }
 
 fn finding_market_snapshot_digest_v4(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, true, false, false, false)
+    finding_market_snapshot_digest_version(connection, true, true, false, false, false, false)
 }
 
 fn finding_market_snapshot_digest_v3(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, false, false, false, false)
+    finding_market_snapshot_digest_version(connection, true, false, false, false, false, false)
 }
 
 fn finding_market_snapshot_digest_v2(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, false, false, false, false, false)
+    finding_market_snapshot_digest_version(connection, false, false, false, false, false, false)
 }
 
 fn finding_market_snapshot_digest_version(
@@ -1274,6 +1280,7 @@ fn finding_market_snapshot_digest_version(
     include_inflight_purchases: bool,
     include_root_bindings: bool,
     include_outcomes: bool,
+    include_capture_intents: bool,
 ) -> Result<String, SqliteServingOwnerError> {
     let mut challenge_tables = vec![
         "challenges",
@@ -1306,6 +1313,13 @@ fn finding_market_snapshot_digest_version(
         }
     }
     snapshots.push(table_snapshot(connection, "purchase_records", None)?);
+    if include_capture_intents {
+        snapshots.push(table_snapshot(
+            connection,
+            "purchase_capture_intents",
+            None,
+        )?);
+    }
     for table in [
         "purchase_reservations",
         "purchase_payout_bindings",
@@ -1365,7 +1379,9 @@ fn finding_market_snapshot_digest_version(
         },
     )?);
     digest(&AuthoritySnapshot {
-        format: if include_outcomes {
+        format: if include_capture_intents {
+            "chio.sqlite-finding-market-snapshot.v8"
+        } else if include_outcomes {
             "chio.sqlite-finding-market-snapshot.v7"
         } else if include_root_bindings {
             "chio.sqlite-finding-market-snapshot.v6"
@@ -1892,6 +1908,7 @@ fn verify_finding_challenge_projection_coverage(
     match rows.last() {
         Some((_, _, snapshot_digest, _, _)) => {
             let current_market = finding_market_snapshot_digest(connection)?;
+            let current_market_v7 = finding_market_snapshot_digest_v7(connection)?;
             let current_market_v6 = finding_market_snapshot_digest_v6(connection)?;
             let current_market_v5 = finding_market_snapshot_digest_v5(connection)?;
             let current_market_v4 = finding_market_snapshot_digest_v4(connection)?;
@@ -1921,16 +1938,23 @@ fn verify_finding_challenge_projection_coverage(
                 [],
                 |row| row.get::<_, bool>(0),
             )?;
+            let has_v8_capture_intent = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM purchase_capture_intents)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
             if current_market != *snapshot_digest
-                && (has_uncommitted_purchase_state
-                    || has_v7_outcome
-                    || (current_market_v6 != *snapshot_digest
-                        && (has_v6_root_binding
-                            || (current_market_v4 != *snapshot_digest
-                                && current_market_v5 != *snapshot_digest
-                                && current_market_v3 != *snapshot_digest
-                                && current_market_v2 != *snapshot_digest
-                                && current_legacy != *snapshot_digest))))
+                && (has_v8_capture_intent
+                    || (current_market_v7 != *snapshot_digest
+                        && (has_uncommitted_purchase_state
+                            || has_v7_outcome
+                            || (current_market_v6 != *snapshot_digest
+                                && (has_v6_root_binding
+                                    || (current_market_v4 != *snapshot_digest
+                                        && current_market_v5 != *snapshot_digest
+                                        && current_market_v3 != *snapshot_digest
+                                        && current_market_v2 != *snapshot_digest
+                                        && current_legacy != *snapshot_digest))))))
             {
                 return Err(invalid(
                     "finding challenge projection does not cover current state",

@@ -1110,4 +1110,20 @@ impl PurchaseReservationReader for CoordinatorReservationReader {
         }
         Ok(())
     }
+
+    fn mark_capture_pending(
+        &self,
+        reservation_id: &str,
+        authoritative_payment_operation_id: &str,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        self.store
+            .mark_capture_pending(
+                reservation_id,
+                authoritative_payment_operation_id,
+                now_unix_secs,
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
 }

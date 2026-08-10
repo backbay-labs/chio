@@ -100,4 +100,14 @@ pub trait FindingPurchaseVerifier: Send + Sync {
         verified: &VerifiedFindingPurchase,
         now_unix_secs: u64,
     ) -> Result<(), String>;
+
+    /// Persist the exact purchase's capture fence before the kernel calls a
+    /// payment rail. Implementations must be idempotent: durable recovery can
+    /// invoke this again after the payment journal has already selected the
+    /// same capture.
+    fn mark_capture_pending(
+        &self,
+        verified: &VerifiedFindingPurchase,
+        now_unix_secs: u64,
+    ) -> Result<(), String>;
 }
