@@ -3052,7 +3052,7 @@ fn impair_after_appeal(
         &upheld.liability_key,
         outcome,
         identity,
-        &upheld.sealed,
+        Some(&upheld.sealed),
         &governance.context(),
         &AppealDisposition::Final {
             sanction_case: &governance.sanction_case,
@@ -5725,7 +5725,7 @@ fn finding_challenge_successful_appeal_reverses_before_impairment() -> TestResul
         &case.upheld.liability_key,
         &case.outcome,
         &identity,
-        &case.upheld.sealed,
+        Some(&case.upheld.sealed),
         &case.governance.context(),
         &AppealDisposition::Successful {
             appeal_case: &case.governance.appeal_case,
@@ -5784,7 +5784,7 @@ fn finding_challenge_an_appeal_opened_after_the_durable_deadline_reverses_nothin
             &case.upheld.liability_key,
             &case.outcome,
             &identity,
-            &case.upheld.sealed,
+            Some(&case.upheld.sealed),
             &case.governance.context(),
             &AppealDisposition::Successful {
                 appeal_case: &late,
@@ -5827,7 +5827,7 @@ fn finding_challenge_an_appeal_case_id_cannot_be_substituted() -> TestResult {
             &case.upheld.liability_key,
             &case.outcome,
             &identity,
-            &case.upheld.sealed,
+            Some(&case.upheld.sealed),
             &case.governance.context(),
             &AppealDisposition::Successful {
                 appeal_case: &case.governance.appeal_case,
@@ -5883,7 +5883,7 @@ fn finding_challenge_an_unauthenticated_appeal_supersedes_nothing() -> TestResul
             &case.upheld.liability_key,
             &case.outcome,
             &identity,
-            &case.upheld.sealed,
+            Some(&case.upheld.sealed),
             &case.governance.context(),
             &AppealDisposition::Successful {
                 appeal_case: &forged,
@@ -5921,7 +5921,7 @@ fn finding_challenge_an_unauthenticated_appeal_supersedes_nothing() -> TestResul
         &case.upheld.liability_key,
         &case.outcome,
         &identity,
-        &case.upheld.sealed,
+        Some(&case.upheld.sealed),
         &case.governance.context(),
         &AppealDisposition::Successful {
             appeal_case: &case.governance.appeal_case,
@@ -5953,7 +5953,7 @@ fn finding_challenge_appeal_finality_impairs_and_fences_every_effect_intent() ->
         &case.upheld.liability_key,
         &case.outcome,
         &identity,
-        &case.upheld.sealed,
+        Some(&case.upheld.sealed),
         &case.governance.context(),
         &AppealDisposition::Final {
             sanction_case: &case.governance.sanction_case,
@@ -6139,7 +6139,7 @@ fn finding_challenge_appeal_finality_refuses_a_window_that_has_not_closed() -> T
             &case.upheld.liability_key,
             &case.outcome,
             &identity,
-            &case.upheld.sealed,
+            Some(&case.upheld.sealed),
             &case.governance.context(),
             &AppealDisposition::Final {
                 sanction_case: &case.governance.sanction_case,
@@ -6235,7 +6235,7 @@ fn finding_challenge_unresolved_appeal_quarantines_rather_than_impairing() -> Te
         &case.upheld.liability_key,
         &case.outcome,
         &identity,
-        &case.upheld.sealed,
+        Some(&case.upheld.sealed),
         &case.governance.context(),
         &AppealDisposition::Unresolved {
             reason: "appeal is open",
@@ -6281,7 +6281,7 @@ fn finding_challenge_sealed_accounting_cannot_be_substituted_at_appeal_finality(
             &case.upheld.liability_key,
             &case.outcome,
             &identity,
-            &tampered,
+            Some(&tampered),
             &case.governance.context(),
             &AppealDisposition::Final {
                 sanction_case: &case.governance.sanction_case,
@@ -6310,7 +6310,7 @@ fn resolve_final(
         &case.upheld.liability_key,
         outcome,
         identity,
-        &case.upheld.sealed,
+        Some(&case.upheld.sealed),
         &case.governance.context(),
         &AppealDisposition::Final {
             sanction_case: &case.governance.sanction_case,
@@ -6414,8 +6414,20 @@ fn finding_challenge_a_second_appeal_finality_reuses_the_root_intent() -> TestRe
     // A later retry returns the exact authorization committed with the
     // finalizing transition. It neither mints fresh bytes nor requires the
     // caller to have retained the first return value across a crash.
-    let AppealResolution::Finalizing(second) =
-        resolve_final(&case, &identity, &case.outcome, APPEAL_FINAL_AT + 20)?
+    let AppealResolution::Finalizing(second) = case.coordinator.resolve_appeal(
+        &case.upheld.liability_key,
+        &case.outcome,
+        &identity,
+        None,
+        &case.governance.context(),
+        &AppealDisposition::Final {
+            sanction_case: &case.governance.sanction_case,
+        },
+        &case.upheld.sanction_case_id,
+        &case.upheld.hold,
+        &hex64('7'),
+        APPEAL_FINAL_AT + 20,
+    )?
     else {
         return Err("finalizing recovery returns the retained authorization".into());
     };
@@ -8715,7 +8727,7 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
                     &case.upheld.liability_key,
                     &case.outcome,
                     &identity,
-                    &case.upheld.sealed,
+                    Some(&case.upheld.sealed),
                     &case.governance.context(),
                     &AppealDisposition::Final {
                         sanction_case: &case.governance.sanction_case,
@@ -9530,6 +9542,27 @@ fn finding_challenge_a_clean_venue_audit_transfers_nothing() -> TestResult {
 // ---------------------------------------------------------------------------
 // Indeterminate results, the bounded retry, and the bond
 // ---------------------------------------------------------------------------
+
+#[test]
+fn finding_challenge_evidence_bundle_commits_resolved_membership_inputs() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenged = challenged_finding()?;
+    let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 50, NOW)?;
+    let case = evidence_invalid_case(&challenged, ProductionShape::Sound, &sale, Filing::Buyer)?;
+
+    let resolved = case.evidence();
+    let unresolved = case.unresolved_evidence();
+    let resolved_digest = coordinator.evidence_bundle_digest(&case.challenge.body, &resolved)?;
+    let unresolved_digest =
+        coordinator.evidence_bundle_digest(&case.challenge.body, &unresolved)?;
+
+    assert_ne!(
+        resolved_digest, unresolved_digest,
+        "checkpoint and transparency substitutions must change the signed evidence commitment"
+    );
+    Ok(())
+}
 
 #[test]
 fn finding_challenge_an_indeterminate_result_retries_into_a_normal_verdict() -> TestResult {

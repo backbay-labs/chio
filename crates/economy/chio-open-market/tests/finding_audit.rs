@@ -86,6 +86,18 @@ fn audit_evaluator_policy() -> FindingAuthorityKeyPolicy {
     evaluator_policy("audit-evaluator", audit_evaluator().public_key(), 1)
 }
 
+fn audit_authority_policy() -> FindingAuthorityKeyPolicy {
+    FindingAuthorityKeyPolicy {
+        authority_id: "audit-authority".to_owned(),
+        key: audit_authority().public_key(),
+        key_epoch: 1,
+        valid_from: COMMITTED_AT - 1,
+        valid_until: REPORTED_AT + 1,
+        rotation_policy_ref: "rotation/audit-authority".to_owned(),
+        revocation_status_ref: "revocations/audit-authority".to_owned(),
+    }
+}
+
 fn governance_policy() -> FindingAuthorityKeyPolicy {
     FindingAuthorityKeyPolicy {
         authority_id: "audit-governance".to_owned(),
@@ -147,10 +159,11 @@ fn report_witnesses<'a>(
 ) -> FindingAuditReportWitnesses<'a> {
     FindingAuditReportWitnesses {
         pinned_seed_witness: seed_witness().public_key(),
-        pinned_audit_authority: audit_authority().public_key(),
+        pinned_audit_policy: audit_authority_policy(),
         pinned_governance_policy: governance_policy(),
         round_authorization: round_authorization(epoch),
         pinned_status_authority: status_authority().public_key(),
+        audit_status: evaluator_status(&audit_authority_policy(), None),
         governance_status: evaluator_status(&governance_policy(), None),
         pinned_evaluator_policies: policies,
         evaluator_statuses: policies
@@ -758,6 +771,43 @@ fn an_exact_match_report_verifies() {
     reseal(&mut reordered);
     verify_audit_report(&epoch, &envelope, &reordered, &eligible)
         .test_expect("reordered report verifies");
+}
+
+#[test]
+fn report_verification_authenticates_the_audit_authority_lifecycle() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let report = report_for(&envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+    let policies = [audit_evaluator_policy()];
+    let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
+
+    witnesses.pinned_audit_policy.valid_until = REPORTED_AT;
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::AuditAuthorityWindow
+    );
+
+    witnesses.pinned_audit_policy = audit_authority_policy();
+    witnesses.audit_status = evaluator_status(&audit_authority_policy(), Some(report.reported_at));
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::AuditAuthorityRevoked
+    );
 }
 
 #[test]

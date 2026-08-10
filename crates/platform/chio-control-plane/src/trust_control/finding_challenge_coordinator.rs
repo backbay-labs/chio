@@ -1822,7 +1822,7 @@ impl FindingChallengeCoordinator {
         liability_key: &str,
         outcome: &SignedFindingChallengeOutcome,
         identity: &FindingLiabilityIdentity<'_>,
-        sealed: &SealedClaimSnapshot,
+        sealed: Option<&SealedClaimSnapshot>,
         governance: &FindingPenaltyGovernance<'_>,
         disposition: &AppealDisposition<'_>,
         sanction_case_id: &str,
@@ -1844,10 +1844,11 @@ impl FindingChallengeCoordinator {
         self.require_recorded_outcome_signature(challenge_id, outcome, now)?;
         self.require_identity_matches_head(liability_key, identity, &record)?;
         self.require_outcome_upheld_this_liability(outcome, &record)?;
-        self.require_sealed_matches_store(liability_key, sealed)?;
 
         match disposition {
             AppealDisposition::Unresolved { reason } => {
+                let sealed = sealed.ok_or(ChallengeCoordinatorError::SealedClaimMismatch)?;
+                self.require_sealed_matches_store(liability_key, sealed)?;
                 self.challenges
                     .set_liability_quarantine(liability_key, true, now)
                     .map_err(|error| {
@@ -1861,6 +1862,8 @@ impl FindingChallengeCoordinator {
                 appeal_case,
                 appeal_case_id,
             } => {
+                let sealed = sealed.ok_or(ChallengeCoordinatorError::SealedClaimMismatch)?;
+                self.require_sealed_matches_store(liability_key, sealed)?;
                 self.require_timely_appeal(&record, appeal_case, appeal_case_id)?;
                 // The reversal is minted before the case is indexed. A
                 // recorded appeal stamps the sanction superseded, and the
@@ -1915,11 +1918,12 @@ impl FindingChallengeCoordinator {
                     return self.recover_finalizing_authorization(
                         &record,
                         outcome,
-                        sealed,
                         sanction_case_id,
                         now,
                     );
                 }
+                let sealed = sealed.ok_or(ChallengeCoordinatorError::SealedClaimMismatch)?;
+                self.require_sealed_matches_store(liability_key, sealed)?;
                 if record.state != FindingLiabilityState::PendingAppeal {
                     return Err(ChallengeCoordinatorError::LiabilityState("pending_appeal"));
                 }
@@ -5023,7 +5027,6 @@ impl FindingChallengeCoordinator {
         &self,
         record: &FindingLiabilityRecord,
         outcome: &SignedFindingChallengeOutcome,
-        sealed: &SealedClaimSnapshot,
         sanction_case_id: &str,
         now: u64,
     ) -> Result<AppealResolution, ChallengeCoordinatorError> {
@@ -5061,6 +5064,33 @@ impl FindingChallengeCoordinator {
             .validate()
             .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
         self.require_enforcement_signature(enforcement, now)?;
+        let snapshot = self
+            .challenges
+            .get_claim_snapshot(&record.liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::SealedClaimMismatch)?;
+        let sealed = SealedClaimSnapshot {
+            liability_key: snapshot.liability_key,
+            cutoff_slot: snapshot.cutoff_slot,
+            snapshot_digest: snapshot.snapshot_digest,
+            allocation_digest: snapshot.allocation_digest,
+            total_realized_spend_units: snapshot.total_realized_spend_units,
+            distribution: SlashDistribution {
+                slash: enforcement.body.amount.clone(),
+                buyer_pool_units: snapshot.buyer_pool_units,
+                community_fund_units: snapshot.community_fund_units,
+                entries: enforcement
+                    .body
+                    .destinations
+                    .iter()
+                    .map(|destination| DistributionEntry {
+                        destination: destination.destination.clone(),
+                        amount_units: destination.amount.units,
+                    })
+                    .collect(),
+            },
+        };
+        self.require_sealed_matches_store(&record.liability_key, &sealed)?;
         let outcome_digest = self.envelope_digest(outcome)?;
         if stored.recorded_at != enforcement.body.finalized_at
             || enforcement.body.liability_key != record.liability_key
@@ -5514,45 +5544,94 @@ impl FindingChallengeCoordinator {
 
     /// The evidence-bundle commitment an outcome binds: the exact
     /// evidence branch the challenge selected, domain separated.
-    fn evidence_bundle_digest(
+    pub(crate) fn evidence_bundle_digest(
         &self,
         challenge: &FindingChallenge,
         evidence: &FindingChallengeClassEvidence<'_>,
     ) -> Result<String, ChallengeCoordinatorError> {
         let bytes = chio_core::canonical_json_bytes(&challenge.evidence)
             .map_err(|_| ChallengeCoordinatorError::Canonical)?;
-        let mut supplemental_digests = match evidence {
-            FindingChallengeClassEvidence::EvidenceInvalid(resolved) => resolved
-                .revoked_keys
-                .iter()
-                .map(|proof| self.envelope_digest(proof.statement))
-                .collect::<Result<Vec<_>, _>>()?,
-            FindingChallengeClassEvidence::DigestMismatch(resolved) => {
+        let (branch, supplemental_digests) = match evidence {
+            FindingChallengeClassEvidence::EvidenceInvalid(resolved) => {
+                let mut digests = vec![self.envelope_digest(resolved.purchase_record)?];
+                for receipt in resolved.challenged_receipts {
+                    digests.push(self.resolved_receipt_digest(
+                        &receipt.canonical_receipt_bytes,
+                        &receipt.inclusion_proof,
+                    )?);
+                }
+                digests.push(self.canonical_digest(resolved.challenged_checkpoint)?);
+                digests.push(self.canonical_digest(resolved.checkpoint_transparency)?);
+                for proof in resolved.revoked_keys {
+                    digests.push(self.envelope_digest(proof.statement)?);
+                }
+                ("evidence_invalid", digests)
+            }
+            FindingChallengeClassEvidence::DigestMismatch(resolved) => (
+                "digest_mismatch",
                 vec![
+                    self.envelope_digest(resolved.failed_delivery)?,
                     self.envelope_digest(resolved.failed_delivery_authority_status)?,
                     self.envelope_digest(resolved.delivery_authority_status)?,
-                ]
-            }
+                    self.resolved_receipt_digest(
+                        &resolved.deny_receipt.canonical_receipt_bytes,
+                        &resolved.deny_receipt.inclusion_proof,
+                    )?,
+                    self.canonical_digest(resolved.deny_checkpoint)?,
+                    self.canonical_digest(resolved.checkpoint_transparency)?,
+                ],
+            ),
             FindingChallengeClassEvidence::ReplayContradiction(resolved) => {
-                vec![self.envelope_digest(resolved.replay_authority_status)?]
+                let mut digests = vec![
+                    self.envelope_digest(resolved.purchase_record)?,
+                    self.envelope_digest(resolved.replay_authority_status)?,
+                ];
+                for reproduction in resolved.reproductions {
+                    let reproduction_digest = self.canonical_digest(&(
+                        self.resolved_receipt_digest(
+                            &reproduction.receipt.canonical_receipt_bytes,
+                            &reproduction.receipt.inclusion_proof,
+                        )?,
+                        self.canonical_digest(reproduction.checkpoint)?,
+                        self.canonical_digest(reproduction.checkpoint_transparency)?,
+                    ))?;
+                    digests.push(reproduction_digest);
+                }
+                ("replay_contradiction", digests)
             }
         };
-        supplemental_digests.sort_unstable();
-        supplemental_digests.dedup();
+        let resolved_bytes = self.canonical_bytes(&(branch, supplemental_digests))?;
         let mut preimage = Vec::with_capacity(
-            EVIDENCE_BUNDLE_DOMAIN.len()
-                + 1
-                + bytes.len()
-                + supplemental_digests.len().saturating_mul(65),
+            EVIDENCE_BUNDLE_DOMAIN.len() + 1 + bytes.len() + 1 + resolved_bytes.len(),
         );
         preimage.extend_from_slice(EVIDENCE_BUNDLE_DOMAIN.as_bytes());
         preimage.push(0);
         preimage.extend_from_slice(&bytes);
-        for digest in supplemental_digests {
-            preimage.push(0);
-            preimage.extend_from_slice(digest.as_bytes());
-        }
+        preimage.push(0);
+        preimage.extend_from_slice(&resolved_bytes);
         Ok(sha256_hex(&preimage))
+    }
+
+    fn resolved_receipt_digest<T: Serialize>(
+        &self,
+        canonical_receipt_bytes: &[u8],
+        inclusion_proof: &T,
+    ) -> Result<String, ChallengeCoordinatorError> {
+        self.canonical_digest(&(sha256_hex(canonical_receipt_bytes), inclusion_proof))
+    }
+
+    fn canonical_digest<T: Serialize>(
+        &self,
+        value: &T,
+    ) -> Result<String, ChallengeCoordinatorError> {
+        Ok(sha256_hex(&self.canonical_bytes(value)?))
+    }
+
+    fn canonical_bytes<T: Serialize>(
+        &self,
+        value: &T,
+    ) -> Result<Vec<u8>, ChallengeCoordinatorError> {
+        canonical_json_bytes(value).map_err(|_| ChallengeCoordinatorError::Canonical)
     }
 
     fn envelope_digest<T: serde::Serialize>(

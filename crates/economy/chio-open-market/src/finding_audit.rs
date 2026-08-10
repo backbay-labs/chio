@@ -123,10 +123,14 @@ pub struct AuditSelection {
 /// explicit without an error-prone positional authority list.
 pub struct FindingAuditReportWitnesses<'a> {
     pub pinned_seed_witness: PublicKey,
-    pub pinned_audit_authority: PublicKey,
+    /// Governance-authenticated lifecycle policy for the authority that
+    /// signs the epoch, attempts, and report.
+    pub pinned_audit_policy: FindingAuthorityKeyPolicy,
     pub pinned_governance_policy: FindingAuthorityKeyPolicy,
     pub round_authorization: SignedFindingAuditRoundAuthorization,
     pub pinned_status_authority: PublicKey,
+    /// Fresh post-publication status for the audit authority policy.
+    pub audit_status: SignedFindingAuthorityStatus,
     /// Fresh status reading for the exact governance policy that authorized
     /// this round. It must cover the authorization instant and remain fresh
     /// at report publication.
@@ -152,6 +156,18 @@ pub enum FindingAuditError {
     Epoch(FindingError),
     #[error("audit report rejected: {0}")]
     Report(FindingError),
+    #[error("audit authority policy rejected: {0}")]
+    AuditAuthorityPolicy(FindingError),
+    #[error("audit authority policy does not cover the signed round")]
+    AuditAuthorityWindow,
+    #[error("audit authority status rejected: {0}")]
+    AuditAuthorityStatus(FindingError),
+    #[error("audit authority status does not bind the pinned policy")]
+    AuditAuthorityStatusBinding,
+    #[error("audit authority status is not a fresh post-report reading")]
+    AuditAuthorityStatusStale,
+    #[error("audit authority was revoked when it published the report")]
+    AuditAuthorityRevoked,
     #[error("audit round authorization rejected: {0}")]
     RoundAuthorization(FindingError),
     #[error("audit epoch does not bind its governance authorization")]
@@ -398,14 +414,47 @@ pub fn verify_audit_report(
     eligible: &[EligibleListing],
     witnesses: &FindingAuditReportWitnesses<'_>,
 ) -> Result<(), FindingAuditError> {
+    witnesses
+        .pinned_audit_policy
+        .validate("audit authority policy")
+        .map_err(FindingAuditError::AuditAuthorityPolicy)?;
     verify_signed_audit_epoch(
         epoch,
-        &witnesses.pinned_audit_authority,
+        &witnesses.pinned_audit_policy.key,
         &witnesses.pinned_seed_witness,
     )
     .map_err(FindingAuditError::Epoch)?;
-    verify_signed_audit_report(report, &witnesses.pinned_audit_authority)
+    verify_signed_audit_report(report, &witnesses.pinned_audit_policy.key)
         .map_err(FindingAuditError::Report)?;
+    if epoch.body.committed_at < witnesses.pinned_audit_policy.valid_from
+        || report.body.reported_at >= witnesses.pinned_audit_policy.valid_until
+    {
+        return Err(FindingAuditError::AuditAuthorityWindow);
+    }
+    verify_signed_authority_status(&witnesses.audit_status, &witnesses.pinned_status_authority)
+        .map_err(FindingAuditError::AuditAuthorityStatus)?;
+    let audit_status = &witnesses.audit_status.body;
+    if audit_status.status_ref != witnesses.pinned_audit_policy.revocation_status_ref
+        || audit_status.authority_id != witnesses.pinned_audit_policy.authority_id
+        || audit_status.key != witnesses.pinned_audit_policy.key
+        || audit_status.key_epoch != witnesses.pinned_audit_policy.key_epoch
+    {
+        return Err(FindingAuditError::AuditAuthorityStatusBinding);
+    }
+    if audit_status.observed_at < report.body.reported_at
+        || audit_status
+            .observed_at
+            .saturating_sub(report.body.reported_at)
+            > MAX_AUDIT_STATUS_AGE_SECS
+    {
+        return Err(FindingAuditError::AuditAuthorityStatusStale);
+    }
+    if audit_status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= report.body.reported_at)
+    {
+        return Err(FindingAuditError::AuditAuthorityRevoked);
+    }
     witnesses
         .pinned_governance_policy
         .validate("audit governance policy")
@@ -592,7 +641,7 @@ pub fn verify_audit_report(
     let mut resolved_attempts = Vec::with_capacity(witnesses.audit_attempts.len());
     let mut attempted_once = BTreeSet::new();
     for signed in witnesses.audit_attempts {
-        verify_signed_challenge(signed, &witnesses.pinned_audit_authority)
+        verify_signed_challenge(signed, &witnesses.pinned_audit_policy.key)
             .map_err(FindingAuditError::Attempt)?;
         let challenge = &signed.body;
         let FindingChallengeAuthorization::VenueAudit(authorization) = &challenge.authorization
