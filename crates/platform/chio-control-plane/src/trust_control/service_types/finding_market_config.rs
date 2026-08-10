@@ -304,7 +304,11 @@ impl FindingStatusServiceBond {
             ));
         }
         let overlap_from = self.valid_from.max(operator.authority.valid_from);
-        let overlap_until = self.valid_until.min(operator.authority.valid_until);
+        let operator_valid_until = operator
+            .revoked_from
+            .unwrap_or(operator.authority.valid_until)
+            .min(operator.authority.valid_until);
+        let overlap_until = self.valid_until.min(operator_valid_until);
         if self.valid_until.saturating_sub(self.valid_from) <= self.inclusion_sla_secs
             || overlap_until.saturating_sub(overlap_from) <= self.inclusion_sla_secs
         {
@@ -692,6 +696,25 @@ mod status_feed_config_tests {
             pin.authority.valid_until - short_operator_overlap.inclusion_sla_secs;
         short_operator_overlap.valid_until = pin.authority.valid_until + 100;
         assert!(short_operator_overlap.validate(&pin).is_err());
+
+        let mut revoked_before_sla = pin.clone();
+        revoked_before_sla.revoked_from = Some(
+            service_bond
+                .valid_from
+                .saturating_add(service_bond.inclusion_sla_secs),
+        );
+        assert!(service_bond.validate(&revoked_before_sla).is_err());
+
+        let mut revoked_after_sla = pin.clone();
+        revoked_after_sla.revoked_from = Some(
+            service_bond
+                .valid_from
+                .saturating_add(service_bond.inclusion_sla_secs)
+                .saturating_add(1),
+        );
+        service_bond
+            .validate(&revoked_after_sla)
+            .test_expect("one full SLA fits before operator revocation");
 
         let mut unbacked_equivocation = service_bond;
         unbacked_equivocation.equivocation_slash_units = 1_001;
