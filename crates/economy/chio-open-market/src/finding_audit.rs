@@ -210,6 +210,8 @@ pub enum FindingAuditError {
     OutcomeStatusNotEstablished(String),
     #[error("audit evaluator status rejected: {0}")]
     OutcomeStatus(FindingError),
+    #[error("audit outcome {0} has conflicting evaluator status readings at the same time")]
+    OutcomeStatusConflict(String),
     #[error("audit outcome {0} has no fresh post-evaluation status reading")]
     OutcomeStatusStale(String),
     #[error("audit outcome {0} was signed by a revoked evaluator")]
@@ -608,18 +610,33 @@ pub fn verify_audit_report(
         policy
             .validate("audit evaluator policy")
             .map_err(FindingAuditError::Outcome)?;
-        let Some(status) = witnesses.evaluator_statuses.iter().find(|status| {
+        let mut latest_status: Option<&SignedFindingAuthorityStatus> = None;
+        for status in witnesses.evaluator_statuses.iter().filter(|status| {
             status.body.status_ref == policy.revocation_status_ref
                 && status.body.authority_id == policy.authority_id
                 && status.body.key == policy.key
                 && status.body.key_epoch == policy.key_epoch
-        }) else {
+        }) {
+            verify_signed_authority_status(status, &witnesses.pinned_status_authority)
+                .map_err(FindingAuditError::OutcomeStatus)?;
+            match latest_status {
+                None => latest_status = Some(status),
+                Some(latest) => match status.body.observed_at.cmp(&latest.body.observed_at) {
+                    Ordering::Greater => latest_status = Some(status),
+                    Ordering::Equal if status.body.revoked_from != latest.body.revoked_from => {
+                        return Err(FindingAuditError::OutcomeStatusConflict(
+                            outcome.outcome_id.clone(),
+                        ));
+                    }
+                    Ordering::Equal | Ordering::Less => {}
+                },
+            }
+        }
+        let Some(status) = latest_status else {
             return Err(FindingAuditError::OutcomeStatusNotEstablished(
                 outcome.outcome_id.clone(),
             ));
         };
-        verify_signed_authority_status(status, &witnesses.pinned_status_authority)
-            .map_err(FindingAuditError::OutcomeStatus)?;
         if status.body.observed_at < outcome.evaluated_at
             || status.body.observed_at > report.reported_at
             || report.reported_at.saturating_sub(status.body.observed_at)

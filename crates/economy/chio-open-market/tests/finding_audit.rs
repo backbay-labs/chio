@@ -116,6 +116,14 @@ fn evaluator_status(
     policy: &FindingAuthorityKeyPolicy,
     revoked_from: Option<u64>,
 ) -> SignedFindingAuthorityStatus {
+    evaluator_status_observed_at(policy, revoked_from, REPORTED_AT)
+}
+
+fn evaluator_status_observed_at(
+    policy: &FindingAuthorityKeyPolicy,
+    revoked_from: Option<u64>,
+    observed_at: u64,
+) -> SignedFindingAuthorityStatus {
     SignedFindingAuthorityStatus::sign(
         FindingAuthorityStatus {
             schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
@@ -124,7 +132,7 @@ fn evaluator_status(
             key: policy.key.clone(),
             key_epoch: policy.key_epoch,
             revoked_from,
-            observed_at: REPORTED_AT,
+            observed_at,
         },
         &status_authority(),
     )
@@ -879,6 +887,68 @@ fn report_verification_requires_fresh_authenticated_evaluator_status() {
         )
         .test_unwrap_err(),
         FindingAuditError::OutcomeStatusStale(_)
+    ));
+}
+
+#[test]
+fn report_verification_uses_the_newest_authenticated_evaluator_status() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let report = report_for(&envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+    let policies = [audit_evaluator_policy()];
+    let older = evaluator_status_observed_at(&policies[0], None, outcomes[0].body.evaluated_at);
+    let newer = evaluator_status_observed_at(
+        &policies[0],
+        Some(outcomes[0].body.evaluated_at),
+        outcomes[0].body.evaluated_at + 1,
+    );
+
+    for statuses in [
+        vec![older.clone(), newer.clone()],
+        vec![newer.clone(), older.clone()],
+    ] {
+        let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
+        witnesses.evaluator_statuses = statuses;
+        assert!(matches!(
+            verify_audit_report_with_witness(
+                &sign_epoch(&epoch),
+                &sign_report(&report),
+                &eligible,
+                &witnesses,
+            )
+            .test_unwrap_err(),
+            FindingAuditError::OutcomeEvaluatorRevoked(_)
+        ));
+    }
+}
+
+#[test]
+fn report_verification_rejects_conflicting_latest_evaluator_statuses() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let report = report_for(&envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+    let policies = [audit_evaluator_policy()];
+    let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
+    witnesses.evaluator_statuses = vec![
+        evaluator_status(&policies[0], None),
+        evaluator_status(&policies[0], Some(outcomes[0].body.evaluated_at)),
+    ];
+
+    assert!(matches!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::OutcomeStatusConflict(_)
     ));
 }
 
