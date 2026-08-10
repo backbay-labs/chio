@@ -73,7 +73,16 @@ fn legacy_anchor_binding_reconciliation_is_exact_and_idempotent() {
 }
 
 #[test]
+fn v8_schema_migrates_the_legacy_anchor_recovery_trigger() {
+    assert_legacy_anchor_recovery_trigger_migrates(8);
+}
+
+#[test]
 fn v9_schema_migrates_the_legacy_anchor_recovery_trigger() {
+    assert_legacy_anchor_recovery_trigger_migrates(9);
+}
+
+fn assert_legacy_anchor_recovery_trigger_migrates(previous_version: i32) {
     let mut connection = Connection::open_in_memory().expect("open previous database");
     connection
         .execute_batch(FINDING_CHALLENGE_SCHEMA)
@@ -97,7 +106,7 @@ fn v9_schema_migrates_the_legacy_anchor_recovery_trigger() {
             END;
             "#,
         )
-        .expect("restore revision nine trigger");
+        .expect("restore legacy trigger");
     assert_eq!(
         crate::check_schema_version(
             &connection,
@@ -108,10 +117,14 @@ fn v9_schema_migrates_the_legacy_anchor_recovery_trigger() {
         .expect("adopt previous database"),
         0
     );
-    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 9)
+    crate::stamp_schema_version(
+        &connection,
+        FINDING_CHALLENGE_SCHEMA_KEY,
+        previous_version,
+    )
         .expect("stamp previous schema");
 
-    initialize_finding_challenge_schema(&mut connection).expect("migrate revision nine");
+    initialize_finding_challenge_schema(&mut connection).expect("migrate legacy schema");
     assert_eq!(
         connection
             .query_row(

@@ -2,7 +2,7 @@ fn replace_legacy_effect_root_binding_trigger(
     transaction: &Transaction<'_>,
     on_disk: i32,
 ) -> Result<(), FindingChallengeStoreError> {
-    if matches!(on_disk, 9..=12) {
+    if matches!(on_disk, 8..=12) {
         transaction
             .execute_batch("DROP TRIGGER effect_root_bindings_valid_intent;")
             .map_err(sqlite_error)?;
