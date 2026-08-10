@@ -66,7 +66,7 @@ fn fixture_until(amount_units: u64, expires_at_unix_ms: u64) -> PoolFixture {
             purchaser_id: "buyer-agent-1".to_string(),
             purchaser_key: purchaser.public_key(),
             currency: "USD".to_string(),
-            amount_units,
+            amount_units: amount_units.to_string(),
             nonce: "pool-allocation-nonce-1".to_string(),
             authority: authority.public_key(),
             issued_at_unix_ms: 1_000,

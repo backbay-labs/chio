@@ -566,3 +566,24 @@ fn pool_terminal_rejects_a_divergent_settlement_amount() {
     };
     assert!(decisions.is_empty());
 }
+
+#[test]
+fn pool_terminal_preflight_rejects_partial_capture_without_mutation() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let kernel = kernel_with_ledger(Arc::clone(&ledger));
+    let result = kernel.require_finding_pool_delivery_disposition(
+        &purchase(),
+        &crate::tool_outcome::SettlementDispositionV1::Capture {
+            amount: MonetaryAmount {
+                units: 24,
+                currency: "USD".to_owned(),
+            },
+        },
+    );
+    assert_eq!(result, Err(FindingPoolLedgerError::TerminalConflict));
+    let Ok(decisions) = ledger.decisions.lock() else {
+        panic!("test decision lock was poisoned");
+    };
+    assert!(decisions.is_empty());
+    assert!(kernel.receipt_log().receipts().is_empty());
+}

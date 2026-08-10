@@ -1754,6 +1754,10 @@ impl ChioKernel {
             SettlementDispositionV1::NotApplicable,
             |(_, disposition)| disposition.clone(),
         );
+        #[cfg(feature = "cognition-market-experimental")]
+        if let Some(binding) = purchase.as_ref() {
+            self.require_finding_pool_delivery_terminal(binding, &settlement_disposition)?;
+        }
         let pricing_verdict_digest = admission_digest(
             "pricing_verdict_digest",
             &KernelPricingVerdict {

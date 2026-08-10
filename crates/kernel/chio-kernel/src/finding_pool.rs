@@ -753,6 +753,46 @@ impl ChioKernel {
         self.flush_finding_pool_mutation_receipts(ledger)
     }
 
+    /// Check that the frozen post-delivery settlement decision can terminate
+    /// the pool reservation. Purchases that did not use the configured pool
+    /// ledger are left unchanged.
+    pub(crate) fn require_finding_pool_delivery_disposition(
+        &self,
+        purchase: &crate::finding_purchase::VerifiedFindingPurchase,
+        disposition: &crate::tool_outcome::SettlementDispositionV1,
+    ) -> Result<(), FindingPoolLedgerError> {
+        let Some(ledger) = self.finding_pool_ledger() else {
+            return Ok(());
+        };
+        if !ledger.contains_purchase(&purchase.purchase_intent_id)? {
+            return Ok(());
+        }
+        Self::finding_pool_terminal_decision(purchase, disposition).map(|_| ())
+    }
+
+    fn finding_pool_terminal_decision(
+        purchase: &crate::finding_purchase::VerifiedFindingPurchase,
+        disposition: &crate::tool_outcome::SettlementDispositionV1,
+    ) -> Result<FindingPoolTerminalDecision, FindingPoolLedgerError> {
+        match disposition {
+            crate::tool_outcome::SettlementDispositionV1::Capture { amount }
+                if amount == &purchase.accepted_price =>
+            {
+                Ok(FindingPoolTerminalDecision::Finalize)
+            }
+            crate::tool_outcome::SettlementDispositionV1::ContractualZeroCharge { currency }
+                if currency == &purchase.accepted_price.currency =>
+            {
+                Ok(FindingPoolTerminalDecision::Release)
+            }
+            crate::tool_outcome::SettlementDispositionV1::Capture { .. }
+            | crate::tool_outcome::SettlementDispositionV1::ContractualZeroCharge { .. }
+            | crate::tool_outcome::SettlementDispositionV1::NotApplicable => {
+                Err(FindingPoolLedgerError::TerminalConflict)
+            }
+        }
+    }
+
     /// Apply the pool reservation terminal derived from the kernel's frozen
     /// post-delivery settlement decision. Purchases that did not use the
     /// configured pool ledger are left unchanged.
@@ -767,23 +807,7 @@ impl ChioKernel {
         if !ledger.contains_purchase(&purchase.purchase_intent_id)? {
             return Ok(());
         }
-        let decision = match disposition {
-            crate::tool_outcome::SettlementDispositionV1::Capture { amount }
-                if amount == &purchase.accepted_price =>
-            {
-                FindingPoolTerminalDecision::Finalize
-            }
-            crate::tool_outcome::SettlementDispositionV1::ContractualZeroCharge { currency }
-                if currency == &purchase.accepted_price.currency =>
-            {
-                FindingPoolTerminalDecision::Release
-            }
-            crate::tool_outcome::SettlementDispositionV1::Capture { .. }
-            | crate::tool_outcome::SettlementDispositionV1::ContractualZeroCharge { .. }
-            | crate::tool_outcome::SettlementDispositionV1::NotApplicable => {
-                return Err(FindingPoolLedgerError::TerminalConflict);
-            }
-        };
+        let decision = Self::finding_pool_terminal_decision(purchase, disposition)?;
         let terminal = AuthorizedFindingPoolTerminal {
             purchase_id: purchase.purchase_intent_id.clone(),
             finding_id: purchase.finding_id.clone(),
@@ -815,6 +839,19 @@ impl ChioKernel {
             .map_err(|error| {
                 crate::KernelError::DurableAdmission(format!(
                     "finding pool terminal could not be committed: {error}"
+                ))
+            })
+    }
+
+    pub(crate) fn require_finding_pool_delivery_terminal(
+        &self,
+        purchase: &crate::finding_purchase::VerifiedFindingPurchase,
+        disposition: &crate::tool_outcome::SettlementDispositionV1,
+    ) -> Result<(), crate::KernelError> {
+        self.require_finding_pool_delivery_disposition(purchase, disposition)
+            .map_err(|error| {
+                crate::KernelError::DurableAdmission(format!(
+                    "finding pool terminal conflicts before payment settlement: {error}"
                 ))
             })
     }

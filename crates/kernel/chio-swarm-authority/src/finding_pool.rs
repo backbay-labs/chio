@@ -31,7 +31,9 @@ pub struct FindingPoolAllocation {
     pub purchaser_id: String,
     pub purchaser_key: PublicKey,
     pub currency: String,
-    pub amount_units: u64,
+    /// Canonical decimal `u64` string. This remains lossless for RFC 8785
+    /// implementations whose JSON number model is IEEE-754 binary64.
+    pub amount_units: String,
     pub nonce: String,
     pub authority: PublicKey,
     pub issued_at_unix_ms: u64,
@@ -140,8 +142,14 @@ pub fn verify_finding_pool_allocation(
     require_currency(&body.currency)?;
     require_sha256(&body.allocation_id, "allocation_id")?;
     require_sha256(&body.pool_sha256, "pool_sha256")?;
-    if body.amount_units == 0 {
-        return Err(rejected("finding pool allocation amount must be positive"));
+    let amount_units = parse_positive_u64_decimal(&body.amount_units)?;
+    const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
+    if body.issued_at_unix_ms > I_JSON_MAX_SAFE_INTEGER
+        || body.expires_at_unix_ms > I_JSON_MAX_SAFE_INTEGER
+    {
+        return Err(rejected(
+            "finding pool allocation timestamps must be I-JSON safe integers",
+        ));
     }
     if body.issued_at_unix_ms >= body.expires_at_unix_ms {
         return Err(rejected(
@@ -162,7 +170,7 @@ pub fn verify_finding_pool_allocation(
     {
         return Err(rejected("finding pool allocation does not match the pool"));
     }
-    if body.amount_units > pool.total_units {
+    if amount_units > pool.total_units {
         return Err(rejected(
             "finding pool allocation amount exceeds the unsigned pool total",
         ));
@@ -179,7 +187,7 @@ pub fn verify_finding_pool_allocation(
         purchaser_id: body.purchaser_id.clone(),
         purchaser_key: body.purchaser_key.clone(),
         currency: body.currency.clone(),
-        amount_units: body.amount_units,
+        amount_units,
         expires_at_unix_ms: body.expires_at_unix_ms,
     })
 }
@@ -207,6 +215,20 @@ fn require_currency(value: &str) -> Result<(), SwarmAuthorityError> {
     }
 }
 
+fn parse_positive_u64_decimal(value: &str) -> Result<u64, SwarmAuthorityError> {
+    if value.is_empty()
+        || value.starts_with('0')
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err(rejected(
+            "finding pool allocation amount must be a canonical positive decimal u64",
+        ));
+    }
+    value.parse::<u64>().map_err(|_| {
+        rejected("finding pool allocation amount must be a canonical positive decimal u64")
+    })
+}
+
 fn require_sha256(value: &str, field: &str) -> Result<(), SwarmAuthorityError> {
     if value.len() == 64
         && value
@@ -227,11 +249,51 @@ fn rejected(message: impl Into<String>) -> SwarmAuthorityError {
 
 #[cfg(test)]
 mod tests {
-    use super::require_non_empty;
+    use super::*;
+    use chio_test_support::prelude::*;
 
     #[test]
     fn allocation_identifiers_reject_whitespace_only_values() {
         assert!(require_non_empty("   ", "pool_id").is_err());
         assert!(require_non_empty("pool:one", "pool_id").is_ok());
+    }
+
+    #[test]
+    fn allocation_amount_covers_the_full_u64_domain_without_json_rounding() {
+        let authority = Keypair::from_seed(&[71; 32]);
+        let purchaser = Keypair::from_seed(&[72; 32]);
+        let pool = SwarmBudgetPool {
+            schema: CHIO_SWARM_BUDGET_POOL_SCHEMA.to_string(),
+            pool_id: "pool:max".to_string(),
+            graph_id: "graph:max".to_string(),
+            currency: "USD".to_string(),
+            total_units: u64::MAX,
+            allocations: Vec::new(),
+        };
+        let signed = sign_finding_pool_allocation(
+            FindingPoolAllocation {
+                schema: FINDING_POOL_ALLOCATION_SCHEMA_V1.to_string(),
+                allocation_id: String::new(),
+                pool_id: pool.pool_id.clone(),
+                pool_sha256: swarm_budget_pool_sha256(&pool).test_expect("hash pool"),
+                graph_id: pool.graph_id.clone(),
+                purpose: FINDING_POOL_PURPOSE_V1.to_string(),
+                purchaser_id: "buyer:max".to_string(),
+                purchaser_key: purchaser.public_key(),
+                currency: "USD".to_string(),
+                amount_units: u64::MAX.to_string(),
+                nonce: "nonce:max".to_string(),
+                authority: authority.public_key(),
+                issued_at_unix_ms: 1,
+                expires_at_unix_ms: 2,
+            },
+            &authority,
+        )
+        .test_expect("sign allocation");
+        let json = serde_json::to_value(&signed).test_expect("serialize allocation");
+        assert_eq!(json["body"]["amount_units"], u64::MAX.to_string());
+        let verified = verify_finding_pool_allocation(&signed, &pool, &authority.public_key(), 1)
+            .test_expect("verify full-domain amount");
+        assert_eq!(verified.amount_units, u64::MAX);
     }
 }

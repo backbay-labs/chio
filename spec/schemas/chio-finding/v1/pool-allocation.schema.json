@@ -59,7 +59,7 @@
           "pattern": "^[A-Z0-9]{1,16}$"
         },
         "amount_units": {
-          "$ref": "#/$defs/positiveU64"
+          "$ref": "#/$defs/positiveU64Decimal"
         },
         "nonce": {
           "$ref": "#/$defs/nonBlankString"
@@ -101,12 +101,11 @@
     "u64": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 18446744073709551615
+      "maximum": 9007199254740991
     },
-    "positiveU64": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 18446744073709551615
+    "positiveU64Decimal": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,19}$"
     }
   }
 }
