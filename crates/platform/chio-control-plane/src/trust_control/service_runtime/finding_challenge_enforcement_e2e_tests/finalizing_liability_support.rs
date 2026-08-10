@@ -3,6 +3,7 @@
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EnforcementRoot {
     Confirmed,
+    Mismatched,
     Unpublished,
 }
 
@@ -52,6 +53,7 @@ fn finalizing_liability_with(
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &digest("upheld-outcome"),
+        b"upheld-outcome",
         NOW + 1,
     )?;
 
@@ -134,17 +136,27 @@ fn finalizing_liability_with(
         true,
         NOW + 5,
     )?;
-    if root == EnforcementRoot::Confirmed {
-        for state in [
+    if root == EnforcementRoot::Mismatched {
+        let merkle_root = chain_hash(0xee);
+        let evidence_hash = anchor_evidence_hash()?;
+        deployment.challenges.bind_effect_root(
+            &enforcement_root_intent_key(),
+            &liability_key,
+            &merkle_root,
+            &evidence_hash,
+            NOW + 5,
+        )?;
+        deployment.challenges.advance_effect_intent(
+            &enforcement_root_intent_key(),
             FindingEffectIntentState::Dispatched,
-            FindingEffectIntentState::Confirmed,
-        ] {
-            deployment.challenges.advance_effect_intent(
-                &enforcement_root_intent_key(),
-                state,
-                NOW + 6,
-            )?;
-        }
+            NOW + 6,
+        )?;
+        deployment.challenges.confirm_effect_root(
+            &enforcement_root_intent_key(),
+            &merkle_root,
+            &evidence_hash,
+            NOW + 6,
+        )?;
     }
     let retraction_key = byte_hex64(0xc3);
     deployment.challenges.record_effect_intent(
@@ -258,7 +270,7 @@ fn finalizing_liability_with(
         },
         NOW + 5,
     )?;
-    Ok(FinalizingLiability {
+    let case = FinalizingLiability {
         deployment,
         coordinator,
         liability_key,
@@ -268,7 +280,39 @@ fn finalizing_liability_with(
         enforcement,
         penalty,
         snapshot,
-    })
+    };
+    if root == EnforcementRoot::Confirmed {
+        let refused = case
+            .finalize_observing(
+                &ScriptedObservations::qualified(),
+                &UnreachablePublisher,
+                SETTLEMENT_NOW,
+            )?
+            .expect_err("the first attempt prepares the root before publication");
+        if !matches!(
+            refused,
+            ChallengeCoordinatorError::EnforcementRootUnconfirmed(_)
+        ) {
+            return Err(format!("unexpected root preparation result: {refused:?}").into());
+        }
+        let binding = case
+            .deployment
+            .challenges
+            .get_effect_root_binding(&enforcement_root_intent_key())?
+            .ok_or("root preparation binds the concrete proof")?;
+        case.deployment.challenges.advance_effect_intent(
+            &enforcement_root_intent_key(),
+            FindingEffectIntentState::Dispatched,
+            NOW + 6,
+        )?;
+        case.deployment.challenges.confirm_effect_root(
+            &enforcement_root_intent_key(),
+            &binding.merkle_root,
+            &binding.evidence_hash,
+            NOW + 6,
+        )?;
+    }
+    Ok(case)
 }
 
 impl FinalizingLiability {
