@@ -16,6 +16,7 @@ struct RecordingLedger {
     decisions: Mutex<Vec<FindingPoolTerminalDecision>>,
     claims: Mutex<Vec<(String, u64)>>,
     recovery_releases: Mutex<Vec<String>>,
+    unknown_dispatch_finalizations: Mutex<Vec<String>>,
     outbox: Mutex<Vec<ChioReceipt>>,
     acknowledged: Mutex<Vec<String>>,
     receipt_authority: Mutex<Option<chio_core::crypto::PublicKey>>,
@@ -132,6 +133,41 @@ impl FindingPoolLedger for RecordingLedger {
                 occurred_at_unix_ms: release.released_at_unix_ms().to_string(),
                 durable_admission_operation_id: Some(
                     release.durable_admission_operation_id().to_owned(),
+                ),
+            },
+            attestor,
+        )
+    }
+
+    fn finalize_claimed_after_unknown_dispatch(
+        &self,
+        terminal: &AuthorizedFindingPoolUnknownDispatchTerminal,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError> {
+        self.unknown_dispatch_finalizations
+            .lock()
+            .map_err(|_| {
+                FindingPoolLedgerError::Storage(
+                    "test unknown-dispatch finalization lock was poisoned".to_owned(),
+                )
+            })?
+            .push(terminal.durable_admission_operation_id().to_owned());
+        self.store_attestation(
+            FindingPoolMutation {
+                schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
+                kind: FindingPoolMutationKind::Finalize,
+                purchase_id: "purchase:test".to_owned(),
+                allocation_id: "allocation:test".to_owned(),
+                allocation_envelope_sha256: "a".repeat(64),
+                amount_units: "25".to_owned(),
+                currency: "USD".to_owned(),
+                state: FindingPoolDebitState::Finalized,
+                reserved_after_units: "0".to_owned(),
+                spent_after_units: "25".to_owned(),
+                remaining_after_units: "75".to_owned(),
+                occurred_at_unix_ms: terminal.finalized_at_unix_ms().to_string(),
+                durable_admission_operation_id: Some(
+                    terminal.durable_admission_operation_id().to_owned(),
                 ),
             },
             attestor,
@@ -408,6 +444,27 @@ fn pre_dispatch_recovery_releases_the_bound_pool_claim() {
     };
     assert_eq!(releases.as_slice(), &["operation:test".to_owned()]);
     drop(releases);
+    assert_eq!(kernel.receipt_log().receipts().len(), 2);
+    assert!(ledger
+        .pending_mutation_receipts()
+        .is_ok_and(|receipts| receipts.is_empty()));
+}
+
+#[test]
+fn unknown_dispatch_recovery_finalizes_the_bound_pool_claim() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let kernel = kernel_with_ledger(Arc::clone(&ledger));
+    assert!(kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .is_ok());
+    assert!(kernel
+        .finalize_finding_pool_claim_after_unknown_dispatch("operation:test", 12_346)
+        .is_ok());
+    let Ok(finalizations) = ledger.unknown_dispatch_finalizations.lock() else {
+        panic!("test unknown-dispatch finalization lock was poisoned");
+    };
+    assert_eq!(finalizations.as_slice(), &["operation:test".to_owned()]);
+    drop(finalizations);
     assert_eq!(kernel.receipt_log().receipts().len(), 2);
     assert!(ledger
         .pending_mutation_receipts()

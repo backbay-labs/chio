@@ -199,6 +199,14 @@ pub struct AuthorizedFindingPoolRecoveryRelease {
     released_at_unix_ms: u64,
 }
 
+/// Kernel-authenticated finalization for a claimed reservation whose durable
+/// admission reached dispatch commitment but has no recoverable tool outcome.
+#[derive(Debug, Clone)]
+pub struct AuthorizedFindingPoolUnknownDispatchTerminal {
+    durable_admission_operation_id: String,
+    finalized_at_unix_ms: u64,
+}
+
 /// Kernel-authenticated delivery terminal for a prior pool reservation.
 ///
 /// Fields are private so callers cannot manufacture a successful or failed
@@ -339,6 +347,18 @@ impl AuthorizedFindingPoolRecoveryRelease {
     }
 }
 
+impl AuthorizedFindingPoolUnknownDispatchTerminal {
+    #[must_use]
+    pub fn durable_admission_operation_id(&self) -> &str {
+        &self.durable_admission_operation_id
+    }
+
+    #[must_use]
+    pub fn finalized_at_unix_ms(&self) -> u64 {
+        self.finalized_at_unix_ms
+    }
+}
+
 impl AuthorizedFindingPoolDebit {
     #[must_use]
     pub fn purchase_id(&self) -> &str {
@@ -466,6 +486,15 @@ pub trait FindingPoolLedger: Send + Sync {
     fn release_claimed_before_dispatch(
         &self,
         release: &AuthorizedFindingPoolRecoveryRelease,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError>;
+
+    /// Finalize a claimed reservation when its durable admission is terminally
+    /// outcome-unknown after dispatch commitment. Exact replay is idempotent;
+    /// a prior release fails closed. An operation with no pool claim is a no-op.
+    fn finalize_claimed_after_unknown_dispatch(
+        &self,
+        terminal: &AuthorizedFindingPoolUnknownDispatchTerminal,
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError>;
 
@@ -751,6 +780,30 @@ impl ChioKernel {
                 .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
         };
         ledger.release_claimed_before_dispatch(&release, &attestor)?;
+        self.flush_finding_pool_mutation_receipts(ledger)
+    }
+
+    /// Consume a claimed reservation before an outcome-unknown admission
+    /// becomes terminal. The conservative finalization prevents ambiguous
+    /// dispatch from authorizing the same allocation units again.
+    pub(crate) fn finalize_finding_pool_claim_after_unknown_dispatch(
+        &self,
+        durable_admission_operation_id: &str,
+        trusted_now_unix_ms: u64,
+    ) -> Result<(), FindingPoolLedgerError> {
+        let Some(ledger) = self.finding_pool_ledger() else {
+            return Ok(());
+        };
+        self.flush_finding_pool_mutation_receipts(ledger)?;
+        let terminal = AuthorizedFindingPoolUnknownDispatchTerminal {
+            durable_admission_operation_id: durable_admission_operation_id.to_owned(),
+            finalized_at_unix_ms: trusted_now_unix_ms,
+        };
+        let attestor = |mutation: &FindingPoolMutation| {
+            self.build_finding_pool_mutation_receipt(mutation)
+                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
+        };
+        ledger.finalize_claimed_after_unknown_dispatch(&terminal, &attestor)?;
         self.flush_finding_pool_mutation_receipts(ledger)
     }
 
