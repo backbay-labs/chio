@@ -5,8 +5,10 @@
 //! linearizable reservation, terminal settlement, and durable exact replay.
 //! Advisory remote budget views must not implement the marker trait.
 
-use chio_core_types::crypto::PublicKey;
+use chio_core_types::canonical_json_bytes;
+use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_core_types::receipt::body::ChioReceipt;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_swarm_authority::finding_pool::{
     verify_finding_pool_allocation, SignedFindingPoolAllocation,
 };
@@ -19,6 +21,32 @@ use crate::ChioKernel;
 /// purchase admission must take ownership of it.
 pub const FINDING_POOL_CLAIM_WINDOW_MS: u64 = 30_000;
 pub const FINDING_POOL_MUTATION_SCHEMA_V1: &str = "chio.finding.pool-mutation.v1";
+pub const FINDING_POOL_DEBIT_AUTHORIZATION_SCHEMA_V1: &str =
+    "chio.finding.pool-debit-authorization.v1";
+
+/// Purchaser-signed proof of possession for one exact pool reservation.
+///
+/// The body binds the immutable purchase context to the concrete runtime
+/// request and signed allocation. A copied capability and purchase context
+/// therefore cannot create or expire a reservation without the purchaser key.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingPoolDebitAuthorization {
+    pub schema: String,
+    pub purchase_id: String,
+    pub allocation_envelope_sha256: String,
+    pub purchaser_id: String,
+    pub purchase_context_sha256: String,
+    pub capability_id: String,
+    pub server_id: String,
+    pub tool_name: String,
+    pub arguments_sha256: String,
+    pub expected_output_digest: String,
+    /// Decimal-string trusted-time deadline for starting a new reservation.
+    pub expires_at_unix_ms: String,
+}
+
+pub type SignedFindingPoolDebitAuthorization = SignedExportEnvelope<FindingPoolDebitAuthorization>;
 
 /// Exact state transition committed by a qualified finding-pool ledger.
 ///
@@ -119,6 +147,8 @@ pub enum FindingPoolDebitError {
     EnvelopeDigestMismatch,
     #[error("finding pool purchaser identity or key mismatch")]
     PurchaserMismatch,
+    #[error("finding pool purchaser authorization rejected: {0}")]
+    PurchaserAuthorization(String),
     #[error("finding pool debit currency mismatch")]
     CurrencyMismatch,
     #[error("finding pool debit amount must be positive")]
@@ -138,6 +168,8 @@ pub struct FindingPoolDebitRequest<'a> {
     pub pool: &'a SwarmBudgetPool,
     pub expected_allocation_envelope_sha256: &'a str,
     pub purchaser_id: &'a str,
+    /// Purchaser proof of possession over this exact debit request.
+    pub purchaser_authorization: &'a SignedFindingPoolDebitAuthorization,
     /// Exact purchase inputs handed to the verifier.
     pub purchase_context: FindingPurchaseContextView<'a>,
     /// Canonical portable status proof required whenever the kernel has an
@@ -609,6 +641,13 @@ impl ChioKernel {
         if verified.purchaser_id != request.purchaser_id || verified.purchaser_key != payer_key {
             return Err(FindingPoolDebitError::PurchaserMismatch);
         }
+        let authorization_expires_at =
+            verify_purchaser_authorization(&request, &purchase, &payer_key)?;
+        if !committed_purchase && trusted_now_unix_ms >= authorization_expires_at {
+            return Err(FindingPoolDebitError::PurchaserAuthorization(
+                "authorization expired before reservation".to_owned(),
+            ));
+        }
         if verified.currency != purchase.accepted_price.currency {
             return Err(FindingPoolDebitError::CurrencyMismatch);
         }
@@ -909,6 +948,82 @@ impl ChioKernel {
                 ))
             })
     }
+}
+
+fn verify_purchaser_authorization(
+    request: &FindingPoolDebitRequest<'_>,
+    purchase: &crate::finding_purchase::VerifiedFindingPurchase,
+    payer_key: &PublicKey,
+) -> Result<u64, FindingPoolDebitError> {
+    let authorization = request.purchaser_authorization;
+    let body = &authorization.body;
+    if body.schema != FINDING_POOL_DEBIT_AUTHORIZATION_SCHEMA_V1 {
+        return Err(FindingPoolDebitError::PurchaserAuthorization(
+            "unsupported schema".to_owned(),
+        ));
+    }
+    require_identifier(&body.purchase_id, "authorization.purchase_id")?;
+    require_hex64(
+        &body.allocation_envelope_sha256,
+        "authorization.allocation_envelope_sha256",
+    )?;
+    require_identifier(&body.purchaser_id, "authorization.purchaser_id")?;
+    require_hex64(
+        &body.purchase_context_sha256,
+        "authorization.purchase_context_sha256",
+    )?;
+    require_identifier(&body.capability_id, "authorization.capability_id")?;
+    require_identifier(&body.server_id, "authorization.server_id")?;
+    require_identifier(&body.tool_name, "authorization.tool_name")?;
+    require_hex64(&body.arguments_sha256, "authorization.arguments_sha256")?;
+    require_hex64(
+        &body.expected_output_digest,
+        "authorization.expected_output_digest",
+    )?;
+    let expires_at_unix_ms = body.expires_at_unix_ms.parse::<u64>().map_err(|_| {
+        FindingPoolDebitError::PurchaserAuthorization(
+            "expires_at_unix_ms is not canonical u64 decimal".to_owned(),
+        )
+    })?;
+    if expires_at_unix_ms.to_string() != body.expires_at_unix_ms {
+        return Err(FindingPoolDebitError::PurchaserAuthorization(
+            "expires_at_unix_ms is not canonical u64 decimal".to_owned(),
+        ));
+    }
+    if authorization.signer_key != *payer_key {
+        return Err(FindingPoolDebitError::PurchaserMismatch);
+    }
+    match payer_key.verify_canonical_strict(body, &authorization.signature) {
+        Ok(true) => {}
+        _ => {
+            return Err(FindingPoolDebitError::PurchaserAuthorization(
+                "signature is invalid".to_owned(),
+            ));
+        }
+    }
+    let arguments_sha256 = sha256_hex(
+        &canonical_json_bytes(request.purchase_context.arguments).map_err(|_| {
+            FindingPoolDebitError::PurchaserAuthorization(
+                "request arguments are not canonicalizable".to_owned(),
+            )
+        })?,
+    );
+    if body.purchase_id != purchase.purchase_intent_id
+        || body.allocation_envelope_sha256 != request.expected_allocation_envelope_sha256
+        || body.purchaser_id != request.purchaser_id
+        || body.purchase_context_sha256
+            != sha256_hex(request.purchase_context.context_b64.as_bytes())
+        || body.capability_id != request.purchase_context.capability.id
+        || body.server_id != request.purchase_context.server_id
+        || body.tool_name != request.purchase_context.tool_name
+        || body.arguments_sha256 != arguments_sha256
+        || body.expected_output_digest != request.purchase_context.expected_output_digest
+    {
+        return Err(FindingPoolDebitError::PurchaserAuthorization(
+            "authorization does not bind the debit request".to_owned(),
+        ));
+    }
+    Ok(expires_at_unix_ms)
 }
 
 fn require_identifier(value: &str, field: &'static str) -> Result<(), FindingPoolDebitError> {

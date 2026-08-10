@@ -746,133 +746,12 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         terminal: &AuthorizedFindingPoolUnknownDispatchTerminal,
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError> {
-        let mut connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let stored = transaction
-            .query_row(
-                "SELECT d.purchase_id, d.allocation_envelope_sha256, d.state, \
-                        d.amount_units, d.reserved_after_units, d.spent_after_units, \
-                        a.signed_amount_units, a.reserved_units, a.spent_units, \
-                        d.claimed_at_unix_ms \
-                 FROM finding_pool_debits d \
-                 JOIN finding_pool_allocations a \
-                   ON a.allocation_envelope_sha256 = d.allocation_envelope_sha256 \
-                 WHERE d.durable_admission_operation_id = ?1",
-                [terminal.durable_admission_operation_id()],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, String>(5)?,
-                        row.get::<_, String>(6)?,
-                        row.get::<_, String>(7)?,
-                        row.get::<_, String>(8)?,
-                        row.get::<_, Option<String>>(9)?,
-                    ))
-                },
-            )
-            .optional()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let Some(stored) = stored else {
-            transaction
-                .commit()
-                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-            return Ok(());
-        };
-        let state = parse_state(&stored.2)?;
-        let amount = parse_units(&stored.3, "debit.amount_units")?;
-        let recorded_reserved_after = parse_units(&stored.4, "debit.reserved_after_units")?;
-        let recorded_spent_after = parse_units(&stored.5, "debit.spent_after_units")?;
-        let signed = parse_units(&stored.6, "signed_amount_units")?;
-        let current_reserved = parse_units(&stored.7, "reserved_units")?;
-        let current_spent = parse_units(&stored.8, "spent_units")?;
-        let claimed_at = stored.9.as_deref().ok_or_else(|| {
-            invariant("outcome-unknown durable admission identifies an unclaimed reservation")
-        })?;
-        parse_units(claimed_at, "debit.claimed_at_unix_ms")?;
-        if state != FindingPoolDebitState::Reserved {
-            if state != FindingPoolDebitState::Finalized {
-                return Err(FindingPoolLedgerError::TerminalConflict);
-            }
-            if recorded_reserved_after != current_reserved || recorded_spent_after != current_spent
-            {
-                return Err(invariant(
-                    "outcome-unknown replay differs from allocation terminal state",
-                ));
-            }
-            remaining_units(signed, recorded_reserved_after, recorded_spent_after)?;
-            transaction
-                .commit()
-                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-            return Ok(());
-        }
-        let reserved_after = current_reserved
-            .checked_sub(amount)
-            .ok_or_else(|| invariant("claimed reservation exceeds allocation reserved amount"))?;
-        let spent_after = current_spent
-            .checked_add(amount)
-            .ok_or(FindingPoolLedgerError::AmountExceeded)?;
-        remaining_units(signed, reserved_after, spent_after)?;
-        let changed = transaction
-            .execute(
-                "UPDATE finding_pool_allocations \
-                 SET reserved_units = ?2, spent_units = ?3 \
-                 WHERE allocation_envelope_sha256 = ?1 \
-                   AND reserved_units = ?4 AND spent_units = ?5",
-                params![
-                    stored.1,
-                    reserved_after.to_string(),
-                    spent_after.to_string(),
-                    current_reserved.to_string(),
-                    current_spent.to_string(),
-                ],
-            )
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        if changed != 1 {
-            return Err(invariant(
-                "outcome-unknown allocation finalization compare-and-set failed",
-            ));
-        }
-        let changed = transaction
-            .execute(
-                "UPDATE finding_pool_debits \
-                 SET state = 'finalized', reserved_after_units = ?2, spent_after_units = ?3 \
-                 WHERE purchase_id = ?1 AND state = 'reserved' \
-                   AND durable_admission_operation_id = ?4",
-                params![
-                    stored.0,
-                    reserved_after.to_string(),
-                    spent_after.to_string(),
-                    terminal.durable_admission_operation_id(),
-                ],
-            )
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        if changed != 1 {
-            return Err(invariant(
-                "outcome-unknown reservation finalization compare-and-set failed",
-            ));
-        }
-        record_mutation_receipt(
-            &transaction,
-            mutation_for_purchase(
-                &transaction,
-                &stored.0,
-                FindingPoolMutationKind::Finalize,
-                terminal.finalized_at_unix_ms(),
-            )?,
+        finalize_claimed_after_unknown_dispatch_by_operation(
+            self,
+            terminal.durable_admission_operation_id(),
+            terminal.finalized_at_unix_ms(),
             attestor,
-        )?;
-        transaction
-            .commit()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+        )
     }
 
     fn settle(
@@ -1127,6 +1006,138 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             ))
         }
     }
+}
+
+fn finalize_claimed_after_unknown_dispatch_by_operation(
+    ledger: &SqliteFindingPoolLedger,
+    durable_admission_operation_id: &str,
+    finalized_at_unix_ms: u64,
+    attestor: &FindingPoolMutationAttestor<'_>,
+) -> Result<(), FindingPoolLedgerError> {
+    let mut connection = ledger
+        .pool
+        .get()
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let stored = transaction
+        .query_row(
+            "SELECT d.purchase_id, d.allocation_envelope_sha256, d.state, \
+                    d.amount_units, d.reserved_after_units, d.spent_after_units, \
+                    a.signed_amount_units, a.reserved_units, a.spent_units, \
+                    d.claimed_at_unix_ms \
+             FROM finding_pool_debits d \
+             JOIN finding_pool_allocations a \
+               ON a.allocation_envelope_sha256 = d.allocation_envelope_sha256 \
+             WHERE d.durable_admission_operation_id = ?1",
+            [durable_admission_operation_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                    row.get::<_, Option<String>>(9)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let Some(stored) = stored else {
+        transaction
+            .commit()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        return Ok(());
+    };
+    let state = parse_state(&stored.2)?;
+    let amount = parse_units(&stored.3, "debit.amount_units")?;
+    let recorded_reserved_after = parse_units(&stored.4, "debit.reserved_after_units")?;
+    let recorded_spent_after = parse_units(&stored.5, "debit.spent_after_units")?;
+    let signed = parse_units(&stored.6, "signed_amount_units")?;
+    let claimed_at = stored.9.as_deref().ok_or_else(|| {
+        invariant("outcome-unknown durable admission identifies an unclaimed reservation")
+    })?;
+    parse_units(claimed_at, "debit.claimed_at_unix_ms")?;
+    if state != FindingPoolDebitState::Reserved {
+        if state != FindingPoolDebitState::Finalized {
+            return Err(FindingPoolLedgerError::TerminalConflict);
+        }
+        // These are the immutable post-transition counters recorded on this
+        // debit. Allocation-wide counters may have advanced through unrelated
+        // later debits and must not participate in exact replay.
+        remaining_units(signed, recorded_reserved_after, recorded_spent_after)?;
+        transaction
+            .commit()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        return Ok(());
+    }
+    let current_reserved = parse_units(&stored.7, "reserved_units")?;
+    let current_spent = parse_units(&stored.8, "spent_units")?;
+    let reserved_after = current_reserved
+        .checked_sub(amount)
+        .ok_or_else(|| invariant("claimed reservation exceeds allocation reserved amount"))?;
+    let spent_after = current_spent
+        .checked_add(amount)
+        .ok_or(FindingPoolLedgerError::AmountExceeded)?;
+    remaining_units(signed, reserved_after, spent_after)?;
+    let changed = transaction
+        .execute(
+            "UPDATE finding_pool_allocations \
+             SET reserved_units = ?2, spent_units = ?3 \
+             WHERE allocation_envelope_sha256 = ?1 \
+               AND reserved_units = ?4 AND spent_units = ?5",
+            params![
+                stored.1,
+                reserved_after.to_string(),
+                spent_after.to_string(),
+                current_reserved.to_string(),
+                current_spent.to_string(),
+            ],
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    if changed != 1 {
+        return Err(invariant(
+            "outcome-unknown allocation finalization compare-and-set failed",
+        ));
+    }
+    let changed = transaction
+        .execute(
+            "UPDATE finding_pool_debits \
+             SET state = 'finalized', reserved_after_units = ?2, spent_after_units = ?3 \
+             WHERE purchase_id = ?1 AND state = 'reserved' \
+               AND durable_admission_operation_id = ?4",
+            params![
+                stored.0,
+                reserved_after.to_string(),
+                spent_after.to_string(),
+                durable_admission_operation_id,
+            ],
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    if changed != 1 {
+        return Err(invariant(
+            "outcome-unknown reservation finalization compare-and-set failed",
+        ));
+    }
+    record_mutation_receipt(
+        &transaction,
+        mutation_for_purchase(
+            &transaction,
+            &stored.0,
+            FindingPoolMutationKind::Finalize,
+            finalized_at_unix_ms,
+        )?,
+        attestor,
+    )?;
+    transaction
+        .commit()
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
 }
 
 impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {}
@@ -1534,4 +1545,100 @@ fn parse_units(value: &str, field: &str) -> Result<u64, FindingPoolLedgerError> 
     value.parse::<u64>().map_err(|error| {
         FindingPoolLedgerError::Storage(format!("stored {field} is invalid: {error}"))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chio_test_support::prelude::*;
+
+    #[test]
+    fn unknown_dispatch_exact_replay_ignores_later_allocation_totals() {
+        let directory = tempfile::tempdir().test_expect("create pool ledger directory");
+        let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
+            .test_expect("open qualified pool ledger");
+        let allocation_digest = "a".repeat(64);
+        let operation_id = "operation:unknown-dispatch";
+        {
+            let connection = ledger.pool.get().test_expect("open pool ledger connection");
+            connection
+                .execute(
+                    "INSERT INTO finding_pool_allocations (\
+                        allocation_envelope_sha256, allocation_id, pool_id, pool_sha256, \
+                        purchaser_id, purchaser_key_json, currency, signed_amount_units, \
+                        reserved_units, spent_units, expires_at_unix_ms\
+                     ) VALUES (?1, 'allocation:test', 'pool:test', ?2, 'buyer:test', '{}', \
+                               'USD', '100', '20', '10', '100000')",
+                    params![allocation_digest, "b".repeat(64)],
+                )
+                .test_expect("seed allocation with later counters");
+            connection
+                .execute(
+                    "INSERT INTO finding_pool_debits (\
+                        purchase_id, allocation_envelope_sha256, finding_id, listing_id, \
+                        reservation_id, authoritative_payment_operation_id, \
+                        accepted_bid_envelope_sha256, venue_admission_envelope_sha256, \
+                        amount_units, currency, state, claim_deadline_unix_ms, \
+                        claimed_at_unix_ms, durable_admission_operation_id, \
+                        reserved_after_units, spent_after_units\
+                     ) VALUES ('purchase:finalized', ?1, ?2, 'listing:test', \
+                               'reservation:finalized', 'payment:finalized', ?3, ?4, \
+                               '10', 'USD', 'finalized', '30000', '2000', ?5, '0', '10')",
+                    params![
+                        allocation_digest,
+                        "c".repeat(64),
+                        "d".repeat(64),
+                        "e".repeat(64),
+                        operation_id,
+                    ],
+                )
+                .test_expect("seed finalized unknown-dispatch debit");
+            connection
+                .execute(
+                    "INSERT INTO finding_pool_debits (\
+                        purchase_id, allocation_envelope_sha256, finding_id, listing_id, \
+                        reservation_id, authoritative_payment_operation_id, \
+                        accepted_bid_envelope_sha256, venue_admission_envelope_sha256, \
+                        amount_units, currency, state, claim_deadline_unix_ms, \
+                        claimed_at_unix_ms, durable_admission_operation_id, \
+                        reserved_after_units, spent_after_units\
+                     ) VALUES ('purchase:later', ?1, ?2, 'listing:test', \
+                               'reservation:later', 'payment:later', ?3, ?4, \
+                               '20', 'USD', 'reserved', '40000', NULL, NULL, '20', '10')",
+                    params![
+                        allocation_digest,
+                        "f".repeat(64),
+                        "1".repeat(64),
+                        "2".repeat(64),
+                    ],
+                )
+                .test_expect("seed later reservation that advanced allocation totals");
+        }
+
+        let attestor = |_mutation: &FindingPoolMutation| {
+            Err(FindingPoolLedgerError::Receipt(
+                "exact replay must not attest another mutation".to_owned(),
+            ))
+        };
+        finalize_claimed_after_unknown_dispatch_by_operation(
+            &ledger,
+            operation_id,
+            3_000,
+            &attestor,
+        )
+        .test_expect("exact finalized replay ignores mutable allocation counters");
+
+        assert_eq!(
+            ledger
+                .reserved_units(&allocation_digest)
+                .test_expect("read retained reservations"),
+            Some(20)
+        );
+        assert_eq!(
+            ledger
+                .spent_units(&allocation_digest)
+                .test_expect("read retained spend"),
+            Some(10)
+        );
+    }
 }

@@ -36,7 +36,11 @@ authority, and validity window. The kernel resolves it against an externally
 pinned authority and charges only facts returned by the installed strict
 purchase verifier: payer key, purchase intent, reservation and payment
 operation, finding, listing, accepted price, accepted-bid digest, and venue
-admission digest.
+admission digest. Before a new reservation, the purchaser must also sign an
+exact debit authorization binding the allocation envelope, purchase context,
+capability, server, tool, arguments, output digest, and authorization deadline.
+A caller that only copied the capability and purchase context cannot consume or
+expire the rightful purchaser's reservation id.
 
 The `QualifiedFindingPoolLedger` marker is restricted to audited atomic or
 linearizable durable backends. The shipped SQLite implementation refuses
@@ -53,6 +57,9 @@ receipt authority survives ordinary kernel-key rotation, and the receipt
 outbox is acknowledged only after an ordinary durable receipt store accepts
 the copy. Exact debit replay is selected before mutable purchase or status
 admission checks. Advisory remote budget views do not qualify.
+Outcome-unknown finalization replay authenticates the finalized debit's
+immutable post-transition counters, not the allocation's later mutable totals,
+so unrelated reservations or settlements cannot strand admission recovery.
 
 ## Fully admitted finding hint
 
@@ -80,7 +87,7 @@ The rebased M8 stack recorded these results on 2026-08-09:
 |---|---|---|
 | Rust ceiling, real marketplace, and pheromone convention | `cargo test -p chio-open-market --features cognition-market-experimental --test finding_bid_policy --test cognition_market_flow --test finding_admission -j1` | 41 passed on the cumulative M6 base |
 | Kernel pool lifecycle and durability regressions | `cargo test -p chio-kernel --features cognition-market-experimental 'finding_pool::tests' --lib -j1` | 7 passed |
-| Authenticated pool concurrency and restart | `cargo test -p chio-store-sqlite --features cognition-market-experimental --test finding_pool_ledger -j1` | 11 passed |
+| Authenticated pool concurrency, restart, and purchaser proof | `cargo test -p chio-store-sqlite --features cognition-market-experimental --test finding_pool_ledger -j1` | 13 passed |
 | TypeScript SDK suite and parity vectors | `node --experimental-strip-types --test ./test/*.test.ts` in `sdks/typescript/chio-ts` | 89 passed |
 | TypeScript strict type check | `tsc --noEmit -p chio-ts/tsconfig.json` | passed |
 | Python SDK suite and parity vectors | `uv run --project . --extra dev pytest -q` in `sdks/python/chio-sdk-python` | 145 passed |

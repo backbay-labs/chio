@@ -4,14 +4,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 
+use chio_core::canonical_json_bytes;
 use chio_core::capability::scope::{
     ChioScope, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount,
 };
 use chio_core::capability::token::{CapabilityToken, CHIO_CAPABILITY_SCHEMA};
 use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core::receipt::body::ChioReceipt;
+use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_kernel::finding_pool::{
-    FindingPoolDebitError, FindingPoolDebitRequest, FindingPoolDebitState, FindingPoolLedgerError,
+    FindingPoolDebitAuthorization, FindingPoolDebitError, FindingPoolDebitRequest,
+    FindingPoolDebitState, FindingPoolLedgerError, FINDING_POOL_DEBIT_AUTHORIZATION_SCHEMA_V1,
 };
 use chio_kernel::finding_purchase::{
     FindingPurchaseContextView, FindingPurchaseVerifier, FindingStatusProofContextView,
@@ -38,6 +41,7 @@ struct PoolFixture {
     envelope_sha256: String,
     authority: Keypair,
     purchaser: Keypair,
+    debit_signer: Keypair,
 }
 
 fn fixture(amount_units: u64) -> PoolFixture {
@@ -82,6 +86,7 @@ fn fixture_until(amount_units: u64, expires_at_unix_ms: u64) -> PoolFixture {
         allocation,
         envelope_sha256,
         authority,
+        debit_signer: purchaser.clone(),
         purchaser,
     }
 }
@@ -324,6 +329,27 @@ fn debit_at_with_policy_and_authority(
         signature: fixture.authority.sign(purchase_id.as_bytes()),
     };
     let arguments = serde_json::Value::Null;
+    let context_b64 = "test-purchase-context";
+    let expected_output_digest = "c".repeat(64);
+    let purchaser_authorization = SignedExportEnvelope::sign(
+        FindingPoolDebitAuthorization {
+            schema: FINDING_POOL_DEBIT_AUTHORIZATION_SCHEMA_V1.to_owned(),
+            purchase_id: purchase_id.to_owned(),
+            allocation_envelope_sha256: fixture.envelope_sha256.clone(),
+            purchaser_id: fixture.allocation.body.purchaser_id.clone(),
+            purchase_context_sha256: sha256_hex(context_b64.as_bytes()),
+            capability_id: capability.id.clone(),
+            server_id: "finding-server".to_owned(),
+            tool_name: "read_finding".to_owned(),
+            arguments_sha256: sha256_hex(
+                &canonical_json_bytes(&arguments).test_expect("canonicalize debit arguments"),
+            ),
+            expected_output_digest: expected_output_digest.clone(),
+            expires_at_unix_ms: now_unix_ms.saturating_add(60_000).to_string(),
+        },
+        &fixture.debit_signer,
+    )
+    .test_expect("sign purchaser debit authorization");
     let _runtime = chio_kernel::scope_fixed_runtime_for_current_thread(
         now_unix_ms / 1_000,
         std::iter::empty::<String>(),
@@ -333,14 +359,15 @@ fn debit_at_with_policy_and_authority(
         pool: &fixture.pool,
         expected_allocation_envelope_sha256: &fixture.envelope_sha256,
         purchaser_id: &fixture.allocation.body.purchaser_id,
+        purchaser_authorization: &purchaser_authorization,
         purchase_context: FindingPurchaseContextView {
             marker: &marker,
-            context_b64: "test-purchase-context",
+            context_b64,
             capability: &capability,
             server_id: "finding-server",
             tool_name: "read_finding",
             arguments: &arguments,
-            expected_output_digest: &"c".repeat(64),
+            expected_output_digest: &expected_output_digest,
         },
         status_proof_b64,
     })
@@ -599,6 +626,25 @@ fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitutio
         Err(FindingPoolDebitError::PurchaserMismatch)
     );
 
+    let mut copied_context_without_key = fixture.clone();
+    copied_context_without_key.debit_signer = Keypair::from_seed(&[74_u8; 32]);
+    assert_eq!(
+        debit(
+            &ledger,
+            &copied_context_without_key,
+            "purchase:copied-context-without-key",
+            10,
+        ),
+        Err(FindingPoolDebitError::PurchaserMismatch)
+    );
+    assert_eq!(
+        ledger
+            .reserved_units(&fixture.envelope_sha256)
+            .test_expect("read reservations after rejected copied context"),
+        None,
+        "a caller without the purchaser key cannot create the allocation row"
+    );
+
     let mut non_ed25519_purchaser = fixture.clone();
     let mut allocation = non_ed25519_purchaser.allocation.body.clone();
     allocation.purchaser_key = PublicKey::from_hex(
@@ -639,6 +685,7 @@ fn cognition_market_pool_binds_one_purchaser_allocation_per_pool() {
 
     let mut second = fixture(100);
     second.purchaser = Keypair::from_seed(&[75_u8; 32]);
+    second.debit_signer = second.purchaser.clone();
     let mut body = second.allocation.body.clone();
     body.purchaser_id = "buyer-agent-2".to_string();
     body.purchaser_key = second.purchaser.public_key();
