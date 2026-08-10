@@ -17,6 +17,7 @@ use chio_core_types::provider_attempt::{
 
 mod persistence;
 pub use persistence::*;
+mod kernel_url_elicitation;
 mod terminal;
 pub use terminal::*;
 mod transport;

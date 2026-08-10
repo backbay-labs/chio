@@ -339,7 +339,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/kernel/chio-kernel/src/kernel/tests/durable_admission.rs": allow(
         "2026-08-31",
         "durable kernel admission regression suite; capped to current size until split",
-        max_lines=2_795,
+        max_lines=2_832,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/execution_nonce.rs": allow(
         "2026-08-31",

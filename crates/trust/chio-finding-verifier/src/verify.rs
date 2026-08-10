@@ -195,6 +195,9 @@ pub struct FindingVerifierDraft {
     /// Kept private so callers cannot relabel an evaluated draft before
     /// report signing.
     verifier_profile_envelope_sha256: String,
+    trust_root_snapshot_sha256: String,
+    resolver_policy_sha256: String,
+    trusted_time_input_sha256: String,
     pub evaluation_time: u64,
     /// Allocation id carried to the report when bond backing verified.
     pub backing_allocation_id: Option<String>,
@@ -270,6 +273,7 @@ fn verify_finding_delivery_receipt(
     finding: &Finding,
     profile: &FindingChallengeVerifierProfile,
     evidence: &ResolvedReceiptEvidence,
+    evaluation_time: u64,
 ) -> Result<String, String> {
     let receipt = &evidence.receipt;
     verify_receipt_strict(receipt)
@@ -283,6 +287,12 @@ fn verify_finding_delivery_receipt(
     if canonical != evidence.canonical_receipt_bytes {
         return Err(format!(
             "delivery receipt {} canonical bytes drift from resolved leaf bytes",
+            receipt.id
+        ));
+    }
+    if receipt.timestamp > evaluation_time {
+        return Err(format!(
+            "delivery receipt {} was issued after report evaluation",
             receipt.id
         ));
     }
@@ -490,7 +500,12 @@ pub fn verify_finding_evidence(
     let mut authenticated_delivery_receipt_id = None;
     if failure.is_none() {
         if let Some(delivery) = bundle.finding_delivery.as_ref() {
-            match verify_finding_delivery_receipt(&finding, profile, &delivery.receipt) {
+            match verify_finding_delivery_receipt(
+                &finding,
+                profile,
+                &delivery.receipt,
+                trust.trusted_time,
+            ) {
                 Ok(receipt_id) => authenticated_delivery_receipt_id = Some(receipt_id),
                 Err(reason) => failure = Some(reason),
             }
@@ -548,6 +563,7 @@ pub fn verify_finding_evidence(
                 &delivery.checkpoints,
                 &delivery.checkpoint_transparency,
                 profile,
+                trust.trusted_time,
             ) {
                 Ok(()) => facet(
                     FindingFacetKind::CheckpointMembership,
@@ -580,6 +596,7 @@ pub fn verify_finding_evidence(
                     &delivery.checkpoints,
                     &delivery.checkpoint_transparency,
                     profile,
+                    trust.trusted_time,
                 ) {
                     Ok(()) => facet(
                         FindingFacetKind::CheckpointMembership,
@@ -721,6 +738,9 @@ pub fn verify_finding_evidence(
         status_proof_input_sha256: bundle.status_proof_input.map(sha256_hex),
         finding_delivery_receipt_id,
         verifier_profile_envelope_sha256: profile_envelope_sha256,
+        trust_root_snapshot_sha256: trust.trust_root_snapshot_sha256.clone(),
+        resolver_policy_sha256: trust.resolver_policy_sha256.clone(),
+        trusted_time_input_sha256: trust.trusted_time_input_sha256.clone(),
         evaluation_time: trust.trusted_time,
         backing_allocation_id,
     })
@@ -1506,9 +1526,9 @@ pub fn sign_finding_verifier_report(
         replay_recipe_input_sha256: draft.replay_recipe_input_sha256.clone(),
         status_proof_input_sha256: draft.status_proof_input_sha256.clone(),
         finding_delivery_receipt_id: draft.finding_delivery_receipt_id.clone(),
-        trust_root_snapshot_sha256: trust.trust_root_snapshot_sha256.clone(),
-        resolver_policy_sha256: trust.resolver_policy_sha256.clone(),
-        trusted_time_input_sha256: trust.trusted_time_input_sha256.clone(),
+        trust_root_snapshot_sha256: draft.trust_root_snapshot_sha256.clone(),
+        resolver_policy_sha256: draft.resolver_policy_sha256.clone(),
+        trusted_time_input_sha256: draft.trusted_time_input_sha256.clone(),
         facets: draft.facets.clone(),
         backing_allocation_id: draft.backing_allocation_id.clone(),
         verifier_authority: profile.verifier_report_signer.key.clone(),

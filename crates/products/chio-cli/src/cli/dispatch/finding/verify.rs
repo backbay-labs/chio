@@ -489,6 +489,8 @@ fn advance_verified_status_floor(
         },
     )?;
     let authorization_sha256 = sha256_hex(&canonical_json_bytes(authorization)?);
+    let finding_id = proof.finding_id().to_owned();
+    let is_retracted = matches!(proof, chio_finding::FindingStatusProofInput::Inclusion(_));
     advance_status_floor(
         path,
         &FindingStatusFloorObservation {
@@ -497,6 +499,8 @@ fn advance_verified_status_floor(
             map_epoch: epoch.body.map_epoch,
             epoch_id: &epoch.body.status_epoch_id,
             root_hash: &epoch.body.root_hash,
+            finding_id: &finding_id,
+            is_retracted,
         },
         authorization,
         &authorization_sha256,
@@ -798,6 +802,7 @@ mod tests {
                 map_epoch: epoch.body.map_epoch.saturating_add(1),
                 epoch_id: "a".repeat(64),
                 root_hash: "b".repeat(64),
+                retracted_finding_ids: Vec::new(),
             },
         )?;
 

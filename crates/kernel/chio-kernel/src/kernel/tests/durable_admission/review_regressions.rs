@@ -94,7 +94,6 @@ fn durable_server_url_elicitation_terminalizes_as_outcome_unknown() {
     assert!(!kernel.receipt_log().receipts().is_empty());
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn durable_server_url_elicitation_finalizes_the_pool_claim() {
     use crate::finding_pool::tests::RecordingLedger;

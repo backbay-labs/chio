@@ -72,6 +72,16 @@ fn keypair(seed: u8) -> Keypair {
     Keypair::from_seed(&[seed; 32])
 }
 
+fn checkpoint_at(
+    mut checkpoint: KernelCheckpoint,
+    issued_at: u64,
+    signer: &Keypair,
+) -> Result<KernelCheckpoint, Box<dyn Error>> {
+    checkpoint.body.issued_at = issued_at;
+    checkpoint.signature = signer.sign(&canonical_json_bytes(&checkpoint.body)?);
+    Ok(checkpoint)
+}
+
 fn receipt(
     kernel: &Keypair,
     index: u32,
@@ -275,7 +285,11 @@ fn fixture_with_runtime_assurance(
     let second_bytes = canonical_json_bytes(&second)?;
     let leaves = [first_bytes.clone(), second_bytes.clone()];
     let tree = MerkleTree::from_leaves(&leaves)?;
-    let checkpoint = build_checkpoint(1, 1, 2, &leaves, &kernel)?;
+    let checkpoint = checkpoint_at(
+        build_checkpoint(1, 1, 2, &leaves, &kernel)?,
+        1_750_000_001,
+        &kernel,
+    )?;
     let checkpoint_transparency = build_checkpoint_transparency(std::slice::from_ref(&checkpoint))?;
     let log_id = checkpoint_log_id(&checkpoint);
     let evidence_checkpoint_ref = format!("{log_id}#1");
@@ -535,7 +549,7 @@ fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
         attestation_trust_policy: None,
         status_operator_authorization: None,
         status_freshness_policy: None,
-        trusted_time: 1_750_000_000,
+        trusted_time: 1_750_000_010,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
         trusted_time_input_sha256: HEX64.to_string(),
@@ -686,18 +700,40 @@ fn resolved_delivery(
     content_hash: &str,
     overlay: Option<FindingDelivery>,
 ) -> Result<ResolvedFindingDeliveryEvidence, Box<dyn Error>> {
-    let receipt = receipt(&keypair(12), 2, content_hash, None, true, overlay)?;
+    resolved_delivery_at(fx, content_hash, overlay, 2, 1_750_000_003)
+}
+
+fn resolved_delivery_at(
+    fx: &Fixture,
+    content_hash: &str,
+    overlay: Option<FindingDelivery>,
+    receipt_index: u32,
+    checkpoint_time: u64,
+) -> Result<ResolvedFindingDeliveryEvidence, Box<dyn Error>> {
+    let receipt = receipt(
+        &keypair(12),
+        receipt_index,
+        content_hash,
+        None,
+        true,
+        overlay,
+    )?;
     let receipt_bytes = canonical_json_bytes(&receipt)?;
     let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_bytes))?;
     let prior_chain_leaf = checkpoint_chain_leaf_hash(&fx.checkpoint.body)?;
-    let checkpoint = build_checkpoint_with_previous(
-        2,
-        3,
-        3,
-        std::slice::from_ref(&receipt_bytes),
-        &keypair(21),
-        Some(&fx.checkpoint),
-        &[prior_chain_leaf],
+    let checkpoint_signer = keypair(21);
+    let checkpoint = checkpoint_at(
+        build_checkpoint_with_previous(
+            2,
+            3,
+            3,
+            std::slice::from_ref(&receipt_bytes),
+            &checkpoint_signer,
+            Some(&fx.checkpoint),
+            &[prior_chain_leaf],
+        )?,
+        checkpoint_time,
+        &checkpoint_signer,
     )?;
     let checkpoints = vec![fx.checkpoint.clone(), checkpoint];
     let checkpoint_transparency = build_checkpoint_transparency(&checkpoints)?;
@@ -816,6 +852,17 @@ fn post_purchase_delivery_is_finding_bound_and_checkpointed_in_the_report() -> T
     evidence.finding_delivery = Some(delivery);
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let checkpoint_membership = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::CheckpointMembership)
+        .ok_or("checkpoint-membership facet missing")?;
+    assert_eq!(
+        checkpoint_membership.outcome,
+        FindingFacetOutcome::Verified,
+        "unexpected reason: {}",
+        checkpoint_membership.reason
+    );
     assert_eq!(
         draft.finding_delivery_receipt_id.as_deref(),
         Some(expected_receipt_id.as_str())
@@ -826,6 +873,56 @@ fn post_purchase_delivery_is_finding_bound_and_checkpointed_in_the_report() -> T
         report.body.finding_delivery_receipt_id.as_deref(),
         Some(expected_receipt_id.as_str())
     );
+    Ok(())
+}
+
+#[test]
+fn post_purchase_delivery_rejects_a_receipt_after_report_evaluation() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.finding_delivery = Some(resolved_delivery_at(
+        &fx,
+        &fx.finding_payload_sha256,
+        Some(finding_delivery_overlay(&finding.finding_id)),
+        20,
+        1_750_000_003,
+    )?);
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let authenticity = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
+        .ok_or("receipt-authenticity facet missing")?;
+    assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
+    assert!(authenticity.reason.contains("after report evaluation"));
+    Ok(())
+}
+
+#[test]
+fn post_purchase_delivery_rejects_a_checkpoint_after_report_evaluation() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.finding_delivery = Some(resolved_delivery_at(
+        &fx,
+        &fx.finding_payload_sha256,
+        Some(finding_delivery_overlay(&finding.finding_id)),
+        2,
+        1_750_000_020,
+    )?);
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let membership = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::CheckpointMembership)
+        .ok_or("checkpoint-membership facet missing")?;
+    assert_eq!(membership.outcome, FindingFacetOutcome::Failed);
+    assert!(membership.reason.contains("after report evaluation"));
     Ok(())
 }
 
@@ -1548,6 +1645,37 @@ fn report_signing_rejects_profile_substitution_even_with_the_same_signer() -> Te
         .err(),
         Some(FindingVerifierError::ReportProfileMismatch)
     );
+    Ok(())
+}
+
+#[test]
+fn report_signing_copies_the_trust_commitments_used_for_evaluation() -> TestResult {
+    let fx = fixture()?;
+    let mut evaluated_trust = trust_roots(&fx);
+    evaluated_trust.trust_root_snapshot_sha256 = "1".repeat(64);
+    evaluated_trust.resolver_policy_sha256 = "2".repeat(64);
+    evaluated_trust.trusted_time_input_sha256 = "3".repeat(64);
+    let draft = verify_finding_evidence(
+        &fx.raw_finding,
+        &evaluated_trust,
+        &bundle(&fx, clone_receipts(&fx)),
+    )?;
+
+    let mut signing_trust = trust_roots(&fx);
+    signing_trust.collateral_authority = keypair(44).public_key();
+    signing_trust.trust_root_snapshot_sha256 = "4".repeat(64);
+    signing_trust.resolver_policy_sha256 = "5".repeat(64);
+    signing_trust.trusted_time_input_sha256 = "6".repeat(64);
+    let report = sign_finding_verifier_report(
+        &draft,
+        &signing_trust,
+        "chio-finding-verifier/0.1",
+        &fx.verifier,
+    )?;
+
+    assert_eq!(report.body.trust_root_snapshot_sha256, "1".repeat(64));
+    assert_eq!(report.body.resolver_policy_sha256, "2".repeat(64));
+    assert_eq!(report.body.trusted_time_input_sha256, "3".repeat(64));
     Ok(())
 }
 

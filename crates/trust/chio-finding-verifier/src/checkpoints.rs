@@ -48,6 +48,8 @@ pub enum CheckpointMembershipError {
     SignerNotPinned(u64),
     #[error("checkpoint {0} was issued outside the pinned signer window")]
     SignerInactive(u64),
+    #[error("checkpoint {0} was issued after report evaluation")]
+    IssuedAfterEvaluation(u64),
     #[error("inclusion proof references unknown checkpoint seq {0}")]
     UnknownCheckpoint(u64),
     #[error("duplicate inclusion proof for receipt seq {0}")]
@@ -84,6 +86,7 @@ pub fn verify_checkpoint_membership(
         transparency,
         profile,
         Some(evidence_checkpoint_ref),
+        None,
     )
 }
 
@@ -95,8 +98,16 @@ pub(crate) fn verify_post_finding_checkpoint_membership(
     checkpoints: &[KernelCheckpoint],
     transparency: &CheckpointTransparencySummary,
     profile: &FindingChallengeVerifierProfile,
+    evaluation_time: u64,
 ) -> Result<(), CheckpointMembershipError> {
-    verify_checkpoint_membership_inner(receipts, checkpoints, transparency, profile, None)
+    verify_checkpoint_membership_inner(
+        receipts,
+        checkpoints,
+        transparency,
+        profile,
+        None,
+        Some(evaluation_time),
+    )
 }
 
 fn verify_checkpoint_membership_inner(
@@ -105,6 +116,7 @@ fn verify_checkpoint_membership_inner(
     transparency: &CheckpointTransparencySummary,
     profile: &FindingChallengeVerifierProfile,
     evidence_checkpoint_ref: Option<&str>,
+    latest_issued_at: Option<u64>,
 ) -> Result<(), CheckpointMembershipError> {
     if checkpoints.is_empty() {
         return Err(CheckpointMembershipError::NoCheckpoints);
@@ -142,6 +154,9 @@ fn verify_checkpoint_membership_inner(
         }
         if !policy_covers(pinned_signer, checkpoint.body.issued_at) {
             return Err(CheckpointMembershipError::SignerInactive(seq));
+        }
+        if latest_issued_at.is_some_and(|latest| checkpoint.body.issued_at > latest) {
+            return Err(CheckpointMembershipError::IssuedAfterEvaluation(seq));
         }
         if by_seq.insert(seq, checkpoint).is_some() {
             return Err(CheckpointMembershipError::DuplicateCheckpoint(seq));

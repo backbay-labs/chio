@@ -5,7 +5,6 @@ use chio_log_redact::redacted;
 use serde::Serialize;
 use tracing::warn;
 
-#[cfg(feature = "cognition-market-experimental")]
 #[path = "admission_coordinator/finding_pool_recovery.rs"]
 mod finding_pool_recovery;
 #[path = "admission_coordinator/terminal.rs"]
@@ -376,14 +375,8 @@ impl ChioKernel {
             return Ok(0);
         }
         let operation_count = self.reconcile_recoverable_admissions()?;
-        #[cfg(feature = "cognition-market-experimental")]
         let finding_pool_receipt_count = self.reconcile_finding_pool_mutation_receipts()?;
-        #[cfg(not(feature = "cognition-market-experimental"))]
-        let finding_pool_receipt_count = 0_usize;
-        #[cfg(feature = "cognition-market-experimental")]
         let finding_pool_count = self.reconcile_finding_pool_terminal_claims()?;
-        #[cfg(not(feature = "cognition-market-experimental"))]
-        let finding_pool_count = 0_usize;
         let receipt_count = self.reconcile_durable_admission_receipt_projections()?;
         let total = operation_count
             .checked_add(finding_pool_receipt_count)
