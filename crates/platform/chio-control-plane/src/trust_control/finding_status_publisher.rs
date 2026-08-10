@@ -38,6 +38,13 @@ pub struct FindingStatusEpochPublisher {
     max_epoch_age_secs: u64,
 }
 
+fn canonical_anchor_refs(anchor_refs: &[String]) -> Vec<String> {
+    let mut canonical = anchor_refs.to_vec();
+    canonical.sort_unstable();
+    canonical.dedup();
+    canonical
+}
+
 impl FindingStatusEpochPublisher {
     /// Construct only when the private key matches the governance pin.
     pub fn new(
@@ -140,7 +147,7 @@ impl FindingStatusEpochPublisher {
             occupied_leaf_domain: FINDING_STATUS_OCCUPIED_LEAF_DOMAIN.to_owned(),
             branch_domain: FINDING_STATUS_BRANCH_DOMAIN.to_owned(),
             empty_leaf_hash: hex::encode(finding_status_empty_leaf_hash()),
-            anchor_refs: anchor_refs.to_vec(),
+            anchor_refs: canonical_anchor_refs(anchor_refs),
             generated_at: now,
             valid_from: now,
             valid_until,
@@ -198,7 +205,7 @@ impl FindingStatusEpochPublisher {
         }
         chio_finding::verify_signed_status_epoch(&signed, &current_authorization)
             .map_err(|error| error.to_string())?;
-        if signed.body.anchor_refs != anchor_refs {
+        if canonical_anchor_refs(&signed.body.anchor_refs) != canonical_anchor_refs(anchor_refs) {
             // A newly finalized anchor set describes a new public commitment
             // even when the sparse-map root is unchanged. Advance instead of
             // pinning point-proof publication behind the prior epoch forever.

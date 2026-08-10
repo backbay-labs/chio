@@ -79,6 +79,7 @@ structure NonInclusionInput where
   operatorAuthorized : Bool
   pathValid : Bool
   bindingsValid : Bool
+  generatedAt : Nat
   checkedAt : Nat
   validFrom : Nat
   validUntil : Nat
@@ -88,36 +89,59 @@ deriving DecidableEq, Repr
     sticky and therefore cannot be cleared by another absence proof. -/
 def admitsNonInclusion
     (sticky : StickyStatus)
+    (now maxAge : Nat)
     (proof : NonInclusionInput) : Bool :=
   sticky == StickyStatus.live
     && proof.signedEpochValid
     && proof.operatorAuthorized
     && proof.pathValid
     && proof.bindingsValid
+    && decide (0 < maxAge)
+    && decide (proof.generatedAt <= proof.checkedAt)
     && decide (proof.validFrom <= proof.checkedAt)
-    && decide (proof.checkedAt <= proof.validUntil)
+    && decide (proof.checkedAt < proof.validUntil)
+    && decide (proof.checkedAt <= now)
+    && decide (proof.validFrom <= now)
+    && decide (now < proof.validUntil)
+    && decide (now <= proof.generatedAt + maxAge)
+    && decide (now <= proof.checkedAt + maxAge)
 
 /-- An admitted non-inclusion proof is not accepted past its signed validity
     bound. -/
 theorem admitted_non_inclusion_not_past_valid_until
     (sticky : StickyStatus)
+    (now maxAge : Nat)
     (proof : NonInclusionInput)
-    (h : admitsNonInclusion sticky proof = true) :
-    proof.checkedAt <= proof.validUntil := by
+    (h : admitsNonInclusion sticky now maxAge proof = true) :
+    now < proof.validUntil := by
   unfold admitsNonInclusion at h
   simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-  exact h.right
+  omega
+
+/-- The carrier timestamp is also strictly inside the signed validity
+    window, matching the production verifier's half-open interval. -/
+theorem admitted_non_inclusion_checked_before_valid_until
+    (sticky : StickyStatus)
+    (now maxAge : Nat)
+    (proof : NonInclusionInput)
+    (h : admitsNonInclusion sticky now maxAge proof = true) :
+    proof.checkedAt < proof.validUntil := by
+  unfold admitsNonInclusion at h
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+  omega
 
 /-- A locally pending retraction always denies a contradictory absence
     proof. -/
-theorem pending_never_accepts_non_inclusion (proof : NonInclusionInput) :
-    admitsNonInclusion StickyStatus.pending proof = false := by
+theorem pending_never_accepts_non_inclusion
+    (now maxAge : Nat) (proof : NonInclusionInput) :
+    admitsNonInclusion StickyStatus.pending now maxAge proof = false := by
   simp [admitsNonInclusion]
 
 /-- A locally observed retraction always denies a contradictory absence
     proof. -/
-theorem retracted_never_accepts_non_inclusion (proof : NonInclusionInput) :
-    admitsNonInclusion StickyStatus.retracted proof = false := by
+theorem retracted_never_accepts_non_inclusion
+    (now maxAge : Nat) (proof : NonInclusionInput) :
+    admitsNonInclusion StickyStatus.retracted now maxAge proof = false := by
   simp [admitsNonInclusion]
 
 end Chio.Proofs.FindingStatusFreshness

@@ -1266,6 +1266,45 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn reordered_or_duplicate_anchor_references_reuse_the_current_status_root(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp, authority) = provision_authority()?;
+        let (operator, bond) = config();
+        let store = authority.finding_status_store();
+        let publisher = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store.clone(),
+            operator,
+            bond,
+            operator_key(),
+            300,
+        )?;
+        let first_anchors = vec![
+            "anchor/status-feed/2".to_string(),
+            "anchor/status-feed/1".to_string(),
+            "anchor/status-feed/2".to_string(),
+        ];
+        let first = publisher.publish_non_inclusion(
+            &sha256_hex(b"first-canonical-anchor-finding"),
+            &first_anchors,
+            NOW,
+        )?;
+        let reordered = vec![
+            "anchor/status-feed/1".to_string(),
+            "anchor/status-feed/2".to_string(),
+        ];
+        let second = publisher.publish_non_inclusion(
+            &sha256_hex(b"second-canonical-anchor-finding"),
+            &reordered,
+            NOW + 1,
+        )?;
+        assert_eq!(second.map_epoch, first.map_epoch);
+        let current = store.get_current_epoch(FEED_ID)?;
+        let signed = chio_finding::parse_signed_status_epoch(&current.signed_epoch_bytes)?;
+        assert_eq!(signed.body.anchor_refs, reordered);
+        Ok(())
+    }
+
     #[tokio::test]
     async fn status_handlers_fail_closed_without_live_bond_or_authentication(
     ) -> Result<(), Box<dyn std::error::Error>> {
