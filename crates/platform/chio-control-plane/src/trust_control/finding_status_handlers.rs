@@ -611,19 +611,29 @@ pub(crate) async fn handle_submit_finding_status_intent(
         Ok(signed) => signed,
         Err(response) => return response,
     };
-    if let Err(response) = validate_intent_submission(
-        &signed,
-        &config.status_feed_operator,
-        &config.status_feed_service_bond,
-        &feed_id,
-        now,
-    ) {
-        return response;
-    }
-    if let Err(response) = require_authorized_voluntary_source(&state, &signed) {
-        return response;
-    }
     let body = &signed.body;
+    if let Err(response) = require_hex64(&body.intent_id, "intent_id") {
+        return response;
+    }
+    let retained_exact_replay = match store.get_retraction_intent(&body.intent_id) {
+        Ok(Some(record)) => record.intent_bytes == raw.as_bytes(),
+        Ok(None) => false,
+        Err(error) => return status_read_error(error),
+    };
+    if !retained_exact_replay {
+        if let Err(response) = validate_intent_submission(
+            &signed,
+            &config.status_feed_operator,
+            &config.status_feed_service_bond,
+            &feed_id,
+            now,
+        ) {
+            return response;
+        }
+        if let Err(response) = require_authorized_voluntary_source(&state, &signed) {
+            return response;
+        }
+    }
     let outcome = match store.issue_retraction_intent(&FindingRetractionIntentInput {
         intent_id: &body.intent_id,
         feed_id: &body.feed_id,
@@ -1201,6 +1211,96 @@ mod tests {
         )
         .await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn exact_status_intent_replay_recovers_after_deadline_but_new_stale_intent_rejects(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp, authority) = provision_authority()?;
+        let now = unix_timestamp_now();
+        let market = live_market_config(now);
+        let seller = Keypair::from_seed(&[83; 32]);
+        let issued_at = now.saturating_sub(
+            market
+                .status_feed_service_bond
+                .inclusion_sla_secs
+                .saturating_add(1),
+        );
+        let mut body = submission();
+        body.issued_at = issued_at;
+        body.inclusion_deadline = issued_at
+            .checked_add(market.status_feed_service_bond.inclusion_sla_secs)
+            .ok_or("test status deadline overflowed")?;
+        body.source_receipt = SignedExportEnvelope::sign(
+            FindingVoluntaryRetractionReceipt {
+                schema: FINDING_VOLUNTARY_RETRACTION_RECEIPT_SCHEMA.to_string(),
+                feed_id: body.feed_id.clone(),
+                key_domain_nonce: body.key_domain_nonce,
+                finding_id: body.finding_id.clone(),
+                source_authority_id: seller.public_key().to_hex(),
+                issued_at,
+            },
+            &seller,
+        )?;
+        body.source_authority_id = seller.public_key().to_hex();
+        body.source_receipt_sha256 = chio_finding::signed_envelope_sha256(&body.source_receipt)?;
+        body.intent_id = compute_intent_id(&body).test_expect("expired status intent id");
+        let signed = SignedExportEnvelope::sign(body, &operator_key())?;
+        let raw = String::from_utf8(canonical_json_bytes(&signed)?)?;
+        let store = authority.finding_status_store();
+        assert_eq!(
+            store.issue_retraction_intent(&FindingRetractionIntentInput {
+                intent_id: &signed.body.intent_id,
+                feed_id: &signed.body.feed_id,
+                operator_id: &signed.body.operator_id,
+                finding_id: &signed.body.finding_id,
+                source: FindingRetractionIntentSource::Voluntary,
+                intent_bytes: raw.as_bytes(),
+                issued_at: signed.body.issued_at,
+                inclusion_deadline: signed.body.inclusion_deadline,
+                created_at: issued_at,
+            })?,
+            FindingStatusWriteOutcome::Inserted
+        );
+        let state = service_state(Arc::clone(&authority), market);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("Bearer service-secret"),
+        );
+
+        let response = handle_submit_finding_status_intent(
+            State(state.clone()),
+            AxumPath(FEED_ID.to_string()),
+            headers.clone(),
+            raw,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let response_body = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
+        let response_json: serde_json::Value = serde_json::from_slice(&response_body)?;
+        assert_eq!(response_json["exact_replay"], true);
+        assert_eq!(response_json["status"], "dispatch_eligible");
+
+        let mut stale_new = signed.body;
+        stale_new.finding_id = sha256_hex(b"another stale finding");
+        stale_new.source_receipt.body.finding_id = stale_new.finding_id.clone();
+        stale_new.source_receipt =
+            SignedExportEnvelope::sign(stale_new.source_receipt.body, &seller)?;
+        stale_new.source_receipt_sha256 =
+            chio_finding::signed_envelope_sha256(&stale_new.source_receipt)?;
+        stale_new.intent_id = compute_intent_id(&stale_new).test_expect("new stale intent id");
+        let stale_new = SignedExportEnvelope::sign(stale_new, &operator_key())?;
+        let stale_raw = String::from_utf8(canonical_json_bytes(&stale_new)?)?;
+        let response = handle_submit_finding_status_intent(
+            State(state),
+            AxumPath(FEED_ID.to_string()),
+            headers,
+            stale_raw,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         Ok(())
     }
 }
