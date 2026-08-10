@@ -51,6 +51,18 @@ pub const MAX_FINDING_STATUS_ENCODED_BYTES: usize = 196_608;
 
 const STATUS_EPOCH_ID_DOMAIN: &[u8] = b"chio.finding.status-epoch.v1\0";
 
+fn require_status_identifier(value: &str, field: &'static str) -> Result<(), FindingError> {
+    require_bounded_id(value, field)?;
+    if value
+        .bytes()
+        .all(|byte| byte == b' ' || byte.is_ascii_graphic())
+    {
+        Ok(())
+    } else {
+        Err(FindingError::InvalidField(field))
+    }
+}
+
 /// The only status represented by the v1 feed. Live findings are absent.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -190,13 +202,13 @@ impl FindingStatusEpoch {
         if self.proof_semantics != FINDING_STATUS_PROOF_SEMANTICS {
             return Err(FindingError::InvalidField("proof_semantics"));
         }
-        require_bounded_id(&self.feed_id, "feed_id")?;
+        require_status_identifier(&self.feed_id, "feed_id")?;
         if self.key_domain_nonce != FINDING_STATUS_KEY_DOMAIN_NONCE {
             return Err(FindingError::InvalidField("key_domain_nonce"));
         }
         require_i_json_u64(self.map_epoch, "map_epoch")?;
         require_nonzero(self.map_epoch, "map_epoch")?;
-        require_bounded_id(&self.operator_id, "operator_id")?;
+        require_status_identifier(&self.operator_id, "operator_id")?;
         require_ed25519(&self.operator_key, "operator_key")?;
         require_i_json_u64(self.operator_key_epoch, "operator_key_epoch")?;
         require_nonzero(self.operator_key_epoch, "operator_key_epoch")?;
@@ -228,7 +240,7 @@ impl FindingStatusEpoch {
         }
         let mut anchors = BTreeSet::new();
         for anchor in &self.anchor_refs {
-            require_bounded_id(anchor, "anchor_refs[]")?;
+            require_status_identifier(anchor, "anchor_refs[]")?;
             if !anchors.insert(anchor.as_str()) {
                 return Err(FindingError::DuplicateEntry("anchor_refs[]"));
             }
@@ -258,7 +270,7 @@ impl FindingStatusEpoch {
 
 impl FindingStatusOperatorAuthorization {
     pub fn validate(&self) -> Result<(), FindingError> {
-        require_bounded_id(&self.feed_id, "status_operator.feed_id")?;
+        require_status_identifier(&self.feed_id, "status_operator.feed_id")?;
         self.operator.validate("status_operator.operator")?;
         if let Some(revoked_from) = self.revoked_from {
             require_nonzero(revoked_from, "status_operator.revoked_from")?;
@@ -543,7 +555,7 @@ fn validate_common(common: &ProofCommon<'_>) -> Result<(), FindingError> {
     if common.schema != FINDING_STATUS_PROOF_INPUT_SCHEMA_V1 {
         return Err(FindingError::UnsupportedSchema(common.schema.to_string()));
     }
-    require_bounded_id(common.feed_id, "status_proof.feed_id")?;
+    require_status_identifier(common.feed_id, "status_proof.feed_id")?;
     if common.key_domain_nonce != FINDING_STATUS_KEY_DOMAIN_NONCE {
         return Err(FindingError::InvalidField("status_proof.key_domain_nonce"));
     }

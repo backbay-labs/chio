@@ -139,7 +139,7 @@
     },
     "boundedIdentifier": {
       "type": "string",
-      "pattern": "\\S",
+      "pattern": "^[ -~]*[!-~][ -~]*$",
       "maxLength": 512
     },
     "iJsonU64": {

@@ -126,7 +126,7 @@
   "$defs": {
     "boundedIdentifier": {
       "type": "string",
-      "pattern": "\\S",
+      "pattern": "^[ -~]*[!-~][ -~]*$",
       "maxLength": 512
     },
     "ed25519PublicKey": {

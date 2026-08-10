@@ -85,6 +85,23 @@ fn signed_epoch(
     SignedExportEnvelope::sign(body, keypair).map_err(|_| chio_finding::FindingError::Signing)
 }
 
+#[test]
+fn status_identifiers_reject_non_ascii_input() -> TestResult {
+    let keypair = operator();
+    let mut map = FindingStatusSparseMap::new();
+    let root = map
+        .insert(FINDING_A, INTENT_A)
+        .map_err(|_| chio_finding::FindingError::InvalidField("test.root"))?;
+    let mut signed = signed_epoch(&keypair, root)?;
+    signed.body.anchor_refs = vec!["🧠".repeat(100)];
+
+    assert_eq!(
+        signed.body.validate(),
+        Err(chio_finding::FindingError::InvalidField("anchor_refs[]"))
+    );
+    Ok(())
+}
+
 fn inclusion_fixture() -> Result<
     (
         FindingStatusProofInput,
