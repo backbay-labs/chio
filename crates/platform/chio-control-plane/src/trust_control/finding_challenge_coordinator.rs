@@ -111,10 +111,11 @@ use chio_store_sqlite::{
     FindingChallengeVerdict as StoreVerdict, FindingChallengeWriteOutcome,
     FindingClaimSnapshotInput, FindingDisputeLockDisposition, FindingDisputeLockInput,
     FindingDisputeLockRecord, FindingDisputeLockState, FindingEffectIntentKind,
-    FindingEffectIntentState, FindingGovernanceCaseInput, FindingGovernanceCaseKind,
-    FindingLiabilityInput, FindingLiabilityRecord, FindingLiabilityState,
-    SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
+    FindingEffectIntentState, FindingFinalizingAuthorizationInput, FindingGovernanceCaseInput,
+    FindingGovernanceCaseKind, FindingLiabilityInput, FindingLiabilityRecord,
+    FindingLiabilityState, SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
 };
+use serde::{Deserialize, Serialize};
 
 use super::finding_handlers::{
     FindingRailInstruction, FindingRailObservation, FindingRailObserver,
@@ -630,14 +631,16 @@ pub struct ChallengeEvaluationOutcome {
 ///
 /// No authority travels with these artifacts. The charter, the case, and
 /// the activation authenticate against the pinned governance root, and the
-/// fee schedule against the pinned fee-schedule operator set, so an
-/// artifact's own embedded signer can never widen the set it is checked
-/// against.
+/// fee schedule against the exact retained venue admission that accepted
+/// it, so later operator rotation does not invalidate a historical sale.
 pub struct FindingPenaltyGovernance<'a> {
     pub local_operator_id: &'a str,
     pub subject_operator_id: &'a str,
     pub issued_by: &'a str,
     pub fee_schedule: &'a SignedOpenMarketFeeSchedule,
+    /// Exact venue-signed admission that accepted this schedule for the
+    /// historical listing. This survives fee-operator rotation.
+    pub admission: &'a SignedFindingAdmission,
     pub charter: &'a chio_open_market::governance::generic::SignedGenericGovernanceCharter,
     pub listing: &'a SignedGenericListing,
     pub activation: Option<&'a SignedGenericTrustActivation>,
@@ -646,7 +649,8 @@ pub struct FindingPenaltyGovernance<'a> {
 }
 
 /// One minted and cleanly evaluated finding penalty.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingPenaltyOutcome {
     pub penalty: SignedOpenMarketPenalty,
     pub penalty_envelope_sha256: String,
@@ -710,6 +714,14 @@ pub struct AuthorizedImpairment {
     pub effect_intent_keys: Vec<(FindingEffectIntentKind, String)>,
 }
 
+/// Canonical payload retained atomically with the finalizing transition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RetainedAuthorizedImpairment {
+    enforcement: SignedFindingChallengeEnforcement,
+    slash: FindingPenaltyOutcome,
+}
+
 /// The terminal one appeal resolution reached.
 #[derive(Debug, Clone)]
 pub enum AppealResolution {
@@ -745,9 +757,6 @@ pub struct FindingChallengeCoordinator {
     purchases: SqliteFindingPurchaseStore,
     market_config: FindingMarketConfig,
     pins: ChallengeRolePins,
-    /// Pinned fee-schedule signer set. A schedule reaching the penalty
-    /// lane verifies against this roster and nothing else.
-    fee_schedule_operators: Vec<PublicKey>,
     evaluator_authority: Keypair,
     /// The evaluator role's full lifecycle pin. Like every other
     /// value-bearing role, its key, epoch, window, and authenticated
@@ -833,7 +842,6 @@ impl FindingChallengeCoordinator {
             challenges,
             purchases,
             market_config: config.clone(),
-            fee_schedule_operators,
             pins: ChallengeRolePins {
                 audit_authority: config.audit_authority.clone(),
                 audit_randomness_witness: config.audit_randomness_witness.clone(),
@@ -1036,6 +1044,7 @@ impl FindingChallengeCoordinator {
             FindingChallengeAuthorization::BuyerSubmission(submission) => {
                 self.require_dispute_terms(
                     submission,
+                    &admission,
                     &admission.body.challenge_administration_pool,
                     received_at,
                 )?;
@@ -1192,7 +1201,8 @@ impl FindingChallengeCoordinator {
         {
             return Err(ChallengeCoordinatorError::CollateralAllocation);
         }
-        let schedule = self.resolve_fee_schedule(&admission.body.fee_schedule_envelope_sha256)?;
+        let schedule =
+            self.resolve_fee_schedule(&admission, &admission.body.fee_schedule_envelope_sha256)?;
         let listing_requirement = Self::listing_bond_requirement(&schedule)?;
         let terms = self.resolve_market_terms(body)?;
         Self::require_signed_base_stake(&terms, request.collateral)?;
@@ -1901,6 +1911,15 @@ impl FindingChallengeCoordinator {
                 })
             }
             AppealDisposition::Final { sanction_case } => {
+                if record.state == FindingLiabilityState::Finalizing {
+                    return self.recover_finalizing_authorization(
+                        &record,
+                        outcome,
+                        sealed,
+                        sanction_case_id,
+                        now,
+                    );
+                }
                 if record.state != FindingLiabilityState::PendingAppeal {
                     return Err(ChallengeCoordinatorError::LiabilityState("pending_appeal"));
                 }
@@ -2889,6 +2908,7 @@ impl FindingChallengeCoordinator {
     fn require_dispute_terms(
         &self,
         submission: &chio_finding::FindingBuyerSubmission,
+        admission: &SignedFindingAdmission,
         pool: &chio_finding::FindingPoolBinding,
         received_at: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
@@ -2918,7 +2938,7 @@ impl FindingChallengeCoordinator {
             ));
         }
         let terms = self
-            .resolve_fee_schedule(&fee.fee_schedule_envelope_sha256)?
+            .resolve_fee_schedule(admission, &fee.fee_schedule_envelope_sha256)?
             .body;
         // A schedule that has not been issued yet, or that has expired,
         // prices nothing: the window a filing is admitted in is the window
@@ -3175,18 +3195,25 @@ impl FindingChallengeCoordinator {
     }
 
     /// Resolve the signed fee schedule one filing bound by digest, and
-    /// prove it is a schedule this venue authorized.
+    /// prove it is the exact schedule the retained venue admission
+    /// authorized.
     ///
     /// The digest is re-derived from the resolved envelope, so a resolver
     /// answering with any other artifact is caught here rather than
-    /// pricing the filing. The signer must be one of the pinned
-    /// fee-schedule operators and the signature must verify strictly
-    /// against that pin, so an envelope's own embedded key never widens
-    /// the roster it is checked against.
+    /// pricing the filing. The admission was authenticated under the venue
+    /// policy that covered its issue time, so later fee-operator rotation
+    /// cannot strand a historical filing. The schedule still verifies
+    /// strictly under the signer whose exact envelope the admission bound.
     fn resolve_fee_schedule(
         &self,
+        admission: &SignedFindingAdmission,
         envelope_sha256: &str,
     ) -> Result<SignedOpenMarketFeeSchedule, ChallengeCoordinatorError> {
+        if admission.body.fee_schedule_envelope_sha256 != envelope_sha256 {
+            return Err(ChallengeCoordinatorError::DisputeTerms(
+                "fee_schedule_envelope_sha256",
+            ));
+        }
         let schedule = self
             .filings
             .fee_schedule(envelope_sha256)
@@ -3196,14 +3223,7 @@ impl FindingChallengeCoordinator {
                 "resolved fee schedule digest",
             ));
         }
-        let operator = self
-            .fee_schedule_operators
-            .iter()
-            .find(|operator| *operator == &schedule.signer_key)
-            .ok_or(ChallengeCoordinatorError::AuthorityPinMismatch(
-                "fee schedule",
-            ))?;
-        verify_pinned_envelope(&schedule, operator, "fee schedule")
+        verify_pinned_envelope(&schedule, &schedule.signer_key, "fee schedule")
             .map_err(|error| ChallengeCoordinatorError::FeeScheduleArtifact(error.to_string()))?;
         schedule
             .body
@@ -3363,14 +3383,27 @@ impl FindingChallengeCoordinator {
                 "penalty listing",
             ));
         }
-        if !self
-            .fee_schedule_operators
-            .contains(&governance.fee_schedule.signer_key)
+        let schedule_digest = self.envelope_digest(governance.fee_schedule)?;
+        if governance.admission.body.listing_id != case.body.listing_id
+            || governance.admission.body.fee_schedule_envelope_sha256 != schedule_digest
         {
             return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
-                "fee schedule",
+                "admitted fee schedule",
             ));
         }
+        let admission_digest = self.envelope_digest(governance.admission)?;
+        let venue_policy = self
+            .filings
+            .venue_policy_for_admission(&admission_digest)
+            .ok_or(ChallengeCoordinatorError::UnknownAdmission)?;
+        let historical_venue = self.require_live_role(
+            &venue_policy,
+            governance.admission.body.issued_at,
+            now,
+            "historical venue",
+        )?;
+        verify_signed_admission(governance.admission, &historical_venue, &self.venue_id)
+            .map_err(|error| ChallengeCoordinatorError::AdmissionEnvelope(error.to_string()))?;
         if governance.charter.signer_key != charter_governance_key {
             return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
                 "governance charter",
@@ -4984,6 +5017,99 @@ impl FindingChallengeCoordinator {
         Ok(())
     }
 
+    /// Recover the exact authorization retained atomically with a prior
+    /// `pending_appeal -> finalizing` transition.
+    fn recover_finalizing_authorization(
+        &self,
+        record: &FindingLiabilityRecord,
+        outcome: &SignedFindingChallengeOutcome,
+        sealed: &SealedClaimSnapshot,
+        sanction_case_id: &str,
+        now: u64,
+    ) -> Result<AppealResolution, ChallengeCoordinatorError> {
+        self.require_sanction_governs(&record.liability_key, sanction_case_id)?;
+        let stored = self
+            .challenges
+            .get_finalizing_authorization(&record.liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore(
+                    "finalizing liability has no retained authorization".to_owned(),
+                )
+            })?;
+        if sha256_hex(&stored.authorization_json) != stored.authorization_sha256 {
+            return Err(ChallengeCoordinatorError::ChallengeStore(
+                "retained finalizing authorization digest mismatch".to_owned(),
+            ));
+        }
+        let retained: RetainedAuthorizedImpairment =
+            serde_json::from_slice(&stored.authorization_json).map_err(|error| {
+                ChallengeCoordinatorError::ChallengeStore(format!(
+                    "retained finalizing authorization is invalid: {error}"
+                ))
+            })?;
+        let canonical =
+            canonical_json_bytes(&retained).map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        if canonical != stored.authorization_json {
+            return Err(ChallengeCoordinatorError::ChallengeStore(
+                "retained finalizing authorization is not canonical".to_owned(),
+            ));
+        }
+        let enforcement = &retained.enforcement;
+        enforcement
+            .body
+            .validate()
+            .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
+        self.require_enforcement_signature(enforcement, now)?;
+        let outcome_digest = self.envelope_digest(outcome)?;
+        if stored.recorded_at != enforcement.body.finalized_at
+            || enforcement.body.liability_key != record.liability_key
+            || enforcement.body.finding_id != record.finding_id
+            || enforcement.body.listing_id != record.listing_id
+            || enforcement.body.outcome_id != outcome.body.outcome_id
+            || enforcement.body.outcome_envelope_sha256 != outcome_digest
+            || enforcement.body.purchase_snapshot_digest != sealed.snapshot_digest
+            || enforcement.body.deterministic_allocation_digest != sealed.allocation_digest
+            || enforcement.body.seller_allocation_id != record.allocation_id
+            || retained.slash.penalty.body.case_id != sanction_case_id
+            || retained.slash.evaluation.penalty_id != retained.slash.penalty.body.penalty_id
+            || !retained.slash.evaluation.findings.is_empty()
+        {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "retained finalizing authorization conflicts with the durable liability".to_owned(),
+            ));
+        }
+        self.require_penalty_matches_enforcement(
+            record,
+            enforcement,
+            &retained.slash.penalty,
+            now,
+        )?;
+        let effect_intent_keys = enforcement_effect_intent_keys(enforcement);
+        for (kind, key) in &effect_intent_keys {
+            let intent = self
+                .challenges
+                .get_effect_intent(key)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+                .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+            if intent.kind != *kind
+                || intent.liability_key.as_deref() != Some(record.liability_key.as_str())
+                || !intent.settlement_required
+            {
+                return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
+            }
+        }
+        let enforcement_envelope_sha256 = self.envelope_digest(enforcement)?;
+        Ok(AppealResolution::Finalizing(Box::new(
+            AuthorizedImpairment {
+                enforcement: retained.enforcement,
+                enforcement_envelope_sha256,
+                slash: retained.slash,
+                effect_intent_keys,
+            },
+        )))
+    }
+
     /// Sign the enforcement instruction and fence every domain-keyed
     /// effect intent before the liability enters finalizing.
     ///
@@ -5224,26 +5350,38 @@ impl FindingChallengeCoordinator {
                 .map_err(|_| ChallengeCoordinatorError::Signing)?;
         let enforcement_envelope_sha256 = self.envelope_digest(&signed)?;
 
+        let authorized = AuthorizedImpairment {
+            enforcement: signed,
+            enforcement_envelope_sha256,
+            slash: slash.clone(),
+            effect_intent_keys: fenced
+                .into_iter()
+                .map(|(kind, key, _)| (kind, key))
+                .collect(),
+        };
+        let retained = RetainedAuthorizedImpairment {
+            enforcement: authorized.enforcement.clone(),
+            slash: authorized.slash.clone(),
+        };
+        let authorization_json =
+            canonical_json_bytes(&retained).map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        let authorization_sha256 = sha256_hex(&authorization_json);
         self.challenges
             .begin_finalizing_under_sanction(
                 liability_key,
                 FindingLiabilityState::PendingAppeal,
                 &slash.penalty.body.case_id,
+                &FindingFinalizingAuthorizationInput {
+                    liability_key,
+                    authorization_json: &authorization_json,
+                    authorization_sha256: &authorization_sha256,
+                    recorded_at: now,
+                },
                 now,
             )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
 
-        Ok(AppealResolution::Finalizing(Box::new(
-            AuthorizedImpairment {
-                enforcement: signed,
-                enforcement_envelope_sha256,
-                slash: slash.clone(),
-                effect_intent_keys: fenced
-                    .into_iter()
-                    .map(|(kind, key, _)| (kind, key))
-                    .collect(),
-            },
-        )))
+        Ok(AppealResolution::Finalizing(Box::new(authorized)))
     }
 
     /// Mint one finding penalty under the pinned penalty authority and
@@ -5256,12 +5394,11 @@ impl FindingChallengeCoordinator {
     /// evaluation first and refuses any result carrying findings.
     ///
     /// The authority set the whole penalty lane authenticates against is
-    /// built from configuration alone: the pinned governance root for the
-    /// charter, the case, and the activation, the pinned fee-schedule
-    /// operator roster for the schedule, and this coordinator's own
-    /// penalty key for the penalty it is about to sign. A key that only
-    /// appears inside an artifact never joins that set, so a self-signed
-    /// governance case cannot authorize a slash.
+    /// built from the pinned governance root for the charter, case, and
+    /// activation, the exact schedule signer bound by the authenticated
+    /// historical admission, and this coordinator's own penalty key. A
+    /// key that appears only in an unadmitted artifact never joins that
+    /// set, so a self-signed governance case cannot authorize a slash.
     #[allow(clippy::too_many_arguments)]
     fn mint_penalty(
         &self,
@@ -5328,10 +5465,11 @@ impl FindingChallengeCoordinator {
             expires_at: governance.penalty_expires_at,
             note: None,
         };
-        let mut trusted = Vec::with_capacity(self.fee_schedule_operators.len().saturating_add(2));
-        trusted.push(governance_key);
-        trusted.extend(self.fee_schedule_operators.iter().cloned());
-        trusted.push(penalty_key);
+        let trusted = vec![
+            governance_key,
+            governance.fee_schedule.signer_key.clone(),
+            penalty_key,
+        ];
         let artifact = build_open_market_penalty_artifact_with_trusted_signers(
             governance.local_operator_id,
             &issue,
@@ -5512,6 +5650,34 @@ fn allocation_digest_of(
     preimage.push(0);
     preimage.extend_from_slice(&bytes);
     Ok(sha256_hex(&preimage))
+}
+
+fn enforcement_effect_intent_keys(
+    enforcement: &SignedFindingChallengeEnforcement,
+) -> Vec<(FindingEffectIntentKind, String)> {
+    enforcement
+        .body
+        .effect_intents
+        .iter()
+        .map(|binding| {
+            let kind = match binding.kind {
+                chio_finding::FindingEffectIntentKind::SellerImpair => {
+                    FindingEffectIntentKind::SellerImpair
+                }
+                chio_finding::FindingEffectIntentKind::ChallengeBond => {
+                    FindingEffectIntentKind::ChallengeBond
+                }
+                chio_finding::FindingEffectIntentKind::Fee => FindingEffectIntentKind::Fee,
+                chio_finding::FindingEffectIntentKind::RootIntent => {
+                    FindingEffectIntentKind::RootIntent
+                }
+                chio_finding::FindingEffectIntentKind::Retraction => {
+                    FindingEffectIntentKind::Retraction
+                }
+            };
+            (kind, binding.intent_id.clone())
+        })
+        .collect()
 }
 
 const fn evidence_class_of(kind: FindingChallengeEvidenceKind) -> FindingChallengeEvidenceClass {

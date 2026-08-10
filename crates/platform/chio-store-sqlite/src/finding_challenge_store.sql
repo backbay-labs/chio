@@ -385,6 +385,31 @@ BEGIN
     SELECT RAISE(ABORT, 'liability head must be retained');
 END;
 
+CREATE TABLE IF NOT EXISTS finding_finalizing_authorizations (
+    liability_key TEXT NOT NULL PRIMARY KEY
+        REFERENCES liability_heads(liability_key),
+    authorization_json BLOB NOT NULL CHECK (
+        length(authorization_json) BETWEEN 1 AND 4194304
+    ),
+    authorization_sha256 TEXT NOT NULL CHECK (
+        length(authorization_sha256) = 64
+        AND authorization_sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+    recorded_at INTEGER NOT NULL CHECK (recorded_at > 0)
+);
+
+CREATE TRIGGER IF NOT EXISTS finding_finalizing_authorizations_immutable
+BEFORE UPDATE ON finding_finalizing_authorizations
+BEGIN
+    SELECT RAISE(ABORT, 'finalizing authorization is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS finding_finalizing_authorizations_no_delete
+BEFORE DELETE ON finding_finalizing_authorizations
+BEGIN
+    SELECT RAISE(ABORT, 'finalizing authorization must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS governance_case_index (
     case_id TEXT NOT NULL PRIMARY KEY
         CHECK (length(case_id) BETWEEN 1 AND 512),

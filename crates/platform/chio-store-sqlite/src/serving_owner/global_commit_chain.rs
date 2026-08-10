@@ -1234,38 +1234,56 @@ fn finding_challenge_snapshot_digest_v1(
 fn finding_market_snapshot_digest(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, true, true, true, true, true, true)
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, true, true, true,
+    )
+}
+
+fn finding_market_snapshot_digest_v9(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, true, true, false,
+    )
 }
 
 fn finding_market_snapshot_digest_v8(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, true, true, true, true, true, false)
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, true, false, false,
+    )
 }
 
 fn finding_market_snapshot_digest_v7(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, true, true, true, true, false, false)
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, false, false, false,
+    )
 }
 
 fn finding_market_snapshot_digest_v6(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, true, true, true, false, false, false)
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, false, false, false, false,
+    )
 }
 
 fn finding_market_snapshot_digest_v5(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(connection, true, true, true, false, false, false, false)
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, false, false, false, false, false,
+    )
 }
 
 fn finding_market_snapshot_digest_v4(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, true, false, false, false, false, false,
+        connection, true, true, false, false, false, false, false, false,
     )
 }
 
@@ -1273,7 +1291,7 @@ fn finding_market_snapshot_digest_v3(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, false, false, false, false, false, false,
+        connection, true, false, false, false, false, false, false, false,
     )
 }
 
@@ -1281,10 +1299,11 @@ fn finding_market_snapshot_digest_v2(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, false, false, false, false, false, false, false,
+        connection, false, false, false, false, false, false, false, false,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finding_market_snapshot_digest_version(
     connection: &Connection,
     include_lock_reservations: bool,
@@ -1294,6 +1313,7 @@ fn finding_market_snapshot_digest_version(
     include_outcomes: bool,
     include_capture_intents: bool,
     include_failed_deliveries: bool,
+    include_finalizing_authorizations: bool,
 ) -> Result<String, SqliteServingOwnerError> {
     let mut challenge_tables = vec![
         "challenges",
@@ -1310,7 +1330,10 @@ fn finding_market_snapshot_digest_version(
     if include_outcomes {
         challenge_tables.push("finding_challenge_outcomes");
     }
-    let mut snapshots = Vec::with_capacity(if include_lock_reservations { 16 } else { 15 });
+    if include_finalizing_authorizations {
+        challenge_tables.push("finding_finalizing_authorizations");
+    }
+    let mut snapshots = Vec::with_capacity(if include_lock_reservations { 17 } else { 16 });
     for table in challenge_tables {
         snapshots.push(if table == "liability_heads" && !include_liability_seller {
             table_snapshot_without_column(connection, table, "seller_hex")?
@@ -1937,6 +1960,7 @@ pub(super) fn verify_finding_challenge_projection_coverage(
             OR EXISTS(SELECT 1 FROM dispute_lock_reservations)
             OR EXISTS(SELECT 1 FROM dispute_locks)
             OR EXISTS(SELECT 1 FROM liability_heads)
+            OR EXISTS(SELECT 1 FROM finding_finalizing_authorizations)
             OR EXISTS(SELECT 1 FROM governance_case_index)
             OR EXISTS(SELECT 1 FROM claim_snapshots)
             OR EXISTS(SELECT 1 FROM effect_intents)
@@ -1957,6 +1981,7 @@ pub(super) fn verify_finding_challenge_projection_coverage(
     match rows.last() {
         Some((_, _, snapshot_digest, _, _)) => {
             let current_market = finding_market_snapshot_digest(connection)?;
+            let current_market_v9 = finding_market_snapshot_digest_v9(connection)?;
             let current_market_v8 = finding_market_snapshot_digest_v8(connection)?;
             let current_market_v7 = finding_market_snapshot_digest_v7(connection)?;
             let current_market_v6 = finding_market_snapshot_digest_v6(connection)?;
@@ -1998,20 +2023,32 @@ pub(super) fn verify_finding_challenge_projection_coverage(
                 [],
                 |row| row.get::<_, bool>(0),
             )?;
+            let has_v10_finalizing_authorization = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM finding_finalizing_authorizations)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
             if current_market != *snapshot_digest
-                && (has_v9_failed_delivery
-                    || (current_market_v8 != *snapshot_digest
-                        && (has_v8_capture_intent
-                            || (current_market_v7 != *snapshot_digest
-                                && (has_uncommitted_purchase_state
-                                    || has_v7_outcome
-                                    || (current_market_v6 != *snapshot_digest
-                                        && (has_v6_root_binding
-                                            || (current_market_v4 != *snapshot_digest
-                                                && current_market_v5 != *snapshot_digest
-                                                && current_market_v3 != *snapshot_digest
-                                                && current_market_v2 != *snapshot_digest
-                                                && current_legacy != *snapshot_digest))))))))
+                && (has_v10_finalizing_authorization
+                    || (current_market_v9 != *snapshot_digest
+                        && (has_v9_failed_delivery
+                            || (current_market_v8 != *snapshot_digest
+                                && (has_v8_capture_intent
+                                    || (current_market_v7 != *snapshot_digest
+                                        && (has_uncommitted_purchase_state
+                                            || has_v7_outcome
+                                            || (current_market_v6 != *snapshot_digest
+                                                && (has_v6_root_binding
+                                                    || (current_market_v4
+                                                        != *snapshot_digest
+                                                        && current_market_v5
+                                                            != *snapshot_digest
+                                                        && current_market_v3
+                                                            != *snapshot_digest
+                                                        && current_market_v2
+                                                            != *snapshot_digest
+                                                        && current_legacy
+                                                            != *snapshot_digest))))))))))
             {
                 return Err(invalid(
                     "finding challenge projection does not cover current state",

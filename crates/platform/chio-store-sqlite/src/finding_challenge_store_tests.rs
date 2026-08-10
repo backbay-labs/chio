@@ -2725,6 +2725,12 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
             &head.liability_key,
             FindingLiabilityState::PendingAppeal,
             sanction.case_id,
+            &FindingFinalizingAuthorizationInput {
+                liability_key: &head.liability_key,
+                authorization_json: b"{}",
+                authorization_sha256: &sha256_hex(b"{}"),
+                recorded_at: NOW + 5,
+            },
             NOW + 5,
         )
         .expect("finalizing compare-and-set wins");
@@ -2824,6 +2830,12 @@ fn appeal_supersession_wins_the_race_against_finalizing() {
                 &head.liability_key,
                 FindingLiabilityState::PendingAppeal,
                 sanction.case_id,
+                &FindingFinalizingAuthorizationInput {
+                    liability_key: &head.liability_key,
+                    authorization_json: b"{}",
+                    authorization_sha256: &sha256_hex(b"{}"),
+                    recorded_at: NOW + 5,
+                },
                 NOW + 5,
             ),
             Err(FindingChallengeStoreError::Conflict(_))

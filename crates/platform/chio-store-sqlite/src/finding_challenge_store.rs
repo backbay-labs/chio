@@ -5,7 +5,7 @@
 //! case, the sealed claim snapshot, and the domain-keyed effect intents
 //! fenced before anything leaves this operator.
 //!
-//! Nine tables back the lane. `challenges` is the adjudication record:
+//! Ten tables back the lane. `challenges` is the adjudication record:
 //! one authorization branch, one evidence class, one bounded retry, and a
 //! lifecycle that only ever runs
 //! `submitted -> evaluating -> rejected | indeterminate_retryable |
@@ -23,6 +23,8 @@
 //! `governance_case_index` records the sanction and appeal cases that
 //! target a liability and resolves the single live head among them.
 //! `claim_snapshots` seals the frozen accounting the payout derives from.
+//! `finding_finalizing_authorizations` retains the exact signed
+//! authorization in the transition that enters `finalizing`.
 //! `effect_intents` is the durable fence every external effect passes
 //! through before it is dispatched. `effect_root_bindings` immutably
 //! refines a root intent with the exact Merkle root and evidence hash that
@@ -81,10 +83,11 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-/// Revision 9 retains exact signed evaluator outcomes with their verdict;
-/// revision 8 binds root publication to its concrete anchor proof; revision
-/// 7 binds every liability to its admitted seller.
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 9;
+/// Revision 10 retains the exact finalizing authorization atomically with
+/// the liability transition; revision 9 retains exact signed evaluator
+/// outcomes with their verdict; revision 8 binds root publication to its
+/// concrete anchor proof.
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 10;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "challenges",
     "finding_challenge_projection_commits",
@@ -107,6 +110,9 @@ const MAX_IDENTIFIER_BYTES: usize = 512;
 const MAX_CASE_STATE_BYTES: usize = 64;
 /// Bound on one retained signed outcome envelope.
 const MAX_OUTCOME_ENVELOPE_BYTES: usize = 1_048_576;
+/// Bound on one retained finalizing authorization, including its signed
+/// enforcement and penalty envelopes.
+const MAX_FINALIZING_AUTHORIZATION_BYTES: usize = 4_194_304;
 
 const DISPUTE_BOND_FUNDING_DOMAIN: &str = "chio.finding.dispute-bond-funding.v1";
 const DISPUTE_BOND_RETURN_DOMAIN: &str = "chio.finding.dispute-bond-return.v1";
@@ -456,6 +462,25 @@ pub struct FindingLiabilityRecord {
     pub quarantined: bool,
     pub opened_at: u64,
     pub updated_at: u64,
+}
+
+/// Exact canonical authorization retained in the same transaction that
+/// moves a liability into `finalizing`.
+#[derive(Debug, Clone, Copy)]
+pub struct FindingFinalizingAuthorizationInput<'a> {
+    pub liability_key: &'a str,
+    pub authorization_json: &'a [u8],
+    pub authorization_sha256: &'a str,
+    pub recorded_at: u64,
+}
+
+/// One retained finalizing authorization.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FindingFinalizingAuthorizationRecord {
+    pub liability_key: String,
+    pub authorization_json: Vec<u8>,
+    pub authorization_sha256: String,
+    pub recorded_at: u64,
 }
 
 /// One governance case targeting a liability.
@@ -1650,10 +1675,17 @@ impl SqliteFindingChallengeStore {
         liability_key: &str,
         expected_state: FindingLiabilityState,
         sanction_case_id: &str,
+        authorization: &FindingFinalizingAuthorizationInput<'_>,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
         require_hex64(liability_key, "liability_key")?;
         require_identifier(sanction_case_id, "sanction_case_id")?;
+        require_finalizing_authorization(authorization)?;
+        if authorization.liability_key != liability_key || authorization.recorded_at != now {
+            return Err(invariant(
+                "finalizing authorization does not bind the transition",
+            ));
+        }
         require_trusted_time(now, "now")?;
         require_transition_source(
             expected_state,
@@ -1673,6 +1705,35 @@ impl SqliteFindingChallengeStore {
                 "the named sanction is not the live governance case".to_owned(),
             ));
         }
+        let retained = transaction
+            .query_row(
+                r#"
+                SELECT authorization_json, authorization_sha256, recorded_at
+                FROM finding_finalizing_authorizations
+                WHERE liability_key = ?1
+                "#,
+                [liability_key],
+                |row| {
+                    Ok((
+                        row.get::<_, Vec<u8>>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        if let Some((bytes, digest, recorded_at)) = &retained {
+            if bytes != authorization.authorization_json
+                || digest != authorization.authorization_sha256
+                || stored_u64(*recorded_at, "finalizing authorization recorded_at")?
+                    != authorization.recorded_at
+            {
+                return Err(FindingChallengeStoreError::Conflict(
+                    "finalizing authorization is already bound to different bytes".to_owned(),
+                ));
+            }
+        }
         let (outcome, _) = apply_liability_transition_tx(
             &transaction,
             liability_key,
@@ -1681,12 +1742,75 @@ impl SqliteFindingChallengeStore {
             Some(true),
             now,
         )?;
+        if outcome == FindingChallengeWriteOutcome::ExistingSame && retained.is_none() {
+            return Err(invariant(
+                "finalizing liability has no retained authorization",
+            ));
+        }
         if outcome == FindingChallengeWriteOutcome::ExistingSame {
             return Ok(outcome);
+        }
+        let inserted = transaction
+            .execute(
+                r#"
+                INSERT INTO finding_finalizing_authorizations (
+                    liability_key, authorization_json,
+                    authorization_sha256, recorded_at
+                ) VALUES (?1, ?2, ?3, ?4)
+                "#,
+                params![
+                    liability_key,
+                    authorization.authorization_json,
+                    authorization.authorization_sha256,
+                    sqlite_i64(authorization.recorded_at, "recorded_at")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        if inserted != 1 {
+            return Err(invariant(
+                "finalizing authorization insert did not affect one row",
+            ));
         }
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(outcome)
+    }
+
+    /// Exact retained authorization for one finalizing liability.
+    pub fn get_finalizing_authorization(
+        &self,
+        liability_key: &str,
+    ) -> Result<Option<FindingFinalizingAuthorizationRecord>, FindingChallengeStoreError> {
+        require_hex64(liability_key, "liability_key")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        transaction
+            .query_row(
+                r#"
+                SELECT authorization_json, authorization_sha256, recorded_at
+                FROM finding_finalizing_authorizations
+                WHERE liability_key = ?1
+                "#,
+                [liability_key],
+                |row| {
+                    Ok((
+                        row.get::<_, Vec<u8>>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(sqlite_error)?
+            .map(|(authorization_json, authorization_sha256, recorded_at)| {
+                Ok(FindingFinalizingAuthorizationRecord {
+                    liability_key: liability_key.to_owned(),
+                    authorization_json,
+                    authorization_sha256,
+                    recorded_at: stored_u64(recorded_at, "finalizing authorization recorded_at")?,
+                })
+            })
+            .transpose()
     }
 
     /// Compare-and-set `finalizing -> settled`, clearing the pending
@@ -4054,10 +4178,36 @@ pub(crate) fn initialize_finding_challenge_schema(
     if on_disk == FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
         return verify_finding_challenge_invariants(connection);
     }
+    if on_disk == 9 {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+        if table_has_rows_where(&transaction, "liability_heads", "state = 'finalizing'")? {
+            return Err(invariant(
+                "v9 finalizing liability has no retained authorization",
+            ));
+        }
+        transaction
+            .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .map_err(sqlite_error)?;
+        crate::stamp_schema_version(
+            &transaction,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| invariant(error.to_string()))?;
+        verify_finding_challenge_invariants(&transaction)?;
+        return transaction.commit().map_err(sqlite_error);
+    }
     if matches!(on_disk, 7 | 8) {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;
+        if table_has_rows_where(&transaction, "liability_heads", "state = 'finalizing'")? {
+            return Err(invariant(
+                "legacy finalizing liability has no retained authorization",
+            ));
+        }
         transaction
             .execute_batch(FINDING_CHALLENGE_SCHEMA)
             .map_err(sqlite_error)?;
@@ -4531,6 +4681,29 @@ pub(crate) fn verify_finding_challenge_invariants(
             "finding challenge schema differs from the canonical definition",
         ));
     }
+    let invalid_authorization_coverage = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM liability_heads AS liability
+                LEFT JOIN finding_finalizing_authorizations AS authorization
+                  ON authorization.liability_key = liability.liability_key
+                WHERE liability.state = 'finalizing'
+                  AND authorization.liability_key IS NULL
+            ) OR EXISTS(
+                SELECT 1 FROM finding_finalizing_authorizations AS authorization
+                JOIN liability_heads AS liability
+                  ON liability.liability_key = authorization.liability_key
+                WHERE liability.state NOT IN ('finalizing', 'settled')
+            )
+            "#,
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(sqlite_error)?;
+    if invalid_authorization_coverage {
+        return Err(invariant("finalizing authorization coverage is not exact"));
+    }
     Ok(())
 }
 
@@ -4550,6 +4723,8 @@ fn finding_challenge_schema_catalog(
                OR name GLOB 'dispute_locks*' OR tbl_name GLOB 'dispute_locks*'
                OR name GLOB 'liability_heads*'
                OR tbl_name GLOB 'liability_heads*'
+               OR name GLOB 'finding_finalizing_authorizations*'
+               OR tbl_name GLOB 'finding_finalizing_authorizations*'
                OR name GLOB 'governance_case_index*'
                OR tbl_name GLOB 'governance_case_index*'
                OR name GLOB 'claim_snapshots*'
@@ -4601,6 +4776,27 @@ fn require_outcome_envelope(
     if sha256_hex(outcome_envelope_json) != outcome_envelope_sha256 {
         return Err(invariant(
             "outcome envelope bytes do not match their recorded digest",
+        ));
+    }
+    Ok(())
+}
+
+fn require_finalizing_authorization(
+    authorization: &FindingFinalizingAuthorizationInput<'_>,
+) -> Result<(), FindingChallengeStoreError> {
+    require_hex64(authorization.liability_key, "liability_key")?;
+    require_hex64(authorization.authorization_sha256, "authorization_sha256")?;
+    require_trusted_time(authorization.recorded_at, "recorded_at")?;
+    if authorization.authorization_json.is_empty()
+        || authorization.authorization_json.len() > MAX_FINALIZING_AUTHORIZATION_BYTES
+    {
+        return Err(invariant(
+            "finalizing authorization byte length is out of bounds",
+        ));
+    }
+    if sha256_hex(authorization.authorization_json) != authorization.authorization_sha256 {
+        return Err(invariant(
+            "finalizing authorization bytes do not match their digest",
         ));
     }
     Ok(())

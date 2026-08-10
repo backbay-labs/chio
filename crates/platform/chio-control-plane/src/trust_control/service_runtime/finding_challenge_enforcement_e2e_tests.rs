@@ -998,9 +998,23 @@ fn signed_admission_with_backing(
     terms: &SignedFindingMarketTerms,
     backing_envelope_sha256: &str,
 ) -> Result<SignedFindingAdmission, AnyError> {
+    let schedule_digest = signed_envelope_sha256(&published_fee_schedule()?)?;
+    signed_admission_with_backing_and_schedule(
+        allocation_id,
+        terms,
+        backing_envelope_sha256,
+        &schedule_digest,
+    )
+}
+
+fn signed_admission_with_backing_and_schedule(
+    allocation_id: &str,
+    terms: &SignedFindingMarketTerms,
+    backing_envelope_sha256: &str,
+    schedule_digest: &str,
+) -> Result<SignedFindingAdmission, AnyError> {
     let challenged = challenged_finding()?;
     let venue = keypair(6);
-    let schedule_digest = signed_envelope_sha256(&published_fee_schedule()?)?;
     let mut admission = FindingAdmission {
         schema: FINDING_ADMISSION_SCHEMA_V1.to_string(),
         admission_id: String::new(),
@@ -1017,14 +1031,14 @@ fn signed_admission_with_backing(
         capability_scope: format!("finding:{}", challenged.finding.finding_id),
         publisher_operator_id: OPERATOR_ID.to_string(),
         payee_destination: "rail:venue-ledger:seller-42".to_string(),
-        fee_schedule_envelope_sha256: schedule_digest.clone(),
+        fee_schedule_envelope_sha256: schedule_digest.to_owned(),
         verifier_report_id: hex64('5'),
         verifier_report_envelope_sha256: hex64('7'),
         terms_envelope_sha256: signed_envelope_sha256(terms)?,
         profile_envelope_sha256: challenged.profile_envelope_sha256,
         fee_terminals: vec![
             FindingFeeTerminalBinding {
-                fee_schedule_envelope_sha256: schedule_digest.clone(),
+                fee_schedule_envelope_sha256: schedule_digest.to_owned(),
                 event: FindingFeeEvent::Publication,
                 payer: "seller-42".to_string(),
                 amount: usd(100),
@@ -1034,7 +1048,7 @@ fn signed_admission_with_backing(
                 observation_sha256: hex64('9'),
             },
             FindingFeeTerminalBinding {
-                fee_schedule_envelope_sha256: schedule_digest.clone(),
+                fee_schedule_envelope_sha256: schedule_digest.to_owned(),
                 event: FindingFeeEvent::ParticipationEpoch { epoch_index: 0 },
                 payer: "seller-42".to_string(),
                 amount: usd(500),
@@ -2463,6 +2477,7 @@ fn settle_purchase_with(
 
 struct Governance {
     fee_schedule: SignedOpenMarketFeeSchedule,
+    admission: SignedFindingAdmission,
     charter: SignedGenericGovernanceCharter,
     listing: SignedGenericListing,
     activation: SignedGenericTrustActivation,
@@ -2513,8 +2528,19 @@ fn governance_signed_by(
         Some(sanction_case.body.case_id.clone()),
         Some(sanction_case.body.case_id.clone()),
     )?;
+    let fee_schedule = sample_fee_schedule(fee_schedule_signer)?;
+    let schedule_digest = signed_envelope_sha256(&fee_schedule)?;
+    let terms = market_terms(CLAIM_WINDOW_SECS)?;
+    let allocation = allocation_body(LISTING_ID, &hex64('1'))?;
+    let admission = signed_admission_with_backing_and_schedule(
+        &allocation.allocation_id,
+        &terms,
+        &hex64('6'),
+        &schedule_digest,
+    )?;
     Ok(Governance {
-        fee_schedule: sample_fee_schedule(fee_schedule_signer)?,
+        fee_schedule,
+        admission,
         charter,
         listing,
         activation,
@@ -2531,6 +2557,7 @@ impl Governance {
             subject_operator_id: OPERATOR_ID,
             issued_by: "market@chio.example",
             fee_schedule: &self.fee_schedule,
+            admission: &self.admission,
             charter: &self.charter,
             listing: &self.listing,
             activation: Some(&self.activation),
@@ -5372,7 +5399,7 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
 }
 
 #[test]
-fn finding_challenge_purchase_and_venue_rotation_preserve_historical_standing() -> TestResult {
+fn finding_challenge_purchase_venue_and_fee_rotation_preserve_historical_standing() -> TestResult {
     let deployment = deployment()?;
     let sale = settle_purchase(
         &deployment,
@@ -5384,6 +5411,7 @@ fn finding_challenge_purchase_and_venue_rotation_preserve_historical_standing() 
     let mut rotated = market_config();
     rotated.purchase = authority_pin(48, "purchase-rotated");
     rotated.venue = authority_pin(49, "venue-rotated");
+    rotated.fee_schedule_operator_keys = vec![keypair(50).public_key().to_hex()];
     let coordinator =
         deployment.coordinator_under(&rotated, FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
@@ -6383,14 +6411,23 @@ fn finding_challenge_a_second_appeal_finality_reuses_the_root_intent() -> TestRe
         return Err("appeal finality with no reversal authorizes the impairment".into());
     };
 
-    // A later retry must not mint a second authorization with a new
-    // finalization time after the durable head already entered finalizing.
-    let refused = resolve_final(&case, &identity, &case.outcome, APPEAL_FINAL_AT + 20)
-        .expect_err("one liability authorizes one enforcement");
-    assert!(matches!(
-        refused,
-        ChallengeCoordinatorError::LiabilityState("pending_appeal")
-    ));
+    // A later retry returns the exact authorization committed with the
+    // finalizing transition. It neither mints fresh bytes nor requires the
+    // caller to have retained the first return value across a crash.
+    let AppealResolution::Finalizing(second) =
+        resolve_final(&case, &identity, &case.outcome, APPEAL_FINAL_AT + 20)?
+    else {
+        return Err("finalizing recovery returns the retained authorization".into());
+    };
+    assert_eq!(
+        canonical_json_bytes(&first.enforcement)?,
+        canonical_json_bytes(&second.enforcement)?
+    );
+    assert_eq!(
+        canonical_json_bytes(&first.slash.penalty)?,
+        canonical_json_bytes(&second.slash.penalty)?
+    );
+    assert_eq!(first.effect_intent_keys, second.effect_intent_keys);
     let intents = case
         .deployment
         .challenges
@@ -6401,6 +6438,11 @@ fn finding_challenge_a_second_appeal_finality_reuses_the_root_intent() -> TestRe
         "the replay records no sixth intent beside the five already fenced"
     );
     assert_eq!(first.effect_intent_keys.len(), 5);
+    assert!(case
+        .deployment
+        .challenges
+        .get_finalizing_authorization(&case.upheld.liability_key)?
+        .is_some());
     Ok(())
 }
 
@@ -6856,6 +6898,12 @@ fn finalizing_liability_with(
         &liability_key,
         FindingLiabilityState::PendingAppeal,
         FIXTURE_SANCTION_CASE_ID,
+        &chio_store_sqlite::FindingFinalizingAuthorizationInput {
+            liability_key: &liability_key,
+            authorization_json: b"{}",
+            authorization_sha256: &sha256_hex(b"{}"),
+            recorded_at: NOW + 4,
+        },
         NOW + 4,
     )?;
 

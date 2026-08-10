@@ -1805,6 +1805,18 @@ Effect intents are domain-keyed and carry at most one entry per kind. The
 because each must be durable before any external impairment; `challenge_bond`
 and `fee` are present only when the lane collected them.
 
+The instruction MUST carry the complete historical penalty-authority policy:
+`penalty_authority_id`, `penalty_key`, `penalty_key_epoch`,
+`penalty_valid_from`, `penalty_valid_until`, and
+`penalty_revocation_status_ref`. These fields MUST be copied from the policy
+that authorized the exact signed penalty, and `penalty_key` MUST match the
+penalty envelope signer. A verifier MUST validate the penalty signature and
+the policy window at the penalty's signed update time, then resolve the named
+revocation status through the independently pinned status authority. It MUST
+NOT substitute the deployment's current penalty key or require the historical
+key to remain current. Missing, inconsistent, expired-at-action, revoked-at-
+action, or unavailable policy evidence MUST fail closed.
+
 Publisher-only state is EXCLUDED by construction: this artifact has no
 member for an assigned operator sequence, an attempt key, prepared calldata,
 or a transaction nonce. Those values are chosen after this artifact is
