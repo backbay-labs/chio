@@ -118,6 +118,29 @@ pub fn verify_cognition_market_passport_artifacts(
     artifacts: &BTreeMap<String, Vec<u8>>,
     trust: &CognitionMarketProofTrust,
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    verify_cognition_market_passport_artifacts_with_external_claims(
+        passport,
+        passport_path,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        trust,
+        &[],
+    )
+}
+
+/// Verify cognition-market artifacts while carrying claims already verified
+/// by other authoritative family verifiers into the combined root gate.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_cognition_market_passport_artifacts_with_external_claims(
+    passport: &TransactionPassport,
+    passport_path: String,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trust: &CognitionMarketProofTrust,
+    externally_verified_claims: &[String],
+) -> Result<TransactionVerifierReport, TransactionPassportError> {
     // Validate the signed root and the complete graph shape before interpreting
     // cognition-market roles. This also rejects unsupported registered schemas,
     // dangling/cyclic edges, and advisory authority edges.
@@ -286,7 +309,7 @@ pub fn verify_cognition_market_passport_artifacts(
             passport_root_signers: &trust.trusted_passport_signer_keys,
             checkpoint_signers: &trust.trusted_checkpoint_signer_keys,
         },
-        &[],
+        externally_verified_claims,
     )?;
     report
         .verified_claims

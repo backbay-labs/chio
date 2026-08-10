@@ -1019,32 +1019,6 @@ fn verify_transaction_passport_file_with_mode(
     let mut deferred_agent_web_replay_reservation = None;
     let mut expected_public_settlement_trust_market_context = None;
     let mut expected_commerce_trust_market_context = None;
-    let finding_claim_set_path = resolve_bundle_artifact_path(bundle_dir, &passport.claim_set_path)?;
-    let finding_claim_set = fs::read(finding_claim_set_path)?;
-    let finding_claims_advertised =
-        claim_set_bytes_advertise_verified_prefix(&finding_claim_set, CLAIM_PREFIX_FINDING)?;
-    if claim_requirements.requires(CLAIM_PREFIX_FINDING) || finding_claims_advertised {
-        let status_claim_selected = claim_set_bytes_advertise_verified_claim(
-            &finding_claim_set,
-            chio_control_plane::transaction_passport::COGNITION_MARKET_CLAIMS[2],
-        )?;
-        let trust = cognition_market_proof_trust_from_env(
-            &trusted_transaction_root_keys,
-            &trusted_transaction_checkpoint_keys,
-            status_claim_selected,
-        )?;
-        let report = chio_control_plane::transaction_passport::
-            verify_cognition_market_passport_artifacts(
-                &passport,
-                passport_report_path.clone(),
-                &evidence_graph_bytes,
-                &verifier_policy_bytes,
-                &transparency_artifacts,
-                &trust,
-            )
-            .map_err(map_proof_error)?;
-        push_family_report(&mut family_reports, report)?;
-    }
     if claim_requirements.requires(CLAIM_PREFIX_TRUST_MARKET)
         || risk_route.through_trust_market
         || settlement_requires_trust_market_context
@@ -1176,6 +1150,34 @@ fn verify_transaction_passport_file_with_mode(
             &evidence_graph_bytes,
             &verifier_policy_bytes,
         )?;
+        push_family_report(&mut family_reports, report)?;
+    }
+    let finding_claim_set_path = resolve_bundle_artifact_path(bundle_dir, &passport.claim_set_path)?;
+    let finding_claim_set = fs::read(finding_claim_set_path)?;
+    let finding_claims_advertised =
+        claim_set_bytes_advertise_verified_prefix(&finding_claim_set, CLAIM_PREFIX_FINDING)?;
+    if claim_requirements.requires(CLAIM_PREFIX_FINDING) || finding_claims_advertised {
+        let status_claim_selected = claim_set_bytes_advertise_verified_claim(
+            &finding_claim_set,
+            chio_control_plane::transaction_passport::COGNITION_MARKET_CLAIMS[2],
+        )?;
+        let trust = cognition_market_proof_trust_from_env(
+            &trusted_transaction_root_keys,
+            &trusted_transaction_checkpoint_keys,
+            status_claim_selected,
+        )?;
+        let externally_verified_claims = verified_claims_from_family_reports(&family_reports);
+        let report = chio_control_plane::transaction_passport::
+            verify_cognition_market_passport_artifacts_with_external_claims(
+                &passport,
+                passport_report_path.clone(),
+                &evidence_graph_bytes,
+                &verifier_policy_bytes,
+                &transparency_artifacts,
+                &trust,
+                &externally_verified_claims,
+            )
+            .map_err(map_proof_error)?;
         push_family_report(&mut family_reports, report)?;
     }
     if !family_reports.is_empty() {

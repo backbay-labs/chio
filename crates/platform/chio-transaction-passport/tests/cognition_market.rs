@@ -25,8 +25,9 @@ use chio_revocation_oracle::{
 };
 use chio_transaction_passport::{
     sign_transaction_passport, verify_cognition_market_passport_artifacts,
-    CognitionMarketProofTrust, CognitionMarketStatusObservation, CognitionMarketStatusTrust,
-    CognitionMarketStatusTrustStore, TransactionPassport, COGNITION_MARKET_CLAIMS,
+    verify_cognition_market_passport_artifacts_with_external_claims, CognitionMarketProofTrust,
+    CognitionMarketStatusObservation, CognitionMarketStatusTrust, CognitionMarketStatusTrustStore,
+    TransactionPassport, COGNITION_MARKET_CLAIMS,
 };
 use serde_json::{json, Value};
 
@@ -811,6 +812,67 @@ fn cognition_market_qualified_profile_preserves_verified_transaction_claims() ->
         .claim_results
         .iter()
         .any(|claim| claim.claim_id == TRANSACTION_CLAIM && claim.status == "verified"));
+    Ok(())
+}
+
+#[test]
+fn cognition_market_root_accepts_an_independently_verified_risk_claim() -> TestResult {
+    const RISK_CLAIM: &str = "claim.risk.comptroller_report_bound";
+    let mut bundle = build_bundle()?;
+    let mut claim_set: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("claim-set.json")
+            .ok_or("claim set missing")?,
+    )?;
+    claim_set["claims"]
+        .as_array_mut()
+        .ok_or("claim rows missing")?
+        .push(json!({
+            "claim_id": RISK_CLAIM,
+            "status": "verified",
+            "required_evidence": ["risk-comptroller-report.json"],
+            "evidence_refs": ["risk-comptroller-report.json"],
+            "verifier_module": "chio-risk-comptroller"
+        }));
+    let claim_set_bytes = canonical_json_bytes(&claim_set)?;
+    bundle.passport.claim_set_sha256 =
+        replace_graph_artifact(&mut bundle, "claim-set.json", claim_set_bytes)?;
+
+    let mut policy: Value = serde_json::from_slice(&bundle.verifier_policy_bytes)?;
+    policy["required_claims"]
+        .as_array_mut()
+        .ok_or("policy required claims missing")?
+        .push(Value::String(RISK_CLAIM.to_string()));
+    bundle.verifier_policy_bytes = canonical_json_bytes(&policy)?;
+    let policy_bytes = bundle.verifier_policy_bytes.clone();
+    bundle.passport.verifier_policy_sha256 =
+        replace_graph_artifact(&mut bundle, "verifier-policy.json", policy_bytes)?;
+    resign_graph(&mut bundle)?;
+
+    assert!(verify_cognition_market_passport_artifacts(
+        &bundle.passport,
+        "transaction-passport.json".to_string(),
+        &bundle.evidence_graph_bytes,
+        &bundle.verifier_policy_bytes,
+        &bundle.artifacts,
+        &bundle.trust,
+    )
+    .is_err());
+    let report = verify_cognition_market_passport_artifacts_with_external_claims(
+        &bundle.passport,
+        "transaction-passport.json".to_string(),
+        &bundle.evidence_graph_bytes,
+        &bundle.verifier_policy_bytes,
+        &bundle.artifacts,
+        &bundle.trust,
+        &[RISK_CLAIM.to_string()],
+    )?;
+    assert!(report.accepted);
+    assert!(!report
+        .verified_claims
+        .iter()
+        .any(|claim| claim == RISK_CLAIM));
     Ok(())
 }
 
