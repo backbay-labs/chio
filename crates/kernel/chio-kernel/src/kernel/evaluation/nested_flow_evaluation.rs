@@ -1449,6 +1449,7 @@ impl ChioKernel {
             matched_grant,
             request,
             current_unix_timestamp_ms(),
+            durable_admission.is_some(),
         );
         #[cfg(feature = "cognition-market-experimental")]
         if let Ok(purchase) = &pool_claim {

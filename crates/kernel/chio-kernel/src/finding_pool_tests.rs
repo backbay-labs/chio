@@ -334,7 +334,7 @@ fn dispatch_claims_the_configured_pool_reservation() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345)
+        .claim_finding_pool_delivery(&purchase(), 12_345, true)
         .is_ok());
     let Ok(claims) = ledger.claims.lock() else {
         panic!("test claim lock was poisoned");
@@ -350,6 +350,27 @@ fn dispatch_claims_the_configured_pool_reservation() {
         FindingPoolMutationKind::Claim
     );
     assert!(kernel.receipt_log().is_empty());
+}
+
+#[test]
+fn dispatch_rejects_a_pool_reservation_without_durable_admission() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let kernel = kernel_with_ledger(Arc::clone(&ledger));
+
+    assert_eq!(
+        kernel.claim_finding_pool_delivery(&purchase(), 12_345, false),
+        Err(FindingPoolLedgerError::DurableAdmissionRequired)
+    );
+    assert!(ledger
+        .claims
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .is_empty());
+    assert!(ledger
+        .outbox
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .is_empty());
 }
 
 #[test]
@@ -378,7 +399,7 @@ fn pending_pool_receipt_is_not_acknowledged_without_a_durable_store() {
     let ledger = Arc::new(RecordingLedger::default());
     let first_kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(first_kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345)
+        .claim_finding_pool_delivery(&purchase(), 12_345, true)
         .is_ok());
     assert_eq!(
         ledger
@@ -410,7 +431,7 @@ fn stable_pool_receipt_authority_survives_ordinary_kernel_key_rotation() {
     let ledger = Arc::new(RecordingLedger::default());
     let first_kernel = kernel_with_keys(Arc::clone(&ledger), 91, 92);
     assert!(first_kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345)
+        .claim_finding_pool_delivery(&purchase(), 12_345, true)
         .is_ok());
 
     let rotated_kernel = kernel_with_keys(Arc::clone(&ledger), 93, 92);

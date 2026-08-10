@@ -846,6 +846,7 @@ impl ChioKernel {
         matched_grant: &ToolGrant,
         request: &ToolCallRequest,
         now_unix_ms: u64,
+        durable_admission_covered: bool,
     ) -> Result<Option<crate::finding_purchase::VerifiedFindingPurchase>, KernelError> {
         let purchase = self
             .verify_purchase_admission(matched_grant, request, now_unix_ms / 1_000)
@@ -855,7 +856,7 @@ impl ChioKernel {
                 ))
             })?;
         if let Some(purchase) = purchase.as_ref() {
-            self.claim_finding_pool_delivery(purchase, now_unix_ms)
+            self.claim_finding_pool_delivery(purchase, now_unix_ms, durable_admission_covered)
                 .map_err(|error| {
                     KernelError::DurableAdmission(format!(
                         "finding pool reservation could not enter durable dispatch: {error}"

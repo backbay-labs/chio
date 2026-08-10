@@ -93,6 +93,8 @@ pub enum FindingPoolLedgerError {
     TerminalConflict,
     #[error("finding pool reservation expired before durable admission claimed it")]
     ClaimDeadlineElapsed,
+    #[error("finding pool dispatch requires durable admission coverage")]
+    DurableAdmissionRequired,
     #[error("finding pool ledger is already configured for this kernel")]
     AlreadyConfigured,
     #[error("finding pool mutation receipt authority is not configured")]
@@ -646,12 +648,16 @@ impl ChioKernel {
         &self,
         purchase: &crate::finding_purchase::VerifiedFindingPurchase,
         trusted_now_unix_ms: u64,
+        durable_admission_covered: bool,
     ) -> Result<(), FindingPoolLedgerError> {
         let Some(ledger) = self.finding_pool_ledger() else {
             return Ok(());
         };
         if !ledger.contains_purchase(&purchase.purchase_intent_id)? {
             return Ok(());
+        }
+        if !durable_admission_covered {
+            return Err(FindingPoolLedgerError::DurableAdmissionRequired);
         }
         let claim = AuthorizedFindingPoolClaim {
             purchase_id: purchase.purchase_intent_id.clone(),
