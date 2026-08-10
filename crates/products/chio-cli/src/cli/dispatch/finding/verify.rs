@@ -189,11 +189,7 @@ pub(super) fn cmd_finding_verify(
     let draft = verify_finding_evidence(&accepted.raw, &trust, &bundle).map_err(|error| {
         CliError::cli_other_error(format!("finding evidence verification failed: {error}"))
     })?;
-    let required_facets_verified = draft
-        .required_facets(&trust.profile.body)
-        .into_iter()
-        .all(|facet| draft.facet_outcome(facet) == Some(FindingFacetOutcome::Verified));
-    if !required_facets_verified {
+    if !draft.satisfies_required_facets(&trust.profile.body) {
         return emit_evidence_report(&accepted, &draft, &trust.profile.body, json_output);
     }
     if status_proof_input.is_some()
@@ -629,6 +625,7 @@ fn emit_evidence_report(
     let required = draft.required_facets(profile);
     let mut required_labels = Vec::with_capacity(required.len());
     let mut unverified = Vec::new();
+    let mut failed = Vec::new();
     for kind in &required {
         let label = facet_label(*kind)?;
         if draft.facet_outcome(*kind) != Some(FindingFacetOutcome::Verified) {
@@ -639,8 +636,12 @@ fn emit_evidence_report(
 
     let mut facet_rows = Vec::with_capacity(draft.facets.len());
     for result in &draft.facets {
+        let label = facet_label(result.facet)?;
+        if result.outcome == FindingFacetOutcome::Failed {
+            failed.push(label.clone());
+        }
         facet_rows.push(serde_json::json!({
-            "facet": facet_label(result.facet)?,
+            "facet": label,
             "outcome": outcome_label(result.outcome)?,
             "reason": result.reason,
             "evidence_refs": result.evidence_refs,
@@ -659,6 +660,7 @@ fn emit_evidence_report(
             "facets": facet_rows,
             "required_facets": required_labels,
             "unverified_required_facets": unverified,
+            "failed_facets": failed,
         });
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
@@ -692,9 +694,24 @@ fn emit_evidence_report(
             "required_facets:     {}",
             terminal_safe(&required_labels.join(", "))
         );
+        if !failed.is_empty() {
+            println!(
+                "failed_facets:       {}",
+                terminal_safe(&failed.join(", "))
+            );
+        }
     }
 
-    if unverified.is_empty() {
+    evidence_report_result(&unverified, &failed)
+}
+
+fn evidence_report_result(unverified: &[String], failed: &[String]) -> Result<(), CliError> {
+    if !failed.is_empty() {
+        Err(CliError::cli_other_error(format!(
+            "finding evidence verification failed for facets: {}",
+            failed.join(", ")
+        )))
+    } else if unverified.is_empty() {
         Ok(())
     } else {
         Err(CliError::cli_other_error(format!(
@@ -711,6 +728,14 @@ mod tests {
     const QUALIFIED_STATUS_PROOF: &[u8] = include_bytes!(
         "../../../../../../../fixtures/proof-room/finding/cognition-market-qualified-profile/attachments/status-proof-input.json"
     );
+
+    #[test]
+    fn evidence_report_rejects_a_failed_optional_facet() {
+        let error = evidence_report_result(&[], &["receipt_authenticity".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("receipt_authenticity"));
+    }
 
     #[test]
     fn finding_verify_preserves_exact_canonical_status_proof_bytes() -> Result<(), CliError> {
