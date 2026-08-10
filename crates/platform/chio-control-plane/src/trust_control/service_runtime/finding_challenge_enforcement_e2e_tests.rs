@@ -8471,6 +8471,7 @@ fn finding_challenge_penalty_recovers_across_penalty_authority_rotation() -> Tes
     let coordinator = FindingChallengeCoordinator::new(
         case.deployment.challenges.clone(),
         case.deployment.purchases.clone(),
+        case.deployment.status.clone(),
         &rotated,
         keypair(31),
         keypair(32),

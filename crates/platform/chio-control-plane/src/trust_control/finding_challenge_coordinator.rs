@@ -4366,13 +4366,23 @@ impl FindingChallengeCoordinator {
             &verified.enforcement().penalty_envelope_sha256,
             &intent.merkle_root,
         );
+        let anchor_key = derive_anchor_evidence_intent_key(&intent.evidence_hash);
         self.challenges
             .record_effect_intent(
-                &derive_anchor_evidence_intent_key(&intent.evidence_hash),
+                &anchor_key,
                 FindingEffectIntentKind::RootIntent,
                 &commitment,
                 Some(liability_key),
                 false,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        self.challenges
+            .bind_effect_root(
+                &anchor_key,
+                liability_key,
+                &intent.merkle_root,
+                &intent.evidence_hash,
                 now,
             )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;

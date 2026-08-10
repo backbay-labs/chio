@@ -106,25 +106,33 @@ impl FindingChallengeCoordinator {
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;
-                self.challenges
-                    .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, now)
-                    .map_err(|error| {
-                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
-                    })?;
             }
-            FindingEffectIntentState::Dispatched => {
-                self.challenges
-                    .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, now)
-                    .map_err(|error| {
-                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
-                    })?;
-            }
-            FindingEffectIntentState::Confirmed => {}
+            FindingEffectIntentState::Dispatched => {}
+            FindingEffectIntentState::Confirmed => return Ok(()),
             FindingEffectIntentState::Quarantined => {
                 return Err(ChallengeCoordinatorError::Settlement(
                     "a quarantined effect cannot be confirmed by status publication".to_owned(),
                 ));
             }
+        }
+        if intent.kind == FindingEffectIntentKind::RootIntent {
+            let binding = self
+                .challenges
+                .get_effect_root_binding(intent_key)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+                .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+            self.challenges
+                .confirm_effect_root(
+                    intent_key,
+                    &binding.merkle_root,
+                    &binding.evidence_hash,
+                    now,
+                )
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        } else {
+            self.challenges
+                .advance_effect_intent(intent_key, FindingEffectIntentState::Confirmed, now)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         }
         Ok(())
     }

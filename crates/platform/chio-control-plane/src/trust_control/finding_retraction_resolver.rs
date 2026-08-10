@@ -8,8 +8,10 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::governance::ProvenanceEvidenceClass;
+use chio_core::receipt::body::ChioReceipt;
 use chio_core::receipt::lineage::ReceiptLineageRelationKind;
 use chio_core::receipt::metadata::{FindingDelivery, FINDING_DELIVERY_METADATA_KEY};
+use chio_core::session::SessionAnchorReference;
 use chio_guards::finding_retraction::{
     AuthenticatedFindingStatus, FindingDeliveryLineageResolver, FindingRetractionClock,
     FindingRetractionResolveError, FindingRetractionResolver, FindingStatusCache,
@@ -44,6 +46,32 @@ impl ReceiptStoreFindingDeliveryLineageResolver {
     pub fn new(receipts: Arc<dyn ReceiptStore>) -> Self {
         Self { receipts }
     }
+}
+
+fn verify_retained_parent_receipt(
+    parent: &ChioReceipt,
+    expected_receipt_id: &str,
+    expected_anchor: &SessionAnchorReference,
+) -> Result<(), FindingRetractionResolveError> {
+    if parent.id != expected_receipt_id
+        || !parent
+            .verify_signature()
+            .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?
+    {
+        return Err(FindingRetractionResolveError::InvalidLineage(
+            "Finding delivery parent is not an authentic retained receipt".to_owned(),
+        ));
+    }
+    let parent_bytes = chio_core::canonical::canonical_json_bytes(parent)
+        .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?;
+    if expected_anchor.session_anchor_id != format!("receipt:{}", parent.id)
+        || expected_anchor.session_anchor_hash != chio_core::crypto::sha256_hex(&parent_bytes)
+    {
+        return Err(FindingRetractionResolveError::InvalidLineage(
+            "Finding delivery parent differs from the signed lineage anchor".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolver {
@@ -109,6 +137,11 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
                     "Finding delivery receipt is unavailable".to_owned(),
                 )
             })?;
+        verify_retained_parent_receipt(
+            &parent,
+            &statement.parent_receipt_id,
+            &statement.parent_session_anchor,
+        )?;
         let delivery_value = parent
             .metadata
             .as_ref()
@@ -140,6 +173,75 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
             finding_id: delivery.finding_id,
             status_feed_id,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chio_core::crypto::Keypair;
+    use chio_core::receipt::body::ChioReceiptBody;
+    use chio_core::receipt::decision::{Decision, ToolCallAction};
+    use chio_core::receipt::kinds::TrustLevel;
+    use chio_test_support::prelude::*;
+
+    fn signed_parent_receipt() -> ChioReceipt {
+        let kernel = Keypair::from_seed(&[81; 32]);
+        ChioReceipt::sign(
+            ChioReceiptBody {
+                id: "parent-fixture".to_owned(),
+                timestamp: 1_750_000_000,
+                capability_id: "capability-fixture".to_owned(),
+                tool_server: "finding-market".to_owned(),
+                tool_name: "finding.purchase".to_owned(),
+                action: ToolCallAction::from_parameters(serde_json::json!({"finding": "f-1"}))
+                    .test_expect("fixture action is canonical"),
+                decision: Some(Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
+                content_hash: chio_core::crypto::sha256_hex(b"finding-content"),
+                policy_hash: chio_core::crypto::sha256_hex(b"finding-policy"),
+                evidence: Vec::new(),
+                metadata: Some(serde_json::json!({"finding_delivery": {"finding_id": "f-1"}})),
+                trust_level: TrustLevel::Mediated,
+                tenant_id: None,
+                kernel_key: kernel.public_key(),
+                bbs_projection_version: None,
+            },
+            &kernel,
+        )
+        .test_expect("fixture receipt signs")
+    }
+
+    fn exact_anchor(parent: &ChioReceipt) -> SessionAnchorReference {
+        let canonical = chio_core::canonical::canonical_json_bytes(parent)
+            .test_expect("fixture receipt canonicalizes");
+        SessionAnchorReference::new(
+            format!("receipt:{}", parent.id),
+            chio_core::crypto::sha256_hex(&canonical),
+        )
+    }
+
+    #[test]
+    fn retained_parent_reverifies_receipt_and_exact_lineage_anchor() {
+        let parent = signed_parent_receipt();
+        let anchor = exact_anchor(&parent);
+        assert!(verify_retained_parent_receipt(&parent, &parent.id, &anchor).is_ok());
+
+        let mut tampered = parent.clone();
+        tampered.metadata = Some(serde_json::json!({"finding_delivery": {"finding_id": "f-2"}}));
+        let tampered_anchor = exact_anchor(&tampered);
+        assert!(verify_retained_parent_receipt(&tampered, &parent.id, &tampered_anchor).is_err());
+
+        let substituted_anchor = SessionAnchorReference::new(
+            format!("receipt:{}", parent.id),
+            chio_core::crypto::sha256_hex(b"substituted-parent"),
+        );
+        assert!(verify_retained_parent_receipt(&parent, &parent.id, &substituted_anchor).is_err());
     }
 }
 

@@ -190,7 +190,7 @@ impl FindingStatusOperatorPin {
             ));
         }
         if self.revoked_from.is_some_and(|revoked_from| {
-            revoked_from == 0 || revoked_from > self.authority.valid_until
+            revoked_from <= self.authority.valid_from || revoked_from > self.authority.valid_until
         }) {
             return Err(CliError::cli_other_error(
                 "finding-market status operator revocation time is invalid".to_string(),
@@ -653,6 +653,12 @@ mod status_feed_config_tests {
         let mut pin = operator();
         pin.revoked_from = Some(200);
         assert!(pin.require_live(FEED_ID, 200).is_err());
+
+        let mut never_live = operator();
+        never_live.revoked_from = Some(never_live.authority.valid_from);
+        assert!(never_live.validate().is_err());
+        never_live.revoked_from = Some(never_live.authority.valid_from - 1);
+        assert!(never_live.validate().is_err());
 
         let pin = operator();
         let mut service_bond = bond();
