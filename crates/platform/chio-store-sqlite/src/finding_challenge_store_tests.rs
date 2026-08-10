@@ -4611,7 +4611,6 @@ fn schema_shape_is_verified_on_every_open() {
             .expect("read on a clean schema")
             .is_none());
     }
-
     // Drop a lifecycle trigger out of band, the way a partial restore or a
     // hand-edited database would, and confirm the open refuses rather than
     // serving a schema that no longer enforces the lifecycle.
@@ -4634,3 +4633,4 @@ fn schema_shape_is_verified_on_every_open() {
     }
     SqliteAuthorityStore::open_serving(&database, &lock_root).expect("reopen with intact schema");
 }
+include!("finding_challenge_store_tests/effect_root_recovery.rs");

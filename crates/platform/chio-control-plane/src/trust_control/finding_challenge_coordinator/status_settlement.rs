@@ -1,4 +1,38 @@
 impl FindingChallengeCoordinator {
+    /// Reconstruct the immutable anchor binding for a pre-upgrade intent.
+    /// The intent key commits to the evidence leaf and its digest commits to
+    /// the liability, enforcement, penalty, and Merkle root.
+    fn recover_anchor_binding(
+        &self,
+        liability_key: &str,
+        verified: &VerifiedFindingEnforcement,
+        intent: &chio_settle::FindingImpairmentIntent,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let enforcement = verified.enforcement();
+        let commitment = sha256_hex(
+            format!(
+                "{EFFECT_ANCHOR_EVIDENCE_DOMAIN}\0{liability_key}\0{enforcement_id}\0{penalty}\0{root}",
+                enforcement_id = enforcement.enforcement_id,
+                penalty = enforcement.penalty_envelope_sha256,
+                root = intent.merkle_root,
+            )
+            .as_bytes(),
+        );
+        let anchor_key = derive_anchor_evidence_intent_key(&intent.evidence_hash);
+        self.challenges
+            .reconcile_anchor_effect_root_binding(
+                &anchor_key,
+                liability_key,
+                &commitment,
+                &intent.merkle_root,
+                &intent.evidence_hash,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        self.confirm_effect_intent(&anchor_key, now)
+    }
+
     fn retraction_effect_key<'a>(
         &self,
         enforcement: &'a SignedFindingChallengeEnforcement,

@@ -2757,8 +2757,7 @@ impl FindingChallengeCoordinator {
                 }
             };
             self.require_confirmed_enforcement_root(liability_key, &verified, planned.intent())?;
-            let anchor_key = derive_anchor_evidence_intent_key(&planned.intent().evidence_hash);
-            self.confirm_effect_intent(&anchor_key, now)?;
+            self.recover_anchor_binding(liability_key, &verified, planned.intent(), now)?;
             return self.finish_confirmed_impairment(
                 liability_key,
                 enforcement,
