@@ -808,6 +808,12 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/audit-round-authorization.schema.json",
         ),
         (
+            "chio.finding.authority-status.v1",
+            "finding_authority_status",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/authority-status.schema.json",
+        ),
+        (
             "chio.finding.bond-backing.v1",
             "finding_bond_backing",
             "finding-market-v1",

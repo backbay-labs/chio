@@ -31,7 +31,7 @@ use chio_finding::{
     compute_challenge_id, compute_failed_delivery_id, compute_finding_id, compute_profile_id,
     derive_outcome_id, derive_purchase_key, sign_finding, signed_envelope_sha256,
     verify_outcome_challenge_binding, Finding, FindingAffectedDelivery, FindingAuthorityKeyPolicy,
-    FindingBbsIssuerPolicy, FindingBuyerSubmission, FindingChallenge,
+    FindingAuthorityStatus, FindingBbsIssuerPolicy, FindingBuyerSubmission, FindingChallenge,
     FindingChallengeAuthorization, FindingChallengeEvidence, FindingChallengeOutcome,
     FindingChallengeStanding, FindingChallengeVerdict, FindingChallengeVerifierProfile,
     FindingCheckpointLogPolicy, FindingCheckpointRef, FindingClaimedVerdict, FindingDescriptor,
@@ -42,8 +42,9 @@ use chio_finding::{
     FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase,
     FindingRecipePhaseKind, FindingReplayObservation, FindingReplayRecipeInput,
     FindingReplayReproduction, FindingReplayTerminalResult, FindingResourceCaps,
-    FindingVenueAuditAuthorization, SignedFindingChallenge, SignedFindingChallengeVerifierProfile,
-    SignedFindingFailedDelivery, SignedFindingKeyRevocation, SignedFindingPurchaseRecord,
+    FindingVenueAuditAuthorization, SignedFindingAuthorityStatus, SignedFindingChallenge,
+    SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery, SignedFindingKeyRevocation,
+    SignedFindingPurchaseRecord, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
     FINDING_CHALLENGE_OUTCOME_SCHEMA_V1, FINDING_CHALLENGE_SCHEMA_V1,
     FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_KEY_REVOCATION_SCHEMA_V1,
     FINDING_PURCHASE_RECORD_SCHEMA_V1, FINDING_REPLAY_OBSERVATION_SCHEMA_V1,
@@ -193,6 +194,8 @@ pub struct World {
     pub buyer: Keypair,
     pub audit_authority: Keypair,
     pub audit_authority_key: PublicKey,
+    pub authority_status: Keypair,
+    pub authority_status_key: PublicKey,
     pub purchase_authority: Keypair,
     pub failed_delivery_authority: Keypair,
     pub production_kernel: Keypair,
@@ -265,6 +268,7 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
     let issuer = keypair(3);
     let buyer = keypair(41);
     let audit_authority = keypair(42);
+    let authority_status = keypair(18);
     let purchase_authority = keypair(16);
     let failed_delivery_authority = keypair(17);
     let production_kernel = keypair(21);
@@ -442,6 +446,8 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
         buyer,
         audit_authority_key: audit_authority.public_key(),
         audit_authority,
+        authority_status_key: authority_status.public_key(),
+        authority_status,
         purchase_authority,
         failed_delivery_authority,
         production_kernel,
@@ -513,6 +519,7 @@ impl World {
             profile: &self.profile,
             governance_authority: &self.governance_key,
             pinned_purchase_authority: &self.profile.body.purchase_authority,
+            pinned_authority_status_key: &self.authority_status_key,
             evidence,
         }
     }
@@ -772,6 +779,7 @@ impl DenyShape {
 pub struct DigestCase {
     pub challenge: SignedFindingChallenge,
     pub failed_delivery: SignedFindingFailedDelivery,
+    pub failed_delivery_authority_status: SignedFindingAuthorityStatus,
     pub deny_receipt: ResolvedReceiptEvidence,
     pub deny_checkpoint: KernelCheckpoint,
     pub checkpoint_transparency: CheckpointTransparencySummary,
@@ -781,6 +789,7 @@ impl DigestCase {
     pub fn evidence(&self) -> FindingChallengeClassEvidence<'_> {
         FindingChallengeClassEvidence::DigestMismatch(FindingDigestMismatchEvidence {
             failed_delivery: &self.failed_delivery,
+            failed_delivery_authority_status: &self.failed_delivery_authority_status,
             deny_receipt: &self.deny_receipt,
             deny_checkpoint: &self.deny_checkpoint,
             checkpoint_transparency: &self.checkpoint_transparency,
@@ -881,6 +890,19 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
     terminal.failed_delivery_id = compute_failed_delivery_id(&terminal)?;
     let failed_delivery = SignedExportEnvelope::sign(terminal, &world.failed_delivery_authority)?;
     let failed_delivery_envelope_sha256 = signed_envelope_sha256(&failed_delivery)?;
+    let failed_delivery_policy = &world.profile.body.failed_delivery_authority;
+    let failed_delivery_authority_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: failed_delivery_policy.revocation_status_ref.clone(),
+            authority_id: failed_delivery_policy.authority_id.clone(),
+            key: failed_delivery_policy.key.clone(),
+            key_epoch: failed_delivery_policy.key_epoch,
+            revoked_from: None,
+            observed_at: failed_delivery.body.recorded_at,
+        },
+        &world.authority_status,
+    )?;
 
     let evidence = FindingChallengeEvidence::DigestMismatch {
         failed_delivery_envelope_sha256: failed_delivery_envelope_sha256.clone(),
@@ -915,6 +937,7 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
     Ok(DigestCase {
         challenge,
         failed_delivery,
+        failed_delivery_authority_status,
         deny_receipt,
         deny_checkpoint,
         checkpoint_transparency,

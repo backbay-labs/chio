@@ -4,13 +4,16 @@
 mod support;
 
 use chio_core_types::receipt::decision::Decision;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{DeliveryResult, FindingMediaTypeCheck};
 use chio_finding::FindingChallengeVerdict;
-use chio_finding_challenge::{evaluate_finding_challenge, FindingChallengeReason};
+use chio_finding_challenge::{
+    evaluate_finding_challenge, FindingChallengeInadmissible, FindingChallengeReason,
+};
 
 use support::{
-    digest_case, expect_reason, outcome_for, venue_digest_case, world, DenyShape, DenySigner,
-    TestResult, HEX64_THIRD,
+    digest_case, expect_inadmissible, expect_reason, outcome_for, venue_digest_case, world,
+    DenyShape, DenySigner, TestResult, HEX64_THIRD,
 };
 
 #[test]
@@ -33,6 +36,23 @@ fn authenticated_seller_origin_mismatch_upholds() -> TestResult {
     let outcome = outcome_for(&world, &case.challenge, &adjudication)?;
     assert!(outcome.penalty_calculation.is_some());
     Ok(())
+}
+
+#[test]
+fn revoked_failed_delivery_authority_cannot_establish_standing() -> TestResult {
+    let world = world()?;
+    let mut case = digest_case(&world, &DenyShape::seller_origin())?;
+    let mut status = case.failed_delivery_authority_status.body.clone();
+    status.revoked_from = Some(case.failed_delivery.body.recorded_at);
+    case.failed_delivery_authority_status =
+        SignedExportEnvelope::sign(status, &world.authority_status)?;
+    let evidence = case.evidence();
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::FailedDeliveryAuthorityNotEstablished,
+    )
 }
 
 #[test]

@@ -163,6 +163,7 @@ fn the_raw_finding_must_be_its_own_canonical_serialization() -> TestResult {
         profile: &world.profile,
         governance_authority: &world.governance_key,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        pinned_authority_status_key: &world.authority_status_key,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -186,6 +187,7 @@ fn the_profile_must_be_the_one_the_challenge_names() -> TestResult {
         profile: &other_profile,
         governance_authority: &world.governance_key,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        pinned_authority_status_key: &world.authority_status_key,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -209,6 +211,7 @@ fn the_profile_must_verify_under_the_pinned_governance_root() -> TestResult {
         profile: &world.profile,
         governance_authority: &interloper,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        pinned_authority_status_key: &world.authority_status_key,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -235,6 +238,7 @@ fn the_profile_body_must_name_the_pinned_governance_root() -> TestResult {
         profile: &profile,
         governance_authority: &world.governance_key,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        pinned_authority_status_key: &world.authority_status_key,
         evidence: &evidence,
     };
 
@@ -261,6 +265,7 @@ fn a_venue_audit_must_verify_under_the_pinned_audit_authority() -> TestResult {
         profile: &world.profile,
         governance_authority: &world.governance_key,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        pinned_authority_status_key: &world.authority_status_key,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -286,6 +291,7 @@ fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
         profile: &world.profile,
         governance_authority: &world.governance_key,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        pinned_authority_status_key: &world.authority_status_key,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);

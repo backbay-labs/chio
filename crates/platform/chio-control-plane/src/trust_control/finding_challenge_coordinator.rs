@@ -212,17 +212,21 @@ pub fn derive_liability_key(
     venue_id: &str,
     identity: &FindingLiabilityIdentity<'_>,
 ) -> String {
-    sha256_hex(
-        format!(
-            "{LIABILITY_DOMAIN}\0{defect_key}\0{venue_id}\0{listing}\0{allocation}\0{chain}\0{contract}\0{vault}",
-            listing = identity.listing_id,
-            allocation = identity.allocation_id,
-            chain = identity.chain_id,
-            contract = identity.vault_contract,
-            vault = identity.vault_id,
-        )
-        .as_bytes(),
-    )
+    let mut preimage = Vec::new();
+    for component in [
+        LIABILITY_DOMAIN,
+        defect_key,
+        venue_id,
+        identity.listing_id,
+        identity.allocation_id,
+        identity.chain_id,
+        identity.vault_contract,
+        identity.vault_id,
+    ] {
+        preimage.extend_from_slice(&(component.len() as u64).to_be_bytes());
+        preimage.extend_from_slice(component.as_bytes());
+    }
+    sha256_hex(&preimage)
 }
 
 /// Domain-keyed identity of the single unbatched seller impairment.
@@ -1216,6 +1220,11 @@ impl FindingChallengeCoordinator {
             request.now,
             "governance",
         )?;
+        let authority_status_key = self
+            .pins
+            .authority_status
+            .key()
+            .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("authority status"))?;
         let input = FindingChallengeEvaluationInput {
             challenge: request.challenge,
             pinned_audit_authority: &audit_authority,
@@ -1223,6 +1232,7 @@ impl FindingChallengeCoordinator {
             profile: request.profile,
             governance_authority: &governance_authority,
             pinned_purchase_authority: &admission.body.purchase_authority,
+            pinned_authority_status_key: &authority_status_key,
             evidence: request.evidence,
         };
         let FindingChallengeEvaluation::Adjudicated(adjudication) =
@@ -5340,27 +5350,29 @@ impl FindingChallengeCoordinator {
     ) -> Result<String, ChallengeCoordinatorError> {
         let bytes = chio_core::canonical_json_bytes(&challenge.evidence)
             .map_err(|_| ChallengeCoordinatorError::Canonical)?;
-        let mut revocation_digests = match evidence {
+        let mut supplemental_digests = match evidence {
             FindingChallengeClassEvidence::EvidenceInvalid(resolved) => resolved
                 .revoked_keys
                 .iter()
                 .map(|proof| self.envelope_digest(proof.statement))
                 .collect::<Result<Vec<_>, _>>()?,
-            FindingChallengeClassEvidence::DigestMismatch(_)
-            | FindingChallengeClassEvidence::ReplayContradiction(_) => Vec::new(),
+            FindingChallengeClassEvidence::DigestMismatch(resolved) => {
+                vec![self.envelope_digest(resolved.failed_delivery_authority_status)?]
+            }
+            FindingChallengeClassEvidence::ReplayContradiction(_) => Vec::new(),
         };
-        revocation_digests.sort_unstable();
-        revocation_digests.dedup();
+        supplemental_digests.sort_unstable();
+        supplemental_digests.dedup();
         let mut preimage = Vec::with_capacity(
             EVIDENCE_BUNDLE_DOMAIN.len()
                 + 1
                 + bytes.len()
-                + revocation_digests.len().saturating_mul(65),
+                + supplemental_digests.len().saturating_mul(65),
         );
         preimage.extend_from_slice(EVIDENCE_BUNDLE_DOMAIN.as_bytes());
         preimage.push(0);
         preimage.extend_from_slice(&bytes);
-        for digest in revocation_digests {
+        for digest in supplemental_digests {
             preimage.push(0);
             preimage.extend_from_slice(digest.as_bytes());
         }

@@ -99,6 +99,8 @@ pub const CHIO_FINDING_AUDIT_REPORT_V1_SCHEMA: &str = "chio.finding.audit-report
 /// Cognition-market governance authorization for one audit round.
 pub const CHIO_FINDING_AUDIT_ROUND_AUTHORIZATION_V1_SCHEMA: &str =
     "chio.finding.audit-round-authorization.v1";
+/// Cognition-market signed authority-revocation status reading.
+pub const CHIO_FINDING_AUTHORITY_STATUS_V1_SCHEMA: &str = "chio.finding.authority-status.v1";
 /// Cognition-market bond-backing collateral allocation.
 pub const CHIO_FINDING_BOND_BACKING_V1_SCHEMA: &str = "chio.finding.bond-backing.v1";
 /// Cognition-market challenge enforcement instruction.
@@ -576,6 +578,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_FINDING_AUDIT_ROUND_AUTHORIZATION_V1_SCHEMA,
         Some(("finding_audit_round_authorization", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_AUTHORITY_STATUS_V1_SCHEMA,
+        Some(("finding_authority_status", "finding-market-v1")),
     ),
     (
         CHIO_FINDING_BOND_BACKING_V1_SCHEMA,

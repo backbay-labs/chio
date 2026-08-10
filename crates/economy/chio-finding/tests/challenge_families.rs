@@ -19,28 +19,28 @@ use chio_finding::{
     derive_audit_seed_commitment, derive_outcome_id, ensure_challenge_class_compatibility,
     signed_envelope_sha256, verdict_for_replay_predicate, verify_audit_report_epoch_binding,
     verify_outcome_challenge_binding, verify_signed_audit_epoch, verify_signed_audit_report,
-    verify_signed_audit_round_authorization, verify_signed_challenge,
-    verify_signed_challenge_enforcement, verify_signed_challenge_outcome,
+    verify_signed_audit_round_authorization, verify_signed_authority_status,
+    verify_signed_challenge, verify_signed_challenge_enforcement, verify_signed_challenge_outcome,
     verify_signed_finalized_bond_snapshot, FindingAffectedDelivery, FindingAuditEpoch,
-    FindingAuditReport, FindingAuditRoundAuthorization, FindingBuyerSubmission, FindingChallenge,
-    FindingChallengeAuthorization, FindingChallengeAuthorizationKind, FindingChallengeEnforcement,
-    FindingChallengeEvidence, FindingChallengeEvidenceKind, FindingChallengeFacet,
-    FindingChallengeOutcome, FindingChallengeStanding, FindingChallengeVerdict,
-    FindingCheckpointRef, FindingDigestMismatchFacet, FindingDisputeBondClass,
-    FindingDisputeFeeEvent, FindingDisputeFeeTerminal, FindingDisputeLockRef,
-    FindingEffectIntentBinding, FindingEffectIntentKind, FindingEnforcementDestination,
-    FindingError, FindingEvidenceClass, FindingEvidenceInvalidFacet, FindingEvidenceInvalidity,
-    FindingFinalizedBondSnapshot, FindingGuaranteeClass, FindingMissedAudit,
-    FindingObservedFinality, FindingPenaltyCalculation, FindingPredicate, FindingReceiptRef,
-    FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind,
-    FindingReplayContradictionFacet, FindingReplayObservation, FindingReplayPredicateResult,
-    FindingReplayRecipeInput, FindingReplayReproduction, FindingReplayTerminalResult,
-    FindingResourceCaps, FindingVaultReference, FindingVenueAuditAuthorization,
-    FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_REPORT_SCHEMA_V1,
-    FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1, FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1,
-    FINDING_CHALLENGE_OUTCOME_SCHEMA_V1, FINDING_CHALLENGE_SCHEMA_V1,
-    FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1, FINDING_REPLAY_OBSERVATION_SCHEMA_V1,
-    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+    FindingAuditReport, FindingAuditRoundAuthorization, FindingAuthorityStatus,
+    FindingBuyerSubmission, FindingChallenge, FindingChallengeAuthorization,
+    FindingChallengeAuthorizationKind, FindingChallengeEnforcement, FindingChallengeEvidence,
+    FindingChallengeEvidenceKind, FindingChallengeFacet, FindingChallengeOutcome,
+    FindingChallengeStanding, FindingChallengeVerdict, FindingCheckpointRef,
+    FindingDigestMismatchFacet, FindingDisputeBondClass, FindingDisputeFeeEvent,
+    FindingDisputeFeeTerminal, FindingDisputeLockRef, FindingEffectIntentBinding,
+    FindingEffectIntentKind, FindingEnforcementDestination, FindingError, FindingEvidenceClass,
+    FindingEvidenceInvalidFacet, FindingEvidenceInvalidity, FindingFinalizedBondSnapshot,
+    FindingGuaranteeClass, FindingMissedAudit, FindingObservedFinality, FindingPenaltyCalculation,
+    FindingPredicate, FindingReceiptRef, FindingRecipeEnvironment, FindingRecipePhase,
+    FindingRecipePhaseKind, FindingReplayContradictionFacet, FindingReplayObservation,
+    FindingReplayPredicateResult, FindingReplayRecipeInput, FindingReplayReproduction,
+    FindingReplayTerminalResult, FindingResourceCaps, FindingVaultReference,
+    FindingVenueAuditAuthorization, FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_REPORT_SCHEMA_V1,
+    FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
+    FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1, FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
+    FINDING_CHALLENGE_SCHEMA_V1, FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1,
+    FINDING_REPLAY_OBSERVATION_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
 };
 use serde_json::{json, Value};
 
@@ -1601,7 +1601,8 @@ fn bond_snapshot_arithmetic_is_checked() -> TestResult {
     // nonzero integer that the registered schema bounds covered explicitly,
     // so a future helper refactor cannot admit Rust values schema consumers
     // must reject.
-    let out_of_range_cases: [(&'static str, fn(&mut FindingFinalizedBondSnapshot)); 5] = [
+    type SnapshotMutation = fn(&mut FindingFinalizedBondSnapshot);
+    let out_of_range_cases: [(&'static str, SnapshotMutation); 5] = [
         ("locked_amount", |snapshot| {
             snapshot.locked_amount = ABOVE_I_JSON_MAX;
         }),
@@ -2117,6 +2118,29 @@ fn every_challenge_family_round_trips_its_registered_schema() -> TestResult {
         covered,
         CHALLENGE_LANE_FAMILIES.into_iter().collect::<BTreeSet<_>>()
     );
+    Ok(())
+}
+
+#[test]
+fn authority_status_round_trips_registered_schema_and_external_pin() -> TestResult {
+    let status_authority = keypair(51);
+    let role_key = keypair(52).public_key();
+    let signed = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: "revocations/failed-delivery".to_string(),
+            authority_id: "failed-delivery".to_string(),
+            key: role_key,
+            key_epoch: 7,
+            revoked_from: None,
+            observed_at: 1_745_000_500,
+        },
+        &status_authority,
+    )?;
+
+    verify_signed_authority_status(&signed, &status_authority.public_key())?;
+    validate_family_schema("authority-status", &canonical_document(&signed)?)?;
+    assert!(verify_signed_authority_status(&signed, &keypair(53).public_key()).is_err());
     Ok(())
 }
 

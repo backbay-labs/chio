@@ -1461,7 +1461,7 @@ perform those checks separately before relying on the corresponding claim.
 
 #### 6.4.7.1 Market envelope discipline
 
-Sixteen families travel as signed export envelopes
+Seventeen families travel as signed export envelopes
 (`{body, signerKey, signature}`): `chio.finding.challenge-verifier-profile.v1`,
 `chio.finding.market-terms.v1`, `chio.finding.seller-authorization.v1`,
 `chio.finding.bond-backing.v1`, `chio.finding.verifier-report.v1`,
@@ -1471,15 +1471,16 @@ Sixteen families travel as signed export envelopes
 `chio.finding.challenge-enforcement.v1`,
 `chio.finding.finalized-bond-snapshot.v1`,
 `chio.finding.audit-epoch.v1`, `chio.finding.audit-report.v1`,
-`chio.finding.audit-round-authorization.v1`, and
-`chio.finding.key-revocation.v1`. This
+`chio.finding.audit-round-authorization.v1`,
+`chio.finding.key-revocation.v1`, and
+`chio.finding.authority-status.v1`. This
 differs from the inline-signed
 `chio.finding.v1` and from the unsigned
 `chio.finding.replay-recipe-input.v1`,
 `chio.finding.purchase-context.v1`, and
 `chio.finding.replay-observation.v1`, and
 `chio.finding.recovery-context.v1`, which carry no envelope at all. Each
-of the sixteen envelope bodies is strict snake_case JSON that rejects
+of the seventeen envelope bodies is strict snake_case JSON that rejects
 unknown members. Fourteen carry a stable identifier, and twelve of those
 are content-addressed exactly like `finding_id`: the SHA-256 digest of
 canonical JSON for the body after setting only the id member to the empty
@@ -1488,14 +1489,16 @@ JSON string `""`, with every other member present. Two are exceptions:
 domain-separated preimage over two members (6.4.7.10), and
 `chio.finding.challenge-outcome.v1` derives its `outcome_id` from a
 domain-separated preimage over the whole canonical body (6.4.7.13).
-`chio.finding.key-revocation.v1` and
-`chio.finding.audit-round-authorization.v1` carry no identifier at all: each
-is named by the envelope digest of the statement itself (6.4.7.20 and
-6.4.7.21). The
+`chio.finding.key-revocation.v1`,
+`chio.finding.audit-round-authorization.v1`, and
+`chio.finding.authority-status.v1` carry no identifier at all: each
+is named by the envelope digest of the statement itself (6.4.7.20,
+6.4.7.21, and 6.4.7.23). The
 first six additionally name their own signing authority in the body, as
 does a `buyer_submission` challenge through its `challenger`; the two
 purchase terminals, a `venue_audit` challenge, the six remaining
-challenge and audit artifacts, and the key revocation name other subjects
+challenge and audit artifacts, the key revocation, and the authority status
+name other subjects
 and are authorized only by the external role pin. Envelope
 verification
 MUST verify strictly against an EXTERNALLY pinned authority key, MUST
@@ -1979,7 +1982,20 @@ their identities and cross-bindings, and mint only a bounded recovery grant.
 Unknown members, noncanonical embedded bytes, an identity mismatch, or an
 unverifiable signature MUST reject before any recovery admission mutation.
 
-The finding family registers `chio.finding.v1`, the sixteen signed
+#### 6.4.7.23 `chio.finding.authority-status.v1`
+
+The independently signed reading of one exact authority policy's revocation
+source. The body names the policy's `status_ref`, `authority_id`, `key`, and
+`key_epoch`, the optional `revoked_from` instant, and the trusted
+`observed_at` instant. The envelope MUST verify against the deployment's
+externally pinned status authority. A consumer MUST bind all four policy
+members to the authority role under test and MUST reject a reading observed
+before the role action it authenticates. If `revoked_from` is present and is
+at or before that action, the role was not live for the action. A missing,
+unverifiable, stale, cross-policy, or pre-action reading establishes no
+non-revocation claim.
+
+The finding family registers `chio.finding.v1`, the seventeen signed
 artifacts above, the four unsigned carriers, and the open-market penalty
 envelope at this stage. Status-epoch artifacts remain unsupported until a
 future revision of this specification defines and registers them.

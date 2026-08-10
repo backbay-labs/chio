@@ -125,6 +125,7 @@ fn adjudicate(
             FindingChallengeClassEvidence::DigestMismatch(evidence),
         ) => evaluate_digest_mismatch(
             &context,
+            input.pinned_authority_status_key,
             failed_delivery_envelope_sha256,
             deny_receipt_ref,
             deny_checkpoint_ref,

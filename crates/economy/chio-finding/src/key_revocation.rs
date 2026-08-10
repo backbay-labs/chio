@@ -29,10 +29,10 @@ use crate::validate::{require_bounded_id, require_nonzero, FindingError};
 pub const FINDING_KEY_REVOCATION_SCHEMA_V1: &str =
     chio_core_types::signed_artifact::CHIO_FINDING_KEY_REVOCATION_V1_SCHEMA;
 
-/// Internal authenticated status reading returned by a deployment's pinned
-/// revocation source. This is a resolver witness, not a registered protocol
-/// artifact family.
-pub const FINDING_AUTHORITY_STATUS_SCHEMA_V1: &str = "chio.finding.authority-status.v1";
+/// Authenticated status reading returned by a deployment's pinned revocation
+/// source.
+pub const FINDING_AUTHORITY_STATUS_SCHEMA_V1: &str =
+    chio_core_types::signed_artifact::CHIO_FINDING_AUTHORITY_STATUS_V1_SCHEMA;
 
 /// Authority key revocation body.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

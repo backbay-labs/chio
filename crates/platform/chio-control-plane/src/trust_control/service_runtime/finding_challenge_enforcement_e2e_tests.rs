@@ -64,8 +64,8 @@ use chio_finding::{
     FindingRecipePhase, FindingRecipePhaseKind, FindingReplayObservation,
     FindingReplayPredicateResult, FindingReplayRecipeInput, FindingReplayReproduction,
     FindingReplayTerminalResult, FindingResourceCaps, FindingVaultReference,
-    FindingVenueAuditAuthorization, SignedFindingAdmission, SignedFindingChallenge,
-    SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
+    FindingVenueAuditAuthorization, SignedFindingAdmission, SignedFindingAuthorityStatus,
+    SignedFindingChallenge, SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
     SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery,
     SignedFindingFinalizedBondSnapshot, SignedFindingMarketTerms, SignedFindingPurchaseRecord,
     FINDING_ADMISSION_SCHEMA_V1, FINDING_AUDIT_EPOCH_SCHEMA_V1,
@@ -1548,6 +1548,7 @@ impl DenyShape {
 struct DigestMismatchCase {
     challenge: SignedFindingChallenge,
     failed_delivery: SignedFindingFailedDelivery,
+    failed_delivery_authority_status: SignedFindingAuthorityStatus,
     deny_receipt: ResolvedReceiptEvidence,
     deny_checkpoint: KernelCheckpoint,
     deny_checkpoint_transparency: CheckpointTransparencySummary,
@@ -1557,6 +1558,7 @@ impl DigestMismatchCase {
     fn evidence(&self) -> FindingChallengeClassEvidence<'_> {
         FindingChallengeClassEvidence::DigestMismatch(FindingDigestMismatchEvidence {
             failed_delivery: &self.failed_delivery,
+            failed_delivery_authority_status: &self.failed_delivery_authority_status,
             deny_receipt: &self.deny_receipt,
             deny_checkpoint: &self.deny_checkpoint,
             checkpoint_transparency: &self.deny_checkpoint_transparency,
@@ -1649,6 +1651,19 @@ fn digest_mismatch_case(
     terminal.failed_delivery_id = compute_failed_delivery_id(&terminal)?;
     let failed_delivery = SignedExportEnvelope::sign(terminal, &keypair(17))?;
     let failed_delivery_envelope_sha256 = signed_envelope_sha256(&failed_delivery)?;
+    let failed_delivery_policy = &challenged.profile.body.failed_delivery_authority;
+    let failed_delivery_authority_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: failed_delivery_policy.revocation_status_ref.clone(),
+            authority_id: failed_delivery_policy.authority_id.clone(),
+            key: failed_delivery_policy.key.clone(),
+            key_epoch: failed_delivery_policy.key_epoch,
+            revoked_from: None,
+            observed_at: failed_delivery.body.recorded_at,
+        },
+        &keypair(36),
+    )?;
 
     // Retain the exact reservation and backing that produced the denial.
     // The evaluator must resolve this durable sale identity rather than
@@ -1716,6 +1731,7 @@ fn digest_mismatch_case(
     Ok(DigestMismatchCase {
         challenge: challenged.sign_challenge(authorization, evidence, affected)?,
         failed_delivery,
+        failed_delivery_authority_status,
         deny_receipt,
         deny_checkpoint,
         deny_checkpoint_transparency,
@@ -2913,6 +2929,31 @@ fn evaluation_request<'a>(
         evaluator_key_epoch: PINNED_KEY_EPOCH,
         now,
     }
+}
+
+#[test]
+fn liability_key_length_prefixes_identity_components() {
+    let left = FindingLiabilityIdentity {
+        finding_id: "finding",
+        listing_id: "listing\0allocation",
+        allocation_id: "backing",
+        chain_id: "chain",
+        vault_contract: "contract",
+        vault_id: "vault",
+    };
+    let right = FindingLiabilityIdentity {
+        finding_id: "finding",
+        listing_id: "listing",
+        allocation_id: "allocation\0backing",
+        chain_id: "chain",
+        vault_contract: "contract",
+        vault_id: "vault",
+    };
+
+    assert_ne!(
+        derive_liability_key(&derive_defect_key("finding"), VENUE_ID, &left),
+        derive_liability_key(&derive_defect_key("finding"), VENUE_ID, &right)
+    );
 }
 
 /// Close the appeal window with no reversal and take the signed

@@ -9,8 +9,8 @@
 use chio_core_types::crypto::PublicKey;
 use chio_finding::{
     FindingAuthorityKeyPolicy, FindingChallengeFacet, FindingChallengeVerdict, FindingError,
-    SignedFindingChallenge, SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery,
-    SignedFindingKeyRevocation, SignedFindingPurchaseRecord,
+    SignedFindingAuthorityStatus, SignedFindingChallenge, SignedFindingChallengeVerifierProfile,
+    SignedFindingFailedDelivery, SignedFindingKeyRevocation, SignedFindingPurchaseRecord,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_kernel::checkpoint::{CheckpointTransparencySummary, KernelCheckpoint};
@@ -41,6 +41,9 @@ pub struct FindingChallengeEvaluationInput<'a> {
     /// admission the challenge names. This may differ from the reusable
     /// verifier profile after an admission-specific rotation.
     pub pinned_purchase_authority: &'a FindingAuthorityKeyPolicy,
+    /// Independent signer for authenticated readings from the revocation
+    /// references pinned by role policies.
+    pub pinned_authority_status_key: &'a PublicKey,
     /// Exactly the evidence the challenge's evidence class selects. A branch
     /// that does not match the challenge's class is inadmissible.
     pub evidence: &'a FindingChallengeClassEvidence<'a>,
@@ -57,6 +60,9 @@ pub enum FindingChallengeClassEvidence<'a> {
 pub struct FindingDigestMismatchEvidence<'a> {
     /// The failed-delivery-authority-signed terminal the challenge names.
     pub failed_delivery: &'a SignedFindingFailedDelivery,
+    /// Authenticated reading of the failed-delivery authority's exact
+    /// revocation reference, observed no earlier than the terminal.
+    pub failed_delivery_authority_status: &'a SignedFindingAuthorityStatus,
     /// The denial receipt, with the exact canonical bytes that were the
     /// checkpoint leaf and the inclusion proof over them.
     pub deny_receipt: &'a ResolvedReceiptEvidence,
@@ -141,6 +147,8 @@ pub enum FindingChallengeInadmissible {
     StandingRejected(FindingError),
     #[error("purchase authority is not established for the instant the standing record settled")]
     StandingAuthorityNotEstablished,
+    #[error("failed-delivery authority is not established for the instant the standing terminal was recorded")]
+    FailedDeliveryAuthorityNotEstablished,
     #[error("standing artifact does not bind the challenge: {0}")]
     StandingBindingMismatch(&'static str),
     #[error("evidence reference does not bind the challenge: {0}")]
