@@ -577,6 +577,9 @@ pub struct ChioKernel {
         Option<Arc<dyn crate::finding_recovery::FindingRecoveryVerifier>>,
     pub(super) finding_status_proof_verifier:
         Option<Arc<dyn crate::finding_purchase::FindingStatusProofVerifier>>,
+    /// Kernel keys explicitly trusted to issue Finding delivery receipts that
+    /// may parent governed buyer-memory lineage.
+    pub(super) finding_delivery_receipt_authorities: Vec<chio_core::crypto::PublicKey>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
     pub(super) runtime_admission_readiness_timeout: Duration,

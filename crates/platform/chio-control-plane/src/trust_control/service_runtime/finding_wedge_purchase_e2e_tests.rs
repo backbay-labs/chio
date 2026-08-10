@@ -2897,7 +2897,7 @@ fn buyer_memory_write(
         (chio_kernel::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT):
             delivery_receipt.id,
     });
-    let request = ToolCallRequest {
+    let mut request = ToolCallRequest {
         request_id: "wedge-memory-write-1".to_string(),
         capability: capability.clone(),
         tool_name: "memory_write".to_string(),
@@ -2927,6 +2927,19 @@ fn buyer_memory_write(
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
+    let untrusted = kernel.evaluate_tool_call_blocking(&request)?;
+    assert_eq!(untrusted.verdict, Verdict::Deny);
+    assert!(untrusted
+        .reason
+        .as_deref()
+        .unwrap_or_default()
+        .contains("authentic allow receipt"));
+
+    kernel.set_finding_delivery_receipt_authorities(vec![keypair(40).public_key()]);
+    request.request_id = "wedge-memory-write-trusted-1".to_string();
+    if let Some(intent) = request.governed_intent.as_mut() {
+        intent.id = "intent-wedge-memory-write-trusted-1".to_string();
+    }
     let write = kernel.evaluate_tool_call_blocking(&request)?;
     assert_eq!(write.verdict, Verdict::Allow, "{:?}", write.reason);
     assert!(write

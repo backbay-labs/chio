@@ -2,8 +2,9 @@
 //!
 //! The HTTP projection and kernel admission use this module rather than
 //! independently trusting persisted index fields. Exact canonical signed
-//! epoch and proof bytes are parsed and verified first; only then may the
-//! SQLite store advance its rollback floor.
+//! epoch and proof bytes are parsed and verified first. Purchase admission
+//! accepts them only at the publisher's already-durable authoritative floor;
+//! importing a point proof never advances that floor without the complete map.
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
@@ -17,9 +18,9 @@ use chio_kernel::finding_purchase::{
     FindingStatusProofContextView, FindingStatusProofVerifier, VerifiedFindingStatusProof,
 };
 use chio_store_sqlite::{
-    FindingStatusDecision, FindingStatusEpochAdvance, FindingStatusEpochRecord,
-    FindingStatusProofKind, FindingStatusProofRecord, FindingStatusStoreError, FindingStickyStatus,
-    SqliteFindingStatusStore, VerifiedFindingStatusEpochInput, VerifiedFindingStatusProofInput,
+    FindingStatusDecision, FindingStatusEpochRecord, FindingStatusProofKind,
+    FindingStatusProofRecord, FindingStatusStoreError, FindingStickyStatus,
+    SqliteFindingStatusStore, VerifiedFindingStatusProofInput,
 };
 
 use super::{FindingStatusOperatorPin, FindingStatusServiceBond};
@@ -279,40 +280,49 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
             Ok(_) | Err(FindingStatusStoreError::MissingFloor { .. }) => {}
             Err(error) => return Err(error.to_string()),
         }
+        let current_epoch = self
+            .store
+            .get_current_epoch(fields.feed_id)
+            .map_err(|error| error.to_string())?;
+        verify_epoch_record(
+            &self.operator,
+            &self.service_bond,
+            self.max_epoch_age_secs,
+            &current_epoch,
+            now_unix_secs,
+        )?;
+        if current_epoch.map_epoch > fields.map_epoch {
+            return Err(
+                "finding status proof is a rollback from the authoritative publisher floor"
+                    .to_owned(),
+            );
+        }
+        if current_epoch.map_epoch < fields.map_epoch {
+            return Err(
+                "finding status proof does not bind the authoritative publisher floor".to_owned(),
+            );
+        }
+        if current_epoch.signed_epoch_bytes != material.signed_epoch_bytes {
+            return Err(
+                "finding status proof equivocates at the authoritative publisher floor".to_owned(),
+            );
+        }
         self.store
-            .advance_epoch(&FindingStatusEpochAdvance {
-                epoch: VerifiedFindingStatusEpochInput {
-                    feed_id: &epoch.feed_id,
-                    operator_id: &epoch.operator_id,
-                    key_domain_nonce: epoch.key_domain_nonce,
-                    map_epoch: epoch.map_epoch,
-                    epoch_id: &epoch.status_epoch_id,
-                    root_hash: &epoch.root_hash,
-                    signed_epoch_bytes: &material.signed_epoch_bytes,
-                    operator_key: &epoch.operator_key.to_hex(),
-                    operator_key_epoch: epoch.operator_key_epoch,
-                    operator_authorization_sha256: &self.operator.authorization_sha256,
-                    generated_at: epoch.generated_at,
-                    valid_until: epoch.valid_until,
-                    recorded_at: now_unix_secs,
-                },
-                leaves: &[],
-                proofs: &[VerifiedFindingStatusProofInput {
-                    feed_id: fields.feed_id,
-                    operator_id: &epoch.operator_id,
-                    key_domain_nonce: fields.key_domain_nonce,
-                    map_epoch: fields.map_epoch,
-                    epoch_id: fields.status_epoch_id,
-                    root_hash: fields.root_hash,
-                    finding_id: fields.finding_id,
-                    kind: FindingStatusProofKind::NonInclusion,
-                    proof_bytes: &material.proof_bytes,
-                    status_value_bytes: None,
-                    retraction_intent_sha256: None,
-                    checked_at: fields.checked_at,
-                    valid_until: epoch.valid_until,
-                    recorded_at: now_unix_secs,
-                }],
+            .observe_verified_non_inclusion(&VerifiedFindingStatusProofInput {
+                feed_id: fields.feed_id,
+                operator_id: &epoch.operator_id,
+                key_domain_nonce: fields.key_domain_nonce,
+                map_epoch: fields.map_epoch,
+                epoch_id: fields.status_epoch_id,
+                root_hash: fields.root_hash,
+                finding_id: fields.finding_id,
+                kind: FindingStatusProofKind::NonInclusion,
+                proof_bytes: &material.proof_bytes,
+                status_value_bytes: None,
+                retraction_intent_sha256: None,
+                checked_at: fields.checked_at,
+                valid_until: epoch.valid_until,
+                recorded_at: now_unix_secs,
             })
             .map_err(|error| error.to_string())?;
         match self

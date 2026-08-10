@@ -371,7 +371,12 @@ impl ChioKernel {
             (None, Some(_)) => {
                 return Err("finding status proof requires a configured kernel verifier".to_owned());
             }
-            (None, None) => {}
+            (None, None) => {
+                return Err(
+                    "purchase-marked delivery requires a configured finding status verifier"
+                        .to_owned(),
+                );
+            }
         }
         Ok(Some(verified))
     }

@@ -290,6 +290,7 @@ impl ChioKernel {
             finding_purchase_verifier: None,
             finding_recovery_verifier: None,
             finding_status_proof_verifier: None,
+            finding_delivery_receipt_authorities: Vec::new(),
             price_oracle: None,
             runtime_admission_hook: None,
             runtime_admission_readiness_timeout: Duration::from_millis(
@@ -910,13 +911,24 @@ impl ChioKernel {
         self.finding_recovery_verifier = Some(verifier);
     }
 
-    /// Install the M6 portable status-proof verifier. Once installed, every
-    /// purchase-marked reveal requires a fresh verified non-inclusion proof.
+    /// Install the M6 portable status-proof verifier. Every purchase-marked
+    /// reveal denies until this verifier is installed and then requires a
+    /// fresh verified non-inclusion proof.
     pub fn set_finding_status_proof_verifier(
         &mut self,
         verifier: Arc<dyn crate::finding_purchase::FindingStatusProofVerifier>,
     ) {
         self.finding_status_proof_verifier = Some(verifier);
+    }
+
+    /// Pin the kernel authorities whose signed Finding delivery receipts may
+    /// parent governed buyer-memory lineage. An empty set keeps that lineage
+    /// path fail closed.
+    pub fn set_finding_delivery_receipt_authorities(
+        &mut self,
+        authorities: Vec<chio_core::crypto::PublicKey>,
+    ) {
+        self.finding_delivery_receipt_authorities = authorities;
     }
 
     pub fn set_price_oracle(&mut self, price_oracle: Box<dyn PriceOracle>) {

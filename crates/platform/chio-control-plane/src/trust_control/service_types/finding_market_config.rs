@@ -302,6 +302,16 @@ impl FindingStatusServiceBond {
                 "finding-market status service bond validity window is inverted".to_string(),
             ));
         }
+        let overlap_from = self.valid_from.max(operator.authority.valid_from);
+        let overlap_until = self.valid_until.min(operator.authority.valid_until);
+        if self.valid_until.saturating_sub(self.valid_from) <= self.inclusion_sla_secs
+            || overlap_until.saturating_sub(overlap_from) <= self.inclusion_sla_secs
+        {
+            return Err(CliError::cli_other_error(
+                "finding-market status service bond cannot cover one full inclusion SLA"
+                    .to_string(),
+            ));
+        }
         if self.evidence_sha256.len() != 64
             || !self
                 .evidence_sha256
@@ -662,6 +672,16 @@ mod status_feed_config_tests {
         let mut missing_sla = service_bond.clone();
         missing_sla.inclusion_sla_secs = 0;
         assert!(missing_sla.validate(&pin).is_err());
+
+        let mut short_bond = service_bond.clone();
+        short_bond.valid_until = short_bond.valid_from + short_bond.inclusion_sla_secs;
+        assert!(short_bond.validate(&pin).is_err());
+
+        let mut short_operator_overlap = service_bond.clone();
+        short_operator_overlap.valid_from =
+            pin.authority.valid_until - short_operator_overlap.inclusion_sla_secs;
+        short_operator_overlap.valid_until = pin.authority.valid_until + 100;
+        assert!(short_operator_overlap.validate(&pin).is_err());
 
         let mut unbacked_equivocation = service_bond;
         unbacked_equivocation.equivocation_slash_units = 1_001;

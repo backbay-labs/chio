@@ -684,6 +684,9 @@ mod tests {
     use std::time::Duration;
 
     use chio_core::crypto::Keypair;
+    use chio_kernel::finding_purchase::{
+        FindingStatusProofContextView, FindingStatusProofVerifier,
+    };
     use chio_store_sqlite::SqliteAuthorityStore;
     use chio_test_support::prelude::*;
 
@@ -1078,6 +1081,82 @@ mod tests {
                 300,
             )
             .is_err()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn imported_point_proof_cannot_advance_the_publisher_floor(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (operator, bond) = config();
+        let (_local_temp, local_authority) = provision_authority()?;
+        let local_store = local_authority.finding_status_store();
+        let local_publisher =
+            super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+                local_store.clone(),
+                operator.clone(),
+                bond.clone(),
+                operator_key(),
+                300,
+            )?;
+        let finding_id = sha256_hex(b"local-live-finding");
+        let local = local_publisher.publish_non_inclusion(&finding_id, &[], NOW)?;
+        assert_eq!(local.map_epoch, 1);
+
+        let (_remote_temp, remote_authority) = provision_authority()?;
+        let remote_store = remote_authority.finding_status_store();
+        let remote_publisher =
+            super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+                remote_store.clone(),
+                operator.clone(),
+                bond.clone(),
+                operator_key(),
+                300,
+            )?;
+        remote_publisher.publish_non_inclusion(&finding_id, &[], NOW)?;
+        let retracted_id = sha256_hex(b"remote-retracted-finding");
+        let intent_id = sha256_hex(b"remote-retraction-intent");
+        let intent_bytes = canonical_json_bytes(&serde_json::json!({
+            "finding_id": retracted_id,
+            "schema": "chio.finding.test-retraction.v1",
+        }))?;
+        remote_store.issue_retraction_intent(&FindingRetractionIntentInput {
+            intent_id: &intent_id,
+            feed_id: FEED_ID,
+            operator_id: &operator.authority.authority_id,
+            finding_id: &retracted_id,
+            source: FindingRetractionIntentSource::Voluntary,
+            intent_bytes: &intent_bytes,
+            issued_at: NOW,
+            inclusion_deadline: NOW + bond.inclusion_sla_secs,
+            created_at: NOW,
+        })?;
+        remote_publisher.publish_retraction(&intent_id, &[], NOW + 1)?;
+        let imported = remote_publisher.publish_non_inclusion(&finding_id, &[], NOW + 1)?;
+        assert_eq!(imported.map_epoch, 2);
+
+        let verifier = super::super::finding_status_verifier::MarketFindingStatusVerifier::new(
+            operator,
+            bond,
+            300,
+            local_store.clone(),
+        )?;
+        let imported_b64 = STANDARD.encode(&imported.proof_bytes);
+        let view = FindingStatusProofContextView {
+            proof_b64: &imported_b64,
+            expected_finding_id: &finding_id,
+        };
+        let verified = verifier.verify_status_proof(&view)?;
+        let error = verifier
+            .verify_status_admission(&view, &verified, NOW + 1)
+            .test_expect_err("an imported future point proof must not advance publisher state");
+        assert!(error.contains("authoritative publisher floor"));
+        assert_eq!(local_store.get_feed_floor(FEED_ID)?.map_epoch, 1);
+        assert_eq!(
+            local_publisher
+                .publish_non_inclusion(&sha256_hex(b"another-local-live-finding"), &[], NOW + 1)?
+                .map_epoch,
+            1
         );
         Ok(())
     }

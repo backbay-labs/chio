@@ -84,8 +84,8 @@ pub struct VerifiedFindingPurchase {
     pub accepted_bid_envelope_sha256: String,
     /// Canonical SHA-256 digest of the venue-signed admission envelope.
     pub venue_admission_envelope_sha256: String,
-    /// Kernel-verified portable live-status evidence. `None` is retained only
-    /// for backward-compatible M4 deployments without a status verifier.
+    /// Kernel-verified portable live-status evidence. The option keeps older
+    /// serialized receipts decodable, but new purchase admission requires it.
     pub status_proof: Option<VerifiedFindingStatusProof>,
 }
 
