@@ -3411,6 +3411,7 @@ fn finding_recovery_request(
     buyer: &Keypair,
     finding_id: &str,
     context_b64: &str,
+    status_proof_b64: Option<&str>,
     nonce: &str,
 ) -> Result<ToolCallRequest, AnyError> {
     let arguments = serde_json::json!({
@@ -3427,7 +3428,22 @@ fn finding_recovery_request(
         arguments,
         dpop_proof: Some(proof),
         execution_nonce: None,
-        governed_intent: None,
+        governed_intent: status_proof_b64.map(|proof| GovernedTransactionIntent {
+            id: format!("intent-{request_id}"),
+            server_id: SERVER_ID.to_string(),
+            tool_name: READ_FINDING_TOOL.to_string(),
+            purpose: "authorized finding recovery".to_string(),
+            max_amount: None,
+            commerce: None,
+            metered_billing: None,
+            runtime_attestation: None,
+            call_chain: None,
+            autonomy: None,
+            context: Some(serde_json::json!({
+                FINDING_STATUS_PROOF_CONTEXT_KEY: proof,
+            })),
+            body: GovernedTransactionIntentBody::ToolInvocation,
+        }),
         approval_token: None,
         approval_tokens: Vec::new(),
         threshold_approval_proposal: None,
@@ -3488,9 +3504,26 @@ fn legacy_custom_recovery_token(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResult {
-    let lane = open_lane(LaneOptions::standard()).await?;
+    let lane = open_lane(LaneOptions {
+        install_status_verifier: true,
+        ..LaneOptions::standard()
+    })
+    .await?;
     let finding_id = lane.deployment.web.finding_id.clone();
     let payload_sha256 = lane.deployment.web.finding.payload_sha256.clone();
+    let config = market_config();
+    let status_store = lane.authority.finding_status_store();
+    let publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            status_store.clone(),
+            config.status_feed_operator.clone(),
+            config.status_feed_service_bond.clone(),
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    let now = unix_timestamp_now();
+    let live = publisher.publish_non_inclusion(&finding_id, &[], now)?;
+    let live_status_proof_b64 = STANDARD.encode(&live.proof_bytes);
 
     // An out-of-scope request denies before any budget or payment
     // mutation, so it yields a Deny receipt without disturbing the
@@ -3508,11 +3541,15 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
             })?)?;
     assert_eq!(denied.verdict, Verdict::Deny, "{:?}", denied.reason);
 
-    let response = lane.reveal("wedge-recovery-origin-1", "nonce-recovery-1")?;
+    let response = lane.reveal_with_status(
+        &lane.purchase,
+        &live_status_proof_b64,
+        "wedge-recovery-origin-1",
+        "nonce-recovery-1",
+    )?;
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
 
-    let now = unix_timestamp_now();
     lane.authority
         .finding_purchase_store()
         .register_community_fund_destination(
@@ -3629,6 +3666,7 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         &lane.buyer,
         &finding_id,
         recovery_context_b64,
+        None,
         "nonce-unused-legacy",
     )?;
     legacy_request.dpop_proof = Some(dpop_proof(
@@ -3662,11 +3700,24 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
                 &lane.buyer,
                 &finding_id,
                 recovery_context_b64,
+                Some(&live_status_proof_b64),
                 "nonce-self-minted-recovery-1",
             )?)?
             .verdict,
         Verdict::Deny,
     );
+
+    let missing_status = finding_recovery_request(
+        "wedge-recovery-missing-status-1",
+        &recovery,
+        &lane.buyer,
+        &finding_id,
+        recovery_context_b64,
+        None,
+        "nonce-recovery-grant-1",
+    )?;
+    let denied = lane.kernel.evaluate_tool_call_blocking(&missing_status)?;
+    assert_denied_with(&denied, "portable status proof");
 
     let request = finding_recovery_request(
         "wedge-recovery-1",
@@ -3674,7 +3725,8 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         &lane.buyer,
         &finding_id,
         recovery_context_b64,
-        "nonce-recovery-grant-1",
+        Some(&live_status_proof_b64),
+        "nonce-recovery-grant-1-live",
     )?;
     let recovered = lane.kernel.evaluate_tool_call_blocking(&request)?;
     assert_eq!(recovered.verdict, Verdict::Allow, "{:?}", recovered.reason);
@@ -3697,7 +3749,7 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         calls: &lane.calls,
         invocations: &lane.invocations,
         install_verifier: true,
-        install_status_verifier: false,
+        install_status_verifier: true,
     })?;
     let legacy_remint = legacy_custom_recovery_token(
         lane.buyer.public_key(),
@@ -3720,6 +3772,7 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         &lane.buyer,
         &finding_id,
         recovery_context_b64,
+        None,
         "nonce-unused-legacy-remint",
     )?;
     legacy_remint_request.dpop_proof = Some(dpop_proof(
@@ -3751,18 +3804,43 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         &lane.buyer,
         &finding_id,
         recovery_context_b64,
+        Some(&live_status_proof_b64),
         "nonce-recovery-grant-2",
     )?)?;
     assert_eq!(second.verdict, Verdict::Allow, "{:?}", second.reason);
-    let exhausted = restarted.evaluate_tool_call_blocking(&finding_recovery_request(
+
+    let intent_id = sha256_hex(b"m6-recovery-retraction-intent");
+    let intent_bytes = canonical_json_bytes(&serde_json::json!({
+        "finding_id": finding_id,
+        "reason": "recovery_status_gate_regression",
+        "schema": "chio.finding.voluntary-retraction.v1",
+    }))?;
+    assert_eq!(
+        status_store.issue_retraction_intent(&chio_store_sqlite::FindingRetractionIntentInput {
+            intent_id: &intent_id,
+            feed_id: &config.status_feed_operator_ref,
+            operator_id: &config.status_feed_operator.authority.authority_id,
+            finding_id: &finding_id,
+            source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
+            intent_bytes: &intent_bytes,
+            issued_at: now,
+            inclusion_deadline: now + config.status_feed_service_bond.inclusion_sla_secs,
+            created_at: now,
+        })?,
+        chio_store_sqlite::FindingStatusWriteOutcome::Inserted
+    );
+    let retracted = publisher.publish_retraction(&intent_id, &[], now + 1)?;
+    let retracted_status_proof_b64 = STANDARD.encode(&retracted.proof_bytes);
+    let retracted_recovery = restarted.evaluate_tool_call_blocking(&finding_recovery_request(
         "wedge-recovery-3",
         &remint,
         &lane.buyer,
         &finding_id,
         recovery_context_b64,
-        "nonce-recovery-grant-3",
+        Some(&retracted_status_proof_b64),
+        "nonce-recovery-grant-3-retracted",
     )?)?;
-    assert_denied_with(&exhausted, "quota");
+    assert_denied_with(&retracted_recovery, "status proof rejected");
     assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 1);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
     assert_eq!(lane.invocations.load(Ordering::SeqCst), 3);

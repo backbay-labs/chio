@@ -615,6 +615,12 @@ pub(crate) async fn handle_submit_finding_status_intent(
     if let Err(response) = require_hex64(&body.intent_id, "intent_id") {
         return response;
     }
+    if body.feed_id != feed_id {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "status intent does not match the route feed",
+        );
+    }
     let retained_exact_replay = match store.get_retraction_intent(&body.intent_id) {
         Ok(Some(record)) => record.intent_bytes == raw.as_bytes(),
         Ok(None) => false,
@@ -1392,7 +1398,7 @@ mod tests {
             State(state.clone()),
             AxumPath(FEED_ID.to_string()),
             headers.clone(),
-            raw,
+            raw.clone(),
         )
         .await;
         assert_eq!(response.status(), StatusCode::OK);
@@ -1400,6 +1406,21 @@ mod tests {
         let response_json: serde_json::Value = serde_json::from_slice(&response_body)?;
         assert_eq!(response_json["exact_replay"], true);
         assert_eq!(response_json["status"], "dispatch_eligible");
+
+        let other_feed = "status-feed/other-venue";
+        let mut other_market = live_market_config(now);
+        other_market.status_feed_operator_ref = other_feed.to_string();
+        other_market.status_feed_operator.feed_id = other_feed.to_string();
+        other_market.status_feed_service_bond.feed_id = other_feed.to_string();
+        let other_state = service_state(Arc::clone(&authority), other_market);
+        let response = handle_submit_finding_status_intent(
+            State(other_state),
+            AxumPath(other_feed.to_string()),
+            headers.clone(),
+            raw,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
         let mut stale_new = signed.body;
         stale_new.finding_id = sha256_hex(b"another stale finding");

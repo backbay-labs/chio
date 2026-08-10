@@ -342,7 +342,7 @@ impl FindingStatusServiceBond {
         included_at: Option<u64>,
         observed_at: u64,
     ) -> Option<u64> {
-        (observed_at >= inclusion_deadline
+        (observed_at > inclusion_deadline
             && included_at.is_none_or(|included| included > inclusion_deadline))
         .then_some(self.missed_inclusion_slash_units)
     }
@@ -695,8 +695,9 @@ mod status_feed_config_tests {
     #[test]
     fn status_service_bond_faults_are_mechanically_assessable() {
         let service_bond = bond();
+        assert_eq!(service_bond.assess_missed_inclusion(250, None, 250), None);
         assert_eq!(
-            service_bond.assess_missed_inclusion(250, None, 250),
+            service_bond.assess_missed_inclusion(250, None, 251),
             Some(100)
         );
         assert_eq!(

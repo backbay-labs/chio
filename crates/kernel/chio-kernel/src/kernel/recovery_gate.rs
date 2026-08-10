@@ -2,6 +2,10 @@
 
 use chio_core::capability::scope::{Constraint, FindingRecoveryMarkerV1, ToolGrant};
 
+use crate::finding_purchase::{
+    FindingStatusProofContextView, FINDING_STATUS_PROOF_CONTEXT_KEY,
+    MAX_FINDING_STATUS_PROOF_B64_BYTES,
+};
 use crate::finding_recovery::{
     FindingRecoveryContextView, VerifiedFindingRecovery, FINDING_RECOVERY_CONTEXT_ARGUMENT,
 };
@@ -187,6 +191,34 @@ impl ChioKernel {
         let Some(verifier) = self.finding_recovery_verifier.as_ref() else {
             return Err("finding recovery requires a configured recovery verifier".to_owned());
         };
+        // Recovery is another delivery of the purchased bytes, so it must
+        // cross the same current status floor before consuming retry quota.
+        let proof_b64 = request
+            .governed_intent
+            .as_ref()
+            .and_then(|intent| intent.context.as_ref())
+            .and_then(serde_json::Value::as_object)
+            .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "finding recovery requires a portable status proof".to_owned())?;
+        if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
+            return Err("finding status proof carrier exceeds the kernel size bound".to_owned());
+        }
+        let Some(status_verifier) = self.finding_status_proof_verifier.as_ref() else {
+            return Err(
+                "finding recovery requires a configured finding status verifier".to_owned(),
+            );
+        };
+        let status_view = FindingStatusProofContextView {
+            proof_b64,
+            expected_finding_id: &verified.finding_id,
+        };
+        let status = status_verifier
+            .verify_status_proof(&status_view)
+            .map_err(|error| format!("finding recovery status proof rejected: {error}"))?;
+        status_verifier
+            .verify_status_admission(&status_view, &status, now_unix_secs)
+            .map_err(|error| format!("finding recovery status admission rejected: {error}"))?;
         verifier
             .reserve_recovery_attempt(
                 &verified,
