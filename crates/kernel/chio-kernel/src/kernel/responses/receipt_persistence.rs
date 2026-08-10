@@ -219,7 +219,7 @@ impl ChioKernel {
             self.check_revocation(&request.capability)?;
         }
         let (trace_event, settlement_visible_at_ms) =
-            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition)?;
+            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition, true)?;
         drop(trace_transition);
         self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)?;
         self.apply_federation_cosign_for_admitted_request_with_snapshot(
@@ -289,7 +289,21 @@ impl ChioKernel {
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
         let trace_transition = self.lock_runtime_trace_transition()?;
         let (trace_event, settlement_visible_at_ms) =
-            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition)?;
+            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition, true)?;
+        drop(trace_transition);
+        self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)
+    }
+
+    /// Persist an internal audit receipt without presenting it to the
+    /// financial settlement observer. The durable receipt store and local
+    /// trace still receive the exact signed receipt.
+    pub(crate) fn record_chio_receipt_without_settlement(
+        &self,
+        receipt: &ChioReceipt,
+    ) -> Result<(), KernelError> {
+        let trace_transition = self.lock_runtime_trace_transition()?;
+        let (trace_event, settlement_visible_at_ms) =
+            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition, false)?;
         drop(trace_transition);
         self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)
     }
@@ -298,11 +312,15 @@ impl ChioKernel {
         &self,
         receipt: &ChioReceipt,
         _trace_transition: &std::sync::MutexGuard<'_, ()>,
+        settlement_eligible: bool,
     ) -> Result<(Option<RuntimeTraceEvent>, Option<u64>), KernelError> {
-        let settlement_visible_at_ms = self
-            .settlement_observer
-            .as_ref()
-            .map(|_| current_unix_timestamp_ms());
+        let settlement_visible_at_ms = if settlement_eligible {
+            self.settlement_observer
+                .as_ref()
+                .map(|_| current_unix_timestamp_ms())
+        } else {
+            None
+        };
         {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())

@@ -517,6 +517,32 @@ mod settlement_routing_tests {
     }
 
     #[test]
+    fn internal_receipt_from_distinct_authority_skips_settlement_routing() {
+        let harness = recording_harness(
+            ClaimMode::Claim,
+            RouteMode::Contract,
+            HookBehavior::Accepted,
+        );
+        let pool_authority = Keypair::generate();
+        assert_ne!(pool_authority.public_key(), harness.keypair.public_key());
+        let receipt = signed_receipt(&pool_authority, 91, None);
+
+        assert!(harness
+            .kernel
+            .record_chio_receipt_without_settlement(&receipt)
+            .is_ok());
+
+        let state = harness.store.state();
+        assert_eq!(state.legacy_appends, 1);
+        assert_eq!(state.atomic_appends, 0);
+        assert_eq!(state.claim_calls, 0);
+        assert_eq!(state.route_calls, 0);
+        assert!(state.attempts.is_empty());
+        assert!(state.receipts.contains_key(&receipt.id));
+        assert_eq!(harness.hook.calls(), 0);
+    }
+
+    #[test]
     fn installed_runtime_seeds_before_claim_and_routes_after_the_receipt_is_queryable() {
         let harness = recording_harness(
             ClaimMode::Claim,

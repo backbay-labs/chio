@@ -632,7 +632,7 @@ impl ChioKernel {
             return Err(FindingPoolLedgerError::DurableReceiptStoreMissing);
         }
         for receipt in ledger.pending_mutation_receipts()? {
-            self.record_chio_receipt(&receipt)
+            self.record_chio_receipt_without_settlement(&receipt)
                 .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
             ledger.acknowledge_mutation_receipt(
                 &receipt.id,

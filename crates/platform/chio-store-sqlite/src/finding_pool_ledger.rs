@@ -83,9 +83,7 @@ impl SqliteFindingPoolLedger {
         let path_text = path.to_str().ok_or_else(|| {
             FindingPoolLedgerError::Storage("SQLite path is not valid UTF-8".to_string())
         })?;
-        let empty_uri_filename = path_text == "file:"
-            || path_text.starts_with("file:?")
-            || path_text.starts_with("file:#");
+        let empty_uri_filename = sqlite_uri_filename_is_empty(path_text);
         if path_text.is_empty() || empty_uri_filename || is_in_memory_sqlite_path(path_text) {
             return Err(FindingPoolLedgerError::Storage(
                 "qualified finding pool ledger requires a durable SQLite path".to_string(),
@@ -154,6 +152,18 @@ impl SqliteFindingPoolLedger {
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         value.map(|text| parse_units(&text, column)).transpose()
     }
+}
+
+fn sqlite_uri_filename_is_empty(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("file:") else {
+        return false;
+    };
+    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
+    let name = rest.split_once('?').map_or(rest, |(name, _)| name);
+    if let Some(authority_and_path) = name.strip_prefix("//") {
+        return !authority_and_path.contains('/');
+    }
+    name.is_empty()
 }
 
 impl FindingPoolLedger for SqliteFindingPoolLedger {

@@ -123,6 +123,14 @@ impl FindingPurchaseVerifier for StaticPurchaseVerifier {
             Ok(())
         }
     }
+
+    fn mark_capture_pending(
+        &self,
+        _verified: &VerifiedFindingPurchase,
+        _marked_at_unix_secs: u64,
+    ) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 fn debit_at(
@@ -809,6 +817,10 @@ fn cognition_market_qualified_pool_refuses_in_memory_storage() {
         ":memory:",
         "",
         "file:",
+        "file://",
+        "file://localhost",
+        "file://?mode=rwc",
+        "file://localhost?mode=rwc",
         "file:?mode=rwc",
         "file:pool?vfs=memdb",
         "file:pool?mode%3Dmemory",
