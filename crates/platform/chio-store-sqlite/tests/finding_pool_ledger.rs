@@ -25,8 +25,8 @@ use chio_kernel::{
 use chio_store_sqlite::{finding_pool_ledger::SqliteFindingPoolLedger, SqliteReceiptStore};
 use chio_swarm_authority::finding_pool::{
     finding_pool_allocation_envelope_sha256, sign_finding_pool_allocation,
-    swarm_budget_pool_sha256, FindingPoolAllocation, SignedFindingPoolAllocation,
-    FINDING_POOL_ALLOCATION_SCHEMA_V1, FINDING_POOL_PURPOSE_V1,
+    swarm_budget_pool_sha256, verify_finding_pool_allocation, FindingPoolAllocation,
+    SignedFindingPoolAllocation, FINDING_POOL_ALLOCATION_SCHEMA_V1, FINDING_POOL_PURPOSE_V1,
 };
 use chio_swarm_authority::{SwarmBudgetPool, CHIO_SWARM_BUDGET_POOL_SCHEMA};
 use chio_test_support::prelude::*;
@@ -569,6 +569,24 @@ fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitutio
         debit(&ledger, &wrong_authority, "purchase:wrong-authority", 10),
         Err(FindingPoolDebitError::Allocation(_))
     ));
+
+    let p256_authority = PublicKey::from_hex(
+        "p256:046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+    )
+    .test_expect("parse P-256 allocation authority");
+    let mut non_ed25519_authority = fixture.allocation.clone();
+    non_ed25519_authority.body.authority = p256_authority.clone();
+    non_ed25519_authority.signer_key = p256_authority.clone();
+    let authority_error = verify_finding_pool_allocation(
+        &non_ed25519_authority,
+        &fixture.pool,
+        &p256_authority,
+        2_000,
+    )
+    .test_expect_err("non-Ed25519 allocation authority must fail closed");
+    assert!(authority_error
+        .to_string()
+        .contains("allocation authority must be Ed25519"));
 
     let mut wrong_purchaser = fixture.clone();
     wrong_purchaser.purchaser = Keypair::from_seed(&[74_u8; 32]);

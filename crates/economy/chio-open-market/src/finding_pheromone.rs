@@ -9,7 +9,7 @@
 use chio_finding::{signed_envelope_sha256, SignedFindingAdmission, FINDING_ADMISSION_SCHEMA_V1};
 use chio_listing::{
     ensure_generic_listing_signed_by_namespace_owner, normalize_namespace,
-    GenericListingFreshnessState, GenericListingStatus, Listing,
+    GenericListingFreshnessState, GenericListingFreshnessWindow, GenericListingStatus, Listing,
 };
 use chio_pheromone::{
     scarcity_admissions_for_deposit_treaty, validate_deposit_for_admission, CostCommitmentPolicy,
@@ -238,8 +238,17 @@ fn validate_convention(
 }
 
 fn validate_current_listing(listing: &Listing, now: u64) -> Result<(), FindingPheromoneError> {
-    if !listing.is_admissible_at(now)
-        || listing.freshness.state != GenericListingFreshnessState::Fresh
+    let freshness_window = GenericListingFreshnessWindow {
+        max_age_secs: listing.freshness.max_age_secs,
+        valid_until: listing.freshness.valid_until,
+    };
+    freshness_window
+        .validate(listing.freshness.generated_at)
+        .map_err(FindingPheromoneError::Listing)?;
+    let assessed_freshness = freshness_window.assess(listing.freshness.generated_at, now);
+    if listing.freshness != assessed_freshness
+        || assessed_freshness.state != GenericListingFreshnessState::Fresh
+        || !listing.is_admissible_at(now)
         || listing.freshness.valid_until <= now
         || listing.listing.body.status != GenericListingStatus::Active
         || listing

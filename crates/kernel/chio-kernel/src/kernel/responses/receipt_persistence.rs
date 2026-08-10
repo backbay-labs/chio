@@ -297,6 +297,7 @@ impl ChioKernel {
     /// Persist an internal audit receipt without presenting it to the
     /// financial settlement observer. The durable receipt store and local
     /// trace still receive the exact signed receipt.
+    #[cfg(any(test, feature = "cognition-market-experimental"))]
     pub(crate) fn record_chio_receipt_without_settlement(
         &self,
         receipt: &ChioReceipt,

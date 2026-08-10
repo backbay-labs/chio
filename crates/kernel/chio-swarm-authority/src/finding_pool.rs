@@ -113,6 +113,11 @@ pub fn verify_finding_pool_allocation(
     {
         return Err(rejected("finding pool allocation authority mismatch"));
     }
+    if pinned_authority.algorithm() != SigningAlgorithm::Ed25519 {
+        return Err(rejected(
+            "finding pool allocation authority must be Ed25519",
+        ));
+    }
     match signed.verify_signature() {
         Ok(true) => {}
         Ok(false) => return Err(rejected("finding pool allocation signature is invalid")),
