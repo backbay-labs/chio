@@ -237,6 +237,28 @@ impl FindingChallengeCoordinator {
         Ok(true)
     }
 
+    /// A confirmed impairment may recover across operator rotation, but not
+    /// across a reorg or loss of finality for the collateral snapshot it used.
+    fn require_canonical_recovery_observation(
+        &self,
+        verified: &VerifiedFindingEnforcement,
+        observations: &dyn FindingBondObservationSource,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let observed = observations
+            .observe(verified)
+            .map_err(|error| ChallengeCoordinatorError::BondObservation(error.to_string()))?;
+        let verdict = recheck_finding_bond_observation(verified, &observed);
+        match verdict {
+            FindingBondObservationVerdict::Qualified
+            | FindingBondObservationVerdict::OperatorRotated { .. }
+            | FindingBondObservationVerdict::OperatorNotActive => Ok(()),
+            FindingBondObservationVerdict::Reorged { .. }
+            | FindingBondObservationVerdict::FinalityRegressed { .. } => Err(
+                ChallengeCoordinatorError::BondObservation(verdict.reason().to_owned()),
+            ),
+        }
+    }
+
     /// Finish a previously confirmed impairment without dispatching it
     /// again.
     ///

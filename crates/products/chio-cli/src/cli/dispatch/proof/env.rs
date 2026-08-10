@@ -303,6 +303,49 @@ fn cognition_market_status_trust_from_env(
     )
 }
 
+pub(super) fn claim_set_bytes_advertise_verified_prefix(
+    bytes: &[u8],
+    prefix: &str,
+) -> Result<bool, CliError> {
+    claim_set_bytes_advertise_verified(bytes, |claim_id| claim_id.starts_with(prefix))
+}
+
+pub(super) fn claim_set_bytes_advertise_verified_claim(
+    bytes: &[u8],
+    expected_claim_id: &str,
+) -> Result<bool, CliError> {
+    claim_set_bytes_advertise_verified(bytes, |claim_id| claim_id == expected_claim_id)
+}
+
+fn claim_set_bytes_advertise_verified(
+    bytes: &[u8],
+    matches_claim: impl Fn(&str) -> bool,
+) -> Result<bool, CliError> {
+    let claim_set: serde_json::Value = serde_json::from_slice(bytes)?;
+    let claims = claim_set
+        .get("claims")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| CliError::cli_other_error("proof verify: claim set missing claims array"))?;
+    for claim in claims {
+        let claim_id = claim
+            .get("claim_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                CliError::cli_other_error("proof verify: claim set claim_id must be a string")
+            })?;
+        let status = claim
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                CliError::cli_other_error("proof verify: claim set status must be a string")
+            })?;
+        if matches_claim(claim_id) && status == "verified" {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn required_utf8_env(env_name: &str) -> Result<String, CliError> {
     match std::env::var(env_name) {
         Ok(value) if !value.trim().is_empty() => Ok(value),

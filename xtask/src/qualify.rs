@@ -79,12 +79,7 @@ fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
     // Reject an absolute or escaping profile path before resolving it. A
     // `profile.document` that points outside the repo would make the bounded
     // boundary unverifiable.
-    let profile_path = resolve_repo_relative(root, profile_doc)?;
-    if !profile_path.is_file() {
-        return Err(XtaskError::Validation(format!(
-            "bounded operational profile document is missing on disk: {profile_doc}"
-        )));
-    }
+    resolve_existing_repo_file(root, profile_doc)?;
 
     let conditions = matrix
         .get("gateConditions")
@@ -116,11 +111,11 @@ fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
                     "bounded matrix gate condition {id} has a non-string witness"
                 ))
             })?;
-            if !resolve_repo_relative(root, path)?.is_file() {
-                return Err(XtaskError::Validation(format!(
-                    "bounded matrix gate condition {id} witness is missing: {path}"
-                )));
-            }
+            resolve_existing_repo_file(root, path).map_err(|error| {
+                XtaskError::Validation(format!(
+                    "bounded matrix gate condition {id} witness is invalid: {path}: {error}"
+                ))
+            })?;
         }
     }
 
@@ -222,6 +217,28 @@ fn resolve_repo_relative(root: &Path, rel: &str) -> Result<PathBuf, XtaskError> 
         )));
     }
     Ok(joined)
+}
+
+/// Resolve an existing repository file and reject a symlink whose canonical
+/// target escapes the canonical workspace root.
+fn resolve_existing_repo_file(root: &Path, rel: &str) -> Result<PathBuf, XtaskError> {
+    let joined = resolve_repo_relative(root, rel)?;
+    let canonical_root =
+        fs::canonicalize(root).map_err(|error| XtaskError::Io(display(root), error))?;
+    let canonical_path = fs::canonicalize(&joined).map_err(|_| {
+        XtaskError::Validation(format!("bounded repository file is missing: {rel}"))
+    })?;
+    if !canonical_path.starts_with(&canonical_root) {
+        return Err(XtaskError::Validation(format!(
+            "bounded repository file resolves outside the repository: {rel}"
+        )));
+    }
+    if !canonical_path.is_file() {
+        return Err(XtaskError::Validation(format!(
+            "bounded repository path is not a file: {rel}"
+        )));
+    }
+    Ok(canonical_path)
 }
 
 fn display(path: &Path) -> String {
@@ -359,6 +376,38 @@ mod tests {
             Err(XtaskError::Validation(_)) => {}
             Err(other) => panic!("expected Validation, got {other}"),
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_existing_repo_file_rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_nanos());
+        let base =
+            std::env::temp_dir().join(format!("chio-xtask-qualify-{}-{nonce}", std::process::id()));
+        let root = base.join("repo");
+        let outside = base.join("outside-witness.txt");
+        if let Err(error) = fs::create_dir_all(root.join("docs")) {
+            panic!("test repository could not be created: {error}");
+        }
+        if let Err(error) = fs::write(&outside, b"outside") {
+            panic!("outside witness could not be written: {error}");
+        }
+        if let Err(error) = symlink(&outside, root.join("docs/witness.txt")) {
+            panic!("escape symlink could not be created: {error}");
+        }
+
+        match resolve_existing_repo_file(&root, "docs/witness.txt") {
+            Ok(path) => panic!("symlink escape resolved to {}", path.display()),
+            Err(XtaskError::Validation(error)) => {
+                assert!(error.contains("outside the repository"));
+            }
+            Err(other) => panic!("expected Validation, got {other}"),
+        }
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

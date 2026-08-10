@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 mod proof_env;
 use proof_env::{
     agent_web_replay_store_from_env_if_configured, agent_web_verifier_trust_from_env,
+    claim_set_bytes_advertise_verified_claim, claim_set_bytes_advertise_verified_prefix,
     cognition_market_proof_trust_from_env,
     commerce_trusted_event_authority_receipt_kernel_keys_from_env,
     commerce_trusted_payment_signer_keys_from_env, commerce_trusted_provider_keys_from_env,
@@ -1870,49 +1871,6 @@ fn load_standalone_evidence_graph_artifacts(
         artifacts.insert(node.path.clone(), bytes);
     }
     Ok(artifacts)
-}
-
-fn claim_set_bytes_advertise_verified_prefix(
-    bytes: &[u8],
-    prefix: &str,
-) -> Result<bool, CliError> {
-    claim_set_bytes_advertise_verified(bytes, |claim_id| claim_id.starts_with(prefix))
-}
-
-fn claim_set_bytes_advertise_verified_claim(
-    bytes: &[u8],
-    expected_claim_id: &str,
-) -> Result<bool, CliError> {
-    claim_set_bytes_advertise_verified(bytes, |claim_id| claim_id == expected_claim_id)
-}
-
-fn claim_set_bytes_advertise_verified(
-    bytes: &[u8],
-    matches_claim: impl Fn(&str) -> bool,
-) -> Result<bool, CliError> {
-    let claim_set: serde_json::Value = serde_json::from_slice(bytes)?;
-    let claims = claim_set
-        .get("claims")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| CliError::cli_other_error("proof verify: claim set missing claims array"))?;
-    for claim in claims {
-        let claim_id = claim
-            .get("claim_id")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| {
-                CliError::cli_other_error("proof verify: claim set claim_id must be a string")
-            })?;
-        let status = claim
-            .get("status")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| {
-                CliError::cli_other_error("proof verify: claim set status must be a string")
-            })?;
-        if matches_claim(claim_id) && status == "verified" {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 fn resolve_bundle_artifact_path(

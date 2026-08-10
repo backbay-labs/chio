@@ -1789,8 +1789,7 @@ impl ChioKernel {
 
         // The pool claim is a durable, idempotent participant in dispatch.
         // Commit it before the admission operation and invocation capture can
-        // become DispatchCommitted. A claim rejection therefore remains a
-        // compensatable pre-dispatch denial. If the process stops after this
+        // become DispatchCommitted, keeping rejection compensatable. A crash after this
         // claim, the admission operation is still pre-dispatch and exact replay
         // resumes against the same payment operation and pool claim.
         let pool_claim = self.claim_finding_pool_immediately_before_dispatch(

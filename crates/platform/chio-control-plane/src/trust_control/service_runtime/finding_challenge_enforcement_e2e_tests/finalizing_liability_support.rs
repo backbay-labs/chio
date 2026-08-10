@@ -727,3 +727,51 @@ fn enforcement_pair_at_vault(
         signed_snapshot,
     ))
 }
+
+#[test]
+fn finding_challenge_confirmed_impairment_keeps_reorged_snapshot_quarantined() -> TestResult {
+    let case = finalizing_liability()?;
+    let publisher = MiningPublisher::new();
+
+    case.finalize(&publisher, SETTLEMENT_NOW)?;
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Failed);
+
+    let reorged = FindingBondObservationRecheck {
+        block_hash: Some(chain_hash(0xba)),
+        ..qualified_observation()
+    };
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::then_qualified(vec![qualified_observation(), reorged]),
+            &publisher,
+            SETTLEMENT_NOW + 60,
+        )?
+        .expect_err("a reorged bond snapshot leaves the confirmed impairment quarantined");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::BondObservation(_)
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Confirmed);
+    assert!(case.head()?.quarantined);
+
+    let still_reorged = FindingBondObservationRecheck {
+        block_hash: Some(chain_hash(0xba)),
+        ..qualified_observation()
+    };
+    let retry = case
+        .finalize_observing(
+            &ScriptedObservations::then_qualified(vec![still_reorged]),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW + 120,
+        )?
+        .expect_err("recovery must not clear a still-reorged bond observation");
+    assert!(matches!(
+        retry,
+        ChallengeCoordinatorError::BondObservation(_)
+    ));
+    let parked = case.head()?;
+    assert_eq!(parked.state, FindingLiabilityState::Finalizing);
+    assert!(parked.quarantined);
+    assert!(parked.publication_pending);
+    Ok(())
+}
