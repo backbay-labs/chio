@@ -6,6 +6,8 @@
 //! rebuilds the sparse map from sticky leaves, signs one advancing epoch, then
 //! atomically persists the exact epoch, proof, and any new retracted leaf.
 
+use std::collections::BTreeMap;
+
 use chio_core::crypto::Keypair;
 use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
@@ -21,9 +23,10 @@ use chio_revocation_oracle::{
     FINDING_STATUS_SPARSE_DEPTH,
 };
 use chio_store_sqlite::{
-    FindingRetractionIntentState, FindingStatusEpochAdvance, FindingStatusProofKind,
-    FindingStatusProofRecord, FindingStatusStoreError, SqliteFindingStatusStore,
-    VerifiedFindingStatusEpochInput, VerifiedFindingStatusProofInput,
+    FindingRetractionIntentRecord, FindingRetractionIntentState, FindingStatusEpochAdvance,
+    FindingStatusProofKind, FindingStatusProofRecord, FindingStatusStoreError,
+    SqliteFindingStatusStore, VerifiedFindingStatusEpochInput, VerifiedFindingStatusLeafInput,
+    VerifiedFindingStatusProofInput,
 };
 
 use super::finding_status_verifier::authorization;
@@ -297,6 +300,121 @@ impl FindingStatusEpochPublisher {
             .ok_or_else(|| "published finding status proof disappeared".to_owned())
     }
 
+    fn persist_retraction_batch(
+        &self,
+        signed: &chio_finding::SignedFindingStatusEpoch,
+        map: &FindingStatusSparseMap,
+        new_intents: &[FindingRetractionIntentRecord],
+        requested_finding_id: &str,
+        anchor_refs: &[String],
+        now: u64,
+    ) -> Result<FindingStatusProofRecord, String> {
+        let existing = match self.store.list_leaves(&self.operator.feed_id) {
+            Ok(leaves) => leaves,
+            Err(FindingStatusStoreError::MissingFloor { .. }) => Vec::new(),
+            Err(error) => return Err(error.to_string()),
+        };
+        let mut leaves = existing
+            .into_iter()
+            .map(|leaf| {
+                (
+                    leaf.finding_id,
+                    (leaf.retraction_intent_sha256, leaf.local_intent_id),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        for intent in new_intents {
+            leaves.insert(
+                intent.finding_id.clone(),
+                (intent.intent_sha256.clone(), Some(intent.intent_id.clone())),
+            );
+        }
+
+        let mut proof_bytes = Vec::with_capacity(leaves.len());
+        for (finding_id, (intent_sha256, _)) in &leaves {
+            let sparse = map.proof(finding_id).map_err(|error| error.to_string())?;
+            let proof =
+                build_status_inclusion_proof_input(signed, finding_id, intent_sha256, &sparse, now)
+                    .map_err(|error| error.to_string())?;
+            verify_status_proof_input(
+                &proof,
+                &authorization(&self.operator)?,
+                FindingStatusFreshnessPolicy {
+                    now,
+                    max_epoch_age_secs: self.max_epoch_age_secs,
+                },
+            )
+            .map_err(|error| error.to_string())?;
+            proof_bytes.push((
+                finding_id.clone(),
+                intent_sha256.clone(),
+                chio_core::canonical_json_bytes(&proof).map_err(|error| error.to_string())?,
+            ));
+        }
+
+        let epoch_bytes = chio_core::canonical_json_bytes(signed).map_err(|e| e.to_string())?;
+        let operator_key = signed.body.operator_key.to_hex();
+        let leaf_inputs = new_intents
+            .iter()
+            .map(|intent| VerifiedFindingStatusLeafInput {
+                finding_id: &intent.finding_id,
+                status_value_bytes: b"retracted",
+                retraction_intent_sha256: &intent.intent_sha256,
+                local_intent_id: Some(&intent.intent_id),
+            })
+            .collect::<Vec<_>>();
+        let proof_inputs = proof_bytes
+            .iter()
+            .map(|(finding_id, retraction_intent_sha256, proof_bytes)| {
+                VerifiedFindingStatusProofInput {
+                    feed_id: &signed.body.feed_id,
+                    operator_id: &signed.body.operator_id,
+                    key_domain_nonce: signed.body.key_domain_nonce,
+                    map_epoch: signed.body.map_epoch,
+                    epoch_id: &signed.body.status_epoch_id,
+                    root_hash: &signed.body.root_hash,
+                    finding_id,
+                    kind: FindingStatusProofKind::Inclusion,
+                    proof_bytes,
+                    status_value_bytes: Some(b"retracted"),
+                    retraction_intent_sha256: Some(retraction_intent_sha256),
+                    checked_at: now,
+                    valid_until: signed.body.valid_until,
+                    recorded_at: now,
+                }
+            })
+            .collect::<Vec<_>>();
+        self.store
+            .advance_epoch(&FindingStatusEpochAdvance {
+                epoch: VerifiedFindingStatusEpochInput {
+                    feed_id: &signed.body.feed_id,
+                    operator_id: &signed.body.operator_id,
+                    key_domain_nonce: signed.body.key_domain_nonce,
+                    map_epoch: signed.body.map_epoch,
+                    epoch_id: &signed.body.status_epoch_id,
+                    root_hash: &signed.body.root_hash,
+                    signed_epoch_bytes: &epoch_bytes,
+                    operator_key: &operator_key,
+                    operator_key_epoch: signed.body.operator_key_epoch,
+                    operator_authorization_sha256: &self.operator.authorization_sha256,
+                    generated_at: signed.body.generated_at,
+                    valid_until: signed.body.valid_until,
+                    recorded_at: now,
+                },
+                leaves: &leaf_inputs,
+                proofs: &proof_inputs,
+            })
+            .map_err(|error| error.to_string())?;
+        if canonical_anchor_refs(&signed.body.anchor_refs) != canonical_anchor_refs(anchor_refs) {
+            return Err("published finding status epoch changed anchor bindings".to_owned());
+        }
+        self.store
+            .get_latest_proof(&signed.body.feed_id, requested_finding_id)
+            .map_err(|error| error.to_string())?
+            .filter(|proof| proof.map_epoch == signed.body.map_epoch)
+            .ok_or_else(|| "published finding status proof disappeared".to_owned())
+    }
+
     /// Publish one dispatch-eligible local retraction exactly once.
     pub fn publish_retraction(
         &self,
@@ -320,18 +438,49 @@ impl FindingStatusEpochPublisher {
             return Err("finding retraction is not eligible for this publisher".to_owned());
         }
         let mut map = self.rebuild_map()?;
+        let mut new_intents = self
+            .store
+            .list_publication_candidates(&self.operator.feed_id, now, 200)
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .filter(|candidate| candidate.state == FindingRetractionIntentState::DispatchEligible)
+            .map(|candidate| (candidate.intent_id.clone(), candidate))
+            .collect::<BTreeMap<_, _>>();
         if intent.state == FindingRetractionIntentState::DispatchEligible {
-            map.insert(&intent.finding_id, &intent.intent_sha256)
+            new_intents.insert(intent.intent_id.clone(), intent.clone());
+        }
+        for candidate in new_intents.values() {
+            if candidate.feed_id != self.operator.feed_id
+                || candidate.operator_id != self.operator.authority.authority_id
+            {
+                return Err("finding retraction batch contains an ineligible intent".to_owned());
+            }
+            map.insert(&candidate.finding_id, &candidate.intent_sha256)
                 .map_err(|error| error.to_string())?;
         }
+        let new_intents = new_intents.into_values().collect::<Vec<_>>();
         let signed = if intent.state == FindingRetractionIntentState::Published {
-            match self.current_epoch_for_point_proof(&map, anchor_refs, now)? {
-                Some(signed) => signed,
-                None => self.sign_epoch(&map, self.next_map_epoch()?, anchor_refs, now)?,
+            if new_intents.is_empty() {
+                match self.current_epoch_for_point_proof(&map, anchor_refs, now)? {
+                    Some(signed) => signed,
+                    None => self.sign_epoch(&map, self.next_map_epoch()?, anchor_refs, now)?,
+                }
+            } else {
+                self.sign_epoch(&map, self.next_map_epoch()?, anchor_refs, now)?
             }
         } else {
             self.sign_epoch(&map, self.next_map_epoch()?, anchor_refs, now)?
         };
+        if !new_intents.is_empty() {
+            return self.persist_retraction_batch(
+                &signed,
+                &map,
+                &new_intents,
+                &intent.finding_id,
+                anchor_refs,
+                now,
+            );
+        }
         if let Some(proof) = self.current_proof(
             &intent.finding_id,
             signed.body.map_epoch,
