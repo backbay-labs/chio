@@ -75,6 +75,7 @@ pub(crate) fn dispatch_finding(
             trust_roots,
             evidence,
             recipe,
+            status_rollback_floor,
             integrity_only,
         } => cmd_finding_verify(
             file.as_deref(),
@@ -82,6 +83,7 @@ pub(crate) fn dispatch_finding(
             trust_roots.as_deref(),
             evidence.as_deref(),
             recipe.as_deref(),
+            status_rollback_floor.as_deref(),
             integrity_only,
             json_output,
             control_url.as_deref(),
@@ -657,7 +659,7 @@ impl FindingStatusProofResponse {
 #[cfg(test)]
 fn advance_status_floor(
     path: &Path,
-    status: &FindingStatusProofResponse,
+    status: &FindingStatusFloorObservation<'_>,
     authorization: &chio_finding::FindingStatusOperatorAuthorization,
     authorization_sha256: &str,
     trusted_now: u64,

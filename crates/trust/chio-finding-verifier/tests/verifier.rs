@@ -830,6 +830,57 @@ fn post_purchase_delivery_is_finding_bound_and_checkpointed_in_the_report() -> T
 }
 
 #[test]
+fn asserted_finding_can_be_verified_from_checkpointed_delivery_alone() -> TestResult {
+    let fx = fixture()?;
+    let mut finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    finding.guarantee_class = FindingGuaranteeClass::Asserted;
+    finding.evidence_class = FindingEvidenceClass::Asserted;
+    finding.evidence_receipt_ids.clear();
+    finding.replay_recipe_sha256 = None;
+    finding.signature.clear();
+    finding.finding_id = compute_finding_id(&finding)?;
+    let finding = sign_finding(finding, &fx.issuer)?;
+    let raw_finding = String::from_utf8(canonical_json_bytes(&finding)?)?;
+
+    let delivery = resolved_delivery(
+        &fx,
+        &finding.payload_sha256,
+        Some(finding_delivery_overlay(&finding.finding_id)),
+    )?;
+    let expected_receipt_id = delivery.receipt.receipt.id.clone();
+    let mut evidence = bundle(&fx, Vec::new());
+    evidence.finding_delivery = Some(delivery);
+    evidence.recipe_preimage = None;
+    evidence.bond_snapshot = None;
+
+    let mut trust = trust_roots(&fx);
+    let mut profile = trust.profile.body.clone();
+    profile.required_facets = vec![
+        FindingFacetKind::ArtifactIntegrity,
+        FindingFacetKind::ReceiptAuthenticity,
+        FindingFacetKind::CheckpointMembership,
+        FindingFacetKind::GuaranteeConsistency,
+    ];
+    trust.profile = resign_profile(profile)?;
+
+    let draft = verify_finding_evidence(&raw_finding, &trust, &evidence)?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::ReceiptAuthenticity),
+        Some(FindingFacetOutcome::Verified)
+    );
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::CheckpointMembership),
+        Some(FindingFacetOutcome::Verified)
+    );
+    assert_eq!(
+        draft.finding_delivery_receipt_id.as_deref(),
+        Some(expected_receipt_id.as_str())
+    );
+    assert!(draft.satisfies_required_facets(&trust.profile.body));
+    Ok(())
+}
+
+#[test]
 fn post_purchase_delivery_rejects_an_overlay_for_another_finding() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);

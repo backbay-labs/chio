@@ -47,6 +47,7 @@ pub(super) fn cmd_finding_verify(
     trust_roots: Option<&Path>,
     evidence: Option<&Path>,
     recipe: Option<&Path>,
+    status_rollback_floor: Option<&Path>,
     integrity_only: bool,
     json_output: bool,
     control_url: Option<&str>,
@@ -123,6 +124,8 @@ pub(super) fn cmd_finding_verify(
         .as_deref()
         .map(decode_status_proof_input)
         .transpose()?;
+    let status_floor_path =
+        resolve_status_floor_path(status_proof_input.is_some(), status_rollback_floor)?;
     let trust = FindingVerifierTrustRoots {
         governance_authority: roots.governance_authority,
         profile: roots.profile,
@@ -140,6 +143,7 @@ pub(super) fn cmd_finding_verify(
             recipe_preimage.is_some(),
             status_proof_input.is_some(),
             status_freshness_policy.is_some(),
+            status_floor_path.is_some(),
         )?,
         trusted_time_input_sha256: trusted_time_input_digest(trusted_time, roots.trusted_time)?,
     };
@@ -185,6 +189,32 @@ pub(super) fn cmd_finding_verify(
     let draft = verify_finding_evidence(&accepted.raw, &trust, &bundle).map_err(|error| {
         CliError::cli_other_error(format!("finding evidence verification failed: {error}"))
     })?;
+    let required_facets_verified = draft
+        .required_facets(&trust.profile.body)
+        .into_iter()
+        .all(|facet| draft.facet_outcome(facet) == Some(FindingFacetOutcome::Verified));
+    if !required_facets_verified {
+        return emit_evidence_report(&accepted, &draft, &trust.profile.body, json_output);
+    }
+    if status_proof_input.is_some()
+        && draft.facet_outcome(FindingFacetKind::StatusLiveness)
+            != Some(FindingFacetOutcome::Verified)
+    {
+        emit_evidence_report(&accepted, &draft, &trust.profile.body, json_output)?;
+        return Err(CliError::cli_other_error(
+            "supplied status proof did not establish live status".to_string(),
+        ));
+    }
+    if let (Some(path), Some(proof_bytes)) = (status_floor_path, status_proof_input.as_deref()) {
+        let authorization = trust
+            .status_operator_authorization
+            .as_ref()
+            .ok_or_else(|| CliError::cli_other_error("status authorization is missing".to_string()))?;
+        let freshness = trust.status_freshness_policy.ok_or_else(|| {
+            CliError::cli_other_error("status freshness policy is missing".to_string())
+        })?;
+        advance_verified_status_floor(path, proof_bytes, authorization, freshness)?;
+    }
     emit_evidence_report(&accepted, &draft, &trust.profile.body, json_output)
 }
 
@@ -425,6 +455,54 @@ fn decode_status_proof_input(encoded: &str) -> Result<Vec<u8>, CliError> {
     Ok(bytes)
 }
 
+fn resolve_status_floor_path(
+    proof_present: bool,
+    path: Option<&Path>,
+) -> Result<Option<&Path>, CliError> {
+    match (proof_present, path) {
+        (true, Some(path)) => Ok(Some(path)),
+        (true, None) => Err(CliError::cli_other_error(
+            "finding status proof requires a durable floor via --status-rollback-floor"
+                .to_string(),
+        )),
+        (false, Some(_)) => Err(CliError::cli_other_error(
+            "--status-rollback-floor requires a status proof in the evidence bundle".to_string(),
+        )),
+        (false, None) => Ok(None),
+    }
+}
+
+fn advance_verified_status_floor(
+    path: &Path,
+    proof_bytes: &[u8],
+    authorization: &chio_finding::FindingStatusOperatorAuthorization,
+    freshness: chio_finding::FindingStatusFreshnessPolicy,
+) -> Result<(), CliError> {
+    let proof = chio_finding::parse_status_proof_input(proof_bytes).map_err(|error| {
+        CliError::cli_other_error(format!("finding status proof is invalid: {error}"))
+    })?;
+    let epoch = chio_finding::verify_status_proof_input(&proof, authorization, freshness).map_err(
+        |error| {
+            CliError::cli_other_error(format!(
+                "finding status proof failed durable-floor verification: {error}"
+            ))
+        },
+    )?;
+    let authorization_sha256 = sha256_hex(&canonical_json_bytes(authorization)?);
+    advance_status_floor(
+        path,
+        &FindingStatusFloorObservation {
+            feed_id: &epoch.body.feed_id,
+            key_domain_nonce: epoch.body.key_domain_nonce,
+            map_epoch: epoch.body.map_epoch,
+            epoch_id: &epoch.body.status_epoch_id,
+            root_hash: &epoch.body.root_hash,
+        },
+        authorization,
+        &authorization_sha256,
+    )
+}
+
 fn read_bounded_support_file(path: &Path, kind: &str) -> Result<Vec<u8>, CliError> {
     let mut reader = std::fs::File::open(path)?
         .take((FINDING_VERIFY_SUPPORT_MAX_BYTES as u64).saturating_add(1));
@@ -460,6 +538,7 @@ fn resolver_policy_digest(
     recipe_supplied: bool,
     status_proof_supplied: bool,
     status_trust_configured: bool,
+    durable_status_floor_configured: bool,
 ) -> Result<String, CliError> {
     digest_of(&serde_json::json!({
         "resolver": RESOLVER_POLICY_ID,
@@ -467,6 +546,7 @@ fn resolver_policy_digest(
         "recipe_preimage_supplied": recipe_supplied,
         "status_proof_supplied": status_proof_supplied,
         "status_trust_configured": status_trust_configured,
+        "durable_status_floor_configured": durable_status_floor_configured,
         "nonce_evidence_resolved": false,
     }))
 }
@@ -662,6 +742,80 @@ mod tests {
                 )
             })?;
         assert!(error.to_string().contains("requires a pinned operator"));
+        Ok(())
+    }
+
+    #[test]
+    fn finding_verify_requires_a_durable_status_floor() -> Result<(), CliError> {
+        let error = resolve_status_floor_path(true, None)
+            .err()
+            .ok_or_else(|| CliError::cli_other_error("missing floor was accepted".to_string()))?;
+        assert!(error.to_string().contains("--status-rollback-floor"));
+        Ok(())
+    }
+
+    #[test]
+    fn finding_verify_rejects_a_verified_epoch_below_its_durable_floor() -> Result<(), CliError> {
+        let proof = chio_finding::parse_status_proof_input(QUALIFIED_STATUS_PROOF)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let chio_finding::FindingStatusProofInput::NonInclusion(non_inclusion) = &proof else {
+            return Err(CliError::cli_other_error(
+                "qualified proof is not non-inclusion".to_string(),
+            ));
+        };
+        let epoch_bytes = base64::engine::general_purpose::STANDARD
+            .decode(&non_inclusion.signed_status_epoch_b64)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let epoch = chio_finding::parse_signed_status_epoch(&epoch_bytes)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let authorization = chio_finding::FindingStatusOperatorAuthorization {
+            role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
+            feed_id: epoch.body.feed_id.clone(),
+            operator: chio_finding::FindingAuthorityKeyPolicy {
+                authority_id: epoch.body.operator_id.clone(),
+                key: epoch.body.operator_key,
+                key_epoch: epoch.body.operator_key_epoch,
+                valid_from: epoch.body.valid_from,
+                valid_until: epoch.body.valid_until,
+                rotation_policy_ref: "qualified-status-rotation".to_string(),
+                revocation_status_ref: "qualified-status-revocations".to_string(),
+            },
+            revoked_from: None,
+        };
+        let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization)?);
+        let dir = tempfile::tempdir()?;
+        let floor_path = dir.path().join("status-floor.json");
+        write_status_floor(
+            &floor_path,
+            &FindingStatusCliFloor {
+                schema: FINDING_STATUS_FLOOR_SCHEMA_V1.to_string(),
+                feed_id: epoch.body.feed_id.clone(),
+                operator_id: epoch.body.operator_id.clone(),
+                rotation_policy_ref: authorization.operator.rotation_policy_ref.clone(),
+                operator_key_epoch: epoch.body.operator_key_epoch,
+                operator_authorization_sha256: authorization_sha256,
+                key_domain_nonce: epoch.body.key_domain_nonce,
+                map_epoch: epoch.body.map_epoch.saturating_add(1),
+                epoch_id: "a".repeat(64),
+                root_hash: "b".repeat(64),
+            },
+        )?;
+
+        let error = advance_verified_status_floor(
+            &floor_path,
+            QUALIFIED_STATUS_PROOF,
+            &authorization,
+            chio_finding::FindingStatusFreshnessPolicy {
+                now: non_inclusion.checked_at,
+                max_epoch_age_secs: 60,
+            },
+        )
+        .err()
+        .ok_or_else(|| CliError::cli_other_error("status rollback was accepted".to_string()))?;
+        assert!(
+            error.to_string().contains("below the durable rollback floor"),
+            "unexpected error: {error}"
+        );
         Ok(())
     }
 }

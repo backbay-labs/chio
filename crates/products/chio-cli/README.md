@@ -120,9 +120,12 @@ is the same trusted time recorded in the report.
 optional `bond_snapshot` of `{backing, live, accepted_at}`. A portable status
 proof is carried as `status_proof_input_b64`, preserving the exact canonical
 `chio.finding.status-proof-input.v1` bytes. It is accepted only when the paired
-status trust fields above are pinned. Every member is optional; a facet whose
-evidence is absent reports unavailable and is never collapsed into a verified
-badge.
+status trust fields above are pinned and `--status-rollback-floor <FILE>` names
+durable per-feed high-water state. The same floor file may be shared with
+`chio finding status`; a signed proof below its retained map epoch or a
+same-epoch conflicting root fails closed. Every member is optional; a facet
+whose evidence is absent reports unavailable and is never collapsed into a
+verified badge.
 
 `chio finding challenge --evidence <FILE>` supplies the operator half of a
 challenge. It is exactly the registered `chio.finding.challenge.v1` body

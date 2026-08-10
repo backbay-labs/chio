@@ -496,24 +496,30 @@ pub fn verify_finding_evidence(
             }
         }
     }
+    let has_production_receipts = !bundle.receipts.is_empty();
+    let has_authenticated_delivery = authenticated_delivery_receipt_id.is_some();
     let receipt_authenticity = match failure {
         Some(reason) => facet(
             FindingFacetKind::ReceiptAuthenticity,
             FindingFacetOutcome::Failed,
             reason,
         ),
-        None if bundle.receipts.is_empty() => facet(
+        None if !has_production_receipts && !has_authenticated_delivery => facet(
             FindingFacetKind::ReceiptAuthenticity,
             FindingFacetOutcome::Unavailable,
-            "no production evidence receipts resolved",
+            "no production or Finding-specific delivery receipts resolved",
         ),
         None => facet(
             FindingFacetKind::ReceiptAuthenticity,
             FindingFacetOutcome::Verified,
-            if authenticated_delivery_receipt_id.is_some() {
-                "production evidence and Finding-specific delivery receipt verified strictly"
+            if has_production_receipts {
+                if has_authenticated_delivery {
+                    "production evidence and Finding-specific delivery receipt verified strictly"
+                } else {
+                    "production evidence receipts verified strictly"
+                }
             } else {
-                "production evidence receipts verified strictly"
+                "Finding-specific delivery receipt verified strictly"
             },
         ),
     };
@@ -521,18 +527,45 @@ pub fn verify_finding_evidence(
     facets.push(receipt_authenticity);
 
     // Step 3: checkpoint membership with the full wrapper cross-check.
-    let checkpoint_membership = if bundle.receipts.is_empty() {
-        facet(
-            FindingFacetKind::CheckpointMembership,
-            FindingFacetOutcome::Unavailable,
-            "no evidence receipts resolved",
-        )
-    } else if !receipts_ok {
-        facet(
-            FindingFacetKind::CheckpointMembership,
-            FindingFacetOutcome::Failed,
-            "receipts did not verify; membership not evaluated",
-        )
+    let checkpoint_membership = if !receipts_ok {
+        if bundle.receipts.is_empty() && bundle.finding_delivery.is_none() {
+            facet(
+                FindingFacetKind::CheckpointMembership,
+                FindingFacetOutcome::Unavailable,
+                "no production or Finding-specific delivery receipts resolved",
+            )
+        } else {
+            facet(
+                FindingFacetKind::CheckpointMembership,
+                FindingFacetOutcome::Failed,
+                "receipts did not verify; membership not evaluated",
+            )
+        }
+    } else if bundle.receipts.is_empty() {
+        match bundle.finding_delivery.as_ref() {
+            Some(delivery) => match verify_post_finding_checkpoint_membership(
+                std::slice::from_ref(&delivery.receipt),
+                &delivery.checkpoints,
+                &delivery.checkpoint_transparency,
+                profile,
+            ) {
+                Ok(()) => facet(
+                    FindingFacetKind::CheckpointMembership,
+                    FindingFacetOutcome::Verified,
+                    "Finding delivery receipt is a member of a pinned, signature-valid checkpoint",
+                ),
+                Err(error) => facet(
+                    FindingFacetKind::CheckpointMembership,
+                    FindingFacetOutcome::Failed,
+                    format!("delivery membership failed: {error}"),
+                ),
+            },
+            None => facet(
+                FindingFacetKind::CheckpointMembership,
+                FindingFacetOutcome::Unavailable,
+                "no production or Finding-specific delivery receipts resolved",
+            ),
+        }
     } else {
         match verify_checkpoint_membership(
             &bundle.receipts,

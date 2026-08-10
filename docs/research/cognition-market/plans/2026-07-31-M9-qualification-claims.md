@@ -68,7 +68,9 @@ delivery-digest and bond-backed claims require only the signed report. The
 signed report commits each selected attachment digest. An independent
 verifier strict-parses and rechecks the selected types, signatures, digest
 pins, replay recipe, status authorization, freshness, sparse path, and claim
-specific facets.
+specific facets. The CLI verifier additionally requires its portable status
+proof to cross the same durable per-feed rollback floor used by the status
+surface before it emits a successful report.
 
 Unsigned recipe and status inputs are accepted only under the
 `advisory-observation` role. Wrong role, wrong schema, wrong graph digest, and

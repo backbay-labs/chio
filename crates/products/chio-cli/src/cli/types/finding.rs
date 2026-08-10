@@ -51,6 +51,11 @@ pub(crate) enum FindingCommands {
         /// Raw replay-recipe preimage bytes the artifact commits to.
         #[arg(long, conflicts_with = "integrity_only")]
         recipe: Option<PathBuf>,
+        /// Durable per-feed status rollback floor. Required whenever the
+        /// evidence bundle carries a portable status proof. This may point to
+        /// the same floor file used by `chio finding status`.
+        #[arg(long, conflicts_with = "integrity_only")]
+        status_rollback_floor: Option<PathBuf>,
         /// Assert artifact integrity alone and name every facet left
         /// unevaluated instead of failing on absent evidence.
         #[arg(long, default_value_t = false)]
