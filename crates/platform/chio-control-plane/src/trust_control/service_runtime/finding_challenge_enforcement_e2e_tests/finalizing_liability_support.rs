@@ -7,6 +7,13 @@ enum EnforcementRoot {
     Unpublished,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PriorVoluntaryRetraction {
+    None,
+    Pending,
+    Published,
+}
+
 /// One liability head driven to `finalizing` with its seller-impairment
 /// intent fenced, paired with the enforcement the settlement choke point
 /// verifies. The head carries exactly the allocation and vault the
@@ -18,6 +25,7 @@ struct FinalizingLiability {
     seller: PublicKey,
     intent_key: String,
     retraction_key: String,
+    status_intent_key: String,
     enforcement: SignedFindingChallengeEnforcement,
     penalty: SignedOpenMarketPenalty,
     snapshot: SignedFindingFinalizedBondSnapshot,
@@ -42,6 +50,18 @@ fn finalizing_liability_without_anchor() -> Result<FinalizingLiability, AnyError
 fn finalizing_liability_with(
     root: EnforcementRoot,
     anchor_fenced: bool,
+) -> Result<FinalizingLiability, AnyError> {
+    finalizing_liability_with_prior_retraction(
+        root,
+        anchor_fenced,
+        PriorVoluntaryRetraction::None,
+    )
+}
+
+fn finalizing_liability_with_prior_retraction(
+    root: EnforcementRoot,
+    anchor_fenced: bool,
+    prior_retraction: PriorVoluntaryRetraction,
 ) -> Result<FinalizingLiability, AnyError> {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -159,6 +179,41 @@ fn finalizing_liability_with(
         )?;
     }
     let retraction_key = byte_hex64(0xc3);
+    let status_intent_key = if prior_retraction == PriorVoluntaryRetraction::None {
+        retraction_key.clone()
+    } else {
+        let voluntary_intent_id = byte_hex64(0xc4);
+        let voluntary_bytes = canonical_json_bytes(&serde_json::json!({
+            "finding_id": finding.finding_id,
+            "reason": "seller_voluntary_retraction",
+            "schema": "chio.finding.voluntary-retraction.v1",
+        }))?;
+        deployment.status.issue_retraction_intent(
+            &chio_store_sqlite::FindingRetractionIntentInput {
+                intent_id: &voluntary_intent_id,
+                feed_id: "status-feed/venue-challenge",
+                operator_id: "status-operator",
+                finding_id: &finding.finding_id,
+                source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
+                intent_bytes: &voluntary_bytes,
+                issued_at: NOW + 4,
+                inclusion_deadline: NOW + 3_604,
+                created_at: NOW + 4,
+            },
+        )?;
+        if prior_retraction == PriorVoluntaryRetraction::Published {
+            let config = market_config();
+            let publisher = crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+                deployment.status.clone(),
+                config.status_feed_operator,
+                config.status_feed_service_bond,
+                keypair(36),
+                config.status_max_epoch_age_secs,
+            )?;
+            publisher.publish_retraction(&voluntary_intent_id, &[], NOW + 4)?;
+        }
+        voluntary_intent_id
+    };
     deployment.challenges.record_effect_intent(
         &retraction_key,
         chio_store_sqlite::FindingEffectIntentKind::Retraction,
@@ -215,6 +270,48 @@ fn finalizing_liability_with(
             Some(&liability_key),
             false,
             NOW + 5,
+        )?;
+        if prior_retraction != PriorVoluntaryRetraction::None {
+            deployment.challenges.bind_effect_root(
+                &anchor_key,
+                &liability_key,
+                &prepared.merkle_root,
+                &prepared.evidence_hash,
+                NOW + 5,
+            )?;
+            deployment.challenges.advance_effect_intent(
+                &anchor_key,
+                FindingEffectIntentState::Dispatched,
+                NOW + 6,
+            )?;
+            deployment.challenges.confirm_effect_root(
+                &anchor_key,
+                &prepared.merkle_root,
+                &prepared.evidence_hash,
+                NOW + 6,
+            )?;
+        }
+    }
+    if root == EnforcementRoot::Confirmed
+        && prior_retraction != PriorVoluntaryRetraction::None
+    {
+        deployment.challenges.bind_effect_root(
+            &enforcement_root_intent_key(),
+            &liability_key,
+            &prepared.merkle_root,
+            &prepared.evidence_hash,
+            NOW + 5,
+        )?;
+        deployment.challenges.advance_effect_intent(
+            &enforcement_root_intent_key(),
+            FindingEffectIntentState::Dispatched,
+            NOW + 6,
+        )?;
+        deployment.challenges.confirm_effect_root(
+            &enforcement_root_intent_key(),
+            &prepared.merkle_root,
+            &prepared.evidence_hash,
+            NOW + 6,
         )?;
     }
     let penalty_body = &penalty.body;
@@ -277,11 +374,14 @@ fn finalizing_liability_with(
         seller,
         intent_key,
         retraction_key,
+        status_intent_key,
         enforcement,
         penalty,
         snapshot,
     };
-    if root == EnforcementRoot::Confirmed {
+    if root == EnforcementRoot::Confirmed
+        && prior_retraction == PriorVoluntaryRetraction::None
+    {
         let refused = case
             .finalize_observing(
                 &ScriptedObservations::qualified(),
@@ -396,7 +496,7 @@ impl FinalizingLiability {
                 keypair(36),
                 config.status_max_epoch_age_secs,
             )?;
-        publisher.publish_retraction(&byte_hex64(0xc3), &[], now)?;
+        publisher.publish_retraction(&self.status_intent_key, &[], now)?;
         Ok(())
     }
 }

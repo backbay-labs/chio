@@ -1183,6 +1183,26 @@ fn verify_intent_replay(
     Ok(())
 }
 
+fn verify_intent_status_pair(
+    intent: &FindingRetractionIntentRecord,
+    status: &FindingStatusRecord,
+) -> Result<(), FindingStatusStoreError> {
+    if intent.feed_id != status.feed_id
+        || intent.operator_id != status.operator_id
+        || intent.finding_id != status.finding_id
+        || intent.intent_sha256 != status.retraction_intent_sha256
+        || (intent.state != FindingRetractionIntentState::Published
+            && status.state != FindingStickyStatus::Pending)
+        || (intent.state == FindingRetractionIntentState::Published
+            && status.state != FindingStickyStatus::Retracted)
+    {
+        return Err(invariant(
+            "retraction intent does not match its sticky status row",
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 struct RawStatus {
     feed_id: String,

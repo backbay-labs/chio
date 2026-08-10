@@ -27,7 +27,9 @@ use chio_store_sqlite::{
 };
 
 use super::finding_status_verifier::authorization;
-use super::{FindingStatusOperatorPin, FindingStatusServiceBond};
+use super::{
+    FindingStatusOperatorPin, FindingStatusServiceBond, FINDING_STATUS_MAX_EPOCH_AGE_SECS,
+};
 
 /// External-cron status publisher with the operator signing key.
 pub struct FindingStatusEpochPublisher {
@@ -61,6 +63,7 @@ impl FindingStatusEpochPublisher {
             .validate(&operator)
             .map_err(|error| error.to_string())?;
         if max_epoch_age_secs == 0
+            || max_epoch_age_secs > FINDING_STATUS_MAX_EPOCH_AGE_SECS
             || operator_keypair.public_key()
                 != operator.authority.key().map_err(|e| e.to_string())?
         {

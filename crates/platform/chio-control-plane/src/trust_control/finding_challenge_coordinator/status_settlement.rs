@@ -39,19 +39,34 @@ impl FindingChallengeCoordinator {
         .map_err(|_| ChallengeCoordinatorError::Canonical)?;
         let record = self
             .status
-            .get_retraction_intent(intent_id)
+            .get_retraction_intent_for_effect(
+                intent_id,
+                &self.status_feed_operator_ref,
+                &enforcement.body.finding_id,
+            )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
             .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
-        match record.state {
-            FindingRetractionIntentState::WaitingFinality => {
+        match (record.source, record.state) {
+            (
+                FindingRetractionIntentSource::Voluntary,
+                FindingRetractionIntentState::DispatchEligible
+                | FindingRetractionIntentState::Published,
+            ) => {}
+            (
+                FindingRetractionIntentSource::Enforcement,
+                FindingRetractionIntentState::WaitingFinality,
+            ) => {
                 self.status
-                    .mark_retraction_dispatch_eligible(intent_id, &evidence, now)
+                    .mark_retraction_dispatch_eligible(&record.intent_id, &evidence, now)
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;
             }
-            FindingRetractionIntentState::DispatchEligible
-            | FindingRetractionIntentState::Published => {
+            (
+                FindingRetractionIntentSource::Enforcement,
+                FindingRetractionIntentState::DispatchEligible
+                | FindingRetractionIntentState::Published,
+            ) => {
                 let evidence_sha256 = sha256_hex(&evidence);
                 if record.finality_evidence_sha256.as_deref() != Some(evidence_sha256.as_str())
                     || record.finality_evidence_bytes.as_deref() != Some(evidence.as_slice())
@@ -61,6 +76,14 @@ impl FindingChallengeCoordinator {
                             .to_owned(),
                     ));
                 }
+            }
+            (
+                FindingRetractionIntentSource::Voluntary,
+                FindingRetractionIntentState::WaitingFinality,
+            ) => {
+                return Err(ChallengeCoordinatorError::Settlement(
+                    "voluntary retraction is not dispatch eligible".to_owned(),
+                ));
             }
         }
         Ok(())
@@ -136,7 +159,11 @@ impl FindingChallengeCoordinator {
         let retraction_key = self.retraction_effect_key(enforcement)?;
         let status = self
             .status
-            .get_retraction_intent(retraction_key)
+            .get_retraction_intent_for_effect(
+                retraction_key,
+                &self.status_feed_operator_ref,
+                &enforcement.body.finding_id,
+            )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
             .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
         if status.state != FindingRetractionIntentState::Published {

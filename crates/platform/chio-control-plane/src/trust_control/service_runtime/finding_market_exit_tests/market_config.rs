@@ -59,3 +59,13 @@ fn market_config() -> FindingMarketConfig {
         fee_schedule_operator_keys: vec![keypair(24).public_key().to_hex()],
     }
 }
+
+#[test]
+fn finding_market_config_rejects_non_ijson_status_freshness() {
+    let mut config = market_config();
+    config.status_max_epoch_age_secs = 1_u64 << 53;
+    assert!(config.validate().is_err());
+
+    config.status_max_epoch_age_secs = (1_u64 << 53) - 1;
+    assert!(config.validate().is_ok());
+}

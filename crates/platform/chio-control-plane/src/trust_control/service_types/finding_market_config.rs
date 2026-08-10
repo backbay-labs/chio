@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::CliError;
 
 const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
+pub(crate) const FINDING_STATUS_MAX_EPOCH_AGE_SECS: u64 = I_JSON_MAX_SAFE_INTEGER;
 
 /// Fixed numeric key domain for `chio.finding.status.v1`.
 ///
@@ -481,9 +482,12 @@ impl FindingMarketConfig {
         self.status_feed_operator.validate()?;
         self.status_feed_service_bond
             .validate(&self.status_feed_operator)?;
-        if self.status_max_epoch_age_secs == 0 {
+        if self.status_max_epoch_age_secs == 0
+            || self.status_max_epoch_age_secs > FINDING_STATUS_MAX_EPOCH_AGE_SECS
+        {
             return Err(CliError::cli_other_error(
-                "finding-market status max epoch age must be nonzero".to_string(),
+                "finding-market status max epoch age must be a positive I-JSON safe integer"
+                    .to_string(),
             ));
         }
         if self.fee_schedule_operator_keys.is_empty() {

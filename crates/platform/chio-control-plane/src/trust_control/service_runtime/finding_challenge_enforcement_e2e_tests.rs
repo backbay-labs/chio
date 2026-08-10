@@ -7946,6 +7946,81 @@ fn finding_challenge_confirmed_impairment_waits_for_retraction_before_settlement
 }
 
 #[test]
+fn finding_challenge_finalization_reuses_pending_voluntary_retraction() -> TestResult {
+    let case = finalizing_liability_with_prior_retraction(
+        EnforcementRoot::Confirmed,
+        true,
+        PriorVoluntaryRetraction::Pending,
+    )?;
+    let resolved = case
+        .deployment
+        .status
+        .get_retraction_intent_for_effect(
+            &case.retraction_key,
+            "status-feed/venue-challenge",
+            &case.enforcement.body.finding_id,
+        )?
+        .ok_or("voluntary retraction satisfies the enforcement effect")?;
+    assert_eq!(resolved.intent_id, case.status_intent_key);
+    assert_eq!(
+        resolved.source,
+        chio_store_sqlite::FindingRetractionIntentSource::Voluntary
+    );
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        case.deployment.challenges.advance_effect_intent(
+            &case.intent_key,
+            state,
+            SETTLEMENT_NOW,
+        )?;
+    }
+
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
+        FindingFinalization::AwaitingStatusPublication
+    );
+    case.publish_status(SETTLEMENT_NOW + 2)?;
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 3)?,
+        FindingFinalization::AlreadyConfirmed
+    );
+    let settled = case.head()?;
+    assert_eq!(settled.state, FindingLiabilityState::Settled);
+    assert!(!settled.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_finalization_reuses_published_voluntary_retraction() -> TestResult {
+    let case = finalizing_liability_with_prior_retraction(
+        EnforcementRoot::Confirmed,
+        true,
+        PriorVoluntaryRetraction::Published,
+    )?;
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        case.deployment.challenges.advance_effect_intent(
+            &case.intent_key,
+            state,
+            SETTLEMENT_NOW,
+        )?;
+    }
+
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
+        FindingFinalization::AlreadyConfirmed
+    );
+    let settled = case.head()?;
+    assert_eq!(settled.state, FindingLiabilityState::Settled);
+    assert!(!settled.publication_pending);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> TestResult {
     let case = finalizing_liability_pending_retraction()?;
     for state in [

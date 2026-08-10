@@ -422,16 +422,7 @@ impl SqliteFindingStatusStore {
             verify_intent_replay(&existing, input, &intent_sha256)?;
             let status = load_status_tx(&transaction, input.feed_id, input.finding_id)?
                 .ok_or_else(|| invariant("exact intent replay is missing its sticky status row"))?;
-            if status.retraction_intent_sha256 != intent_sha256
-                || (existing.state != FindingRetractionIntentState::Published
-                    && status.state != FindingStickyStatus::Pending)
-                || (existing.state == FindingRetractionIntentState::Published
-                    && status.state != FindingStickyStatus::Retracted)
-            {
-                return Err(invariant(
-                    "exact intent replay does not match its sticky pending row",
-                ));
-            }
+            verify_intent_status_pair(&existing, &status)?;
             transaction.commit().map_err(sqlite_error)?;
             return Ok(FindingStatusWriteOutcome::ExactReplay);
         }
@@ -507,12 +498,14 @@ impl SqliteFindingStatusStore {
 
     /// Atomically enter an appeal-final liability into `finalizing`, set its
     /// publication-pending bit, and persist the exact enforcement retraction
-    /// outbox item plus sticky pending status.
+    /// outbox item plus sticky pending status. A prior voluntary retraction
+    /// for the same feed and finding is retained as the satisfying outbox
+    /// item instead of being replaced.
     ///
     /// This is the M5/M6 transaction boundary. An evaluation or reversible
     /// hold cannot call it because the liability must still be in the durable
     /// `pending_appeal` state. Exact replay accepts an already-finalizing head
-    /// only when the outbox bytes and sticky row are identical.
+    /// only when the outbox and sticky row remain consistent.
     #[cfg(feature = "cognition-market-experimental")]
     pub fn begin_finalizing_with_retraction(
         &self,
@@ -559,24 +552,26 @@ impl SqliteFindingStatusStore {
             verify_intent_replay(&existing, input, &intent_sha256)?;
             let status = load_status_tx(&transaction, input.feed_id, input.finding_id)?
                 .ok_or_else(|| invariant("exact intent replay is missing its sticky status row"))?;
-            if status.retraction_intent_sha256 != intent_sha256
-                || (existing.state != FindingRetractionIntentState::Published
-                    && status.state != FindingStickyStatus::Pending)
-                || (existing.state == FindingRetractionIntentState::Published
-                    && status.state != FindingStickyStatus::Retracted)
-            {
-                return Err(invariant(
-                    "exact intent replay does not match its sticky status row",
-                ));
-            }
+            verify_intent_status_pair(&existing, &status)?;
             FindingStatusWriteOutcome::ExactReplay
-        } else {
-            if let Some(status) = load_status_tx(&transaction, input.feed_id, input.finding_id)? {
+        } else if let Some(status) = load_status_tx(&transaction, input.feed_id, input.finding_id)?
+        {
+            let existing =
+                load_intent_by_finding_tx(&transaction, input.feed_id, input.finding_id)?
+                    .ok_or_else(|| {
+                        invariant("sticky status is missing its durable retraction intent")
+                    })?;
+            if existing.source != FindingRetractionIntentSource::Voluntary
+                || existing.operator_id != input.operator_id
+            {
                 return Err(FindingStatusStoreError::Conflict(format!(
-                    "finding {} is already {:?} under intent {}",
-                    input.finding_id, status.state, status.retraction_intent_sha256
+                    "finding {} is already governed by a different retraction intent",
+                    input.finding_id
                 )));
             }
+            verify_intent_status_pair(&existing, &status)?;
+            FindingStatusWriteOutcome::ExactReplay
+        } else {
             transaction
                 .execute(
                     r#"
@@ -956,6 +951,54 @@ impl SqliteFindingStatusStore {
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
         let intent = load_intent_tx(&transaction, intent_id)?;
+        transaction.commit().map_err(sqlite_error)?;
+        Ok(intent)
+    }
+
+    /// Resolve the status intent satisfying one signed enforcement effect.
+    ///
+    /// The normal path is the exact enforcement intent id. If an authorized
+    /// voluntary retraction made the finding sticky first, the unique intent
+    /// for the same feed and finding satisfies the effect without replacing
+    /// its signed bytes or sticky digest.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub fn get_retraction_intent_for_effect(
+        &self,
+        effect_intent_id: &str,
+        feed_id: &str,
+        finding_id: &str,
+    ) -> Result<Option<FindingRetractionIntentRecord>, FindingStatusStoreError> {
+        require_hex64(effect_intent_id, "effect_intent_id")?;
+        require_identifier(feed_id, "feed_id")?;
+        require_hex64(finding_id, "finding_id")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        ensure_feed_registered_tx(&transaction, feed_id)?;
+        let intent = if let Some(intent) = load_intent_tx(&transaction, effect_intent_id)? {
+            if intent.feed_id != feed_id || intent.finding_id != finding_id {
+                return Err(FindingStatusStoreError::Conflict(
+                    "retraction effect resolves to a different feed or finding".to_owned(),
+                ));
+            }
+            Some(intent)
+        } else {
+            match load_intent_by_finding_tx(&transaction, feed_id, finding_id)? {
+                Some(intent) if intent.source == FindingRetractionIntentSource::Voluntary => {
+                    Some(intent)
+                }
+                Some(_) => {
+                    return Err(FindingStatusStoreError::Conflict(
+                        "retraction effect does not name the durable enforcement intent".to_owned(),
+                    ));
+                }
+                None => None,
+            }
+        };
+        if let Some(intent) = intent.as_ref() {
+            let status = load_status_tx(&transaction, feed_id, finding_id)?
+                .ok_or_else(|| invariant("resolved retraction intent has no sticky status"))?;
+            verify_intent_status_pair(intent, &status)?;
+        }
         transaction.commit().map_err(sqlite_error)?;
         Ok(intent)
     }

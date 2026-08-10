@@ -23,7 +23,9 @@ use chio_store_sqlite::{
     SqliteFindingStatusStore, VerifiedFindingStatusProofInput,
 };
 
-use super::{FindingStatusOperatorPin, FindingStatusServiceBond};
+use super::{
+    FindingStatusOperatorPin, FindingStatusServiceBond, FINDING_STATUS_MAX_EPOCH_AGE_SECS,
+};
 
 struct PortableStatusMaterial {
     proof: FindingStatusProofInput,
@@ -212,8 +214,10 @@ impl MarketFindingStatusVerifier {
         max_epoch_age_secs: u64,
         store: SqliteFindingStatusStore,
     ) -> Result<Self, String> {
-        if max_epoch_age_secs == 0 {
-            return Err("finding status max epoch age must be nonzero".to_owned());
+        if max_epoch_age_secs == 0 || max_epoch_age_secs > FINDING_STATUS_MAX_EPOCH_AGE_SECS {
+            return Err(
+                "finding status max epoch age must be a positive I-JSON safe integer".to_owned(),
+            );
         }
         authorization(&operator)?
             .validate()
