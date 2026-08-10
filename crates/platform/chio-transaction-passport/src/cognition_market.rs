@@ -12,8 +12,8 @@ use std::sync::Arc;
 use chio_core_types::crypto::PublicKey;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
-    verify_signed_verifier_report, verify_status_proof_input, FindingFacetKind,
-    FindingFacetOutcome, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
+    verify_signed_verifier_report, verify_status_proof_input, FindingAuthorityKeyPolicy,
+    FindingFacetKind, FindingFacetOutcome, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
     FindingStatusNonInclusionProofInput, FindingStatusOperatorAuthorization,
     FindingStatusProofInput, SignedFindingStatusEpoch, SignedFindingVerifierReport,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
@@ -67,6 +67,7 @@ pub struct CognitionMarketProofTrust {
     pub trusted_passport_signer_keys: Vec<PublicKey>,
     pub trusted_checkpoint_signer_keys: Vec<PublicKey>,
     pub finding_verifier_authority: PublicKey,
+    pub finding_verifier_signer: FindingAuthorityKeyPolicy,
     pub trusted_verifier_profile_envelope_sha256: String,
     pub status: Option<CognitionMarketStatusTrust>,
 }
@@ -210,8 +211,33 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
                 format!("invalid signed verifier report: {error}"),
             )
         })?;
+    trust
+        .finding_verifier_signer
+        .validate("finding_verifier_signer")
+        .map_err(|error| {
+            claim_failed(format!(
+                "trusted verifier signer policy is invalid: {error}"
+            ))
+        })?;
+    if trust.finding_verifier_signer.key != trust.finding_verifier_authority {
+        return Err(claim_failed(
+            "trusted verifier signer policy and authority key disagree",
+        ));
+    }
     verify_signed_verifier_report(&report, &trust.finding_verifier_authority)
         .map_err(|error| invalid_artifact(report_node.path, error.to_string()))?;
+    if report.body.verifier_key_epoch != trust.finding_verifier_signer.key_epoch {
+        return Err(claim_failed(
+            "signed verifier report key epoch does not match the deployment-pinned signer policy",
+        ));
+    }
+    if report.body.evaluation_time < trust.finding_verifier_signer.valid_from
+        || report.body.evaluation_time >= trust.finding_verifier_signer.valid_until
+    {
+        return Err(claim_failed(
+            "signed verifier report evaluation time is outside the deployment-pinned signer lifecycle",
+        ));
+    }
     if report.body.verifier_profile_envelope_sha256
         != trust.trusted_verifier_profile_envelope_sha256
     {

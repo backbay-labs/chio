@@ -621,9 +621,9 @@ impl SqliteFindingMarketStore {
                 "backing envelope bytes do not carry the supplied backing body",
             ));
         }
-        if accepted_at == 0 || accepted_at >= backing.expires_at {
+        if accepted_at < backing.issued_at || accepted_at >= backing.expires_at {
             return Err(FindingMarketStoreError::Conflict(
-                "backing allocation is stale at acceptance time".to_owned(),
+                "backing allocation is not live at acceptance time".to_owned(),
             ));
         }
         let backing_envelope_sha256 = sha256_hex(backing_envelope_json.as_bytes());

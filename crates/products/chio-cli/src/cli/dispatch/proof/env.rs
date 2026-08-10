@@ -16,6 +16,8 @@ const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_K
 const TRANSACTION_TRUSTED_CHECKPOINT_KEYS_ENV: &str =
     "CHIO_TRANSACTION_TRUSTED_CHECKPOINT_KEYS";
 const FINDING_VERIFIER_AUTHORITY_KEY_ENV: &str = "CHIO_FINDING_VERIFIER_AUTHORITY_KEY";
+const FINDING_VERIFIER_SIGNER_POLICY_PATH_ENV: &str =
+    "CHIO_FINDING_VERIFIER_SIGNER_POLICY_PATH";
 const FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV: &str =
     "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256";
 const FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV: &str =
@@ -26,6 +28,7 @@ const FINDING_STATUS_AUTHORITY_LOCK_ROOT_ENV: &str = "CHIO_FINDING_STATUS_AUTHOR
 const FINDING_STATUS_NOW_UNIX_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_NOW_UNIX_SECONDS";
 const FINDING_STATUS_MAX_AGE_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_MAX_AGE_SECONDS";
 const FINDING_STATUS_AUTHORIZATION_MAX_BYTES: usize = 64 * 1024;
+const FINDING_VERIFIER_SIGNER_POLICY_MAX_BYTES: usize = 16 * 1024;
 const RUNTIME_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_RUNTIME_TRUSTED_ROOT_KEYS";
 const ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV: &str = "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS";
 const ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV: &str =
@@ -222,6 +225,12 @@ pub(super) fn cognition_market_proof_trust_from_env(
         .into_iter()
         .next()
         .ok_or_else(|| CliError::cli_other_error("Finding verifier authority key is missing"))?;
+    let finding_verifier_signer = finding_verifier_signer_policy_from_env()?;
+    if finding_verifier_signer.key != finding_verifier_authority {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_SIGNER_POLICY_PATH_ENV} key does not match {FINDING_VERIFIER_AUTHORITY_KEY_ENV}"
+        )));
+    }
     let trusted_verifier_profile_envelope_sha256 =
         required_sha256_env(FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV)?;
     let status = if status_claim_selected {
@@ -234,10 +243,45 @@ pub(super) fn cognition_market_proof_trust_from_env(
             trusted_passport_signer_keys: trusted_passport_signer_keys.to_vec(),
             trusted_checkpoint_signer_keys: trusted_checkpoint_signer_keys.to_vec(),
             finding_verifier_authority,
+            finding_verifier_signer,
             trusted_verifier_profile_envelope_sha256,
             status,
         },
     )
+}
+
+fn finding_verifier_signer_policy_from_env(
+) -> Result<chio_finding::FindingAuthorityKeyPolicy, CliError> {
+    let path = required_utf8_env(FINDING_VERIFIER_SIGNER_POLICY_PATH_ENV)?;
+    let mut reader = std::fs::File::open(&path)?
+        .take((FINDING_VERIFIER_SIGNER_POLICY_MAX_BYTES as u64).saturating_add(1));
+    let mut bytes = Vec::with_capacity(FINDING_VERIFIER_SIGNER_POLICY_MAX_BYTES.saturating_add(1));
+    reader.read_to_end(&mut bytes)?;
+    if bytes.len() > FINDING_VERIFIER_SIGNER_POLICY_MAX_BYTES {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_SIGNER_POLICY_PATH_ENV} exceeds the signer-policy size bound"
+        )));
+    }
+    let text = std::str::from_utf8(&bytes).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_SIGNER_POLICY_PATH_ENV} is not valid UTF-8: {error}"
+        ))
+    })?;
+    let canonical = chio_core_types::canonical_json_bytes_from_str(text).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_SIGNER_POLICY_PATH_ENV} is not strict canonical I-JSON: {error}"
+        ))
+    })?;
+    if canonical != bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_SIGNER_POLICY_PATH_ENV} is not the canonical signer-policy serialization"
+        )));
+    }
+    let policy: chio_finding::FindingAuthorityKeyPolicy = serde_json::from_slice(&bytes)?;
+    policy.validate("finding_verifier_signer").map_err(|error| {
+        CliError::cli_other_error(format!("Finding verifier signer policy is invalid: {error}"))
+    })?;
+    Ok(policy)
 }
 
 fn cognition_market_status_trust_from_env(

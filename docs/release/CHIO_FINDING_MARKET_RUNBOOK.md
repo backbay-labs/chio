@@ -135,6 +135,7 @@ running `chio proof verify <transaction-passport.json>`:
 ```bash
 export CHIO_TRANSACTION_TRUSTED_ROOT_KEYS=<passport-root-public-key>
 export CHIO_FINDING_VERIFIER_AUTHORITY_KEY=<finding-verifier-public-key>
+export CHIO_FINDING_VERIFIER_SIGNER_POLICY_PATH=<canonical-verifier-signer-policy.json>
 export CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256=<approved-profile-envelope-digest>
 export CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH=<canonical-authorization.json>
 export CHIO_FINDING_STATUS_AUTHORITY_DATABASE_PATH=<provisioned-authority.db>
@@ -143,13 +144,15 @@ export CHIO_FINDING_STATUS_NOW_UNIX_SECONDS=<trusted-verification-time>
 export CHIO_FINDING_STATUS_MAX_AGE_SECONDS=<deployment-freshness-limit>
 ```
 
-The verifier fails closed when any pin, authorization, durable authority
-store, trusted time, or freshness limit is missing or malformed. Provision
-the authority database and secure lock directory before verification and
-reuse them for every bundle from that feed and stable operator identity. The
-store advances the signed epoch high-water mark and retains sticky retraction
-state before a status-fresh claim can be granted. None of these trust inputs
-are derived from the proof bundle.
+The verifier signer policy pins the verifier key epoch, validity window,
+rotation policy, and revocation source, and its key must equal the separately
+pinned authority key. The verifier fails closed when any pin, authorization,
+durable authority store, trusted time, or freshness limit is missing or
+malformed. Provision the authority database and secure lock directory before
+verification and reuse them for every bundle from that feed and stable
+operator identity. The store advances the signed epoch high-water mark and
+retains sticky retraction state before a status-fresh claim can be granted.
+None of these trust inputs are derived from the proof bundle.
 
 At minimum, monitoring checks:
 

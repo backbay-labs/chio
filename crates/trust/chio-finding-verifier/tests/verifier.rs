@@ -927,6 +927,52 @@ fn post_purchase_delivery_rejects_a_checkpoint_after_report_evaluation() -> Test
 }
 
 #[test]
+fn production_receipts_cannot_postdate_report_evaluation() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    trust.trusted_time = fx.receipts[0].receipt.timestamp.saturating_sub(1);
+
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    let authenticity = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
+        .ok_or("receipt-authenticity facet missing")?;
+    assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
+    assert!(authenticity.reason.contains("after report evaluation"));
+    Ok(())
+}
+
+#[test]
+fn production_checkpoints_cannot_postdate_report_evaluation() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    trust.trusted_time = fx.receipts[1].receipt.timestamp;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.checkpoints[0] = checkpoint_at(
+        evidence.checkpoints[0].clone(),
+        trust.trusted_time.saturating_add(1),
+        &keypair(21),
+    )?;
+    evidence.checkpoint_transparency = build_checkpoint_transparency(&evidence.checkpoints)?;
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let membership = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::CheckpointMembership)
+        .ok_or("checkpoint-membership facet missing")?;
+    assert_eq!(membership.outcome, FindingFacetOutcome::Failed);
+    assert!(
+        membership.reason.contains("after report evaluation"),
+        "unexpected reason: {}",
+        membership.reason
+    );
+    Ok(())
+}
+
+#[test]
 fn asserted_finding_can_be_verified_from_checkpointed_delivery_alone() -> TestResult {
     let fx = fixture()?;
     let mut finding: Finding = serde_json::from_str(&fx.raw_finding)?;
@@ -1524,6 +1570,32 @@ fn backing_accepted_at_or_after_evaluation_is_not_verified() -> TestResult {
     );
     assert!(draft.backing_allocation_id.is_none());
     assert!(!draft.satisfies_required_facets(&fx.profile.body));
+    Ok(())
+}
+
+#[test]
+fn backing_cannot_be_accepted_before_its_signed_issue_time() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let mut evidence_bundle = bundle(&fx, clone_receipts(&fx));
+    let snapshot = evidence_bundle
+        .bond_snapshot
+        .as_mut()
+        .ok_or("bond snapshot missing")?;
+    let mut backing = snapshot.backing.body.clone();
+    backing.issued_at = snapshot.accepted_at.saturating_add(1);
+    backing.allocation_id = compute_allocation_id(&backing)?;
+    snapshot.backing = SignedExportEnvelope::sign(backing, &keypair(4))?;
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence_bundle)?;
+    let backing = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::BondBacking)
+        .ok_or("bond-backing facet missing")?;
+    assert_eq!(backing.outcome, FindingFacetOutcome::Failed);
+    assert!(backing.reason.contains("before its signed issue time"));
+    assert!(draft.backing_allocation_id.is_none());
     Ok(())
 }
 

@@ -41,7 +41,9 @@ use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
 };
 
-use crate::checkpoints::{verify_checkpoint_membership, verify_post_finding_checkpoint_membership};
+use crate::checkpoints::{
+    verify_post_finding_checkpoint_membership, verify_production_checkpoint_membership,
+};
 use crate::cost::FindingNonceResolver;
 use crate::cost::{evaluate_metered_exposure, evaluate_settled_spend, CostFacetOutcome};
 use crate::receipts::verify_receipt_strict;
@@ -464,6 +466,13 @@ pub fn verify_finding_evidence(
                 break;
             }
         }
+        if evidence.receipt.timestamp > trust.trusted_time {
+            failure = Some(format!(
+                "receipt {} was issued after report evaluation",
+                evidence.receipt.id
+            ));
+            break;
+        }
         if !production_signers.iter().any(|policy| {
             policy.key == evidence.receipt.kernel_key
                 && policy_covers(policy, evidence.receipt.timestamp)
@@ -583,12 +592,13 @@ pub fn verify_finding_evidence(
             ),
         }
     } else {
-        match verify_checkpoint_membership(
+        match verify_production_checkpoint_membership(
             &bundle.receipts,
             &bundle.checkpoints,
             &bundle.checkpoint_transparency,
             profile,
             &finding.evidence_checkpoint_ref,
+            trust.trusted_time,
         ) {
             Ok(()) => match bundle.finding_delivery.as_ref() {
                 Some(delivery) => match verify_post_finding_checkpoint_membership(
@@ -1019,6 +1029,16 @@ fn evaluate_bond_backing(
                 FindingFacetKind::BondBacking,
                 FindingFacetOutcome::Failed,
                 "backing allocation names a different finding",
+            ),
+            None,
+        );
+    }
+    if backing.issued_at > snapshot.accepted_at {
+        return (
+            facet(
+                FindingFacetKind::BondBacking,
+                FindingFacetOutcome::Failed,
+                "backing allocation was accepted before its signed issue time",
             ),
             None,
         );

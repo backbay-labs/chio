@@ -33,6 +33,33 @@ fn proof_test_ok<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -
     }
 }
 
+fn write_verifier_signer_policy(
+    directory: &std::path::Path,
+    key: chio_core_types::PublicKey,
+) -> std::path::PathBuf {
+    let path = directory.join("finding-verifier-signer-policy.json");
+    let policy = chio_finding::FindingAuthorityKeyPolicy {
+        authority_id: "qualified-finding-verifier".to_owned(),
+        key,
+        key_epoch: 1,
+        valid_from: 1_700_000_000,
+        valid_until: 1_900_000_000,
+        rotation_policy_ref: "rotation/qualified-finding-verifier-v1".to_owned(),
+        revocation_status_ref: "revocations/qualified-finding-verifier-v1".to_owned(),
+    };
+    proof_test_ok(
+        std::fs::write(
+            &path,
+            proof_test_ok(
+                chio_core_types::canonical_json_bytes(&policy),
+                "serialize verifier signer policy",
+            ),
+        ),
+        "write verifier signer policy",
+    );
+    path
+}
+
 #[test]
 fn only_verified_finding_claim_set_rows_force_cognition_market_routing() {
     let transaction_claim_set = serde_json::to_vec(&serde_json::json!({
@@ -98,8 +125,10 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
         Err(poisoned) => poisoned.into_inner(),
     };
     let verifier_key = chio_core_types::Keypair::from_seed(&[84_u8; 32])
-        .public_key()
-        .to_hex();
+        .public_key();
+    let tempdir = proof_test_ok(tempfile::tempdir(), "create verifier policy tempdir");
+    let signer_policy_path = write_verifier_signer_policy(tempdir.path(), verifier_key.clone());
+    let verifier_key = verifier_key.to_hex();
     let profile_digest = "23".repeat(32);
     let _env = TestEnvGuard::set(&[
         (
@@ -109,6 +138,10 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
         (
             "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256",
             std::ffi::OsStr::new(&profile_digest),
+        ),
+        (
+            "CHIO_FINDING_VERIFIER_SIGNER_POLICY_PATH",
+            signer_policy_path.as_os_str(),
         ),
     ]);
     let passport_key = chio_core_types::Keypair::from_seed(&[85_u8; 32]).public_key();
@@ -219,6 +252,14 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         Err(poisoned) => poisoned.into_inner(),
     };
     let tempdir = proof_test_ok(tempfile::tempdir(), "create tempdir");
+    let verifier_authority = proof_test_ok(
+        chio_core_types::PublicKey::from_hex(
+            "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+        ),
+        "parse finding verifier authority",
+    );
+    let signer_policy_path =
+        write_verifier_signer_policy(tempdir.path(), verifier_authority);
     let authorization = chio_finding::FindingStatusOperatorAuthorization {
         role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
         feed_id: "qualified-finding-status".to_owned(),
@@ -298,6 +339,10 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
             std::ffi::OsStr::new(
                 "2323232323232323232323232323232323232323232323232323232323232323",
             ),
+        ),
+        (
+            "CHIO_FINDING_VERIFIER_SIGNER_POLICY_PATH",
+            signer_policy_path.as_os_str(),
         ),
         (
             "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH",

@@ -150,6 +150,18 @@ fn verifier_keypair() -> Keypair {
     Keypair::from_seed(&[9_u8; 32])
 }
 
+fn verifier_signer_policy() -> FindingAuthorityKeyPolicy {
+    FindingAuthorityKeyPolicy {
+        authority_id: "qualified-finding-verifier".to_string(),
+        key: verifier_keypair().public_key(),
+        key_epoch: 1,
+        valid_from: GENERATED_AT - 60,
+        valid_until: GENERATED_AT + 600,
+        rotation_policy_ref: "rotation/qualified-finding-verifier-v1".to_string(),
+        revocation_status_ref: "revocations/qualified-finding-verifier-v1".to_string(),
+    }
+}
+
 fn status_keypair() -> Keypair {
     Keypair::from_seed(&[42_u8; 32])
 }
@@ -423,6 +435,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         trusted_passport_signer_keys: vec![root.public_key()],
         trusted_checkpoint_signer_keys: Vec::new(),
         finding_verifier_authority: verifier_keypair().public_key(),
+        finding_verifier_signer: verifier_signer_policy(),
         trusted_verifier_profile_envelope_sha256: "23".repeat(32),
         status: Some(CognitionMarketStatusTrust {
             status_operator_authorization: status_authorization(&status_keypair),
@@ -997,6 +1010,32 @@ fn cognition_market_qualified_profile_rejects_unpinned_profile() -> TestResult {
     assert!(
         error.contains("deployment-pinned verifier profile"),
         "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_enforces_verifier_signer_lifecycle() -> TestResult {
+    let mut wrong_epoch = build_bundle()?;
+    wrong_epoch.trust.finding_verifier_signer.key_epoch = 2;
+    let epoch_error = verify(&wrong_epoch)
+        .err()
+        .ok_or("wrong verifier key epoch was accepted")?
+        .to_string();
+    assert!(
+        epoch_error.contains("key epoch"),
+        "unexpected error: {epoch_error}"
+    );
+
+    let mut expired = build_bundle()?;
+    expired.trust.finding_verifier_signer.valid_until = CHECKED_AT;
+    let lifecycle_error = verify(&expired)
+        .err()
+        .ok_or("expired verifier signer was accepted")?
+        .to_string();
+    assert!(
+        lifecycle_error.contains("signer lifecycle"),
+        "unexpected error: {lifecycle_error}"
     );
     Ok(())
 }

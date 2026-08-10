@@ -537,6 +537,22 @@ fn retained_recipe_dependency_survives_restart_and_rejects_deletion() {
 }
 
 #[test]
+fn allocation_registration_rejects_acceptance_before_signed_issuance() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let collateral = keypair(21);
+    let mut backing = backing_body(&finding_id, "vault:future-allocation");
+    backing.issued_at = NOW.saturating_add(1);
+    backing.allocation_id = compute_allocation_id(&backing).expect("allocation id");
+    let envelope = envelope_string(&backing, &collateral);
+
+    assert!(matches!(
+        fixture.store.register_allocation(&envelope, &backing, NOW),
+        Err(FindingMarketStoreError::Conflict(_))
+    ));
+}
+
+#[test]
 fn allocation_exclusivity_and_single_consumption() {
     let fixture = fixture();
     let finding_id = hex64('a');
