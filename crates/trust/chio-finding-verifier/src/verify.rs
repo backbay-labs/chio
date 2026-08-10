@@ -69,6 +69,8 @@ pub enum FindingVerifierError {
     NoAdmittedKernelKeys,
     #[error("report body construction failed canonicalization")]
     Canonicalization,
+    #[error("report profile does not match the profile used for evaluation")]
+    ReportProfileMismatch,
     #[error("report signer does not match the pinned verifier authority")]
     ReportSignerMismatch,
     #[error("report evaluation is outside the profile-authorized signer window")]
@@ -189,6 +191,10 @@ pub struct FindingVerifierDraft {
     /// Authenticated, checkpointed post-purchase receipt for this Finding.
     /// Absent for ordinary pre-sale admission reports.
     pub finding_delivery_receipt_id: Option<String>,
+    /// Exact governance-signed verifier profile used for facet evaluation.
+    /// Kept private so callers cannot relabel an evaluated draft before
+    /// report signing.
+    verifier_profile_envelope_sha256: String,
     pub evaluation_time: u64,
     /// Allocation id carried to the report when bond backing verified.
     pub backing_allocation_id: Option<String>,
@@ -681,6 +687,7 @@ pub fn verify_finding_evidence(
         replay_recipe_input_sha256: bundle.recipe_preimage.map(sha256_hex),
         status_proof_input_sha256: bundle.status_proof_input.map(sha256_hex),
         finding_delivery_receipt_id,
+        verifier_profile_envelope_sha256: profile_envelope_sha256,
         evaluation_time: trust.trusted_time,
         backing_allocation_id,
     })
@@ -1442,21 +1449,25 @@ pub fn sign_finding_verifier_report(
     verifier_keypair: &Keypair,
 ) -> Result<SignedFindingVerifierReport, FindingVerifierError> {
     let profile = &trust.profile.body;
+    let profile_envelope_bytes =
+        canonical_json_bytes(&trust.profile).map_err(|_| FindingVerifierError::Canonicalization)?;
+    let profile_envelope_sha256 = sha256_hex(&profile_envelope_bytes);
+    if profile_envelope_sha256 != draft.verifier_profile_envelope_sha256 {
+        return Err(FindingVerifierError::ReportProfileMismatch);
+    }
     if verifier_keypair.public_key() != profile.verifier_report_signer.key {
         return Err(FindingVerifierError::ReportSignerMismatch);
     }
     if !policy_covers(&profile.verifier_report_signer, draft.evaluation_time) {
         return Err(FindingVerifierError::ReportSignerInactive);
     }
-    let profile_envelope_bytes =
-        canonical_json_bytes(&trust.profile).map_err(|_| FindingVerifierError::Canonicalization)?;
     let mut report = FindingVerifierReport {
         schema: FINDING_VERIFIER_REPORT_SCHEMA_V1.to_string(),
         report_id: String::new(),
         finding_id: draft.finding.finding_id.clone(),
         finding_artifact_sha256: draft.finding_artifact_sha256.clone(),
         verifier_profile_id: profile.profile_id.clone(),
-        verifier_profile_envelope_sha256: sha256_hex(&profile_envelope_bytes),
+        verifier_profile_envelope_sha256: profile_envelope_sha256,
         verifier_implementation_id: verifier_implementation_id.to_string(),
         resolved_evidence_bundle_sha256: draft.resolved_evidence_bundle_sha256.clone(),
         replay_recipe_input_sha256: draft.replay_recipe_input_sha256.clone(),

@@ -1455,6 +1455,23 @@ fn receipt_and_checkpoint_signers_must_cover_the_evidence_timestamp() -> TestRes
 #[test]
 fn report_signer_policy_must_cover_the_evaluation_time() -> TestResult {
     let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    let mut profile = fx.profile.body.clone();
+    profile.verifier_report_signer.valid_until = trust.trusted_time;
+    trust.profile = resign_profile(profile)?;
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    assert_eq!(
+        sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.verifier,)
+            .err(),
+        Some(FindingVerifierError::ReportSignerInactive)
+    );
+    Ok(())
+}
+
+#[test]
+fn report_signing_rejects_profile_substitution_even_with_the_same_signer() -> TestResult {
+    let fx = fixture()?;
     let original_trust = trust_roots(&fx);
     let draft = verify_finding_evidence(
         &fx.raw_finding,
@@ -1462,14 +1479,23 @@ fn report_signer_policy_must_cover_the_evaluation_time() -> TestResult {
         &bundle(&fx, clone_receipts(&fx)),
     )?;
 
-    let mut trust = trust_roots(&fx);
-    let mut profile = fx.profile.body.clone();
-    profile.verifier_report_signer.valid_until = draft.evaluation_time;
-    trust.profile = resign_profile(profile)?;
+    let mut substituted_trust = trust_roots(&fx);
+    let mut substituted_profile = fx.profile.body.clone();
+    substituted_profile.retention_policy_ref = "retention-seven-days-v1".to_string();
+    substituted_trust.profile = resign_profile(substituted_profile)?;
     assert_eq!(
-        sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.verifier,)
-            .err(),
-        Some(FindingVerifierError::ReportSignerInactive)
+        substituted_trust.profile.body.verifier_report_signer,
+        fx.profile.body.verifier_report_signer
+    );
+    assert_eq!(
+        sign_finding_verifier_report(
+            &draft,
+            &substituted_trust,
+            "chio-finding-verifier/0.1",
+            &fx.verifier,
+        )
+        .err(),
+        Some(FindingVerifierError::ReportProfileMismatch)
     );
     Ok(())
 }
