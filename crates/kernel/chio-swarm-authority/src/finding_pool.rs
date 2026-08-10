@@ -5,7 +5,9 @@
 //! purchaser, one currency, and one hard amount. It carries no debit state;
 //! the kernel-owned ledger integration performs the qualifying atomic debit.
 
-use chio_core_types::crypto::{canonical_json_bytes, sha256_hex, Keypair, PublicKey};
+use chio_core_types::crypto::{
+    canonical_json_bytes, sha256_hex, Keypair, PublicKey, SigningAlgorithm,
+};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use serde::{Deserialize, Serialize};
 
@@ -122,6 +124,11 @@ pub fn verify_finding_pool_allocation(
     require_non_empty(&body.graph_id, "graph_id")?;
     require_non_empty(&body.purchaser_id, "purchaser_id")?;
     require_non_empty(&body.nonce, "nonce")?;
+    if body.purchaser_key.algorithm() != SigningAlgorithm::Ed25519 {
+        return Err(rejected(
+            "finding pool allocation purchaser key must be Ed25519",
+        ));
+    }
     if body.purpose != FINDING_POOL_PURPOSE_V1 {
         return Err(rejected("finding pool allocation purpose is invalid"));
     }

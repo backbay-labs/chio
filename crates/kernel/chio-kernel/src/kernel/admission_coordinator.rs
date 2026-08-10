@@ -1710,6 +1710,16 @@ impl ChioKernel {
                 ));
             }
         }
+        #[cfg(feature = "cognition-market-experimental")]
+        self.release_finding_pool_claim_before_dispatch(
+            current.binding().operation_id().as_str(),
+            trusted_now_unix_ms,
+        )
+        .map_err(|error| {
+            KernelError::DurableAdmission(format!(
+                "pre-dispatch finding pool claim release failed: {error}"
+            ))
+        })?;
         let projection = verified_released_pre_dispatch_compensation_projection(
             &current,
             context,

@@ -40,6 +40,8 @@ pub struct FindingPoolMutation {
     pub spent_after_units: String,
     pub remaining_after_units: String,
     pub occurred_at_unix_ms: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub durable_admission_operation_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -186,6 +188,15 @@ pub struct AuthorizedFindingPoolClaim {
     amount_units: u64,
     currency: String,
     claimed_at_unix_ms: u64,
+    durable_admission_operation_id: String,
+}
+
+/// Kernel-authenticated release for a pool claim whose durable admission was
+/// compensated before tool dispatch.
+#[derive(Debug, Clone)]
+pub struct AuthorizedFindingPoolRecoveryRelease {
+    durable_admission_operation_id: String,
+    released_at_unix_ms: u64,
 }
 
 /// Kernel-authenticated delivery terminal for a prior pool reservation.
@@ -308,6 +319,23 @@ impl AuthorizedFindingPoolClaim {
     #[must_use]
     pub fn claimed_at_unix_ms(&self) -> u64 {
         self.claimed_at_unix_ms
+    }
+
+    #[must_use]
+    pub fn durable_admission_operation_id(&self) -> &str {
+        &self.durable_admission_operation_id
+    }
+}
+
+impl AuthorizedFindingPoolRecoveryRelease {
+    #[must_use]
+    pub fn durable_admission_operation_id(&self) -> &str {
+        &self.durable_admission_operation_id
+    }
+
+    #[must_use]
+    pub fn released_at_unix_ms(&self) -> u64 {
+        self.released_at_unix_ms
     }
 }
 
@@ -433,6 +461,14 @@ pub trait FindingPoolLedger: Send + Sync {
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError>;
 
+    /// Release a claim when its bound durable admission is compensated before
+    /// dispatch. Exact replay is idempotent; another terminal fails closed.
+    fn release_claimed_before_dispatch(
+        &self,
+        release: &AuthorizedFindingPoolRecoveryRelease,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError>;
+
     /// Finalize or release a reservation from the kernel's durable delivery
     /// terminal. Exact replay must return the recorded terminal, while an
     /// attempted opposite terminal must fail closed.
@@ -509,6 +545,9 @@ impl ChioKernel {
         }
         let payer_key = PublicKey::from_hex(&purchase.payer_key_hex)
             .map_err(|_| FindingPoolDebitError::InvalidField("payer_key_hex"))?;
+        let committed_purchase = ledger
+            .contains_purchase(&purchase.purchase_intent_id)
+            .map_err(FindingPoolDebitError::Ledger)?;
         let structural_time = if allocation.issued_at_unix_ms < allocation.expires_at_unix_ms {
             trusted_now_unix_ms.clamp(
                 allocation.issued_at_unix_ms,
@@ -517,9 +556,17 @@ impl ChioKernel {
         } else {
             trusted_now_unix_ms
         };
-        let allocation_authority = self
-            .finding_pool_allocation_authority()
-            .ok_or(FindingPoolDebitError::AllocationAuthorityMissing)?;
+        // A committed replay is authenticated again under the exact signer
+        // carried by its immutable envelope, then compared field-for-field by
+        // the durable ledger. A new debit must use the deployment's current
+        // allocation authority. This preserves response-loss recovery across
+        // key rotation without authorizing new spend under a retired key.
+        let allocation_authority = if committed_purchase {
+            &request.allocation.signer_key
+        } else {
+            self.finding_pool_allocation_authority()
+                .ok_or(FindingPoolDebitError::AllocationAuthorityMissing)?
+        };
         let verified = verify_finding_pool_allocation(
             request.allocation,
             request.pool,
@@ -560,10 +607,7 @@ impl ChioKernel {
                 .saturating_add(FINDING_POOL_CLAIM_WINDOW_MS)
                 .min(verified.expires_at_unix_ms),
         };
-        if ledger
-            .contains_purchase(debit.purchase_id())
-            .map_err(FindingPoolDebitError::Ledger)?
-        {
+        if committed_purchase {
             return self
                 .commit_finding_pool_debit(ledger, &debit)
                 .map_err(FindingPoolDebitError::Ledger);
@@ -648,7 +692,7 @@ impl ChioKernel {
         &self,
         purchase: &crate::finding_purchase::VerifiedFindingPurchase,
         trusted_now_unix_ms: u64,
-        durable_admission_covered: bool,
+        durable_admission_operation_id: Option<&str>,
     ) -> Result<(), FindingPoolLedgerError> {
         let Some(ledger) = self.finding_pool_ledger() else {
             return Ok(());
@@ -656,9 +700,9 @@ impl ChioKernel {
         if !ledger.contains_purchase(&purchase.purchase_intent_id)? {
             return Ok(());
         }
-        if !durable_admission_covered {
-            return Err(FindingPoolLedgerError::DurableAdmissionRequired);
-        }
+        let durable_admission_operation_id = durable_admission_operation_id
+            .filter(|operation_id| !operation_id.is_empty())
+            .ok_or(FindingPoolLedgerError::DurableAdmissionRequired)?;
         let claim = AuthorizedFindingPoolClaim {
             purchase_id: purchase.purchase_intent_id.clone(),
             finding_id: purchase.finding_id.clone(),
@@ -670,6 +714,7 @@ impl ChioKernel {
             amount_units: purchase.accepted_price.units,
             currency: purchase.accepted_price.currency.clone(),
             claimed_at_unix_ms: trusted_now_unix_ms,
+            durable_admission_operation_id: durable_admission_operation_id.to_owned(),
         };
         self.flush_finding_pool_mutation_receipts(ledger)?;
         let attestor = |mutation: &FindingPoolMutation| {
@@ -682,6 +727,30 @@ impl ChioKernel {
         // pool operation drains it, while the durable signed outbox already
         // preserves the audit record across a crash.
         ledger.claim(&claim, &attestor)
+    }
+
+    /// Release any pool claim bound to an admission that is durably
+    /// compensated before dispatch. The pool release is committed first so a
+    /// failed release leaves the admission recoverable for the next sweep.
+    pub(crate) fn release_finding_pool_claim_before_dispatch(
+        &self,
+        durable_admission_operation_id: &str,
+        trusted_now_unix_ms: u64,
+    ) -> Result<(), FindingPoolLedgerError> {
+        let Some(ledger) = self.finding_pool_ledger() else {
+            return Ok(());
+        };
+        self.flush_finding_pool_mutation_receipts(ledger)?;
+        let release = AuthorizedFindingPoolRecoveryRelease {
+            durable_admission_operation_id: durable_admission_operation_id.to_owned(),
+            released_at_unix_ms: trusted_now_unix_ms,
+        };
+        let attestor = |mutation: &FindingPoolMutation| {
+            self.build_finding_pool_mutation_receipt(mutation)
+                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
+        };
+        ledger.release_claimed_before_dispatch(&release, &attestor)?;
+        self.flush_finding_pool_mutation_receipts(ledger)
     }
 
     /// Apply the pool reservation terminal derived from the kernel's frozen

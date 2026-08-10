@@ -8,7 +8,7 @@ use chio_core::capability::scope::{
     ChioScope, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount,
 };
 use chio_core::capability::token::{CapabilityToken, CHIO_CAPABILITY_SCHEMA};
-use chio_core::crypto::{sha256_hex, Keypair};
+use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core::receipt::body::ChioReceipt;
 use chio_kernel::finding_pool::{
     FindingPoolDebitError, FindingPoolDebitRequest, FindingPoolDebitState, FindingPoolLedgerError,
@@ -213,6 +213,35 @@ fn debit_at_with_policy_and_kernel_key(
     reject_purchase_admission: bool,
     kernel_key: Keypair,
 ) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
+    debit_at_with_policy_and_authority(
+        ledger,
+        fixture,
+        purchase_id,
+        amount_units,
+        now_unix_ms,
+        status_verifier,
+        status_proof_b64,
+        purchase_admissions,
+        reject_purchase_admission,
+        kernel_key,
+        fixture.authority.public_key(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn debit_at_with_policy_and_authority(
+    ledger: &SqliteFindingPoolLedger,
+    fixture: &PoolFixture,
+    purchase_id: &str,
+    amount_units: u64,
+    now_unix_ms: u64,
+    status_verifier: Option<Arc<dyn FindingStatusProofVerifier>>,
+    status_proof_b64: Option<&str>,
+    purchase_admissions: Arc<AtomicU64>,
+    reject_purchase_admission: bool,
+    kernel_key: Keypair,
+    allocation_authority: PublicKey,
+) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
     let verified_purchase = VerifiedFindingPurchase {
         finding_id: "a".repeat(64),
         listing_id: "listing:cognition-market:1".to_string(),
@@ -261,7 +290,7 @@ fn debit_at_with_policy_and_kernel_key(
         ))
         .test_expect("configure durable receipt store");
     kernel.set_finding_purchase_verifier(Arc::new(verifier));
-    kernel.set_finding_pool_allocation_authority(fixture.authority.public_key());
+    kernel.set_finding_pool_allocation_authority(allocation_authority);
     kernel
         .set_finding_pool_receipt_authority(fixture.authority.clone())
         .test_expect("configure stable pool receipt authority");
@@ -500,6 +529,27 @@ fn qualified_pool_rejects_percent_decoded_nul_uris() {
 }
 
 #[test]
+fn qualified_pool_rejects_sqlite_uris_that_disable_file_locking() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let database = directory.path().join("pool.sqlite3");
+    let base = format!("file:{}", database.display());
+    for path in [
+        format!("{base}?nolock=1"),
+        format!("{base}?%6eolock=1"),
+        format!("{base}?vfs=unix-none"),
+        format!("{base}?vfs=unix%2dnone"),
+    ] {
+        assert!(
+            matches!(
+                SqliteFindingPoolLedger::open_qualified(&path),
+                Err(FindingPoolLedgerError::Storage(_))
+            ),
+            "lockless SQLite URI {path:?} must not qualify"
+        );
+    }
+}
+
+#[test]
 fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitution() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
@@ -526,6 +576,28 @@ fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitutio
         debit(&ledger, &wrong_purchaser, "purchase:wrong-purchaser", 10),
         Err(FindingPoolDebitError::PurchaserMismatch)
     );
+
+    let mut non_ed25519_purchaser = fixture.clone();
+    let mut allocation = non_ed25519_purchaser.allocation.body.clone();
+    allocation.purchaser_key = PublicKey::from_hex(
+        "p256:046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+    )
+    .test_expect("parse P-256 purchaser key");
+    non_ed25519_purchaser.allocation =
+        sign_finding_pool_allocation(allocation, &non_ed25519_purchaser.authority)
+            .test_expect("sign allocation with non-Ed25519 purchaser");
+    non_ed25519_purchaser.envelope_sha256 =
+        finding_pool_allocation_envelope_sha256(&non_ed25519_purchaser.allocation)
+            .test_expect("hash allocation with non-Ed25519 purchaser");
+    assert!(matches!(
+        debit(
+            &ledger,
+            &non_ed25519_purchaser,
+            "purchase:non-ed25519-purchaser",
+            10,
+        ),
+        Err(FindingPoolDebitError::Allocation(_))
+    ));
 
     let mut wrong_pool = fixture.clone();
     wrong_pool.pool.total_units = 101;
@@ -580,6 +652,48 @@ fn cognition_market_pool_replays_after_expiry_but_rejects_new_spend() {
         Err(FindingPoolDebitError::Ledger(
             FindingPoolLedgerError::AllocationNotLive
         ))
+    ));
+}
+
+#[test]
+fn cognition_market_pool_replays_after_allocation_authority_rotation() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
+        .test_expect("open qualified ledger");
+    let fixture = fixture(100);
+    debit(&ledger, &fixture, "purchase:before-authority-rotation", 10)
+        .test_expect("commit debit before allocation authority rotation");
+    let rotated_authority = Keypair::from_seed(&[73_u8; 32]).public_key();
+    let replay = debit_at_with_policy_and_authority(
+        &ledger,
+        &fixture,
+        "purchase:before-authority-rotation",
+        10,
+        2_001,
+        None,
+        None,
+        Arc::new(AtomicU64::new(0)),
+        false,
+        Keypair::from_seed(&[99_u8; 32]),
+        rotated_authority.clone(),
+    )
+    .test_expect("replay debit signed by the prior allocation authority");
+    assert!(replay.replayed);
+    assert!(matches!(
+        debit_at_with_policy_and_authority(
+            &ledger,
+            &fixture,
+            "purchase:new-after-authority-rotation",
+            10,
+            2_001,
+            None,
+            None,
+            Arc::new(AtomicU64::new(0)),
+            false,
+            Keypair::from_seed(&[99_u8; 32]),
+            rotated_authority,
+        ),
+        Err(FindingPoolDebitError::Allocation(_))
     ));
 }
 

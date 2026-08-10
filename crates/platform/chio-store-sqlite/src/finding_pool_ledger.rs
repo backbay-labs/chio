@@ -11,10 +11,11 @@ use std::time::Duration;
 
 use chio_core::receipt::body::ChioReceipt;
 use chio_kernel::finding_pool::{
-    AuthorizedFindingPoolClaim, AuthorizedFindingPoolDebit, AuthorizedFindingPoolTerminal,
-    FindingPoolDebitReceipt, FindingPoolDebitState, FindingPoolLedger, FindingPoolLedgerError,
-    FindingPoolMutation, FindingPoolMutationAttestor, FindingPoolMutationKind,
-    FindingPoolTerminalDecision, QualifiedFindingPoolLedger, FINDING_POOL_MUTATION_SCHEMA_V1,
+    AuthorizedFindingPoolClaim, AuthorizedFindingPoolDebit, AuthorizedFindingPoolRecoveryRelease,
+    AuthorizedFindingPoolTerminal, FindingPoolDebitReceipt, FindingPoolDebitState,
+    FindingPoolLedger, FindingPoolLedgerError, FindingPoolMutation, FindingPoolMutationAttestor,
+    FindingPoolMutationKind, FindingPoolTerminalDecision, QualifiedFindingPoolLedger,
+    FINDING_POOL_MUTATION_SCHEMA_V1,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -51,6 +52,7 @@ CREATE TABLE IF NOT EXISTS finding_pool_debits (
     state TEXT NOT NULL CHECK (state IN ('reserved', 'finalized', 'released')),
     claim_deadline_unix_ms TEXT NOT NULL,
     claimed_at_unix_ms TEXT,
+    durable_admission_operation_id TEXT,
     reserved_after_units TEXT NOT NULL,
     spent_after_units TEXT NOT NULL,
     FOREIGN KEY (allocation_envelope_sha256)
@@ -84,7 +86,11 @@ impl SqliteFindingPoolLedger {
             FindingPoolLedgerError::Storage("SQLite path is not valid UTF-8".to_string())
         })?;
         let empty_uri_filename = sqlite_uri_filename_is_empty(path_text);
-        if path_text.is_empty() || empty_uri_filename || is_in_memory_sqlite_path(path_text) {
+        if path_text.is_empty()
+            || empty_uri_filename
+            || is_in_memory_sqlite_path(path_text)
+            || sqlite_uri_disables_locking(path_text)
+        {
             return Err(FindingPoolLedgerError::Storage(
                 "qualified finding pool ledger requires a durable SQLite path".to_string(),
             ));
@@ -110,6 +116,7 @@ impl SqliteFindingPoolLedger {
                 .execute_batch(SCHEMA)
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
             ensure_lifecycle_columns(&connection)?;
+            verify_qualified_connection(&connection)?;
         }
         Ok(Self { pool })
     }
@@ -164,6 +171,83 @@ fn sqlite_uri_filename_is_empty(path: &str) -> bool {
         return !authority_and_path.contains('/');
     }
     name.is_empty()
+}
+
+fn sqlite_uri_disables_locking(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("file:") else {
+        return false;
+    };
+    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
+    let Some((_, query)) = rest.split_once('?') else {
+        return false;
+    };
+    query.split('&').any(|pair| {
+        let (key, value) = pair.split_once('=').map_or((pair, ""), |parts| parts);
+        let Some(key) = percent_decode_uri_component(key) else {
+            return true;
+        };
+        let Some(value) = percent_decode_uri_component(value) else {
+            return true;
+        };
+        key.eq_ignore_ascii_case("nolock")
+            || (key.eq_ignore_ascii_case("vfs") && value.eq_ignore_ascii_case("unix-none"))
+    })
+}
+
+fn percent_decode_uri_component(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let high = *bytes.get(index + 1)?;
+            let low = *bytes.get(index + 2)?;
+            decoded.push(
+                hex_nibble(high)?
+                    .checked_mul(16)?
+                    .checked_add(hex_nibble(low)?)?,
+            );
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
+}
+
+const fn hex_nibble(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn verify_qualified_connection(
+    connection: &rusqlite::Connection,
+) -> Result<(), FindingPoolLedgerError> {
+    let journal_mode = connection
+        .query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let foreign_keys = connection
+        .query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0))
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let locking_mode = connection
+        .query_row("PRAGMA locking_mode", [], |row| row.get::<_, String>(0))
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    if !journal_mode.eq_ignore_ascii_case("wal")
+        || foreign_keys != 1
+        || (!locking_mode.eq_ignore_ascii_case("normal")
+            && !locking_mode.eq_ignore_ascii_case("exclusive"))
+    {
+        return Err(FindingPoolLedgerError::Storage(
+            "qualified finding pool ledger did not activate WAL, foreign keys, and file locking"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 impl FindingPoolLedger for SqliteFindingPoolLedger {
@@ -441,7 +525,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                         reservation_id, authoritative_payment_operation_id, \
                         accepted_bid_envelope_sha256, venue_admission_envelope_sha256, \
                         amount_units, currency, state, claim_deadline_unix_ms, \
-                        claimed_at_unix_ms \
+                        claimed_at_unix_ms, durable_admission_operation_id \
                  FROM finding_pool_debits WHERE purchase_id = ?1",
                 [claim.purchase_id()],
                 |row| {
@@ -458,6 +542,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                         row.get::<_, String>(9)?,
                         row.get::<_, String>(10)?,
                         row.get::<_, Option<String>>(11)?,
+                        row.get::<_, Option<String>>(12)?,
                     ))
                 },
             )
@@ -483,6 +568,9 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         }
         if let Some(claimed_at) = stored.11 {
             parse_units(&claimed_at, "debit.claimed_at_unix_ms")?;
+            if stored.12.as_deref() != Some(claim.durable_admission_operation_id()) {
+                return Err(FindingPoolLedgerError::ReplayConflict);
+            }
             transaction
                 .commit()
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
@@ -502,10 +590,16 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         }
         let changed = transaction
             .execute(
-                "UPDATE finding_pool_debits SET claimed_at_unix_ms = ?2 \
+                "UPDATE finding_pool_debits SET claimed_at_unix_ms = ?2, \
+                        durable_admission_operation_id = ?3 \
                  WHERE purchase_id = ?1 AND state = 'reserved' \
-                   AND claimed_at_unix_ms IS NULL",
-                params![claim.purchase_id(), claim.claimed_at_unix_ms().to_string(),],
+                   AND claimed_at_unix_ms IS NULL \
+                   AND durable_admission_operation_id IS NULL",
+                params![
+                    claim.purchase_id(),
+                    claim.claimed_at_unix_ms().to_string(),
+                    claim.durable_admission_operation_id(),
+                ],
             )
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         if changed != 1 {
@@ -518,6 +612,127 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                 claim.purchase_id(),
                 FindingPoolMutationKind::Claim,
                 claim.claimed_at_unix_ms(),
+            )?,
+            attestor,
+        )?;
+        transaction
+            .commit()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+    }
+
+    fn release_claimed_before_dispatch(
+        &self,
+        release: &AuthorizedFindingPoolRecoveryRelease,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError> {
+        let mut connection = self
+            .pool
+            .get()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let stored = transaction
+            .query_row(
+                "SELECT d.purchase_id, d.allocation_envelope_sha256, d.state, \
+                        d.amount_units, d.reserved_after_units, d.spent_after_units, \
+                        a.signed_amount_units, a.reserved_units, a.spent_units, \
+                        d.claimed_at_unix_ms \
+                 FROM finding_pool_debits d \
+                 JOIN finding_pool_allocations a \
+                   ON a.allocation_envelope_sha256 = d.allocation_envelope_sha256 \
+                 WHERE d.durable_admission_operation_id = ?1",
+                [release.durable_admission_operation_id()],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, Option<String>>(9)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let Some(stored) = stored else {
+            transaction
+                .commit()
+                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+            return Ok(());
+        };
+        let state = parse_state(&stored.2)?;
+        if state != FindingPoolDebitState::Reserved {
+            if state != FindingPoolDebitState::Released {
+                return Err(FindingPoolLedgerError::TerminalConflict);
+            }
+            transaction
+                .commit()
+                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+            return Ok(());
+        }
+        if stored.9.is_none() {
+            return Err(invariant(
+                "durable admission binding identifies an unclaimed reservation",
+            ));
+        }
+        let amount = parse_units(&stored.3, "debit.amount_units")?;
+        let signed = parse_units(&stored.6, "signed_amount_units")?;
+        let current_reserved = parse_units(&stored.7, "reserved_units")?;
+        let current_spent = parse_units(&stored.8, "spent_units")?;
+        let reserved_after = current_reserved
+            .checked_sub(amount)
+            .ok_or_else(|| invariant("claimed reservation exceeds allocation reserved amount"))?;
+        remaining_units(signed, reserved_after, current_spent)?;
+        let changed = transaction
+            .execute(
+                "UPDATE finding_pool_allocations SET reserved_units = ?2 \
+                 WHERE allocation_envelope_sha256 = ?1 \
+                   AND reserved_units = ?3 AND spent_units = ?4",
+                params![
+                    stored.1,
+                    reserved_after.to_string(),
+                    current_reserved.to_string(),
+                    current_spent.to_string(),
+                ],
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        if changed != 1 {
+            return Err(invariant(
+                "pre-dispatch claim release allocation compare-and-set failed",
+            ));
+        }
+        let changed = transaction
+            .execute(
+                "UPDATE finding_pool_debits \
+                 SET state = 'released', reserved_after_units = ?2, spent_after_units = ?3 \
+                 WHERE purchase_id = ?1 AND state = 'reserved' \
+                   AND durable_admission_operation_id = ?4",
+                params![
+                    stored.0,
+                    reserved_after.to_string(),
+                    current_spent.to_string(),
+                    release.durable_admission_operation_id(),
+                ],
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        if changed != 1 {
+            return Err(invariant(
+                "pre-dispatch claim release compare-and-set failed",
+            ));
+        }
+        record_mutation_receipt(
+            &transaction,
+            mutation_for_purchase(
+                &transaction,
+                &stored.0,
+                FindingPoolMutationKind::Release,
+                release.released_at_unix_ms(),
             )?,
             attestor,
         )?;
@@ -792,7 +1007,8 @@ fn mutation_for_purchase(
         .query_row(
             "SELECT d.purchase_id, a.allocation_id, d.allocation_envelope_sha256, \
                     d.amount_units, d.currency, d.state, a.reserved_units, \
-                    a.spent_units, a.signed_amount_units \
+                    a.spent_units, a.signed_amount_units, \
+                    d.durable_admission_operation_id \
              FROM finding_pool_debits d \
              JOIN finding_pool_allocations a \
                ON a.allocation_envelope_sha256 = d.allocation_envelope_sha256 \
@@ -809,6 +1025,7 @@ fn mutation_for_purchase(
                     row.get::<_, String>(6)?,
                     row.get::<_, String>(7)?,
                     row.get::<_, String>(8)?,
+                    row.get::<_, Option<String>>(9)?,
                 ))
             },
         )
@@ -830,6 +1047,7 @@ fn mutation_for_purchase(
         spent_after_units: spent.to_string(),
         remaining_after_units: remaining_units(signed, reserved, spent)?.to_string(),
         occurred_at_unix_ms: occurred_at_unix_ms.to_string(),
+        durable_admission_operation_id: stored.9,
     })
 }
 
@@ -1072,12 +1290,39 @@ fn ensure_lifecycle_columns(
         "claimed_at_unix_ms",
         "ALTER TABLE finding_pool_debits ADD COLUMN claimed_at_unix_ms TEXT",
     )?;
+    ensure_column(
+        connection,
+        "finding_pool_debits",
+        "durable_admission_operation_id",
+        "ALTER TABLE finding_pool_debits ADD COLUMN durable_admission_operation_id TEXT",
+    )?;
     connection
         .execute(
             "UPDATE finding_pool_debits SET claimed_at_unix_ms = '0' \
              WHERE state = 'reserved' AND claim_deadline_unix_ms = '0' \
                AND claimed_at_unix_ms IS NULL",
             [],
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let unbound_claims = connection
+        .query_row(
+            "SELECT COUNT(*) FROM finding_pool_debits \
+             WHERE state = 'reserved' AND claimed_at_unix_ms IS NOT NULL \
+               AND durable_admission_operation_id IS NULL",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    if unbound_claims != 0 {
+        return Err(invariant(
+            "claimed reservation lacks its durable admission operation binding",
+        ));
+    }
+    connection
+        .execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS finding_pool_debits_admission_operation \
+             ON finding_pool_debits(durable_admission_operation_id) \
+             WHERE durable_admission_operation_id IS NOT NULL;",
         )
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
     Ok(())

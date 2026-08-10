@@ -15,6 +15,7 @@ use crate::{
 struct RecordingLedger {
     decisions: Mutex<Vec<FindingPoolTerminalDecision>>,
     claims: Mutex<Vec<(String, u64)>>,
+    recovery_releases: Mutex<Vec<String>>,
     outbox: Mutex<Vec<ChioReceipt>>,
     acknowledged: Mutex<Vec<String>>,
     receipt_authority: Mutex<Option<chio_core::crypto::PublicKey>>,
@@ -93,10 +94,48 @@ impl FindingPoolLedger for RecordingLedger {
                 spent_after_units: "0".to_owned(),
                 remaining_after_units: "75".to_owned(),
                 occurred_at_unix_ms: claim.claimed_at_unix_ms().to_string(),
+                durable_admission_operation_id: Some(
+                    claim.durable_admission_operation_id().to_owned(),
+                ),
             },
             attestor,
         )?;
         Ok(())
+    }
+
+    fn release_claimed_before_dispatch(
+        &self,
+        release: &AuthorizedFindingPoolRecoveryRelease,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError> {
+        self.recovery_releases
+            .lock()
+            .map_err(|_| {
+                FindingPoolLedgerError::Storage(
+                    "test recovery release lock was poisoned".to_owned(),
+                )
+            })?
+            .push(release.durable_admission_operation_id().to_owned());
+        self.store_attestation(
+            FindingPoolMutation {
+                schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
+                kind: FindingPoolMutationKind::Release,
+                purchase_id: "purchase:test".to_owned(),
+                allocation_id: "allocation:test".to_owned(),
+                allocation_envelope_sha256: "a".repeat(64),
+                amount_units: "25".to_owned(),
+                currency: "USD".to_owned(),
+                state: FindingPoolDebitState::Released,
+                reserved_after_units: "0".to_owned(),
+                spent_after_units: "0".to_owned(),
+                remaining_after_units: "100".to_owned(),
+                occurred_at_unix_ms: release.released_at_unix_ms().to_string(),
+                durable_admission_operation_id: Some(
+                    release.durable_admission_operation_id().to_owned(),
+                ),
+            },
+            attestor,
+        )
     }
 
     fn settle(
@@ -139,6 +178,7 @@ impl FindingPoolLedger for RecordingLedger {
                 spent_after_units: spent_after.to_string(),
                 remaining_after_units: remaining_after.to_string(),
                 occurred_at_unix_ms: terminal.occurred_at_unix_ms().to_string(),
+                durable_admission_operation_id: None,
             },
             attestor,
         )?;
@@ -334,7 +374,7 @@ fn dispatch_claims_the_configured_pool_reservation() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, true)
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
         .is_ok());
     let Ok(claims) = ledger.claims.lock() else {
         panic!("test claim lock was poisoned");
@@ -353,12 +393,33 @@ fn dispatch_claims_the_configured_pool_reservation() {
 }
 
 #[test]
+fn pre_dispatch_recovery_releases_the_bound_pool_claim() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let kernel = kernel_with_ledger(Arc::clone(&ledger));
+    assert!(kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .is_ok());
+    assert!(kernel
+        .release_finding_pool_claim_before_dispatch("operation:test", 12_346)
+        .is_ok());
+    let Ok(releases) = ledger.recovery_releases.lock() else {
+        panic!("test recovery release lock was poisoned");
+    };
+    assert_eq!(releases.as_slice(), &["operation:test".to_owned()]);
+    drop(releases);
+    assert_eq!(kernel.receipt_log().receipts().len(), 2);
+    assert!(ledger
+        .pending_mutation_receipts()
+        .is_ok_and(|receipts| receipts.is_empty()));
+}
+
+#[test]
 fn dispatch_rejects_a_pool_reservation_without_durable_admission() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
 
     assert_eq!(
-        kernel.claim_finding_pool_delivery(&purchase(), 12_345, false),
+        kernel.claim_finding_pool_delivery(&purchase(), 12_345, None),
         Err(FindingPoolLedgerError::DurableAdmissionRequired)
     );
     assert!(ledger
@@ -399,7 +460,7 @@ fn pending_pool_receipt_is_not_acknowledged_without_a_durable_store() {
     let ledger = Arc::new(RecordingLedger::default());
     let first_kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(first_kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, true)
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
         .is_ok());
     assert_eq!(
         ledger
@@ -431,7 +492,7 @@ fn stable_pool_receipt_authority_survives_ordinary_kernel_key_rotation() {
     let ledger = Arc::new(RecordingLedger::default());
     let first_kernel = kernel_with_keys(Arc::clone(&ledger), 91, 92);
     assert!(first_kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, true)
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
         .is_ok());
 
     let rotated_kernel = kernel_with_keys(Arc::clone(&ledger), 93, 92);
