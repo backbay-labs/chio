@@ -1130,7 +1130,6 @@ impl SqliteFindingStatusStore {
     /// voluntary retraction made the finding sticky first, the unique intent
     /// for the same feed and finding satisfies the effect without replacing
     /// its signed bytes or sticky digest.
-    #[cfg(feature = "cognition-market-experimental")]
     pub fn get_retraction_intent_for_effect(
         &self,
         effect_intent_id: &str,
