@@ -188,9 +188,13 @@ document names. A venue audit is signed by the venue's pinned audit
 authority, which this surface does not hold, so its dry run emits the body
 alone and reports no envelope digest.
 
-Submission itself needs a challenge coordinator route that this workspace
-revision does not expose, so without `--dry-run` the command refuses instead
-of transmitting.
+A buyer submission sends the signed envelope to
+`POST /v1/findings/{finding_id}/challenges` when `--control-url` and a control
+bearer are configured. Supply the bearer with `CHIO_CONTROL_TOKEN` where
+possible, or with `--control-token`; `--dry-run` assembles and signs without
+transmitting. The venue-audit branch remains dry-run only because this CLI
+does not hold the venue's pinned audit-authority key, so a non-dry-run venue
+audit refuses rather than sending an unsigned body.
 
 ### Global flags
 

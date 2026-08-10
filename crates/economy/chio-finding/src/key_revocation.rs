@@ -29,6 +29,11 @@ use crate::validate::{require_bounded_id, require_nonzero, FindingError};
 pub const FINDING_KEY_REVOCATION_SCHEMA_V1: &str =
     chio_core_types::signed_artifact::CHIO_FINDING_KEY_REVOCATION_V1_SCHEMA;
 
+/// Internal authenticated status reading returned by a deployment's pinned
+/// revocation source. This is a resolver witness, not a registered protocol
+/// artifact family.
+pub const FINDING_AUTHORITY_STATUS_SCHEMA_V1: &str = "chio.finding.authority-status.v1";
+
 /// Authority key revocation body.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -52,6 +57,23 @@ pub struct FindingKeyRevocation {
 /// Governance-signed envelope for the revocation.
 pub type SignedFindingKeyRevocation = SignedExportEnvelope<FindingKeyRevocation>;
 
+/// Independently signed reading of one exact authority policy's revocation
+/// source. `observed_at` lets each consumer enforce its own freshness bound.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingAuthorityStatus {
+    pub schema: String,
+    pub status_ref: String,
+    pub authority_id: String,
+    pub key: PublicKey,
+    pub key_epoch: u64,
+    pub revoked_from: Option<u64>,
+    pub observed_at: u64,
+}
+
+/// Signed resolver witness for one authority status reading.
+pub type SignedFindingAuthorityStatus = SignedExportEnvelope<FindingAuthorityStatus>;
+
 impl FindingKeyRevocation {
     pub fn validate(&self) -> Result<(), FindingError> {
         if self.schema != FINDING_KEY_REVOCATION_SCHEMA_V1 {
@@ -67,6 +89,26 @@ impl FindingKeyRevocation {
     }
 }
 
+impl FindingAuthorityStatus {
+    pub fn validate(&self) -> Result<(), FindingError> {
+        if self.schema != FINDING_AUTHORITY_STATUS_SCHEMA_V1 {
+            return Err(FindingError::UnsupportedSchema(self.schema.clone()));
+        }
+        require_bounded_id(&self.status_ref, "status_ref")?;
+        require_bounded_id(&self.authority_id, "authority_id")?;
+        require_ed25519(&self.key, "key")?;
+        require_nonzero(self.key_epoch, "key_epoch")?;
+        require_nonzero(self.observed_at, "observed_at")?;
+        if let Some(revoked_from) = self.revoked_from {
+            require_nonzero(revoked_from, "revoked_from")?;
+            if revoked_from > self.observed_at {
+                return Err(FindingError::InvalidField("revoked_from"));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Verify a signed revocation against the externally pinned governance root.
 /// The body names the authority it withdraws, never the signer, so the pin is
 /// the only thing that authorizes this statement.
@@ -76,4 +118,15 @@ pub fn verify_signed_key_revocation(
 ) -> Result<(), FindingError> {
     signed.body.validate()?;
     crate::envelope::verify_pinned_envelope(signed, pinned_governance_authority, "key_revocation")
+}
+
+/// Verify a status reading against the independently pinned status-feed
+/// authority. Consumers must still bind its body to the policy under test
+/// and enforce freshness at the action time they are authenticating.
+pub fn verify_signed_authority_status(
+    signed: &SignedFindingAuthorityStatus,
+    pinned_status_authority: &PublicKey,
+) -> Result<(), FindingError> {
+    signed.body.validate()?;
+    crate::envelope::verify_pinned_envelope(signed, pinned_status_authority, "authority_status")
 }

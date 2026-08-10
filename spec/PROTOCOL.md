@@ -1868,6 +1868,18 @@ kernel receipt identifiers. The epoch and the report are two artifacts, never
 one mutable one: without both, a published audit rate is an operator
 assumption rather than an enforceable one.
 
+An independent report verifier MUST also receive the exact signed
+`chio.finding.audit-round-authorization.v1` envelope and the externally
+pinned governance root. It MUST verify that signature, re-derive the epoch
+precommitment, require the epoch's `authorization_digest` to equal the exact
+authorization envelope digest, and require the authorization to cover the
+epoch commitment time. For every signed evaluator outcome, the verifier MUST
+resolve an independently signed, fresh status reading for the outcome's
+exact evaluator policy. The reading MUST bind the policy's status reference,
+authority, key, and key epoch, MUST be observed after the evaluation and no
+later than report publication, and MUST reject when `revoked_from` is at or
+before the evaluation time.
+
 #### 6.4.7.18 `chio.finding.replay-observation.v1`
 
 The UNSIGNED strict preimage one replay execution emits for one phase. Like

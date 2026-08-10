@@ -66,6 +66,9 @@ use chio_finding::{
     SignedFindingMarketTerms, SignedFindingPurchaseRecord, FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1,
     FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
 };
+pub use chio_finding::{
+    FindingAuthorityStatus, SignedFindingAuthorityStatus, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
+};
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeEvaluation,
     FindingChallengeEvaluationInput,
@@ -179,12 +182,6 @@ const MAX_RAW_FINDING_BYTES: usize = 1_048_576;
 /// Past this the reading describes the reference as it used to be, and a
 /// key revoked since would still adjudicate under it.
 const MAX_REVOCATION_STATUS_AGE_SECS: u64 = 3_600;
-
-/// Signed assertion returned by the deployment's resolver for one pinned
-/// authority. The independent status authority authenticates both live and
-/// revoked answers, so a caller cannot manufacture non-revocation with a
-/// plain boolean.
-pub const FINDING_AUTHORITY_STATUS_SCHEMA_V1: &str = "chio.finding.authority-status.v1";
 
 /// Shortest seller-signed appeal window the venue will admit.
 const MIN_APPEAL_WINDOW_SECS: u64 = 24 * 60 * 60;
@@ -582,23 +579,6 @@ pub struct FindingCollateralFacts<'a> {
     /// currency, and live amount are all derived from this envelope.
     pub bond_snapshot: SignedFindingFinalizedBondSnapshot,
 }
-
-/// Independently authenticated reading of one pinned authority's revocation
-/// source. `revoked_from` is compared with the instant the role acted, so
-/// a later revocation does not rewrite an earlier valid signature.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub struct FindingAuthorityStatus {
-    pub schema: String,
-    pub status_ref: String,
-    pub authority_id: String,
-    pub key: PublicKey,
-    pub key_epoch: u64,
-    pub revoked_from: Option<u64>,
-    pub observed_at: u64,
-}
-
-pub type SignedFindingAuthorityStatus = SignedExportEnvelope<FindingAuthorityStatus>;
 
 /// Trusted resolver for a pin's externally published revocation source.
 /// The returned envelope is still verified by the coordinator against the

@@ -23,11 +23,13 @@ use std::collections::BTreeSet;
 use chio_core_types::crypto::PublicKey;
 use chio_core_types::hashing::sha256;
 use chio_finding::{
-    derive_audit_seed_commitment, signed_envelope_sha256, verify_outcome_challenge_binding,
-    verify_signed_audit_epoch, verify_signed_audit_report, verify_signed_challenge,
-    verify_signed_challenge_outcome, FindingAuditEpoch, FindingAuthorityKeyPolicy,
-    FindingChallengeAuthorization, FindingChallengeAuthorizationKind, FindingError,
-    SignedFindingAuditEpoch, SignedFindingAuditReport, SignedFindingChallenge,
+    audit_epoch_precommitment_sha256, derive_audit_seed_commitment, signed_envelope_sha256,
+    verify_outcome_challenge_binding, verify_signed_audit_epoch, verify_signed_audit_report,
+    verify_signed_audit_round_authorization, verify_signed_authority_status,
+    verify_signed_challenge, verify_signed_challenge_outcome, FindingAuditEpoch,
+    FindingAuthorityKeyPolicy, FindingChallengeAuthorization, FindingChallengeAuthorizationKind,
+    FindingError, SignedFindingAuditEpoch, SignedFindingAuditReport,
+    SignedFindingAuditRoundAuthorization, SignedFindingAuthorityStatus, SignedFindingChallenge,
     SignedFindingChallengeOutcome, MAX_AUDIT_SELECTION, MAX_FINDING_IDENTIFIER_BYTES,
     MAX_PUBLISHED_RATE_BPS,
 };
@@ -55,6 +57,9 @@ const BPS_DENOMINATOR: u128 = 10_000;
 
 /// The weight an entry carries when it names none.
 const DEFAULT_ELIGIBLE_WEIGHT: u64 = 1;
+
+/// Maximum age of an evaluator status reading at report publication.
+const MAX_AUDIT_STATUS_AGE_SECS: u64 = 3_600;
 
 /// One listing of the eligible snapshot an epoch commits to.
 ///
@@ -119,11 +124,18 @@ pub struct AuditSelection {
 pub struct FindingAuditReportWitnesses<'a> {
     pub pinned_seed_witness: PublicKey,
     pub pinned_audit_authority: PublicKey,
+    pub pinned_governance_authority: PublicKey,
+    pub round_authorization: SignedFindingAuditRoundAuthorization,
+    pub pinned_status_authority: PublicKey,
     /// Governance-authenticated historical evaluator policies. Every
     /// outcome resolves its own exact policy from this set, so a rotation
     /// during a round does not invalidate earlier outcomes or let an
     /// outcome self-authorize its signer.
     pub pinned_evaluator_policies: &'a [FindingAuthorityKeyPolicy],
+    /// Authenticated status readings for the exact historical evaluator
+    /// policies used by this report. Each reading must be fresh at report
+    /// publication and cover its outcome's evaluation time.
+    pub evaluator_statuses: Vec<SignedFindingAuthorityStatus>,
     pub audit_attempts: &'a [SignedFindingChallenge],
     pub resolved_outcomes: &'a [SignedFindingChallengeOutcome],
 }
@@ -136,6 +148,12 @@ pub enum FindingAuditError {
     Epoch(FindingError),
     #[error("audit report rejected: {0}")]
     Report(FindingError),
+    #[error("audit round authorization rejected: {0}")]
+    RoundAuthorization(FindingError),
+    #[error("audit epoch does not bind its governance authorization")]
+    RoundAuthorizationBinding,
+    #[error("audit governance authorization was not live at epoch commitment")]
+    RoundAuthorizationWindow,
     #[error("epoch names selection algorithm {0}, which this module does not implement")]
     UnsupportedAlgorithm(String),
     #[error("revealed seed is not a 64 character lowercase hex value")]
@@ -188,6 +206,14 @@ pub enum FindingAuditError {
     Outcome(FindingError),
     #[error("audit outcome {0} has no exact authenticated evaluator policy")]
     OutcomeAuthorityNotEstablished(String),
+    #[error("audit outcome {0} has no exact authenticated evaluator status")]
+    OutcomeStatusNotEstablished(String),
+    #[error("audit evaluator status rejected: {0}")]
+    OutcomeStatus(FindingError),
+    #[error("audit outcome {0} has no fresh post-evaluation status reading")]
+    OutcomeStatusStale(String),
+    #[error("audit outcome {0} was signed by a revoked evaluator")]
+    OutcomeEvaluatorRevoked(String),
     #[error("audit attempt rejected: {0}")]
     Attempt(FindingError),
     #[error("audit attempt {0} did not use the venue-audit authorization branch")]
@@ -366,6 +392,28 @@ pub fn verify_audit_report(
     .map_err(FindingAuditError::Epoch)?;
     verify_signed_audit_report(report, &witnesses.pinned_audit_authority)
         .map_err(FindingAuditError::Report)?;
+    verify_signed_audit_round_authorization(
+        &witnesses.round_authorization,
+        &witnesses.pinned_governance_authority,
+    )
+    .map_err(FindingAuditError::RoundAuthorization)?;
+    let authorization_digest = signed_envelope_sha256(&witnesses.round_authorization)
+        .map_err(FindingAuditError::RoundAuthorization)?;
+    if epoch.body.authorization_digest != authorization_digest
+        || witnesses
+            .round_authorization
+            .body
+            .epoch_precommitment_sha256
+            != audit_epoch_precommitment_sha256(&epoch.body)
+                .map_err(FindingAuditError::RoundAuthorization)?
+    {
+        return Err(FindingAuditError::RoundAuthorizationBinding);
+    }
+    if witnesses.round_authorization.body.authorized_at > epoch.body.committed_at
+        || witnesses.round_authorization.body.expires_at <= epoch.body.committed_at
+    {
+        return Err(FindingAuditError::RoundAuthorizationWindow);
+    }
     let epoch_envelope_sha256 = signed_envelope_sha256(epoch).map_err(FindingAuditError::Epoch)?;
     let epoch = &epoch.body;
     let report = &report.body;
@@ -552,6 +600,36 @@ pub fn verify_audit_report(
         policy
             .validate("audit evaluator policy")
             .map_err(FindingAuditError::Outcome)?;
+        let Some(status) = witnesses.evaluator_statuses.iter().find(|status| {
+            status.body.status_ref == policy.revocation_status_ref
+                && status.body.authority_id == policy.authority_id
+                && status.body.key == policy.key
+                && status.body.key_epoch == policy.key_epoch
+        }) else {
+            return Err(FindingAuditError::OutcomeStatusNotEstablished(
+                outcome.outcome_id.clone(),
+            ));
+        };
+        verify_signed_authority_status(status, &witnesses.pinned_status_authority)
+            .map_err(FindingAuditError::OutcomeStatus)?;
+        if status.body.observed_at < outcome.evaluated_at
+            || status.body.observed_at > report.reported_at
+            || report.reported_at.saturating_sub(status.body.observed_at)
+                > MAX_AUDIT_STATUS_AGE_SECS
+        {
+            return Err(FindingAuditError::OutcomeStatusStale(
+                outcome.outcome_id.clone(),
+            ));
+        }
+        if status
+            .body
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from <= outcome.evaluated_at)
+        {
+            return Err(FindingAuditError::OutcomeEvaluatorRevoked(
+                outcome.outcome_id.clone(),
+            ));
+        }
         verify_signed_challenge_outcome(signed, &policy.key).map_err(FindingAuditError::Outcome)?;
         if outcome.authorization != FindingChallengeAuthorizationKind::VenueAudit {
             return Err(FindingAuditError::OutcomeAuthorization(
