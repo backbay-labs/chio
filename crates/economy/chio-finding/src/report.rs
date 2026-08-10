@@ -108,6 +108,11 @@ pub struct FindingVerifierReport {
     /// artifact role; the report commits its bytes here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_proof_input_sha256: Option<String>,
+    /// Post-purchase delivery receipt that the verifier authenticated as a
+    /// successful delivery of this exact Finding and found in a pinned
+    /// checkpoint log. Absent on pre-sale admission reports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finding_delivery_receipt_id: Option<String>,
     pub trust_root_snapshot_sha256: String,
     pub resolver_policy_sha256: String,
     pub trusted_time_input_sha256: String,
@@ -155,6 +160,9 @@ impl FindingVerifierReport {
         }
         if let Some(digest) = &self.status_proof_input_sha256 {
             require_hex64(digest, "status_proof_input_sha256")?;
+        }
+        if let Some(receipt_id) = &self.finding_delivery_receipt_id {
+            require_hex64(receipt_id, "finding_delivery_receipt_id")?;
         }
         require_hex64(
             &self.trust_root_snapshot_sha256,

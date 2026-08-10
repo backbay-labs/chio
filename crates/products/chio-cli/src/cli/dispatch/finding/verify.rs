@@ -16,7 +16,8 @@ use chio_finding::{
 };
 use chio_finding_verifier::{
     verify_finding_evidence, FindingBondSnapshot, FindingEvidenceBundle, FindingVerifierDraft,
-    FindingVerifierTrustRoots, NoNonceEvidence, ResolvedReceiptEvidence, MAX_RAW_FINDING_BYTES,
+    FindingVerifierTrustRoots, NoNonceEvidence, ResolvedFindingDeliveryEvidence,
+    ResolvedReceiptEvidence, MAX_RAW_FINDING_BYTES,
 };
 use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
@@ -152,11 +153,27 @@ pub(super) fn cmd_finding_verify(
             inclusion_proof: entry.inclusion_proof,
         });
     }
+    let finding_delivery = evidence_file
+        .finding_delivery
+        .map(|delivery| {
+            let canonical_receipt_bytes = canonical_json_bytes(&delivery.receipt.receipt)?;
+            Ok::<_, CliError>(ResolvedFindingDeliveryEvidence {
+                receipt: ResolvedReceiptEvidence {
+                    receipt: delivery.receipt.receipt,
+                    canonical_receipt_bytes,
+                    inclusion_proof: delivery.receipt.inclusion_proof,
+                },
+                checkpoints: delivery.checkpoints,
+                checkpoint_transparency: delivery.checkpoint_transparency,
+            })
+        })
+        .transpose()?;
     let nonce_resolver = NoNonceEvidence;
     let bundle = FindingEvidenceBundle {
         receipts,
         checkpoints: evidence_file.checkpoints,
         checkpoint_transparency: evidence_file.checkpoint_transparency,
+        finding_delivery,
         recipe_preimage: recipe_preimage.as_deref(),
         status_proof_input: status_proof_input.as_deref(),
         runtime_attestation: evidence_file.runtime_attestation,
@@ -282,6 +299,8 @@ struct FindingEvidenceFile {
     #[serde(default)]
     checkpoint_transparency: CheckpointTransparencySummary,
     #[serde(default)]
+    finding_delivery: Option<FindingDeliveryEvidenceEntry>,
+    #[serde(default)]
     runtime_attestation: Option<SignedExportEnvelope<RuntimeAttestationEvidence>>,
     #[serde(default)]
     runtime_appraisal: Option<SignedRuntimeAttestationAppraisalReport>,
@@ -298,6 +317,14 @@ struct FindingEvidenceFile {
 struct FindingEvidenceReceiptEntry {
     receipt: ChioReceipt,
     inclusion_proof: ReceiptInclusionProof,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FindingDeliveryEvidenceEntry {
+    receipt: FindingEvidenceReceiptEntry,
+    checkpoints: Vec<KernelCheckpoint>,
+    checkpoint_transparency: CheckpointTransparencySummary,
 }
 
 #[derive(serde::Deserialize)]
@@ -544,6 +571,7 @@ fn emit_evidence_report(
             "evaluation_time": draft.evaluation_time,
             "resolved_evidence_bundle_sha256": draft.resolved_evidence_bundle_sha256,
             "backing_allocation_id": draft.backing_allocation_id,
+            "finding_delivery_receipt_id": draft.finding_delivery_receipt_id,
             "facets": facet_rows,
             "required_facets": required_labels,
             "unverified_required_facets": unverified,
@@ -564,6 +592,9 @@ fn emit_evidence_report(
             "evidence_bundle:     {}",
             terminal_safe(&draft.resolved_evidence_bundle_sha256)
         );
+        if let Some(receipt_id) = draft.finding_delivery_receipt_id.as_deref() {
+            println!("delivery_receipt:    {}", terminal_safe(receipt_id));
+        }
         println!("facets:");
         for result in &draft.facets {
             println!(

@@ -61,6 +61,9 @@
         "status_proof_input_sha256": {
           "$ref": "#/$defs/sha256"
         },
+        "finding_delivery_receipt_id": {
+          "$ref": "#/$defs/sha256"
+        },
         "trust_root_snapshot_sha256": {
           "$ref": "#/$defs/sha256"
         },

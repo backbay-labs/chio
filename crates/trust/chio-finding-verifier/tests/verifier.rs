@@ -24,7 +24,11 @@ use chio_core_types::receipt::governance::{
 };
 use chio_core_types::receipt::kinds::TrustLevel;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
-use chio_core_types::receipt::metadata::{DeliveryContract, DeliveryResult};
+use chio_core_types::receipt::metadata::{
+    DeliveryContract, DeliveryResult, FindingDelivery, FindingDeliverySettlementMode,
+    FindingMediaTypeCheck, FindingTransformProfile, FINDING_DELIVERY_METADATA_KEY,
+    FINDING_DELIVERY_SCHEMA,
+};
 use chio_core_types::MerkleTree;
 use chio_core_types::{canonical_json_bytes, sha256_hex};
 use chio_finding::{
@@ -44,10 +48,12 @@ use chio_finding::{
 use chio_finding_verifier::{
     sign_finding_verifier_report, verify_checkpoint_membership, verify_finding_evidence,
     CheckpointMembershipError, FindingBondSnapshot, FindingEvidenceBundle, FindingVerifierError,
-    FindingVerifierTrustRoots, NoNonceEvidence, ResolvedReceiptEvidence,
+    FindingVerifierTrustRoots, NoNonceEvidence, ResolvedFindingDeliveryEvidence,
+    ResolvedReceiptEvidence,
 };
 use chio_kernel::checkpoint::{
-    build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_log_id,
+    build_checkpoint, build_checkpoint_transparency, build_checkpoint_with_previous,
+    build_inclusion_proof, checkpoint_chain_leaf_hash, checkpoint_log_id,
     CheckpointTransparencySummary, KernelCheckpoint,
 };
 use chio_revocation_oracle::{
@@ -72,6 +78,7 @@ fn receipt(
     content_hash: &str,
     runtime_assurance: Option<&RuntimeAssuranceReceiptMetadata>,
     delivery_contract: bool,
+    finding_delivery: Option<FindingDelivery>,
 ) -> Result<ChioReceipt, Box<dyn Error>> {
     let mut metadata = serde_json::Map::new();
     if delivery_contract {
@@ -83,6 +90,12 @@ fn receipt(
                 observed_digest: content_hash.to_owned(),
                 result: DeliveryResult::Matched,
             })?,
+        );
+    }
+    if let Some(finding_delivery) = finding_delivery {
+        metadata.insert(
+            FINDING_DELIVERY_METADATA_KEY.to_owned(),
+            serde_json::to_value(finding_delivery)?,
         );
     }
     if let Some(runtime_assurance) = runtime_assurance {
@@ -248,6 +261,7 @@ fn fixture_with_runtime_assurance(
         &sha256_hex(b"production-output-0"),
         runtime_assurance,
         false,
+        None,
     )?;
     let second = receipt(
         &kernel,
@@ -255,18 +269,13 @@ fn fixture_with_runtime_assurance(
         &sha256_hex(b"production-output-1"),
         runtime_assurance,
         false,
+        None,
     )?;
-    let delivery = receipt(&keypair(12), 2, HEX64, None, true)?;
     let first_bytes = canonical_json_bytes(&first)?;
     let second_bytes = canonical_json_bytes(&second)?;
-    let delivery_bytes = canonical_json_bytes(&delivery)?;
-    let leaves = [
-        first_bytes.clone(),
-        second_bytes.clone(),
-        delivery_bytes.clone(),
-    ];
+    let leaves = [first_bytes.clone(), second_bytes.clone()];
     let tree = MerkleTree::from_leaves(&leaves)?;
-    let checkpoint = build_checkpoint(1, 1, 3, &leaves, &kernel)?;
+    let checkpoint = build_checkpoint(1, 1, 2, &leaves, &kernel)?;
     let checkpoint_transparency = build_checkpoint_transparency(std::slice::from_ref(&checkpoint))?;
     let log_id = checkpoint_log_id(&checkpoint);
     let evidence_checkpoint_ref = format!("{log_id}#1");
@@ -414,11 +423,6 @@ fn fixture_with_runtime_assurance(
             canonical_receipt_bytes: second_bytes,
             inclusion_proof: build_inclusion_proof(&tree, 1, 1, 2)?,
         },
-        ResolvedReceiptEvidence {
-            receipt: delivery,
-            canonical_receipt_bytes: delivery_bytes,
-            inclusion_proof: build_inclusion_proof(&tree, 2, 1, 3)?,
-        },
     ];
 
     Ok(Fixture {
@@ -553,6 +557,7 @@ fn bundle<'a>(
         receipts,
         checkpoints: vec![fx.checkpoint.clone()],
         checkpoint_transparency: fx.checkpoint_transparency.clone(),
+        finding_delivery: None,
         recipe_preimage: Some(fx.recipe_bytes.as_slice()),
         status_proof_input: None,
         runtime_attestation: None,
@@ -658,17 +663,67 @@ fn clone_receipts(fx: &Fixture) -> Vec<ResolvedReceiptEvidence> {
         .collect()
 }
 
+fn finding_delivery_overlay(finding_id: &str) -> FindingDelivery {
+    FindingDelivery {
+        schema: FINDING_DELIVERY_SCHEMA.to_string(),
+        finding_id: finding_id.to_string(),
+        listing_id: "listing-qualified-1".to_string(),
+        transform_profile: FindingTransformProfile::Identity,
+        digest_check: DeliveryResult::Matched,
+        media_type_check: FindingMediaTypeCheck::Matched,
+        settlement_mode: FindingDeliverySettlementMode::LocalReversibleHold,
+        accepted_bid_envelope_sha256: HEX64.to_string(),
+        venue_admission_envelope_sha256: HEX64.to_string(),
+        reservation_id: "reservation-qualified-1".to_string(),
+        purchase_intent_id: "intent-qualified-1".to_string(),
+        authoritative_payment_operation_id: "payment-qualified-1".to_string(),
+        status_proof: None,
+    }
+}
+
+fn resolved_delivery(
+    fx: &Fixture,
+    content_hash: &str,
+    overlay: Option<FindingDelivery>,
+) -> Result<ResolvedFindingDeliveryEvidence, Box<dyn Error>> {
+    let receipt = receipt(&keypair(12), 2, content_hash, None, true, overlay)?;
+    let receipt_bytes = canonical_json_bytes(&receipt)?;
+    let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_bytes))?;
+    let prior_chain_leaf = checkpoint_chain_leaf_hash(&fx.checkpoint.body)?;
+    let checkpoint = build_checkpoint_with_previous(
+        2,
+        3,
+        3,
+        std::slice::from_ref(&receipt_bytes),
+        &keypair(21),
+        Some(&fx.checkpoint),
+        &[prior_chain_leaf],
+    )?;
+    let checkpoints = vec![fx.checkpoint.clone(), checkpoint];
+    let checkpoint_transparency = build_checkpoint_transparency(&checkpoints)?;
+    Ok(ResolvedFindingDeliveryEvidence {
+        receipt: ResolvedReceiptEvidence {
+            receipt,
+            canonical_receipt_bytes: receipt_bytes,
+            inclusion_proof: build_inclusion_proof(&tree, 0, 2, 3)?,
+        },
+        checkpoints,
+        checkpoint_transparency,
+    })
+}
+
 #[test]
 fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
-    assert!(fx.receipts[..2]
+    assert!(fx
+        .receipts
         .iter()
         .all(|evidence| evidence.receipt.delivery_contract().is_none()));
-    assert!(fx.receipts[..2]
+    assert!(fx
+        .receipts
         .iter()
         .all(|evidence| evidence.receipt.content_hash != fx.finding_payload_sha256));
-    assert!(fx.receipts[2].receipt.delivery_contract().is_some());
     let draft =
         verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
 
@@ -710,6 +765,7 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
         assert_eq!(draft.facet_outcome(kind), Some(expected), "facet {kind:?}");
     }
     assert!(draft.satisfies_required_facets(&fx.profile.body));
+    assert!(draft.finding_delivery_receipt_id.is_none());
     assert_eq!(
         draft.backing_allocation_id.as_deref(),
         Some(fx.backing.body.allocation_id.as_str())
@@ -723,16 +779,13 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
 }
 
 #[test]
-fn receipt_authenticity_requires_a_signed_delivery_digest_binding() -> TestResult {
+fn post_purchase_delivery_requires_a_finding_specific_overlay() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
-    let mut receipts = clone_receipts(&fx);
-    let unrelated_digest = "ab".repeat(32);
-    let unrelated = receipt(&keypair(12), 2, &unrelated_digest, None, true)?;
-    receipts[2].canonical_receipt_bytes = canonical_json_bytes(&unrelated)?;
-    receipts[2].receipt = unrelated;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.finding_delivery = Some(resolved_delivery(&fx, &fx.finding_payload_sha256, None)?);
 
-    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, receipts))?;
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let authenticity = draft
         .facets
         .iter()
@@ -740,11 +793,59 @@ fn receipt_authenticity_requires_a_signed_delivery_digest_binding() -> TestResul
         .ok_or("receipt-authenticity facet missing")?;
     assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
     assert!(
-        authenticity.reason.contains("Finding payload digest"),
+        authenticity.reason.contains("Finding delivery overlay"),
         "unexpected reason: {}",
         authenticity.reason
     );
     assert!(!draft.satisfies_required_facets(&fx.profile.body));
+    Ok(())
+}
+
+#[test]
+fn post_purchase_delivery_is_finding_bound_and_checkpointed_in_the_report() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let delivery = resolved_delivery(
+        &fx,
+        &fx.finding_payload_sha256,
+        Some(finding_delivery_overlay(&finding.finding_id)),
+    )?;
+    let expected_receipt_id = delivery.receipt.receipt.id.clone();
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.finding_delivery = Some(delivery);
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    assert_eq!(
+        draft.finding_delivery_receipt_id.as_deref(),
+        Some(expected_receipt_id.as_str())
+    );
+    let report =
+        sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.verifier)?;
+    assert_eq!(
+        report.body.finding_delivery_receipt_id.as_deref(),
+        Some(expected_receipt_id.as_str())
+    );
+    Ok(())
+}
+
+#[test]
+fn post_purchase_delivery_rejects_an_overlay_for_another_finding() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.finding_delivery = Some(resolved_delivery(
+        &fx,
+        &fx.finding_payload_sha256,
+        Some(finding_delivery_overlay(&"ab".repeat(32))),
+    )?);
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::ReceiptAuthenticity),
+        Some(FindingFacetOutcome::Failed)
+    );
+    assert!(draft.finding_delivery_receipt_id.is_none());
     Ok(())
 }
 

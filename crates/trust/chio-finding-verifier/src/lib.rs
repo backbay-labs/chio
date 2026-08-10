@@ -38,5 +38,5 @@ pub use receipts::{verify_receipt_strict, ReceiptStrictError};
 pub use verify::{
     sign_finding_verifier_report, verify_finding_evidence, FindingBondSnapshot,
     FindingEvidenceBundle, FindingVerifierDraft, FindingVerifierError, FindingVerifierTrustRoots,
-    ResolvedReceiptEvidence, MAX_RAW_FINDING_BYTES,
+    ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence, MAX_RAW_FINDING_BYTES,
 };

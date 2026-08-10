@@ -291,6 +291,7 @@ fn report_bytes_for_profile(
         resolved_evidence_bundle_sha256: "34".repeat(32),
         replay_recipe_input_sha256: Some(sha256_hex(recipe)),
         status_proof_input_sha256: Some(sha256_hex(status)),
+        finding_delivery_receipt_id: Some("89".repeat(32)),
         trust_root_snapshot_sha256: "45".repeat(32),
         resolver_policy_sha256: "56".repeat(32),
         trusted_time_input_sha256: "67".repeat(32),
@@ -717,6 +718,36 @@ fn cognition_market_delivery_claim_verifies_without_unselected_attachments() -> 
     assert_eq!(report.verified_claims, vec![selected_claim.to_string()]);
     assert_eq!(report.claim_results.len(), 1);
     assert_eq!(report.claim_results[0].claim_id, selected_claim);
+    Ok(())
+}
+
+#[test]
+fn cognition_market_delivery_claim_rejects_a_pre_sale_report() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let report_bytes = bundle
+        .artifacts
+        .get("report.json")
+        .ok_or("report missing")?;
+    let signed: SignedExportEnvelope<FindingVerifierReport> = serde_json::from_slice(report_bytes)?;
+    let mut report = signed.body;
+    report.finding_delivery_receipt_id = None;
+    report.report_id = compute_report_id(&report)?;
+    let replacement = SignedExportEnvelope::sign(report, &verifier_keypair())?;
+    replace_graph_artifact(
+        &mut bundle,
+        "report.json",
+        canonical_json_bytes(&replacement)?,
+    )?;
+    resign_graph(&mut bundle)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("pre-sale report granted a delivery-bound claim")?
+        .to_string();
+    assert!(
+        error.contains("requires a verified Finding delivery receipt"),
+        "unexpected error: {error}"
+    );
     Ok(())
 }
 

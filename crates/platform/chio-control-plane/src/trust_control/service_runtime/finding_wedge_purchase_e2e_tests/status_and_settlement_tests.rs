@@ -183,7 +183,8 @@ async fn finding_purchase_without_status_verifier_denies_before_effects() -> Tes
         ..LaneOptions::standard()
     })
     .await?;
-    let denied = lane.reveal("m6-missing-status-verifier", "m6-missing-status-nonce")?;
+    let denied =
+        lane.reveal_without_status("m6-missing-status-verifier", "m6-missing-status-nonce")?;
     assert_denied_with(&denied, "configured kernel verifier");
     assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 0);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);

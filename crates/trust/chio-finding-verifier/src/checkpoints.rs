@@ -78,6 +78,34 @@ pub fn verify_checkpoint_membership(
     profile: &FindingChallengeVerifierProfile,
     evidence_checkpoint_ref: &str,
 ) -> Result<(), CheckpointMembershipError> {
+    verify_checkpoint_membership_inner(
+        receipts,
+        checkpoints,
+        transparency,
+        profile,
+        Some(evidence_checkpoint_ref),
+    )
+}
+
+/// Verify checkpoint membership for evidence created after the Finding was
+/// signed. The receipt still has to land in the profile-pinned checkpoint log,
+/// but it cannot be named by the Finding's earlier evidence checkpoint ref.
+pub(crate) fn verify_post_finding_checkpoint_membership(
+    receipts: &[ResolvedReceiptEvidence],
+    checkpoints: &[KernelCheckpoint],
+    transparency: &CheckpointTransparencySummary,
+    profile: &FindingChallengeVerifierProfile,
+) -> Result<(), CheckpointMembershipError> {
+    verify_checkpoint_membership_inner(receipts, checkpoints, transparency, profile, None)
+}
+
+fn verify_checkpoint_membership_inner(
+    receipts: &[ResolvedReceiptEvidence],
+    checkpoints: &[KernelCheckpoint],
+    transparency: &CheckpointTransparencySummary,
+    profile: &FindingChallengeVerifierProfile,
+    evidence_checkpoint_ref: Option<&str>,
+) -> Result<(), CheckpointMembershipError> {
     if checkpoints.is_empty() {
         return Err(CheckpointMembershipError::NoCheckpoints);
     }
@@ -101,8 +129,10 @@ pub fn verify_checkpoint_membership(
         // Checkpoint-reference grammar: `<log_id>#<checkpoint_seq>`. Every
         // supplied checkpoint identity must equal the finding's single
         // evidence_checkpoint_ref; substitution denies.
-        if format!("{log_id}#{seq}") != evidence_checkpoint_ref {
-            return Err(CheckpointMembershipError::CheckpointRefMismatch);
+        if let Some(evidence_checkpoint_ref) = evidence_checkpoint_ref {
+            if format!("{log_id}#{seq}") != evidence_checkpoint_ref {
+                return Err(CheckpointMembershipError::CheckpointRefMismatch);
+            }
         }
         let Some(pinned_signer) = pinned_logs.get(log_id.as_str()) else {
             return Err(CheckpointMembershipError::LogNotPinned(seq));

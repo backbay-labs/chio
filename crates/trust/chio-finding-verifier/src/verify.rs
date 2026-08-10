@@ -24,7 +24,9 @@ use chio_core_types::capability::trust_policy::AttestationTrustPolicy;
 use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core_types::receipt::body::{chio_receipt_id, ChioReceipt};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
-use chio_core_types::receipt::metadata::DeliveryResult;
+use chio_core_types::receipt::metadata::{
+    DeliveryResult, FindingDelivery, FindingMediaTypeCheck, FINDING_DELIVERY_METADATA_KEY,
+};
 use chio_finding::{
     compute_report_id, signed_envelope_sha256, verify_finding, verify_pinned_envelope,
     verify_signed_bond_backing, verify_signed_profile, verify_status_proof_input, Finding,
@@ -39,7 +41,7 @@ use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
 };
 
-use crate::checkpoints::verify_checkpoint_membership;
+use crate::checkpoints::{verify_checkpoint_membership, verify_post_finding_checkpoint_membership};
 use crate::cost::FindingNonceResolver;
 use crate::cost::{evaluate_metered_exposure, evaluate_settled_spend, CostFacetOutcome};
 use crate::receipts::verify_receipt_strict;
@@ -122,6 +124,16 @@ pub struct ResolvedReceiptEvidence {
     pub inclusion_proof: ReceiptInclusionProof,
 }
 
+/// Optional post-purchase delivery evidence. It is separate from the
+/// Finding's production receipts because the Finding is signed before its
+/// first sale and therefore cannot commit a later delivery checkpoint.
+pub struct ResolvedFindingDeliveryEvidence {
+    pub receipt: ResolvedReceiptEvidence,
+    /// Complete checkpoint prefix through the delivery receipt's checkpoint.
+    pub checkpoints: Vec<KernelCheckpoint>,
+    pub checkpoint_transparency: CheckpointTransparencySummary,
+}
+
 /// Fresh authority view of the named collateral allocation, resolved by
 /// the caller from the venue collateral store immediately before
 /// evaluation. A stale or absent snapshot reports bond backing
@@ -146,6 +158,9 @@ pub struct FindingEvidenceBundle<'a> {
     /// Transparency records resolved with the checkpoint set. These are
     /// re-derived and compared before any checkpoint can back a facet.
     pub checkpoint_transparency: CheckpointTransparencySummary,
+    /// Post-purchase proof used only for a delivery-bound claim. Admission
+    /// verification before the first sale leaves this absent.
+    pub finding_delivery: Option<ResolvedFindingDeliveryEvidence>,
     /// Raw replay-recipe preimage bytes, when the finding commits one.
     pub recipe_preimage: Option<&'a [u8]>,
     /// Exact canonical portable status-proof input bytes. This unsigned input
@@ -171,6 +186,9 @@ pub struct FindingVerifierDraft {
     /// Exact raw attachment digests copied into the signed report.
     pub replay_recipe_input_sha256: Option<String>,
     pub status_proof_input_sha256: Option<String>,
+    /// Authenticated, checkpointed post-purchase receipt for this Finding.
+    /// Absent for ordinary pre-sale admission reports.
+    pub finding_delivery_receipt_id: Option<String>,
     pub evaluation_time: u64,
     /// Allocation id carried to the report when bond backing verified.
     pub backing_allocation_id: Option<String>,
@@ -242,6 +260,100 @@ pub(crate) const fn policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u
     instant >= policy.valid_from && instant < policy.valid_until
 }
 
+fn verify_finding_delivery_receipt(
+    finding: &Finding,
+    profile: &FindingChallengeVerifierProfile,
+    evidence: &ResolvedReceiptEvidence,
+) -> Result<String, String> {
+    let receipt = &evidence.receipt;
+    verify_receipt_strict(receipt)
+        .map_err(|error| format!("delivery receipt {}: {error}", receipt.id))?;
+    let canonical = canonical_json_bytes(receipt).map_err(|_| {
+        format!(
+            "delivery receipt {} failed canonical serialization",
+            receipt.id
+        )
+    })?;
+    if canonical != evidence.canonical_receipt_bytes {
+        return Err(format!(
+            "delivery receipt {} canonical bytes drift from resolved leaf bytes",
+            receipt.id
+        ));
+    }
+    let is_delivery = profile.receipt_signers.iter().any(|signer| {
+        signer.role == FindingReceiptRole::Delivery
+            && signer.policy.key == receipt.kernel_key
+            && policy_covers(&signer.policy, receipt.timestamp)
+    });
+    let has_other_role = profile.receipt_signers.iter().any(|signer| {
+        signer.role != FindingReceiptRole::Delivery
+            && signer.policy.key == receipt.kernel_key
+            && policy_covers(&signer.policy, receipt.timestamp)
+    });
+    if !is_delivery || has_other_role || !receipt.is_allowed() {
+        return Err(format!(
+            "delivery receipt {} is not an unambiguous profile-pinned delivery allow receipt",
+            receipt.id
+        ));
+    }
+    let contract = receipt.delivery_contract().ok_or_else(|| {
+        format!(
+            "delivery receipt {} has no signed delivery contract",
+            receipt.id
+        )
+    })?;
+    contract.validate().map_err(|error| {
+        format!(
+            "delivery receipt {} contract is invalid: {error}",
+            receipt.id
+        )
+    })?;
+    if contract.result != DeliveryResult::Matched
+        || contract.expected_digest != finding.payload_sha256
+        || contract.observed_digest != finding.payload_sha256
+        || receipt.content_hash != finding.payload_sha256
+    {
+        return Err(format!(
+            "delivery receipt {} does not bind the Finding payload digest",
+            receipt.id
+        ));
+    }
+    let overlay_value = receipt
+        .metadata
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+        .and_then(|metadata| metadata.get(FINDING_DELIVERY_METADATA_KEY))
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "delivery receipt {} has no signed Finding delivery overlay",
+                receipt.id
+            )
+        })?;
+    let overlay: FindingDelivery = serde_json::from_value(overlay_value).map_err(|error| {
+        format!(
+            "delivery receipt {} Finding delivery overlay is malformed: {error}",
+            receipt.id
+        )
+    })?;
+    overlay.validate().map_err(|error| {
+        format!(
+            "delivery receipt {} Finding delivery overlay is invalid: {error}",
+            receipt.id
+        )
+    })?;
+    if overlay.finding_id != finding.finding_id
+        || overlay.digest_check != DeliveryResult::Matched
+        || overlay.media_type_check != FindingMediaTypeCheck::Matched
+    {
+        return Err(format!(
+            "delivery receipt {} Finding delivery overlay does not bind a successful delivery for this Finding",
+            receipt.id
+        ));
+    }
+    Ok(receipt.id.clone())
+}
+
 /// Run the offline evidence verifier. The normative order from
 /// ARCHITECTURE 4.1.1: strict raw parse, receipt resolution and strict
 /// verification, checkpoint membership, issuer lineage, recipe binding,
@@ -310,139 +422,94 @@ pub fn verify_finding_evidence(
 
     // Step 2: strict receipt verification plus exact binding to
     // `evidence_receipt_ids` (order and cardinality, whole-vector
-    // equality; a set comparison would admit reorderings). The separately
-    // pinned delivery receipt proves the payload digest without pretending a
-    // producing receipt is also a later purchase delivery.
+    // equality; a set comparison would admit reorderings). Optional purchase
+    // delivery is evaluated through its separate post-Finding evidence path.
     let mut production_receipt_indexes = Vec::new();
-    let receipt_authenticity = if bundle.receipts.is_empty() {
-        facet(
+    let mut failure: Option<String> = None;
+    let mut recomputed_ids = Vec::with_capacity(bundle.receipts.len());
+    let production_signers: Vec<&FindingAuthorityKeyPolicy> = profile
+        .receipt_signers
+        .iter()
+        .filter(|signer| signer.role == FindingReceiptRole::Production)
+        .map(|signer| &signer.policy)
+        .collect();
+    for (index, evidence) in bundle.receipts.iter().enumerate() {
+        if let Err(error) = verify_receipt_strict(&evidence.receipt) {
+            failure = Some(format!("receipt {}: {error}", evidence.receipt.id));
+            break;
+        }
+        match canonical_json_bytes(&evidence.receipt) {
+            Ok(bytes) if bytes == evidence.canonical_receipt_bytes => {}
+            _ => {
+                failure = Some(format!(
+                    "receipt {} canonical bytes drift from resolved leaf bytes",
+                    evidence.receipt.id
+                ));
+                break;
+            }
+        }
+        if !production_signers.iter().any(|policy| {
+            policy.key == evidence.receipt.kernel_key
+                && policy_covers(policy, evidence.receipt.timestamp)
+        }) {
+            failure = Some(format!(
+                "receipt {} signer is not a profile-pinned production key active at the receipt timestamp",
+                evidence.receipt.id
+            ));
+            break;
+        }
+        production_receipt_indexes.push(index);
+        match chio_receipt_id(&evidence.receipt.body()) {
+            Ok(id) => recomputed_ids.push(id),
+            Err(_) => {
+                failure = Some(format!(
+                    "receipt {} id recomputation failed",
+                    evidence.receipt.id
+                ));
+                break;
+            }
+        }
+    }
+    if failure.is_none()
+        && production_receipt_indexes.len() as u64 > profile.resource_caps.max_evidence_receipts
+    {
+        failure = Some("production evidence receipt count exceeds the profile cap".to_string());
+    }
+    if failure.is_none() && recomputed_ids != finding.evidence_receipt_ids {
+        failure = Some(
+            "recomputed receipt ids do not equal evidence_receipt_ids in order and cardinality"
+                .to_string(),
+        );
+    }
+    let mut authenticated_delivery_receipt_id = None;
+    if failure.is_none() {
+        if let Some(delivery) = bundle.finding_delivery.as_ref() {
+            match verify_finding_delivery_receipt(&finding, profile, &delivery.receipt) {
+                Ok(receipt_id) => authenticated_delivery_receipt_id = Some(receipt_id),
+                Err(reason) => failure = Some(reason),
+            }
+        }
+    }
+    let receipt_authenticity = match failure {
+        Some(reason) => facet(
+            FindingFacetKind::ReceiptAuthenticity,
+            FindingFacetOutcome::Failed,
+            reason,
+        ),
+        None if bundle.receipts.is_empty() => facet(
             FindingFacetKind::ReceiptAuthenticity,
             FindingFacetOutcome::Unavailable,
-            "no evidence receipts resolved",
-        )
-    } else {
-        let mut failure: Option<String> = None;
-        let mut recomputed_ids = Vec::with_capacity(bundle.receipts.len());
-        // Strict self-verification proves the bytes are internally
-        // authentic; the profile role policies say what each receipt may
-        // prove.
-        let production_signers: Vec<&FindingAuthorityKeyPolicy> = profile
-            .receipt_signers
-            .iter()
-            .filter(|signer| signer.role == FindingReceiptRole::Production)
-            .map(|signer| &signer.policy)
-            .collect();
-        let delivery_signers: Vec<&FindingAuthorityKeyPolicy> = profile
-            .receipt_signers
-            .iter()
-            .filter(|signer| signer.role == FindingReceiptRole::Delivery)
-            .map(|signer| &signer.policy)
-            .collect();
-        let mut delivery_receipt_count = 0_u64;
-        for (index, evidence) in bundle.receipts.iter().enumerate() {
-            if failure.is_some() {
-                break;
-            }
-            if let Err(error) = verify_receipt_strict(&evidence.receipt) {
-                failure = Some(format!("receipt {}: {error}", evidence.receipt.id));
-                break;
-            }
-            // The canonical bytes supplied as the leaf must BE the bytes
-            // of this receipt, or membership would prove a different
-            // projection than the one verified here.
-            match canonical_json_bytes(&evidence.receipt) {
-                Ok(bytes) if bytes == evidence.canonical_receipt_bytes => {}
-                _ => {
-                    failure = Some(format!(
-                        "receipt {} canonical bytes drift from resolved leaf bytes",
-                        evidence.receipt.id
-                    ));
-                    break;
-                }
-            }
-            let is_production = production_signers.iter().any(|policy| {
-                policy.key == evidence.receipt.kernel_key
-                    && policy_covers(policy, evidence.receipt.timestamp)
-            });
-            let is_delivery = delivery_signers.iter().any(|policy| {
-                policy.key == evidence.receipt.kernel_key
-                    && policy_covers(policy, evidence.receipt.timestamp)
-            });
-            match (is_production, is_delivery) {
-                (true, false) => {
-                    production_receipt_indexes.push(index);
-                    match chio_receipt_id(&evidence.receipt.body()) {
-                        Ok(id) => recomputed_ids.push(id),
-                        Err(_) => {
-                            failure = Some(format!(
-                                "receipt {} id recomputation failed",
-                                evidence.receipt.id
-                            ));
-                        }
-                    }
-                }
-                (false, true) => {
-                    delivery_receipt_count = delivery_receipt_count.saturating_add(1);
-                    let Some(delivery) = evidence.receipt.delivery_contract() else {
-                        failure = Some(format!(
-                            "delivery receipt {} has no signed delivery contract",
-                            evidence.receipt.id
-                        ));
-                        continue;
-                    };
-                    if let Err(error) = delivery.validate() {
-                        failure = Some(format!(
-                            "delivery receipt {} contract is invalid: {error}",
-                            evidence.receipt.id
-                        ));
-                    } else if delivery.result != DeliveryResult::Matched
-                        || delivery.expected_digest != finding.payload_sha256
-                        || delivery.observed_digest != finding.payload_sha256
-                        || evidence.receipt.content_hash != finding.payload_sha256
-                    {
-                        failure = Some(format!(
-                            "delivery receipt {} does not bind the Finding payload digest",
-                            evidence.receipt.id
-                        ));
-                    }
-                }
-                _ => {
-                    failure = Some(format!(
-                        "receipt {} signer has no unambiguous active production or delivery role",
-                        evidence.receipt.id
-                    ));
-                }
-            }
-        }
-        if failure.is_none()
-            && production_receipt_indexes.len() as u64 > profile.resource_caps.max_evidence_receipts
-        {
-            failure = Some("production evidence receipt count exceeds the profile cap".to_string());
-        }
-        if failure.is_none() && recomputed_ids != finding.evidence_receipt_ids {
-            failure = Some(
-                "recomputed receipt ids do not equal evidence_receipt_ids in order and cardinality"
-                    .to_string(),
-            );
-        }
-        if failure.is_none() && delivery_receipt_count != 1 {
-            failure = Some(
-                "exactly one profile-pinned delivery receipt is required to bind the Finding payload"
-                    .to_string(),
-            );
-        }
-        match failure {
-            None => facet(
-                FindingFacetKind::ReceiptAuthenticity,
-                FindingFacetOutcome::Verified,
-                "production evidence and a distinct delivery receipt verified strictly",
-            ),
-            Some(reason) => facet(
-                FindingFacetKind::ReceiptAuthenticity,
-                FindingFacetOutcome::Failed,
-                reason,
-            ),
-        }
+            "no production evidence receipts resolved",
+        ),
+        None => facet(
+            FindingFacetKind::ReceiptAuthenticity,
+            FindingFacetOutcome::Verified,
+            if authenticated_delivery_receipt_id.is_some() {
+                "production evidence and Finding-specific delivery receipt verified strictly"
+            } else {
+                "production evidence receipts verified strictly"
+            },
+        ),
     };
     let receipts_ok = receipt_authenticity.outcome == FindingFacetOutcome::Verified;
     facets.push(receipt_authenticity);
@@ -468,11 +535,30 @@ pub fn verify_finding_evidence(
             profile,
             &finding.evidence_checkpoint_ref,
         ) {
-            Ok(()) => facet(
-                FindingFacetKind::CheckpointMembership,
-                FindingFacetOutcome::Verified,
-                "every receipt is a member of a pinned, signature-valid checkpoint",
-            ),
+            Ok(()) => match bundle.finding_delivery.as_ref() {
+                Some(delivery) => match verify_post_finding_checkpoint_membership(
+                    std::slice::from_ref(&delivery.receipt),
+                    &delivery.checkpoints,
+                    &delivery.checkpoint_transparency,
+                    profile,
+                ) {
+                    Ok(()) => facet(
+                        FindingFacetKind::CheckpointMembership,
+                        FindingFacetOutcome::Verified,
+                        "production and Finding delivery receipts are members of pinned, signature-valid checkpoints",
+                    ),
+                    Err(error) => facet(
+                        FindingFacetKind::CheckpointMembership,
+                        FindingFacetOutcome::Failed,
+                        format!("delivery membership failed: {error}"),
+                    ),
+                },
+                None => facet(
+                    FindingFacetKind::CheckpointMembership,
+                    FindingFacetOutcome::Verified,
+                    "every production receipt is a member of a pinned, signature-valid checkpoint",
+                ),
+            },
             Err(error) => facet(
                 FindingFacetKind::CheckpointMembership,
                 FindingFacetOutcome::Failed,
@@ -480,6 +566,10 @@ pub fn verify_finding_evidence(
             ),
         }
     };
+    let finding_delivery_receipt_id = (checkpoint_membership.outcome
+        == FindingFacetOutcome::Verified)
+        .then_some(authenticated_delivery_receipt_id)
+        .flatten();
     facets.push(checkpoint_membership);
 
     // Facet 4: kernel and revocation trust. Checkpoint signers are pinned
@@ -590,6 +680,7 @@ pub fn verify_finding_evidence(
         resolved_evidence_bundle_sha256,
         replay_recipe_input_sha256: bundle.recipe_preimage.map(sha256_hex),
         status_proof_input_sha256: bundle.status_proof_input.map(sha256_hex),
+        finding_delivery_receipt_id,
         evaluation_time: trust.trusted_time,
         backing_allocation_id,
     })
@@ -1195,6 +1286,14 @@ fn bundle_digest(
         inclusion_proof_sha256s: Vec<String>,
         checkpoint_sha256s: Vec<String>,
         checkpoint_transparency_sha256: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        finding_delivery_receipt_sha256: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        finding_delivery_inclusion_proof_sha256: Option<String>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        finding_delivery_checkpoint_sha256s: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        finding_delivery_checkpoint_transparency_sha256: Option<String>,
         recipe_sha256: Option<String>,
         status_proof_sha256: Option<String>,
         status_operator_authorization_sha256: Option<String>,
@@ -1228,6 +1327,32 @@ fn bundle_digest(
             .map_err(|_| FindingVerifierError::Canonicalization)?;
         inclusion_proof_sha256s.push(sha256_hex(&bytes));
     }
+    let (
+        finding_delivery_receipt_sha256,
+        finding_delivery_inclusion_proof_sha256,
+        finding_delivery_checkpoint_sha256s,
+        finding_delivery_checkpoint_transparency_sha256,
+    ) = match bundle.finding_delivery.as_ref() {
+        Some(delivery) => {
+            let proof_bytes = canonical_json_bytes(&delivery.receipt.inclusion_proof)
+                .map_err(|_| FindingVerifierError::Canonicalization)?;
+            let mut checkpoint_digests = Vec::with_capacity(delivery.checkpoints.len());
+            for checkpoint in &delivery.checkpoints {
+                let bytes = canonical_json_bytes(checkpoint)
+                    .map_err(|_| FindingVerifierError::Canonicalization)?;
+                checkpoint_digests.push(sha256_hex(&bytes));
+            }
+            let transparency_bytes = canonical_json_bytes(&delivery.checkpoint_transparency)
+                .map_err(|_| FindingVerifierError::Canonicalization)?;
+            (
+                Some(sha256_hex(&delivery.receipt.canonical_receipt_bytes)),
+                Some(sha256_hex(&proof_bytes)),
+                checkpoint_digests,
+                Some(sha256_hex(&transparency_bytes)),
+            )
+        }
+        None => (None, None, Vec::new(), None),
+    };
     let backing_envelope_sha256 = match bundle.bond_snapshot.as_ref() {
         Some(snapshot) => {
             let bytes = canonical_json_bytes(&snapshot.backing)
@@ -1259,6 +1384,10 @@ fn bundle_digest(
         inclusion_proof_sha256s,
         checkpoint_sha256s,
         checkpoint_transparency_sha256: sha256_hex(&checkpoint_transparency_bytes),
+        finding_delivery_receipt_sha256,
+        finding_delivery_inclusion_proof_sha256,
+        finding_delivery_checkpoint_sha256s,
+        finding_delivery_checkpoint_transparency_sha256,
         recipe_sha256: bundle.recipe_preimage.map(sha256_hex),
         status_proof_sha256: bundle.status_proof_input.map(sha256_hex),
         status_operator_authorization_sha256,
@@ -1332,6 +1461,7 @@ pub fn sign_finding_verifier_report(
         resolved_evidence_bundle_sha256: draft.resolved_evidence_bundle_sha256.clone(),
         replay_recipe_input_sha256: draft.replay_recipe_input_sha256.clone(),
         status_proof_input_sha256: draft.status_proof_input_sha256.clone(),
+        finding_delivery_receipt_id: draft.finding_delivery_receipt_id.clone(),
         trust_root_snapshot_sha256: trust.trust_root_snapshot_sha256.clone(),
         resolver_policy_sha256: trust.resolver_policy_sha256.clone(),
         trusted_time_input_sha256: trust.trusted_time_input_sha256.clone(),

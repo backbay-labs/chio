@@ -437,6 +437,13 @@ fn require_report_facets(
     report: &SignedFindingVerifierReport,
     selected_claims: &BTreeSet<&'static str>,
 ) -> Result<(), TransactionPassportError> {
+    if selected_claims.contains(COGNITION_MARKET_CLAIMS[0])
+        && report.body.finding_delivery_receipt_id.is_none()
+    {
+        return Err(claim_failed(
+            "delivery-digest-bound claim requires a verified Finding delivery receipt",
+        ));
+    }
     for (claim, required) in [
         (
             COGNITION_MARKET_CLAIMS[0],

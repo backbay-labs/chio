@@ -318,13 +318,13 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/construction.rs": allow(
         "2026-08-31",
-        "kernel construction surface with M8 finding-pool ledger and receipt-flush lock wiring; capped to current size until split",
+        "kernel construction wiring with M8 finding-pool ledger, verifier authorities, and receipt-flush lock; capped to current size until split",
         max_lines=2_034,
     ),
     "crates/kernel/chio-kernel/src/kernel/dispatch.rs": allow(
         "2026-08-31",
-        "dispatch revalidation with M6 status snapshots and M8 pool-delivery claims; capped to current size until split",
-        max_lines=2_054,
+        "dispatch revalidation with M6 status snapshots and M8 request-scoped pool-delivery claims; capped to current size until split",
+        max_lines=2_060,
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
@@ -399,7 +399,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
         "cognition purchase and recovery end-to-end regression suite; capped to current size until split",
-        max_lines=5_036,
+        max_lines=5_109,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",
