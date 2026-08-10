@@ -1360,8 +1360,8 @@ fn record_mutation_receipt(
     let prior_authority = transaction
         .query_row(
             "SELECT signed_receipt_json FROM finding_pool_receipt_outbox \
-             WHERE allocation_envelope_sha256 = ?1 ORDER BY rowid LIMIT 1",
-            [&mutation.allocation_envelope_sha256],
+             ORDER BY rowid LIMIT 1",
+            [],
             |row| row.get::<_, String>(0),
         )
         .optional()

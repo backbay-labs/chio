@@ -430,7 +430,8 @@ before the digest projection is materialized.
 
 The shipped qualifying backend is durable SQLite. It uses `BEGIN IMMEDIATE`,
 canonical decimal-text `u64` amounts, a unique pool binding, checked
-accumulation, and durable exact purchase-id replay. That path makes
+accumulation, one receipt authority across the complete ledger, and durable
+exact purchase-id replay. That path makes
 one-purchaser-per-pool and never-exceed-signed-amount hard invariants. An
 in-memory backend and an advisory or eventually consistent remote budget view
 do not implement the qualifying marker and therefore cannot make the hard

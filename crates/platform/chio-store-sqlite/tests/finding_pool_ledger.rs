@@ -51,12 +51,22 @@ fn fixture(amount_units: u64) -> PoolFixture {
 }
 
 fn fixture_until(amount_units: u64, expires_at_unix_ms: u64) -> PoolFixture {
-    let authority = Keypair::from_seed(&[71_u8; 32]);
-    let purchaser = Keypair::from_seed(&[72_u8; 32]);
+    fixture_for_pool(amount_units, expires_at_unix_ms, "buyer-1", 71, 72)
+}
+
+fn fixture_for_pool(
+    amount_units: u64,
+    expires_at_unix_ms: u64,
+    pool_suffix: &str,
+    authority_seed: u8,
+    purchaser_seed: u8,
+) -> PoolFixture {
+    let authority = Keypair::from_seed(&[authority_seed; 32]);
+    let purchaser = Keypair::from_seed(&[purchaser_seed; 32]);
     let pool = SwarmBudgetPool {
         schema: CHIO_SWARM_BUDGET_POOL_SCHEMA.to_string(),
-        pool_id: "pool:cognition-market:buyer-1".to_string(),
-        graph_id: "graph:cognition-market:buyer-1".to_string(),
+        pool_id: format!("pool:cognition-market:{pool_suffix}"),
+        graph_id: format!("graph:cognition-market:{pool_suffix}"),
         currency: "USD".to_string(),
         total_units: amount_units,
         allocations: Vec::new(),
@@ -70,11 +80,11 @@ fn fixture_until(amount_units: u64, expires_at_unix_ms: u64) -> PoolFixture {
             pool_sha256: swarm_budget_pool_sha256(&pool).test_expect("hash pool"),
             graph_id: pool.graph_id.clone(),
             purpose: FINDING_POOL_PURPOSE_V1.to_string(),
-            purchaser_id: "buyer-agent-1".to_string(),
+            purchaser_id: format!("buyer-agent:{pool_suffix}"),
             purchaser_key: purchaser.public_key(),
             currency: "USD".to_string(),
             amount_units: amount_units.to_string(),
-            nonce: "pool-allocation-nonce-1".to_string(),
+            nonce: format!("pool-allocation-nonce:{pool_suffix}"),
             authority: authority.public_key(),
             issued_at_unix_ms: 1_000,
             expires_at_unix_ms,
@@ -624,6 +634,27 @@ fn qualified_pool_rejects_read_only_sqlite_uris() {
             "read-only SQLite URI {path:?} must not qualify"
         );
     }
+}
+
+#[test]
+fn cognition_market_pool_receipt_authority_is_pinned_ledger_wide() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let ledger = SqliteFindingPoolLedger::open_qualified(
+        directory.path().join("finding-pool.sqlite3"),
+        LEDGER_DOMAIN,
+    )
+    .test_expect("open qualified ledger");
+    let first = fixture_for_pool(100, 10_000, "receipt-authority-one", 71, 72);
+    debit(&ledger, &first, "purchase:receipt-authority-one", 10)
+        .test_expect("record the first ledger authority");
+
+    let second = fixture_for_pool(100, 10_000, "receipt-authority-two", 73, 74);
+    assert!(matches!(
+        debit(&ledger, &second, "purchase:receipt-authority-two", 10),
+        Err(FindingPoolDebitError::Ledger(
+            FindingPoolLedgerError::Receipt(message)
+        )) if message.contains("receipt authority changed")
+    ));
 }
 
 #[test]

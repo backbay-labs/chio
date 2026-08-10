@@ -48,7 +48,8 @@ The `QualifiedFindingPoolLedger` marker is restricted to audited atomic or
 linearizable durable backends. The shipped SQLite implementation refuses
 in-memory paths, serializes debits with `BEGIN IMMEDIATE`, stores full-domain
 `u64` values as canonical decimal text, binds one signed purchaser allocation
-per pool id, and persists exact replay. A new reservation has a 30 second
+per pool id, pins one mutation-receipt authority ledger-wide, and persists
+exact replay. A new reservation has a 30 second
 claim window. Its authority-selected domain is persisted and rejects both a
 reopen under another domain and an allocation signed for another backend.
 After immediate dispatch revalidation, the kernel durably claims
