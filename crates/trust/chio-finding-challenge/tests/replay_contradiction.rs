@@ -4,6 +4,7 @@
 mod support;
 
 use chio_core_types::receipt::decision::Decision;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
     verdict_for_replay_predicate, FindingChallengeVerdict, FindingEvidenceClass,
     FindingGuaranteeClass, FindingReplayPredicateResult, FindingReplayTerminalResult,
@@ -177,6 +178,24 @@ fn a_reproduction_signed_outside_the_replay_role_is_indeterminate() -> TestResul
 }
 
 #[test]
+fn a_reproduction_signed_by_a_revoked_replay_key_is_indeterminate() -> TestResult {
+    let world = world()?;
+    let mut case = replay_case(&world, &ReplayShape::default())?;
+    let mut status = case.replay_authority_status.body.clone();
+    status.revoked_from = Some(case.receipts[0].receipt.timestamp);
+    case.replay_authority_status = SignedExportEnvelope::sign(status, &world.authority_status)?;
+    let reproductions = case.reproductions();
+    let evidence = case.evidence(&reproductions);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_reason(
+        &evaluation,
+        FindingChallengeReason::ReplayAuthorityNotEstablished,
+    )?;
+    Ok(())
+}
+
+#[test]
 fn a_receipt_that_does_not_commit_its_observation_is_indeterminate() -> TestResult {
     let world = world()?;
     let shape = ReplayShape {
@@ -282,6 +301,7 @@ fn a_reproduction_set_smaller_than_the_challenge_is_inadmissible() -> TestResult
     let evidence =
         FindingChallengeClassEvidence::ReplayContradiction(FindingReplayContradictionEvidence {
             purchase_record: &case.purchase_record,
+            replay_authority_status: &case.replay_authority_status,
             reproductions: &reproductions[..1],
         });
     let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));

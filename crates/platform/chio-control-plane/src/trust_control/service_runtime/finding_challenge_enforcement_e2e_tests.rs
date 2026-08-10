@@ -1549,6 +1549,7 @@ struct DigestMismatchCase {
     challenge: SignedFindingChallenge,
     failed_delivery: SignedFindingFailedDelivery,
     failed_delivery_authority_status: SignedFindingAuthorityStatus,
+    delivery_authority_status: SignedFindingAuthorityStatus,
     deny_receipt: ResolvedReceiptEvidence,
     deny_checkpoint: KernelCheckpoint,
     deny_checkpoint_transparency: CheckpointTransparencySummary,
@@ -1559,6 +1560,7 @@ impl DigestMismatchCase {
         FindingChallengeClassEvidence::DigestMismatch(FindingDigestMismatchEvidence {
             failed_delivery: &self.failed_delivery,
             failed_delivery_authority_status: &self.failed_delivery_authority_status,
+            delivery_authority_status: &self.delivery_authority_status,
             deny_receipt: &self.deny_receipt,
             deny_checkpoint: &self.deny_checkpoint,
             checkpoint_transparency: &self.deny_checkpoint_transparency,
@@ -1660,7 +1662,26 @@ fn digest_mismatch_case(
             key: failed_delivery_policy.key.clone(),
             key_epoch: failed_delivery_policy.key_epoch,
             revoked_from: None,
-            observed_at: failed_delivery.body.recorded_at,
+            observed_at: NOW,
+        },
+        &keypair(36),
+    )?;
+    let delivery_policy = challenged
+        .profile
+        .body
+        .receipt_signers
+        .iter()
+        .find(|signer| signer.role == FindingReceiptRole::Delivery)
+        .ok_or("missing delivery role policy")?;
+    let delivery_authority_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: delivery_policy.policy.revocation_status_ref.clone(),
+            authority_id: delivery_policy.policy.authority_id.clone(),
+            key: delivery_policy.policy.key.clone(),
+            key_epoch: delivery_policy.policy.key_epoch,
+            revoked_from: None,
+            observed_at: NOW,
         },
         &keypair(36),
     )?;
@@ -1732,6 +1753,7 @@ fn digest_mismatch_case(
         challenge: challenged.sign_challenge(authorization, evidence, affected)?,
         failed_delivery,
         failed_delivery_authority_status,
+        delivery_authority_status,
         deny_receipt,
         deny_checkpoint,
         deny_checkpoint_transparency,
@@ -1878,6 +1900,7 @@ impl PhaseShape {
 struct ReplayCase {
     challenge: SignedFindingChallenge,
     purchase_record: SignedFindingPurchaseRecord,
+    replay_authority_status: SignedFindingAuthorityStatus,
     receipts: Vec<ResolvedReceiptEvidence>,
     checkpoint: KernelCheckpoint,
     checkpoint_transparency: CheckpointTransparencySummary,
@@ -1901,6 +1924,7 @@ impl ReplayCase {
     ) -> FindingChallengeClassEvidence<'a> {
         FindingChallengeClassEvidence::ReplayContradiction(FindingReplayContradictionEvidence {
             purchase_record: &self.purchase_record,
+            replay_authority_status: &self.replay_authority_status,
             reproductions,
         })
     }
@@ -2007,9 +2031,29 @@ fn replay_case(
     )];
     let checkpoint_transparency =
         build_checkpoint_transparency(core::slice::from_ref(&checkpoint))?;
+    let replay_policy = challenged
+        .profile
+        .body
+        .receipt_signers
+        .iter()
+        .find(|signer| signer.role == FindingReceiptRole::Replay)
+        .ok_or("missing replay role policy")?;
+    let replay_authority_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: replay_policy.policy.revocation_status_ref.clone(),
+            authority_id: replay_policy.policy.authority_id.clone(),
+            key: replay_policy.policy.key.clone(),
+            key_epoch: replay_policy.policy.key_epoch,
+            revoked_from: None,
+            observed_at: NOW,
+        },
+        &keypair(36),
+    )?;
     Ok(ReplayCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
         purchase_record: standing.record.clone(),
+        replay_authority_status,
         receipts: resolved,
         checkpoint,
         checkpoint_transparency,

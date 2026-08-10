@@ -74,6 +74,7 @@ pub const RESERVATION_ID: &str = "reservation-42";
 pub const PURCHASE_INTENT_ID: &str = "purchase-intent-42";
 pub const REPLAY_RUN_ID: &str = "replay-run-42";
 pub const PUBLISHED_AT: u64 = 1_700_000_000;
+pub const EVALUATED_AT: u64 = 1_750_000_500;
 pub const KEY_VALID_FROM: u64 = 1_600_000_000;
 pub const KEY_VALID_UNTIL: u64 = 1_900_000_000;
 
@@ -98,6 +99,25 @@ fn key_policy(key: &PublicKey, label: &str) -> FindingAuthorityKeyPolicy {
         rotation_policy_ref: "rotation-policy-v1".to_string(),
         revocation_status_ref: "revocations/finding-market".to_string(),
     }
+}
+
+fn signed_authority_status(
+    policy: &FindingAuthorityKeyPolicy,
+    signer: &Keypair,
+    revoked_from: Option<u64>,
+) -> Built<SignedFindingAuthorityStatus> {
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: policy.revocation_status_ref.clone(),
+            authority_id: policy.authority_id.clone(),
+            key: policy.key.clone(),
+            key_epoch: policy.key_epoch,
+            revoked_from,
+            observed_at: EVALUATED_AT,
+        },
+        signer,
+    )?)
 }
 
 fn resource_caps() -> FindingResourceCaps {
@@ -518,8 +538,10 @@ impl World {
             raw_finding: &self.raw_finding,
             profile: &self.profile,
             governance_authority: &self.governance_key,
+            pinned_admission_profile_envelope_sha256: &self.profile_envelope_sha256,
             pinned_purchase_authority: &self.profile.body.purchase_authority,
             pinned_authority_status_key: &self.authority_status_key,
+            evaluated_at: EVALUATED_AT,
             evidence,
         }
     }
@@ -780,6 +802,7 @@ pub struct DigestCase {
     pub challenge: SignedFindingChallenge,
     pub failed_delivery: SignedFindingFailedDelivery,
     pub failed_delivery_authority_status: SignedFindingAuthorityStatus,
+    pub delivery_authority_status: SignedFindingAuthorityStatus,
     pub deny_receipt: ResolvedReceiptEvidence,
     pub deny_checkpoint: KernelCheckpoint,
     pub checkpoint_transparency: CheckpointTransparencySummary,
@@ -790,6 +813,7 @@ impl DigestCase {
         FindingChallengeClassEvidence::DigestMismatch(FindingDigestMismatchEvidence {
             failed_delivery: &self.failed_delivery,
             failed_delivery_authority_status: &self.failed_delivery_authority_status,
+            delivery_authority_status: &self.delivery_authority_status,
             deny_receipt: &self.deny_receipt,
             deny_checkpoint: &self.deny_checkpoint,
             checkpoint_transparency: &self.checkpoint_transparency,
@@ -891,18 +915,17 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
     let failed_delivery = SignedExportEnvelope::sign(terminal, &world.failed_delivery_authority)?;
     let failed_delivery_envelope_sha256 = signed_envelope_sha256(&failed_delivery)?;
     let failed_delivery_policy = &world.profile.body.failed_delivery_authority;
-    let failed_delivery_authority_status = SignedExportEnvelope::sign(
-        FindingAuthorityStatus {
-            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
-            status_ref: failed_delivery_policy.revocation_status_ref.clone(),
-            authority_id: failed_delivery_policy.authority_id.clone(),
-            key: failed_delivery_policy.key.clone(),
-            key_epoch: failed_delivery_policy.key_epoch,
-            revoked_from: None,
-            observed_at: failed_delivery.body.recorded_at,
-        },
-        &world.authority_status,
-    )?;
+    let failed_delivery_authority_status =
+        signed_authority_status(failed_delivery_policy, &world.authority_status, None)?;
+    let delivery_policy = world
+        .profile
+        .body
+        .receipt_signers
+        .iter()
+        .find(|signer| signer.role == FindingReceiptRole::Delivery)
+        .ok_or("missing delivery role policy")?;
+    let delivery_authority_status =
+        signed_authority_status(&delivery_policy.policy, &world.authority_status, None)?;
 
     let evidence = FindingChallengeEvidence::DigestMismatch {
         failed_delivery_envelope_sha256: failed_delivery_envelope_sha256.clone(),
@@ -938,6 +961,7 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
         challenge,
         failed_delivery,
         failed_delivery_authority_status,
+        delivery_authority_status,
         deny_receipt,
         deny_checkpoint,
         checkpoint_transparency,
@@ -1308,6 +1332,7 @@ impl Default for ReplayShape {
 pub struct ReplayCase {
     pub challenge: SignedFindingChallenge,
     pub purchase_record: SignedFindingPurchaseRecord,
+    pub replay_authority_status: SignedFindingAuthorityStatus,
     pub receipts: Vec<ResolvedReceiptEvidence>,
     pub checkpoint: KernelCheckpoint,
     pub checkpoint_transparency: CheckpointTransparencySummary,
@@ -1331,6 +1356,7 @@ impl ReplayCase {
     ) -> FindingChallengeClassEvidence<'a> {
         FindingChallengeClassEvidence::ReplayContradiction(FindingReplayContradictionEvidence {
             purchase_record: &self.purchase_record,
+            replay_authority_status: &self.replay_authority_status,
             reproductions,
         })
     }
@@ -1435,11 +1461,22 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
     let affected = vec![world.affected_delivery(&receipt_reference(&world.evidence_receipts[0]))];
     let challenge = world.sign_challenge(authorization, evidence, affected)?;
 
+    let replay_policy = world
+        .profile
+        .body
+        .receipt_signers
+        .iter()
+        .find(|signer| signer.role == FindingReceiptRole::Replay)
+        .ok_or("missing replay role policy")?;
+    let replay_authority_status =
+        signed_authority_status(&replay_policy.policy, &world.authority_status, None)?;
+
     let checkpoint_transparency =
         build_checkpoint_transparency(core::slice::from_ref(&checkpoint))?;
     Ok(ReplayCase {
         challenge,
         purchase_record,
+        replay_authority_status,
         receipts: resolved,
         checkpoint,
         checkpoint_transparency,

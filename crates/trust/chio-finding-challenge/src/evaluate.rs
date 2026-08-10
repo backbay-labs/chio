@@ -70,6 +70,9 @@ fn adjudicate(
         .map_err(FindingChallengeInadmissible::ProfileRejected)?;
     let profile_envelope_sha256 = signed_envelope_sha256(input.profile)
         .map_err(FindingChallengeInadmissible::ProfileRejected)?;
+    if profile_envelope_sha256 != input.pinned_admission_profile_envelope_sha256 {
+        return Err(FindingChallengeInadmissible::AdmissionProfileBindingMismatch);
+    }
     if profile_envelope_sha256 != challenge.profile_envelope_sha256 {
         return Err(FindingChallengeInadmissible::ProfileBindingMismatch);
     }
@@ -126,6 +129,7 @@ fn adjudicate(
         ) => evaluate_digest_mismatch(
             &context,
             input.pinned_authority_status_key,
+            input.evaluated_at,
             failed_delivery_envelope_sha256,
             deny_receipt_ref,
             deny_checkpoint_ref,
@@ -154,6 +158,8 @@ fn adjudicate(
             FindingChallengeClassEvidence::ReplayContradiction(evidence),
         ) => evaluate_replay_contradiction(
             &context,
+            input.pinned_authority_status_key,
+            input.evaluated_at,
             reproduction,
             recipe_preimage,
             purchase_record_envelope_sha256,

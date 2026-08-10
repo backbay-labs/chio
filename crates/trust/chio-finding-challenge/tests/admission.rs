@@ -162,8 +162,10 @@ fn the_raw_finding_must_be_its_own_canonical_serialization() -> TestResult {
         raw_finding: &padded,
         profile: &world.profile,
         governance_authority: &world.governance_key,
+        pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_authority_status_key: &world.authority_status_key,
+        evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -175,25 +177,28 @@ fn the_raw_finding_must_be_its_own_canonical_serialization() -> TestResult {
 }
 
 #[test]
-fn the_profile_must_be_the_one_the_challenge_names() -> TestResult {
+fn a_self_consistent_retired_profile_cannot_replace_the_admitted_profile() -> TestResult {
     let world = world()?;
     let case = digest_case(&world, &DenyShape::seller_origin())?;
     let evidence = case.evidence();
     let other_profile = reissued_profile(&world, "another-venue-operator")?;
+    let challenge = buyer_challenge_bound_to_profile(&world, &case.challenge, &other_profile)?;
     let input = FindingChallengeEvaluationInput {
-        challenge: &case.challenge,
+        challenge: &challenge,
         pinned_audit_authority: &world.audit_authority_key,
         raw_finding: &world.raw_finding,
         profile: &other_profile,
         governance_authority: &world.governance_key,
+        pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_authority_status_key: &world.authority_status_key,
+        evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
     expect_inadmissible(
         &evaluation,
-        &FindingChallengeInadmissible::ProfileBindingMismatch,
+        &FindingChallengeInadmissible::AdmissionProfileBindingMismatch,
     )?;
     Ok(())
 }
@@ -210,8 +215,10 @@ fn the_profile_must_verify_under_the_pinned_governance_root() -> TestResult {
         raw_finding: &world.raw_finding,
         profile: &world.profile,
         governance_authority: &interloper,
+        pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_authority_status_key: &world.authority_status_key,
+        evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -237,8 +244,10 @@ fn the_profile_body_must_name_the_pinned_governance_root() -> TestResult {
         raw_finding: &world.raw_finding,
         profile: &profile,
         governance_authority: &world.governance_key,
+        pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_authority_status_key: &world.authority_status_key,
+        evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
     };
 
@@ -264,8 +273,10 @@ fn a_venue_audit_must_verify_under_the_pinned_audit_authority() -> TestResult {
         raw_finding: &world.raw_finding,
         profile: &world.profile,
         governance_authority: &world.governance_key,
+        pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_authority_status_key: &world.authority_status_key,
+        evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -290,8 +301,10 @@ fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
         raw_finding: &tampered,
         profile: &world.profile,
         governance_authority: &world.governance_key,
+        pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_authority_status_key: &world.authority_status_key,
+        evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);

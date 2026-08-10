@@ -13,7 +13,7 @@ use chio_finding_challenge::{
 
 use support::{
     digest_case, expect_inadmissible, expect_reason, outcome_for, venue_digest_case, world,
-    DenyShape, DenySigner, TestResult, HEX64_THIRD,
+    DenyShape, DenySigner, TestResult, EVALUATED_AT, HEX64_THIRD,
 };
 
 #[test]
@@ -53,6 +53,40 @@ fn revoked_failed_delivery_authority_cannot_establish_standing() -> TestResult {
         &evaluation,
         &FindingChallengeInadmissible::FailedDeliveryAuthorityNotEstablished,
     )
+}
+
+#[test]
+fn stale_failed_delivery_status_cannot_establish_standing() -> TestResult {
+    let world = world()?;
+    let mut case = digest_case(&world, &DenyShape::seller_origin())?;
+    let mut status = case.failed_delivery_authority_status.body.clone();
+    status.observed_at = EVALUATED_AT - 3_601;
+    case.failed_delivery_authority_status =
+        SignedExportEnvelope::sign(status, &world.authority_status)?;
+    let evidence = case.evidence();
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::FailedDeliveryAuthorityNotEstablished,
+    )
+}
+
+#[test]
+fn revoked_delivery_receipt_key_cannot_establish_a_mismatch() -> TestResult {
+    let world = world()?;
+    let mut case = digest_case(&world, &DenyShape::seller_origin())?;
+    let mut status = case.delivery_authority_status.body.clone();
+    status.revoked_from = Some(case.deny_receipt.receipt.timestamp);
+    case.delivery_authority_status = SignedExportEnvelope::sign(status, &world.authority_status)?;
+    let evidence = case.evidence();
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_reason(
+        &evaluation,
+        FindingChallengeReason::DeliveryAuthorityNotEstablished,
+    )?;
+    Ok(())
 }
 
 #[test]

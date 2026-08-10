@@ -1231,8 +1231,10 @@ impl FindingChallengeCoordinator {
             raw_finding: request.raw_finding,
             profile: request.profile,
             governance_authority: &governance_authority,
+            pinned_admission_profile_envelope_sha256: &admission.body.profile_envelope_sha256,
             pinned_purchase_authority: &admission.body.purchase_authority,
             pinned_authority_status_key: &authority_status_key,
+            evaluated_at: request.now,
             evidence: request.evidence,
         };
         let FindingChallengeEvaluation::Adjudicated(adjudication) =
@@ -5357,9 +5359,14 @@ impl FindingChallengeCoordinator {
                 .map(|proof| self.envelope_digest(proof.statement))
                 .collect::<Result<Vec<_>, _>>()?,
             FindingChallengeClassEvidence::DigestMismatch(resolved) => {
-                vec![self.envelope_digest(resolved.failed_delivery_authority_status)?]
+                vec![
+                    self.envelope_digest(resolved.failed_delivery_authority_status)?,
+                    self.envelope_digest(resolved.delivery_authority_status)?,
+                ]
             }
-            FindingChallengeClassEvidence::ReplayContradiction(_) => Vec::new(),
+            FindingChallengeClassEvidence::ReplayContradiction(resolved) => {
+                vec![self.envelope_digest(resolved.replay_authority_status)?]
+            }
         };
         supplemental_digests.sort_unstable();
         supplemental_digests.dedup();

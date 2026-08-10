@@ -23,7 +23,7 @@
 //! predicate and compared with what the seller claimed.
 
 use chio_core_types::canonical_json_bytes;
-use chio_core_types::crypto::sha256_hex;
+use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_core_types::receipt::decision::Decision;
 use chio_finding::{
     FindingChallengeFacet, FindingClaimedVerdict, FindingPredicate, FindingReceiptRole,
@@ -40,12 +40,15 @@ use crate::input::{
 };
 use crate::reason::FindingChallengeReason;
 use crate::receipts::{
-    checkpoint_matches_reference, policy_covers, receipt_matches_reference, role_policy,
+    authority_status_establishes_role, checkpoint_matches_reference, policy_covers,
+    receipt_matches_reference, role_policy,
 };
 use crate::standing::bind_purchase_record;
 
 pub(crate) fn evaluate_replay_contradiction(
     context: &EvaluationContext<'_>,
+    pinned_authority_status_key: &PublicKey,
+    evaluated_at: u64,
     reproduction: &[FindingReplayReproduction],
     recipe_preimage: &str,
     purchase_record_envelope_sha256: &str,
@@ -184,6 +187,13 @@ pub(crate) fn evaluate_replay_contradiction(
         }
         if receipt.kernel_key != replay_policy.key
             || !policy_covers(replay_policy, receipt.timestamp)
+            || !authority_status_establishes_role(
+                evidence.replay_authority_status,
+                pinned_authority_status_key,
+                replay_policy,
+                receipt.timestamp,
+                evaluated_at,
+            )
         {
             return Ok(facet.adjudication(
                 FindingReplayPredicateResult::Indeterminate,

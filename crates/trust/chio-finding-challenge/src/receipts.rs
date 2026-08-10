@@ -9,13 +9,17 @@
 //! pins.
 
 use chio_core_types::canonical_json_bytes;
-use chio_core_types::crypto::sha256_hex;
+use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_finding::{
-    FindingAuthorityKeyPolicy, FindingChallengeVerifierProfile, FindingCheckpointRef,
-    FindingReceiptRole, FindingReceiptSignerRole,
+    verify_signed_authority_status, FindingAuthorityKeyPolicy, FindingChallengeVerifierProfile,
+    FindingCheckpointRef, FindingReceiptRole, FindingReceiptSignerRole,
+    SignedFindingAuthorityStatus,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_kernel::checkpoint::{checkpoint_body_sha256, KernelCheckpoint};
+
+/// Maximum age of a role status reading at the trusted evaluation time.
+pub(crate) const MAX_AUTHORITY_STATUS_AGE_SECS: u64 = 3_600;
 
 /// Whether a resolved receipt IS the artifact a content-bound reference
 /// names: the same identifier, the same canonical bytes, and a typed view
@@ -70,6 +74,33 @@ pub(crate) fn role_policy(
 /// is not an authority for that moment, whatever it is today.
 pub(crate) fn policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u64) -> bool {
     policy.valid_from <= instant && instant < policy.valid_until
+}
+
+/// Whether an independently signed status reading establishes that one role
+/// key was live when it acted and remains fresh at evaluation time.
+pub(crate) fn authority_status_establishes_role(
+    signed: &SignedFindingAuthorityStatus,
+    pinned_status_authority: &PublicKey,
+    policy: &FindingAuthorityKeyPolicy,
+    acted_at: u64,
+    evaluated_at: u64,
+) -> bool {
+    if acted_at > evaluated_at
+        || verify_signed_authority_status(signed, pinned_status_authority).is_err()
+    {
+        return false;
+    }
+    let status = &signed.body;
+    status.status_ref == policy.revocation_status_ref
+        && status.authority_id == policy.authority_id
+        && status.key == policy.key
+        && status.key_epoch == policy.key_epoch
+        && status.observed_at >= acted_at
+        && status.observed_at <= evaluated_at
+        && evaluated_at.saturating_sub(status.observed_at) <= MAX_AUTHORITY_STATUS_AGE_SECS
+        && status
+            .revoked_from
+            .is_none_or(|revoked_from| revoked_from > acted_at)
 }
 
 #[cfg(test)]

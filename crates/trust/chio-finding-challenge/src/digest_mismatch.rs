@@ -24,9 +24,9 @@ use chio_core_types::{
     FINDING_DELIVERY_METADATA_KEY,
 };
 use chio_finding::{
-    signed_envelope_sha256, verify_signed_authority_status, verify_signed_failed_delivery,
-    FindingChallengeFacet, FindingChallengeStanding, FindingCheckpointRef,
-    FindingDigestMismatchFacet, FindingHoldReleaseTerminal, FindingReceiptRef, FindingReceiptRole,
+    signed_envelope_sha256, verify_signed_failed_delivery, FindingChallengeFacet,
+    FindingChallengeStanding, FindingCheckpointRef, FindingDigestMismatchFacet,
+    FindingHoldReleaseTerminal, FindingReceiptRef, FindingReceiptRole,
 };
 use chio_finding_verifier::{verify_checkpoint_membership, verify_receipt_strict};
 
@@ -36,7 +36,8 @@ use crate::input::{
 };
 use crate::reason::FindingChallengeReason;
 use crate::receipts::{
-    checkpoint_matches_reference, policy_covers, receipt_matches_reference, role_policy,
+    authority_status_establishes_role, checkpoint_matches_reference, policy_covers,
+    receipt_matches_reference, role_policy,
 };
 
 /// A metadata block as it was found on the receipt.
@@ -49,6 +50,7 @@ enum MetadataBlock<T> {
 pub(crate) fn evaluate_digest_mismatch(
     context: &EvaluationContext<'_>,
     pinned_authority_status_key: &PublicKey,
+    evaluated_at: u64,
     failed_delivery_envelope_sha256: &str,
     deny_receipt_ref: &FindingReceiptRef,
     deny_checkpoint_ref: &FindingCheckpointRef,
@@ -69,21 +71,13 @@ pub(crate) fn evaluate_digest_mismatch(
     verify_signed_failed_delivery(evidence.failed_delivery, &failed_delivery_authority.key)
         .map_err(FindingChallengeInadmissible::StandingRejected)?;
     let terminal = &evidence.failed_delivery.body;
-    verify_signed_authority_status(
+    if !authority_status_establishes_role(
         evidence.failed_delivery_authority_status,
         pinned_authority_status_key,
-    )
-    .map_err(FindingChallengeInadmissible::StandingRejected)?;
-    let status = &evidence.failed_delivery_authority_status.body;
-    if status.status_ref != failed_delivery_authority.revocation_status_ref
-        || status.authority_id != failed_delivery_authority.authority_id
-        || status.key != failed_delivery_authority.key
-        || status.key_epoch != failed_delivery_authority.key_epoch
-        || status.observed_at < terminal.recorded_at
-        || status
-            .revoked_from
-            .is_some_and(|revoked_from| revoked_from <= terminal.recorded_at)
-    {
+        failed_delivery_authority,
+        terminal.recorded_at,
+        evaluated_at,
+    ) {
         return Err(FindingChallengeInadmissible::FailedDeliveryAuthorityNotEstablished);
     }
     if terminal.finding_id != context.finding.finding_id {
@@ -192,6 +186,13 @@ pub(crate) fn evaluate_digest_mismatch(
     let receipt = &evidence.deny_receipt.receipt;
     if receipt.kernel_key != delivery_policy.key
         || !policy_covers(delivery_policy, receipt.timestamp)
+        || !authority_status_establishes_role(
+            evidence.delivery_authority_status,
+            pinned_authority_status_key,
+            delivery_policy,
+            receipt.timestamp,
+            evaluated_at,
+        )
     {
         return Ok(unresolved(
             committed,

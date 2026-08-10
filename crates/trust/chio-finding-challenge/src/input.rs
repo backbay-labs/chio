@@ -1,7 +1,7 @@
 //! The evaluator's inputs and results.
 //!
 //! Everything the adjudication reads is an argument. There is no resolver
-//! trait, no clock, and no store handle here by design: a coordinator that
+//! trait, clock read, or store handle here by design: a coordinator that
 //! could inject resolution could also inject a different answer, and the
 //! whole value of a separately signed outcome is that its inputs are exactly
 //! the ones the outcome names.
@@ -37,6 +37,9 @@ pub struct FindingChallengeEvaluationInput<'a> {
     pub profile: &'a SignedFindingChallengeVerifierProfile,
     /// The governance root that must have signed the profile envelope.
     pub governance_authority: &'a PublicKey,
+    /// Profile digest pinned by the exact retained, authenticated admission.
+    /// This is independent of the caller-controlled challenge and profile.
+    pub pinned_admission_profile_envelope_sha256: &'a str,
     /// Purchase-authority policy from the exact retained, venue-signed
     /// admission the challenge names. This may differ from the reusable
     /// verifier profile after an admission-specific rotation.
@@ -44,6 +47,9 @@ pub struct FindingChallengeEvaluationInput<'a> {
     /// Independent signer for authenticated readings from the revocation
     /// references pinned by role policies.
     pub pinned_authority_status_key: &'a PublicKey,
+    /// Trusted evaluation time supplied by the coordinator. The evaluator
+    /// remains pure and uses this only to bound signed role-status readings.
+    pub evaluated_at: u64,
     /// Exactly the evidence the challenge's evidence class selects. A branch
     /// that does not match the challenge's class is inadmissible.
     pub evidence: &'a FindingChallengeClassEvidence<'a>,
@@ -63,6 +69,8 @@ pub struct FindingDigestMismatchEvidence<'a> {
     /// Authenticated reading of the failed-delivery authority's exact
     /// revocation reference, observed no earlier than the terminal.
     pub failed_delivery_authority_status: &'a SignedFindingAuthorityStatus,
+    /// Fresh authenticated lifecycle reading for the delivery receipt role.
+    pub delivery_authority_status: &'a SignedFindingAuthorityStatus,
     /// The denial receipt, with the exact canonical bytes that were the
     /// checkpoint leaf and the inclusion proof over them.
     pub deny_receipt: &'a ResolvedReceiptEvidence,
@@ -107,6 +115,8 @@ pub struct FindingRevokedKeyProof<'a> {
 pub struct FindingReplayContradictionEvidence<'a> {
     /// The purchase-authority-signed record that establishes standing.
     pub purchase_record: &'a SignedFindingPurchaseRecord,
+    /// Fresh authenticated lifecycle reading for the replay receipt role.
+    pub replay_authority_status: &'a SignedFindingAuthorityStatus,
     /// One resolved reproduction per challenge tuple, in challenge order.
     pub reproductions: &'a [FindingResolvedReproduction<'a>],
 }
@@ -133,6 +143,8 @@ pub enum FindingChallengeInadmissible {
     ProfileRejected(FindingError),
     #[error("challenge names a verifier profile other than the one supplied")]
     ProfileBindingMismatch,
+    #[error("verifier profile is not the one retained by the authenticated admission")]
+    AdmissionProfileBindingMismatch,
     #[error("raw finding ingress failed: {0}")]
     FindingIngress(FindingIngressError),
     #[error("finding artifact rejected: {0}")]

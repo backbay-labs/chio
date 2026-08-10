@@ -4,8 +4,9 @@
 //! The crate boundary is the guarantee. This evaluator performs no fetching,
 //! no tool invocation, no clock read, no storage access, and no signing. It
 //! takes every input as an argument and returns a value, so an adjudication
-//! cannot depend on anything that was not handed to it and cannot be made to
-//! depend on when it ran. Resolution (pulling receipt bytes, checkpoints,
+//! cannot depend on anything that was not handed to it. The coordinator also
+//! supplies its trusted evaluation time so signed lifecycle readings have a
+//! deterministic freshness bound. Resolution (pulling receipt bytes, checkpoints,
 //! retained blobs, revocation state) belongs to the coordinator that owns the
 //! clock and the store; signing the outcome belongs to the pinned evaluator
 //! authority.
