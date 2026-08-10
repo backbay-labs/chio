@@ -1441,6 +1441,49 @@ impl ChioKernel {
             });
         }
 
+        // Claim the pool participant while the durable admission is still in a
+        // compensatable pre-dispatch state. Exact replay makes a crash after
+        // this point resumable without capturing the invocation twice.
+        #[cfg(feature = "cognition-market-experimental")]
+        let pool_claim = self.claim_finding_pool_immediately_before_dispatch(
+            matched_grant,
+            request,
+            current_unix_timestamp_ms(),
+        );
+        #[cfg(feature = "cognition-market-experimental")]
+        if let Ok(purchase) = &pool_claim {
+            verified_purchase.clone_from(purchase);
+        }
+        #[cfg(feature = "cognition-market-experimental")]
+        if let Err(error) = pool_claim {
+            let reason = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding pool nested dispatch claim denied");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                    PreDispatchCleanupDeny {
+                        request,
+                        reason: &reason,
+                        timestamp: current_unix_timestamp(),
+                        matched_grant_index,
+                        cap,
+                        budget_mutation: &budget_mutation,
+                        payment_authorization: payment_authorization.as_ref(),
+                        durable_operation: durable_admission
+                            .as_ref()
+                            .map(DurableToolAdmission::operation),
+                        runtime_admission_metadata: runtime_admission_metadata.clone(),
+                        verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                        budget_lease_acquired,
+                    },
+                    if payment_authorization.is_some() {
+                        PaymentCredentialDisposition::RetainedAfterAuthorization
+                    } else {
+                        PaymentCredentialDisposition::NonePresent
+                    },
+                )
+            });
+        }
+
         if let Some(admission) = durable_admission.as_mut() {
             let commit = if budget_mutation.durable_hold_result().is_some() {
                 self.capture_and_commit_durable_dispatch(
@@ -1473,36 +1516,6 @@ impl ChioKernel {
                     },
                 );
             }
-        }
-
-        #[cfg(feature = "cognition-market-experimental")]
-        let pool_claim = self.claim_finding_pool_immediately_before_dispatch(
-            matched_grant,
-            request,
-            current_unix_timestamp_ms(),
-        );
-        #[cfg(feature = "cognition-market-experimental")]
-        if let Ok(purchase) = &pool_claim {
-            verified_purchase.clone_from(purchase);
-        }
-        #[cfg(feature = "cognition-market-experimental")]
-        if let Err(error) = pool_claim {
-            let reason = error.to_string();
-            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding pool nested dispatch claim denied");
-            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                self.build_deny_response_with_metadata_and_payee_binding(
-                    request,
-                    &reason,
-                    current_unix_timestamp(),
-                    Some(matched_grant_index),
-                    self.ambiguous_dispatch_receipt_metadata(
-                        &budget_mutation,
-                        payment_authorization.as_ref(),
-                        runtime_admission_metadata,
-                    ),
-                    verified_governed_payee_binding.as_ref(),
-                )
-            });
         }
 
         let tool_started_at = Instant::now();

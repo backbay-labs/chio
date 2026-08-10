@@ -43,28 +43,48 @@ impl ChioKernel {
             .parse::<u64>()
             .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?
             / 1_000;
-        self.build_and_sign_receipt(ReceiptParams {
-            request_id: None,
-            capability_id: &mutation.allocation_envelope_sha256,
-            tool_name: "finding_pool_mutation",
-            server_id: "chio-kernel",
-            decision: Decision::Allow,
-            action,
-            content_hash,
-            canonical_content,
-            metadata: Some(serde_json::json!({
-                "finding_pool_mutation": parameters,
-            })),
-            timestamp,
-            trust_level: chio_core::receipt::kinds::TrustLevel::Mediated,
-            tenant_id: None,
-        })
+        let authority = self
+            .finding_pool_receipt_authority
+            .as_ref()
+            .ok_or_else(|| {
+                KernelError::ReceiptSigningFailed(
+                    crate::finding_pool::FindingPoolLedgerError::ReceiptAuthorityMissing
+                        .to_string(),
+                )
+            })?;
+        self.build_and_sign_receipt_with_authority(
+            ReceiptParams {
+                request_id: None,
+                capability_id: &mutation.allocation_envelope_sha256,
+                tool_name: "finding_pool_mutation",
+                server_id: "chio-kernel",
+                decision: Decision::Allow,
+                action,
+                content_hash,
+                canonical_content,
+                metadata: Some(serde_json::json!({
+                    "finding_pool_mutation": parameters,
+                })),
+                timestamp,
+                trust_level: chio_core::receipt::kinds::TrustLevel::Mediated,
+                tenant_id: None,
+            },
+            authority,
+        )
     }
 
     /// Build and sign a receipt from a `ReceiptParams` descriptor.
     pub(crate) fn build_and_sign_receipt(
         &self,
         params: ReceiptParams<'_>,
+    ) -> Result<ChioReceipt, KernelError> {
+        self.build_and_sign_receipt_with_authority(params, &self.config.keypair)
+    }
+
+    fn build_and_sign_receipt_with_authority(
+        &self,
+        params: ReceiptParams<'_>,
+        authority: &chio_core::crypto::Keypair,
     ) -> Result<ChioReceipt, KernelError> {
         let expected_action = params.action.clone();
         let expected_decision = params.decision.clone();
@@ -117,7 +137,7 @@ impl ChioKernel {
             metadata,
             trust_level: params.trust_level,
             tenant_id,
-            kernel_key: self.config.keypair.public_key(),
+            kernel_key: authority.public_key(),
             bbs_projection_version: None,
         };
         let expected = ReceiptCouplingExpectation {
@@ -151,7 +171,7 @@ impl ChioKernel {
         // direct call into `chio_kernel_core::sign_receipt_with_handle`. Receipt
         // body assembly, metadata shaping, and persistence remain
         // operational-shell behavior outside the current bounded proof claim.
-        let backend = chio_core::crypto::Ed25519Backend::new(self.config.keypair.clone());
+        let backend = chio_core::crypto::Ed25519Backend::new(authority.clone());
         chio_kernel_core::sign_receipt_with_handle(body, &backend, handle).map_err(|error| {
             use chio_kernel_core::ReceiptSigningError;
             let message = match error {

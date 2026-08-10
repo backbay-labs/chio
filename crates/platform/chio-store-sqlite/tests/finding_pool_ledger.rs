@@ -22,7 +22,7 @@ use chio_kernel::{
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
     DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
-use chio_store_sqlite::finding_pool_ledger::SqliteFindingPoolLedger;
+use chio_store_sqlite::{finding_pool_ledger::SqliteFindingPoolLedger, SqliteReceiptStore};
 use chio_swarm_authority::finding_pool::{
     finding_pool_allocation_envelope_sha256, sign_finding_pool_allocation,
     swarm_budget_pool_sha256, FindingPoolAllocation, SignedFindingPoolAllocation,
@@ -178,6 +178,33 @@ fn debit_at_with_policy(
     purchase_admissions: Arc<AtomicU64>,
     reject_purchase_admission: bool,
 ) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
+    debit_at_with_policy_and_kernel_key(
+        ledger,
+        fixture,
+        purchase_id,
+        amount_units,
+        now_unix_ms,
+        status_verifier,
+        status_proof_b64,
+        purchase_admissions,
+        reject_purchase_admission,
+        Keypair::from_seed(&[99_u8; 32]),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn debit_at_with_policy_and_kernel_key(
+    ledger: &SqliteFindingPoolLedger,
+    fixture: &PoolFixture,
+    purchase_id: &str,
+    amount_units: u64,
+    now_unix_ms: u64,
+    status_verifier: Option<Arc<dyn FindingStatusProofVerifier>>,
+    status_proof_b64: Option<&str>,
+    purchase_admissions: Arc<AtomicU64>,
+    reject_purchase_admission: bool,
+    kernel_key: Keypair,
+) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
     let verified_purchase = VerifiedFindingPurchase {
         finding_id: "a".repeat(64),
         listing_id: "listing:cognition-market:1".to_string(),
@@ -200,8 +227,9 @@ fn debit_at_with_policy(
         admissions: purchase_admissions,
         reject_admission: reject_purchase_admission,
     };
+    let receipt_directory = tempfile::tempdir().test_expect("create receipt directory");
     let mut kernel = ChioKernel::new(KernelConfig {
-        keypair: fixture.authority.clone(),
+        keypair: kernel_key,
         ca_public_keys: Vec::new(),
         max_delegation_depth: 1,
         policy_hash: "finding-pool-ledger-test".to_string(),
@@ -218,8 +246,17 @@ fn debit_at_with_policy(
         memory_budget: MemoryBudgetConfig::defaults(),
         deadlines: HotPathDeadlineConfig::default(),
     });
+    kernel
+        .set_receipt_store(Box::new(
+            SqliteReceiptStore::open(receipt_directory.path().join("receipts.sqlite3"))
+                .test_expect("open durable receipt store"),
+        ))
+        .test_expect("configure durable receipt store");
     kernel.set_finding_purchase_verifier(Arc::new(verifier));
     kernel.set_finding_pool_allocation_authority(fixture.authority.public_key());
+    kernel
+        .set_finding_pool_receipt_authority(fixture.authority.clone())
+        .test_expect("configure stable pool receipt authority");
     kernel
         .set_finding_pool_ledger(Arc::new(ledger.clone()))
         .test_expect("configure qualified pool ledger");
@@ -392,6 +429,53 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
             FindingPoolLedgerError::ReplayConflict
         ))
     ));
+}
+
+#[test]
+fn cognition_market_pool_receipts_survive_ordinary_kernel_key_rotation() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let database = directory.path().join("finding-pool.sqlite3");
+    let ledger =
+        SqliteFindingPoolLedger::open_qualified(&database).test_expect("open qualified ledger");
+    let fixture = fixture(100);
+    debit(&ledger, &fixture, "purchase:before-rotation", 10)
+        .test_expect("reserve before kernel key rotation");
+
+    let reopened =
+        SqliteFindingPoolLedger::open_qualified(&database).test_expect("reopen qualified ledger");
+    debit_at_with_policy_and_kernel_key(
+        &reopened,
+        &fixture,
+        "purchase:after-rotation",
+        10,
+        2_001,
+        None,
+        None,
+        Arc::new(AtomicU64::new(0)),
+        false,
+        Keypair::from_seed(&[100_u8; 32]),
+    )
+    .test_expect("reserve after ordinary kernel key rotation");
+
+    let connection = rusqlite::Connection::open(&database).test_expect("open receipt outbox");
+    let mut statement = connection
+        .prepare("SELECT signed_receipt_json FROM finding_pool_receipt_outbox ORDER BY rowid")
+        .test_expect("prepare receipt authority query");
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .test_expect("query receipt authorities");
+    let stable_authority = fixture.authority.public_key();
+    let rotated_kernel_key = Keypair::from_seed(&[100_u8; 32]).public_key();
+    let mut receipt_count = 0;
+    for row in rows {
+        let receipt: ChioReceipt =
+            serde_json::from_str(&row.test_expect("read signed mutation receipt"))
+                .test_expect("decode signed mutation receipt");
+        assert_eq!(receipt.kernel_key, stable_authority);
+        assert_ne!(receipt.kernel_key, rotated_kernel_key);
+        receipt_count += 1;
+    }
+    assert_eq!(receipt_count, 2);
 }
 
 #[test]
@@ -682,8 +766,9 @@ fn cognition_market_kernel_refuses_pool_ledger_replacement() {
         SqliteFindingPoolLedger::open_qualified(second_directory.path().join("pool.sqlite3"))
             .test_expect("open second qualified ledger");
     let fixture = fixture(100);
+    let receipt_directory = tempfile::tempdir().test_expect("create receipt directory");
     let mut kernel = ChioKernel::new(KernelConfig {
-        keypair: fixture.authority,
+        keypair: Keypair::from_seed(&[99_u8; 32]),
         ca_public_keys: Vec::new(),
         max_delegation_depth: 1,
         policy_hash: "finding-pool-ledger-pinning-test".to_string(),
@@ -700,6 +785,15 @@ fn cognition_market_kernel_refuses_pool_ledger_replacement() {
         memory_budget: MemoryBudgetConfig::defaults(),
         deadlines: HotPathDeadlineConfig::default(),
     });
+    kernel
+        .set_receipt_store(Box::new(
+            SqliteReceiptStore::open(receipt_directory.path().join("receipts.sqlite3"))
+                .test_expect("open durable receipt store"),
+        ))
+        .test_expect("configure durable receipt store");
+    kernel
+        .set_finding_pool_receipt_authority(fixture.authority)
+        .test_expect("configure stable pool receipt authority");
     kernel
         .set_finding_pool_ledger(Arc::new(first))
         .test_expect("pin first ledger");

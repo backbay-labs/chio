@@ -332,6 +332,22 @@ pub(crate) fn purchase_marked_grant(
 }
 
 impl ChioKernel {
+    /// Pin the long-lived signer for cognition-market pool mutation receipts.
+    /// Reinstall this key unchanged when the ordinary kernel key rotates.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub fn set_finding_pool_receipt_authority(
+        &mut self,
+        authority: chio_core::crypto::Keypair,
+    ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+        if self.finding_pool_receipt_authority.is_some() {
+            return Err(
+                crate::finding_pool::FindingPoolLedgerError::ReceiptAuthorityAlreadyConfigured,
+            );
+        }
+        self.finding_pool_receipt_authority = Some(authority);
+        Ok(())
+    }
+
     /// Pin the single qualified pool ledger for this deployment kernel.
     /// Once installed it cannot be replaced, preventing callers from routing
     /// successive debits for one signed allocation through disjoint ledgers.
@@ -342,6 +358,12 @@ impl ChioKernel {
     ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
         if self.finding_pool_ledger.is_some() {
             return Err(crate::finding_pool::FindingPoolLedgerError::AlreadyConfigured);
+        }
+        if self.finding_pool_receipt_authority.is_none() {
+            return Err(crate::finding_pool::FindingPoolLedgerError::ReceiptAuthorityMissing);
+        }
+        if self.receipt_store.is_none() {
+            return Err(crate::finding_pool::FindingPoolLedgerError::DurableReceiptStoreMissing);
         }
         self.finding_pool_ledger = Some(ledger);
         Ok(())

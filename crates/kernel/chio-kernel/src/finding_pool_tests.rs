@@ -2,8 +2,10 @@ use std::sync::{Arc, Mutex};
 
 use chio_core::capability::scope::MonetaryAmount;
 use chio_core::crypto::Keypair;
+use chio_core::receipt::lineage::ChildRequestReceipt;
 
 use super::*;
+use crate::receipt_store::{ReceiptStore, ReceiptStoreError};
 use crate::{
     HotPathDeadlineConfig, KernelConfig, MemoryBudgetConfig, DEFAULT_CHECKPOINT_BATCH_SIZE,
     DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
@@ -15,6 +17,7 @@ struct RecordingLedger {
     claims: Mutex<Vec<(String, u64)>>,
     outbox: Mutex<Vec<ChioReceipt>>,
     acknowledged: Mutex<Vec<String>>,
+    receipt_authority: Mutex<Option<chio_core::crypto::PublicKey>>,
 }
 
 impl RecordingLedger {
@@ -24,6 +27,21 @@ impl RecordingLedger {
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError> {
         let receipt = attestor(&mutation)?;
+        let Ok(mut receipt_authority) = self.receipt_authority.lock() else {
+            return Err(FindingPoolLedgerError::Storage(
+                "test receipt authority lock was poisoned".to_owned(),
+            ));
+        };
+        match receipt_authority.as_ref() {
+            Some(authority) if authority != &receipt.kernel_key => {
+                return Err(FindingPoolLedgerError::Receipt(
+                    "finding pool mutation receipt authority changed".to_owned(),
+                ));
+            }
+            Some(_) => {}
+            None => *receipt_authority = Some(receipt.kernel_key.clone()),
+        }
+        drop(receipt_authority);
         let Ok(mut outbox) = self.outbox.lock() else {
             return Err(FindingPoolLedgerError::Storage(
                 "test outbox lock was poisoned".to_owned(),
@@ -181,9 +199,48 @@ impl FindingPoolLedger for RecordingLedger {
 
 impl QualifiedFindingPoolLedger for RecordingLedger {}
 
+#[derive(Default)]
+struct RecordingReceiptStore {
+    receipts: Mutex<Vec<ChioReceipt>>,
+}
+
+impl ReceiptStore for RecordingReceiptStore {
+    fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        self.receipts
+            .lock()
+            .map_err(|_| ReceiptStoreError::Conflict("test receipt lock was poisoned".to_owned()))?
+            .push(receipt.clone());
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+}
+
 fn kernel_with_ledger(ledger: Arc<RecordingLedger>) -> ChioKernel {
+    kernel_with_keys(ledger, 91, 92)
+}
+
+fn kernel_with_keys(
+    ledger: Arc<RecordingLedger>,
+    kernel_key_seed: u8,
+    pool_authority_seed: u8,
+) -> ChioKernel {
+    let mut kernel = kernel_without_receipt_store(kernel_key_seed, pool_authority_seed);
+    assert!(kernel
+        .set_receipt_store(Box::<RecordingReceiptStore>::default())
+        .is_ok());
+    assert!(kernel.set_finding_pool_ledger(ledger).is_ok());
+    kernel
+}
+
+fn kernel_without_receipt_store(kernel_key_seed: u8, pool_authority_seed: u8) -> ChioKernel {
     let mut kernel = ChioKernel::new(KernelConfig {
-        keypair: Keypair::from_seed(&[91_u8; 32]),
+        keypair: Keypair::from_seed(&[kernel_key_seed; 32]),
         ca_public_keys: Vec::new(),
         max_delegation_depth: 1,
         policy_hash: "finding-pool-terminal-test".to_owned(),
@@ -200,7 +257,9 @@ fn kernel_with_ledger(ledger: Arc<RecordingLedger>) -> ChioKernel {
         memory_budget: MemoryBudgetConfig::defaults(),
         deadlines: HotPathDeadlineConfig::default(),
     });
-    assert!(kernel.set_finding_pool_ledger(ledger).is_ok());
+    assert!(kernel
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[pool_authority_seed; 32]))
+        .is_ok());
     kernel
 }
 
@@ -291,6 +350,95 @@ fn dispatch_claims_the_configured_pool_reservation() {
         FindingPoolMutationKind::Claim
     );
     assert!(kernel.receipt_log().is_empty());
+}
+
+#[test]
+fn pool_ledger_requires_a_durable_ordinary_receipt_store_at_configuration() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let mut kernel = kernel_without_receipt_store(91, 92);
+
+    assert_eq!(
+        kernel.set_finding_pool_ledger(ledger.clone()),
+        Err(FindingPoolLedgerError::DurableReceiptStoreMissing)
+    );
+    assert!(ledger
+        .claims
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .is_empty());
+    assert!(ledger
+        .acknowledged
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .is_empty());
+}
+
+#[test]
+fn pending_pool_receipt_is_not_acknowledged_without_a_durable_store() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let first_kernel = kernel_with_ledger(Arc::clone(&ledger));
+    assert!(first_kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345)
+        .is_ok());
+    assert_eq!(
+        ledger
+            .pending_mutation_receipts()
+            .unwrap_or_else(|error| panic!("test outbox must be readable: {error}"))
+            .len(),
+        1
+    );
+
+    let mut restarted = kernel_without_receipt_store(93, 92);
+    assert_eq!(
+        restarted.set_finding_pool_ledger(ledger.clone()),
+        Err(FindingPoolLedgerError::DurableReceiptStoreMissing)
+    );
+    assert!(ledger
+        .acknowledged
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .is_empty());
+    assert!(ledger
+        .decisions
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .is_empty());
+}
+
+#[test]
+fn stable_pool_receipt_authority_survives_ordinary_kernel_key_rotation() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let first_kernel = kernel_with_keys(Arc::clone(&ledger), 91, 92);
+    assert!(first_kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345)
+        .is_ok());
+
+    let rotated_kernel = kernel_with_keys(Arc::clone(&ledger), 93, 92);
+    assert!(rotated_kernel
+        .settle_finding_pool_delivery(
+            &purchase(),
+            &crate::tool_outcome::SettlementDispositionV1::Capture {
+                amount: MonetaryAmount {
+                    units: 25,
+                    currency: "USD".to_owned(),
+                },
+            },
+        )
+        .is_ok());
+
+    let stable_key = Keypair::from_seed(&[92_u8; 32]).public_key();
+    let ordinary_rotated_key = Keypair::from_seed(&[93_u8; 32]).public_key();
+    let outbox = ledger
+        .outbox
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    assert_eq!(outbox.len(), 2);
+    assert!(outbox
+        .iter()
+        .all(|receipt| receipt.kernel_key == stable_key));
+    assert!(outbox
+        .iter()
+        .all(|receipt| receipt.kernel_key != ordinary_rotated_key));
 }
 
 #[test]

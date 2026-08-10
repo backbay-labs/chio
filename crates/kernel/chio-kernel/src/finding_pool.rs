@@ -95,6 +95,12 @@ pub enum FindingPoolLedgerError {
     ClaimDeadlineElapsed,
     #[error("finding pool ledger is already configured for this kernel")]
     AlreadyConfigured,
+    #[error("finding pool mutation receipt authority is not configured")]
+    ReceiptAuthorityMissing,
+    #[error("finding pool mutation receipt authority is already configured for this kernel")]
+    ReceiptAuthorityAlreadyConfigured,
+    #[error("finding pool mutation receipts require a durable ordinary receipt store")]
+    DurableReceiptStoreMissing,
     #[error("finding pool ledger storage failed: {0}")]
     Storage(String),
     #[error("finding pool mutation receipt failed: {0}")]
@@ -616,6 +622,13 @@ impl ChioKernel {
         &self,
         ledger: &dyn QualifiedFindingPoolLedger,
     ) -> Result<(), FindingPoolLedgerError> {
+        let durable_store_configured = self
+            .with_receipt_store(|_| Ok(()))
+            .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?
+            .is_some();
+        if !durable_store_configured {
+            return Err(FindingPoolLedgerError::DurableReceiptStoreMissing);
+        }
         for receipt in ledger.pending_mutation_receipts()? {
             self.record_chio_receipt(&receipt)
                 .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;

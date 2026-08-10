@@ -43,10 +43,15 @@ linearizable durable backends. The shipped SQLite implementation refuses
 in-memory paths, serializes debits with `BEGIN IMMEDIATE`, stores full-domain
 `u64` values as canonical decimal text, binds one signed purchaser allocation
 per pool id, and persists exact replay. A new reservation has a 30 second
-claim window. The kernel atomically claims it only after immediate dispatch
-revalidation; unclaimed reservations are released at that deadline, while a
-claimed reservation remains encumbered until its authenticated delivery
-terminal. Exact debit replay is selected before mutable purchase or status
+claim window. After immediate dispatch revalidation, the kernel durably claims
+the reservation before invocation capture and the durable dispatch commit, so
+a rejected claim remains a compensatable pre-dispatch denial. Unclaimed
+reservations are released at the deadline, while a claimed reservation remains
+encumbered until its authenticated delivery terminal. Every pool mutation and
+its signed receipt share one ledger transaction. A separately pinned pool
+receipt authority survives ordinary kernel-key rotation, and the receipt
+outbox is acknowledged only after an ordinary durable receipt store accepts
+the copy. Exact debit replay is selected before mutable purchase or status
 admission checks. Advisory remote budget views do not qualify.
 
 ## Fully admitted finding hint
@@ -69,19 +74,20 @@ grants no purchase authority.
 
 ## Named exit evidence
 
-The reconciled M8 stack recorded these results on 2026-08-01:
+The rebased M8 stack recorded these results on 2026-08-09:
 
 | Exit | Command | Result |
 |---|---|---|
-| Rust ceiling, real marketplace, and pheromone convention | `cargo test -p chio-open-market --features cognition-market-experimental --test finding_bid_policy --test cognition_market_flow --test finding_admission -j1` | 38 passed on the cumulative M6 base |
-| Authenticated pool concurrency and restart | `cargo test -p chio-store-sqlite --features cognition-market-experimental --test finding_pool_ledger -j1` | 4 passed |
-| TypeScript SDK suite and parity vectors | `node --experimental-strip-types --test ./test/*.test.ts` in `sdks/typescript/chio-ts` | 88 passed |
+| Rust ceiling, real marketplace, and pheromone convention | `cargo test -p chio-open-market --features cognition-market-experimental --test finding_bid_policy --test cognition_market_flow --test finding_admission -j1` | 41 passed on the cumulative M6 base |
+| Kernel pool lifecycle and durability regressions | `cargo test -p chio-kernel --features cognition-market-experimental 'finding_pool::tests' --lib -j1` | 7 passed |
+| Authenticated pool concurrency and restart | `cargo test -p chio-store-sqlite --features cognition-market-experimental --test finding_pool_ledger -j1` | 11 passed |
+| TypeScript SDK suite and parity vectors | `node --experimental-strip-types --test ./test/*.test.ts` in `sdks/typescript/chio-ts` | 89 passed |
 | TypeScript strict type check | `tsc --noEmit -p chio-ts/tsconfig.json` | passed |
 | Python SDK suite and parity vectors | `uv run --project . --extra dev pytest -q` in `sdks/python/chio-sdk-python` | 145 passed |
 | Signed-artifact registry parity | `cargo test -p chio-core-types --test signed_artifact_schema -j1` | 22 passed |
 | Schema registry | `bash scripts/check-chio-schema-registry.sh` | passed |
-| Strict all-target Clippy across modified Rust crates | five crate-specific invocations with `-D warnings` | passed |
-| Four-language codegen, review slices, Rust file hygiene, and formatting | repository gates | passed |
+| Focused Clippy for the modified kernel and SQLite ledger surfaces | two crate-specific invocations with `-D warnings` | passed |
+| Schema registry, Rust file hygiene, and formatting | repository gates | passed |
 
 The final cumulative branch, after reconciling its M5 base and the other
 cognition-market milestones, must additionally pass without exclusions:

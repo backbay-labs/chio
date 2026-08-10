@@ -294,6 +294,8 @@ impl ChioKernel {
             #[cfg(feature = "cognition-market-experimental")]
             finding_pool_allocation_authority: None,
             #[cfg(feature = "cognition-market-experimental")]
+            finding_pool_receipt_authority: None,
+            #[cfg(feature = "cognition-market-experimental")]
             finding_pool_ledger: None,
             price_oracle: None,
             runtime_admission_hook: None,

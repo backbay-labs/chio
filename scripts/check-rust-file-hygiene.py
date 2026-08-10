@@ -286,6 +286,11 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "market admission and quote test suite; capped to current size until split",
         max_lines=2_747,
     ),
+    "crates/economy/chio-open-market/tests/finding_admission.rs": allow(
+        "2026-08-31",
+        "cognition-market admission regression suite; capped to current M8 size until split",
+        max_lines=2_032,
+    ),
     "crates/economy/chio-settle/src/channel/tests/support.rs": allow(
         "2026-08-31",
         "settlement channel test support module; capped to current size until split",
@@ -308,8 +313,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
-        "kernel async evaluation core with M6 dispatch-frozen recovery status; capped to current size until split",
-        max_lines=2_199,
+        "kernel async evaluation core with M6 recovery status and M8 pool dispatch continuity; capped to current size until split",
+        max_lines=2_245,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/budget.rs": allow(
         "2026-08-31",
@@ -338,8 +343,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/dispatch.rs": allow(
         "2026-08-31",
-        "kernel dispatch surface with M6 purchase and recovery status snapshots; capped to current size until split",
-        max_lines=2_025,
+        "kernel dispatch surface with M6 status snapshots and M8 pool claim checks; capped to current size until split",
+        max_lines=2_054,
     ),
     "crates/platform/chio-control-plane/src/lib.rs": allow(
         "2026-08-31",
