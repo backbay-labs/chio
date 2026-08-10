@@ -633,6 +633,7 @@ impl ChioKernel {
         if let Err(reason) = self.verify_finding_status_for_pool(
             request.status_proof_b64,
             &purchase.finding_id,
+            &purchase.expected_status_feed_id,
             trusted_now_unix_ms / 1_000,
         ) {
             if ledger

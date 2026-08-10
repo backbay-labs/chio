@@ -386,6 +386,7 @@ impl ChioKernel {
         &self,
         proof_b64: Option<&str>,
         expected_finding_id: &str,
+        expected_feed_id: &str,
         now_unix_secs: u64,
     ) -> Result<(), String> {
         match (self.finding_status_proof_verifier.as_ref(), proof_b64) {
@@ -398,6 +399,7 @@ impl ChioKernel {
                 let view = FindingStatusProofContextView {
                     proof_b64,
                     expected_finding_id,
+                    expected_feed_id,
                 };
                 let verified = status_verifier
                     .verify_status_proof(&view)

@@ -247,6 +247,7 @@ fn debit_at_with_policy_and_authority(
         listing_id: "listing:cognition-market:1".to_string(),
         payload_sha256: "c".repeat(64),
         payload_media_type: "application/json".to_string(),
+        expected_status_feed_id: "status-feed/test".to_string(),
         accepted_price: MonetaryAmount {
             units: amount_units,
             currency: "USD".to_string(),
@@ -355,7 +356,10 @@ impl FindingStatusProofVerifier for StaticStatusVerifier {
         &self,
         view: &FindingStatusProofContextView<'_>,
     ) -> Result<VerifiedFindingStatusProof, String> {
-        if view.proof_b64 != "live-status-proof" || view.expected_finding_id != "a".repeat(64) {
+        if view.proof_b64 != "live-status-proof"
+            || view.expected_finding_id != "a".repeat(64)
+            || view.expected_feed_id != "status-feed/test"
+        {
             return Err("status proof mismatch".to_owned());
         }
         Ok(VerifiedFindingStatusProof {

@@ -309,6 +309,7 @@ fn purchase() -> crate::finding_purchase::VerifiedFindingPurchase {
         listing_id: "listing:test".to_owned(),
         payload_sha256: "c".repeat(64),
         payload_media_type: "application/json".to_owned(),
+        expected_status_feed_id: "status-feed/test".to_owned(),
         accepted_price: MonetaryAmount {
             units: 25,
             currency: "USD".to_owned(),
