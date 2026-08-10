@@ -35,7 +35,7 @@ fn metrics_test_guard() -> std::sync::MutexGuard<'static, ()> {
 
 struct EchoServer;
 struct StreamingEchoServer;
-struct PreEffectUrlElicitationServer;
+struct DispatchedUrlElicitationServer;
 struct CancelledServer;
 struct RouteSelectionAdmissionHook;
 #[derive(Default)]
@@ -136,7 +136,7 @@ impl ToolServerConnection for StreamingEchoServer {
 }
 
 #[async_trait::async_trait]
-impl ToolServerConnection for PreEffectUrlElicitationServer {
+impl ToolServerConnection for DispatchedUrlElicitationServer {
     fn server_id(&self) -> &str {
         "url-srv"
     }
@@ -1267,8 +1267,8 @@ fn tools_call_jsonrpc_path_records_receipt_write_deny() {
 }
 
 #[test]
-fn tools_call_jsonrpc_path_surfaces_url_elicitation_without_terminal_receipt() {
-    let mut edge = make_pre_effect_url_elicitation_edge();
+fn tools_call_jsonrpc_path_surfaces_url_elicitation_with_ambiguous_dispatch_receipt() {
+    let mut edge = make_dispatched_url_elicitation_edge();
     let _ = edge.handle_jsonrpc(json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -1310,8 +1310,8 @@ fn tools_call_jsonrpc_path_surfaces_url_elicitation_without_terminal_receipt() {
     );
     assert_eq!(
         edge.kernel.receipt_log().receipts().len(),
-        before_receipts,
-        "a retryable URL elicitation must not create a terminal receipt"
+        before_receipts + 1,
+        "a URL elicitation returned after dispatch must record the ambiguous outcome"
     );
 }
 
@@ -1419,9 +1419,9 @@ fn execute_bridge_mcp_tool_call_blocking_preserves_request_cancelled_terminal_st
 }
 
 #[test]
-fn execute_bridge_mcp_tool_call_blocking_propagates_pre_effect_url_error() {
+fn execute_bridge_mcp_tool_call_blocking_records_dispatched_url_error() {
     let (kernel, request) = make_kernel_error_bridge_fixture(
-        Box::new(PreEffectUrlElicitationServer),
+        Box::new(DispatchedUrlElicitationServer),
         "url-srv",
         "authorize",
         "mcp-url-required-blocking",
@@ -1446,8 +1446,8 @@ fn execute_bridge_mcp_tool_call_blocking_propagates_pre_effect_url_error() {
     ));
     assert_eq!(
         kernel.receipt_log().receipts().len(),
-        before_receipts,
-        "a retryable URL elicitation must not create a terminal receipt"
+        before_receipts + 1,
+        "a URL elicitation returned after dispatch must record the ambiguous outcome"
     );
 }
 
@@ -1476,9 +1476,9 @@ fn execute_bridge_mcp_tool_call_async_preserves_request_cancelled_terminal_state
 }
 
 #[test]
-fn execute_bridge_mcp_tool_call_async_propagates_pre_effect_url_error() {
+fn execute_bridge_mcp_tool_call_async_records_dispatched_url_error() {
     let (kernel, request) = make_kernel_error_bridge_fixture(
-        Box::new(PreEffectUrlElicitationServer),
+        Box::new(DispatchedUrlElicitationServer),
         "url-srv",
         "authorize",
         "mcp-url-required-async",
@@ -1502,8 +1502,8 @@ fn execute_bridge_mcp_tool_call_async_propagates_pre_effect_url_error() {
     ));
     assert_eq!(
         kernel.receipt_log().receipts().len(),
-        before_receipts,
-        "a retryable URL elicitation must not create a terminal receipt"
+        before_receipts + 1,
+        "a URL elicitation returned after dispatch must record the ambiguous outcome"
     );
 }
 
@@ -1625,7 +1625,7 @@ fn make_streaming_edge(page_size: usize) -> ChioMcpEdge {
     .unwrap()
 }
 
-fn make_pre_effect_url_elicitation_edge() -> ChioMcpEdge {
+fn make_dispatched_url_elicitation_edge() -> ChioMcpEdge {
     let keypair = Keypair::generate();
     let config = KernelConfig {
         keypair: keypair.clone(),
@@ -1646,7 +1646,7 @@ fn make_pre_effect_url_elicitation_edge() -> ChioMcpEdge {
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
     };
     let mut kernel = ChioKernel::new(config);
-    kernel.register_tool_server(Box::new(PreEffectUrlElicitationServer));
+    kernel.register_tool_server(Box::new(DispatchedUrlElicitationServer));
     let agent = Keypair::generate();
     let capabilities = vec![kernel
         .issue_capability(
@@ -2186,7 +2186,7 @@ fn wrapped_elicitation_completion_notifications_only_emit_for_known_ids() {
 
 #[test]
 fn direct_tool_server_url_error_is_brokered_and_registered() {
-    let mut edge = make_pre_effect_url_elicitation_edge();
+    let mut edge = make_dispatched_url_elicitation_edge();
     let _ = edge.handle_jsonrpc(json!({
         "jsonrpc": "2.0",
         "id": 1,

@@ -161,7 +161,7 @@ fn durable_startup_reconciliation_rejects_late_pool_ledger_installation() {
 }
 
 #[test]
-fn nested_durable_url_elicitation_terminalizes_as_verified_no_effect() {
+fn nested_durable_url_elicitation_terminalizes_as_outcome_unknown() {
     let (mut kernel, request, store, _invocations) =
         durable_admission_fixture("nested-durable-url-elicit");
     kernel.register_tool_server(Box::new(DurableUrlElicitationServer {
@@ -195,8 +195,9 @@ fn nested_durable_url_elicitation_terminalizes_as_verified_no_effect() {
     );
     assert_eq!(
         store.operation().state(),
-        AdmissionOperationState::NotAcceptedAfterDispatchCommit
+        AdmissionOperationState::OutcomeUnknownAfterDispatch
     );
+    assert!(!kernel.receipt_log().receipts().is_empty());
 }
 
 #[test]

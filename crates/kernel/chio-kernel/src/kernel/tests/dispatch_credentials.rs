@@ -899,7 +899,7 @@ fn default_governed_approval_replay_store_accepts_once_and_denies_replay(
 }
 
 #[test]
-fn hosted_url_elicitation_rolls_back_credentials_for_retry(
+fn hosted_url_elicitation_commits_credentials_fail_closed(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut fixture = request_with_panicking_execution_nonce_store(
         "hosted-url-credential-rollback",
@@ -925,18 +925,19 @@ fn hosted_url_elicitation_rolls_back_credentials_for_retry(
     assert_eq!(fixture.reserve_calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         fixture.rollback_calls.load(Ordering::SeqCst),
-        1,
-        "credentials must roll back when URL elicitation precedes tool side effects"
+        0,
+        "a tool-controlled URL elicitation cannot prove that dispatch had no side effects"
     );
-    fixture
+    assert!(fixture
         .kernel
-        .verify_dpop_for_request(&fixture.request, &fixture.capability)?;
-    assert_eq!(fixture.kernel.receipt_log().len(), 0);
+        .verify_dpop_for_request(&fixture.request, &fixture.capability)
+        .is_err());
+    assert_eq!(fixture.kernel.receipt_log().len(), 1);
     Ok(())
 }
 
 #[test]
-fn nested_url_elicitation_rolls_back_credentials_for_retry(
+fn nested_url_elicitation_commits_credentials_fail_closed(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut fixture = request_with_panicking_execution_nonce_store(
         "nested-url-credential-rollback",
@@ -981,13 +982,14 @@ fn nested_url_elicitation_rolls_back_credentials_for_retry(
     assert_eq!(fixture.reserve_calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         fixture.rollback_calls.load(Ordering::SeqCst),
-        1,
-        "nested credentials must roll back when URL elicitation precedes tool side effects"
+        0,
+        "a nested tool-controlled URL elicitation cannot prove that dispatch had no side effects"
     );
-    fixture
+    assert!(fixture
         .kernel
-        .verify_dpop_for_request(&fixture.request, &fixture.capability)?;
-    assert_eq!(fixture.kernel.receipt_log().len(), 0);
+        .verify_dpop_for_request(&fixture.request, &fixture.capability)
+        .is_err());
+    assert_eq!(fixture.kernel.receipt_log().len(), 1);
     fixture
         .kernel
         .complete_session_request(&session_id, &context.request_id)?;
@@ -995,7 +997,7 @@ fn nested_url_elicitation_rolls_back_credentials_for_retry(
 }
 
 #[test]
-fn hosted_url_elicitation_credential_cleanup_failure_records_terminal_denial(
+fn hosted_url_elicitation_does_not_attempt_credential_rollback_after_dispatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut fixture = request_with_panicking_execution_nonce_store(
         "hosted-url-credential-cleanup-failure",
@@ -1011,38 +1013,22 @@ fn hosted_url_elicitation_credential_cleanup_failure_records_terminal_denial(
             std::sync::Arc::clone(&stream_attempts),
         )));
 
-    let response = fixture.kernel.evaluate_tool_call_blocking(&fixture.request)?;
+    let result = fixture.kernel.evaluate_tool_call_blocking(&fixture.request);
 
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert!(response.receipt.verify_signature()?);
+    assert!(matches!(
+        result,
+        Err(KernelError::UrlElicitationsRequired { .. })
+    ));
     assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
-    assert_eq!(fixture.rollback_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(fixture.kernel.receipt_log().len(), 1);
-    let reason = response
-        .reason
-        .as_deref()
-        .ok_or_else(|| std::io::Error::other("cleanup denial reason missing"))?;
-    assert!(reason.contains("dispatch credential cleanup could not be confirmed"));
-    assert!(!reason.contains("sensitive execution nonce rollback panic payload"));
-    let runtime = &response
-        .receipt
-        .metadata
-        .as_ref()
-        .ok_or_else(|| std::io::Error::other("cleanup denial metadata missing"))?
-        ["chio_runtime"];
-    assert_eq!(
-        runtime["dispatch_credential_disposition"],
-        "retention_outcome_unknown"
-    );
-    assert_eq!(
-        runtime["dispatch_credential_retention_outcome_unknown"],
-        true
-    );
+    assert_eq!(fixture.rollback_calls.load(Ordering::SeqCst), 0);
+    let receipt_log = fixture.kernel.receipt_log();
+    assert_eq!(receipt_log.len(), 1);
+    assert!(receipt_log.receipts()[0].verify_signature()?);
     Ok(())
 }
 
 #[test]
-fn nested_url_elicitation_credential_cleanup_failure_records_terminal_denial(
+fn nested_url_elicitation_does_not_attempt_credential_rollback_after_dispatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut fixture = request_with_panicking_execution_nonce_store(
         "nested-url-credential-cleanup-failure",
@@ -1072,38 +1058,22 @@ fn nested_url_elicitation_credential_cleanup_failure_records_terminal_denial(
         .begin_session_request(&context, OperationKind::ToolCall, true)?;
     let mut client = NoopNestedFlowClient;
 
-    let response = fixture.kernel.evaluate_tool_call_with_nested_flow_client(
+    let result = fixture.kernel.evaluate_tool_call_with_nested_flow_client(
         &context,
         &fixture.request,
         &mut client,
         None,
-    )?;
+    );
 
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert!(response.receipt.verify_signature()?);
+    assert!(matches!(
+        result,
+        Err(KernelError::UrlElicitationsRequired { .. })
+    ));
     assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
-    assert_eq!(fixture.rollback_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(fixture.kernel.receipt_log().len(), 1);
-    let reason = response
-        .reason
-        .as_deref()
-        .ok_or_else(|| std::io::Error::other("nested cleanup denial reason missing"))?;
-    assert!(reason.contains("dispatch credential cleanup could not be confirmed"));
-    assert!(!reason.contains("sensitive execution nonce rollback panic payload"));
-    let runtime = &response
-        .receipt
-        .metadata
-        .as_ref()
-        .ok_or_else(|| std::io::Error::other("nested cleanup denial metadata missing"))?
-        ["chio_runtime"];
-    assert_eq!(
-        runtime["dispatch_credential_disposition"],
-        "retention_outcome_unknown"
-    );
-    assert_eq!(
-        runtime["dispatch_credential_retention_outcome_unknown"],
-        true
-    );
+    assert_eq!(fixture.rollback_calls.load(Ordering::SeqCst), 0);
+    let receipt_log = fixture.kernel.receipt_log();
+    assert_eq!(receipt_log.len(), 1);
+    assert!(receipt_log.receipts()[0].verify_signature()?);
     fixture
         .kernel
         .complete_session_request(&session_id, &context.request_id)?;

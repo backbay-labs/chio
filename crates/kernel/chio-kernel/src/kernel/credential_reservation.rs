@@ -41,12 +41,11 @@ impl DispatchCredentialReservation<'_> {
     pub(crate) fn retain_if_dropped(
         &mut self,
     ) -> Result<PaymentCredentialDisposition, KernelError> {
-        // Keep owned reservations reversible until the dispatch result
-        // classifies the boundary. A URL-elicitation result is explicitly
-        // pre-effect and must be able to roll the reservations back. If the
-        // evaluation future is dropped while dispatch is being polled, Drop
-        // promotes the governed approval marker and leaves owned nonce
-        // reservations in their fail-closed state.
+        // Keep owned reservations reversible until dispatch starts. Once the
+        // server is polled, neither a dropped future nor a server-controlled
+        // URL-elicitation result can prove that no side effect occurred. Drop
+        // therefore promotes the governed approval marker and leaves owned
+        // nonce reservations in their fail-closed state.
         self.rollback_on_drop = false;
         self.retain_on_drop = true;
         // A legacy execution nonce store has no owned reservation state. Its

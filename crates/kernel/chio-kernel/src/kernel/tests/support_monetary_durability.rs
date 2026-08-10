@@ -1667,7 +1667,7 @@ async fn lost_cancellation_acknowledgement_records_ambiguity_and_blocks_dispatch
 }
 
 #[test]
-fn non_durable_monetary_url_elicitation_releases_admission_for_fresh_retry(
+fn non_durable_monetary_url_elicitation_retains_admission_fail_closed(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let payment = TrackingPaymentAdapter::new();
     let side_effects = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -1706,24 +1706,24 @@ fn non_durable_monetary_url_elicitation_releases_admission_for_fresh_retry(
     let usage = kernel
         .budget_store
         .get_usage(&capability.id, 0)?
-        .ok_or_else(|| std::io::Error::other("URL cleanup usage missing"))?;
-    assert_eq!(usage.invocation_count, 0);
-    assert_eq!(usage.committed_cost_units()?, 0);
+        .ok_or_else(|| std::io::Error::other("URL ambiguity usage missing"))?;
+    assert_eq!(usage.invocation_count, 1);
+    assert_eq!(usage.committed_cost_units()?, 100);
     assert_eq!(
         payment.authorized.load(std::sync::atomic::Ordering::SeqCst),
         1
     );
     assert_eq!(
         payment.released.load(std::sync::atomic::Ordering::SeqCst),
-        1
+        0
     );
     assert_eq!(side_effects.load(std::sync::atomic::Ordering::SeqCst), 1);
     let receipt_log = kernel.receipt_log();
     assert_eq!(receipt_log.len(), 1);
     let receipt = receipt_log
         .get(0)
-        .ok_or_else(|| std::io::Error::other("URL cleanup receipt missing"))?;
-    assert!(receipt.is_denied());
+        .ok_or_else(|| std::io::Error::other("URL ambiguity receipt missing"))?;
+    assert!(receipt.is_cancelled());
     assert_monetary_capture_receipt_metadata(receipt, &capability.id, &request.request_id)?;
 
     let exact_replay = kernel.evaluate_tool_call_blocking(&request)?;
@@ -1736,19 +1736,19 @@ fn non_durable_monetary_url_elicitation_releases_admission_for_fresh_retry(
 
     let mut fresh = request;
     fresh.request_id = "req-monetary-url-ambiguous-fresh".to_string();
-    assert!(matches!(
-        kernel.evaluate_tool_call_blocking(&fresh),
-        Err(KernelError::UrlElicitationsRequired { .. })
-    ));
+    assert_eq!(
+        kernel.evaluate_tool_call_blocking(&fresh)?.verdict,
+        Verdict::Deny
+    );
     assert_eq!(
         payment.authorized.load(std::sync::atomic::Ordering::SeqCst),
-        2
+        1
     );
     assert_eq!(
         payment.released.load(std::sync::atomic::Ordering::SeqCst),
-        2
+        0
     );
-    assert_eq!(side_effects.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert_eq!(side_effects.load(std::sync::atomic::Ordering::SeqCst), 1);
     Ok(())
 }
 

@@ -270,7 +270,7 @@ fn nested_child_before_url_elicitation_is_terminal_and_consumes_nonce(
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let response = runtime.block_on(async {
+    let result = runtime.block_on(async {
         let mut client = NoopNestedFlowClient;
         kernel
             .evaluate_tool_call_operation_with_nested_flow_client_async(
@@ -279,16 +279,11 @@ fn nested_child_before_url_elicitation_is_terminal_and_consumes_nonce(
                 &mut client,
             )
             .await
-    })?;
+    });
 
-    assert_eq!(response.verdict, Verdict::Deny);
     assert!(matches!(
-        response.terminal_state,
-        OperationTerminalState::Incomplete { .. }
-    ));
-    assert!(matches!(
-        &response.receipt.decision,
-        Some(Decision::Incomplete { .. })
+        result,
+        Err(KernelError::UrlElicitationsRequired { .. })
     ));
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
     assert_eq!(child_operations.load(Ordering::SeqCst), 1);
@@ -298,8 +293,10 @@ fn nested_child_before_url_elicitation_is_terminal_and_consumes_nonce(
         0,
         "runtime admission reservations must remain consumed after nested work"
     );
-    let metadata = response
-        .receipt
+    let parent_receipts = kernel.receipt_log();
+    assert_eq!(parent_receipts.len(), 1);
+    let parent_receipt_entries = parent_receipts.receipts();
+    let metadata = parent_receipt_entries[0]
         .metadata
         .as_ref()
         .ok_or_else(|| std::io::Error::other("parent receipt metadata missing"))?;
@@ -314,11 +311,9 @@ fn nested_child_before_url_elicitation_is_terminal_and_consumes_nonce(
         "the execution nonce must not be reusable after nested work"
     );
 
-    let parent_receipts = kernel.receipt_log();
-    assert_eq!(parent_receipts.len(), 1);
     assert!(matches!(
         &parent_receipts.receipts()[0].decision,
-        Some(Decision::Incomplete { .. })
+        Some(Decision::Cancelled { .. })
     ));
     let child_receipts = kernel.child_receipt_log();
     assert_eq!(child_receipts.len(), 1);
@@ -373,7 +368,7 @@ fn nested_notification_before_url_elicitation_is_terminal_without_child_receipt(
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let response = runtime.block_on(async {
+    let result = runtime.block_on(async {
         let mut client = NoopNestedFlowClient;
         kernel
             .evaluate_tool_call_operation_with_nested_flow_client_async(
@@ -382,11 +377,11 @@ fn nested_notification_before_url_elicitation_is_terminal_without_child_receipt(
                 &mut client,
             )
             .await
-    })?;
+    });
 
     assert!(matches!(
-        response.terminal_state,
-        OperationTerminalState::Incomplete { .. }
+        result,
+        Err(KernelError::UrlElicitationsRequired { .. })
     ));
     assert_eq!(kernel.receipt_log().len(), 1);
     assert!(kernel.child_receipt_log().is_empty());
@@ -394,7 +389,7 @@ fn nested_notification_before_url_elicitation_is_terminal_without_child_receipt(
 }
 
 #[test]
-fn cancellation_poll_before_url_elicitation_preserves_typed_pre_effect_result(
+fn cancellation_poll_before_url_elicitation_records_ambiguous_dispatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(CancellationPollThenUrlElicitationServer));
@@ -439,7 +434,12 @@ fn cancellation_poll_before_url_elicitation_preserves_typed_pre_effect_result(
         Err(KernelError::UrlElicitationsRequired { message, .. })
             if message == "URL elicitation requested after a cancellation poll"
     ));
-    assert!(kernel.receipt_log().is_empty());
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(receipt_log.len(), 1);
+    assert!(matches!(
+        &receipt_log.receipts()[0].decision,
+        Some(Decision::Cancelled { .. })
+    ));
     assert!(kernel.child_receipt_log().is_empty());
     Ok(())
 }
