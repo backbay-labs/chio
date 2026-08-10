@@ -572,7 +572,6 @@ impl ChioKernel {
             store_fence: runtime.fence.clone(),
         };
         let projection = verified_outcome_unknown_after_dispatch_projection(operation, context)?;
-        #[cfg(feature = "cognition-market-experimental")]
         self.finalize_finding_pool_claim_after_unknown_dispatch(
             operation.binding().operation_id().as_str(),
             trusted_now_unix_ms,
