@@ -359,6 +359,7 @@ impl ChioKernel {
                     .verify_status_proof(&FindingStatusProofContextView {
                         proof_b64,
                         expected_finding_id: &verified.finding_id,
+                        expected_feed_id: &verified.expected_status_feed_id,
                     })
                     .map_err(|error| format!("finding status proof rejected: {error}"))?;
                 verified.status_proof = Some(status);
@@ -446,6 +447,7 @@ impl ChioKernel {
                     &FindingStatusProofContextView {
                         proof_b64,
                         expected_finding_id: &verified.finding_id,
+                        expected_feed_id: &verified.expected_status_feed_id,
                     },
                     status,
                     now_unix_secs,

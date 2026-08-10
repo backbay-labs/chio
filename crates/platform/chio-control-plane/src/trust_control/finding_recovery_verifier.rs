@@ -110,6 +110,7 @@ impl FindingRecoveryVerifier for MarketFindingRecoveryVerifier {
             finding_id: verified.finding_id().to_owned(),
             listing_id: verified.listing_id().to_owned(),
             payload_sha256: verified.payload_sha256().to_owned(),
+            expected_status_feed_id: verified.status_feed_id().to_owned(),
             original_capability_id: verified.original_capability_id().to_owned(),
             original_delivery_receipt_id: verified.original_delivery_receipt_id().to_owned(),
             purchase_key: verified.purchase_key().to_owned(),

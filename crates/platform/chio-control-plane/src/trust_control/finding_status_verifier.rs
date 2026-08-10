@@ -153,6 +153,9 @@ fn verify_portable_at(
     if fields.finding_id != view.expected_finding_id {
         return Err("finding status proof binds a different finding".to_owned());
     }
+    if fields.feed_id != view.expected_feed_id {
+        return Err("finding status proof binds a different feed".to_owned());
+    }
     if fields.map_epoch == 0 {
         return Err("finding status proof map epoch must be nonzero".to_owned());
     }
@@ -402,6 +405,7 @@ pub(crate) fn verify_proof_record(
         &FindingStatusProofContextView {
             proof_b64: &proof_b64,
             expected_finding_id: &record.finding_id,
+            expected_feed_id: &record.feed_id,
         },
         now,
         false,

@@ -31,6 +31,7 @@ pub struct VerifiedFindingRecovery {
     pub finding_id: String,
     pub listing_id: String,
     pub payload_sha256: String,
+    pub expected_status_feed_id: String,
     pub original_capability_id: String,
     pub original_delivery_receipt_id: String,
     pub purchase_key: String,

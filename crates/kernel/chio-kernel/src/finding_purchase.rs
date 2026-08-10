@@ -70,6 +70,8 @@ pub struct VerifiedFindingPurchase {
     pub payload_sha256: String,
     /// The signed finding's advertised reveal media type.
     pub payload_media_type: String,
+    /// Status feed named by the independently verified signed finding.
+    pub expected_status_feed_id: String,
     /// The accepted purchase price.
     pub accepted_price: MonetaryAmount,
     /// Hex public key of the paying buyer bound by the reservation.
@@ -117,6 +119,8 @@ pub struct FindingStatusProofContextView<'a> {
     pub proof_b64: &'a str,
     /// Finding id recovered from the independently verified purchase context.
     pub expected_finding_id: &'a str,
+    /// Status feed recovered from the independently verified signed finding.
+    pub expected_feed_id: &'a str,
 }
 
 /// Injected status verifier for M6-qualified finding purchases.

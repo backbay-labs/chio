@@ -239,6 +239,7 @@ impl ChioKernel {
         let status_view = FindingStatusProofContextView {
             proof_b64,
             expected_finding_id: &verified.finding_id,
+            expected_feed_id: &verified.expected_status_feed_id,
         };
         let status = status_verifier
             .verify_status_proof(&status_view)
@@ -293,6 +294,7 @@ mod tests {
                 finding_id: view.marker.finding_id.clone(),
                 listing_id: view.marker.listing_id.clone(),
                 payload_sha256: view.expected_output_digest.to_owned(),
+                expected_status_feed_id: "feed-1".to_owned(),
                 original_capability_id: view.marker.original_capability_id.clone(),
                 original_delivery_receipt_id: view.marker.original_delivery_receipt_id.clone(),
                 purchase_key: view.marker.purchase_key.clone(),
@@ -548,6 +550,7 @@ mod tests {
             finding_id: "b".repeat(64),
             listing_id: "listing-1".to_owned(),
             payload_sha256: "d".repeat(64),
+            expected_status_feed_id: "feed-1".to_owned(),
             original_capability_id: "capability-original".to_owned(),
             original_delivery_receipt_id: "receipt-original".to_owned(),
             purchase_key: "c".repeat(64),

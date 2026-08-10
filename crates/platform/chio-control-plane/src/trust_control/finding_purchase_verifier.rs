@@ -98,6 +98,7 @@ impl FindingPurchaseVerifier for MarketFindingPurchaseVerifier {
             listing_id: view.marker.listing_id.clone(),
             payload_sha256: outcome.finding.payload_sha256.clone(),
             payload_media_type: outcome.finding.payload_media_type.clone(),
+            expected_status_feed_id: outcome.finding.status_feed_ref.clone(),
             accepted_price: outcome.accepted_price.clone(),
             payer_key_hex: outcome.payer_key_hex.clone(),
             reservation_id: outcome.reservation_id.clone(),

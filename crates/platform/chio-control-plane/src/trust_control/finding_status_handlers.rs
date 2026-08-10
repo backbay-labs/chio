@@ -1151,6 +1151,7 @@ mod tests {
         let view = FindingStatusProofContextView {
             proof_b64: &imported_b64,
             expected_finding_id: &finding_id,
+            expected_feed_id: FEED_ID,
         };
         let verified = verifier.verify_status_proof(&view)?;
         let error = verifier
@@ -1164,6 +1165,36 @@ mod tests {
                 .map_epoch,
             1
         );
+        Ok(())
+    }
+
+    #[test]
+    fn portable_proof_is_bound_to_the_authenticated_finding_feed(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (operator, bond) = config();
+        let (_temp, authority) = provision_authority()?;
+        let store = authority.finding_status_store();
+        let publisher = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store.clone(),
+            operator.clone(),
+            bond.clone(),
+            operator_key(),
+            300,
+        )?;
+        let finding_id = sha256_hex(b"feed-bound-finding");
+        let published = publisher.publish_non_inclusion(&finding_id, &[], NOW)?;
+        let verifier = super::super::finding_status_verifier::MarketFindingStatusVerifier::new(
+            operator, bond, 300, store,
+        )?;
+        let proof_b64 = STANDARD.encode(&published.proof_bytes);
+        let error = verifier
+            .verify_status_proof(&FindingStatusProofContextView {
+                proof_b64: &proof_b64,
+                expected_finding_id: &finding_id,
+                expected_feed_id: "status-feed/other",
+            })
+            .test_expect_err("a proof from another feed must not establish live status");
+        assert_eq!(error, "finding status proof binds a different feed");
         Ok(())
     }
 
