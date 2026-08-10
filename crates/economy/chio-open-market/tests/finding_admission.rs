@@ -50,7 +50,9 @@ use chio_open_market::{
     },
     finding_pheromone::{
         admit_and_resolve_finding_pheromone_hint, finding_pheromone_subject_policy,
+        AuthenticatedCurrentFindingListing, FindingCurrentListingAssertion,
         FindingPheromoneConvention, FindingPheromoneError, FindingPheromoneIndicator,
+        SignedFindingCurrentListingAssertion, FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1,
         FINDING_PHEROMONE_CONFIDENCE, FINDING_PHEROMONE_DECAY_HALF_LIFE_SECS,
         FINDING_PHEROMONE_EVAPORATION_FLOOR, FINDING_PHEROMONE_INDICATOR_SCHEMA_V1,
         FINDING_PHEROMONE_SUBJECT_CLASS, FINDING_PHEROMONE_SUBJECT_NAMESPACE,
@@ -665,6 +667,29 @@ fn finding_listing_entry(
     }
 }
 
+fn finding_current_listing_assertion(
+    listing: &Listing,
+    namespace_owner: &Keypair,
+) -> SignedFindingCurrentListingAssertion {
+    SignedFindingCurrentListingAssertion::sign(
+        FindingCurrentListingAssertion {
+            schema: FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1.to_owned(),
+            listing_id: listing.listing_id().to_owned(),
+            namespace: listing.listing.body.namespace.clone(),
+            registry_operator_id: listing.publisher.operator_id.clone(),
+            listing_envelope_sha256: signed_envelope_sha256(&listing.listing)
+                .test_expect("listing assertion listing digest"),
+            pricing_hint_envelope_sha256: signed_envelope_sha256(&listing.pricing)
+                .test_expect("listing assertion pricing digest"),
+            generated_at: listing.freshness.generated_at,
+            max_age_secs: listing.freshness.max_age_secs,
+            valid_until: listing.freshness.valid_until,
+        },
+        namespace_owner,
+    )
+    .test_expect("sign current listing assertion")
+}
+
 fn finding_bid_request(finding: &Finding, max_price_units: u64) -> BidRequest {
     BidRequest {
         schema: BID_REQUEST_SCHEMA.to_string(),
@@ -881,6 +906,7 @@ fn finding_pheromone_convention() -> FindingPheromoneConvention {
     FindingPheromoneConvention {
         treaty_id: FINDING_PHEROMONE_TREATY.to_string(),
         max_observation_cost_microunits: 125,
+        max_listing_freshness_age_secs: 300,
     }
 }
 
@@ -931,7 +957,7 @@ fn admitted_finding_clears_the_real_bid_path() {
 include!("finding_admission/pheromone_carrier.rs");
 
 #[test]
-fn finding_pheromone_recomputes_current_listing_freshness() {
+fn finding_pheromone_requires_authenticated_current_listing_freshness() {
     with_fiscal(|resolver| {
         let web = base_web();
         let passport = keypair(81);
@@ -942,7 +968,8 @@ fn finding_pheromone_recomputes_current_listing_freshness() {
             &format!("finding:{}", web.finding.finding_id),
             900,
         );
-        listing.freshness.generated_at = NOW - listing.freshness.max_age_secs - 1;
+        let current_listing_assertion = finding_current_listing_assertion(&listing, &web.operator);
+        listing.freshness.generated_at = NOW;
         listing.freshness.age_secs = 0;
         listing.freshness.state = GenericListingFreshnessState::Fresh;
         let deposit =
@@ -954,7 +981,7 @@ fn finding_pheromone_recomputes_current_listing_freshness() {
                 deposit,
                 &finding_pheromone_context(&passport, &kernel),
                 &finding_pheromone_convention(),
-                &listing,
+                AuthenticatedCurrentFindingListing::new(&listing, &current_listing_assertion),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -988,7 +1015,10 @@ fn finding_pheromone_requires_the_policy_selected_by_generic_admission() {
                 deposit,
                 &context,
                 &finding_pheromone_convention(),
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -1017,7 +1047,10 @@ fn finding_pheromone_binds_pricing_and_uses_the_pheromone_clock() {
             deposit,
             &finding_pheromone_context(&passport, &kernel),
             &finding_pheromone_convention(),
-            &listing,
+            AuthenticatedCurrentFindingListing::new(
+                &listing,
+                &finding_current_listing_assertion(&listing, &web.operator),
+            ),
             &web.admission,
             &stale_caller_context,
         )
@@ -1042,7 +1075,10 @@ fn finding_pheromone_binds_pricing_and_uses_the_pheromone_clock() {
                 deposit,
                 &finding_pheromone_context(&passport, &kernel),
                 &finding_pheromone_convention(),
-                &substituted_pricing,
+                AuthenticatedCurrentFindingListing::new(
+                    &substituted_pricing,
+                    &finding_current_listing_assertion(&substituted_pricing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -1057,6 +1093,7 @@ fn finding_pheromone_binds_pricing_and_uses_the_pheromone_clock() {
         short_lived_listing.pricing =
             SignedListingPricingHint::sign(short_lived_pricing, &web.operator)
                 .test_expect("sign short-lived current pricing hint");
+        short_lived_listing.freshness.valid_until = short_lived_listing.pricing.body.expires_at;
         let deposit =
             finding_pheromone_deposit(&web, &short_lived_listing, &passport, "expiry", 125);
         let mut forged_context = web.context(resolver);
@@ -1067,7 +1104,10 @@ fn finding_pheromone_binds_pricing_and_uses_the_pheromone_clock() {
                 deposit,
                 &finding_pheromone_context(&passport, &kernel),
                 &finding_pheromone_convention(),
-                &short_lived_listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &short_lived_listing,
+                    &finding_current_listing_assertion(&short_lived_listing, &web.operator),
+                ),
                 &web.admission,
                 &forged_context,
             ),
@@ -1101,7 +1141,10 @@ fn finding_pheromone_requires_cost_verification_on_the_active_policy() {
                 deposit,
                 &context,
                 &finding_pheromone_convention(),
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -1135,7 +1178,10 @@ fn finding_pheromone_rejects_stale_unadmitted_wrong_signer_and_wrong_passport() 
                 stale,
                 &finding_pheromone_context(&passport, &kernel),
                 &finding_pheromone_convention(),
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -1152,7 +1198,10 @@ fn finding_pheromone_rejects_stale_unadmitted_wrong_signer_and_wrong_passport() 
                 unadmitted,
                 &unadmitted_context,
                 &finding_pheromone_convention(),
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -1168,7 +1217,10 @@ fn finding_pheromone_rejects_stale_unadmitted_wrong_signer_and_wrong_passport() 
                 wrong_signer,
                 &finding_pheromone_context(&passport, &kernel),
                 &finding_pheromone_convention(),
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -1185,7 +1237,10 @@ fn finding_pheromone_rejects_stale_unadmitted_wrong_signer_and_wrong_passport() 
                 wrong_passport,
                 &finding_pheromone_context(&passport, &kernel),
                 &finding_pheromone_convention(),
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -1219,7 +1274,10 @@ fn finding_pheromone_rejects_wrong_scope_replay_and_over_cost() {
                 wrong_scope,
                 &context,
                 &convention,
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -1233,7 +1291,10 @@ fn finding_pheromone_rejects_wrong_scope_replay_and_over_cost() {
                 over_cost,
                 &context,
                 &convention,
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -1247,7 +1308,10 @@ fn finding_pheromone_rejects_wrong_scope_replay_and_over_cost() {
             replay.clone(),
             &context,
             &convention,
-            &listing,
+            AuthenticatedCurrentFindingListing::new(
+                &listing,
+                &finding_current_listing_assertion(&listing, &web.operator),
+            ),
             &web.admission,
             &web.context(resolver),
         )
@@ -1258,7 +1322,10 @@ fn finding_pheromone_rejects_wrong_scope_replay_and_over_cost() {
                 replay,
                 &context,
                 &convention,
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),

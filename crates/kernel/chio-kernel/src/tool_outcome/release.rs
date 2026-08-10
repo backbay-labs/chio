@@ -21,6 +21,113 @@ mod terminal;
 pub use terminal::*;
 mod transport;
 
+const MAX_KERNEL_URL_ELICITATIONS: usize = 16;
+const MAX_KERNEL_URL_ELICITATION_MESSAGE_BYTES: usize = 4 * 1024;
+const MAX_KERNEL_URL_ELICITATION_URL_BYTES: usize = 4 * 1024;
+const MAX_KERNEL_URL_ELICITATION_ID_BYTES: usize = 256;
+const MAX_KERNEL_URL_ELICITATION_INPUT_BYTES: usize = 32 * 1024;
+const MAX_KERNEL_URL_ELICITATION_META_DEPTH: usize = 16;
+const MAX_KERNEL_URL_ELICITATION_META_NODES: usize = 512;
+const MAX_KERNEL_URL_ELICITATION_CONTAINER_ITEMS: usize = 64;
+
+fn account_url_elicitation_bytes(total: &mut usize, additional: usize) -> bool {
+    let Some(next) = total.checked_add(additional) else {
+        return false;
+    };
+    if next > MAX_KERNEL_URL_ELICITATION_INPUT_BYTES {
+        return false;
+    }
+    *total = next;
+    true
+}
+
+fn validate_url_elicitation_meta(
+    value: &Value,
+    depth: usize,
+    nodes: &mut usize,
+    bytes: &mut usize,
+) -> bool {
+    if depth > MAX_KERNEL_URL_ELICITATION_META_DEPTH {
+        return false;
+    }
+    let Some(next_nodes) = nodes.checked_add(1) else {
+        return false;
+    };
+    if next_nodes > MAX_KERNEL_URL_ELICITATION_META_NODES {
+        return false;
+    }
+    *nodes = next_nodes;
+    if !account_url_elicitation_bytes(bytes, 8) {
+        return false;
+    }
+    match value {
+        Value::Null | Value::Bool(_) => true,
+        Value::Number(number) => account_url_elicitation_bytes(bytes, number.to_string().len()),
+        Value::String(text) => account_url_elicitation_bytes(bytes, text.len()),
+        Value::Array(values) => {
+            values.len() <= MAX_KERNEL_URL_ELICITATION_CONTAINER_ITEMS
+                && values
+                    .iter()
+                    .all(|value| validate_url_elicitation_meta(value, depth + 1, nodes, bytes))
+        }
+        Value::Object(values) => {
+            values.len() <= MAX_KERNEL_URL_ELICITATION_CONTAINER_ITEMS
+                && values.iter().all(|(key, value)| {
+                    account_url_elicitation_bytes(bytes, key.len())
+                        && validate_url_elicitation_meta(value, depth + 1, nodes, bytes)
+                })
+        }
+    }
+}
+
+fn validate_kernel_url_elicitation_input(
+    message: &str,
+    elicitations: &[crate::CreateElicitationOperation],
+) -> Result<(), ToolOutcomeError> {
+    let mut bytes = 0_usize;
+    let mut nodes = 0_usize;
+    if message.is_empty()
+        || message.len() > MAX_KERNEL_URL_ELICITATION_MESSAGE_BYTES
+        || elicitations.is_empty()
+        || elicitations.len() > MAX_KERNEL_URL_ELICITATIONS
+        || !account_url_elicitation_bytes(&mut bytes, message.len())
+    {
+        return Err(ToolOutcomeError::Invalid("kernel_url_elicitation.bounds"));
+    }
+    for elicitation in elicitations {
+        let crate::CreateElicitationOperation::Url {
+            meta,
+            message,
+            url,
+            elicitation_id,
+        } = elicitation
+        else {
+            return Err(ToolOutcomeError::Invalid("kernel_url_elicitation.kind"));
+        };
+        if message.is_empty()
+            || message.len() > MAX_KERNEL_URL_ELICITATION_MESSAGE_BYTES
+            || url.is_empty()
+            || url.len() > MAX_KERNEL_URL_ELICITATION_URL_BYTES
+            || elicitation_id.is_empty()
+            || elicitation_id.len() > MAX_KERNEL_URL_ELICITATION_ID_BYTES
+            || !account_url_elicitation_bytes(
+                &mut bytes,
+                message
+                    .len()
+                    .checked_add(url.len())
+                    .and_then(|size| size.checked_add(elicitation_id.len()))
+                    .ok_or(ToolOutcomeError::Invalid("kernel_url_elicitation.bounds"))?,
+            )
+            || meta
+                .as_ref()
+                .is_some_and(|meta| !validate_url_elicitation_meta(meta, 0, &mut nodes, &mut bytes))
+        {
+            return Err(ToolOutcomeError::Invalid("kernel_url_elicitation.bounds"));
+        }
+    }
+    Ok(())
+}
+
 #[allow(dead_code)]
 fn release_id(
     field: &'static str,
@@ -1166,22 +1273,9 @@ impl VerifiedTransportNotAccepted {
         operation: &AdmissionOperationV1,
         context: &AdmissionProjectionContext,
     ) -> Result<Self, ToolOutcomeError> {
+        validate_kernel_url_elicitation_input(message, elicitations)?;
         validate_projection_context(operation, context)?;
-        if operation.state() != AdmissionOperationState::DispatchCommitted
-            || message.is_empty()
-            || elicitations.is_empty()
-            || elicitations.iter().any(|elicitation| {
-                !matches!(
-                    elicitation,
-                    crate::CreateElicitationOperation::Url {
-                        message,
-                        url,
-                        elicitation_id,
-                        ..
-                    } if !message.is_empty() && !url.is_empty() && !elicitation_id.is_empty()
-                )
-            })
-        {
+        if operation.state() != AdmissionOperationState::DispatchCommitted {
             return Err(ToolOutcomeError::Binding(
                 "kernel_url_elicitation.operation",
             ));
@@ -1772,6 +1866,7 @@ impl VerifiedTransportNotAccepted {
         };
         artifact.validate()?;
         let evidence: KernelUrlElicitationNoEffectArtifactV1 = parse_artifact_value(artifact)?;
+        validate_kernel_url_elicitation_input(&evidence.message, &evidence.elicitations)?;
         let attempt = operation
             .provider_attempt()
             .ok_or(ToolOutcomeError::Binding(
@@ -1802,18 +1897,6 @@ impl VerifiedTransportNotAccepted {
             || evidence.request_binding_hash != *operation.binding().request_binding_hash()
             || evidence.dispatch_commit != *commit
             || evidence.provider_attempt != *attempt
-            || evidence.message.is_empty()
-            || evidence.elicitations.iter().any(|elicitation| {
-                !matches!(
-                    elicitation,
-                    crate::CreateElicitationOperation::Url {
-                        message,
-                        url,
-                        elicitation_id,
-                        ..
-                    } if !message.is_empty() && !url.is_empty() && !elicitation_id.is_empty()
-                )
-            })
             || evidence.elicitation_count != expected_elicitation_count
             || evidence.elicitation_evidence_digest != expected_evidence_digest
             || evidence.observed_at_unix_ms != self.verified_at_unix_ms

@@ -581,6 +581,30 @@ fn qualified_pool_rejects_sqlite_uris_that_disable_file_locking() {
 }
 
 #[test]
+fn qualified_pool_rejects_read_only_sqlite_uris() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let database = directory.path().join("pool.sqlite3");
+    drop(
+        SqliteFindingPoolLedger::open_qualified(&database)
+            .test_expect("initialize writable pool ledger"),
+    );
+    let base = format!("file:{}", database.display());
+    for path in [
+        format!("{base}?mode=ro"),
+        format!("{base}?%6dode=%72o"),
+        format!("{base}?immutable=1"),
+    ] {
+        assert!(
+            matches!(
+                SqliteFindingPoolLedger::open_qualified(&path),
+                Err(FindingPoolLedgerError::Storage(_))
+            ),
+            "read-only SQLite URI {path:?} must not qualify"
+        );
+    }
+}
+
+#[test]
 fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitution() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))

@@ -164,6 +164,13 @@ impl<'a> PostAdmissionDropGuard<'a> {
         self.post_dispatch_reason = POST_DISPATCH_CREDENTIAL_COMMIT_FAILURE_REASON;
     }
 
+    /// The caller durably terminalized the admission but still needs the
+    /// armed post-dispatch path to record its signed ambiguity receipt and
+    /// retain non-durable reservations.
+    pub(crate) fn mark_durable_operation_terminalized(&mut self) {
+        self.durable_operation = None;
+    }
+
     pub(crate) fn disarm(&mut self) {
         self.armed = false;
     }

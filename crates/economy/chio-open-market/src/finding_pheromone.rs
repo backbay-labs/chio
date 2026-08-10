@@ -6,6 +6,7 @@
 //! M2 admission bundle. The hint never mints a token or grants purchase
 //! authority.
 
+use crate::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{signed_envelope_sha256, SignedFindingAdmission, FINDING_ADMISSION_SCHEMA_V1};
 use chio_listing::{
     ensure_generic_listing_signed_by_namespace_owner, normalize_namespace,
@@ -30,6 +31,42 @@ pub const FINDING_PHEROMONE_SUBJECT_NAMESPACE: &str = "dev.chio.cognition-market
 pub const FINDING_PHEROMONE_CONFIDENCE: f64 = 0.75;
 pub const FINDING_PHEROMONE_DECAY_HALF_LIFE_SECS: f64 = 3_600.0;
 pub const FINDING_PHEROMONE_EVAPORATION_FLOOR: f64 = 0.01;
+pub const FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1: &str =
+    "chio.finding.current-listing-assertion.v1";
+
+/// Registry-owner assertion that one exact listing and pricing pair was
+/// current at a bounded observation time.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingCurrentListingAssertion {
+    pub schema: String,
+    pub listing_id: String,
+    pub namespace: String,
+    pub registry_operator_id: String,
+    pub listing_envelope_sha256: String,
+    pub pricing_hint_envelope_sha256: String,
+    pub generated_at: u64,
+    pub max_age_secs: u64,
+    pub valid_until: u64,
+}
+
+pub type SignedFindingCurrentListingAssertion =
+    SignedExportEnvelope<FindingCurrentListingAssertion>;
+
+pub struct AuthenticatedCurrentFindingListing<'a> {
+    listing: &'a Listing,
+    assertion: &'a SignedFindingCurrentListingAssertion,
+}
+
+impl<'a> AuthenticatedCurrentFindingListing<'a> {
+    #[must_use]
+    pub const fn new(
+        listing: &'a Listing,
+        assertion: &'a SignedFindingCurrentListingAssertion,
+    ) -> Self {
+        Self { listing, assertion }
+    }
+}
 
 /// Strict typed indicator carried inside the generic deposit.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -48,6 +85,7 @@ pub struct FindingPheromoneIndicator {
 pub struct FindingPheromoneConvention {
     pub treaty_id: String,
     pub max_observation_cost_microunits: u64,
+    pub max_listing_freshness_age_secs: u64,
 }
 
 /// Discovery result whose authority comes from the separately verified M2
@@ -104,10 +142,14 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
     deposit: PheromoneDeposit,
     pheromone_context: &PheromoneValidationContext,
     convention: &FindingPheromoneConvention,
-    current_listing: &Listing,
+    current_listing: AuthenticatedCurrentFindingListing<'_>,
     current_admission: &SignedFindingAdmission,
     admission_context: &FindingAdmissionContext<'_>,
 ) -> Result<ResolvedFindingPheromoneHint, FindingPheromoneError> {
+    let AuthenticatedCurrentFindingListing {
+        listing: current_listing,
+        assertion: current_listing_assertion,
+    } = current_listing;
     validate_finding_carrier(&deposit)?;
     let indicator = decode_indicator(&deposit.body.indicator)?;
     // Authenticate the cheap generic carrier boundary before resolving the
@@ -116,7 +158,12 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
     validate_deposit_for_admission(&deposit, pheromone_context)?;
     validate_convention(&deposit, pheromone_context, convention)?;
     let now = pheromone_context.now_unix_ms / 1_000;
-    validate_current_listing(current_listing, now)?;
+    validate_current_listing(
+        current_listing,
+        current_listing_assertion,
+        convention.max_listing_freshness_age_secs,
+        now,
+    )?;
     let mut current_admission_context = admission_context.clone();
     current_admission_context.now = now;
     current_admission_context.constituent_expiry_bounds.listing =
@@ -274,15 +321,61 @@ fn validate_convention(
     Ok(())
 }
 
-fn validate_current_listing(listing: &Listing, now: u64) -> Result<(), FindingPheromoneError> {
+fn validate_current_listing(
+    listing: &Listing,
+    assertion: &SignedFindingCurrentListingAssertion,
+    max_freshness_age_secs: u64,
+    now: u64,
+) -> Result<(), FindingPheromoneError> {
+    match assertion.verify_signature() {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err(FindingPheromoneError::Listing(
+                "current listing assertion signature is invalid".to_owned(),
+            ));
+        }
+        Err(error) => return Err(FindingPheromoneError::Listing(error.to_string())),
+    }
+    if assertion.signer_key != listing.listing.signer_key {
+        return Err(FindingPheromoneError::Listing(
+            "current listing assertion is not signed by the namespace owner".to_owned(),
+        ));
+    }
+    let listing_sha256 = signed_envelope_sha256(&listing.listing)
+        .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
+    let pricing_sha256 = signed_envelope_sha256(&listing.pricing)
+        .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
+    let assertion_body = &assertion.body;
+    if max_freshness_age_secs == 0
+        || assertion_body.schema != FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1
+        || assertion_body.listing_id != listing.listing_id()
+        || normalize_namespace(&assertion_body.namespace)
+            != normalize_namespace(&listing.listing.body.namespace)
+        || assertion_body.registry_operator_id != listing.publisher.operator_id
+        || assertion_body.listing_envelope_sha256 != listing_sha256
+        || assertion_body.pricing_hint_envelope_sha256 != pricing_sha256
+        || assertion_body.generated_at < listing.listing.body.published_at
+        || assertion_body.max_age_secs == 0
+        || assertion_body.max_age_secs > max_freshness_age_secs
+        || assertion_body.valid_until > listing.pricing.body.expires_at
+        || listing
+            .listing
+            .body
+            .expires_at
+            .is_some_and(|expires_at| assertion_body.valid_until > expires_at)
+    {
+        return Err(FindingPheromoneError::Listing(
+            "current listing assertion binding is invalid".to_owned(),
+        ));
+    }
     let freshness_window = GenericListingFreshnessWindow {
-        max_age_secs: listing.freshness.max_age_secs,
-        valid_until: listing.freshness.valid_until,
+        max_age_secs: assertion_body.max_age_secs,
+        valid_until: assertion_body.valid_until,
     };
     freshness_window
-        .validate(listing.freshness.generated_at)
+        .validate(assertion_body.generated_at)
         .map_err(FindingPheromoneError::Listing)?;
-    let assessed_freshness = freshness_window.assess(listing.freshness.generated_at, now);
+    let assessed_freshness = freshness_window.assess(assertion_body.generated_at, now);
     if listing.freshness != assessed_freshness
         || assessed_freshness.state != GenericListingFreshnessState::Fresh
         || !listing.is_admissible_at(now)

@@ -665,6 +665,39 @@ fn kernel_url_elicitation_constructs_a_bound_post_commit_no_effect_terminal() {
         &context,
     )
     .is_err());
+
+    assert!(VerifiedTransportNotAccepted::from_kernel_url_elicitation(
+        &"m".repeat(MAX_KERNEL_URL_ELICITATION_MESSAGE_BYTES + 1),
+        &elicitations,
+        &operation,
+        &context,
+    )
+    .is_err());
+    let too_many = vec![elicitations[0].clone(); MAX_KERNEL_URL_ELICITATIONS + 1];
+    assert!(VerifiedTransportNotAccepted::from_kernel_url_elicitation(
+        "bounded count",
+        &too_many,
+        &operation,
+        &context,
+    )
+    .is_err());
+    let mut deep_meta = serde_json::Value::Null;
+    for _ in 0..=MAX_KERNEL_URL_ELICITATION_META_DEPTH {
+        deep_meta = serde_json::json!({"nested": deep_meta});
+    }
+    let deeply_nested = [crate::CreateElicitationOperation::Url {
+        meta: Some(deep_meta),
+        message: "Authorize the provider URL".to_owned(),
+        url: "https://provider.example/authorize".to_owned(),
+        elicitation_id: "elicitation-deep".to_owned(),
+    }];
+    assert!(VerifiedTransportNotAccepted::from_kernel_url_elicitation(
+        "bounded metadata",
+        &deeply_nested,
+        &operation,
+        &context,
+    )
+    .is_err());
 }
 
 fn submitted_mutation_operation(request_id: &str) -> AdmissionOperationV1 {

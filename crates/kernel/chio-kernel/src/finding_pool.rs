@@ -127,6 +127,8 @@ pub enum FindingPoolLedgerError {
     DurableAdmissionRequired,
     #[error("finding pool ledger is already configured for this kernel")]
     AlreadyConfigured,
+    #[error("finding pool ledger cannot be configured after durable startup reconciliation")]
+    StartupAlreadyReconciled,
     #[error("finding pool mutation receipt authority is not configured")]
     ReceiptAuthorityMissing,
     #[error("finding pool mutation receipt authority is already configured for this kernel")]

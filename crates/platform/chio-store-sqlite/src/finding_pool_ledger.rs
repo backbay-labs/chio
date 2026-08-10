@@ -90,6 +90,7 @@ impl SqliteFindingPoolLedger {
             || empty_uri_filename
             || is_in_memory_sqlite_path(path_text)
             || sqlite_uri_disables_locking(path_text)
+            || sqlite_uri_is_read_only(path_text)
         {
             return Err(FindingPoolLedgerError::Storage(
                 "qualified finding pool ledger requires a durable SQLite path".to_string(),
@@ -117,6 +118,13 @@ impl SqliteFindingPoolLedger {
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
             ensure_lifecycle_columns(&connection)?;
             verify_qualified_connection(&connection)?;
+            connection
+                .execute_batch("BEGIN IMMEDIATE; ROLLBACK;")
+                .map_err(|error| {
+                    FindingPoolLedgerError::Storage(format!(
+                        "qualified finding pool ledger is not writable: {error}"
+                    ))
+                })?;
         }
         Ok(Self { pool })
     }
@@ -191,6 +199,31 @@ fn sqlite_uri_disables_locking(path: &str) -> bool {
         };
         key.eq_ignore_ascii_case("nolock")
             || (key.eq_ignore_ascii_case("vfs") && value.eq_ignore_ascii_case("unix-none"))
+    })
+}
+
+fn sqlite_uri_is_read_only(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("file:") else {
+        return false;
+    };
+    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
+    let Some((_, query)) = rest.split_once('?') else {
+        return false;
+    };
+    query.split('&').any(|pair| {
+        let (key, value) = pair.split_once('=').map_or((pair, ""), |parts| parts);
+        let (Some(key), Some(value)) = (
+            percent_decode_uri_component(key),
+            percent_decode_uri_component(value),
+        ) else {
+            return true;
+        };
+        (key.eq_ignore_ascii_case("mode") && value.eq_ignore_ascii_case("ro"))
+            || (key.eq_ignore_ascii_case("immutable")
+                && matches!(
+                    value.to_ascii_lowercase().as_str(),
+                    "1" | "on" | "true" | "yes"
+                ))
     })
 }
 

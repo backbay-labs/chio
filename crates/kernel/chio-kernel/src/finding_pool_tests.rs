@@ -16,7 +16,6 @@ pub(crate) struct RecordingLedger {
     decisions: Mutex<Vec<FindingPoolTerminalDecision>>,
     claims: Mutex<Vec<(String, u64)>>,
     active_claim_operations: Mutex<Vec<String>>,
-    fail_next_no_effect_release: std::sync::atomic::AtomicBool,
     recovery_releases: Mutex<Vec<String>>,
     unknown_dispatch_finalizations: Mutex<Vec<String>>,
     outbox: Mutex<Vec<ChioReceipt>>,
@@ -25,9 +24,11 @@ pub(crate) struct RecordingLedger {
 }
 
 impl RecordingLedger {
-    pub(crate) fn fail_next_no_effect_release(&self) {
-        self.fail_next_no_effect_release
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+    pub(crate) fn unknown_dispatch_finalizations(&self) -> Vec<String> {
+        self.unknown_dispatch_finalizations
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     fn store_attestation(
@@ -190,26 +191,6 @@ impl FindingPoolLedger for RecordingLedger {
         release: &AuthorizedFindingPoolRecoveryRelease,
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError> {
-        if self
-            .fail_next_no_effect_release
-            .swap(false, std::sync::atomic::Ordering::SeqCst)
-        {
-            let mut active_claim_operations =
-                self.active_claim_operations.lock().map_err(|_| {
-                    FindingPoolLedgerError::Storage(
-                        "test active claim lock was poisoned".to_owned(),
-                    )
-                })?;
-            if !active_claim_operations
-                .iter()
-                .any(|operation_id| operation_id == release.durable_admission_operation_id())
-            {
-                active_claim_operations.push(release.durable_admission_operation_id().to_owned());
-            }
-            return Err(FindingPoolLedgerError::Storage(
-                "injected no-effect pool release failure".to_owned(),
-            ));
-        }
         self.release_claimed_before_dispatch(release, attestor)
     }
 

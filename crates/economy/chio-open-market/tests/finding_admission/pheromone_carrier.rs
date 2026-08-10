@@ -17,7 +17,10 @@ fn finding_pheromone_positive_hint_re_resolves_current_listing_without_purchase_
             deposit,
             &finding_pheromone_context(&passport, &kernel),
             &finding_pheromone_convention(),
-            &listing,
+            AuthenticatedCurrentFindingListing::new(
+                &listing,
+                &finding_current_listing_assertion(&listing, &web.operator),
+            ),
             &web.admission,
             &web.context(resolver),
         )
@@ -56,7 +59,10 @@ fn finding_pheromone_rejects_oversized_indicator_before_authenticated_resolution
                 oversized,
                 &finding_pheromone_context(&passport, &kernel),
                 &finding_pheromone_convention(),
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),
@@ -73,7 +79,10 @@ fn finding_pheromone_rejects_oversized_indicator_before_authenticated_resolution
                 invalid_carrier,
                 &finding_pheromone_context(&passport, &kernel),
                 &finding_pheromone_convention(),
-                &listing,
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
                 &web.admission,
                 &web.context(resolver),
             ),

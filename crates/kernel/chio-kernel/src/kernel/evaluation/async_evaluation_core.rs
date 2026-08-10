@@ -4,7 +4,6 @@ use super::evaluation_helpers::{
 use super::*;
 use crate::budget_store::BudgetInvocationCaptureDecision;
 use crate::kernel::dispatch::dispatch_admission_error_reason;
-use crate::kernel::kernel_drop_guard::reserved_runtime_admission_ids;
 
 impl ChioKernel {
     pub(super) async fn evaluate_tool_call_async_with_session_context(
@@ -1933,122 +1932,29 @@ impl ChioKernel {
                 drop(post_admission_drop_guard);
                 result
             }
-            Err(KernelError::UrlElicitationsRequired {
-                message,
-                elicitations,
-            }) => {
-                post_admission_drop_guard.disarm();
-                drop(post_admission_drop_guard);
-                let credential_cleanup = if payment_authorization.is_some() {
-                    credential_reservation
-                        .commit()
-                        .map(|_| PaymentCredentialDisposition::RetainedAfterAuthorization)
-                } else {
-                    credential_reservation
-                        .rollback_before_dispatch()
-                        .map(|()| PaymentCredentialDisposition::NonePresent)
-                };
-                let (credential_disposition, credential_cleanup_error) = match credential_cleanup {
-                    Ok(disposition) => (disposition, None),
-                    Err(cleanup_error) => {
-                        warn!(
-                            request_id = %request.request_id,
-                            reason = %redacted!(&cleanup_error),
-                            audit_fault = "url_elicitation_credential_cleanup_unconfirmed",
-                            "URL-elicitation credential cleanup could not be confirmed"
-                        );
-                        (
-                            PaymentCredentialDisposition::RetentionOutcomeUnknown,
-                            Some(cleanup_error.to_string()),
-                        )
-                    }
-                };
-                let cleanup_reason = credential_cleanup_error.as_ref().map_or_else(
-                    || "tool server requested URL elicitation before execution".to_string(),
-                    |cleanup_error| {
-                        format!(
-                            "tool server requested URL elicitation before execution; dispatch credential cleanup could not be confirmed: {cleanup_error}"
-                        )
-                    },
-                );
-                let committed_operation = durable_admission
-                    .as_ref()
-                    .map(DurableToolAdmission::operation);
-                let cleanup_denial = PreDispatchCleanupDeny {
-                    request,
-                    reason: &cleanup_reason,
-                    timestamp: now,
-                    matched_grant_index,
-                    cap,
-                    budget_mutation: &budget_mutation,
-                    payment_authorization: payment_authorization.as_ref(),
-                    durable_operation: committed_operation,
-                    runtime_admission_metadata: extra_metadata.clone(),
-                    verified_payee_binding: verified_governed_payee_binding.as_ref(),
-                    budget_lease_acquired,
-                };
-                if let Some(operation) = committed_operation {
-                    self.unwind_committed_url_elicitation_no_effect(
-                        cleanup_denial,
-                        credential_disposition,
-                        operation,
-                        &message,
-                        &elicitations,
-                        now_unix_ms,
-                    )?;
-                    warn!(
-                        request_id = %request.request_id,
-                        reason = %redacted!(&message),
-                        "tool call requires URL elicitation"
-                    );
-                    return Err(KernelError::UrlElicitationsRequired {
-                        message,
-                        elicitations,
-                    });
+            Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
+                if let Err(commit_error) = credential_reservation.commit() {
+                    post_admission_drop_guard.mark_dispatch_credential_commit_failed();
+                    return Err(commit_error);
                 }
-                let cleanup_requires_receipt = payment_authorization.is_some()
-                    || !reserved_runtime_admission_ids(extra_metadata.as_ref()).is_empty()
-                    || credential_cleanup_error.is_some();
-                if cleanup_requires_receipt {
-                    let cleanup = self.with_pre_invocation_guard_evidence(
-                        &pre_invocation_guard_evidence,
-                        || {
-                            self.build_pre_dispatch_cleanup_deny_response_with_credentials(
-                                cleanup_denial,
-                                credential_disposition,
-                            )
-                        },
-                    );
-                    if credential_cleanup_error.is_some() {
-                        return cleanup;
-                    }
-                    if let Err(cleanup_error) = cleanup {
-                        warn!(
-                            request_id = %request.request_id,
-                            reason = %redacted!(&cleanup_error),
-                            audit_fault = "url_elicitation_cleanup_unrecorded",
-                            "URL-elicitation cleanup could not be confirmed"
-                        );
-                    }
-                } else if let Err(cleanup_error) = self
-                    .unwind_url_elicitation_before_effect(cleanup_denial, credential_disposition)
+                if let Some(operation) = durable_admission
+                    .as_ref()
+                    .map(DurableToolAdmission::operation)
                 {
-                    warn!(
-                        request_id = %request.request_id,
-                        reason = %redacted!(&cleanup_error),
-                        audit_fault = "url_elicitation_cleanup_unrecorded",
-                        "URL-elicitation cleanup could not be confirmed"
-                    );
+                    self.terminalize_dispatch_committed_admission(operation, now_unix_ms)?;
+                    post_admission_drop_guard.mark_durable_operation_terminalized();
                 }
                 warn!(
                     request_id = %request.request_id,
-                    reason = %redacted!(&message),
-                    "tool call requires URL elicitation"
+                    reason = %redacted!(&error),
+                    "tool server returned URL elicitation after dispatch; outcome is unknown"
                 );
-                return Err(KernelError::UrlElicitationsRequired {
-                    message,
-                    elicitations,
-                });
+                // A tool server controls this error and may have performed its
+                // effect before returning it. Leave the post-dispatch guard
+                // armed so reservations remain retained, a cancellation
+                // receipt lands, and durable admission terminalizes as
+                // outcome-unknown.
+                return Err(error);
             }
             Err(KernelError::RequestCancelled { reason, .. }) => {
                 post_admission_drop_guard.disarm();

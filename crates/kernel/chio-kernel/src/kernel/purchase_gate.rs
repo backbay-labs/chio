@@ -365,6 +365,7 @@ impl ChioKernel {
         if self.receipt_store.is_none() {
             return Err(crate::finding_pool::FindingPoolLedgerError::DurableReceiptStoreMissing);
         }
+        self.ensure_finding_pool_configuration_precedes_startup_reconciliation()?;
         self.finding_pool_ledger = Some(ledger);
         Ok(())
     }

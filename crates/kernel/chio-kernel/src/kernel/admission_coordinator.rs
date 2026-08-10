@@ -15,10 +15,9 @@ pub(crate) use terminal::DurableToolReturnInput;
 use super::*;
 use crate::admission_operation::{
     verified_outcome_unknown_after_dispatch_projection,
-    verified_released_pre_dispatch_compensation_projection,
-    verified_url_elicitation_no_effect_projection, AdmissionAttachment, AdmissionBeginResult,
-    AdmissionCompensationStatus, AdmissionCompletedProjection, AdmissionDigest,
-    AdmissionDispatchState, AdmissionIdentifier, AdmissionMutationGuard,
+    verified_released_pre_dispatch_compensation_projection, AdmissionAttachment,
+    AdmissionBeginResult, AdmissionCompensationStatus, AdmissionCompletedProjection,
+    AdmissionDigest, AdmissionDispatchState, AdmissionIdentifier, AdmissionMutationGuard,
     AdmissionMutationSequencer, AdmissionOperationBindingInputV1, AdmissionOperationBindingV1,
     AdmissionOperationCommand, AdmissionOperationKind, AdmissionOperationState,
     AdmissionOperationV1, AdmissionParticipantRequirements, AdmissionProjectionContext,
@@ -145,6 +144,26 @@ impl DurableAdmissionRuntime {
             .map_err(|_| unavailable())?
             .ok_or_else(unavailable)?;
         Ok((outcome, evaluation))
+    }
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+impl ChioKernel {
+    pub(super) fn ensure_finding_pool_configuration_precedes_startup_reconciliation(
+        &self,
+    ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+        let Some(runtime) = self.durable_admission_runtime.as_ref() else {
+            return Ok(());
+        };
+        let reconciled = runtime.startup_reconciled.lock().map_err(|_| {
+            crate::finding_pool::FindingPoolLedgerError::Storage(
+                "durable startup reconciliation lock is poisoned".to_owned(),
+            )
+        })?;
+        if *reconciled {
+            return Err(crate::finding_pool::FindingPoolLedgerError::StartupAlreadyReconciled);
+        }
+        Ok(())
     }
 }
 
@@ -569,70 +588,6 @@ impl ChioKernel {
                 "admission recovery committed a different terminal operation".to_owned(),
             ));
         }
-        Ok(())
-    }
-
-    /// Terminalize a dispatch-committed admission when the typed transport
-    /// result proves that URL elicitation was requested before any effect.
-    pub(crate) fn terminalize_url_elicitation_no_effect(
-        &self,
-        operation: &AdmissionOperationV1,
-        message: &str,
-        elicitations: &[crate::CreateElicitationOperation],
-        trusted_now_unix_ms: u64,
-    ) -> Result<(), KernelError> {
-        let runtime = self.durable_runtime()?;
-        let _mutation_guard = runtime.lock_mutations()?;
-        if runtime
-            .outcome_store
-            .lookup_by_operation(operation.binding().operation_id())
-            .map_err(durable_outcome_store_error)?
-            .is_some()
-        {
-            return Err(KernelError::DurableAdmission(
-                "URL-elicitation admission already has a durable tool outcome".to_owned(),
-            ));
-        }
-        let lease = self.claim_admission_recovery(operation, trusted_now_unix_ms)?;
-        let context = AdmissionProjectionContext {
-            operation_id: operation.binding().operation_id().clone(),
-            request_id: operation.binding().request_id().clone(),
-            expected_operation_version: operation.version(),
-            trusted_time_unix_ms: trusted_now_unix_ms,
-            coordinator_lease_id: lease.coordinator_lease_id().clone(),
-            coordinator_lease_epoch: lease.coordinator_lease_epoch(),
-            store_fence: runtime.fence.clone(),
-        };
-        let projection = verified_url_elicitation_no_effect_projection(
-            operation,
-            context,
-            message,
-            elicitations,
-        )?;
-        let terminal = runtime
-            .store
-            .commit_admission_projection(&projection)
-            .map_err(|error| KernelError::DurableAdmission(error.to_string()))?;
-        if terminal.operation_id != *operation.binding().operation_id()
-            || terminal.state != AdmissionOperationState::NotAcceptedAfterDispatchCommit
-        {
-            return Err(KernelError::DurableAdmission(
-                "URL-elicitation recovery committed a different terminal operation".to_owned(),
-            ));
-        }
-        // The durable no-effect terminal is the recovery marker for a crash
-        // before the pool release. Startup scans still-claimed pool operations
-        // and completes this exact release before admitting new work.
-        #[cfg(feature = "cognition-market-experimental")]
-        self.release_finding_pool_claim_after_verified_no_effect(
-            operation.binding().operation_id().as_str(),
-            trusted_now_unix_ms,
-        )
-        .map_err(|error| {
-            KernelError::DurableAdmission(format!(
-                "no-effect finding pool claim release failed: {error}"
-            ))
-        })?;
         Ok(())
     }
 
