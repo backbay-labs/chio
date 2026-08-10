@@ -1970,7 +1970,7 @@ fn digest_mismatch_case(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
 
     // Retain the exact reservation and backing that produced the denial.
