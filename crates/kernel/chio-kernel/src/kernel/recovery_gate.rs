@@ -182,7 +182,9 @@ impl ChioKernel {
         request: &ToolCallRequest,
         now_unix_secs: u64,
     ) -> Result<Option<VerifiedFindingRecovery>, String> {
-        let Some(verified) = self.verify_recovery_context(grant, request)? else {
+        let Some(verified) =
+            self.verify_recovery_status_admission(grant, request, now_unix_secs)?
+        else {
             return Ok(None);
         };
         let Some(marked) = recovery_marked_grant(grant)? else {
@@ -190,6 +192,31 @@ impl ChioKernel {
         };
         let Some(verifier) = self.finding_recovery_verifier.as_ref() else {
             return Err("finding recovery requires a configured recovery verifier".to_owned());
+        };
+        verifier
+            .reserve_recovery_attempt(
+                &verified,
+                &request.request_id,
+                marked.marker.max_recoveries,
+                now_unix_secs,
+            )
+            .map_err(|error| format!("finding recovery quota rejected: {error}"))?;
+        Ok(Some(verified))
+    }
+
+    /// Recheck mutable finding status without consuming recovery quota.
+    ///
+    /// Initial admission calls this before reserving an attempt. The dispatch
+    /// boundary calls it again so a concurrent pending or retracted transition
+    /// cannot redeliver quarantined bytes using an earlier live proof.
+    pub(crate) fn verify_recovery_status_admission(
+        &self,
+        grant: &ToolGrant,
+        request: &ToolCallRequest,
+        now_unix_secs: u64,
+    ) -> Result<Option<VerifiedFindingRecovery>, String> {
+        let Some(verified) = self.verify_recovery_context(grant, request)? else {
+            return Ok(None);
         };
         // Recovery is another delivery of the purchased bytes, so it must
         // cross the same current status floor before consuming retry quota.
@@ -219,14 +246,6 @@ impl ChioKernel {
         status_verifier
             .verify_status_admission(&status_view, &status, now_unix_secs)
             .map_err(|error| format!("finding recovery status admission rejected: {error}"))?;
-        verifier
-            .reserve_recovery_attempt(
-                &verified,
-                &request.request_id,
-                marked.marker.max_recoveries,
-                now_unix_secs,
-            )
-            .map_err(|error| format!("finding recovery quota rejected: {error}"))?;
         Ok(Some(verified))
     }
 }
@@ -247,12 +266,95 @@ pub(crate) fn finding_recovery_block(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::finding_purchase::{FindingStatusProofVerifier, VerifiedFindingStatusProof};
+    use crate::finding_recovery::{FindingRecoveryVerifier, VerifiedFindingRecovery};
+    use crate::{HotPathDeadlineConfig, KernelConfig, MemoryBudgetConfig};
+    use chio_core::capability::governance::GovernedTransactionIntent;
     use chio_core::capability::scope::{
         ChioScope, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount, Operation,
         PromptGrant, ResourceGrant,
     };
     use chio_core::capability::token::{CapabilityToken, CapabilityTokenBody};
     use chio_core::crypto::Keypair;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    struct TestRecoveryVerifier {
+        reservations: Arc<AtomicU64>,
+    }
+
+    impl FindingRecoveryVerifier for TestRecoveryVerifier {
+        fn verify_recovery(
+            &self,
+            view: &FindingRecoveryContextView<'_>,
+        ) -> Result<VerifiedFindingRecovery, String> {
+            Ok(VerifiedFindingRecovery {
+                recovery_id: view.marker.recovery_id.clone(),
+                finding_id: view.marker.finding_id.clone(),
+                listing_id: view.marker.listing_id.clone(),
+                payload_sha256: view.expected_output_digest.to_owned(),
+                original_capability_id: view.marker.original_capability_id.clone(),
+                original_delivery_receipt_id: view.marker.original_delivery_receipt_id.clone(),
+                purchase_key: view.marker.purchase_key.clone(),
+                original_subject_key_hex: view.recovery_capability.subject.to_hex(),
+            })
+        }
+
+        fn reserve_recovery_attempt(
+            &self,
+            _verified: &VerifiedFindingRecovery,
+            _request_id: &str,
+            _max_recoveries: u32,
+            _now_unix_secs: u64,
+        ) -> Result<(), String> {
+            self.reservations.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn record_recovery_receipt(
+            &self,
+            _verified: &VerifiedFindingRecovery,
+            _recovery_receipt_id: &str,
+            _recorded_at: u64,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    struct MutableStatusVerifier {
+        deny: Arc<AtomicBool>,
+    }
+
+    impl FindingStatusProofVerifier for MutableStatusVerifier {
+        fn verify_status_proof(
+            &self,
+            _view: &FindingStatusProofContextView<'_>,
+        ) -> Result<VerifiedFindingStatusProof, String> {
+            Ok(VerifiedFindingStatusProof {
+                feed_id: "feed-1".to_owned(),
+                key_domain_nonce: 1,
+                map_epoch: 1,
+                status_epoch_id: "epoch-1".to_owned(),
+                status_epoch_artifact_sha256: "1".repeat(64),
+                proof_sha256: "2".repeat(64),
+                root_hash: "3".repeat(64),
+                non_inclusion_checked_at: 1,
+            })
+        }
+
+        fn verify_status_admission(
+            &self,
+            _view: &FindingStatusProofContextView<'_>,
+            _verified: &VerifiedFindingStatusProof,
+            _now_unix_secs: u64,
+        ) -> Result<(), String> {
+            if self.deny.load(Ordering::SeqCst) {
+                Err("finding is pending retraction".to_owned())
+            } else {
+                Ok(())
+            }
+        }
+    }
 
     fn marker() -> FindingRecoveryMarkerV1 {
         FindingRecoveryMarkerV1 {
@@ -304,6 +406,94 @@ mod tests {
             &key,
         )
         .expect("sign recovery capability")
+    }
+
+    fn kernel() -> ChioKernel {
+        ChioKernel::new(KernelConfig {
+            keypair: Keypair::from_seed(&[8; 32]),
+            ca_public_keys: Vec::new(),
+            max_delegation_depth: 5,
+            policy_hash: "test-policy".to_owned(),
+            allow_sampling: false,
+            allow_sampling_tool_use: false,
+            allow_elicitation: false,
+            max_stream_duration_secs: 60,
+            max_stream_total_bytes: 1_048_576,
+            require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
+            allow_ephemeral_revocation_store: true,
+            checkpoint_batch_size: 100,
+            retention_config: None,
+            memory_budget: MemoryBudgetConfig::defaults(),
+            deadlines: HotPathDeadlineConfig::default(),
+        })
+    }
+
+    fn recovery_request() -> ToolCallRequest {
+        let capability = capability();
+        ToolCallRequest {
+            request_id: "recovery-request".to_owned(),
+            capability: capability.clone(),
+            tool_name: "read_finding".to_owned(),
+            server_id: "srv".to_owned(),
+            agent_id: capability.subject.to_hex(),
+            arguments: serde_json::json!({
+                "finding_id": marker().finding_id,
+                FINDING_RECOVERY_CONTEXT_ARGUMENT: "recovery-carrier"
+            }),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: Some(GovernedTransactionIntent {
+                id: "recovery-intent".to_owned(),
+                server_id: "srv".to_owned(),
+                tool_name: "read_finding".to_owned(),
+                purpose: "recover purchased finding".to_owned(),
+                max_amount: None,
+                commerce: None,
+                metered_billing: None,
+                runtime_attestation: None,
+                call_chain: None,
+                autonomy: None,
+                context: Some(serde_json::json!({
+                    FINDING_STATUS_PROOF_CONTEXT_KEY: "status-proof"
+                })),
+                body: Default::default(),
+            }),
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        }
+    }
+
+    #[test]
+    fn dispatch_status_recheck_denies_without_reserving_again() {
+        let deny = Arc::new(AtomicBool::new(false));
+        let reservations = Arc::new(AtomicU64::new(0));
+        let mut kernel = kernel();
+        kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
+            reservations: Arc::clone(&reservations),
+        }));
+        kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
+            deny: Arc::clone(&deny),
+        }));
+        let request = recovery_request();
+        let grant = &request.capability.scope.grants[0];
+
+        assert!(kernel
+            .verify_recovery_admission(grant, &request, 1)
+            .expect("initial live admission")
+            .is_some());
+        assert_eq!(reservations.load(Ordering::SeqCst), 1);
+
+        deny.store(true, Ordering::SeqCst);
+        let error = kernel
+            .verify_recovery_status_admission(grant, &request, 1)
+            .expect_err("dispatch boundary must observe pending retraction");
+        assert!(error.contains("pending retraction"));
+        assert_eq!(reservations.load(Ordering::SeqCst), 1);
     }
 
     #[test]

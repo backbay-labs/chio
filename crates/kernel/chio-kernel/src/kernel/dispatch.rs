@@ -813,6 +813,12 @@ impl ChioKernel {
                     "finding purchase dispatch revalidation failed: {reason}"
                 ))
             })?;
+        self.verify_recovery_status_admission(matched_grant, request, now_unix_secs)
+            .map_err(|reason| {
+                KernelError::GuardDenied(format!(
+                    "finding recovery dispatch revalidation failed: {reason}"
+                ))
+            })?;
         Ok(())
     }
 
