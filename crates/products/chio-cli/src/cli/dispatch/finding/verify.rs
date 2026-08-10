@@ -761,18 +761,18 @@ fn emit_evidence_report(
 }
 
 fn evidence_report_result(unverified: &[String], failed: &[String]) -> Result<(), CliError> {
-    if !failed.is_empty() {
-        Err(CliError::cli_other_error(format!(
-            "finding evidence verification failed for facets: {}",
-            failed.join(", ")
-        )))
-    } else if unverified.is_empty() {
-        Ok(())
-    } else {
+    if !unverified.is_empty() {
         Err(CliError::cli_other_error(format!(
             "required facets not verified: {}",
             unverified.join(", ")
         )))
+    } else if !failed.is_empty() {
+        Err(CliError::cli_other_error(format!(
+            "finding evidence verification failed for facets: {}",
+            failed.join(", ")
+        )))
+    } else {
+        Ok(())
     }
 }
 

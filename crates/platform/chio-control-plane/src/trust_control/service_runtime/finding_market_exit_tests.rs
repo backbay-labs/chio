@@ -1085,7 +1085,7 @@ impl MarketWeb {
         // report-before-backing rejection input).
         let now = unix_timestamp_now();
         let report = make_signed_report(&report_inputs, now.saturating_add(3_600))?;
-        let stale_report = make_signed_report(&report_inputs, ISSUED_AT.saturating_add(10))?;
+        let stale_report = make_signed_report(&report_inputs, now)?;
 
         let admission_inputs = AdmissionInputs {
             venue: &venue,

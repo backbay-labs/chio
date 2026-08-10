@@ -68,9 +68,11 @@ delivery-digest and bond-backed claims require only the signed report. The
 signed report commits each selected attachment digest. An independent
 verifier strict-parses and rechecks the selected types, signatures, digest
 pins, replay recipe, status authorization, freshness, sparse path, and claim
-specific facets. The CLI verifier additionally requires its portable status
-proof to cross the same durable per-feed rollback floor used by the status
-surface before it emits a successful report.
+specific facets. The verifier profile fixes the minimum required facet set,
+and the report binds the deployment-pinned trust-root snapshot used for the
+decision. The CLI verifier requires both pins and additionally requires its
+portable status proof to cross the same durable per-feed rollback floor used
+by the status surface before it emits a successful report.
 
 Unsigned recipe and status inputs are accepted only under the
 `advisory-observation` role. Wrong role, wrong schema, wrong graph digest, and
@@ -95,8 +97,8 @@ and strict Rust verification, and cumulative workspace gates recorded below.
 | Gate | Result |
 |---|---|
 | `cognition_market_qualified_profile` control-plane composition | passed, 1 test |
-| Finding verifier evidence and portable-status suite | passed, 27 tests |
-| transaction-passport cognition-market suite | passed, 13 tests; 1 golden-regeneration helper ignored |
+| Finding verifier evidence and portable-status suite | passed, 37 tests |
+| transaction-passport cognition-market suite | passed, 20 tests; 1 golden-regeneration helper ignored |
 | claim-registry integrity | passed, 10 tests |
 | bounded matrix contract and witness resolution | passed, 12 tests |
 | `cargo xtask qualify bounded-chio` | passed, 9 conditions |
