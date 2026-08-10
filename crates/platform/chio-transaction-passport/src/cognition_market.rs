@@ -486,6 +486,17 @@ fn require_report_facets(
     report: &SignedFindingVerifierReport,
     selected_claims: &BTreeSet<&'static str>,
 ) -> Result<(), TransactionPassportError> {
+    if let Some(failed) = report
+        .body
+        .facets
+        .iter()
+        .find(|facet| facet.outcome == FindingFacetOutcome::Failed)
+    {
+        return Err(claim_failed(format!(
+            "signed verifier report contains failed facet {:?}",
+            failed.facet
+        )));
+    }
     if selected_claims.contains(COGNITION_MARKET_CLAIMS[0])
         && report.body.finding_delivery_receipt_id.is_none()
     {
