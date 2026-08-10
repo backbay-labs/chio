@@ -250,6 +250,8 @@ impl FindingChallengeCoordinator {
         enforcement: &SignedFindingChallengeEnforcement,
         bond_snapshot: &SignedFindingFinalizedBondSnapshot,
         reconciliation: &ConfirmedFindingImpairmentReconciliation,
+        verified: &VerifiedFindingEnforcement,
+        observations: &dyn FindingBondObservationSource,
         now: u64,
     ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
         let liability = self
@@ -295,6 +297,7 @@ impl FindingChallengeCoordinator {
                 now,
             )
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+            self.require_canonical_recovery_observation(verified, observations)?;
         }
         self
             .challenges

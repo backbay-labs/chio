@@ -324,7 +324,7 @@ pub fn verify_minimal_passport_artifacts(
     )
 }
 
-fn verify_minimal_passport_artifacts_with_anchor_inputs(
+pub(crate) fn verify_minimal_passport_artifacts_with_anchor_inputs(
     passport: &TransactionPassport,
     passport_path: String,
     evidence_graph_bytes: &[u8],

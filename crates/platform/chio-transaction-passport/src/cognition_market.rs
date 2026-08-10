@@ -23,8 +23,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
-    verify_minimal_passport_artifacts, verify_passport_root_and_claim_set_artifacts,
-    TransactionPassport, TransactionPassportError, TransactionVerifierReport,
+    verify_passport_root_and_claim_set_artifacts_with_transparency_anchors, TransactionPassport,
+    TransactionPassportError, TransactionTrustAnchors, TransactionVerifierReport,
 };
 
 pub const COGNITION_MARKET_CLAIMS: [&str; 4] = [
@@ -65,8 +65,15 @@ pub trait CognitionMarketStatusTrustStore: Send + Sync {
 #[derive(Clone)]
 pub struct CognitionMarketProofTrust {
     pub trusted_passport_signer_keys: Vec<PublicKey>,
+    pub trusted_checkpoint_signer_keys: Vec<PublicKey>,
     pub finding_verifier_authority: PublicKey,
     pub trusted_verifier_profile_envelope_sha256: String,
+    pub status: Option<CognitionMarketStatusTrust>,
+}
+
+/// Deployment-owned trust needed only by `claim.finding.status_fresh`.
+#[derive(Clone)]
+pub struct CognitionMarketStatusTrust {
     pub status_operator_authorization: FindingStatusOperatorAuthorization,
     pub status_freshness: FindingStatusFreshnessPolicy,
     pub status_store: Arc<dyn CognitionMarketStatusTrustStore>,
@@ -114,11 +121,13 @@ pub fn verify_cognition_market_passport_artifacts(
     // Validate the signed root and the complete graph shape before interpreting
     // cognition-market roles. This also rejects unsupported registered schemas,
     // dangling/cyclic edges, and advisory authority edges.
-    verify_minimal_passport_artifacts(
+    crate::minimal::verify_minimal_passport_artifacts_with_anchor_inputs(
         passport,
         passport_path.clone(),
         evidence_graph_bytes,
         verifier_policy_bytes,
+        artifacts,
+        &trust.trusted_checkpoint_signer_keys,
     )?;
 
     let graph: Value = serde_json::from_slice(evidence_graph_bytes).map_err(|error| {
@@ -215,6 +224,9 @@ pub fn verify_cognition_market_passport_artifacts(
     }
 
     let verified_status = if let Some(status_node) = &status_node {
+        let status_trust = trust.status.as_ref().ok_or_else(|| {
+            claim_failed("status-fresh claim has no deployment-pinned status trust")
+        })?;
         let status_bytes = artifact_bytes(artifacts, status_node.path)?;
         let status = chio_finding::parse_status_proof_input(status_bytes)
             .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
@@ -234,15 +246,15 @@ pub fn verify_cognition_market_passport_artifacts(
                 "qualified status-fresh claim requires a non-inclusion proof",
             ));
         }
-        if trust.status_freshness.now != report.body.evaluation_time {
+        if status_trust.status_freshness.now != report.body.evaluation_time {
             return Err(claim_failed(
                 "status freshness clock does not match the signed report evaluation time",
             ));
         }
         let signed_epoch = verify_status_proof_input(
             &status,
-            &trust.status_operator_authorization,
-            trust.status_freshness,
+            &status_trust.status_operator_authorization,
+            status_trust.status_freshness,
         )
         .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
         Some((status_node.path, status_bytes, status, signed_epoch))
@@ -264,13 +276,17 @@ pub fn verify_cognition_market_passport_artifacts(
     // are what make these four external claims eligible for acceptance.
     // Generic transaction-integrity claims remain independently verified by
     // that root verifier and must survive this family projection.
-    let mut report = verify_passport_root_and_claim_set_artifacts(
+    let mut report = verify_passport_root_and_claim_set_artifacts_with_transparency_anchors(
         passport,
         passport_path,
         evidence_graph_bytes,
         verifier_policy_bytes,
         artifacts,
-        &trust.trusted_passport_signer_keys,
+        TransactionTrustAnchors {
+            passport_root_signers: &trust.trusted_passport_signer_keys,
+            checkpoint_signers: &trust.trusted_checkpoint_signer_keys,
+        },
+        &[],
     )?;
     report
         .verified_claims
@@ -282,6 +298,9 @@ pub fn verify_cognition_market_passport_artifacts(
     // Advance durable status memory only after every passport, graph, report,
     // and ClaimSet check succeeds, but before any claim leaves this verifier.
     if let Some((status_path, status_bytes, status, signed_epoch)) = verified_status {
+        let status_trust = trust.status.as_ref().ok_or_else(|| {
+            claim_failed("status-fresh claim has no deployment-pinned status trust")
+        })?;
         let FindingStatusProofInput::NonInclusion(non_inclusion) = &status else {
             return Err(claim_failed(
                 "qualified status-fresh claim requires a non-inclusion proof",
@@ -289,10 +308,10 @@ pub fn verify_cognition_market_passport_artifacts(
         };
         let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
             .map_err(|error| invalid_artifact(status_path, error.to_string()))?;
-        let authorization_bytes = canonical_json_bytes(&trust.status_operator_authorization)
+        let authorization_bytes = canonical_json_bytes(&status_trust.status_operator_authorization)
             .map_err(|error| invalid_artifact(status_path, error.to_string()))?;
         let operator_authorization_sha256 = crate::sha256_hex(&authorization_bytes);
-        trust
+        status_trust
             .status_store
             .admit_verified_non_inclusion(&CognitionMarketStatusObservation {
                 signed_epoch: &signed_epoch,
@@ -300,7 +319,7 @@ pub fn verify_cognition_market_passport_artifacts(
                 proof: non_inclusion,
                 proof_bytes: status_bytes,
                 operator_authorization_sha256: &operator_authorization_sha256,
-                recorded_at: trust.status_freshness.now,
+                recorded_at: status_trust.status_freshness.now,
             })
             .map_err(|error| {
                 claim_failed(format!(

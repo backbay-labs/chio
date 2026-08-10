@@ -106,9 +106,10 @@ use chio_settle::{
     verify_finding_collateral_snapshot, verify_finding_enforcement,
     verify_finding_enforcement_for_reconciliation, ConfirmedFindingImpairmentReconciliation,
     EvmBondSnapshot, FindingAnchorPublisherEvidence, FindingBondObservationSource,
-    FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
-    FindingImpairmentOutcome, FindingImpairmentPublisher, FindingImpairmentQuarantine,
-    FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence, PlannedFindingImpairment,
+    FindingBondObservationVerdict, FindingDispatchPolicy,
+    FindingEnforcementPins, FindingFinalityRequirement, FindingImpairmentOutcome,
+    FindingImpairmentPublisher, FindingImpairmentQuarantine, FindingPenaltyAuthorityPolicy,
+    FindingSettlementObserverEvidence, PlannedFindingImpairment,
     PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement, SettlementChainConfig,
     SignedFindingAnchorCheckpointPublication, VerifiedFindingEnforcement,
 };
@@ -2764,6 +2765,8 @@ impl FindingChallengeCoordinator {
                 enforcement,
                 bond_snapshot,
                 &reconciliation,
+                &verified,
+                observations,
                 now,
             );
         }
@@ -4463,6 +4466,28 @@ impl FindingChallengeCoordinator {
             ));
         }
         Ok(())
+    }
+
+    /// A confirmed impairment may recover across operator rotation, but not
+    /// across a reorg or loss of finality for the collateral snapshot it used.
+    fn require_canonical_recovery_observation(
+        &self,
+        verified: &VerifiedFindingEnforcement,
+        observations: &dyn FindingBondObservationSource,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let observed = observations
+            .observe(verified)
+            .map_err(|error| ChallengeCoordinatorError::BondObservation(error.to_string()))?;
+        let verdict = recheck_finding_bond_observation(verified, &observed);
+        match verdict {
+            FindingBondObservationVerdict::Qualified
+            | FindingBondObservationVerdict::OperatorRotated { .. }
+            | FindingBondObservationVerdict::OperatorNotActive => Ok(()),
+            FindingBondObservationVerdict::Reorged { .. }
+            | FindingBondObservationVerdict::FinalityRegressed { .. } => Err(
+                ChallengeCoordinatorError::BondObservation(verdict.reason().to_owned()),
+            ),
+        }
     }
 
     /// Require a successful appeal to have been opened inside the exact

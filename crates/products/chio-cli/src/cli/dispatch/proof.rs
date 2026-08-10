@@ -1023,7 +1023,15 @@ fn verify_transaction_passport_file_with_mode(
     let finding_claims_advertised =
         claim_set_bytes_advertise_verified_prefix(&finding_claim_set, CLAIM_PREFIX_FINDING)?;
     if claim_requirements.requires(CLAIM_PREFIX_FINDING) || finding_claims_advertised {
-        let trust = cognition_market_proof_trust_from_env(&trusted_transaction_root_keys)?;
+        let status_claim_selected = claim_set_bytes_advertise_verified_claim(
+            &finding_claim_set,
+            chio_control_plane::transaction_passport::COGNITION_MARKET_CLAIMS[2],
+        )?;
+        let trust = cognition_market_proof_trust_from_env(
+            &trusted_transaction_root_keys,
+            &trusted_transaction_checkpoint_keys,
+            status_claim_selected,
+        )?;
         let report = chio_control_plane::transaction_passport::
             verify_cognition_market_passport_artifacts(
                 &passport,
@@ -1868,6 +1876,20 @@ fn claim_set_bytes_advertise_verified_prefix(
     bytes: &[u8],
     prefix: &str,
 ) -> Result<bool, CliError> {
+    claim_set_bytes_advertise_verified(bytes, |claim_id| claim_id.starts_with(prefix))
+}
+
+fn claim_set_bytes_advertise_verified_claim(
+    bytes: &[u8],
+    expected_claim_id: &str,
+) -> Result<bool, CliError> {
+    claim_set_bytes_advertise_verified(bytes, |claim_id| claim_id == expected_claim_id)
+}
+
+fn claim_set_bytes_advertise_verified(
+    bytes: &[u8],
+    matches_claim: impl Fn(&str) -> bool,
+) -> Result<bool, CliError> {
     let claim_set: serde_json::Value = serde_json::from_slice(bytes)?;
     let claims = claim_set
         .get("claims")
@@ -1886,7 +1908,7 @@ fn claim_set_bytes_advertise_verified_prefix(
             .ok_or_else(|| {
                 CliError::cli_other_error("proof verify: claim set status must be a string")
             })?;
-        if claim_id.starts_with(prefix) && status == "verified" {
+        if matches_claim(claim_id) && status == "verified" {
             return Ok(true);
         }
     }

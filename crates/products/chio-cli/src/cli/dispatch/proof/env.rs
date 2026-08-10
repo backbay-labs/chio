@@ -206,6 +206,8 @@ fn optional_u64_from_env(env_name: &str) -> Result<Option<u64>, CliError> {
 
 pub(super) fn cognition_market_proof_trust_from_env(
     trusted_passport_signer_keys: &[chio_core_types::PublicKey],
+    trusted_checkpoint_signer_keys: &[chio_core_types::PublicKey],
+    status_claim_selected: bool,
 ) -> Result<chio_control_plane::transaction_passport::CognitionMarketProofTrust, CliError> {
     let verifier_keys = required_public_keys_from_env(
         FINDING_VERIFIER_AUTHORITY_KEY_ENV,
@@ -222,6 +224,24 @@ pub(super) fn cognition_market_proof_trust_from_env(
         .ok_or_else(|| CliError::cli_other_error("Finding verifier authority key is missing"))?;
     let trusted_verifier_profile_envelope_sha256 =
         required_sha256_env(FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV)?;
+    let status = if status_claim_selected {
+        Some(cognition_market_status_trust_from_env()?)
+    } else {
+        None
+    };
+    Ok(
+        chio_control_plane::transaction_passport::CognitionMarketProofTrust {
+            trusted_passport_signer_keys: trusted_passport_signer_keys.to_vec(),
+            trusted_checkpoint_signer_keys: trusted_checkpoint_signer_keys.to_vec(),
+            finding_verifier_authority,
+            trusted_verifier_profile_envelope_sha256,
+            status,
+        },
+    )
+}
+
+fn cognition_market_status_trust_from_env(
+) -> Result<chio_control_plane::transaction_passport::CognitionMarketStatusTrust, CliError> {
     let authorization_path = required_utf8_env(FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV)?;
     let mut reader = std::fs::File::open(&authorization_path)?
         .take((FINDING_STATUS_AUTHORIZATION_MAX_BYTES as u64).saturating_add(1));
@@ -272,10 +292,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
     })?;
     let status_store = authority.finding_status_store();
     Ok(
-        chio_control_plane::transaction_passport::CognitionMarketProofTrust {
-            trusted_passport_signer_keys: trusted_passport_signer_keys.to_vec(),
-            finding_verifier_authority,
-            trusted_verifier_profile_envelope_sha256,
+        chio_control_plane::transaction_passport::CognitionMarketStatusTrust {
             status_operator_authorization,
             status_freshness: chio_finding::FindingStatusFreshnessPolicy {
                 now,

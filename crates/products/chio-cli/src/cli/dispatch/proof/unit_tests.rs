@@ -58,6 +58,20 @@ fn only_verified_finding_claim_set_rows_force_cognition_market_routing() {
         claim_set_bytes_advertise_verified_prefix(&finding_claim_set, CLAIM_PREFIX_FINDING),
         "inspect ClaimSet with an advertised finding claim",
     ));
+    assert!(proof_test_ok(
+        claim_set_bytes_advertise_verified_claim(
+            &finding_claim_set,
+            "claim.finding.delivery_digest_bound",
+        ),
+        "inspect exact advertised Finding claim",
+    ));
+    assert!(!proof_test_ok(
+        claim_set_bytes_advertise_verified_claim(
+            &finding_claim_set,
+            "claim.finding.status_fresh",
+        ),
+        "distinguish an unselected status claim",
+    ));
 
     for status in ["omitted", "unsupported", "failed"] {
         let non_verified_finding_claim_set = serde_json::to_vec(&serde_json::json!({
@@ -75,6 +89,35 @@ fn only_verified_finding_claim_set_rows_force_cognition_market_routing() {
             "inspect ClaimSet with a non-verified finding claim",
         ));
     }
+}
+
+#[test]
+fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
+    let _env_lock = match AGENT_WEB_ENV_LOCK.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let verifier_key = chio_core_types::Keypair::from_seed(&[84_u8; 32])
+        .public_key()
+        .to_hex();
+    let profile_digest = "23".repeat(32);
+    let _env = TestEnvGuard::set(&[
+        (
+            "CHIO_FINDING_VERIFIER_AUTHORITY_KEY",
+            std::ffi::OsStr::new(&verifier_key),
+        ),
+        (
+            "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256",
+            std::ffi::OsStr::new(&profile_digest),
+        ),
+    ]);
+    let passport_key = chio_core_types::Keypair::from_seed(&[85_u8; 32]).public_key();
+
+    let trust = proof_test_ok(
+        cognition_market_proof_trust_from_env(&[passport_key], &[], false),
+        "build non-status Finding trust",
+    );
+    assert!(trust.status.is_none());
 }
 
 fn agent_web_replay_test_env(replay_store_path: &std::path::Path) -> TestEnvGuard {

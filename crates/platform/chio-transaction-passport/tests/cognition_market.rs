@@ -25,8 +25,8 @@ use chio_revocation_oracle::{
 };
 use chio_transaction_passport::{
     sign_transaction_passport, verify_cognition_market_passport_artifacts,
-    CognitionMarketProofTrust, CognitionMarketStatusObservation, CognitionMarketStatusTrustStore,
-    TransactionPassport, COGNITION_MARKET_CLAIMS,
+    CognitionMarketProofTrust, CognitionMarketStatusObservation, CognitionMarketStatusTrust,
+    CognitionMarketStatusTrustStore, TransactionPassport, COGNITION_MARKET_CLAIMS,
 };
 use serde_json::{json, Value};
 
@@ -419,14 +419,17 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
     let status_keypair = status_keypair();
     let trust = CognitionMarketProofTrust {
         trusted_passport_signer_keys: vec![root.public_key()],
+        trusted_checkpoint_signer_keys: Vec::new(),
         finding_verifier_authority: verifier_keypair().public_key(),
         trusted_verifier_profile_envelope_sha256: "23".repeat(32),
-        status_operator_authorization: status_authorization(&status_keypair),
-        status_freshness: FindingStatusFreshnessPolicy {
-            now: CHECKED_AT,
-            max_epoch_age_secs: 60,
-        },
-        status_store: Arc::new(TestStatusStore::default()),
+        status: Some(CognitionMarketStatusTrust {
+            status_operator_authorization: status_authorization(&status_keypair),
+            status_freshness: FindingStatusFreshnessPolicy {
+                now: CHECKED_AT,
+                max_epoch_age_secs: 60,
+            },
+            status_store: Arc::new(TestStatusStore::default()),
+        }),
     };
     Ok(QualifiedBundle {
         passport,
@@ -496,9 +499,140 @@ fn replace_graph_artifact(
     Ok(replacement_id)
 }
 
+fn add_transparency_anchor(bundle: &mut QualifiedBundle) -> TestResult {
+    let mut policy: Value = serde_json::from_slice(&bundle.verifier_policy_bytes)?;
+    policy["accepted_transparency_states"] = json!(["trust_anchored"]);
+    bundle.verifier_policy_bytes = canonical_json_bytes(&policy)?;
+    let policy_bytes = bundle.verifier_policy_bytes.clone();
+    bundle.passport.verifier_policy_sha256 =
+        replace_graph_artifact(bundle, "verifier-policy.json", policy_bytes)?;
+
+    let receipt_key = Keypair::from_seed(&[86_u8; 32]);
+    let receipt_body = json!({
+        "schema": "chio.receipt.v1",
+        "receipt_id": "receipt-cognition-market-anchor",
+        "capability_id": "cap-cognition-market-verify",
+        "guard_decision_id": "guard-cognition-market-verify",
+        "policy_digest": "87".repeat(32),
+        "request_digest": "88".repeat(32),
+        "response_digest": "89".repeat(32),
+        "terminal_status": "allowed_executed",
+        "kernel_key": receipt_key.public_key().to_hex()
+    });
+    let mut receipt: Value = receipt_body.clone();
+    receipt["signature"] = Value::String(
+        receipt_key
+            .sign(&canonical_json_bytes(&receipt_body)?)
+            .to_hex(),
+    );
+    let receipt_bytes = canonical_json_bytes(&receipt)?;
+    let receipt_digest = sha256_hex(&receipt_bytes);
+    bundle
+        .artifacts
+        .insert("anchor-receipt.json".to_string(), receipt_bytes.clone());
+    bundle.evidence_graph["nodes"]
+        .as_array_mut()
+        .ok_or("graph nodes missing")?
+        .push(node(
+            "anchor-receipt.json",
+            "receipt",
+            "chio.receipt.v1",
+            &receipt_bytes,
+        ));
+    bundle.evidence_graph["edges"]
+        .as_array_mut()
+        .ok_or("graph edges missing")?
+        .push(json!({
+            "from": bundle.passport.claim_set_sha256,
+            "to": receipt_digest,
+            "predicate": "binds",
+            "evidence_class": "digest-bound-reference"
+        }));
+
+    let checkpoint_key = Keypair::from_seed(&[87_u8; 32]);
+    let leaf = chio_core_types::merkle::leaf_hash(&receipt_bytes);
+    let leaf_hex = format!("0x{}", leaf.to_hex());
+    let checkpoint_chain_leaf = json!({
+        "checkpoint_seq": 1,
+        "batch_start_seq": 1,
+        "batch_end_seq": 1,
+        "merkle_root": leaf_hex
+    });
+    let chain_root =
+        chio_core_types::merkle::leaf_hash(&canonical_json_bytes(&checkpoint_chain_leaf)?);
+    let statement_body = json!({
+        "schema": "chio.checkpoint_statement.v2",
+        "checkpoint_seq": 1,
+        "batch_start_seq": 1,
+        "batch_end_seq": 1,
+        "tree_size": 1,
+        "merkle_root": leaf_hex,
+        "issued_at": CHECKED_AT,
+        "kernel_key": checkpoint_key.public_key().to_hex(),
+        "chain_root": format!("0x{}", chain_root.to_hex())
+    });
+    let statement_signature = checkpoint_key
+        .sign(&canonical_json_bytes(&statement_body)?)
+        .to_hex();
+    let log_id = format!(
+        "local-log-{}",
+        sha256_hex(checkpoint_key.public_key().as_bytes())
+    );
+    let inclusion = json!({
+        "schema": "chio.transparency.inclusion-proof.v2",
+        "proof_id": "transparency-proof-cognition-market",
+        "log_id": log_id,
+        "artifact_ref": receipt_digest,
+        "root_hash": leaf_hex,
+        "leaf_hash": leaf_hex,
+        "tree_size": 1,
+        "leaf_index": 0,
+        "checkpoint": format!("{log_id}:1"),
+        "inclusion_path": [],
+        "verified_at": CHECKED_AT,
+        "checkpoint_statement": {
+            "body": statement_body,
+            "signature": statement_signature
+        }
+    });
+    let inclusion_bytes = canonical_json_bytes(&inclusion)?;
+    bundle.artifacts.insert(
+        "transparency-inclusion-proof.json".to_string(),
+        inclusion_bytes.clone(),
+    );
+    bundle.evidence_graph["nodes"]
+        .as_array_mut()
+        .ok_or("graph nodes missing")?
+        .push(node(
+            "transparency-inclusion-proof.json",
+            "transparency-inclusion-proof",
+            "chio.transparency.inclusion-proof.v2",
+            &inclusion_bytes,
+        ));
+    bundle.trust.trusted_checkpoint_signer_keys = vec![checkpoint_key.public_key()];
+    resign_graph(bundle)
+}
+
 #[test]
 fn cognition_market_qualified_profile() -> TestResult {
     verify(&build_bundle()?)
+}
+
+#[test]
+fn cognition_market_qualified_profile_accepts_anchored_only_policy() -> TestResult {
+    let mut bundle = build_bundle()?;
+    add_transparency_anchor(&mut bundle)?;
+
+    let report = verify_cognition_market_passport_artifacts(
+        &bundle.passport,
+        "transaction-passport.json".to_string(),
+        &bundle.evidence_graph_bytes,
+        &bundle.verifier_policy_bytes,
+        &bundle.artifacts,
+        &bundle.trust,
+    )?;
+    assert_eq!(report.transparency_state, "trust_anchored");
+    Ok(())
 }
 
 #[test]
@@ -568,6 +702,7 @@ fn cognition_market_delivery_claim_verifies_without_unselected_attachments() -> 
     bundle
         .artifacts
         .remove("attachments/status-proof-input.json");
+    bundle.trust.status = None;
     resign_graph(&mut bundle)?;
 
     let report = verify_cognition_market_passport_artifacts(
@@ -776,7 +911,13 @@ fn cognition_market_qualified_profile_rejects_unpinned_profile() -> TestResult {
 #[test]
 fn cognition_market_qualified_profile_rejects_inconsistent_status_clock() -> TestResult {
     let mut bundle = build_bundle()?;
-    bundle.trust.status_freshness.now = CHECKED_AT - 1;
+    bundle
+        .trust
+        .status
+        .as_mut()
+        .ok_or("status trust missing")?
+        .status_freshness
+        .now = CHECKED_AT - 1;
 
     let error = verify(&bundle)
         .err()
@@ -792,7 +933,12 @@ fn cognition_market_qualified_profile_rejects_inconsistent_status_clock() -> Tes
 #[test]
 fn cognition_market_qualified_profile_rejects_durable_status_rollback() -> TestResult {
     let mut bundle = build_bundle()?;
-    bundle.trust.status_store = Arc::new(TestStatusStore::with_floor(2));
+    bundle
+        .trust
+        .status
+        .as_mut()
+        .ok_or("status trust missing")?
+        .status_store = Arc::new(TestStatusStore::with_floor(2));
 
     let error = verify(&bundle)
         .err()
@@ -808,7 +954,12 @@ fn cognition_market_qualified_profile_rejects_durable_status_rollback() -> TestR
 #[test]
 fn cognition_market_qualified_profile_rejects_sticky_retraction() -> TestResult {
     let mut bundle = build_bundle()?;
-    bundle.trust.status_store = Arc::new(TestStatusStore::with_retracted(FINDING_ID));
+    bundle
+        .trust
+        .status
+        .as_mut()
+        .ok_or("status trust missing")?
+        .status_store = Arc::new(TestStatusStore::with_retracted(FINDING_ID));
 
     let error = verify(&bundle)
         .err()
