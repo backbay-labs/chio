@@ -310,7 +310,10 @@ pub fn verify_finding_evidence(
 
     // Step 2: strict receipt verification plus exact binding to
     // `evidence_receipt_ids` (order and cardinality, whole-vector
-    // equality; a set comparison would admit reorderings).
+    // equality; a set comparison would admit reorderings). The separately
+    // pinned delivery receipt proves the payload digest without pretending a
+    // producing receipt is also a later purchase delivery.
+    let mut production_receipt_indexes = Vec::new();
     let receipt_authenticity = if bundle.receipts.is_empty() {
         facet(
             FindingFacetKind::ReceiptAuthenticity,
@@ -320,34 +323,28 @@ pub fn verify_finding_evidence(
     } else {
         let mut failure: Option<String> = None;
         let mut recomputed_ids = Vec::with_capacity(bundle.receipts.len());
-        // The profile pins which kernel keys may sign production
-        // evidence. Strict self-verification proves the bytes are
-        // internally authentic; only this set makes them trusted.
+        // Strict self-verification proves the bytes are internally
+        // authentic; the profile role policies say what each receipt may
+        // prove.
         let production_signers: Vec<&FindingAuthorityKeyPolicy> = profile
             .receipt_signers
             .iter()
             .filter(|signer| signer.role == FindingReceiptRole::Production)
             .map(|signer| &signer.policy)
             .collect();
-        if bundle.receipts.len() as u64 > profile.resource_caps.max_evidence_receipts {
-            failure = Some("evidence receipt count exceeds the profile cap".to_string());
-        }
-        for evidence in &bundle.receipts {
+        let delivery_signers: Vec<&FindingAuthorityKeyPolicy> = profile
+            .receipt_signers
+            .iter()
+            .filter(|signer| signer.role == FindingReceiptRole::Delivery)
+            .map(|signer| &signer.policy)
+            .collect();
+        let mut delivery_receipt_count = 0_u64;
+        for (index, evidence) in bundle.receipts.iter().enumerate() {
             if failure.is_some() {
                 break;
             }
             if let Err(error) = verify_receipt_strict(&evidence.receipt) {
                 failure = Some(format!("receipt {}: {error}", evidence.receipt.id));
-                break;
-            }
-            if !production_signers.iter().any(|policy| {
-                policy.key == evidence.receipt.kernel_key
-                    && policy_covers(policy, evidence.receipt.timestamp)
-            }) {
-                failure = Some(format!(
-                    "receipt {} signer is not a profile-pinned production key active at the receipt timestamp",
-                    evidence.receipt.id
-                ));
                 break;
             }
             // The canonical bytes supplied as the leaf must BE the bytes
@@ -363,41 +360,64 @@ pub fn verify_finding_evidence(
                     break;
                 }
             }
-            let Some(delivery) = evidence.receipt.delivery_contract() else {
-                failure = Some(format!(
-                    "receipt {} has no signed delivery contract",
-                    evidence.receipt.id
-                ));
-                break;
-            };
-            if let Err(error) = delivery.validate() {
-                failure = Some(format!(
-                    "receipt {} delivery contract is invalid: {error}",
-                    evidence.receipt.id
-                ));
-                break;
-            }
-            if delivery.result != DeliveryResult::Matched
-                || delivery.expected_digest != finding.payload_sha256
-                || delivery.observed_digest != finding.payload_sha256
-                || evidence.receipt.content_hash != finding.payload_sha256
-            {
-                failure = Some(format!(
-                    "receipt {} delivery contract does not bind the Finding payload digest",
-                    evidence.receipt.id
-                ));
-                break;
-            }
-            match chio_receipt_id(&evidence.receipt.body()) {
-                Ok(id) => recomputed_ids.push(id),
-                Err(_) => {
+            let is_production = production_signers.iter().any(|policy| {
+                policy.key == evidence.receipt.kernel_key
+                    && policy_covers(policy, evidence.receipt.timestamp)
+            });
+            let is_delivery = delivery_signers.iter().any(|policy| {
+                policy.key == evidence.receipt.kernel_key
+                    && policy_covers(policy, evidence.receipt.timestamp)
+            });
+            match (is_production, is_delivery) {
+                (true, false) => {
+                    production_receipt_indexes.push(index);
+                    match chio_receipt_id(&evidence.receipt.body()) {
+                        Ok(id) => recomputed_ids.push(id),
+                        Err(_) => {
+                            failure = Some(format!(
+                                "receipt {} id recomputation failed",
+                                evidence.receipt.id
+                            ));
+                        }
+                    }
+                }
+                (false, true) => {
+                    delivery_receipt_count = delivery_receipt_count.saturating_add(1);
+                    let Some(delivery) = evidence.receipt.delivery_contract() else {
+                        failure = Some(format!(
+                            "delivery receipt {} has no signed delivery contract",
+                            evidence.receipt.id
+                        ));
+                        continue;
+                    };
+                    if let Err(error) = delivery.validate() {
+                        failure = Some(format!(
+                            "delivery receipt {} contract is invalid: {error}",
+                            evidence.receipt.id
+                        ));
+                    } else if delivery.result != DeliveryResult::Matched
+                        || delivery.expected_digest != finding.payload_sha256
+                        || delivery.observed_digest != finding.payload_sha256
+                        || evidence.receipt.content_hash != finding.payload_sha256
+                    {
+                        failure = Some(format!(
+                            "delivery receipt {} does not bind the Finding payload digest",
+                            evidence.receipt.id
+                        ));
+                    }
+                }
+                _ => {
                     failure = Some(format!(
-                        "receipt {} id recomputation failed",
+                        "receipt {} signer has no unambiguous active production or delivery role",
                         evidence.receipt.id
                     ));
-                    break;
                 }
             }
+        }
+        if failure.is_none()
+            && production_receipt_indexes.len() as u64 > profile.resource_caps.max_evidence_receipts
+        {
+            failure = Some("production evidence receipt count exceeds the profile cap".to_string());
         }
         if failure.is_none() && recomputed_ids != finding.evidence_receipt_ids {
             failure = Some(
@@ -405,11 +425,17 @@ pub fn verify_finding_evidence(
                     .to_string(),
             );
         }
+        if failure.is_none() && delivery_receipt_count != 1 {
+            failure = Some(
+                "exactly one profile-pinned delivery receipt is required to bind the Finding payload"
+                    .to_string(),
+            );
+        }
         match failure {
             None => facet(
                 FindingFacetKind::ReceiptAuthenticity,
                 FindingFacetOutcome::Verified,
-                "every evidence receipt verified strictly and binds in order",
+                "production evidence and a distinct delivery receipt verified strictly",
             ),
             Some(reason) => facet(
                 FindingFacetKind::ReceiptAuthenticity,
@@ -502,10 +528,9 @@ pub fn verify_finding_evidence(
     ));
 
     // Step 6 / facets 8-9: cost floors.
-    let receipts: Vec<&ChioReceipt> = bundle
-        .receipts
+    let receipts: Vec<&ChioReceipt> = production_receipt_indexes
         .iter()
-        .map(|evidence| &evidence.receipt)
+        .map(|index| &bundle.receipts[*index].receipt)
         .collect();
     let metered = if receipts_ok {
         evaluate_metered_exposure(
@@ -535,6 +560,7 @@ pub fn verify_finding_evidence(
         &finding,
         trust,
         bundle,
+        &receipts,
         receipts_ok,
     ));
 
@@ -880,6 +906,7 @@ fn evaluate_runtime_assurance(
     finding: &Finding,
     trust: &FindingVerifierTrustRoots,
     bundle: &FindingEvidenceBundle<'_>,
+    production_receipts: &[&ChioReceipt],
     receipts_ok: bool,
 ) -> FindingFacetResult {
     let Some(claimed_tier) = finding.runtime_assurance_tier else {
@@ -1002,15 +1029,14 @@ fn evaluate_runtime_assurance(
             "finding runtime-assurance tier does not equal the policy-derived tier",
         );
     }
-    if !receipts_ok || bundle.receipts.is_empty() {
+    if !receipts_ok || production_receipts.is_empty() {
         return facet(
             FindingFacetKind::RuntimeAssuranceBacking,
             FindingFacetOutcome::Unavailable,
             "producing receipts are not available as verified linkage evidence",
         );
     }
-    for evidence in &bundle.receipts {
-        let receipt = &evidence.receipt;
+    for &receipt in production_receipts {
         if receipt.timestamp < attestation.body.issued_at
             || receipt.timestamp >= attestation.body.expires_at
         {

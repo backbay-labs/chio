@@ -71,17 +71,20 @@ fn receipt(
     index: u32,
     content_hash: &str,
     runtime_assurance: Option<&RuntimeAssuranceReceiptMetadata>,
+    delivery_contract: bool,
 ) -> Result<ChioReceipt, Box<dyn Error>> {
     let mut metadata = serde_json::Map::new();
-    metadata.insert(
-        "delivery_contract".to_owned(),
-        serde_json::to_value(DeliveryContract {
-            schema: chio_core_types::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
-            expected_digest: content_hash.to_owned(),
-            observed_digest: content_hash.to_owned(),
-            result: DeliveryResult::Matched,
-        })?,
-    );
+    if delivery_contract {
+        metadata.insert(
+            "delivery_contract".to_owned(),
+            serde_json::to_value(DeliveryContract {
+                schema: chio_core_types::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
+                expected_digest: content_hash.to_owned(),
+                observed_digest: content_hash.to_owned(),
+                result: DeliveryResult::Matched,
+            })?,
+        );
+    }
     if let Some(runtime_assurance) = runtime_assurance {
         metadata.insert(
             "governed_transaction".to_owned(),
@@ -119,7 +122,7 @@ fn receipt(
         content_hash: content_hash.to_string(),
         policy_hash: "policy-wedge".to_string(),
         evidence: Vec::new(),
-        metadata: Some(serde_json::Value::Object(metadata)),
+        metadata: (!metadata.is_empty()).then_some(serde_json::Value::Object(metadata)),
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: kernel.public_key(),
@@ -239,18 +242,31 @@ fn fixture_with_runtime_assurance(
 
     // Receipts first: the finding binds their recomputed ids in order.
     let payload_sha256 = HEX64.to_string();
-    let first = receipt(&kernel, 0, HEX64, runtime_assurance)?;
-    let second = receipt(&kernel, 1, HEX64, runtime_assurance)?;
+    let first = receipt(
+        &kernel,
+        0,
+        &sha256_hex(b"production-output-0"),
+        runtime_assurance,
+        false,
+    )?;
+    let second = receipt(
+        &kernel,
+        1,
+        &sha256_hex(b"production-output-1"),
+        runtime_assurance,
+        false,
+    )?;
+    let delivery = receipt(&keypair(12), 2, HEX64, None, true)?;
     let first_bytes = canonical_json_bytes(&first)?;
     let second_bytes = canonical_json_bytes(&second)?;
-    let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
-    let checkpoint = build_checkpoint(
-        1,
-        1,
-        2,
-        &[first_bytes.clone(), second_bytes.clone()],
-        &kernel,
-    )?;
+    let delivery_bytes = canonical_json_bytes(&delivery)?;
+    let leaves = [
+        first_bytes.clone(),
+        second_bytes.clone(),
+        delivery_bytes.clone(),
+    ];
+    let tree = MerkleTree::from_leaves(&leaves)?;
+    let checkpoint = build_checkpoint(1, 1, 3, &leaves, &kernel)?;
     let checkpoint_transparency = build_checkpoint_transparency(std::slice::from_ref(&checkpoint))?;
     let log_id = checkpoint_log_id(&checkpoint);
     let evidence_checkpoint_ref = format!("{log_id}#1");
@@ -397,6 +413,11 @@ fn fixture_with_runtime_assurance(
             receipt: second,
             canonical_receipt_bytes: second_bytes,
             inclusion_proof: build_inclusion_proof(&tree, 1, 1, 2)?,
+        },
+        ResolvedReceiptEvidence {
+            receipt: delivery,
+            canonical_receipt_bytes: delivery_bytes,
+            inclusion_proof: build_inclusion_proof(&tree, 2, 1, 3)?,
         },
     ];
 
@@ -641,6 +662,13 @@ fn clone_receipts(fx: &Fixture) -> Vec<ResolvedReceiptEvidence> {
 fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
+    assert!(fx.receipts[..2]
+        .iter()
+        .all(|evidence| evidence.receipt.delivery_contract().is_none()));
+    assert!(fx.receipts[..2]
+        .iter()
+        .all(|evidence| evidence.receipt.content_hash != fx.finding_payload_sha256));
+    assert!(fx.receipts[2].receipt.delivery_contract().is_some());
     let draft =
         verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
 
@@ -700,9 +728,9 @@ fn receipt_authenticity_requires_a_signed_delivery_digest_binding() -> TestResul
     let trust = trust_roots(&fx);
     let mut receipts = clone_receipts(&fx);
     let unrelated_digest = "ab".repeat(32);
-    let unrelated = receipt(&keypair(21), 0, &unrelated_digest, None)?;
-    receipts[0].canonical_receipt_bytes = canonical_json_bytes(&unrelated)?;
-    receipts[0].receipt = unrelated;
+    let unrelated = receipt(&keypair(12), 2, &unrelated_digest, None, true)?;
+    receipts[2].canonical_receipt_bytes = canonical_json_bytes(&unrelated)?;
+    receipts[2].receipt = unrelated;
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, receipts))?;
     let authenticity = draft
@@ -1106,7 +1134,7 @@ fn wrapper_tampering_fails_membership_on_every_closed_gap() -> TestResult {
 
     // Inner tree size diverges from the signed checkpoint.
     let mut receipts = clone_receipts(&fx);
-    receipts[0].inclusion_proof.proof.tree_size = 3;
+    receipts[0].inclusion_proof.proof.tree_size = 4;
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, receipts))?;
     assert_eq!(
         draft.facet_outcome(FindingFacetKind::CheckpointMembership),

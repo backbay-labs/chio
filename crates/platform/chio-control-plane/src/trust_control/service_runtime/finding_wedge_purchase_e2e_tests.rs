@@ -395,25 +395,14 @@ fn json_body(bytes: &[u8]) -> Result<serde_json::Value, AnyError> {
     Ok(serde_json::from_slice(bytes)?)
 }
 
-fn matched_delivery_metadata(content_hash: &str) -> Result<serde_json::Value, AnyError> {
-    let mut metadata = serde_json::Map::new();
-    metadata.insert(
-        DELIVERY_CONTRACT_METADATA_KEY.to_string(),
-        serde_json::to_value(DeliveryContract {
-            schema: DELIVERY_CONTRACT_SCHEMA.to_string(),
-            expected_digest: content_hash.to_string(),
-            observed_digest: content_hash.to_string(),
-            result: DeliveryResult::Matched,
-        })?,
-    );
-    Ok(serde_json::Value::Object(metadata))
-}
+include!("finding_wedge_purchase_e2e_tests/receipt_support.rs");
 
 /// One evidence receipt signed by the admitted kernel key.
 fn evidence_receipt(
     kernel: &Keypair,
     index: u32,
     payload_sha256: &str,
+    delivery: bool,
 ) -> Result<ChioReceipt, AnyError> {
     let body = ChioReceiptBody {
         id: String::new(),
@@ -432,7 +421,9 @@ fn evidence_receipt(
         content_hash: payload_sha256.to_string(),
         policy_hash: "policy-wedge".to_string(),
         evidence: Vec::new(),
-        metadata: Some(matched_delivery_metadata(payload_sha256)?),
+        metadata: delivery
+            .then(|| matched_delivery_metadata(payload_sha256))
+            .transpose()?,
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: kernel.public_key(),
@@ -1049,18 +1040,20 @@ impl MarketWeb {
             case.committed_media_type,
             case.committed_payload,
         ))?;
-        let first = evidence_receipt(&kernel, 0, &committed_digest)?;
-        let second = evidence_receipt(&kernel, 1, &committed_digest)?;
+        let first = evidence_receipt(&kernel, 0, &sha256_hex(b"wedge-production-output-0"), false)?;
+        let second =
+            evidence_receipt(&kernel, 1, &sha256_hex(b"wedge-production-output-1"), false)?;
+        let delivery = evidence_receipt(&keypair(12), 2, &committed_digest, true)?;
         let first_bytes = canonical_json_bytes(&first)?;
         let second_bytes = canonical_json_bytes(&second)?;
-        let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
-        let checkpoint = build_checkpoint(
-            1,
-            1,
-            2,
-            &[first_bytes.clone(), second_bytes.clone()],
-            &kernel,
-        )?;
+        let delivery_bytes = canonical_json_bytes(&delivery)?;
+        let leaves = [
+            first_bytes.clone(),
+            second_bytes.clone(),
+            delivery_bytes.clone(),
+        ];
+        let tree = MerkleTree::from_leaves(&leaves)?;
+        let checkpoint = build_checkpoint(1, 1, 3, &leaves, &kernel)?;
         let log_id = checkpoint_log_id(&checkpoint);
         let evidence_checkpoint_ref = format!("{log_id}#1");
         let receipts = vec![
@@ -1073,6 +1066,11 @@ impl MarketWeb {
                 receipt: second.clone(),
                 canonical_receipt_bytes: second_bytes,
                 inclusion_proof: build_inclusion_proof(&tree, 1, 1, 2)?,
+            },
+            ResolvedReceiptEvidence {
+                receipt: delivery,
+                canonical_receipt_bytes: delivery_bytes,
+                inclusion_proof: build_inclusion_proof(&tree, 2, 1, 3)?,
             },
         ];
 
