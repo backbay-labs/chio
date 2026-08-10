@@ -56,9 +56,58 @@ pub struct VerifiedFindingPoolAllocation {
     pub expires_at_unix_ms: u64,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SwarmBudgetPoolDigestProjection<'a> {
+    schema: &'a str,
+    pool_id: &'a str,
+    graph_id: &'a str,
+    currency: &'a str,
+    total_units: String,
+    allocations: Vec<SwarmBudgetAllocationDigestProjection<'a>>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SwarmBudgetAllocationDigestProjection<'a> {
+    allocation_id: &'a str,
+    task_id: &'a str,
+    dimension_id: &'a str,
+    state: &'a crate::SwarmBudgetAllocationState,
+    max_units: String,
+    reserved_units: String,
+    active_units: String,
+    consumed_units: String,
+    released_units: String,
+    reversed_units: String,
+}
+
 /// Canonical SHA-256 of the unsigned pool planning object.
 pub fn swarm_budget_pool_sha256(pool: &SwarmBudgetPool) -> Result<String, SwarmAuthorityError> {
-    let bytes = canonical_json_bytes(pool)
+    let projection = SwarmBudgetPoolDigestProjection {
+        schema: &pool.schema,
+        pool_id: &pool.pool_id,
+        graph_id: &pool.graph_id,
+        currency: &pool.currency,
+        total_units: pool.total_units.to_string(),
+        allocations: pool
+            .allocations
+            .iter()
+            .map(|allocation| SwarmBudgetAllocationDigestProjection {
+                allocation_id: &allocation.allocation_id,
+                task_id: &allocation.task_id,
+                dimension_id: &allocation.dimension_id,
+                state: &allocation.state,
+                max_units: allocation.max_units.to_string(),
+                reserved_units: allocation.reserved_units.to_string(),
+                active_units: allocation.active_units.to_string(),
+                consumed_units: allocation.consumed_units.to_string(),
+                released_units: allocation.released_units.to_string(),
+                reversed_units: allocation.reversed_units.to_string(),
+            })
+            .collect(),
+    };
+    let bytes = canonical_json_bytes(&projection)
         .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
     Ok(sha256_hex(&bytes))
 }
@@ -268,8 +317,45 @@ mod tests {
             graph_id: "graph:max".to_string(),
             currency: "USD".to_string(),
             total_units: u64::MAX,
-            allocations: Vec::new(),
+            allocations: vec![crate::SwarmBudgetAllocation {
+                allocation_id: "allocation:max".to_owned(),
+                task_id: "task:max".to_owned(),
+                dimension_id: "dimension:max".to_owned(),
+                state: crate::SwarmBudgetAllocationState::Consumed,
+                max_units: u64::MAX,
+                reserved_units: u64::MAX,
+                active_units: u64::MAX,
+                consumed_units: u64::MAX,
+                released_units: u64::MAX,
+                reversed_units: u64::MAX,
+            }],
         };
+        let expected_pool_projection = serde_json::json!({
+            "schema": CHIO_SWARM_BUDGET_POOL_SCHEMA,
+            "poolId": "pool:max",
+            "graphId": "graph:max",
+            "currency": "USD",
+            "totalUnits": u64::MAX.to_string(),
+            "allocations": [{
+                "allocationId": "allocation:max",
+                "taskId": "task:max",
+                "dimensionId": "dimension:max",
+                "state": "consumed",
+                "maxUnits": u64::MAX.to_string(),
+                "reservedUnits": u64::MAX.to_string(),
+                "activeUnits": u64::MAX.to_string(),
+                "consumedUnits": u64::MAX.to_string(),
+                "releasedUnits": u64::MAX.to_string(),
+                "reversedUnits": u64::MAX.to_string()
+            }]
+        });
+        let expected_pool_digest = sha256_hex(
+            &canonical_json_bytes(&expected_pool_projection).test_expect("project pool amounts"),
+        );
+        assert_eq!(
+            swarm_budget_pool_sha256(&pool).test_expect("hash projected pool"),
+            expected_pool_digest
+        );
         let signed = sign_finding_pool_allocation(
             FindingPoolAllocation {
                 schema: FINDING_POOL_ALLOCATION_SCHEMA_V1.to_string(),
@@ -295,5 +381,14 @@ mod tests {
         let verified = verify_finding_pool_allocation(&signed, &pool, &authority.public_key(), 1)
             .test_expect("verify full-domain amount");
         assert_eq!(verified.amount_units, u64::MAX);
+    }
+
+    #[test]
+    fn allocation_amount_parser_rejects_values_above_u64() {
+        assert_eq!(
+            parse_positive_u64_decimal("18446744073709551615").test_expect("u64 max remains valid"),
+            u64::MAX
+        );
+        assert!(parse_positive_u64_decimal("18446744073709551616").is_err());
     }
 }
