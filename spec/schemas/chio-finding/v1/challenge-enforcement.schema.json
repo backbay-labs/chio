@@ -30,6 +30,12 @@
         "amount",
         "destinations",
         "effect_intents",
+        "penalty_authority_id",
+        "penalty_key",
+        "penalty_key_epoch",
+        "penalty_valid_from",
+        "penalty_valid_until",
+        "penalty_revocation_status_ref",
         "finalization_authority_id",
         "finalization_key",
         "finalization_key_epoch",
@@ -171,6 +177,24 @@
               }
             }
           ]
+        },
+        "penalty_authority_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "penalty_key": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "penalty_key_epoch": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "penalty_valid_from": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "penalty_valid_until": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "penalty_revocation_status_ref": {
+          "$ref": "#/$defs/boundedIdentifier"
         },
         "finalization_authority_id": {
           "$ref": "#/$defs/boundedIdentifier"

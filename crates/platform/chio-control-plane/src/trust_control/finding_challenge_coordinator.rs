@@ -521,6 +521,11 @@ pub trait FindingFilingResolver: Send + Sync {
     fn admission_by_envelope_sha256(&self, envelope_sha256: &str)
         -> Option<SignedFindingAdmission>;
 
+    /// The venue authority lifecycle policy that authenticated this exact
+    /// retained admission envelope. Key rotation must not strand an
+    /// admission that governed a historical purchase or challenged backing.
+    fn venue_policy_for_admission(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+
     /// The seller-signed market terms this venue admitted under this
     /// envelope digest, or `None` when the venue admitted no such terms.
     fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms>;
@@ -529,7 +534,6 @@ pub trait FindingFilingResolver: Send + Sync {
 /// The pinned public roles this coordinator verifies against. None of
 /// them is ever read out of an artifact.
 struct ChallengeRolePins {
-    venue_authority: FindingAuthorityPin,
     audit_authority: FindingAuthorityPin,
     audit_randomness_witness: FindingAuthorityPin,
     governance_authority: FindingAuthorityPin,
@@ -831,7 +835,6 @@ impl FindingChallengeCoordinator {
             market_config: config.clone(),
             fee_schedule_operators,
             pins: ChallengeRolePins {
-                venue_authority: config.venue.clone(),
                 audit_authority: config.audit_authority.clone(),
                 audit_randomness_witness: config.audit_randomness_witness.clone(),
                 governance_authority: config.governance_root.clone(),
@@ -1242,11 +1245,14 @@ impl FindingChallengeCoordinator {
         else {
             return Ok(None);
         };
+        let (verdict, facet, reason) = adjudication.into_parts();
+        if verdict == chio_finding::FindingChallengeVerdict::Upheld {
+            self.require_impairable_collateral(request.collateral, request.now)?;
+        }
         if self.admit_evaluation(&body.challenge_id, request.now)? != EvaluationAdmission::Admitted
         {
             return Ok(None);
         }
-        let (verdict, facet, reason) = adjudication.into_parts();
 
         let challenge_envelope_sha256 = self.envelope_digest(request.challenge)?;
         let profile_envelope_sha256 = self.envelope_digest(request.profile)?;
@@ -2436,11 +2442,16 @@ impl FindingChallengeCoordinator {
                 "venue_admission_envelope_sha256",
             ));
         }
+        let admission_digest = self.envelope_digest(&admission)?;
+        let venue_policy = self
+            .filings
+            .venue_policy_for_admission(&admission_digest)
+            .ok_or(ChallengeCoordinatorError::UnknownAdmission)?;
         let venue_authority = self.require_live_role(
-            &self.pins.venue_authority,
+            &venue_policy,
             admission.body.issued_at,
             now,
-            "venue",
+            "historical venue",
         )?;
         verify_signed_admission(&admission, &venue_authority, &self.venue_id)
             .map_err(|error| ChallengeCoordinatorError::AdmissionEnvelope(error.to_string()))?;
@@ -4059,13 +4070,22 @@ impl FindingChallengeCoordinator {
             .body
             .validate()
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-        verify_pinned_envelope(
-            penalty,
-            &self.penalty_authority.public_key(),
-            "market penalty",
-        )
-        .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-        self.require_live_role(&self.penalty_pin, penalty.body.updated_at, now, "penalty")?;
+        let historical_pin = FindingAuthorityPin {
+            authority_id: enforcement.body.penalty_authority_id.clone(),
+            key_hex: enforcement.body.penalty_key.to_hex(),
+            key_epoch: enforcement.body.penalty_key_epoch,
+            valid_from: enforcement.body.penalty_valid_from,
+            valid_until: enforcement.body.penalty_valid_until,
+            revocation_status_ref: enforcement.body.penalty_revocation_status_ref.clone(),
+        };
+        let historical_key = self.require_live_role(
+            &historical_pin,
+            penalty.body.updated_at,
+            now,
+            "historical penalty",
+        )?;
+        verify_pinned_envelope(penalty, &historical_key, "market penalty")
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
         let digest = self.envelope_digest(penalty)?;
         if digest != enforcement.body.penalty_envelope_sha256 {
             return Err(ChallengeCoordinatorError::Settlement(
@@ -4897,11 +4917,16 @@ impl FindingChallengeCoordinator {
                 "venue_admission_envelope_sha256",
             ));
         }
+        let admission_digest = self.envelope_digest(&admission)?;
+        let venue_policy = self
+            .filings
+            .venue_policy_for_admission(&admission_digest)
+            .ok_or(ChallengeCoordinatorError::UnknownAdmission)?;
         let venue_authority = self.require_live_role(
-            &self.pins.venue_authority,
+            &venue_policy,
             admission.body.issued_at,
             now,
-            "venue",
+            "historical venue",
         )?;
         verify_signed_admission(&admission, &venue_authority, &self.venue_id)
             .map_err(|error| ChallengeCoordinatorError::AdmissionEnvelope(error.to_string()))?;
@@ -5174,6 +5199,12 @@ impl FindingChallengeCoordinator {
             amount: sealed.distribution.slash.clone(),
             destinations,
             effect_intents: bindings,
+            penalty_authority_id: self.penalty_pin.authority_id.clone(),
+            penalty_key: self.penalty_authority.public_key(),
+            penalty_key_epoch: self.penalty_pin.key_epoch,
+            penalty_valid_from: self.penalty_pin.valid_from,
+            penalty_valid_until: self.penalty_pin.valid_until,
+            penalty_revocation_status_ref: self.penalty_pin.revocation_status_ref.clone(),
             finalization_authority_id: self.finalization_pin.authority_id.clone(),
             finalization_key: self.finalization_authority.public_key(),
             finalization_key_epoch: self.finalization_pin.key_epoch,

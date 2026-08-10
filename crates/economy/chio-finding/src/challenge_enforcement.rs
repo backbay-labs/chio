@@ -117,6 +117,15 @@ pub struct FindingChallengeEnforcement {
     /// `amount`.
     pub destinations: Vec<FindingEnforcementDestination>,
     pub effect_intents: Vec<FindingEffectIntentBinding>,
+    /// Exact historical lifecycle policy that authenticated the bound
+    /// penalty envelope. Recovery verifies the retained penalty under this
+    /// policy after deployment rotation.
+    pub penalty_authority_id: String,
+    pub penalty_key: PublicKey,
+    pub penalty_key_epoch: u64,
+    pub penalty_valid_from: u64,
+    pub penalty_valid_until: u64,
+    pub penalty_revocation_status_ref: String,
     /// Exact historical lifecycle policy that authorized this signature.
     /// Recovery resolves this policy after deployment rotation instead of
     /// verifying an old enforcement under the current key.
@@ -159,6 +168,19 @@ impl FindingChallengeEnforcement {
         require_currency(&self.amount.currency, "amount.currency")?;
         self.validate_destinations()?;
         self.validate_effect_intents()?;
+        require_bounded_id(&self.penalty_authority_id, "penalty_authority_id")?;
+        require_ed25519(&self.penalty_key, "penalty_key")?;
+        require_nonzero(self.penalty_key_epoch, "penalty_key_epoch")?;
+        require_window(
+            self.penalty_valid_from,
+            self.penalty_valid_until,
+            "penalty_valid_from",
+            "penalty_valid_until",
+        )?;
+        require_bounded_id(
+            &self.penalty_revocation_status_ref,
+            "penalty_revocation_status_ref",
+        )?;
         require_bounded_id(&self.finalization_authority_id, "finalization_authority_id")?;
         require_ed25519(&self.finalization_key, "finalization_key")?;
         require_nonzero(self.finalization_key_epoch, "finalization_key_epoch")?;

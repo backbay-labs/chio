@@ -474,6 +474,7 @@ struct PublishedArtifacts {
     audit_rounds: BTreeMap<String, FindingAuditRound>,
     admissions: BTreeMap<(String, String, String), SignedFindingAdmission>,
     admissions_by_digest: BTreeMap<String, SignedFindingAdmission>,
+    venue_policies: BTreeMap<String, FindingAuthorityPin>,
     market_terms: BTreeMap<String, SignedFindingMarketTerms>,
 }
 
@@ -493,9 +494,15 @@ impl PublishedArtifacts {
         Ok(self)
     }
 
-    fn publish_admission(mut self, admission: &SignedFindingAdmission) -> Result<Self, AnyError> {
+    fn publish_admission(
+        mut self,
+        admission: &SignedFindingAdmission,
+        venue_policy: FindingAuthorityPin,
+    ) -> Result<Self, AnyError> {
+        let digest = signed_envelope_sha256(admission)?;
         self.admissions_by_digest
-            .insert(signed_envelope_sha256(admission)?, admission.clone());
+            .insert(digest.clone(), admission.clone());
+        self.venue_policies.insert(digest, venue_policy);
         self.admissions.insert(
             (
                 admission.body.finding_id.clone(),
@@ -543,6 +550,10 @@ impl FindingFilingResolver for PublishedArtifacts {
         envelope_sha256: &str,
     ) -> Option<SignedFindingAdmission> {
         self.admissions_by_digest.get(envelope_sha256).cloned()
+    }
+
+    fn venue_policy_for_admission(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
+        self.venue_policies.get(envelope_sha256).cloned()
     }
 
     fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms> {
@@ -635,7 +646,7 @@ fn deployment_publishing_terms_and_rounds(
         .publish_terms(&lapsed_window_terms()?)?
         .publish_terms(&audit_disabled_terms()?)?
         .publish_terms(&narrow_bond_terms()?)?
-        .publish_admission(&admission)?;
+        .publish_admission(&admission, market_config().venue)?;
     for terms in extra_terms {
         filings = filings.publish_terms(terms)?;
     }
@@ -3891,6 +3902,47 @@ fn finding_challenge_evaluation_derives_live_collateral_from_the_signed_snapshot
 }
 
 #[test]
+fn finding_challenge_evaluation_refuses_exhausted_collateral_before_admission() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenged = challenged_finding()?;
+    let case = digest_mismatch_case(
+        &deployment,
+        &challenged,
+        &DenyShape::seller_origin(),
+        Filing::Buyer,
+    )?;
+    coordinator.submit(&case.challenge, &challenged.raw_finding, NOW)?;
+
+    let stake = usd(300);
+    let required = usd(5_000);
+    let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 0);
+    let evidence = case.evidence();
+    assert!(matches!(
+        coordinator
+            .evaluate(&evaluation_request(
+                &case.challenge,
+                &challenged,
+                &evidence,
+                &collateral,
+                NOW + 1,
+            ))
+            .expect_err("exhausted collateral cannot enter evaluation"),
+        ChallengeCoordinatorError::NothingToImpair
+    ));
+    assert_eq!(
+        deployment
+            .challenges
+            .get_challenge(&case.challenge.body.challenge_id)?
+            .ok_or("challenge remains durable")?
+            .state,
+        FindingChallengeState::Submitted
+    );
+    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_failed_delivery_cannot_move_to_a_rebacked_admission() -> TestResult {
     let mut deployment = deployment()?;
     let challenged = challenged_finding()?;
@@ -3910,6 +3962,12 @@ fn finding_challenge_failed_delivery_cannot_move_to_a_rebacked_admission() -> Te
     let admission_envelope_sha256 = signed_envelope_sha256(&admission)?;
     let filings = Arc::get_mut(&mut deployment.filings)
         .ok_or("the test has not shared its filing resolver yet")?;
+    filings
+        .admissions_by_digest
+        .insert(admission_envelope_sha256.clone(), admission.clone());
+    filings
+        .venue_policies
+        .insert(admission_envelope_sha256.clone(), market_config().venue);
     filings.admissions.insert(
         (
             admission.body.finding_id.clone(),
@@ -5314,7 +5372,7 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
 }
 
 #[test]
-fn finding_challenge_purchase_authority_rotation_preserves_historical_standing() -> TestResult {
+fn finding_challenge_purchase_and_venue_rotation_preserve_historical_standing() -> TestResult {
     let deployment = deployment()?;
     let sale = settle_purchase(
         &deployment,
@@ -5325,6 +5383,7 @@ fn finding_challenge_purchase_authority_rotation_preserves_historical_standing()
     )?;
     let mut rotated = market_config();
     rotated.purchase = authority_pin(48, "purchase-rotated");
+    rotated.venue = authority_pin(49, "venue-rotated");
     let coordinator =
         deployment.coordinator_under(&rotated, FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
@@ -5347,6 +5406,39 @@ fn finding_challenge_purchase_authority_rotation_preserves_historical_standing()
         NOW + 2,
     )?;
     assert_eq!(upheld.sealed.total_realized_spend_units, 60);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_evaluation_uses_the_admission_historical_venue_policy() -> TestResult {
+    let deployment = deployment()?;
+    let challenged = challenged_finding()?;
+    let case = digest_mismatch_case(
+        &deployment,
+        &challenged,
+        &DenyShape::seller_origin(),
+        Filing::Buyer,
+    )?;
+    let mut rotated = market_config();
+    rotated.venue = authority_pin(49, "venue-rotated");
+    let coordinator =
+        deployment.coordinator_under(&rotated, FindingDisputeLockDisposition::Forfeited)?;
+    coordinator.submit(&case.challenge, &challenged.raw_finding, NOW)?;
+
+    let stake = usd(300);
+    let required = usd(5_000);
+    let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
+    let evidence = case.evidence();
+    let evaluated = coordinator
+        .evaluate(&evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &collateral,
+            NOW + 1,
+        ))?
+        .ok_or("the retained admission remains evaluable after venue rotation")?;
+    assert_eq!(evaluated.state, FindingChallengeState::Upheld);
     Ok(())
 }
 
@@ -7122,6 +7214,12 @@ fn enforcement_pair_at_vault(
                 intent_id: byte_hex64(0xc3),
             },
         ],
+        penalty_authority_id: "market-penalty".to_owned(),
+        penalty_key: keypair(33).public_key(),
+        penalty_key_epoch: PINNED_KEY_EPOCH,
+        penalty_valid_from: 1,
+        penalty_valid_until: I_JSON_MAX_SAFE_INTEGER,
+        penalty_revocation_status_ref: REVOCATION_STATUS_REF.to_owned(),
         finalization_authority_id: "venue-finalization".to_owned(),
         finalization_key: keypair(32).public_key(),
         finalization_key_epoch: PINNED_KEY_EPOCH,
@@ -7754,6 +7852,51 @@ fn finding_challenge_enforcement_recovers_across_finalization_authority_rotation
         FindingFinalization::Reconciled(FindingImpairmentOutcome::Confirmed { .. })
     ));
     assert_eq!(publisher.attempts(), 2);
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Confirmed);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_penalty_recovers_across_penalty_authority_rotation() -> TestResult {
+    let case = finalizing_liability()?;
+    let mut rotated = market_config();
+    rotated.market_penalty = authority_pin(50, "market-penalty-rotated");
+    let coordinator = FindingChallengeCoordinator::new(
+        case.deployment.challenges.clone(),
+        case.deployment.purchases.clone(),
+        &rotated,
+        keypair(31),
+        keypair(32),
+        keypair(50),
+        Arc::new(TestAuthorityStatusResolver::live()),
+        case.deployment.rail.clone(),
+        case.deployment.filings.clone(),
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+    let publisher = MiningPublisher::new();
+    let finalize = || -> Result<FindingFinalization, AnyError> {
+        Ok(coordinator.finalize(
+            &case.liability_key,
+            &case.enforcement,
+            &case.penalty,
+            &case.snapshot,
+            &case.seller,
+            &settlement_config()?,
+            &settlement_config()?.operator_address,
+            &evm_vault_snapshot(),
+            &anchor_proof()?,
+            &ScriptedObservations::qualified(),
+            &publisher,
+            SETTLEMENT_NOW,
+        )?)
+    };
+
+    finalize()?;
+    let recovered = finalize()?;
+    assert!(matches!(
+        recovered,
+        FindingFinalization::Reconciled(FindingImpairmentOutcome::Confirmed { .. })
+    ));
     assert_eq!(case.intent_state()?, FindingEffectIntentState::Confirmed);
     Ok(())
 }

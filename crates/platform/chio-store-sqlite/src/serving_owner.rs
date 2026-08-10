@@ -34,6 +34,13 @@ use global_commit_chain::{
 use lease_history::{initialize_serving_lease_schema, verify_serving_lease_history};
 use rollback_anchor::RollbackAnchor;
 
+#[cfg(all(test, feature = "cognition-market-experimental"))]
+pub(crate) fn verify_finding_market_projection_for_tests(
+    connection: &Connection,
+) -> Result<(), SqliteServingOwnerError> {
+    global_commit_chain::verify_finding_challenge_projection_coverage(connection)
+}
+
 const SERVING_OWNER_SCHEMA: &str = r#"
 CREATE TABLE chio_serving_owner (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),

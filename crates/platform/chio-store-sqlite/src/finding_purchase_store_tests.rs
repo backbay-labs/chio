@@ -1354,6 +1354,88 @@ fn close_slot_with_deny_releases_exposure_and_retains_the_denial() {
     );
 }
 
+fn denied_projection_fixture(label: &str) -> (Fixture, String) {
+    let fixture = fixture();
+    let purchase = Purchase::new(label, LISTING_ID, 100);
+    open_reservation(&fixture, &purchase);
+    fixture
+        .store
+        .reserve_slot(&purchase.reservation_id, NOW + 1)
+        .expect("reserve denied slot");
+    let bytes = record_bytes(label);
+    let digest = chio_core::sha256_hex(&bytes);
+    fixture
+        .store
+        .close_slot_with_deny(&FindingPurchaseDenyInput {
+            reservation_id: &purchase.reservation_id,
+            failed_delivery_id: &format!("failed-delivery-{label}"),
+            record_json: &bytes,
+            record_sha256: &digest,
+            deny_receipt_id: &format!("receipt-deny-{label}"),
+            now: NOW + 2,
+        })
+        .expect("deny delivery");
+    (fixture, purchase.reservation_id)
+}
+
+#[test]
+fn failed_delivery_bytes_are_covered_by_the_market_projection() {
+    let (fixture, reservation_id) = denied_projection_fixture("projection-record");
+    let connection = fixture.store.connection().expect("purchase connection");
+    connection
+        .execute_batch("DROP TRIGGER failed_delivery_records_immutable")
+        .expect("disable offline immutability trigger");
+    assert_eq!(
+        connection
+            .execute(
+                "UPDATE failed_delivery_records SET deny_receipt_id = deny_receipt_id || '-tampered' WHERE reservation_id = ?1",
+                [&reservation_id],
+            )
+            .expect("tamper failed delivery"),
+        1
+    );
+    assert!(crate::serving_owner::verify_finding_market_projection_for_tests(&connection).is_err());
+}
+
+#[test]
+fn failed_delivery_standing_relations_are_covered_by_the_market_projection() {
+    for (label, setup, mutation) in [
+        (
+            "projection-reservation",
+            "",
+            "UPDATE purchase_reservations SET updated_at = updated_at + 1 WHERE reservation_id = ?1",
+        ),
+        (
+            "projection-slot",
+            "DROP TRIGGER pending_purchase_slots_lifecycle",
+            "UPDATE pending_purchase_slots SET closed_at = closed_at + 1 WHERE reservation_id = ?1",
+        ),
+        (
+            "projection-encumbrance",
+            "",
+            "UPDATE seller_exposure_encumbrances SET updated_at = updated_at + 1 WHERE reservation_id = ?1",
+        ),
+    ] {
+        let (fixture, reservation_id) = denied_projection_fixture(label);
+        let connection = fixture.store.connection().expect("purchase connection");
+        if !setup.is_empty() {
+            connection
+                .execute_batch(setup)
+                .expect("prepare offline relation tamper");
+        }
+        assert_eq!(
+            connection
+                .execute(mutation, [&reservation_id])
+                .expect("tamper failed delivery relation"),
+            1
+        );
+        assert!(
+            crate::serving_owner::verify_finding_market_projection_for_tests(&connection).is_err(),
+            "{label} must be committed by the failed-delivery projection"
+        );
+    }
+}
+
 #[test]
 fn release_and_expiry_never_leave_a_slot_reserved() {
     let fixture = fixture();
