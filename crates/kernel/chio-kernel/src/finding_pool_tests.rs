@@ -334,7 +334,11 @@ impl FindingPoolLedger for RecordingLedger {
     }
 }
 
-impl QualifiedFindingPoolLedger for RecordingLedger {}
+impl QualifiedFindingPoolLedger for RecordingLedger {
+    fn ledger_domain(&self) -> &str {
+        "ledger:test-recording"
+    }
+}
 
 #[derive(Default)]
 struct RecordingReceiptStore {

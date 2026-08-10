@@ -124,7 +124,7 @@ Schema ids in the program (registration path in section 7):
 | `chio.finding.mediator-backing.v1` | bond-authority-signed non-reusable M7 mediator allocation and liability horizon | new at M7 |
 | `chio.finding.escrow-witness.v1` | settlement-authority attestation of exact funded/final escrow state | new at M7 |
 | `chio.finding.settlement-release.v1` | settlement-authority receipt binding delivery inclusion to one escrow release | new at M7 |
-| `chio.finding.pool-allocation.v1` | authority-signed M8 companion binding one exact unsigned pool digest, purchaser, currency, amount, nonce, and validity window | new at M8 |
+| `chio.finding.pool-allocation.v1` | authority-signed M8 companion binding one exact unsigned pool digest, qualified-ledger domain, purchaser, currency, amount, nonce, and validity window | new at M8 |
 | `chio.finding.rederivation-quote.v1` | optional signed producer estimate for an exact context/recipe and currency | not shipped at M8; future only if authenticated quotes ship |
 | `chio.marketplace.bid-request.v1` etc. | purchase handshake | reuse unchanged (`crates/economy/chio-open-market/src/bidding.rs:33-42`) |
 

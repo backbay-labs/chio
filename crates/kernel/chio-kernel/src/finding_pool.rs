@@ -117,6 +117,8 @@ pub enum FindingPoolLedgerError {
     AllocationNotLive,
     #[error("finding pool id is already bound to another signed allocation")]
     PoolBindingConflict,
+    #[error("finding pool allocation is bound to another qualified ledger domain")]
+    LedgerDomainMismatch,
     #[error("finding pool purchase has no durable reservation")]
     ReservationMissing,
     #[error("finding pool reservation conflicts with its recorded terminal")]
@@ -191,6 +193,7 @@ pub struct AuthorizedFindingPoolDebit {
     purchase_id: String,
     allocation_id: String,
     allocation_envelope_sha256: String,
+    ledger_domain: String,
     pool_id: String,
     pool_sha256: String,
     purchaser_id: String,
@@ -412,6 +415,11 @@ impl AuthorizedFindingPoolDebit {
     }
 
     #[must_use]
+    pub fn ledger_domain(&self) -> &str {
+        &self.ledger_domain
+    }
+
+    #[must_use]
     pub fn pool_id(&self) -> &str {
         &self.pool_id
     }
@@ -579,7 +587,11 @@ pub trait FindingPoolLedger: Send + Sync {
 ///
 /// Advisory or eventually consistent remote budget views must not implement
 /// this trait and therefore cannot use the hard-ceiling entry point.
-pub trait QualifiedFindingPoolLedger: FindingPoolLedger {}
+pub trait QualifiedFindingPoolLedger: FindingPoolLedger {
+    /// Stable authority-selected namespace for the one ledger deployment that
+    /// may account for a signed allocation.
+    fn ledger_domain(&self) -> &str;
+}
 
 impl ChioKernel {
     fn require_finding_pool_debit_active(&self) -> Result<(), FindingPoolDebitError> {
@@ -665,6 +677,7 @@ impl ChioKernel {
             request.allocation,
             request.pool,
             allocation_authority,
+            ledger.ledger_domain(),
             structural_time,
         )
         .map_err(|error| FindingPoolDebitError::Allocation(error.runtime_detail()))?;
@@ -688,6 +701,7 @@ impl ChioKernel {
             purchase_id: purchase.purchase_intent_id.clone(),
             allocation_id: verified.allocation_id,
             allocation_envelope_sha256: verified.envelope_sha256,
+            ledger_domain: verified.ledger_domain,
             pool_id: verified.pool_id,
             pool_sha256: verified.pool_sha256,
             purchaser_id: verified.purchaser_id,

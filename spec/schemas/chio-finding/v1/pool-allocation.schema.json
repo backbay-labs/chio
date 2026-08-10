@@ -16,6 +16,7 @@
       "required": [
         "schema",
         "allocation_id",
+        "ledger_domain",
         "pool_id",
         "pool_sha256",
         "graph_id",
@@ -35,6 +36,9 @@
         },
         "allocation_id": {
           "$ref": "#/$defs/sha256"
+        },
+        "ledger_domain": {
+          "$ref": "#/$defs/nonBlankString"
         },
         "pool_id": {
           "$ref": "#/$defs/nonBlankString"

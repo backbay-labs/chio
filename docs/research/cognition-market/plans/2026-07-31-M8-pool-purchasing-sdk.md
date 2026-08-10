@@ -32,11 +32,13 @@ Rust accept the same decimal-string domain.
 `SwarmBudgetPool` remains an unsigned planning object. The registered
 `chio.finding.pool-allocation.v1` companion authenticates the exact canonical
 pool digest, graph and pool ids, purchaser id and key, currency, amount, nonce,
-authority, and validity window. The kernel resolves it against an externally
-pinned authority and charges only facts returned by the installed strict
-purchase verifier: payer key, purchase intent, reservation and payment
-operation, finding, listing, accepted price, accepted-bid digest, and venue
-admission digest. Before a new reservation, the purchaser must also sign an
+authority, authority-selected qualified-ledger domain, and validity window.
+The kernel resolves it against an externally pinned authority and the
+installed ledger's persistent domain, and charges only facts returned by the
+installed strict purchase verifier: payer key, purchase intent, reservation
+and payment operation, finding, listing, accepted price, accepted-bid digest,
+and venue admission digest. Pool count, identifier, and total projection-byte
+limits are enforced before canonicalization. Before a new reservation, the purchaser must also sign an
 exact debit authorization binding the allocation envelope, purchase context,
 capability, server, tool, arguments, output digest, and authorization deadline.
 A caller that only copied the capability and purchase context cannot consume or
@@ -47,7 +49,9 @@ linearizable durable backends. The shipped SQLite implementation refuses
 in-memory paths, serializes debits with `BEGIN IMMEDIATE`, stores full-domain
 `u64` values as canonical decimal text, binds one signed purchaser allocation
 per pool id, and persists exact replay. A new reservation has a 30 second
-claim window. After immediate dispatch revalidation, the kernel durably claims
+claim window. Its authority-selected domain is persisted and rejects both a
+reopen under another domain and an allocation signed for another backend.
+After immediate dispatch revalidation, the kernel durably claims
 the reservation before invocation capture and the durable dispatch commit, so
 a rejected claim remains a compensatable pre-dispatch denial. Unclaimed
 reservations are released at the deadline, while a claimed reservation remains

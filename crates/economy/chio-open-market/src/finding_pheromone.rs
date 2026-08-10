@@ -7,6 +7,7 @@
 //! authority.
 
 use crate::receipt::lineage::SignedExportEnvelope;
+use chio_core_types::crypto::{PublicKey, SigningAlgorithm};
 use chio_finding::{signed_envelope_sha256, SignedFindingAdmission, FINDING_ADMISSION_SCHEMA_V1};
 use chio_listing::{
     ensure_generic_listing_signed_by_namespace_owner, normalize_namespace,
@@ -86,6 +87,8 @@ pub struct FindingPheromoneConvention {
     pub treaty_id: String,
     pub max_observation_cost_microunits: u64,
     pub max_listing_freshness_age_secs: u64,
+    pub registry_operator_id: String,
+    pub registry_key: PublicKey,
 }
 
 /// Discovery result whose authority comes from the separately verified M2
@@ -161,6 +164,8 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
     validate_current_listing(
         current_listing,
         current_listing_assertion,
+        &convention.registry_operator_id,
+        &convention.registry_key,
         convention.max_listing_freshness_age_secs,
         now,
     )?;
@@ -253,7 +258,16 @@ fn validate_convention(
     context: &PheromoneValidationContext,
     convention: &FindingPheromoneConvention,
 ) -> Result<(), FindingPheromoneError> {
-    if convention.treaty_id.is_empty() || convention.max_observation_cost_microunits == 0 {
+    if convention.treaty_id.is_empty()
+        || convention.max_observation_cost_microunits == 0
+        || convention.registry_operator_id.trim().is_empty()
+        || convention.registry_operator_id.len() > 512
+        || convention
+            .registry_operator_id
+            .chars()
+            .any(char::is_control)
+        || convention.registry_key.algorithm() != SigningAlgorithm::Ed25519
+    {
         return Err(FindingPheromoneError::Convention("receiver policy"));
     }
     let body = &deposit.body;
@@ -324,6 +338,8 @@ fn validate_convention(
 fn validate_current_listing(
     listing: &Listing,
     assertion: &SignedFindingCurrentListingAssertion,
+    registry_operator_id: &str,
+    registry_key: &PublicKey,
     max_freshness_age_secs: u64,
     now: u64,
 ) -> Result<(), FindingPheromoneError> {
@@ -336,9 +352,13 @@ fn validate_current_listing(
         }
         Err(error) => return Err(FindingPheromoneError::Listing(error.to_string())),
     }
-    if assertion.signer_key != listing.listing.signer_key {
+    if registry_operator_id.trim().is_empty()
+        || registry_operator_id.len() > 512
+        || registry_operator_id.chars().any(char::is_control)
+        || assertion.signer_key != *registry_key
+    {
         return Err(FindingPheromoneError::Listing(
-            "current listing assertion is not signed by the namespace owner".to_owned(),
+            "current listing assertion is not signed by the pinned registry authority".to_owned(),
         ));
     }
     let listing_sha256 = signed_envelope_sha256(&listing.listing)
@@ -351,7 +371,8 @@ fn validate_current_listing(
         || assertion_body.listing_id != listing.listing_id()
         || normalize_namespace(&assertion_body.namespace)
             != normalize_namespace(&listing.listing.body.namespace)
-        || assertion_body.registry_operator_id != listing.publisher.operator_id
+        || assertion_body.registry_operator_id != registry_operator_id
+        || listing.publisher.operator_id != registry_operator_id
         || assertion_body.listing_envelope_sha256 != listing_sha256
         || assertion_body.pricing_hint_envelope_sha256 != pricing_sha256
         || assertion_body.generated_at < listing.listing.body.published_at

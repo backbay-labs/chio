@@ -24,6 +24,11 @@ use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use crate::{is_in_memory_sqlite_path, sqlite_parent_dir_to_create};
 
 const SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS finding_pool_ledger_metadata (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    ledger_domain TEXT NOT NULL
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS finding_pool_allocations (
     allocation_envelope_sha256 TEXT PRIMARY KEY,
     allocation_id TEXT NOT NULL UNIQUE,
@@ -73,6 +78,7 @@ CREATE TABLE IF NOT EXISTS finding_pool_receipt_outbox (
 #[derive(Clone)]
 pub struct SqliteFindingPoolLedger {
     pool: Pool<SqliteConnectionManager>,
+    ledger_domain: String,
 }
 
 impl SqliteFindingPoolLedger {
@@ -80,7 +86,12 @@ impl SqliteFindingPoolLedger {
     ///
     /// In-memory paths are refused because restart durability is part of the
     /// hard-ceiling qualification.
-    pub fn open_qualified(path: impl AsRef<Path>) -> Result<Self, FindingPoolLedgerError> {
+    pub fn open_qualified(
+        path: impl AsRef<Path>,
+        ledger_domain: impl Into<String>,
+    ) -> Result<Self, FindingPoolLedgerError> {
+        let ledger_domain = ledger_domain.into();
+        validate_ledger_domain(&ledger_domain)?;
         let path = path.as_ref();
         let path_text = path.to_str().ok_or_else(|| {
             FindingPoolLedgerError::Storage("SQLite path is not valid UTF-8".to_string())
@@ -116,6 +127,7 @@ impl SqliteFindingPoolLedger {
             connection
                 .execute_batch(SCHEMA)
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+            bind_ledger_domain(&connection, &ledger_domain)?;
             ensure_lifecycle_columns(&connection)?;
             verify_qualified_connection(&connection)?;
             connection
@@ -126,7 +138,10 @@ impl SqliteFindingPoolLedger {
                     ))
                 })?;
         }
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            ledger_domain,
+        })
     }
 
     /// Return the finalized spend for one signed allocation envelope.
@@ -343,6 +358,9 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         debit: &AuthorizedFindingPoolDebit,
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
+        if debit.ledger_domain() != self.ledger_domain {
+            return Err(FindingPoolLedgerError::LedgerDomainMismatch);
+        }
         let mut connection = self
             .pool
             .get()
@@ -1211,7 +1229,48 @@ fn finalize_claimed_after_unknown_dispatch_by_operation(
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
 }
 
-impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {}
+impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {
+    fn ledger_domain(&self) -> &str {
+        &self.ledger_domain
+    }
+}
+
+fn validate_ledger_domain(ledger_domain: &str) -> Result<(), FindingPoolLedgerError> {
+    if ledger_domain.trim().is_empty()
+        || ledger_domain.len() > 512
+        || ledger_domain.chars().any(char::is_control)
+    {
+        Err(FindingPoolLedgerError::Storage(
+            "qualified finding pool ledger domain is invalid".to_owned(),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn bind_ledger_domain(
+    connection: &rusqlite::Connection,
+    ledger_domain: &str,
+) -> Result<(), FindingPoolLedgerError> {
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO finding_pool_ledger_metadata (singleton, ledger_domain) \
+             VALUES (1, ?1)",
+            [ledger_domain],
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let persisted = connection
+        .query_row(
+            "SELECT ledger_domain FROM finding_pool_ledger_metadata WHERE singleton = 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    if persisted != ledger_domain {
+        return Err(FindingPoolLedgerError::LedgerDomainMismatch);
+    }
+    Ok(())
+}
 
 fn mutation_for_purchase(
     transaction: &rusqlite::Transaction<'_>,
@@ -1626,8 +1685,11 @@ mod tests {
     #[test]
     fn claimed_admission_operation_scan_is_bounded_and_cursor_ordered() {
         let directory = tempfile::tempdir().test_expect("create pool ledger directory");
-        let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
-            .test_expect("open qualified pool ledger");
+        let ledger = SqliteFindingPoolLedger::open_qualified(
+            directory.path().join("pool.sqlite3"),
+            "ledger:test-internal",
+        )
+        .test_expect("open qualified pool ledger");
         let allocation_digest = "d".repeat(64);
         let first_operation = "a".repeat(64);
         let second_operation = "c".repeat(64);
@@ -1715,8 +1777,11 @@ mod tests {
     #[test]
     fn unknown_dispatch_exact_replay_ignores_later_allocation_totals() {
         let directory = tempfile::tempdir().test_expect("create pool ledger directory");
-        let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
-            .test_expect("open qualified pool ledger");
+        let ledger = SqliteFindingPoolLedger::open_qualified(
+            directory.path().join("pool.sqlite3"),
+            "ledger:test-internal",
+        )
+        .test_expect("open qualified pool ledger");
         let allocation_digest = "a".repeat(64);
         let operation_id = "operation:unknown-dispatch";
         {

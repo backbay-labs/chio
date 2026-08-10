@@ -907,6 +907,8 @@ fn finding_pheromone_convention() -> FindingPheromoneConvention {
         treaty_id: FINDING_PHEROMONE_TREATY.to_string(),
         max_observation_cost_microunits: 125,
         max_listing_freshness_age_secs: 300,
+        registry_operator_id: "seller-operator".to_owned(),
+        registry_key: keypair(21).public_key(),
     }
 }
 
@@ -955,6 +957,55 @@ fn admitted_finding_clears_the_real_bid_path() {
 }
 
 include!("finding_admission/pheromone_carrier.rs");
+
+#[test]
+fn finding_pheromone_pins_current_listing_to_registry_authority() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let registry = keypair(84);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let mut convention = finding_pheromone_convention();
+        convention.registry_key = registry.public_key();
+        let registry_assertion = finding_current_listing_assertion(&listing, &registry);
+        admit_and_resolve_finding_pheromone_hint(
+            &InMemoryPheromoneSubstrate::new(),
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-registry-signed", 125),
+            &finding_pheromone_context(&passport, &kernel),
+            &convention,
+            AuthenticatedCurrentFindingListing::new(&listing, &registry_assertion),
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect("pinned registry assertion admits the current listing");
+
+        let provider_assertion = finding_current_listing_assertion(&listing, &web.operator);
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                finding_pheromone_deposit(
+                    &web,
+                    &listing,
+                    &passport,
+                    "hint-provider-self-signed",
+                    125,
+                ),
+                &finding_pheromone_context(&passport, &kernel),
+                &convention,
+                AuthenticatedCurrentFindingListing::new(&listing, &provider_assertion),
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Listing(_))
+        ));
+    });
+}
 
 #[test]
 fn finding_pheromone_requires_authenticated_current_listing_freshness() {

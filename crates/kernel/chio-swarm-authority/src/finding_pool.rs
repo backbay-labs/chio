@@ -16,6 +16,8 @@ use crate::{SwarmAuthorityError, SwarmBudgetPool, CHIO_SWARM_BUDGET_POOL_SCHEMA}
 pub const FINDING_POOL_ALLOCATION_SCHEMA_V1: &str =
     chio_core_types::CHIO_FINDING_POOL_ALLOCATION_V1_SCHEMA;
 pub const FINDING_POOL_PURPOSE_V1: &str = "cognition_market_finding_purchase_v1";
+pub const MAX_SWARM_BUDGET_POOL_ALLOCATIONS: usize = 1_024;
+pub const MAX_SWARM_BUDGET_POOL_PROJECTION_INPUT_BYTES: usize = 1_048_576;
 /// Versioned RFC 8785 preimage used by [`swarm_budget_pool_sha256`].
 pub const SWARM_BUDGET_POOL_DIGEST_PROJECTION_SCHEMA_V1: &str =
     "chio.swarm.budget-pool-digest-projection.v1";
@@ -27,6 +29,9 @@ pub struct FindingPoolAllocation {
     pub schema: String,
     /// SHA-256 of the canonical body with this field cleared.
     pub allocation_id: String,
+    /// Authority-selected domain of the one qualified ledger permitted to
+    /// account for this allocation.
+    pub ledger_domain: String,
     pub pool_id: String,
     pub pool_sha256: String,
     pub graph_id: String,
@@ -50,6 +55,7 @@ pub type SignedFindingPoolAllocation = SignedExportEnvelope<FindingPoolAllocatio
 pub struct VerifiedFindingPoolAllocation {
     pub allocation_id: String,
     pub envelope_sha256: String,
+    pub ledger_domain: String,
     pub pool_id: String,
     pub pool_sha256: String,
     pub purchaser_id: String,
@@ -95,6 +101,7 @@ struct SwarmBudgetAllocationDigestProjection<'a> {
 pub fn swarm_budget_pool_digest_projection_bytes(
     pool: &SwarmBudgetPool,
 ) -> Result<Vec<u8>, SwarmAuthorityError> {
+    validate_pool_projection_bounds(pool)?;
     let projection = SwarmBudgetPoolDigestProjection {
         schema: SWARM_BUDGET_POOL_DIGEST_PROJECTION_SCHEMA_V1,
         pool_schema: &pool.schema,
@@ -170,6 +177,7 @@ pub fn verify_finding_pool_allocation(
     signed: &SignedFindingPoolAllocation,
     pool: &SwarmBudgetPool,
     pinned_authority: &PublicKey,
+    expected_ledger_domain: &str,
     now_unix_ms: u64,
 ) -> Result<VerifiedFindingPoolAllocation, SwarmAuthorityError> {
     let body = &signed.body;
@@ -193,6 +201,11 @@ pub fn verify_finding_pool_allocation(
         Err(error) => {
             return Err(SwarmAuthorityError::Canonical(error.to_string()));
         }
+    }
+    require_non_empty(expected_ledger_domain, "expected ledger_domain")?;
+    require_non_empty(&body.ledger_domain, "ledger_domain")?;
+    if body.ledger_domain != expected_ledger_domain {
+        return Err(rejected("finding pool allocation ledger domain mismatch"));
     }
     require_non_empty(&body.pool_id, "pool_id")?;
     require_non_empty(&body.graph_id, "graph_id")?;
@@ -249,6 +262,7 @@ pub fn verify_finding_pool_allocation(
     Ok(VerifiedFindingPoolAllocation {
         allocation_id: body.allocation_id.clone(),
         envelope_sha256: finding_pool_allocation_envelope_sha256(signed)?,
+        ledger_domain: body.ledger_domain.clone(),
         pool_id: body.pool_id.clone(),
         pool_sha256,
         purchaser_id: body.purchaser_id.clone(),
@@ -257,6 +271,42 @@ pub fn verify_finding_pool_allocation(
         amount_units,
         expires_at_unix_ms: body.expires_at_unix_ms,
     })
+}
+
+fn validate_pool_projection_bounds(pool: &SwarmBudgetPool) -> Result<(), SwarmAuthorityError> {
+    if pool.schema != CHIO_SWARM_BUDGET_POOL_SCHEMA {
+        return Err(rejected("unsupported swarm budget pool schema"));
+    }
+    require_non_empty(&pool.pool_id, "pool.pool_id")?;
+    require_non_empty(&pool.graph_id, "pool.graph_id")?;
+    require_currency(&pool.currency)?;
+    if pool.allocations.len() > MAX_SWARM_BUDGET_POOL_ALLOCATIONS {
+        return Err(rejected("swarm budget pool allocation count exceeds limit"));
+    }
+    let mut input_bytes = pool
+        .schema
+        .len()
+        .checked_add(pool.pool_id.len())
+        .and_then(|total| total.checked_add(pool.graph_id.len()))
+        .and_then(|total| total.checked_add(pool.currency.len()))
+        .ok_or_else(|| rejected("swarm budget pool projection size overflow"))?;
+    for allocation in &pool.allocations {
+        require_non_empty(&allocation.allocation_id, "pool allocation_id")?;
+        require_non_empty(&allocation.task_id, "pool task_id")?;
+        require_non_empty(&allocation.dimension_id, "pool dimension_id")?;
+        input_bytes = input_bytes
+            .checked_add(allocation.allocation_id.len())
+            .and_then(|total| total.checked_add(allocation.task_id.len()))
+            .and_then(|total| total.checked_add(allocation.dimension_id.len()))
+            // Conservatively account for keys, punctuation, state, and six
+            // decimal u64 projections without allocating their strings.
+            .and_then(|total| total.checked_add(256))
+            .ok_or_else(|| rejected("swarm budget pool projection size overflow"))?;
+        if input_bytes > MAX_SWARM_BUDGET_POOL_PROJECTION_INPUT_BYTES {
+            return Err(rejected("swarm budget pool projection exceeds byte limit"));
+        }
+    }
+    Ok(())
 }
 
 fn require_non_empty(value: &str, field: &str) -> Result<(), SwarmAuthorityError> {
@@ -384,6 +434,7 @@ mod tests {
             FindingPoolAllocation {
                 schema: FINDING_POOL_ALLOCATION_SCHEMA_V1.to_string(),
                 allocation_id: String::new(),
+                ledger_domain: "ledger:max".to_string(),
                 pool_id: pool.pool_id.clone(),
                 pool_sha256: swarm_budget_pool_sha256(&pool).test_expect("hash pool"),
                 graph_id: pool.graph_id.clone(),
@@ -402,9 +453,90 @@ mod tests {
         .test_expect("sign allocation");
         let json = serde_json::to_value(&signed).test_expect("serialize allocation");
         assert_eq!(json["body"]["amount_units"], u64::MAX.to_string());
-        let verified = verify_finding_pool_allocation(&signed, &pool, &authority.public_key(), 1)
-            .test_expect("verify full-domain amount");
+        let verified = verify_finding_pool_allocation(
+            &signed,
+            &pool,
+            &authority.public_key(),
+            "ledger:max",
+            1,
+        )
+        .test_expect("verify full-domain amount");
         assert_eq!(verified.amount_units, u64::MAX);
+    }
+
+    #[test]
+    fn pool_projection_rejects_unbounded_inputs_before_materializing() {
+        let allocation = crate::SwarmBudgetAllocation {
+            allocation_id: "a".repeat(512),
+            task_id: "t".repeat(512),
+            dimension_id: "d".repeat(512),
+            state: crate::SwarmBudgetAllocationState::Reserved,
+            max_units: 1,
+            reserved_units: 0,
+            active_units: 0,
+            consumed_units: 0,
+            released_units: 0,
+            reversed_units: 0,
+        };
+        let oversized_count = SwarmBudgetPool {
+            schema: CHIO_SWARM_BUDGET_POOL_SCHEMA.to_owned(),
+            pool_id: "pool:bounded".to_owned(),
+            graph_id: "graph:bounded".to_owned(),
+            currency: "USD".to_owned(),
+            total_units: 1,
+            allocations: vec![allocation.clone(); MAX_SWARM_BUDGET_POOL_ALLOCATIONS + 1],
+        };
+        assert!(swarm_budget_pool_sha256(&oversized_count).is_err());
+
+        let oversized_bytes = SwarmBudgetPool {
+            allocations: vec![allocation; MAX_SWARM_BUDGET_POOL_ALLOCATIONS],
+            ..oversized_count
+        };
+        assert!(swarm_budget_pool_sha256(&oversized_bytes).is_err());
+    }
+
+    #[test]
+    fn allocation_rejects_a_different_qualified_ledger_domain() {
+        let authority = Keypair::from_seed(&[81; 32]);
+        let purchaser = Keypair::from_seed(&[82; 32]);
+        let pool = SwarmBudgetPool {
+            schema: CHIO_SWARM_BUDGET_POOL_SCHEMA.to_owned(),
+            pool_id: "pool:domain".to_owned(),
+            graph_id: "graph:domain".to_owned(),
+            currency: "USD".to_owned(),
+            total_units: 10,
+            allocations: Vec::new(),
+        };
+        let signed = sign_finding_pool_allocation(
+            FindingPoolAllocation {
+                schema: FINDING_POOL_ALLOCATION_SCHEMA_V1.to_owned(),
+                allocation_id: String::new(),
+                ledger_domain: "ledger:primary".to_owned(),
+                pool_id: pool.pool_id.clone(),
+                pool_sha256: swarm_budget_pool_sha256(&pool).test_expect("hash pool"),
+                graph_id: pool.graph_id.clone(),
+                purpose: FINDING_POOL_PURPOSE_V1.to_owned(),
+                purchaser_id: "buyer:domain".to_owned(),
+                purchaser_key: purchaser.public_key(),
+                currency: "USD".to_owned(),
+                amount_units: "10".to_owned(),
+                nonce: "nonce:domain".to_owned(),
+                authority: authority.public_key(),
+                issued_at_unix_ms: 1,
+                expires_at_unix_ms: 3,
+            },
+            &authority,
+        )
+        .test_expect("sign allocation");
+
+        assert!(verify_finding_pool_allocation(
+            &signed,
+            &pool,
+            &authority.public_key(),
+            "ledger:other",
+            2,
+        )
+        .is_err());
     }
 
     #[test]

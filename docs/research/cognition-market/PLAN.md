@@ -1438,12 +1438,15 @@ normative scope statement.
   same string id, and remote budget mode is advisory. Add a signed/digested
   companion pool-allocation envelope and kernel-ledger debit binding, then
   restrict the hard-ceiling claim to a qualifying atomic or linearizable
-  backend. Otherwise label the helper advisory.
+  backend. The signed allocation fixes one persistent qualified-ledger domain,
+  and pool projections are bounded before canonicalization. Otherwise label
+  the helper advisory.
 - A finding pheromone is a fully admitted deposit, not indicator JSON alone:
   define its subject/namespace, listing scope, signer/passport, severity,
   confidence, decay, nonce, `SubjectClassPolicy`, and cost. It grants no
   purchase authority and the buyer always re-resolves the signed current
-  listing and M2 admission bundle.
+  listing under a receiver-pinned registry authority and the M2 admission
+  bundle.
 - Exit: named TypeScript and Python SDK parity tests produce the same
   `finding_bid_ceiling` for golden buyer-estimate inputs, including values
   above `2^53`, and prove at-ceiling bids clear and above-ceiling bids reject
