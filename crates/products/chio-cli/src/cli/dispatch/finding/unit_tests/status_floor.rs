@@ -133,6 +133,38 @@ fn status_floor_keeps_retractions_sticky_per_finding() {
 }
 
 #[test]
+fn status_floor_partitions_retractions_without_growing_the_epoch_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let floor_path = dir.path().join("status-floor.json");
+    for index in 0..300_u16 {
+        let mut retracted = response("inclusion");
+        retracted.finding_id = format!("{index:064x}");
+        advance(&floor_path, &retracted).unwrap();
+    }
+
+    assert!(read_status_floor(&floor_path).unwrap().is_some());
+    assert!(
+        std::fs::metadata(&floor_path).unwrap().len() < 16 * 1024,
+        "epoch floor exceeded its read bound"
+    );
+    let retraction_directory = dir.path().join("status-floor.json.retractions");
+    assert_eq!(
+        std::fs::read_dir(retraction_directory).unwrap().count(),
+        300
+    );
+
+    let mut attempted_revival = response("non_inclusion");
+    attempted_revival.finding_id = format!("{:064x}", 299_u16);
+    attempted_revival.map_epoch = 9;
+    attempted_revival.epoch_id = "5".repeat(64);
+    attempted_revival.root_hash = "6".repeat(64);
+    let error = advance(&floor_path, &attempted_revival)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("durably retracted"), "unexpected error: {error}");
+}
+
+#[test]
 fn status_floor_lock_recovers_from_stale_sidecar_and_excludes_live_writer() {
     let dir = tempfile::tempdir().unwrap();
     let floor_path = dir.path().join("status-floor.json");

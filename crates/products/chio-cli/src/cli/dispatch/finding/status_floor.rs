@@ -237,8 +237,7 @@ fn read_status_floor_state(
         path,
         FINDING_STATUS_FLOOR_MAX_BYTES,
         "rollback-floor",
-    )?
-    else {
+    )? else {
         return Ok(None);
     };
     let value: serde_json::Value = serde_json::from_slice(&bytes)?;
@@ -405,8 +404,7 @@ fn read_status_retraction(
         &path,
         FINDING_STATUS_RETRACTION_MAX_BYTES,
         "retraction",
-    )?
-    else {
+    )? else {
         return Ok(false);
     };
     let persisted: FindingStatusCliRetraction = serde_json::from_slice(&bytes)?;
@@ -596,3 +594,6 @@ pub(super) fn advance_status_floor_locked(
         },
     )
 }
+
+#[cfg(test)]
+pub(super) const TEST_FINDING_STATUS_FLOOR_SCHEMA: &str = FINDING_STATUS_FLOOR_SCHEMA_V2;

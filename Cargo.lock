@@ -2964,6 +2964,7 @@ dependencies = [
  "chio-proof-room",
  "chio-replay-corpus",
  "chio-reputation",
+ "chio-revocation-oracle",
  "chio-runtime",
  "chio-runtime-core",
  "chio-runtime-harness",

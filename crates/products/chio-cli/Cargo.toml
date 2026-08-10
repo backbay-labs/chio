@@ -117,6 +117,7 @@ uuid = { workspace = true, features = ["v4"] }
 [dev-dependencies]
 chio-credit = { workspace = true }
 chio-open-market = { workspace = true }
+chio-revocation-oracle = { workspace = true }
 chio-settle = { workspace = true }
 chio-test-support = { workspace = true }
 insta = { version = "1.42", features = ["json", "redactions"] }

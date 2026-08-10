@@ -123,9 +123,11 @@ proof is carried as `status_proof_input_b64`, preserving the exact canonical
 status trust fields above are pinned and `--status-rollback-floor <FILE>` names
 durable per-feed high-water state. The same floor file may be shared with
 `chio finding status`; a signed proof below its retained map epoch or a
-same-epoch conflicting root fails closed. Every member is optional; a facet
-whose evidence is absent reports unavailable and is never collapsed into a
-verified badge.
+same-epoch conflicting root fails closed. Sticky retractions are partitioned
+into immutable records under the sibling `<FILE>.retractions/` directory, so
+operators must retain that directory with the floor file. Every member is
+optional; a facet whose evidence is absent reports unavailable and is never
+collapsed into a verified badge.
 
 `chio finding challenge --evidence <FILE>` supplies the operator half of a
 challenge. It is exactly the registered `chio.finding.challenge.v1` body

@@ -659,7 +659,7 @@ impl FindingStatusProofResponse {
 #[cfg(test)]
 fn advance_status_floor(
     path: &Path,
-    status: &FindingStatusFloorObservation<'_>,
+    status: &FindingStatusProofResponse,
     authorization: &chio_finding::FindingStatusOperatorAuthorization,
     authorization_sha256: &str,
     trusted_now: u64,
@@ -672,7 +672,6 @@ fn advance_status_floor(
         trusted_now,
     )
 }
-
 fn require_feed_id(feed_id: &str) -> Result<&str, CliError> {
     if feed_id.is_empty()
         || feed_id.len() > 512

@@ -189,6 +189,23 @@ pub(super) fn cmd_finding_verify(
     let draft = verify_finding_evidence(&accepted.raw, &trust, &bundle).map_err(|error| {
         CliError::cli_other_error(format!("finding evidence verification failed: {error}"))
     })?;
+    if let (Some(path), Some(proof_bytes)) = (status_floor_path, status_proof_input.as_deref()) {
+        let authorization = trust
+            .status_operator_authorization
+            .as_ref()
+            .ok_or_else(|| CliError::cli_other_error("status authorization is missing".to_string()))?;
+        let freshness = trust.status_freshness_policy.ok_or_else(|| {
+            CliError::cli_other_error("status freshness policy is missing".to_string())
+        })?;
+        persist_authenticated_status_retraction(
+            path,
+            proof_bytes,
+            authorization,
+            freshness,
+            &accepted.finding.finding_id,
+            &accepted.finding.status_feed_ref,
+        )?;
+    }
     if !draft.satisfies_required_facets(&trust.profile.body) {
         return emit_evidence_report(&accepted, &draft, &trust.profile.body, json_output);
     }
@@ -484,9 +501,47 @@ fn advance_verified_status_floor(
             ))
         },
     )?;
+    advance_parsed_status_floor(path, &proof, &epoch, authorization)
+}
+
+fn persist_authenticated_status_retraction(
+    path: &Path,
+    proof_bytes: &[u8],
+    authorization: &chio_finding::FindingStatusOperatorAuthorization,
+    freshness: chio_finding::FindingStatusFreshnessPolicy,
+    expected_finding_id: &str,
+    expected_feed_id: &str,
+) -> Result<bool, CliError> {
+    let proof = chio_finding::parse_status_proof_input(proof_bytes).map_err(|error| {
+        CliError::cli_other_error(format!("finding status proof is invalid: {error}"))
+    })?;
+    let chio_finding::FindingStatusProofInput::Inclusion(inclusion) = &proof else {
+        return Ok(false);
+    };
+    if inclusion.finding_id != expected_finding_id || inclusion.feed_id != expected_feed_id {
+        return Ok(false);
+    }
+    let Ok(epoch) =
+        chio_finding::verify_status_proof_input(&proof, authorization, freshness)
+    else {
+        return Ok(false);
+    };
+    advance_parsed_status_floor(path, &proof, &epoch, authorization)?;
+    Ok(true)
+}
+
+fn advance_parsed_status_floor(
+    path: &Path,
+    proof: &chio_finding::FindingStatusProofInput,
+    epoch: &chio_finding::SignedFindingStatusEpoch,
+    authorization: &chio_finding::FindingStatusOperatorAuthorization,
+) -> Result<(), CliError> {
     let authorization_sha256 = sha256_hex(&canonical_json_bytes(authorization)?);
     let finding_id = proof.finding_id().to_owned();
-    let is_retracted = matches!(proof, chio_finding::FindingStatusProofInput::Inclusion(_));
+    let is_retracted = matches!(
+        proof,
+        chio_finding::FindingStatusProofInput::Inclusion(_)
+    );
     advance_status_floor(
         path,
         &FindingStatusFloorObservation {
@@ -728,6 +783,99 @@ mod tests {
     const QUALIFIED_STATUS_PROOF: &[u8] = include_bytes!(
         "../../../../../../../fixtures/proof-room/finding/cognition-market-qualified-profile/attachments/status-proof-input.json"
     );
+    const RETRACTED_FINDING_ID: &str =
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    const RETRACTION_INTENT_ID: &str =
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+    fn authenticated_inclusion_fixture() -> Result<
+        (
+            Vec<u8>,
+            chio_finding::FindingStatusOperatorAuthorization,
+            chio_finding::FindingStatusFreshnessPolicy,
+        ),
+        CliError,
+    > {
+        use chio_core_types::crypto::Keypair;
+        use chio_core_types::receipt::lineage::SignedExportEnvelope;
+        use chio_revocation_oracle::{
+            finding_status_empty_leaf_hash, FindingStatusSparseMap,
+            FINDING_STATUS_BRANCH_DOMAIN, FINDING_STATUS_EMPTY_LEAF_DOMAIN,
+            FINDING_STATUS_HASH_ALGORITHM, FINDING_STATUS_KEY_DOMAIN_NONCE,
+            FINDING_STATUS_KEY_HASH_DOMAIN, FINDING_STATUS_MAP_VERSION,
+            FINDING_STATUS_OCCUPIED_LEAF_DOMAIN, FINDING_STATUS_PROOF_SEMANTICS,
+            FINDING_STATUS_SPARSE_DEPTH,
+        };
+
+        let keypair = Keypair::from_seed(&[42_u8; 32]);
+        let authorization = chio_finding::FindingStatusOperatorAuthorization {
+            role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
+            feed_id: "status-feed/cli-review".to_string(),
+            operator: chio_finding::FindingAuthorityKeyPolicy {
+                authority_id: "cli-status-operator".to_string(),
+                key: keypair.public_key(),
+                key_epoch: 7,
+                valid_from: 1_700_000_000,
+                valid_until: 1_800_000_000,
+                rotation_policy_ref: "rotation/cli-status-v1".to_string(),
+                revocation_status_ref: "revocations/cli-status".to_string(),
+            },
+            revoked_from: None,
+        };
+        let mut map = FindingStatusSparseMap::new();
+        let root = map
+            .insert(RETRACTED_FINDING_ID, RETRACTION_INTENT_ID)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let sparse = map
+            .proof(RETRACTED_FINDING_ID)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let mut body = chio_finding::FindingStatusEpoch {
+            schema: chio_finding::FINDING_STATUS_EPOCH_SCHEMA_V1.to_string(),
+            status_epoch_id: String::new(),
+            signature_domain: chio_finding::FINDING_STATUS_SIGNATURE_DOMAIN.to_string(),
+            status_map_version: FINDING_STATUS_MAP_VERSION.to_string(),
+            proof_semantics: FINDING_STATUS_PROOF_SEMANTICS.to_string(),
+            feed_id: authorization.feed_id.clone(),
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            map_epoch: root.map_epoch,
+            operator_id: authorization.operator.authority_id.clone(),
+            operator_key: keypair.public_key(),
+            operator_key_epoch: authorization.operator.key_epoch,
+            root_hash: hex::encode(root.root_hash),
+            tree_depth: FINDING_STATUS_SPARSE_DEPTH as u16,
+            hash_algorithm: FINDING_STATUS_HASH_ALGORITHM.to_string(),
+            key_hash_domain: FINDING_STATUS_KEY_HASH_DOMAIN.to_string(),
+            empty_leaf_domain: FINDING_STATUS_EMPTY_LEAF_DOMAIN.to_string(),
+            occupied_leaf_domain: FINDING_STATUS_OCCUPIED_LEAF_DOMAIN.to_string(),
+            branch_domain: FINDING_STATUS_BRANCH_DOMAIN.to_string(),
+            empty_leaf_hash: hex::encode(finding_status_empty_leaf_hash()),
+            anchor_refs: vec!["anchor/cli-status/1".to_string()],
+            generated_at: 1_700_000_100,
+            valid_from: 1_700_000_000,
+            valid_until: 1_700_000_300,
+        };
+        body.status_epoch_id = chio_finding::compute_status_epoch_id(&body)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let signed = SignedExportEnvelope::sign(body, &keypair)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let checked_at = 1_700_000_110;
+        let proof = chio_finding::build_status_inclusion_proof_input(
+            &signed,
+            RETRACTED_FINDING_ID,
+            RETRACTION_INTENT_ID,
+            &sparse,
+            checked_at,
+        )
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        Ok((
+            canonical_json_bytes(&proof)?,
+            authorization,
+            chio_finding::FindingStatusFreshnessPolicy {
+                now: checked_at,
+                max_epoch_age_secs: 60,
+            },
+        ))
+    }
 
     #[test]
     fn evidence_report_rejects_a_failed_optional_facet() {
@@ -784,6 +932,51 @@ mod tests {
     }
 
     #[test]
+    fn finding_verify_persists_an_authenticated_retraction_before_failure() -> Result<(), CliError> {
+        let (proof_bytes, authorization, freshness) = authenticated_inclusion_fixture()?;
+        let dir = tempfile::tempdir()?;
+        let floor_path = dir.path().join("status-floor.json");
+        assert!(persist_authenticated_status_retraction(
+            &floor_path,
+            &proof_bytes,
+            &authorization,
+            freshness,
+            RETRACTED_FINDING_ID,
+            &authorization.feed_id,
+        )?);
+
+        let proof = chio_finding::parse_status_proof_input(&proof_bytes)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let map_epoch = match proof {
+            chio_finding::FindingStatusProofInput::Inclusion(inclusion) => inclusion.map_epoch,
+            chio_finding::FindingStatusProofInput::NonInclusion(_) => {
+                return Err(CliError::cli_other_error(
+                    "test status proof was not an inclusion".to_string(),
+                ));
+            }
+        };
+        let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization)?);
+        let error = advance_status_floor(
+            &floor_path,
+            &FindingStatusFloorObservation {
+                feed_id: &authorization.feed_id,
+                key_domain_nonce: chio_revocation_oracle::FINDING_STATUS_KEY_DOMAIN_NONCE,
+                map_epoch: map_epoch.saturating_add(1),
+                epoch_id: &"a".repeat(64),
+                root_hash: &"b".repeat(64),
+                finding_id: RETRACTED_FINDING_ID,
+                is_retracted: false,
+            },
+            &authorization,
+            &authorization_sha256,
+        )
+        .err()
+        .ok_or_else(|| CliError::cli_other_error("retracted Finding was revived".to_string()))?;
+        assert!(error.to_string().contains("durably retracted"));
+        Ok(())
+    }
+
+    #[test]
     fn finding_verify_rejects_a_verified_epoch_below_its_durable_floor() -> Result<(), CliError> {
         let proof = chio_finding::parse_status_proof_input(QUALIFIED_STATUS_PROOF)
             .map_err(|error| CliError::cli_other_error(error.to_string()))?;
@@ -817,7 +1010,7 @@ mod tests {
         write_status_floor(
             &floor_path,
             &FindingStatusCliFloor {
-                schema: FINDING_STATUS_FLOOR_SCHEMA_V1.to_string(),
+                schema: TEST_FINDING_STATUS_FLOOR_SCHEMA.to_string(),
                 feed_id: epoch.body.feed_id.clone(),
                 operator_id: epoch.body.operator_id.clone(),
                 rotation_policy_ref: authorization.operator.rotation_policy_ref.clone(),
@@ -827,7 +1020,6 @@ mod tests {
                 map_epoch: epoch.body.map_epoch.saturating_add(1),
                 epoch_id: "a".repeat(64),
                 root_hash: "b".repeat(64),
-                retracted_finding_ids: Vec::new(),
             },
         )?;
 
