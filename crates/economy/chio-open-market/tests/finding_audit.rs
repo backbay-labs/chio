@@ -86,6 +86,18 @@ fn audit_evaluator_policy() -> FindingAuthorityKeyPolicy {
     evaluator_policy("audit-evaluator", audit_evaluator().public_key(), 1)
 }
 
+fn governance_policy() -> FindingAuthorityKeyPolicy {
+    FindingAuthorityKeyPolicy {
+        authority_id: "audit-governance".to_owned(),
+        key: governance_authority().public_key(),
+        key_epoch: 1,
+        valid_from: COMMITTED_AT - 2,
+        valid_until: REPORTED_AT + 2,
+        rotation_policy_ref: "rotation/audit-governance".to_owned(),
+        revocation_status_ref: "revocations/audit-governance".to_owned(),
+    }
+}
+
 fn round_authorization(epoch: &FindingAuditEpoch) -> SignedFindingAuditRoundAuthorization {
     SignedFindingAuditRoundAuthorization::sign(
         FindingAuditRoundAuthorization {
@@ -128,7 +140,7 @@ fn report_witnesses<'a>(
     FindingAuditReportWitnesses {
         pinned_seed_witness: seed_witness().public_key(),
         pinned_audit_authority: audit_authority().public_key(),
-        pinned_governance_authority: governance_authority().public_key(),
+        pinned_governance_policy: governance_policy(),
         round_authorization: round_authorization(epoch),
         pinned_status_authority: status_authority().public_key(),
         pinned_evaluator_policies: policies,
@@ -782,6 +794,19 @@ fn report_verification_authenticates_the_governance_round_authorization() {
         )
         .test_unwrap_err(),
         FindingAuditError::RoundAuthorizationBinding
+    );
+
+    witnesses.round_authorization = round_authorization(&epoch);
+    witnesses.pinned_governance_policy.valid_from = COMMITTED_AT;
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::RoundAuthorizationWindow
     );
 }
 

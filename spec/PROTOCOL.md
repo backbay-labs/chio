@@ -1870,7 +1870,8 @@ assumption rather than an enforceable one.
 
 An independent report verifier MUST also receive the exact signed
 `chio.finding.audit-round-authorization.v1` envelope and the externally
-pinned governance root. It MUST verify that signature, re-derive the epoch
+pinned governance lifecycle policy. It MUST require that policy to cover the
+authorization time, verify the signature under its key, re-derive the epoch
 precommitment, require the epoch's `authorization_digest` to equal the exact
 authorization envelope digest, and require the authorization to cover the
 epoch commitment time. For every signed evaluator outcome, the verifier MUST

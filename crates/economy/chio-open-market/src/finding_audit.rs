@@ -124,7 +124,7 @@ pub struct AuditSelection {
 pub struct FindingAuditReportWitnesses<'a> {
     pub pinned_seed_witness: PublicKey,
     pub pinned_audit_authority: PublicKey,
-    pub pinned_governance_authority: PublicKey,
+    pub pinned_governance_policy: FindingAuthorityKeyPolicy,
     pub round_authorization: SignedFindingAuditRoundAuthorization,
     pub pinned_status_authority: PublicKey,
     /// Governance-authenticated historical evaluator policies. Every
@@ -392,9 +392,13 @@ pub fn verify_audit_report(
     .map_err(FindingAuditError::Epoch)?;
     verify_signed_audit_report(report, &witnesses.pinned_audit_authority)
         .map_err(FindingAuditError::Report)?;
+    witnesses
+        .pinned_governance_policy
+        .validate("audit governance policy")
+        .map_err(FindingAuditError::RoundAuthorization)?;
     verify_signed_audit_round_authorization(
         &witnesses.round_authorization,
-        &witnesses.pinned_governance_authority,
+        &witnesses.pinned_governance_policy.key,
     )
     .map_err(FindingAuditError::RoundAuthorization)?;
     let authorization_digest = signed_envelope_sha256(&witnesses.round_authorization)
@@ -409,7 +413,11 @@ pub fn verify_audit_report(
     {
         return Err(FindingAuditError::RoundAuthorizationBinding);
     }
-    if witnesses.round_authorization.body.authorized_at > epoch.body.committed_at
+    if witnesses.round_authorization.body.authorized_at
+        < witnesses.pinned_governance_policy.valid_from
+        || witnesses.round_authorization.body.authorized_at
+            >= witnesses.pinned_governance_policy.valid_until
+        || witnesses.round_authorization.body.authorized_at > epoch.body.committed_at
         || witnesses.round_authorization.body.expires_at <= epoch.body.committed_at
     {
         return Err(FindingAuditError::RoundAuthorizationWindow);
