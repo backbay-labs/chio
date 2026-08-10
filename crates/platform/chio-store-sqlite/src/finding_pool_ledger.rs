@@ -267,6 +267,44 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
     }
 
+    fn list_claimed_admission_operations(
+        &self,
+        after_operation_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<String>, FindingPoolLedgerError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let limit = i64::try_from(limit).map_err(|_| {
+            FindingPoolLedgerError::Storage(
+                "finding pool claimed-operation page limit exceeds SQLite range".to_owned(),
+            )
+        })?;
+        let connection = self
+            .pool
+            .get()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut statement = connection
+            .prepare(
+                "SELECT durable_admission_operation_id \
+                 FROM finding_pool_debits \
+                 WHERE state = 'reserved' \
+                   AND claimed_at_unix_ms IS NOT NULL \
+                   AND durable_admission_operation_id IS NOT NULL \
+                   AND (?1 IS NULL OR durable_admission_operation_id > ?1) \
+                 ORDER BY durable_admission_operation_id ASC \
+                 LIMIT ?2",
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let rows = statement
+            .query_map(params![after_operation_id, limit], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+    }
+
     fn debit(
         &self,
         debit: &AuthorizedFindingPoolDebit,
@@ -1551,6 +1589,95 @@ fn parse_units(value: &str, field: &str) -> Result<u64, FindingPoolLedgerError> 
 mod tests {
     use super::*;
     use chio_test_support::prelude::*;
+
+    #[test]
+    fn claimed_admission_operation_scan_is_bounded_and_cursor_ordered() {
+        let directory = tempfile::tempdir().test_expect("create pool ledger directory");
+        let ledger = SqliteFindingPoolLedger::open_qualified(directory.path().join("pool.sqlite3"))
+            .test_expect("open qualified pool ledger");
+        let allocation_digest = "d".repeat(64);
+        let first_operation = "a".repeat(64);
+        let second_operation = "c".repeat(64);
+        let terminal_operation = "e".repeat(64);
+        {
+            let connection = ledger.pool.get().test_expect("open pool ledger connection");
+            connection
+                .execute(
+                    "INSERT INTO finding_pool_allocations (\
+                        allocation_envelope_sha256, allocation_id, pool_id, pool_sha256, \
+                        purchaser_id, purchaser_key_json, currency, signed_amount_units, \
+                        reserved_units, spent_units, expires_at_unix_ms\
+                     ) VALUES (?1, 'allocation:scan', 'pool:scan', ?2, 'buyer:scan', '{}', \
+                               'USD', '100', '20', '0', '100000')",
+                    params![allocation_digest, "f".repeat(64)],
+                )
+                .test_expect("seed scan allocation");
+            for (purchase_id, state, claimed_at, operation_id) in [
+                (
+                    "purchase:first",
+                    "reserved",
+                    Some("1000"),
+                    Some(first_operation.as_str()),
+                ),
+                (
+                    "purchase:second",
+                    "reserved",
+                    Some("1001"),
+                    Some(second_operation.as_str()),
+                ),
+                ("purchase:unclaimed", "reserved", None, None),
+                (
+                    "purchase:terminal",
+                    "released",
+                    Some("1002"),
+                    Some(terminal_operation.as_str()),
+                ),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO finding_pool_debits (\
+                            purchase_id, allocation_envelope_sha256, finding_id, listing_id, \
+                            reservation_id, authoritative_payment_operation_id, \
+                            accepted_bid_envelope_sha256, venue_admission_envelope_sha256, \
+                            amount_units, currency, state, claim_deadline_unix_ms, \
+                            claimed_at_unix_ms, durable_admission_operation_id, \
+                            reserved_after_units, spent_after_units\
+                         ) VALUES (?1, ?2, ?3, 'listing:scan', ?4, ?5, ?6, ?7, \
+                                   '5', 'USD', ?8, '30000', ?9, ?10, '20', '0')",
+                        params![
+                            purchase_id,
+                            allocation_digest,
+                            "1".repeat(64),
+                            format!("reservation:{purchase_id}"),
+                            format!("payment:{purchase_id}"),
+                            "2".repeat(64),
+                            "3".repeat(64),
+                            state,
+                            claimed_at,
+                            operation_id,
+                        ],
+                    )
+                    .test_expect("seed claimed-operation scan row");
+            }
+        }
+
+        assert_eq!(
+            ledger
+                .list_claimed_admission_operations(None, 1)
+                .test_expect("read first claimed-operation page"),
+            vec![first_operation.clone()]
+        );
+        assert_eq!(
+            ledger
+                .list_claimed_admission_operations(Some(&first_operation), 1)
+                .test_expect("read second claimed-operation page"),
+            vec![second_operation.clone()]
+        );
+        assert!(ledger
+            .list_claimed_admission_operations(Some(&second_operation), 1)
+            .test_expect("read terminal claimed-operation page")
+            .is_empty());
+    }
 
     #[test]
     fn unknown_dispatch_exact_replay_ignores_later_allocation_totals() {

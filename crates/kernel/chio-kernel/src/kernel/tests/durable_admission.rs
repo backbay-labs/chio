@@ -1531,6 +1531,85 @@ fn durable_url_elicitation_terminalizes_as_verified_no_effect() {
     );
 }
 
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn durable_url_elicitation_recovers_a_post_terminal_pool_release_crash() {
+    use crate::finding_pool::tests::RecordingLedger;
+    use crate::finding_pool::FindingPoolLedger;
+
+    let (mut kernel, request, store, _invocations) =
+        durable_admission_fixture("durable-url-elicit-pool-release-crash");
+    kernel.register_tool_server(Box::new(DurableUrlElicitationServer {
+        store: store.clone(),
+    }));
+    kernel
+        .set_receipt_store(Box::new(AdmissionReceiptProjectionStore::default()))
+        .expect("pool mutation receipt store");
+    kernel
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[93; 32]))
+        .expect("pool mutation receipt authority");
+    let ledger = std::sync::Arc::new(RecordingLedger::default());
+    ledger.fail_next_no_effect_release();
+    kernel
+        .set_finding_pool_ledger(ledger.clone())
+        .expect("qualified finding pool ledger");
+
+    let error = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect_err("injected pool release crash must fail closed");
+    assert!(matches!(
+        error,
+        KernelError::DurableAdmission(ref reason)
+            if reason.contains("injected no-effect pool release failure")
+    ));
+    let terminal = store.operation();
+    assert_eq!(
+        terminal.state(),
+        AdmissionOperationState::NotAcceptedAfterDispatchCommit
+    );
+    assert_eq!(
+        ledger
+            .list_claimed_admission_operations(None, 10)
+            .expect("retained pool claim"),
+        vec![terminal.binding().operation_id().as_str().to_owned()]
+    );
+
+    let mut restarted_config = make_config();
+    restarted_config.policy_hash = sha256_hex(b"durable-admission-test-policy");
+    let mut restarted = make_kernel(restarted_config);
+    restarted
+        .set_durable_admission_store(
+            store.clone(),
+            store.clone(),
+            admission_test_fence(),
+        )
+        .expect("restarted qualified admission store");
+    restarted
+        .set_receipt_store(Box::new(AdmissionReceiptProjectionStore::default()))
+        .expect("restarted pool mutation receipt store");
+    restarted
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[94; 32]))
+        .expect("restarted pool mutation receipt authority");
+    restarted
+        .set_finding_pool_ledger(ledger.clone())
+        .expect("restarted finding pool ledger");
+
+    assert_eq!(
+        restarted
+            .reconcile_durable_admission_startup()
+            .expect("reconcile terminal pool release"),
+        1
+    );
+    assert!(ledger
+        .list_claimed_admission_operations(None, 10)
+        .expect("read reconciled pool claims")
+        .is_empty());
+    assert_eq!(
+        store.operation().state(),
+        AdmissionOperationState::NotAcceptedAfterDispatchCommit
+    );
+}
+
 #[test]
 fn nested_durable_url_elicitation_terminalizes_as_verified_no_effect() {
     let (mut kernel, request, store, _invocations) =

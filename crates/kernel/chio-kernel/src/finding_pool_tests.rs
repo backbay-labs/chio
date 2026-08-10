@@ -12,9 +12,11 @@ use crate::{
 };
 
 #[derive(Default)]
-struct RecordingLedger {
+pub(crate) struct RecordingLedger {
     decisions: Mutex<Vec<FindingPoolTerminalDecision>>,
     claims: Mutex<Vec<(String, u64)>>,
+    active_claim_operations: Mutex<Vec<String>>,
+    fail_next_no_effect_release: std::sync::atomic::AtomicBool,
     recovery_releases: Mutex<Vec<String>>,
     unknown_dispatch_finalizations: Mutex<Vec<String>>,
     outbox: Mutex<Vec<ChioReceipt>>,
@@ -23,6 +25,11 @@ struct RecordingLedger {
 }
 
 impl RecordingLedger {
+    pub(crate) fn fail_next_no_effect_release(&self) {
+        self.fail_next_no_effect_release
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
     fn store_attestation(
         &self,
         mutation: FindingPoolMutation,
@@ -59,6 +66,29 @@ impl FindingPoolLedger for RecordingLedger {
         Ok(true)
     }
 
+    fn list_claimed_admission_operations(
+        &self,
+        after_operation_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<String>, FindingPoolLedgerError> {
+        let mut operations = self
+            .active_claim_operations
+            .lock()
+            .map_err(|_| {
+                FindingPoolLedgerError::Storage("test active claim lock was poisoned".to_owned())
+            })?
+            .clone();
+        operations.sort();
+        operations.dedup();
+        Ok(operations
+            .into_iter()
+            .filter(|operation_id| {
+                after_operation_id.is_none_or(|after| operation_id.as_str() > after)
+            })
+            .take(limit)
+            .collect())
+    }
+
     fn debit(
         &self,
         _debit: &AuthorizedFindingPoolDebit,
@@ -81,6 +111,16 @@ impl FindingPoolLedger for RecordingLedger {
         };
         claims.push((claim.purchase_id().to_owned(), claim.claimed_at_unix_ms()));
         drop(claims);
+        let mut active_claim_operations = self.active_claim_operations.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test active claim lock was poisoned".to_owned())
+        })?;
+        if !active_claim_operations
+            .iter()
+            .any(|operation_id| operation_id == claim.durable_admission_operation_id())
+        {
+            active_claim_operations.push(claim.durable_admission_operation_id().to_owned());
+        }
+        drop(active_claim_operations);
         self.store_attestation(
             FindingPoolMutation {
                 schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
@@ -109,6 +149,12 @@ impl FindingPoolLedger for RecordingLedger {
         release: &AuthorizedFindingPoolRecoveryRelease,
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError> {
+        self.active_claim_operations
+            .lock()
+            .map_err(|_| {
+                FindingPoolLedgerError::Storage("test active claim lock was poisoned".to_owned())
+            })?
+            .retain(|operation_id| operation_id != release.durable_admission_operation_id());
         self.recovery_releases
             .lock()
             .map_err(|_| {
@@ -139,11 +185,45 @@ impl FindingPoolLedger for RecordingLedger {
         )
     }
 
+    fn release_claimed_after_verified_no_effect(
+        &self,
+        release: &AuthorizedFindingPoolRecoveryRelease,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError> {
+        if self
+            .fail_next_no_effect_release
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            let mut active_claim_operations =
+                self.active_claim_operations.lock().map_err(|_| {
+                    FindingPoolLedgerError::Storage(
+                        "test active claim lock was poisoned".to_owned(),
+                    )
+                })?;
+            if !active_claim_operations
+                .iter()
+                .any(|operation_id| operation_id == release.durable_admission_operation_id())
+            {
+                active_claim_operations.push(release.durable_admission_operation_id().to_owned());
+            }
+            return Err(FindingPoolLedgerError::Storage(
+                "injected no-effect pool release failure".to_owned(),
+            ));
+        }
+        self.release_claimed_before_dispatch(release, attestor)
+    }
+
     fn finalize_claimed_after_unknown_dispatch(
         &self,
         terminal: &AuthorizedFindingPoolUnknownDispatchTerminal,
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError> {
+        self.active_claim_operations
+            .lock()
+            .map_err(|_| {
+                FindingPoolLedgerError::Storage("test active claim lock was poisoned".to_owned())
+            })?
+            .retain(|operation_id| operation_id != terminal.durable_admission_operation_id());
         self.unknown_dispatch_finalizations
             .lock()
             .map_err(|_| {

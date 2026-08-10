@@ -501,6 +501,15 @@ pub trait FindingPoolLedger: Send + Sync {
     /// authenticated field before returning the prior receipt.
     fn contains_purchase(&self, purchase_id: &str) -> Result<bool, FindingPoolLedgerError>;
 
+    /// Lists claimed, nonterminal pool reservations by their durable admission
+    /// operation id. Results must be strictly ascending, start after the
+    /// optional cursor, and contain at most `limit` entries.
+    fn list_claimed_admission_operations(
+        &self,
+        after_operation_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<String>, FindingPoolLedgerError>;
+
     fn debit(
         &self,
         debit: &AuthorizedFindingPoolDebit,
@@ -1093,4 +1102,4 @@ fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingPoolDebi
 
 #[cfg(test)]
 #[path = "finding_pool_tests.rs"]
-mod tests;
+pub(crate) mod tests;

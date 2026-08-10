@@ -15,6 +15,7 @@ use chio_pheromone::{
     scarcity_admissions_for_deposit_treaty, validate_deposit_for_admission, CostCommitmentPolicy,
     ObservationCostVerificationMode, PheromoneDeposit, PheromoneError, PheromoneSubstrate,
     PheromoneValidationContext, Severity, SubjectClassPolicy, OBSERVATION_COST_UNIT,
+    PHEROMONE_DEPOSIT_SCHEMA,
 };
 use serde::{Deserialize, Serialize};
 
@@ -67,6 +68,8 @@ impl ResolvedFindingPheromoneHint {
 
 #[derive(Debug, thiserror::Error)]
 pub enum FindingPheromoneError {
+    #[error("finding pheromone carrier is malformed")]
+    CarrierMalformed,
     #[error("finding pheromone indicator is malformed")]
     IndicatorMalformed,
     #[error("finding pheromone convention mismatch: {0}")]
@@ -105,10 +108,8 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
     current_admission: &SignedFindingAdmission,
     admission_context: &FindingAdmissionContext<'_>,
 ) -> Result<ResolvedFindingPheromoneHint, FindingPheromoneError> {
-    let indicator: FindingPheromoneIndicator =
-        serde_json::from_value(deposit.body.indicator.clone())
-            .map_err(|_| FindingPheromoneError::IndicatorMalformed)?;
-    validate_indicator(&indicator)?;
+    validate_finding_carrier(&deposit)?;
+    let indicator = decode_indicator(&deposit.body.indicator)?;
     // Authenticate the cheap generic carrier boundary before resolving the
     // substantially larger signed listing and admission bundle. The final
     // substrate call repeats this validation inside its atomic commit.
@@ -150,18 +151,54 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
     })
 }
 
-fn validate_indicator(indicator: &FindingPheromoneIndicator) -> Result<(), FindingPheromoneError> {
-    if indicator.schema != FINDING_PHEROMONE_INDICATOR_SCHEMA_V1
-        || !is_hex64(&indicator.finding_id)
-        || indicator.listing_id.is_empty()
-        || indicator.listing_id.len() > 512
-        || !is_hex64(&indicator.listing_envelope_sha256)
-        || !is_hex64(&indicator.admission_envelope_sha256)
-        || indicator.capability_scope != format!("finding:{}", indicator.finding_id)
+fn validate_finding_carrier(deposit: &PheromoneDeposit) -> Result<(), FindingPheromoneError> {
+    let body = &deposit.body;
+    if body.schema != PHEROMONE_DEPOSIT_SCHEMA
+        || body.subject_class != FINDING_PHEROMONE_SUBJECT_CLASS
+        || body.subject_class_namespace != FINDING_PHEROMONE_SUBJECT_NAMESPACE
+    {
+        return Err(FindingPheromoneError::CarrierMalformed);
+    }
+    Ok(())
+}
+
+fn decode_indicator(
+    value: &serde_json::Value,
+) -> Result<FindingPheromoneIndicator, FindingPheromoneError> {
+    let object = value
+        .as_object()
+        .filter(|object| object.len() == 6)
+        .ok_or(FindingPheromoneError::IndicatorMalformed)?;
+    let string_field = |field: &str| {
+        object
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .ok_or(FindingPheromoneError::IndicatorMalformed)
+    };
+    let schema = string_field("schema")?;
+    let finding_id = string_field("finding_id")?;
+    let listing_id = string_field("listing_id")?;
+    let listing_envelope_sha256 = string_field("listing_envelope_sha256")?;
+    let admission_envelope_sha256 = string_field("admission_envelope_sha256")?;
+    let capability_scope = string_field("capability_scope")?;
+    if schema != FINDING_PHEROMONE_INDICATOR_SCHEMA_V1
+        || !is_hex64(finding_id)
+        || listing_id.is_empty()
+        || listing_id.len() > 512
+        || !is_hex64(listing_envelope_sha256)
+        || !is_hex64(admission_envelope_sha256)
+        || capability_scope.strip_prefix("finding:") != Some(finding_id)
     {
         return Err(FindingPheromoneError::IndicatorMalformed);
     }
-    Ok(())
+    Ok(FindingPheromoneIndicator {
+        schema: schema.to_owned(),
+        finding_id: finding_id.to_owned(),
+        listing_id: listing_id.to_owned(),
+        listing_envelope_sha256: listing_envelope_sha256.to_owned(),
+        admission_envelope_sha256: admission_envelope_sha256.to_owned(),
+        capability_scope: capability_scope.to_owned(),
+    })
 }
 
 fn validate_convention(
