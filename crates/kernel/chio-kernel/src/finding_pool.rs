@@ -141,6 +141,8 @@ pub enum FindingPoolLedgerError {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FindingPoolDebitError {
+    #[error("kernel emergency stop blocks finding pool debits")]
+    EmergencyStopped,
     #[error("finding pool allocation rejected: {0}")]
     Allocation(String),
     #[error("finding pool allocation envelope digest mismatch")]
@@ -223,8 +225,8 @@ pub struct AuthorizedFindingPoolClaim {
     durable_admission_operation_id: String,
 }
 
-/// Kernel-authenticated release for a pool claim whose durable admission was
-/// compensated before tool dispatch.
+/// Kernel-authenticated release for a pool claim whose durable admission has
+/// verified that no provider effect occurred.
 #[derive(Debug, Clone)]
 pub struct AuthorizedFindingPoolRecoveryRelease {
     durable_admission_operation_id: String,
@@ -521,6 +523,17 @@ pub trait FindingPoolLedger: Send + Sync {
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError>;
 
+    /// Release a dispatch-committed claim after the kernel durably verifies a
+    /// typed no-effect transport result. Backends use the same idempotent
+    /// release transition as pre-dispatch compensation.
+    fn release_claimed_after_verified_no_effect(
+        &self,
+        release: &AuthorizedFindingPoolRecoveryRelease,
+        attestor: &FindingPoolMutationAttestor<'_>,
+    ) -> Result<(), FindingPoolLedgerError> {
+        self.release_claimed_before_dispatch(release, attestor)
+    }
+
     /// Finalize a claimed reservation when its durable admission is terminally
     /// outcome-unknown after dispatch commitment. Exact replay is idempotent;
     /// a prior release fails closed. An operation with no pool claim is a no-op.
@@ -558,6 +571,14 @@ pub trait FindingPoolLedger: Send + Sync {
 pub trait QualifiedFindingPoolLedger: FindingPoolLedger {}
 
 impl ChioKernel {
+    fn require_finding_pool_debit_active(&self) -> Result<(), FindingPoolDebitError> {
+        if self.is_emergency_stopped() {
+            Err(FindingPoolDebitError::EmergencyStopped)
+        } else {
+            Ok(())
+        }
+    }
+
     /// Reserve a signed finding pool allocation through this deployment's
     /// configured ledger, verifiers, trust roots, and trusted wall clock.
     pub fn debit_finding_pool_purchase(
@@ -572,6 +593,7 @@ impl ChioKernel {
         request: FindingPoolDebitRequest<'_>,
         trusted_now_unix_ms: u64,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolDebitError> {
+        self.require_finding_pool_debit_active()?;
         let ledger = self
             .finding_pool_ledger()
             .ok_or(FindingPoolDebitError::LedgerMissing)?;
@@ -819,6 +841,29 @@ impl ChioKernel {
                 .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
         };
         ledger.release_claimed_before_dispatch(&release, &attestor)?;
+        self.flush_finding_pool_mutation_receipts(ledger)
+    }
+
+    /// Release a pool claim after a dispatch-committed admission proves that
+    /// the provider requested URL elicitation before any tool effect.
+    pub(crate) fn release_finding_pool_claim_after_verified_no_effect(
+        &self,
+        durable_admission_operation_id: &str,
+        trusted_now_unix_ms: u64,
+    ) -> Result<(), FindingPoolLedgerError> {
+        let Some(ledger) = self.finding_pool_ledger() else {
+            return Ok(());
+        };
+        self.flush_finding_pool_mutation_receipts(ledger)?;
+        let release = AuthorizedFindingPoolRecoveryRelease {
+            durable_admission_operation_id: durable_admission_operation_id.to_owned(),
+            released_at_unix_ms: trusted_now_unix_ms,
+        };
+        let attestor = |mutation: &FindingPoolMutation| {
+            self.build_finding_pool_mutation_receipt(mutation)
+                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
+        };
+        ledger.release_claimed_after_verified_no_effect(&release, &attestor)?;
         self.flush_finding_pool_mutation_receipts(ledger)
     }
 

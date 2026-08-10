@@ -784,6 +784,13 @@ impl ChioKernel {
         &mut self,
         receipt_store: Arc<dyn ReceiptStore>,
     ) -> Result<(), KernelError> {
+        #[cfg(feature = "cognition-market-experimental")]
+        if self.finding_pool_ledger.is_some() {
+            return Err(KernelError::Internal(
+                "receipt store cannot be replaced after the finding pool ledger is configured"
+                    .to_owned(),
+            ));
+        }
         if let Some(runtime) = self.settlement_observer.as_ref() {
             Self::validate_settlement_receipt_store(receipt_store.as_ref(), runtime)?;
         }

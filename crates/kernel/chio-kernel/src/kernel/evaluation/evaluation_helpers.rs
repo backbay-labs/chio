@@ -458,6 +458,47 @@ impl ChioKernel {
         )
     }
 
+    /// Unwind every pre-effect participant after dispatch commitment, then
+    /// persist the typed no-effect terminal and release any bound pool claim.
+    pub(super) fn unwind_committed_url_elicitation_no_effect(
+        &self,
+        denial: PreDispatchCleanupDeny<'_>,
+        credential_disposition: PaymentCredentialDisposition,
+        operation: &AdmissionOperationV1,
+        message: &str,
+        elicitations: &[crate::CreateElicitationOperation],
+        trusted_now_unix_ms: u64,
+    ) -> Result<(), KernelError> {
+        // Dispatch commitment makes the ordinary budget hold and any payment
+        // participant terminal. Do not misclassify them as pre-dispatch state:
+        // the durable no-effect projection is their reconciliation boundary.
+        // Runtime-only admission reservations and the sibling budget lease are
+        // still safe to release because the typed transport result proves that
+        // tool execution did not begin.
+        let runtime_metadata = self.merge_dispatch_credential_disposition_metadata(
+            denial.runtime_admission_metadata,
+            credential_disposition,
+        );
+        let (runtime_metadata, runtime_release_confirmed) =
+            self.release_runtime_admission_reservations_for_pre_dispatch_denial(runtime_metadata);
+        let lease_release = self.release_budget_lease_with_evidence(
+            denial.cap,
+            denial.budget_lease_acquired,
+            runtime_metadata,
+        );
+        if !runtime_release_confirmed || !lease_release.confirmed {
+            return Err(KernelError::Internal(
+                "post-commit URL-elicitation runtime cleanup could not be confirmed".to_owned(),
+            ));
+        }
+        self.terminalize_url_elicitation_no_effect(
+            operation,
+            message,
+            elicitations,
+            trusted_now_unix_ms,
+        )
+    }
+
     pub(super) fn build_pre_dispatch_cleanup_deny_response_with_credentials(
         &self,
         denial: PreDispatchCleanupDeny<'_>,

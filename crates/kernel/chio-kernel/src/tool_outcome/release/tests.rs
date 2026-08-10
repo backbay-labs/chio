@@ -621,6 +621,52 @@ fn external_effect_cancellation_constructs_bound_transport_no_acceptance() {
     .is_err());
 }
 
+#[test]
+fn kernel_url_elicitation_constructs_a_bound_post_commit_no_effect_terminal() {
+    let operation = committed_operation("request-kernel-url-elicitation");
+    let context = projection_context(&operation);
+    let elicitations = vec![crate::CreateElicitationOperation::Url {
+        meta: None,
+        message: "Authorize the provider URL".to_owned(),
+        url: "https://provider.example/authorize".to_owned(),
+        elicitation_id: "elicitation-1".to_owned(),
+    }];
+
+    let projection = crate::admission_operation::verified_url_elicitation_no_effect_projection(
+        &operation,
+        context.clone(),
+        "URL elicitation required before tool execution",
+        &elicitations,
+    )
+    .unwrap();
+    let crate::admission_operation::AdmissionTerminalProjection::NotAcceptedAfterDispatchCommit {
+        proof,
+        ..
+    } = projection
+    else {
+        panic!("URL elicitation must produce the post-commit no-effect terminal");
+    };
+    proof.validate_against(&operation, &context).unwrap();
+
+    let sibling = committed_operation("request-kernel-url-elicitation-sibling");
+    assert!(proof
+        .validate_against(&sibling, &projection_context(&sibling))
+        .is_err());
+
+    let form_elicitation = [crate::CreateElicitationOperation::Form {
+        meta: None,
+        message: "not a URL result".to_owned(),
+        requested_schema: serde_json::json!({"type": "object"}),
+    }];
+    assert!(VerifiedTransportNotAccepted::from_kernel_url_elicitation(
+        "form elicitation",
+        &form_elicitation,
+        &operation,
+        &context,
+    )
+    .is_err());
+}
+
 fn submitted_mutation_operation(request_id: &str) -> AdmissionOperationV1 {
     let binding = AdmissionOperationBindingV1::new(AdmissionOperationBindingInputV1 {
         kind: AdmissionOperationKind::GovernedEconomicMutation,

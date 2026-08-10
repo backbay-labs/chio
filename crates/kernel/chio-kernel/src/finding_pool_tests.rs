@@ -451,6 +451,27 @@ fn pre_dispatch_recovery_releases_the_bound_pool_claim() {
 }
 
 #[test]
+fn verified_post_commit_no_effect_releases_the_bound_pool_claim() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let kernel = kernel_with_ledger(Arc::clone(&ledger));
+    assert!(kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .is_ok());
+    assert!(kernel
+        .release_finding_pool_claim_after_verified_no_effect("operation:test", 12_346)
+        .is_ok());
+    let Ok(releases) = ledger.recovery_releases.lock() else {
+        panic!("test recovery release lock was poisoned");
+    };
+    assert_eq!(releases.as_slice(), &["operation:test".to_owned()]);
+    drop(releases);
+    assert_eq!(kernel.receipt_log().receipts().len(), 2);
+    assert!(ledger
+        .pending_mutation_receipts()
+        .is_ok_and(|receipts| receipts.is_empty()));
+}
+
+#[test]
 fn unknown_dispatch_recovery_finalizes_the_bound_pool_claim() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
@@ -511,6 +532,33 @@ fn pool_ledger_requires_a_durable_ordinary_receipt_store_at_configuration() {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .is_empty());
+}
+
+#[test]
+fn configured_pool_ledger_freezes_the_ordinary_receipt_store() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let mut kernel = kernel_with_ledger(ledger);
+
+    let error = kernel
+        .set_receipt_store(Box::<RecordingReceiptStore>::default())
+        .expect_err("pool receipt history must remain on one durable store");
+    assert!(error
+        .to_string()
+        .contains("cannot be replaced after the finding pool ledger"));
+}
+
+#[test]
+fn emergency_stop_blocks_the_public_pool_debit_gate() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let kernel = kernel_with_ledger(ledger);
+    kernel
+        .emergency_stop("finding pool containment")
+        .expect("engage emergency stop");
+
+    assert_eq!(
+        kernel.require_finding_pool_debit_active(),
+        Err(FindingPoolDebitError::EmergencyStopped)
+    );
 }
 
 #[test]

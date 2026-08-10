@@ -1368,6 +1368,54 @@ struct DurableIncompleteStreamServer {
     store: std::sync::Arc<TestAdmissionOperationStore>,
 }
 
+struct DurableUrlElicitationServer {
+    store: std::sync::Arc<TestAdmissionOperationStore>,
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for DurableUrlElicitationServer {
+    fn server_id(&self) -> &str {
+        "durable-server"
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["mutate".to_owned()]
+    }
+
+    async fn invoke_stream(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<Option<ToolServerStreamResult>, KernelError> {
+        assert_eq!(
+            self.store.operation().state(),
+            AdmissionOperationState::DispatchCommitted,
+            "dispatch must be durably committed before URL elicitation"
+        );
+        Err(KernelError::UrlElicitationsRequired {
+            message: "URL elicitation required before tool execution".to_owned(),
+            elicitations: vec![CreateElicitationOperation::Url {
+                meta: None,
+                message: "Authorize the provider URL".to_owned(),
+                url: "https://provider.example/authorize".to_owned(),
+                elicitation_id: "durable-elicitation-1".to_owned(),
+            }],
+        })
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Err(KernelError::Internal(
+            "URL elicitation server unexpectedly used value invocation".to_owned(),
+        ))
+    }
+}
+
 #[async_trait::async_trait]
 impl ToolServerConnection for DurableIncompleteStreamServer {
     fn server_id(&self) -> &str {
@@ -1462,6 +1510,64 @@ fn durable_admission_fixture_with_grants(
         serde_json::json!({"record": "ledger-7", "value": "settled"}),
     );
     (kernel, request, store, invocations)
+}
+
+#[test]
+fn durable_url_elicitation_terminalizes_as_verified_no_effect() {
+    let (mut kernel, request, store, _invocations) =
+        durable_admission_fixture("durable-url-elicit");
+    kernel.register_tool_server(Box::new(DurableUrlElicitationServer {
+        store: store.clone(),
+    }));
+
+    let result = kernel.evaluate_tool_call_blocking(&request);
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "unexpected durable URL elicitation result: {result:?}"
+    );
+    assert_eq!(
+        store.operation().state(),
+        AdmissionOperationState::NotAcceptedAfterDispatchCommit
+    );
+}
+
+#[test]
+fn nested_durable_url_elicitation_terminalizes_as_verified_no_effect() {
+    let (mut kernel, request, store, _invocations) =
+        durable_admission_fixture("nested-durable-url-elicit");
+    kernel.register_tool_server(Box::new(DurableUrlElicitationServer {
+        store: store.clone(),
+    }));
+    let session_id = kernel
+        .open_session("nested-url-elicit-parent".to_owned(), Vec::new())
+        .expect("parent session");
+    kernel
+        .activate_session(&session_id)
+        .expect("activate parent session");
+    let parent_context = make_operation_context(
+        &session_id,
+        "nested-url-elicit-parent-request",
+        "nested-url-elicit-parent",
+    );
+    kernel
+        .begin_session_request(&parent_context, OperationKind::ToolCall, true)
+        .expect("begin parent request");
+    let mut client = NoopNestedFlowClient;
+
+    let result = kernel.evaluate_tool_call_with_nested_flow_client(
+        &parent_context,
+        &request,
+        &mut client,
+        None,
+    );
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "unexpected nested durable URL elicitation result: {result:?}"
+    );
+    assert_eq!(
+        store.operation().state(),
+        AdmissionOperationState::NotAcceptedAfterDispatchCommit
+    );
 }
 
 #[test]
