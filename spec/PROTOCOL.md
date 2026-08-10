@@ -1264,6 +1264,16 @@ units, released units, and reversed units. Admission rejects inactive or
 replayed allocations, and terminal graph receipts reconcile the final rollup
 against the budget pool.
 
+A cognition-market `pool_sha256` MUST hash the RFC 8785 canonical bytes of the
+`chio.swarm.budget-pool-digest-projection.v1` preimage. This preimage is not the
+wire serialization of `chio.swarm.budget-pool.v1`. It contains `schema` set to
+the projection identifier, `poolSchema` set to the source pool schema, the
+source `poolId`, `graphId`, and `currency`, and the source allocations in their
+original order. `totalUnits` and every allocation unit field MUST be the
+shortest unsigned base-10 string, with `0` as the only representation with a
+leading zero. Implementations MUST NOT hash schema-valid integer-valued pool
+JSON directly when producing or checking this digest.
+
 Offline proof-bundle verification (`chio proof verify`) requires signed swarm
 delegation evidence and rejects a root-only swarm proof fail-closed. Even when
 the task graph, budget pool, and revocation epoch are otherwise valid and

@@ -1142,9 +1142,15 @@ purchase authority.
 6. When a buyer uses a shared pool, the kernel verifies the signed
    `chio.finding.pool-allocation.v1` companion against the exact canonical
    `SwarmBudgetPool` digest and pinned authority before handing a debit to a
-   qualifying backend. The shipped SQLite backend serializes debits, persists
-   exact replay, and uniquely binds one purchaser allocation to the pool id.
-   Advisory remote budget views cannot make this hard-ceiling claim.
+   qualifying backend. `pool_sha256` is the SHA-256 of the RFC 8785 canonical
+   `chio.swarm.budget-pool-digest-projection.v1` preimage, not the JSON bytes
+   of `chio.swarm.budget-pool.v1`. The projection carries the planning
+   object's schema as `poolSchema`, preserves allocation order, and encodes
+   `totalUnits` plus every allocation unit field as the shortest unsigned
+   base-10 string (`0` or a nonzero digit followed by digits). The shipped
+   SQLite backend serializes debits, persists exact replay, and uniquely binds
+   one purchaser allocation to the pool id. Advisory remote budget views
+   cannot make this hard-ceiling claim.
 
 ### F3. Purchase and reveal (single-operator / wedge path)
 

@@ -16,6 +16,9 @@ use crate::{SwarmAuthorityError, SwarmBudgetPool, CHIO_SWARM_BUDGET_POOL_SCHEMA}
 pub const FINDING_POOL_ALLOCATION_SCHEMA_V1: &str =
     chio_core_types::CHIO_FINDING_POOL_ALLOCATION_V1_SCHEMA;
 pub const FINDING_POOL_PURPOSE_V1: &str = "cognition_market_finding_purchase_v1";
+/// Versioned RFC 8785 preimage used by [`swarm_budget_pool_sha256`].
+pub const SWARM_BUDGET_POOL_DIGEST_PROJECTION_SCHEMA_V1: &str =
+    "chio.swarm.budget-pool-digest-projection.v1";
 
 /// Authority-signed companion for one unsigned swarm budget pool.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -59,7 +62,8 @@ pub struct VerifiedFindingPoolAllocation {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SwarmBudgetPoolDigestProjection<'a> {
-    schema: &'a str,
+    schema: &'static str,
+    pool_schema: &'a str,
     pool_id: &'a str,
     graph_id: &'a str,
     currency: &'a str,
@@ -82,10 +86,18 @@ struct SwarmBudgetAllocationDigestProjection<'a> {
     reversed_units: String,
 }
 
-/// Canonical SHA-256 of the unsigned pool planning object.
-pub fn swarm_budget_pool_sha256(pool: &SwarmBudgetPool) -> Result<String, SwarmAuthorityError> {
+/// RFC 8785 bytes of the versioned budget-pool digest projection.
+///
+/// This is deliberately not the JSON serialization of
+/// `chio.swarm.budget-pool.v1`. Every `u64` is projected to its shortest
+/// unsigned base-10 string, and allocation order is preserved. The schema
+/// field versions this exact preimage independently from the planning object.
+pub fn swarm_budget_pool_digest_projection_bytes(
+    pool: &SwarmBudgetPool,
+) -> Result<Vec<u8>, SwarmAuthorityError> {
     let projection = SwarmBudgetPoolDigestProjection {
-        schema: &pool.schema,
+        schema: SWARM_BUDGET_POOL_DIGEST_PROJECTION_SCHEMA_V1,
+        pool_schema: &pool.schema,
         pool_id: &pool.pool_id,
         graph_id: &pool.graph_id,
         currency: &pool.currency,
@@ -107,9 +119,15 @@ pub fn swarm_budget_pool_sha256(pool: &SwarmBudgetPool) -> Result<String, SwarmA
             })
             .collect(),
     };
-    let bytes = canonical_json_bytes(&projection)
-        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
-    Ok(sha256_hex(&bytes))
+    canonical_json_bytes(&projection)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))
+}
+
+/// SHA-256 of [`swarm_budget_pool_digest_projection_bytes`].
+pub fn swarm_budget_pool_sha256(pool: &SwarmBudgetPool) -> Result<String, SwarmAuthorityError> {
+    Ok(sha256_hex(&swarm_budget_pool_digest_projection_bytes(
+        pool,
+    )?))
 }
 
 /// Canonical SHA-256 of the complete signed allocation envelope.
@@ -304,6 +322,7 @@ mod tests {
     #[test]
     fn allocation_identifiers_reject_whitespace_only_values() {
         assert!(require_non_empty("   ", "pool_id").is_err());
+        assert!(require_non_empty("pool:\u{0}one", "pool_id").is_err());
         assert!(require_non_empty("pool:one", "pool_id").is_ok());
     }
 
@@ -331,7 +350,8 @@ mod tests {
             }],
         };
         let expected_pool_projection = serde_json::json!({
-            "schema": CHIO_SWARM_BUDGET_POOL_SCHEMA,
+            "schema": SWARM_BUDGET_POOL_DIGEST_PROJECTION_SCHEMA_V1,
+            "poolSchema": CHIO_SWARM_BUDGET_POOL_SCHEMA,
             "poolId": "pool:max",
             "graphId": "graph:max",
             "currency": "USD",
@@ -351,6 +371,10 @@ mod tests {
         });
         let expected_pool_digest = sha256_hex(
             &canonical_json_bytes(&expected_pool_projection).test_expect("project pool amounts"),
+        );
+        assert_eq!(
+            swarm_budget_pool_digest_projection_bytes(&pool).test_expect("project pool amounts"),
+            canonical_json_bytes(&expected_pool_projection).test_expect("canonical projection")
         );
         assert_eq!(
             swarm_budget_pool_sha256(&pool).test_expect("hash projected pool"),
