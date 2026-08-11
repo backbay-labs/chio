@@ -9,6 +9,9 @@
 //! whole configuration.
 
 use chio_core::crypto::{PublicKey, SigningAlgorithm};
+use chio_finding::{
+    FindingAuthorityKeyPolicy, FindingStatusOperatorAuthorization, FindingStatusOperatorRole,
+};
 use chio_settle::FindingFinalityRequirement;
 use serde::{Deserialize, Serialize};
 
@@ -196,7 +199,28 @@ impl FindingStatusOperatorPin {
                 "finding-market status operator revocation time is invalid".to_string(),
             ));
         }
-        self.authority.validate("status operator")
+        let key = self.authority.validate("status operator")?;
+        FindingStatusOperatorAuthorization {
+            role: FindingStatusOperatorRole::FindingStatusOperator,
+            feed_id: self.feed_id.clone(),
+            operator: FindingAuthorityKeyPolicy {
+                authority_id: self.authority.authority_id.clone(),
+                key: key.clone(),
+                key_epoch: self.authority.key_epoch,
+                valid_from: self.authority.valid_from,
+                valid_until: self.authority.valid_until,
+                rotation_policy_ref: self.rotation_policy_ref.clone(),
+                revocation_status_ref: self.authority.revocation_status_ref.clone(),
+            },
+            revoked_from: self.revoked_from,
+        }
+        .validate()
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "finding-market status operator authorization is invalid: {error}"
+            ))
+        })?;
+        Ok(key)
     }
 
     /// Require this exact feed and a live, non-revoked authorized operator at
@@ -650,6 +674,18 @@ mod status_feed_config_tests {
         assert!(invalid.validate().is_err());
         invalid.feed_id = "status-feed/café".to_string();
         assert!(invalid.validate().is_err());
+
+        let mut oversized_authority_id = operator();
+        oversized_authority_id.authority.authority_id = "a".repeat(513);
+        assert!(oversized_authority_id.validate().is_err());
+
+        let mut oversized_rotation_ref = operator();
+        oversized_rotation_ref.rotation_policy_ref = "r".repeat(513);
+        assert!(oversized_rotation_ref.validate().is_err());
+
+        let mut oversized_revocation_ref = operator();
+        oversized_revocation_ref.authority.revocation_status_ref = "s".repeat(513);
+        assert!(oversized_revocation_ref.validate().is_err());
     }
 
     #[test]
