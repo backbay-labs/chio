@@ -1085,8 +1085,30 @@ pub(super) fn create_archive_schema(
         CREATE TABLE IF NOT EXISTS archive.checkpoint_publication_trust_anchor_bindings (
             checkpoint_seq INTEGER PRIMARY KEY, binding_json TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS archive.chio_receipt_sink_identity (
+            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+            sink_id TEXT NOT NULL UNIQUE
+        ) STRICT;
         "#,
     )?;
+    transaction.execute(
+        "INSERT OR IGNORE INTO archive.chio_receipt_sink_identity (singleton, sink_id) \
+         VALUES (1, ?1)",
+        [uuid::Uuid::now_v7().to_string()],
+    )?;
+    let archive_sink_id = transaction.query_row(
+        "SELECT sink_id FROM archive.chio_receipt_sink_identity WHERE singleton = 1",
+        [],
+        |row| row.get::<_, String>(0),
+    )?;
+    let parsed_archive_sink_id = uuid::Uuid::parse_str(&archive_sink_id).map_err(|_| {
+        ReceiptStoreError::Conflict("retention archive sink identity is invalid".to_owned())
+    })?;
+    if parsed_archive_sink_id.to_string() != archive_sink_id {
+        return Err(ReceiptStoreError::Conflict(
+            "retention archive sink identity is not canonical".to_owned(),
+        ));
+    }
     if archive_schema_version < RECEIPT_COST_PROJECTION_SCHEMA_VERSION {
         migrate_archive_receipt_cost_projection(&transaction)?;
     }

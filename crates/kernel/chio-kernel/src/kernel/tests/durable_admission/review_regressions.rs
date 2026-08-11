@@ -154,10 +154,12 @@ fn durable_startup_reconciliation_rejects_late_pool_ledger_installation() {
         .reconcile_durable_admission_startup()
         .expect("complete startup reconciliation before pool configuration");
 
+    let ledger = std::sync::Arc::new(RecordingLedger::default());
     assert_eq!(
-        kernel.set_finding_pool_ledger(std::sync::Arc::new(RecordingLedger::default())),
+        kernel.set_finding_pool_ledger(ledger.clone()),
         Err(FindingPoolLedgerError::StartupAlreadyReconciled)
     );
+    assert_eq!(ledger.receipt_sink_id(), None);
 }
 
 #[cfg(feature = "cognition-market-experimental")]

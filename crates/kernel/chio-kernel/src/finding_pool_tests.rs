@@ -30,6 +30,13 @@ pub(crate) struct RecordingLedger {
 }
 
 impl RecordingLedger {
+    pub(crate) fn receipt_sink_id(&self) -> Option<String> {
+        self.receipt_sink_id
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
     pub(crate) fn unknown_dispatch_finalizations(&self) -> Vec<String> {
         self.unknown_dispatch_finalizations
             .lock()

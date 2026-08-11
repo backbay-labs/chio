@@ -26,7 +26,27 @@ fn archive_schema_is_stamped_and_rejects_older_binaries() -> Result<(), Box<dyn 
     let mut connection = rusqlite::Connection::open_in_memory()?;
     connection.execute_batch(&format!("ATTACH DATABASE '{escaped_archive}' AS archive"))?;
     create_archive_schema(&mut connection)?;
+    let first_sink_id: String = connection.query_row(
+        "SELECT sink_id FROM archive.chio_receipt_sink_identity WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(
+        uuid::Uuid::parse_str(&first_sink_id)?.to_string(),
+        first_sink_id
+    );
+    create_archive_schema(&mut connection)?;
+    let replayed_sink_id: String = connection.query_row(
+        "SELECT sink_id FROM archive.chio_receipt_sink_identity WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(replayed_sink_id, first_sink_id);
     connection.execute_batch("DETACH DATABASE archive")?;
+
+    let reopened = crate::SqliteReceiptStore::open_existing(&archive)?;
+    assert_eq!(reopened.durable_sink_id(), Some(first_sink_id.as_str()));
+    drop(reopened);
 
     let archived = rusqlite::Connection::open(&archive)?;
     let application_id: i32 = archived.query_row("PRAGMA application_id", [], |row| row.get(0))?;

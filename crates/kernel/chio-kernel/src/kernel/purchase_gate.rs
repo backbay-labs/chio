@@ -370,8 +370,8 @@ impl ChioKernel {
             .as_ref()
             .and_then(|store| store.durable_sink_id())
             .ok_or(crate::finding_pool::FindingPoolLedgerError::InvalidReceiptSink)?;
-        ledger.bind_receipt_sink(receipt_sink_id)?;
         self.ensure_finding_pool_configuration_precedes_startup_reconciliation()?;
+        ledger.bind_receipt_sink(receipt_sink_id)?;
         self.finding_pool_ledger = Some(ledger);
         Ok(())
     }
