@@ -160,7 +160,6 @@ fn durable_startup_reconciliation_rejects_late_pool_ledger_installation() {
     assert_eq!(ledger.receipt_sink_id(), None);
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn durable_startup_reconciliation_drains_the_pool_receipt_outbox() {
     use crate::finding_pool::tests::{purchase, RecordingLedger};
