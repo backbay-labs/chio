@@ -67,6 +67,7 @@ pub trait CognitionMarketStatusTrustStore: Send + Sync {
 pub struct CognitionMarketProofTrust {
     pub trusted_passport_signer_keys: Vec<PublicKey>,
     pub trusted_checkpoint_signer_keys: Vec<PublicKey>,
+    pub profile_governance_authority: PublicKey,
     pub finding_verifier_authority: PublicKey,
     pub trusted_verifier_profile_envelope_sha256: String,
     pub trusted_verifier_profile: SignedFindingChallengeVerifierProfile,
@@ -246,7 +247,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     }
     verify_signed_profile(
         &trust.trusted_verifier_profile,
-        &trust.trusted_verifier_profile.body.governance_authority,
+        &trust.profile_governance_authority,
     )
     .map_err(|error| claim_failed(format!("trusted verifier profile is invalid: {error}")))?;
     verify_signed_verifier_report(&report, &trust.finding_verifier_authority)

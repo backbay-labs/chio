@@ -516,6 +516,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
     let trust = CognitionMarketProofTrust {
         trusted_passport_signer_keys: vec![root.public_key()],
         trusted_checkpoint_signer_keys: Vec::new(),
+        profile_governance_authority: Keypair::from_seed(&[8_u8; 32]).public_key(),
         finding_verifier_authority: verifier_keypair().public_key(),
         trusted_verifier_profile_envelope_sha256,
         trusted_verifier_profile,
@@ -1166,6 +1167,29 @@ fn cognition_market_qualified_profile_rejects_unpinned_profile() -> TestResult {
         .to_string();
     assert!(
         error.contains("deployment-pinned verifier profile"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_self_pinned_governance() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let unauthorized_governance = Keypair::from_seed(&[88_u8; 32]);
+    let mut profile = bundle.trust.trusted_verifier_profile.body.clone();
+    profile.governance_authority = unauthorized_governance.public_key();
+    profile.required_facets.clear();
+    profile.profile_id = compute_profile_id(&profile)?;
+    let signed = SignedExportEnvelope::sign(profile, &unauthorized_governance)?;
+    bundle.trust.trusted_verifier_profile_envelope_sha256 = signed_envelope_sha256(&signed)?;
+    bundle.trust.trusted_verifier_profile = signed;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("a self-pinned profile governance authority was accepted")?
+        .to_string();
+    assert!(
+        error.contains("envelope signer does not match the pinned authority: profile"),
         "unexpected error: {error}"
     );
     Ok(())

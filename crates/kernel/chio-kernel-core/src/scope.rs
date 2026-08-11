@@ -232,7 +232,9 @@ fn constraint_matches(
         Constraint::Custom(key, _)
             if key == "output_digest_sha256"
                 || key == "require_finding_purchase"
-                || key == "require_finding_recovery" =>
+                || key == "require_finding_recovery"
+                || key == "recovery_of_receipt_id"
+                || key == "recovery_of_capability_id" =>
         {
             Err(ScopeMatchError::ConstraintError(format!(
                 "{key} must use its first-class constraint, not Custom"
@@ -706,6 +708,8 @@ mod delivery_spelling_tests {
             ("output_digest_sha256", "aa"),
             ("require_finding_purchase", "finding-1"),
             ("require_finding_recovery", "finding-1"),
+            ("recovery_of_receipt_id", "receipt-1"),
+            ("recovery_of_capability_id", "capability-1"),
         ] {
             let scope = ChioScope {
                 grants: vec![

@@ -134,6 +134,7 @@ running `chio proof verify <transaction-passport.json>`:
 
 ```bash
 export CHIO_TRANSACTION_TRUSTED_ROOT_KEYS=<passport-root-public-key>
+export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY=<profile-governance-public-key>
 export CHIO_FINDING_VERIFIER_AUTHORITY_KEY=<finding-verifier-public-key>
 export CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256=<approved-profile-envelope-digest>
 export CHIO_FINDING_VERIFIER_PROFILE_PATH=<canonical-signed-verifier-profile.json>
@@ -149,8 +150,9 @@ export CHIO_FINDING_STATUS_MAX_AGE_SECONDS=<deployment-freshness-limit>
 
 The signed profile is the only source of the verifier key epoch, validity
 window, rotation policy, revocation source, and required facet floor. Its
-signer key must equal the separately pinned authority key. The verifier loads
-the profile's exact canonical bytes, requires their digest to match the
+governance signer must equal the separately pinned profile-governance key, and
+its report signer must equal the separately pinned verifier key. The verifier
+loads the profile's exact canonical bytes, requires their digest to match the
 out-of-band profile pin, and verifies the profile signature and lifecycle. It
 also requires the report to bind the deployment-pinned trust-root snapshot,
 resolver policy, and trusted-time input. Verification fails closed when any

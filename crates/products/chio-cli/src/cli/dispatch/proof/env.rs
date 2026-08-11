@@ -16,6 +16,8 @@ const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_K
 const TRANSACTION_TRUSTED_CHECKPOINT_KEYS_ENV: &str =
     "CHIO_TRANSACTION_TRUSTED_CHECKPOINT_KEYS";
 const FINDING_VERIFIER_AUTHORITY_KEY_ENV: &str = "CHIO_FINDING_VERIFIER_AUTHORITY_KEY";
+const FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV: &str =
+    "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY";
 const FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV: &str =
     "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256";
 const FINDING_VERIFIER_PROFILE_PATH_ENV: &str = "CHIO_FINDING_VERIFIER_PROFILE_PATH";
@@ -216,6 +218,18 @@ pub(super) fn cognition_market_proof_trust_from_env(
     trusted_checkpoint_signer_keys: &[chio_core_types::PublicKey],
     status_claim_selected: bool,
 ) -> Result<chio_control_plane::transaction_passport::CognitionMarketProofTrust, CliError> {
+    let governance_keys = required_public_keys_from_env(
+        FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV,
+        "Finding profile governance authority",
+    )?;
+    if governance_keys.len() != 1 {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV} must contain exactly one public key"
+        )));
+    }
+    let profile_governance_authority = governance_keys.into_iter().next().ok_or_else(|| {
+        CliError::cli_other_error("Finding profile governance authority key is missing")
+    })?;
     let verifier_keys = required_public_keys_from_env(
         FINDING_VERIFIER_AUTHORITY_KEY_ENV,
         "Finding verifier authority",
@@ -230,6 +244,15 @@ pub(super) fn cognition_market_proof_trust_from_env(
         .next()
         .ok_or_else(|| CliError::cli_other_error("Finding verifier authority key is missing"))?;
     let trusted_verifier_profile = finding_verifier_profile_from_env()?;
+    chio_finding::verify_signed_profile(
+        &trusted_verifier_profile,
+        &profile_governance_authority,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_PROFILE_PATH_ENV} is not authorized by {FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV}: {error}"
+        ))
+    })?;
     if trusted_verifier_profile.body.verifier_report_signer.key != finding_verifier_authority {
         return Err(CliError::cli_other_error(format!(
             "{FINDING_VERIFIER_PROFILE_PATH_ENV} signer key does not match {FINDING_VERIFIER_AUTHORITY_KEY_ENV}"
@@ -252,6 +275,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
         chio_control_plane::transaction_passport::CognitionMarketProofTrust {
             trusted_passport_signer_keys: trusted_passport_signer_keys.to_vec(),
             trusted_checkpoint_signer_keys: trusted_checkpoint_signer_keys.to_vec(),
+            profile_governance_authority,
             finding_verifier_authority,
             trusted_verifier_profile_envelope_sha256,
             trusted_verifier_profile,

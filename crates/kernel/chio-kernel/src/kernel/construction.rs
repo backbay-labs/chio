@@ -294,9 +294,7 @@ impl ChioKernel {
             finding_pool_allocation_authority: None,
             finding_pool_receipt_authority: None,
             finding_pool_ledger: None,
-            #[cfg(feature = "cognition-market-experimental")]
             finding_pool_outbox_worker_id: uuid::Uuid::now_v7().to_string(),
-            #[cfg(feature = "cognition-market-experimental")]
             finding_pool_mutation_receipt_flush_lock: Mutex::new(()),
             price_oracle: None,
             runtime_admission_hook: None,
@@ -742,7 +740,6 @@ impl ChioKernel {
         outcome_store: Arc<dyn crate::tool_outcome::QualifiedToolOutcomeStore>,
         fence: crate::admission_operation::StoreMutationFence,
     ) -> Result<(), crate::admission_operation::AdmissionOperationError> {
-        #[cfg(feature = "cognition-market-experimental")]
         if self.finding_pool_ledger.is_some() && self.durable_admission_runtime.is_some() {
             return Err(
                 crate::admission_operation::AdmissionOperationError::FindingPoolLedgerAlreadyConfigured,

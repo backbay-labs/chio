@@ -118,9 +118,14 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
         Err(poisoned) => poisoned.into_inner(),
     };
     let (profile_path, profile, profile_digest) = verifier_profile_fixture();
+    let governance_key = profile.body.governance_authority.to_hex();
     let verifier_key = profile.body.verifier_report_signer.key.clone();
     let verifier_key = verifier_key.to_hex();
     let _env = TestEnvGuard::set(&[
+        (
+            "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY",
+            std::ffi::OsStr::new(&governance_key),
+        ),
         (
             "CHIO_FINDING_VERIFIER_AUTHORITY_KEY",
             std::ffi::OsStr::new(&verifier_key),
@@ -162,6 +167,22 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
     assert_eq!(
         trust.trusted_verifier_profile.body.required_facets,
         profile.body.required_facets
+    );
+
+    let unauthorized_governance = chio_core_types::Keypair::from_seed(&[99_u8; 32])
+        .public_key()
+        .to_hex();
+    let _unauthorized_env = TestEnvGuard::set(&[(
+        "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY",
+        std::ffi::OsStr::new(&unauthorized_governance),
+    )]);
+    let error = match cognition_market_proof_trust_from_env(&[], &[], false) {
+        Ok(_) => panic!("self-pinned profile governance authority was accepted"),
+        Err(error) => error.to_string(),
+    };
+    assert!(
+        error.contains("CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY"),
+        "unexpected error: {error}"
     );
 }
 
@@ -265,6 +286,7 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
     };
     let tempdir = proof_test_ok(tempfile::tempdir(), "create tempdir");
     let (profile_path, profile, profile_digest) = verifier_profile_fixture();
+    let governance_key = profile.body.governance_authority.to_hex();
     let verifier_authority = profile.body.verifier_report_signer.key.clone();
     let verifier_authority_hex = verifier_authority.to_hex();
     let authorization = chio_finding::FindingStatusOperatorAuthorization {
@@ -329,6 +351,10 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         "provision status authority store",
     );
     let _env = TestEnvGuard::set(&[
+        (
+            "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY",
+            std::ffi::OsStr::new(&governance_key),
+        ),
         (
             "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS",
             std::ffi::OsStr::new(
