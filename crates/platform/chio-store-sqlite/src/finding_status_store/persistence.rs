@@ -1774,6 +1774,15 @@ pub(crate) fn initialize_finding_status_schema(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(sqlite_error)?;
+    if on_disk == 1 {
+        // Revision 2 starts the enforceable inclusion window at finality.
+        // The only schema change is the lifecycle trigger that permits the
+        // waiting-to-eligible edge to atomically replace the provisional
+        // timestamps with that finality-derived window.
+        transaction
+            .execute_batch("DROP TRIGGER IF EXISTS finding_retraction_intents_lifecycle;")
+            .map_err(sqlite_error)?;
+    }
     transaction
         .execute_batch(FINDING_STATUS_SCHEMA)
         .map_err(sqlite_error)?;

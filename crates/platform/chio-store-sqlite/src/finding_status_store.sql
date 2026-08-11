@@ -210,12 +210,16 @@ WHEN NEW.intent_id <> OLD.intent_id
   OR NEW.source <> OLD.source
   OR NEW.intent_sha256 <> OLD.intent_sha256
   OR NEW.intent_bytes <> OLD.intent_bytes
-  OR NEW.issued_at <> OLD.issued_at
-  OR NEW.inclusion_deadline <> OLD.inclusion_deadline
   OR NEW.created_at <> OLD.created_at
   OR NOT (
-      (OLD.state = 'waiting_finality' AND NEW.state = 'dispatch_eligible')
-      OR (OLD.state = 'dispatch_eligible' AND NEW.state = 'published')
+      (OLD.state = 'waiting_finality'
+          AND NEW.state = 'dispatch_eligible'
+          AND NEW.issued_at = NEW.dispatch_eligible_at
+          AND NEW.inclusion_deadline > NEW.issued_at)
+      OR (OLD.state = 'dispatch_eligible'
+          AND NEW.state = 'published'
+          AND NEW.issued_at = OLD.issued_at
+          AND NEW.inclusion_deadline = OLD.inclusion_deadline)
   )
 BEGIN
     SELECT RAISE(ABORT, 'invalid finding retraction intent transition');

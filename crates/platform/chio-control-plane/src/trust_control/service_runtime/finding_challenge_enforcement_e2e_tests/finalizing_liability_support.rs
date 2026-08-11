@@ -253,14 +253,11 @@ fn finalizing_liability_with_prior_retraction(
         &anchor,
     )?;
     let anchor_key = derive_anchor_evidence_intent_key(&prepared.evidence_hash);
-    let anchor_commitment = sha256_hex(
-        format!(
-            "chio.finding.effect.anchor-evidence.v1\0{liability_key}\0{enforcement_id}\0{penalty}\0{root}",
-            enforcement_id = enforcement.body.enforcement_id,
-            penalty = enforcement.body.penalty_envelope_sha256,
-            root = prepared.merkle_root,
-        )
-        .as_bytes(),
+    let anchor_commitment = anchor_evidence_intent_commitment(
+        &liability_key,
+        &intent_key,
+        &penalty_envelope_sha256,
+        &prepared.merkle_root,
     );
     if anchor_fenced {
         deployment.challenges.record_effect_intent(
@@ -271,14 +268,14 @@ fn finalizing_liability_with_prior_retraction(
             false,
             NOW + 5,
         )?;
+        deployment.challenges.bind_effect_root(
+            &anchor_key,
+            &liability_key,
+            &prepared.merkle_root,
+            &prepared.evidence_hash,
+            NOW + 5,
+        )?;
         if prior_retraction != PriorVoluntaryRetraction::None {
-            deployment.challenges.bind_effect_root(
-                &anchor_key,
-                &liability_key,
-                &prepared.merkle_root,
-                &prepared.evidence_hash,
-                NOW + 5,
-            )?;
             deployment.challenges.advance_effect_intent(
                 &anchor_key,
                 FindingEffectIntentState::Dispatched,
@@ -482,6 +479,7 @@ impl FinalizingLiability {
             &byte_hex64(0xc3),
             &evidence,
             now,
+            market_config().status_feed_service_bond.inclusion_sla_secs,
         )?;
         Ok(())
     }

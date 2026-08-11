@@ -371,13 +371,13 @@ fn dispatch_eligibility_replay_retains_the_original_authorization_time() {
         .expect("persist intent");
     assert_eq!(
         store
-            .mark_retraction_dispatch_eligible(&intent_id, evidence, NOW + 3)
+            .mark_retraction_dispatch_eligible(&intent_id, evidence, NOW + 3, 500)
             .expect("authorize dispatch"),
         FindingStatusWriteOutcome::Inserted
     );
     assert_eq!(
         store
-            .mark_retraction_dispatch_eligible(&intent_id, evidence, NOW + 30)
+            .mark_retraction_dispatch_eligible(&intent_id, evidence, NOW + 30, 500)
             .expect("replay the same finality evidence at a later retry clock"),
         FindingStatusWriteOutcome::ExactReplay
     );
@@ -386,6 +386,68 @@ fn dispatch_eligibility_replay_retains_the_original_authorization_time() {
         .expect("load intent")
         .expect("intent remains durable");
     assert_eq!(retained.dispatch_eligible_at, Some(NOW + 3));
+    assert_eq!(retained.issued_at, NOW + 3);
+    assert_eq!(retained.inclusion_deadline, NOW + 503);
+}
+
+#[test]
+fn schema_v1_migration_moves_the_inclusion_window_to_finality() {
+    let fixture = DurableFixture::new();
+    let connection = Connection::open(&fixture.database).expect("open authority database");
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER finding_retraction_intents_lifecycle;
+            CREATE TRIGGER finding_retraction_intents_lifecycle
+            BEFORE UPDATE ON finding_retraction_intents
+            WHEN NEW.intent_id <> OLD.intent_id
+              OR NEW.source <> OLD.source
+              OR NEW.intent_sha256 <> OLD.intent_sha256
+              OR NEW.intent_bytes <> OLD.intent_bytes
+              OR NEW.issued_at <> OLD.issued_at
+              OR NEW.inclusion_deadline <> OLD.inclusion_deadline
+              OR NEW.created_at <> OLD.created_at
+              OR NOT (
+                  (OLD.state = 'waiting_finality' AND NEW.state = 'dispatch_eligible')
+                  OR (OLD.state = 'dispatch_eligible' AND NEW.state = 'published')
+              )
+            BEGIN
+                SELECT RAISE(ABORT, 'invalid finding retraction intent transition');
+            END;
+            "#,
+        )
+        .expect("restore revision one lifecycle trigger");
+    crate::stamp_schema_version(&connection, FINDING_STATUS_SCHEMA_KEY, 1)
+        .expect("stamp revision one");
+    drop(connection);
+
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('6');
+    let intent_id = hex64('7');
+    store
+        .issue_retraction_intent(&FindingRetractionIntentInput {
+            intent_id: &intent_id,
+            feed_id: FEED,
+            operator_id: OPERATOR,
+            finding_id: &finding_id,
+            source: FindingRetractionIntentSource::Enforcement,
+            intent_bytes: b"signed-enforcement-intent",
+            issued_at: NOW + 1,
+            inclusion_deadline: NOW + 500,
+            created_at: NOW + 2,
+        })
+        .expect("persist intent after migration");
+    store
+        .mark_retraction_dispatch_eligible(&intent_id, b"finality", NOW + 40, 500)
+        .expect("start inclusion window at finality");
+
+    let retained = store
+        .get_retraction_intent(&intent_id)
+        .expect("load intent")
+        .expect("intent remains durable");
+    assert_eq!(retained.issued_at, NOW + 40);
+    assert_eq!(retained.inclusion_deadline, NOW + 540);
 }
 
 #[test]

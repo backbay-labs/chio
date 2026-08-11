@@ -330,8 +330,24 @@ impl FindingStatusEpochPublisher {
             );
         }
 
-        let mut proof_bytes = Vec::with_capacity(leaves.len());
-        for (finding_id, (intent_sha256, _)) in &leaves {
+        // An advancing epoch changes the proof path for every retained leaf,
+        // but persisting all of those paths on every batch grows the proof
+        // table quadratically. Retain proofs for the newly published leaves
+        // plus the point explicitly requested by this call. Any older leaf is
+        // regenerated against the current signed epoch by `publish_retraction`
+        // when a consumer requests it.
+        let mut proof_targets = new_intents
+            .iter()
+            .map(|intent| (intent.finding_id.clone(), intent.intent_sha256.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let requested_intent_sha256 = leaves
+            .get(requested_finding_id)
+            .map(|(intent_sha256, _)| intent_sha256.clone())
+            .ok_or_else(|| "requested retraction is missing from the sparse map".to_owned())?;
+        proof_targets.insert(requested_finding_id.to_owned(), requested_intent_sha256);
+
+        let mut proof_bytes = Vec::with_capacity(proof_targets.len());
+        for (finding_id, intent_sha256) in &proof_targets {
             let sparse = map.proof(finding_id).map_err(|error| error.to_string())?;
             let proof =
                 build_status_inclusion_proof_input(signed, finding_id, intent_sha256, &sparse, now)

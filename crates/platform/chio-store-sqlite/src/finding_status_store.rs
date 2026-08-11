@@ -26,7 +26,7 @@ use crate::finding_challenge_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_STATUS_SCHEMA_KEY: &str = "finding_status";
-pub(crate) const FINDING_STATUS_SUPPORTED_SCHEMA_VERSION: i32 = 1;
+pub(crate) const FINDING_STATUS_SUPPORTED_SCHEMA_VERSION: i32 = 2;
 const FINDING_STATUS_SCHEMA_ANCHORS: &[&str] = &[
     "finding_status_feeds",
     "admission_operations",
@@ -637,6 +637,7 @@ impl SqliteFindingStatusStore {
         intent_id: &str,
         finality_evidence_bytes: &[u8],
         authorized_at: u64,
+        inclusion_sla_secs: u64,
     ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
         require_hex64(intent_id, "intent_id")?;
         require_bytes(
@@ -645,6 +646,11 @@ impl SqliteFindingStatusStore {
             "finality_evidence_bytes",
         )?;
         require_positive(authorized_at, "authorized_at")?;
+        require_positive(inclusion_sla_secs, "inclusion_sla_secs")?;
+        let inclusion_deadline = authorized_at
+            .checked_add(inclusion_sla_secs)
+            .ok_or_else(|| invariant("dispatch inclusion deadline overflowed"))?;
+        let inclusion_deadline = sqlite_i64(inclusion_deadline, "inclusion_deadline")?;
         let evidence_sha256 = sha256_hex(finality_evidence_bytes);
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
@@ -665,6 +671,8 @@ impl SqliteFindingStatusStore {
                         SET state = 'dispatch_eligible',
                             finality_evidence_sha256 = ?2,
                             finality_evidence_bytes = ?3,
+                            issued_at = ?4,
+                            inclusion_deadline = ?5,
                             dispatch_eligible_at = ?4,
                             updated_at = ?4
                         WHERE intent_id = ?1 AND state = 'waiting_finality'
@@ -674,6 +682,7 @@ impl SqliteFindingStatusStore {
                             evidence_sha256,
                             finality_evidence_bytes,
                             sqlite_i64(authorized_at, "authorized_at")?,
+                            inclusion_deadline,
                         ],
                     )
                     .map_err(sqlite_error)?;

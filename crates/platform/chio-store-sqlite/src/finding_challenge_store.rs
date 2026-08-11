@@ -1892,7 +1892,8 @@ impl SqliteFindingChallengeStore {
     /// later appeal refuse because the liability is no longer pending
     /// appeal. Neither ordering can strand a successful appeal behind a
     /// finalizing head.
-    pub fn begin_finalizing_under_sanction(
+    #[cfg(test)]
+    pub(crate) fn begin_finalizing_under_sanction(
         &self,
         liability_key: &str,
         expected_state: FindingLiabilityState,

@@ -46,6 +46,21 @@ impl FindingChallengeCoordinator {
             )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
             .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        let inclusion_deadline = now
+            .checked_add(self.status_feed_service_bond.inclusion_sla_secs)
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::Configuration(
+                    "finding status inclusion deadline overflowed".to_owned(),
+                )
+            })?;
+        require_status_feed_through(
+            &self.status_feed_operator,
+            &self.status_feed_service_bond,
+            &self.status_feed_operator_ref,
+            now,
+            inclusion_deadline,
+        )
+        .map_err(|error| ChallengeCoordinatorError::Configuration(error.to_string()))?;
         match (record.source, record.state) {
             (
                 FindingRetractionIntentSource::Voluntary,
@@ -57,7 +72,12 @@ impl FindingChallengeCoordinator {
                 FindingRetractionIntentState::WaitingFinality,
             ) => {
                 self.status
-                    .mark_retraction_dispatch_eligible(&record.intent_id, &evidence, now)
+                    .mark_retraction_dispatch_eligible(
+                        &record.intent_id,
+                        &evidence,
+                        now,
+                        self.status_feed_service_bond.inclusion_sla_secs,
+                    )
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;

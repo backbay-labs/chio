@@ -295,12 +295,14 @@ async fn finding_status_retraction() -> TestResult {
         now + 1,
         200,
     )?;
-    assert!(!refresh_candidates
+    assert!(refresh_candidates
         .iter()
         .any(|candidate| candidate.intent_id == intent_id));
-    let refreshed_included = status_gate_store
+    assert!(status_gate_store
         .get_latest_proof(&config.status_feed_operator_ref, &lane.deployment.web.finding_id)?
-        .ok_or("cadence batch refreshed the existing retraction proof")?;
+        .is_none());
+    let refreshed_included =
+        status_gate_publisher.publish_retraction(&intent_id, &[], now + 1)?;
     assert_eq!(refreshed_included.map_epoch, second_included.map_epoch);
     assert_eq!(
         refreshed_included.kind,
