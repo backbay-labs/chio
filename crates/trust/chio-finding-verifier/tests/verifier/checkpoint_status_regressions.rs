@@ -31,12 +31,15 @@ fn revoked_checkpoint_signer_cannot_backdate_new_evidence() -> TestResult {
         .checkpoint_signer_status
         .as_mut()
         .ok_or("checkpoint signer status trust missing")?;
-    let mut status = fx.checkpoint_signer_status.body.clone();
-    status.revoked_from = Some(status.observed_at.saturating_sub(1));
-    status_trust.signed_statuses = vec![SignedExportEnvelope::sign(
-        status,
-        &fx.checkpoint_status_authority,
-    )?];
+    let signed_status = status_trust
+        .signed_statuses
+        .iter_mut()
+        .find(|signed| signed.body == fx.checkpoint_signer_status.body)
+        .ok_or("checkpoint signer status missing")?;
+    signed_status.body.revoked_from = Some(signed_status.body.observed_at.saturating_sub(1));
+    signed_status.signature = fx
+        .checkpoint_status_authority
+        .sign(&canonical_json_bytes(&signed_status.body)?);
 
     let draft =
         verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;

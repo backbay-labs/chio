@@ -31,14 +31,14 @@ use chio_core_types::receipt::metadata::{
 use chio_core_types::receipt::MEDIATED_SPEND_PROFILE;
 use chio_finding::{
     compute_report_id, signed_envelope_sha256, verify_finding, verify_pinned_envelope,
-    verify_signed_bond_backing, verify_signed_profile, verify_status_proof_input, Finding,
-    FindingAuthorityKeyPolicy, FindingChallengeVerifierProfile, FindingEvidenceClass,
-    FindingFacetKind, FindingFacetOutcome, FindingFacetResult, FindingGuaranteeClass,
-    FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
-    FindingStatusOperatorAuthorization, FindingStatusProofInput, FindingVerifierReport,
-    SignedFindingAuthorityStatus, SignedFindingBondBacking, SignedFindingChallengeVerifierProfile,
-    SignedFindingVerifierReport, FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1,
-    FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    verify_signed_authority_status, verify_signed_bond_backing, verify_signed_profile,
+    verify_status_proof_input, Finding, FindingAuthorityKeyPolicy, FindingChallengeVerifierProfile,
+    FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome, FindingFacetResult,
+    FindingGuaranteeClass, FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput,
+    FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusProofInput,
+    FindingVerifierReport, SignedFindingAuthorityStatus, SignedFindingBondBacking,
+    SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
+    FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
@@ -61,7 +61,7 @@ pub const MAX_RAW_FINDING_BYTES: usize = 256 * 1024;
 pub const FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1: &str = "chio.finding.bond-store-snapshot.v1";
 
 /// Fresh, independently authenticated revocation standing for every
-/// checkpoint signer a verifier may accept during this evaluation.
+/// receipt or checkpoint signer a verifier may accept during this evaluation.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct FindingCheckpointSignerStatusTrust {
@@ -126,8 +126,9 @@ pub struct FindingVerifierTrustRoots {
     pub status_operator_authorization: Option<FindingStatusOperatorAuthorization>,
     /// Trusted-time freshness policy applied to the portable status proof.
     pub status_freshness_policy: Option<FindingStatusFreshnessPolicy>,
-    /// Current authenticated standing for the profile-pinned checkpoint
-    /// signers. Missing or stale standing denies checkpoint membership.
+    /// Current authenticated standing for the profile-pinned receipt and
+    /// checkpoint signers. The historical field name is retained for input
+    /// compatibility. Missing or stale standing denies the affected evidence.
     pub checkpoint_signer_status: Option<FindingCheckpointSignerStatusTrust>,
     /// Venue trusted time for the evaluation stamp.
     pub trusted_time: u64,
@@ -321,7 +322,56 @@ fn verify_required_receipt_semantics(
         .nonce_for(receipt)
         .ok_or_else(|| "execution nonce evidence not supplied".to_string())?;
     is_authoritative_spend_receipt(receipt, admitted_kernel_keys, nonce)
-        .map_err(|reason| format!("receipt is not authoritative mediated spend: {reason:?}"))
+        .map_err(|reason| format!("receipt is not authoritative mediated spend: {reason:?}"))?;
+    let issued_at = u64::try_from(nonce.nonce.issued_at)
+        .map_err(|_| "execution nonce validity interval is invalid".to_string())?;
+    let expires_at = u64::try_from(nonce.nonce.expires_at)
+        .map_err(|_| "execution nonce validity interval is invalid".to_string())?;
+    if issued_at >= expires_at || receipt.timestamp < issued_at || receipt.timestamp >= expires_at {
+        return Err("execution nonce was not active at receipt issuance".to_string());
+    }
+    Ok(())
+}
+
+fn verify_receipt_signer_status(
+    policy: &FindingAuthorityKeyPolicy,
+    acted_at: u64,
+    evaluated_at: u64,
+    trust: Option<&FindingCheckpointSignerStatusTrust>,
+) -> Result<(), String> {
+    let trust = trust.ok_or_else(|| "receipt signer status evidence not supplied".to_string())?;
+    if trust.max_age_secs == 0 {
+        return Err("receipt signer status freshness policy is invalid".to_string());
+    }
+    let mut matching = trust.signed_statuses.iter().filter(|signed| {
+        let status = &signed.body;
+        status.status_ref == policy.revocation_status_ref
+            && status.authority_id == policy.authority_id
+            && status.key == policy.key
+            && status.key_epoch == policy.key_epoch
+    });
+    let signed_status = matching
+        .next()
+        .ok_or_else(|| "receipt signer status evidence not supplied".to_string())?;
+    if matching.next().is_some() {
+        return Err("duplicate receipt signer status evidence".to_string());
+    }
+    verify_signed_authority_status(signed_status, &trust.status_authority)
+        .map_err(|_| "receipt signer status signature is invalid".to_string())?;
+    let status = &signed_status.body;
+    if status.observed_at < acted_at
+        || status.observed_at > evaluated_at
+        || evaluated_at.saturating_sub(status.observed_at) > trust.max_age_secs
+    {
+        return Err("receipt signer status evidence is stale".to_string());
+    }
+    // A receipt timestamp is signer-controlled. Without an authenticated
+    // pre-revocation publication anchor at this stage, a revoked signer could
+    // create a new backdated receipt, so any observed revocation denies it.
+    if status.revoked_from.is_some() {
+        return Err("receipt signer is revoked".to_string());
+    }
+    Ok(())
 }
 
 fn verify_finding_delivery_receipt(
@@ -330,6 +380,7 @@ fn verify_finding_delivery_receipt(
     evidence: &ResolvedReceiptEvidence,
     admitted_kernel_keys: &[PublicKey],
     nonce_resolver: &dyn FindingNonceResolver,
+    signer_status: Option<&FindingCheckpointSignerStatusTrust>,
     evaluation_time: u64,
 ) -> Result<String, String> {
     let receipt = &evidence.receipt;
@@ -359,7 +410,7 @@ fn verify_finding_delivery_receipt(
             receipt.id
         ));
     }
-    let is_delivery = profile.receipt_signers.iter().any(|signer| {
+    let delivery_policy = profile.receipt_signers.iter().find(|signer| {
         signer.role == FindingReceiptRole::Delivery
             && signer.policy.key == receipt.kernel_key
             && policy_covers(&signer.policy, receipt.timestamp)
@@ -369,12 +420,25 @@ fn verify_finding_delivery_receipt(
             && signer.policy.key == receipt.kernel_key
             && policy_covers(&signer.policy, receipt.timestamp)
     });
-    if !is_delivery || has_other_role || !receipt.is_allowed() {
+    let Some(delivery_policy) = delivery_policy else {
+        return Err(format!(
+            "delivery receipt {} is not an unambiguous profile-pinned delivery allow receipt",
+            receipt.id
+        ));
+    };
+    if has_other_role || !receipt.is_allowed() {
         return Err(format!(
             "delivery receipt {} is not an unambiguous profile-pinned delivery allow receipt",
             receipt.id
         ));
     }
+    verify_receipt_signer_status(
+        &delivery_policy.policy,
+        receipt.timestamp,
+        evaluation_time,
+        signer_status,
+    )
+    .map_err(|error| format!("delivery receipt {} {error}", receipt.id))?;
     verify_required_receipt_semantics(
         receipt,
         &profile.required_receipt_semantics,
@@ -581,14 +645,24 @@ pub fn verify_finding_evidence(
             ));
             break;
         }
-        if !production_signers.iter().any(|policy| {
+        let production_signer = production_signers.iter().find(|policy| {
             policy.key == evidence.receipt.kernel_key
                 && policy_covers(policy, evidence.receipt.timestamp)
-        }) {
+        });
+        let Some(production_signer) = production_signer else {
             failure = Some(format!(
                 "receipt {} signer is not a profile-pinned production key active at the receipt timestamp",
                 evidence.receipt.id
             ));
+            break;
+        };
+        if let Err(error) = verify_receipt_signer_status(
+            production_signer,
+            evidence.receipt.timestamp,
+            trust.trusted_time,
+            trust.checkpoint_signer_status.as_ref(),
+        ) {
+            failure = Some(format!("receipt {} {error}", evidence.receipt.id));
             break;
         }
         production_receipt_indexes.push(index);
@@ -623,6 +697,7 @@ pub fn verify_finding_evidence(
                 &delivery.receipt,
                 &trust.admitted_kernel_keys,
                 bundle.nonce_resolver,
+                trust.checkpoint_signer_status.as_ref(),
                 trust.trusted_time,
             ) {
                 Ok(receipt_id) => authenticated_delivery_receipt_id = Some(receipt_id),
@@ -1569,6 +1644,8 @@ fn bundle_digest(
         checkpoint_status_authority: Option<String>,
         checkpoint_status_max_age_secs: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        finding_delivery_execution_nonce_envelope_sha256: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         finding_delivery_receipt_sha256: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         finding_delivery_inclusion_proof_sha256: Option<String>,
@@ -1602,6 +1679,14 @@ fn bundle_digest(
             execution_nonce_envelope_sha256s.push(sha256_hex(&bytes));
         }
     }
+    let finding_delivery_execution_nonce_envelope_sha256 = bundle
+        .finding_delivery
+        .as_ref()
+        .and_then(|delivery| bundle.nonce_resolver.nonce_for(&delivery.receipt.receipt))
+        .map(canonical_json_bytes)
+        .transpose()
+        .map_err(|_| FindingVerifierError::Canonicalization)?
+        .map(|bytes| sha256_hex(&bytes));
     let mut checkpoint_sha256s = Vec::with_capacity(bundle.checkpoints.len());
     for checkpoint in &bundle.checkpoints {
         let bytes =
@@ -1703,6 +1788,7 @@ fn bundle_digest(
             .checkpoint_signer_status
             .as_ref()
             .map(|status| status.max_age_secs),
+        finding_delivery_execution_nonce_envelope_sha256,
         finding_delivery_receipt_sha256,
         finding_delivery_inclusion_proof_sha256,
         finding_delivery_checkpoint_sha256s,

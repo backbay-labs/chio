@@ -252,6 +252,7 @@ struct Fixture {
     nonce_resolver: TestNonceResolver,
     checkpoint_status_authority: Keypair,
     checkpoint_signer_status: SignedFindingAuthorityStatus,
+    receipt_signer_statuses: Vec<SignedFindingAuthorityStatus>,
 }
 
 fn key_policy(seed: u8, label: &str) -> FindingAuthorityKeyPolicy {
@@ -564,6 +565,10 @@ fn fixture_with_runtime_assurance(
         },
         &checkpoint_status_authority,
     )?;
+    let receipt_signer_statuses = receipt_security_regressions::receipt_signer_statuses(
+        &profile,
+        &checkpoint_status_authority,
+    )?;
 
     Ok(Fixture {
         issuer,
@@ -581,6 +586,7 @@ fn fixture_with_runtime_assurance(
         nonce_resolver,
         checkpoint_status_authority,
         checkpoint_signer_status,
+        receipt_signer_statuses,
     })
 }
 
@@ -680,7 +686,9 @@ fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
         status_operator_authorization: None,
         status_freshness_policy: None,
         checkpoint_signer_status: Some(FindingCheckpointSignerStatusTrust {
-            signed_statuses: vec![fx.checkpoint_signer_status.clone()],
+            signed_statuses: std::iter::once(fx.checkpoint_signer_status.clone())
+                .chain(fx.receipt_signer_statuses.iter().cloned())
+                .collect(),
             status_authority: fx.checkpoint_status_authority.public_key(),
             max_age_secs: 300,
         }),
@@ -1972,3 +1980,5 @@ fn unsigned_collateral_store_state_is_not_verified() -> TestResult {
 mod authority_regressions;
 #[path = "verifier/checkpoint_status_regressions.rs"]
 mod checkpoint_status_regressions;
+#[path = "verifier/receipt_security_regressions.rs"]
+mod receipt_security_regressions;

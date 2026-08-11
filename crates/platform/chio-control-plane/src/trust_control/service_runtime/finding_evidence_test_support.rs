@@ -31,26 +31,48 @@ pub(super) fn checkpoint_status_trust(
     status_authority: &Keypair,
     observed_at: u64,
 ) -> Result<FindingCheckpointSignerStatusTrust, Box<dyn std::error::Error>> {
-    let signer = &profile
+    let checkpoint_signer = &profile
         .body
         .checkpoint_logs
         .first()
         .ok_or("checkpoint signer policy missing")?
         .signer;
-    let signed_status = SignedExportEnvelope::sign(
-        FindingAuthorityStatus {
-            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
-            status_ref: signer.revocation_status_ref.clone(),
-            authority_id: signer.authority_id.clone(),
-            key: signer.key.clone(),
-            key_epoch: signer.key_epoch,
-            revoked_from: None,
-            observed_at,
-        },
-        status_authority,
-    )?;
+    let policies = std::iter::once(checkpoint_signer).chain(
+        profile
+            .body
+            .receipt_signers
+            .iter()
+            .map(|signer| &signer.policy),
+    );
+    let mut signed_statuses = Vec::new();
+    for policy in policies {
+        let already_present =
+            signed_statuses
+                .iter()
+                .any(|signed: &chio_finding::SignedFindingAuthorityStatus| {
+                    signed.body.status_ref == policy.revocation_status_ref
+                        && signed.body.authority_id == policy.authority_id
+                        && signed.body.key == policy.key
+                        && signed.body.key_epoch == policy.key_epoch
+                });
+        if already_present {
+            continue;
+        }
+        signed_statuses.push(SignedExportEnvelope::sign(
+            FindingAuthorityStatus {
+                schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: policy.revocation_status_ref.clone(),
+                authority_id: policy.authority_id.clone(),
+                key: policy.key.clone(),
+                key_epoch: policy.key_epoch,
+                revoked_from: None,
+                observed_at,
+            },
+            status_authority,
+        )?);
+    }
     Ok(FindingCheckpointSignerStatusTrust {
-        signed_statuses: vec![signed_status],
+        signed_statuses,
         status_authority: status_authority.public_key(),
         max_age_secs: 300,
     })
