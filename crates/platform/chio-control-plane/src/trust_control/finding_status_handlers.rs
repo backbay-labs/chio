@@ -1378,6 +1378,41 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn publisher_rejects_epoch_reuse_after_service_bond_expiry(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp, authority) = provision_authority()?;
+        let (operator, bond) = config();
+        let store = authority.finding_status_store();
+        let publisher = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store.clone(),
+            operator.clone(),
+            bond,
+            operator_key(),
+            1_000,
+        )?;
+        publisher.publish_non_inclusion(&sha256_hex(b"bonded-finding"), &[], NOW)?;
+
+        let mut replacement_operator = operator;
+        replacement_operator.authority.valid_from = NOW - 2_000;
+        let mut expired_bond = config().1;
+        expired_bond.valid_from = NOW - 1_000;
+        expired_bond.valid_until = NOW - 200;
+        let expired_publisher =
+            super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+                store,
+                replacement_operator,
+                expired_bond,
+                operator_key(),
+                1_000,
+            )?;
+        let error = expired_publisher
+            .publish_non_inclusion(&sha256_hex(b"another-bonded-finding"), &[], NOW + 1)
+            .test_expect_err("expired service bond must not reuse a prior signed epoch");
+        assert_eq!(error, "finding status publisher service bond is expired");
+        Ok(())
+    }
+
     #[tokio::test]
     async fn status_handlers_fail_closed_without_live_bond_or_authentication(
     ) -> Result<(), Box<dyn std::error::Error>> {

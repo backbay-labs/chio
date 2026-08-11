@@ -107,11 +107,7 @@ WHEN NEW.feed_id <> OLD.feed_id
   OR NEW.operator_key_epoch < OLD.operator_key_epoch
   OR (
       NEW.operator_key_epoch = OLD.operator_key_epoch
-      AND (
-          NEW.operator_key <> OLD.operator_key
-          OR NEW.operator_authorization_sha256
-              <> OLD.operator_authorization_sha256
-      )
+      AND NEW.operator_key <> OLD.operator_key
   )
 BEGIN
     SELECT RAISE(ABORT, 'finding status floor must advance monotonically');

@@ -26,7 +26,7 @@ use crate::finding_challenge_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_STATUS_SCHEMA_KEY: &str = "finding_status";
-pub(crate) const FINDING_STATUS_SUPPORTED_SCHEMA_VERSION: i32 = 2;
+pub(crate) const FINDING_STATUS_SUPPORTED_SCHEMA_VERSION: i32 = 3;
 const FINDING_STATUS_SCHEMA_ANCHORS: &[&str] = &[
     "finding_status_feeds",
     "admission_operations",

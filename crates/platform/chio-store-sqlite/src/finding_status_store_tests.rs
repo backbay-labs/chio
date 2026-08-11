@@ -779,3 +779,45 @@ fn key_rotation_advances_one_floor_and_regression_or_substitution_rejects() {
     assert!(matches!(error, FindingStatusStoreError::Invariant(_)));
     assert_eq!(store.get_feed_floor(FEED).expect("floor").map_epoch, 2);
 }
+
+#[test]
+fn same_key_authorization_state_update_advances_the_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let epoch_one_id = hex64('a');
+    let epoch_one_root = hex64('b');
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &epoch_one_id,
+            &epoch_one_root,
+            b"signed-before-revocation-update",
+            1,
+        ))
+        .expect("first operator authorization");
+
+    let epoch_two_id = hex64('c');
+    let epoch_two_root = hex64('d');
+    let mut updated = epoch(
+        2,
+        &epoch_two_id,
+        &epoch_two_root,
+        b"signed-after-revocation-update",
+        1,
+    );
+    updated.operator_authorization_sha256 =
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    store
+        .observe_verified_epoch(&updated)
+        .expect("same-key authenticated authorization update");
+
+    let floor = store.get_feed_floor(FEED).expect("updated floor");
+    assert_eq!(floor.map_epoch, 2);
+    assert_eq!(floor.operator_key_epoch, 1);
+    assert_eq!(floor.operator_key, "operator-key-v1");
+    assert_eq!(
+        floor.operator_authorization_sha256,
+        updated.operator_authorization_sha256
+    );
+}

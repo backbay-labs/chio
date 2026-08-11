@@ -254,11 +254,10 @@ fn persist_epoch_tx(
             return Err(invariant("operator key epoch regressed across feed epochs"));
         }
         if epoch.operator_key_epoch == floor.operator_key_epoch
-            && (epoch.operator_key != floor.operator_key
-                || epoch.operator_authorization_sha256 != floor.operator_authorization_sha256)
+            && epoch.operator_key != floor.operator_key
         {
             return Err(invariant(
-                "operator key or authorization changed without key-epoch rotation",
+                "operator key changed without key-epoch rotation",
             ));
         }
     } else if feed_has_epochs_tx(transaction, epoch.feed_id)? {
@@ -1795,6 +1794,13 @@ pub(crate) fn initialize_finding_status_schema(
         // timestamps with that finality-derived window.
         transaction
             .execute_batch("DROP TRIGGER IF EXISTS finding_retraction_intents_lifecycle;")
+            .map_err(sqlite_error)?;
+    }
+    if (1..=2).contains(&on_disk) {
+        // Revision 3 permits authenticated revocation-state changes for the
+        // same operator key and key epoch. Key substitution remains fenced.
+        transaction
+            .execute_batch("DROP TRIGGER IF EXISTS finding_status_feed_floors_monotonic;")
             .map_err(sqlite_error)?;
     }
     transaction
