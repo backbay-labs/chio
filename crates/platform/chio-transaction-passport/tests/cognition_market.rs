@@ -580,6 +580,37 @@ fn replace_trusted_profile(
     Ok(())
 }
 
+fn require_profile_facet(
+    bundle: &mut QualifiedBundle,
+    required_facet: FindingFacetKind,
+) -> TestResult {
+    replace_trusted_profile(bundle, |profile| {
+        if !profile.required_facets.contains(&required_facet) {
+            profile.required_facets.push(required_facet);
+        }
+    })?;
+    let report_bytes = bundle
+        .artifacts
+        .get("report.json")
+        .ok_or("report missing")?;
+    let signed: SignedExportEnvelope<FindingVerifierReport> = serde_json::from_slice(report_bytes)?;
+    let mut report = signed.body;
+    report.verifier_profile_id = bundle
+        .trust
+        .trusted_verifier_profile
+        .body
+        .profile_id
+        .clone();
+    report.verifier_profile_envelope_sha256 = bundle
+        .trust
+        .trusted_verifier_profile_envelope_sha256
+        .clone();
+    report.report_id = compute_report_id(&report)?;
+    let replacement = SignedExportEnvelope::sign(report, &verifier_keypair())?;
+    replace_graph_artifact(bundle, "report.json", canonical_json_bytes(&replacement)?)?;
+    resign_graph(bundle)
+}
+
 fn resign_graph(bundle: &mut QualifiedBundle) -> TestResult {
     bundle.evidence_graph_bytes = canonical_json_bytes(&bundle.evidence_graph)?;
     bundle.passport.evidence_graph_sha256 = sha256_hex(&bundle.evidence_graph_bytes);
@@ -956,6 +987,59 @@ fn cognition_market_delivery_claim_verifies_without_unselected_attachments() -> 
     assert_eq!(report.verified_claims, vec![selected_claim.to_string()]);
     assert_eq!(report.claim_results.len(), 1);
     assert_eq!(report.claim_results[0].claim_id, selected_claim);
+    Ok(())
+}
+
+#[test]
+fn cognition_market_profile_status_floor_reaches_durable_store_for_delivery_claim() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let selected_claim = COGNITION_MARKET_CLAIMS[0];
+
+    let mut claim_set: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("claim-set.json")
+            .ok_or("claim set missing")?,
+    )?;
+    claim_set["claims"]
+        .as_array_mut()
+        .ok_or("claim rows missing")?
+        .retain(|claim| claim.get("claim_id").and_then(Value::as_str) == Some(selected_claim));
+    let claim_set_bytes = canonical_json_bytes(&claim_set)?;
+    bundle.passport.claim_set_sha256 =
+        replace_graph_artifact(&mut bundle, "claim-set.json", claim_set_bytes)?;
+
+    let mut policy: Value = serde_json::from_slice(&bundle.verifier_policy_bytes)?;
+    policy["required_claims"] = json!([selected_claim]);
+    bundle.verifier_policy_bytes = canonical_json_bytes(&policy)?;
+    let policy_bytes = bundle.verifier_policy_bytes.clone();
+    bundle.passport.verifier_policy_sha256 =
+        replace_graph_artifact(&mut bundle, "verifier-policy.json", policy_bytes)?;
+
+    require_profile_facet(&mut bundle, FindingFacetKind::StatusLiveness)?;
+    bundle
+        .trust
+        .status
+        .as_mut()
+        .ok_or("status trust missing")?
+        .status_store = Arc::new(TestStatusStore::with_retracted(FINDING_ID));
+    resign_graph(&mut bundle)?;
+
+    let error = verify_cognition_market_passport_artifacts(
+        &bundle.passport,
+        "transaction-passport.json".to_string(),
+        &bundle.evidence_graph_bytes,
+        &bundle.verifier_policy_bytes,
+        &bundle.artifacts,
+        &bundle.trust,
+    )
+    .err()
+    .ok_or("profile-required status liveness bypassed durable retraction state")?
+    .to_string();
+    assert!(
+        error.contains("sticky retracted state"),
+        "unexpected error: {error}"
+    );
     Ok(())
 }
 

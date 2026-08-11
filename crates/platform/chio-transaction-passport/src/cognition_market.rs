@@ -77,7 +77,8 @@ pub struct CognitionMarketProofTrust {
     pub status: Option<CognitionMarketStatusTrust>,
 }
 
-/// Deployment-owned trust needed only by `claim.finding.status_fresh`.
+/// Deployment-owned trust needed by the status claim or a pinned profile that
+/// requires the status-liveness facet.
 #[derive(Clone)]
 pub struct CognitionMarketStatusTrust {
     pub status_operator_authorization: FindingStatusOperatorAuthorization,
@@ -200,8 +201,13 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             )
         })
         .transpose()?;
-    let status_node = selected_claims
-        .contains(COGNITION_MARKET_CLAIMS[2])
+    let status_liveness_required = selected_claims.contains(COGNITION_MARKET_CLAIMS[2])
+        || trust
+            .trusted_verifier_profile
+            .body
+            .required_facets
+            .contains(&FindingFacetKind::StatusLiveness);
+    let status_node = status_liveness_required
         .then(|| {
             unique_node(
                 nodes,
@@ -328,7 +334,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
 
     let verified_status = if let Some(status_node) = &status_node {
         let status_trust = trust.status.as_ref().ok_or_else(|| {
-            claim_failed("status-fresh claim has no deployment-pinned status trust")
+            claim_failed("status-liveness verification has no deployment-pinned status trust")
         })?;
         let status_bytes = artifact_bytes(artifacts, status_node.path)?;
         let status = chio_finding::parse_status_proof_input(status_bytes)
@@ -346,7 +352,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         }
         if !matches!(status, FindingStatusProofInput::NonInclusion(_)) {
             return Err(claim_failed(
-                "qualified status-fresh claim requires a non-inclusion proof",
+                "qualified status-liveness verification requires a non-inclusion proof",
             ));
         }
         if status_trust.status_freshness.now != report.body.evaluation_time {
@@ -406,11 +412,11 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     // and ClaimSet check succeeds, but before any claim leaves this verifier.
     if let Some((status_path, status_bytes, status, signed_epoch)) = verified_status {
         let status_trust = trust.status.as_ref().ok_or_else(|| {
-            claim_failed("status-fresh claim has no deployment-pinned status trust")
+            claim_failed("status-liveness verification has no deployment-pinned status trust")
         })?;
         let FindingStatusProofInput::NonInclusion(non_inclusion) = &status else {
             return Err(claim_failed(
-                "qualified status-fresh claim requires a non-inclusion proof",
+                "qualified status-liveness verification requires a non-inclusion proof",
             ));
         };
         let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
