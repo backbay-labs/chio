@@ -349,12 +349,18 @@ fn recipe_bytes_for_profile(
 
 fn report_bytes(recipe: &[u8], status: &[u8]) -> TestResult<Vec<u8>> {
     let profile = verifier_profile()?;
-    report_bytes_for_profile(recipe, status, &signed_envelope_sha256(&profile)?)
+    report_bytes_for_profile(
+        recipe,
+        status,
+        &profile.body.profile_id,
+        &signed_envelope_sha256(&profile)?,
+    )
 }
 
 fn report_bytes_for_profile(
     recipe: &[u8],
     status: &[u8],
+    verifier_profile_id: &str,
     verifier_profile_digest: &str,
 ) -> TestResult<Vec<u8>> {
     let verifier = verifier_keypair();
@@ -372,7 +378,7 @@ fn report_bytes_for_profile(
         report_id: String::new(),
         finding_id: FINDING_ID.to_string(),
         finding_artifact_sha256: HEX64.to_string(),
-        verifier_profile_id: "12".repeat(32),
+        verifier_profile_id: verifier_profile_id.to_owned(),
         verifier_profile_envelope_sha256: verifier_profile_digest.to_owned(),
         verifier_implementation_id: "chio-finding-verifier/0.1-qualified".to_string(),
         resolved_evidence_bundle_sha256: "34".repeat(32),
@@ -792,6 +798,66 @@ fn cognition_market_qualified_profile_rejects_an_unselected_failed_facet() -> Te
 }
 
 #[test]
+fn cognition_market_every_claim_requires_artifact_integrity() -> TestResult {
+    for selected_claim in COGNITION_MARKET_CLAIMS {
+        let mut bundle = build_bundle()?;
+        let mut claim_set: Value = serde_json::from_slice(
+            bundle
+                .artifacts
+                .get("claim-set.json")
+                .ok_or("claim set missing")?,
+        )?;
+        claim_set["claims"]
+            .as_array_mut()
+            .ok_or("claim rows missing")?
+            .retain(|claim| claim.get("claim_id").and_then(Value::as_str) == Some(selected_claim));
+        let claim_set_bytes = canonical_json_bytes(&claim_set)?;
+        bundle.passport.claim_set_sha256 =
+            replace_graph_artifact(&mut bundle, "claim-set.json", claim_set_bytes)?;
+
+        let mut policy: Value = serde_json::from_slice(&bundle.verifier_policy_bytes)?;
+        policy["required_claims"] = json!([selected_claim]);
+        bundle.verifier_policy_bytes = canonical_json_bytes(&policy)?;
+        let policy_bytes = bundle.verifier_policy_bytes.clone();
+        bundle.passport.verifier_policy_sha256 =
+            replace_graph_artifact(&mut bundle, "verifier-policy.json", policy_bytes)?;
+
+        let report_bytes = bundle
+            .artifacts
+            .get("report.json")
+            .ok_or("report missing")?;
+        let signed: SignedExportEnvelope<FindingVerifierReport> =
+            serde_json::from_slice(report_bytes)?;
+        let mut report = signed.body;
+        let artifact_integrity = report
+            .facets
+            .iter_mut()
+            .find(|facet| facet.facet == FindingFacetKind::ArtifactIntegrity)
+            .ok_or("artifact-integrity facet missing")?;
+        artifact_integrity.outcome = FindingFacetOutcome::Unavailable;
+        artifact_integrity.reason = "artifact integrity was not evaluated".to_owned();
+        report.report_id = compute_report_id(&report)?;
+        let replacement = SignedExportEnvelope::sign(report, &verifier_keypair())?;
+        replace_graph_artifact(
+            &mut bundle,
+            "report.json",
+            canonical_json_bytes(&replacement)?,
+        )?;
+        resign_graph(&mut bundle)?;
+
+        let error = verify(&bundle)
+            .err()
+            .ok_or("a Finding claim without artifact integrity was accepted")?
+            .to_string();
+        assert!(
+            error.contains("requires verified facet ArtifactIntegrity"),
+            "unexpected error for {selected_claim}: {error}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_accepts_anchored_only_policy() -> TestResult {
     let mut bundle = build_bundle()?;
     add_transparency_anchor(&mut bundle)?;
@@ -1156,7 +1222,13 @@ fn cognition_market_qualified_profile_rejects_unpinned_profile() -> TestResult {
         .ok_or("status attachment missing")?
         .clone();
     let recipe = recipe_bytes_for_profile("55", &"33".repeat(32))?;
-    let report = report_bytes_for_profile(&recipe, &status, &"33".repeat(32))?;
+    let profile_id = bundle
+        .trust
+        .trusted_verifier_profile
+        .body
+        .profile_id
+        .clone();
+    let report = report_bytes_for_profile(&recipe, &status, &profile_id, &"33".repeat(32))?;
     replace_graph_artifact(&mut bundle, "attachments/replay-recipe-input.json", recipe)?;
     replace_graph_artifact(&mut bundle, "report.json", report)?;
     resign_graph(&mut bundle)?;
@@ -1167,6 +1239,36 @@ fn cognition_market_qualified_profile_rejects_unpinned_profile() -> TestResult {
         .to_string();
     assert!(
         error.contains("deployment-pinned verifier profile"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_mismatched_profile_id() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let report_bytes = bundle
+        .artifacts
+        .get("report.json")
+        .ok_or("report missing")?;
+    let signed: SignedExportEnvelope<FindingVerifierReport> = serde_json::from_slice(report_bytes)?;
+    let mut report = signed.body;
+    report.verifier_profile_id = "ff".repeat(32);
+    report.report_id = compute_report_id(&report)?;
+    let replacement = SignedExportEnvelope::sign(report, &verifier_keypair())?;
+    replace_graph_artifact(
+        &mut bundle,
+        "report.json",
+        canonical_json_bytes(&replacement)?,
+    )?;
+    resign_graph(&mut bundle)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("report naming another verifier profile was accepted")?
+        .to_string();
+    assert!(
+        error.contains("names a different deployment-pinned verifier profile"),
         "unexpected error: {error}"
     );
     Ok(())

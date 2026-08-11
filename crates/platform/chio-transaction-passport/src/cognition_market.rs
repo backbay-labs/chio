@@ -278,6 +278,11 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "signed verifier report does not bind the deployment-pinned verifier profile",
         ));
     }
+    if report.body.verifier_profile_id != trust.trusted_verifier_profile.body.profile_id {
+        return Err(claim_failed(
+            "signed verifier report names a different deployment-pinned verifier profile",
+        ));
+    }
     if report.body.trust_root_snapshot_sha256 != trust.trusted_trust_root_snapshot_sha256 {
         return Err(claim_failed(
             "signed verifier report does not bind the deployment-pinned trust-root snapshot",
@@ -550,6 +555,15 @@ fn require_report_facets(
             "signed verifier report contains failed facet {:?}",
             failed.facet
         )));
+    }
+    if report
+        .body
+        .facet_outcome(FindingFacetKind::ArtifactIntegrity)
+        != Some(FindingFacetOutcome::Verified)
+    {
+        return Err(claim_failed(
+            "every cognition-market claim requires verified facet ArtifactIntegrity",
+        ));
     }
     for facet in profile_required_facets {
         if report.body.facet_outcome(*facet) != Some(FindingFacetOutcome::Verified) {
