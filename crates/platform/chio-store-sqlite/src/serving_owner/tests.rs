@@ -404,7 +404,6 @@ fn finding_market_projection_commits_manually_admitted_buyer_slots() {
     );
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn finding_market_projection_rejects_v9_snapshot_with_uncommitted_manual_slot() {
     let (_temp, database, lock_root) = fixture();
