@@ -8,6 +8,8 @@ fn finding_challenge_governance_charter_must_be_issued_inside_the_pinned_window(
     historical_policy.valid_from = NOW - 650;
     Arc::make_mut(&mut deployment.filings)
         .case_governance_policies
+        .get_mut()
+        .map_err(|_| "governance-policy index lock is poisoned")?
         .insert(
             signed_envelope_sha256(&governance.charter)?,
             historical_policy,

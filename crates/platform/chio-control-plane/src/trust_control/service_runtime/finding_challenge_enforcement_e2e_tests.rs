@@ -541,7 +541,7 @@ impl FindingRailObserver for RecordingRail {
 /// The venue's published record of the signed artifacts a filing may bind
 /// by digest. A filing resolves against this and nothing else, so a digest
 /// that names an artifact the venue never published resolves to nothing.
-#[derive(Clone, Default)]
+#[derive(Default)]
 struct PublishedArtifacts {
     fee_schedules: BTreeMap<String, SignedOpenMarketFeeSchedule>,
     audit_rounds: BTreeMap<String, FindingAuditRound>,
@@ -556,6 +556,35 @@ struct PublishedArtifacts {
     audit_witness_policies: BTreeMap<String, FindingAuthorityPin>,
     audit_governance_policies: BTreeMap<String, FindingAuthorityPin>,
     market_terms: BTreeMap<String, SignedFindingMarketTerms>,
+}
+
+fn clone_policy_lock(
+    source: &RwLock<BTreeMap<String, FindingAuthorityPin>>,
+) -> RwLock<BTreeMap<String, FindingAuthorityPin>> {
+    let values = match source.read() {
+        Ok(values) => values.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    };
+    RwLock::new(values)
+}
+
+impl Clone for PublishedArtifacts {
+    fn clone(&self) -> Self {
+        Self {
+            fee_schedules: self.fee_schedules.clone(),
+            audit_rounds: self.audit_rounds.clone(),
+            admissions: self.admissions.clone(),
+            admissions_by_digest: self.admissions_by_digest.clone(),
+            venue_policies: self.venue_policies.clone(),
+            profile_governance_policies: self.profile_governance_policies.clone(),
+            case_governance_policies: clone_policy_lock(&self.case_governance_policies),
+            penalty_policies: clone_policy_lock(&self.penalty_policies),
+            audit_policies: self.audit_policies.clone(),
+            audit_witness_policies: self.audit_witness_policies.clone(),
+            audit_governance_policies: self.audit_governance_policies.clone(),
+            market_terms: self.market_terms.clone(),
+        }
+    }
 }
 
 impl PublishedArtifacts {
