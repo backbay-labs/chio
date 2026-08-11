@@ -232,3 +232,62 @@ fn cognition_market_status_proof_must_not_predate_the_finding() -> TestResult {
     assert!(error.contains("status proof predates the signed Finding"));
     Ok(())
 }
+
+#[test]
+fn cognition_market_enforces_facets_derived_from_the_signed_finding() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let selected_claim = COGNITION_MARKET_CLAIMS[3];
+
+    let mut claim_set: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("claim-set.json")
+            .ok_or("claim set missing")?,
+    )?;
+    claim_set["claims"]
+        .as_array_mut()
+        .ok_or("claim rows missing")?
+        .retain(|claim| claim.get("claim_id").and_then(Value::as_str) == Some(selected_claim));
+    let claim_set_bytes = canonical_json_bytes(&claim_set)?;
+    bundle.passport.claim_set_sha256 =
+        replace_graph_artifact(&mut bundle, "claim-set.json", claim_set_bytes)?;
+
+    let mut policy: Value = serde_json::from_slice(&bundle.verifier_policy_bytes)?;
+    policy["required_claims"] = json!([selected_claim]);
+    bundle.verifier_policy_bytes = canonical_json_bytes(&policy)?;
+    let policy_bytes = bundle.verifier_policy_bytes.clone();
+    bundle.passport.verifier_policy_sha256 =
+        replace_graph_artifact(&mut bundle, "verifier-policy.json", policy_bytes)?;
+
+    let report_bytes = bundle
+        .artifacts
+        .get("report.json")
+        .ok_or("report missing")?;
+    let signed: SignedExportEnvelope<FindingVerifierReport> = serde_json::from_slice(report_bytes)?;
+    let mut report = signed.body;
+    let receipt_authenticity = report
+        .facets
+        .iter_mut()
+        .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
+        .ok_or("receipt-authenticity facet missing")?;
+    receipt_authenticity.outcome = FindingFacetOutcome::Unavailable;
+    receipt_authenticity.reason = "production evidence was not supplied".to_string();
+    report.report_id = compute_report_id(&report)?;
+    let replacement = SignedExportEnvelope::sign(report, &verifier_keypair())?;
+    replace_graph_artifact(
+        &mut bundle,
+        "report.json",
+        canonical_json_bytes(&replacement)?,
+    )?;
+    resign_graph(&mut bundle)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("a report below the signed Finding's facet floor was accepted")?
+        .to_string();
+    assert!(
+        error.contains("signed Finding requires verified facet ReceiptAuthenticity"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}

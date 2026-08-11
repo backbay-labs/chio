@@ -14,11 +14,12 @@ use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
     signed_envelope_sha256, verify_finding, verify_signed_authority_status, verify_signed_profile,
     verify_signed_verifier_report, verify_status_proof_input, Finding, FindingAuthorityKeyPolicy,
-    FindingFacetKind, FindingFacetOutcome, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
-    FindingStatusOperatorAuthorization, FindingStatusProofInput, SignedFindingAuthorityStatus,
-    SignedFindingChallengeVerifierProfile, SignedFindingStatusEpoch, SignedFindingVerifierReport,
-    FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
-    FINDING_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome, FindingGuaranteeClass,
+    FindingReplayRecipeInput, FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization,
+    FindingStatusProofInput, SignedFindingAuthorityStatus, SignedFindingChallengeVerifierProfile,
+    SignedFindingStatusEpoch, SignedFindingVerifierReport, FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1,
+    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
+    FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -470,6 +471,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     };
 
     require_report_facets(
+        &finding,
         &report,
         &selected_claims,
         &trust.trusted_verifier_profile.body.required_facets,
@@ -715,6 +717,7 @@ fn require_digest_bound_edge(
 }
 
 fn require_report_facets(
+    finding: &Finding,
     report: &SignedFindingVerifierReport,
     selected_claims: &BTreeSet<&'static str>,
     profile_required_facets: &[FindingFacetKind],
@@ -743,6 +746,24 @@ fn require_report_facets(
         if report.body.facet_outcome(*facet) != Some(FindingFacetOutcome::Verified) {
             return Err(claim_failed(format!(
                 "deployment-pinned verifier profile requires verified facet {facet:?}"
+            )));
+        }
+    }
+    let mut finding_required_facets = BTreeSet::new();
+    if finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
+        finding_required_facets.insert(FindingFacetKind::RecipeBinding);
+    }
+    if finding.evidence_class == FindingEvidenceClass::Verified {
+        finding_required_facets.insert(FindingFacetKind::ReceiptAuthenticity);
+        finding_required_facets.insert(FindingFacetKind::CheckpointMembership);
+    }
+    if finding.runtime_assurance_tier.is_some() {
+        finding_required_facets.insert(FindingFacetKind::RuntimeAssuranceBacking);
+    }
+    for facet in finding_required_facets {
+        if report.body.facet_outcome(facet) != Some(FindingFacetOutcome::Verified) {
+            return Err(claim_failed(format!(
+                "signed Finding requires verified facet {facet:?}"
             )));
         }
     }

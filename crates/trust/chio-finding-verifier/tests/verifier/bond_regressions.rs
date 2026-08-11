@@ -255,3 +255,29 @@ fn backing_must_name_the_exact_signed_fee_schedule() -> TestResult {
     )?;
     assert_bond_failure(&fx, &evidence, "different fee schedule")
 }
+
+#[test]
+fn unsupported_collateral_policy_cannot_qualify_bond_backing() -> TestResult {
+    let fx = fixture()?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    let snapshot = evidence
+        .bond_snapshot
+        .as_mut()
+        .ok_or("bond snapshot missing")?;
+    let mut terms = snapshot.terms.body.clone();
+    terms.backing_requirement.collateral_policy = "external-custodian-v1".to_string();
+    terms.terms_id = compute_terms_id(&terms)?;
+    snapshot.terms = SignedExportEnvelope::sign(terms, &keypair(2))?;
+
+    let mut backing = snapshot.backing.body.clone();
+    backing.terms_envelope_sha256 = signed_envelope_sha256(&snapshot.terms)?;
+    backing.allocation_id = compute_allocation_id(&backing)?;
+    snapshot.backing = SignedExportEnvelope::sign(backing, &keypair(4))?;
+    snapshot.store_snapshot.body.allocation_id = snapshot.backing.body.allocation_id.clone();
+    snapshot.store_snapshot.body.backing_envelope_sha256 =
+        signed_envelope_sha256(&snapshot.backing)?;
+    snapshot.store_snapshot =
+        SignedExportEnvelope::sign(snapshot.store_snapshot.body.clone(), &keypair(4))?;
+
+    assert_bond_failure(&fx, &evidence, "backing_requirement.collateral_policy")
+}
