@@ -1091,6 +1091,7 @@ mod tests {
                 operator_id: epoch.body.operator_id.clone(),
                 rotation_policy_ref: authorization.operator.rotation_policy_ref.clone(),
                 operator_key_epoch: epoch.body.operator_key_epoch,
+                operator_key: Some(authorization.operator.key.clone()),
                 operator_authorization_sha256: authorization_sha256,
                 key_domain_nonce: epoch.body.key_domain_nonce,
                 map_epoch: epoch.body.map_epoch.saturating_add(1),
