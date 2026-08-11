@@ -22,13 +22,13 @@ use chio_core_types::canonical_json_bytes_from_str;
 use chio_core_types::capability::runtime_attestation::RuntimeAttestationEvidence;
 use chio_core_types::capability::trust_policy::AttestationTrustPolicy;
 use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
+use chio_core_types::receipt::authoritative_spend::is_authoritative_spend_receipt;
 use chio_core_types::receipt::body::{chio_receipt_id, ChioReceipt};
-use chio_core_types::receipt::kinds::{BoundaryClass, ReceiptKind, TrustLevel};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::receipt::metadata::{
     DeliveryResult, FindingDelivery, FindingMediaTypeCheck, FINDING_DELIVERY_METADATA_KEY,
 };
-use chio_core_types::receipt::{BudgetAuthorityReceiptRef, MEDIATED_SPEND_PROFILE};
+use chio_core_types::receipt::MEDIATED_SPEND_PROFILE;
 use chio_finding::{
     compute_report_id, signed_envelope_sha256, verify_finding, verify_pinned_envelope,
     verify_signed_bond_backing, verify_signed_profile, verify_status_proof_input, Finding,
@@ -297,50 +297,17 @@ pub(crate) const fn policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u
 fn verify_required_receipt_semantics(
     receipt: &ChioReceipt,
     required_semantics: &str,
-) -> Result<(), &'static str> {
+    admitted_kernel_keys: &[PublicKey],
+    nonce_resolver: &dyn FindingNonceResolver,
+) -> Result<(), String> {
     if required_semantics != MEDIATED_SPEND_PROFILE {
-        return Err("unsupported receipt semantics profile");
+        return Err("unsupported receipt semantics profile".to_string());
     }
-    if receipt.receipt_kind != ReceiptKind::MediatedDecision {
-        return Err("receipt is not a mediated decision");
-    }
-    if receipt.boundary_class != BoundaryClass::Prevent {
-        return Err("receipt is not from a preventive boundary");
-    }
-    if receipt.observation_outcome.is_some() {
-        return Err("mediated receipt carries an observation outcome");
-    }
-    if receipt.trust_level != TrustLevel::Mediated {
-        return Err("receipt trust level is not mediated");
-    }
-    if !receipt.is_allowed() {
-        return Err("receipt is not an allow decision");
-    }
-    let budget = BudgetAuthorityReceiptRef::from_receipt(receipt)
-        .ok_or("receipt has no typed budget-authority lineage")?;
-    if budget.hold_id.is_empty() {
-        return Err("receipt has an empty budget hold id");
-    }
-    if budget.reconcile_event_id.is_none() {
-        return Err("receipt budget hold is not reconciled");
-    }
-    if budget.exposed_units == 0 {
-        return Err("receipt commits no budget exposure");
-    }
-    if budget.execution_nonce_id.is_none() {
-        return Err("receipt has no execution nonce link");
-    }
-    let mediated_spend_profile = receipt
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("budget_authority"))
-        .and_then(|authority| authority.get("mediated_spend"))
-        .and_then(|mediated_spend| mediated_spend.get("profile"))
-        .and_then(serde_json::Value::as_str);
-    if mediated_spend_profile != Some(required_semantics) {
-        return Err("receipt does not pin the required mediated-spend profile");
-    }
-    Ok(())
+    let nonce = nonce_resolver
+        .nonce_for(receipt)
+        .ok_or_else(|| "execution nonce evidence not supplied".to_string())?;
+    is_authoritative_spend_receipt(receipt, admitted_kernel_keys, nonce)
+        .map_err(|reason| format!("receipt is not authoritative mediated spend: {reason:?}"))
 }
 
 fn verify_finding_delivery_receipt(
@@ -484,7 +451,9 @@ pub fn verify_finding_evidence(
         || trust.profile.body.required_facets.iter().any(|facet| {
             matches!(
                 facet,
-                FindingFacetKind::KernelAndRevocationTrust | FindingFacetKind::IssuerLineage
+                FindingFacetKind::KernelAndRevocationTrust
+                    | FindingFacetKind::IssuerLineage
+                    | FindingFacetKind::IntentBinding
             )
         })
     {
@@ -545,6 +514,8 @@ pub fn verify_finding_evidence(
         if let Err(error) = verify_required_receipt_semantics(
             &evidence.receipt,
             &profile.required_receipt_semantics,
+            &trust.admitted_kernel_keys,
+            bundle.nonce_resolver,
         ) {
             failure = Some(format!(
                 "receipt {} violates required receipt semantics: {error}",
@@ -565,6 +536,13 @@ pub fn verify_finding_evidence(
         if evidence.receipt.timestamp > trust.trusted_time {
             failure = Some(format!(
                 "receipt {} was issued after report evaluation",
+                evidence.receipt.id
+            ));
+            break;
+        }
+        if evidence.receipt.timestamp > finding.issued_at {
+            failure = Some(format!(
+                "receipt {} was issued after the Finding",
                 evidence.receipt.id
             ));
             break;

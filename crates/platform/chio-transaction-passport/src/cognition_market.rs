@@ -191,8 +191,13 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     }
 
     let report_node = unique_node(nodes, "report", FINDING_VERIFIER_REPORT_SCHEMA_V1)?;
-    let recipe_node = selected_claims
-        .contains(COGNITION_MARKET_CLAIMS[1])
+    let recipe_binding_required = selected_claims.contains(COGNITION_MARKET_CLAIMS[1])
+        || trust
+            .trusted_verifier_profile
+            .body
+            .required_facets
+            .contains(&FindingFacetKind::RecipeBinding);
+    let recipe_node = recipe_binding_required
         .then(|| {
             unique_node(
                 nodes,

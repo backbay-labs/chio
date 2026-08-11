@@ -1023,6 +1023,85 @@ fn cognition_market_delivery_claim_verifies_without_unselected_attachments() -> 
 }
 
 #[test]
+fn cognition_market_profile_recipe_floor_loads_the_recipe_for_a_bond_claim() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let selected_claim = COGNITION_MARKET_CLAIMS[3];
+
+    let mut claim_set: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("claim-set.json")
+            .ok_or("claim set missing")?,
+    )?;
+    claim_set["claims"]
+        .as_array_mut()
+        .ok_or("claim rows missing")?
+        .retain(|claim| claim.get("claim_id").and_then(Value::as_str) == Some(selected_claim));
+    let claim_set_bytes = canonical_json_bytes(&claim_set)?;
+    bundle.passport.claim_set_sha256 =
+        replace_graph_artifact(&mut bundle, "claim-set.json", claim_set_bytes)?;
+
+    let mut policy: Value = serde_json::from_slice(&bundle.verifier_policy_bytes)?;
+    policy["required_claims"] = json!([selected_claim]);
+    policy["required_evidence_roles"] = json!(["report", "advisory-observation"]);
+    bundle.verifier_policy_bytes = canonical_json_bytes(&policy)?;
+    let policy_bytes = bundle.verifier_policy_bytes.clone();
+    bundle.passport.verifier_policy_sha256 =
+        replace_graph_artifact(&mut bundle, "verifier-policy.json", policy_bytes)?;
+
+    require_profile_facet(&mut bundle, FindingFacetKind::RecipeBinding)?;
+    let recipe_ids = bundle.evidence_graph["nodes"]
+        .as_array()
+        .ok_or("graph nodes missing")?
+        .iter()
+        .filter(|node| {
+            node.get("schema").and_then(Value::as_str)
+                == Some(FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1)
+        })
+        .filter_map(|node| node.get("id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    bundle.evidence_graph["nodes"]
+        .as_array_mut()
+        .ok_or("graph nodes missing")?
+        .retain(|node| {
+            node.get("schema").and_then(Value::as_str)
+                != Some(FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1)
+        });
+    bundle.evidence_graph["edges"]
+        .as_array_mut()
+        .ok_or("graph edges missing")?
+        .retain(|edge| {
+            !["from", "to"].iter().any(|field| {
+                edge.get(field)
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| recipe_ids.iter().any(|recipe_id| recipe_id == id))
+            })
+        });
+    bundle
+        .artifacts
+        .remove("attachments/replay-recipe-input.json");
+    resign_graph(&mut bundle)?;
+
+    let error = verify_cognition_market_passport_artifacts(
+        &bundle.passport,
+        "transaction-passport.json".to_string(),
+        &bundle.evidence_graph_bytes,
+        &bundle.verifier_policy_bytes,
+        &bundle.artifacts,
+        &bundle.trust,
+    )
+    .err()
+    .ok_or("profile-required recipe was not loaded for the bond claim")?
+    .to_string();
+    assert!(
+        error.contains(FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_profile_status_floor_reaches_durable_store_for_delivery_claim() -> TestResult {
     let mut bundle = build_bundle()?;
     let selected_claim = COGNITION_MARKET_CLAIMS[0];
