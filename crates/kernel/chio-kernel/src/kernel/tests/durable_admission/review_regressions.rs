@@ -208,7 +208,6 @@ fn durable_startup_reconciliation_drains_the_pool_receipt_outbox() {
     assert_eq!(projection.successful_appends(), 1);
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn configured_pool_ledger_freezes_the_durable_admission_runtime() {
     use crate::admission_operation::AdmissionOperationError;
