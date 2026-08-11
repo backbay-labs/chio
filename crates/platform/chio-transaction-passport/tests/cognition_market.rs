@@ -38,13 +38,13 @@ use serde_json::{json, Value};
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
-const FINDING_ID: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const FINDING_ID: &str = "dc721f80b183eb65945ba4754d9ba6b131d3c8309d8a7bff710f4160b9d7d817";
 const RETRACTED_FINDING_ID: &str =
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const RETRACTION_INTENT: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 const HEX64: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-const GENERATED_AT: u64 = 1_750_000_000;
-const CHECKED_AT: u64 = 1_750_000_030;
+const GENERATED_AT: u64 = 1_784_880_000;
+const CHECKED_AT: u64 = 1_784_880_030;
 const GOLDEN_RELATIVE: &str = "fixtures/proof-room/finding/cognition-market-qualified-profile";
 
 struct QualifiedBundle {
@@ -405,7 +405,7 @@ fn report_bytes_for_profile(
         schema: FINDING_VERIFIER_REPORT_SCHEMA_V1.to_string(),
         report_id: String::new(),
         finding_id: FINDING_ID.to_string(),
-        finding_artifact_sha256: HEX64.to_string(),
+        finding_artifact_sha256: sha256_hex(&expiry_regressions::finding_fixture_bytes()?),
         verifier_profile_id: verifier_profile_id.to_owned(),
         verifier_profile_envelope_sha256: verifier_profile_digest.to_owned(),
         verifier_implementation_id: "chio-finding-verifier/0.1-qualified".to_string(),
@@ -455,7 +455,7 @@ fn claim_set_bytes(report_path: &str, recipe_path: &str, status_path: &str) -> T
         "subject": {
             "kind": "finding",
             "id": FINDING_ID,
-            "artifact_sha256": HEX64
+            "artifact_sha256": sha256_hex(&expiry_regressions::finding_fixture_bytes()?)
         },
         "claims": claims
     }))?)
@@ -484,16 +484,19 @@ fn node(path: &str, role: &str, schema: &str, bytes: &[u8]) -> Value {
 }
 
 fn build_bundle() -> TestResult<QualifiedBundle> {
+    let finding_path = "finding.json";
     let recipe_path = "attachments/replay-recipe-input.json";
     let status_path = "attachments/status-proof-input.json";
     let report_path = "report.json";
     let recipe = recipe_bytes("55")?;
     let status = status_proof_bytes()?;
     let report = report_bytes(&recipe, &status)?;
+    let finding = expiry_regressions::finding_fixture_bytes()?;
     let claim_set = claim_set_bytes(report_path, recipe_path, status_path)?;
     let verifier_policy = verifier_policy_bytes()?;
 
     let report_id = sha256_hex(&report);
+    let finding_node_id = sha256_hex(&finding);
     let recipe_id = sha256_hex(&recipe);
     let status_id = sha256_hex(&status);
     let claim_set_id = sha256_hex(&claim_set);
@@ -505,6 +508,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         "nodes": [
             node("claim-set.json", "claim-set", "chio.transaction.claim-set.v1", &claim_set),
             node("verifier-policy.json", "verifier-policy", "chio.transaction.verifier-policy.v1", &verifier_policy),
+            node(finding_path, "external-subject", chio_finding::FINDING_SCHEMA_V1, &finding),
             node(report_path, "report", FINDING_VERIFIER_REPORT_SCHEMA_V1, &report),
             node(recipe_path, "advisory-observation", FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, &recipe),
             node(status_path, "advisory-observation", FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, &status)
@@ -512,6 +516,8 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         "edges": [
             {"from": claim_set_id, "to": policy_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
             {"from": claim_set_id, "to": report_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
+            {"from": claim_set_id, "to": finding_node_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
+            {"from": report_id, "to": finding_node_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
             {"from": report_id, "to": recipe_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
             {"from": report_id, "to": status_id, "predicate": "binds", "evidence_class": "digest-bound-reference"}
         ]
@@ -539,6 +545,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
     let artifacts = BTreeMap::from([
         ("claim-set.json".to_string(), claim_set),
         ("verifier-policy.json".to_string(), verifier_policy.clone()),
+        (finding_path.to_string(), finding),
         (report_path.to_string(), report),
         (recipe_path.to_string(), recipe),
         (status_path.to_string(), status),
@@ -1945,6 +1952,10 @@ fn persisted_cognition_market_golden_verifies() -> TestResult {
             std::fs::read(root.join("report.json"))?,
         ),
         (
+            "finding.json".to_string(),
+            std::fs::read(root.join("finding.json"))?,
+        ),
+        (
             "attachments/replay-recipe-input.json".to_string(),
             std::fs::read(root.join("attachments/replay-recipe-input.json"))?,
         ),
@@ -1982,4 +1993,4 @@ fn regenerate_cognition_market_golden() -> TestResult {
 }
 
 #[path = "cognition_market/profile_expiry_regression.rs"]
-mod profile_expiry_regression;
+mod expiry_regressions;

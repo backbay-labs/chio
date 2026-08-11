@@ -12,13 +12,13 @@ use std::sync::Arc;
 use chio_core_types::crypto::PublicKey;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
-    signed_envelope_sha256, verify_signed_authority_status, verify_signed_profile,
-    verify_signed_verifier_report, verify_status_proof_input, FindingAuthorityKeyPolicy,
+    signed_envelope_sha256, verify_finding, verify_signed_authority_status, verify_signed_profile,
+    verify_signed_verifier_report, verify_status_proof_input, Finding, FindingAuthorityKeyPolicy,
     FindingFacetKind, FindingFacetOutcome, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
     FindingStatusOperatorAuthorization, FindingStatusProofInput, SignedFindingAuthorityStatus,
     SignedFindingChallengeVerifierProfile, SignedFindingStatusEpoch, SignedFindingVerifierReport,
     FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
-    FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    FINDING_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -202,6 +202,8 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         ));
     }
 
+    let claim_set_node = unique_node(nodes, "claim-set", "chio.transaction.claim-set.v1")?;
+    let finding_node = unique_node(nodes, "external-subject", FINDING_SCHEMA_V1)?;
     let report_node = unique_node(nodes, "report", FINDING_VERIFIER_REPORT_SCHEMA_V1)?;
     let recipe_binding_required = selected_claims.contains(COGNITION_MARKET_CLAIMS[1])
         || trust
@@ -238,6 +240,19 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         .chain(status_node.iter())
         .collect::<Vec<_>>();
     require_digest_bound_attachment_edges(&graph, &report_node, &attachment_nodes)?;
+    require_digest_bound_edge(&graph, &claim_set_node, &finding_node)?;
+    require_digest_bound_edge(&graph, &report_node, &finding_node)?;
+
+    let finding_bytes = artifact_bytes(artifacts, finding_node.path)?;
+    require_exact_canonical_json(finding_node.path, finding_bytes)?;
+    let finding: Finding = serde_json::from_slice(finding_bytes).map_err(|error| {
+        invalid_artifact(
+            finding_node.path,
+            format!("invalid signed Finding: {error}"),
+        )
+    })?;
+    verify_finding(&finding)
+        .map_err(|error| invalid_artifact(finding_node.path, error.to_string()))?;
 
     let report_bytes = artifact_bytes(artifacts, report_node.path)?;
     require_exact_canonical_json(report_node.path, report_bytes)?;
@@ -312,6 +327,18 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "signed verifier report evaluation time is outside the deployment-pinned profile lifecycle",
         ));
     }
+    if report.body.evaluation_time < finding.issued_at
+        || report.body.evaluation_time >= finding.expires_at
+    {
+        return Err(claim_failed(
+            "signed verifier report evaluation time is outside the Finding lifecycle",
+        ));
+    }
+    if trust.verifier_authority_status.checked_at >= finding.expires_at {
+        return Err(claim_failed(
+            "unanchored signed verifier report cannot be accepted after Finding expiration",
+        ));
+    }
     if report.body.verifier_profile_envelope_sha256
         != trust.trusted_verifier_profile_envelope_sha256
     {
@@ -339,7 +366,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "signed verifier report does not bind the deployment-pinned trusted-time input",
         ));
     }
-    validate_finding_claim_subject(&claim_set.subject, &report)?;
+    validate_finding_claim_subject(&claim_set.subject, &report, &finding, finding_node.id)?;
 
     if let Some(recipe_node) = &recipe_node {
         let recipe_bytes = artifact_bytes(artifacts, recipe_node.path)?;
@@ -643,6 +670,32 @@ fn require_digest_bound_attachment_edges(
     Ok(())
 }
 
+fn require_digest_bound_edge(
+    graph: &Value,
+    from: &GraphNode<'_>,
+    to: &GraphNode<'_>,
+) -> Result<(), TransactionPassportError> {
+    let present = graph
+        .get("edges")
+        .and_then(Value::as_array)
+        .is_some_and(|edges| {
+            edges.iter().any(|edge| {
+                edge.get("from").and_then(Value::as_str) == Some(from.id)
+                    && edge.get("to").and_then(Value::as_str) == Some(to.id)
+                    && edge.get("predicate").and_then(Value::as_str) == Some("binds")
+                    && edge.get("evidence_class").and_then(Value::as_str)
+                        == Some("digest-bound-reference")
+            })
+        });
+    if !present {
+        return Err(claim_failed(format!(
+            "{} has no digest-bound edge to {}",
+            from.path, to.path
+        )));
+    }
+    Ok(())
+}
+
 fn require_report_facets(
     report: &SignedFindingVerifierReport,
     selected_claims: &BTreeSet<&'static str>,
@@ -756,6 +809,8 @@ fn parse_cognition_claim_set(
 fn validate_finding_claim_subject(
     subject: &FindingClaimSubject,
     report: &SignedFindingVerifierReport,
+    finding: &Finding,
+    finding_artifact_sha256: &str,
 ) -> Result<(), TransactionPassportError> {
     if subject.kind != "finding" {
         return Err(claim_failed("ClaimSet subject is not a Finding"));
@@ -768,6 +823,13 @@ fn validate_finding_claim_subject(
     if subject.artifact_sha256 != report.body.finding_artifact_sha256 {
         return Err(claim_failed(
             "ClaimSet subject artifact digest does not match the signed verifier report",
+        ));
+    }
+    if finding.finding_id != report.body.finding_id
+        || finding_artifact_sha256 != report.body.finding_artifact_sha256
+    {
+        return Err(claim_failed(
+            "resolved Finding does not match the signed verifier report",
         ));
     }
     Ok(())

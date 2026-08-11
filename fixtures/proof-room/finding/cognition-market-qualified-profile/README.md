@@ -5,12 +5,15 @@ boundary. `transaction-passport.json` binds the evidence graph, ClaimSet, and
 verifier policy. The ClaimSet carries the four registered `claim.finding.*`
 claims through the existing `claim-set` evidence role.
 
-`report.json` is the only finding-verifier authority artifact. The replay
-recipe and portable status proof under `attachments/` are intentionally
-unsigned and use the evidence graph's `advisory-observation` role. The signed
-report commits their exact canonical SHA-256 digests, and
-`chio-transaction-passport` independently rechecks their role, schema, digest,
-typed semantics, status operator authorization, and freshness.
+`report.json` is the finding-verifier authority artifact. `finding.json` is
+the exact issuer-signed subject under the `external-subject` role. The
+passport verifier resolves it to bind the subject digest and lifecycle before
+accepting a report. The replay recipe and portable status proof under
+`attachments/` are intentionally unsigned and use the evidence graph's
+`advisory-observation` role. The signed report commits their exact canonical
+SHA-256 digests, and `chio-transaction-passport` independently rechecks their
+role, schema, digest, typed semantics, status operator authorization, and
+freshness.
 
 `deployment/verifier-profile.json` is the canonical governance-signed profile
 whose digest the report and deployment pin share. It is an out-of-band trust
