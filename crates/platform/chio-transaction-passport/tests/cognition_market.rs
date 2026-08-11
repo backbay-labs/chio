@@ -971,7 +971,7 @@ fn cognition_market_qualified_profile_accepts_anchored_only_policy() -> TestResu
 }
 
 #[test]
-fn cognition_market_delivery_claim_verifies_without_unselected_attachments() -> TestResult {
+fn cognition_market_deterministic_delivery_claim_loads_recipe_without_status() -> TestResult {
     let mut bundle = build_bundle()?;
     let selected_claim = COGNITION_MARKET_CLAIMS[0];
 
@@ -1002,11 +1002,7 @@ fn cognition_market_delivery_claim_verifies_without_unselected_attachments() -> 
         .ok_or("graph nodes missing")?
         .iter()
         .filter(|node| {
-            matches!(
-                node.get("schema").and_then(Value::as_str),
-                Some(FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1)
-                    | Some(FINDING_STATUS_PROOF_INPUT_SCHEMA_V1)
-            )
+            node.get("schema").and_then(Value::as_str) == Some(FINDING_STATUS_PROOF_INPUT_SCHEMA_V1)
         })
         .filter_map(|node| node.get("id").and_then(Value::as_str))
         .map(str::to_string)
@@ -1015,11 +1011,7 @@ fn cognition_market_delivery_claim_verifies_without_unselected_attachments() -> 
         .as_array_mut()
         .ok_or("graph nodes missing")?
         .retain(|node| {
-            !matches!(
-                node.get("schema").and_then(Value::as_str),
-                Some(FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1)
-                    | Some(FINDING_STATUS_PROOF_INPUT_SCHEMA_V1)
-            )
+            node.get("schema").and_then(Value::as_str) != Some(FINDING_STATUS_PROOF_INPUT_SCHEMA_V1)
         });
     bundle.evidence_graph["edges"]
         .as_array_mut()
@@ -1031,9 +1023,6 @@ fn cognition_market_delivery_claim_verifies_without_unselected_attachments() -> 
                     .is_some_and(|id| removed_ids.iter().any(|removed| removed == id))
             })
         });
-    bundle
-        .artifacts
-        .remove("attachments/replay-recipe-input.json");
     bundle
         .artifacts
         .remove("attachments/status-proof-input.json");

@@ -206,7 +206,19 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     let claim_set_node = unique_node(nodes, "claim-set", "chio.transaction.claim-set.v1")?;
     let finding_node = unique_node(nodes, "external-subject", FINDING_SCHEMA_V1)?;
     let report_node = unique_node(nodes, "report", FINDING_VERIFIER_REPORT_SCHEMA_V1)?;
+    let finding_bytes = artifact_bytes(artifacts, finding_node.path)?;
+    require_exact_canonical_json(finding_node.path, finding_bytes)?;
+    let finding: Finding = serde_json::from_slice(finding_bytes).map_err(|error| {
+        invalid_artifact(
+            finding_node.path,
+            format!("invalid signed Finding: {error}"),
+        )
+    })?;
+    verify_finding(&finding)
+        .map_err(|error| invalid_artifact(finding_node.path, error.to_string()))?;
+
     let recipe_binding_required = selected_claims.contains(COGNITION_MARKET_CLAIMS[1])
+        || finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay
         || trust
             .trusted_verifier_profile
             .body
@@ -243,17 +255,6 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     require_digest_bound_attachment_edges(&graph, &report_node, &attachment_nodes)?;
     require_digest_bound_edge(&graph, &claim_set_node, &finding_node)?;
     require_digest_bound_edge(&graph, &report_node, &finding_node)?;
-
-    let finding_bytes = artifact_bytes(artifacts, finding_node.path)?;
-    require_exact_canonical_json(finding_node.path, finding_bytes)?;
-    let finding: Finding = serde_json::from_slice(finding_bytes).map_err(|error| {
-        invalid_artifact(
-            finding_node.path,
-            format!("invalid signed Finding: {error}"),
-        )
-    })?;
-    verify_finding(&finding)
-        .map_err(|error| invalid_artifact(finding_node.path, error.to_string()))?;
 
     let report_bytes = artifact_bytes(artifacts, report_node.path)?;
     require_exact_canonical_json(report_node.path, report_bytes)?;
