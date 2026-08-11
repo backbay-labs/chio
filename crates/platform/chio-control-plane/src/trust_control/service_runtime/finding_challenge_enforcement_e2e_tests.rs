@@ -8087,6 +8087,41 @@ fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> Tes
 }
 
 #[test]
+fn finding_challenge_published_retraction_reconciles_after_status_bond_expiry() -> TestResult {
+    let mut case = finalizing_liability_pending_retraction()?;
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        case.deployment.challenges.advance_effect_intent(
+            &case.intent_key,
+            state,
+            SETTLEMENT_NOW,
+        )?;
+    }
+
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
+        FindingFinalization::AwaitingStatusPublication
+    );
+    case.publish_status(SETTLEMENT_NOW + 2)?;
+
+    let mut expired_status_bond = market_config();
+    expired_status_bond.status_feed_service_bond.valid_until = SETTLEMENT_NOW + 2;
+    case.coordinator = case.deployment.coordinator_under(
+        &expired_status_bond,
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 3)?,
+        FindingFinalization::AlreadyConfirmed,
+        "a published retraction reconciles from retained evidence without a new SLA"
+    );
+    assert_eq!(case.head()?.state, FindingLiabilityState::Settled);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_a_superseded_sanction_never_reaches_the_publisher() -> TestResult {
     let case = finalizing_liability()?;
     // Another sanction recorded after the enforcement was signed and
