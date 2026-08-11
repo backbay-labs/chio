@@ -13,6 +13,7 @@ use chio_swarm_authority::finding_pool::{
     verify_finding_pool_allocation, SignedFindingPoolAllocation,
 };
 use chio_swarm_authority::SwarmBudgetPool;
+use serde_json::Value;
 
 use crate::finding_purchase::FindingPurchaseContextView;
 use crate::ChioKernel;
@@ -23,6 +24,9 @@ pub const FINDING_POOL_CLAIM_WINDOW_MS: u64 = 30_000;
 pub const FINDING_POOL_MUTATION_SCHEMA_V1: &str = "chio.finding.pool-mutation.v1";
 pub const FINDING_POOL_DEBIT_AUTHORIZATION_SCHEMA_V1: &str =
     "chio.finding.pool-debit-authorization.v1";
+const MAX_PURCHASE_ARGUMENT_DEPTH: usize = 32;
+const MAX_PURCHASE_ARGUMENT_NODES: usize = 4_096;
+const MAX_PURCHASE_ARGUMENT_BYTES: usize = 1024 * 1024;
 
 /// Purchaser-signed proof of possession for one exact pool reservation.
 ///
@@ -915,7 +919,7 @@ impl ChioKernel {
             let Some(receipt) = claimed.pop() else {
                 break;
             };
-            self.record_chio_receipt_without_settlement(&receipt)
+            self.record_chio_receipt_without_settlement_once(&receipt)
                 .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
             ledger.acknowledge_mutation_receipt(
                 &receipt.id,
@@ -1195,13 +1199,19 @@ fn verify_purchaser_authorization(
             ));
         }
     }
-    let arguments_sha256 = sha256_hex(
-        &canonical_json_bytes(request.purchase_context.arguments).map_err(|_| {
+    validate_purchase_arguments(request.purchase_context.arguments)?;
+    let canonical_arguments =
+        canonical_json_bytes(request.purchase_context.arguments).map_err(|_| {
             FindingPoolDebitError::PurchaserAuthorization(
                 "request arguments are not canonicalizable".to_owned(),
             )
-        })?,
-    );
+        })?;
+    if canonical_arguments.len() > MAX_PURCHASE_ARGUMENT_BYTES {
+        return Err(FindingPoolDebitError::PurchaserAuthorization(
+            "request arguments exceed the canonical byte limit".to_owned(),
+        ));
+    }
+    let arguments_sha256 = sha256_hex(&canonical_arguments);
     if body.purchase_id != expected_purchase_id
         || body.allocation_envelope_sha256 != request.expected_allocation_envelope_sha256
         || body.purchaser_id != request.purchaser_id
@@ -1236,6 +1246,66 @@ fn verify_purchaser_authorization(
             )
         })?);
     Ok((expires_at_unix_ms, replay_binding_sha256))
+}
+
+fn account_purchase_argument_bytes(
+    total: &mut usize,
+    additional: usize,
+) -> Result<(), FindingPoolDebitError> {
+    let next = total.checked_add(additional).ok_or_else(|| {
+        FindingPoolDebitError::PurchaserAuthorization(
+            "request arguments exceed the byte limit".to_owned(),
+        )
+    })?;
+    if next > MAX_PURCHASE_ARGUMENT_BYTES {
+        return Err(FindingPoolDebitError::PurchaserAuthorization(
+            "request arguments exceed the byte limit".to_owned(),
+        ));
+    }
+    *total = next;
+    Ok(())
+}
+
+fn validate_purchase_argument_value(
+    value: &Value,
+    depth: usize,
+    nodes: &mut usize,
+    bytes: &mut usize,
+) -> Result<(), FindingPoolDebitError> {
+    if depth > MAX_PURCHASE_ARGUMENT_DEPTH {
+        return Err(FindingPoolDebitError::PurchaserAuthorization(
+            "request arguments exceed the nesting depth limit".to_owned(),
+        ));
+    }
+    *nodes = nodes.checked_add(1).ok_or_else(|| {
+        FindingPoolDebitError::PurchaserAuthorization(
+            "request arguments exceed the node limit".to_owned(),
+        )
+    })?;
+    if *nodes > MAX_PURCHASE_ARGUMENT_NODES {
+        return Err(FindingPoolDebitError::PurchaserAuthorization(
+            "request arguments exceed the node limit".to_owned(),
+        ));
+    }
+    account_purchase_argument_bytes(bytes, 1)?;
+    match value {
+        Value::Null | Value::Bool(_) => Ok(()),
+        Value::Number(number) => account_purchase_argument_bytes(bytes, number.to_string().len()),
+        Value::String(text) => account_purchase_argument_bytes(bytes, text.len()),
+        Value::Array(values) => values
+            .iter()
+            .try_for_each(|value| validate_purchase_argument_value(value, depth + 1, nodes, bytes)),
+        Value::Object(values) => values.iter().try_for_each(|(key, value)| {
+            account_purchase_argument_bytes(bytes, key.len())?;
+            validate_purchase_argument_value(value, depth + 1, nodes, bytes)
+        }),
+    }
+}
+
+fn validate_purchase_arguments(arguments: &Value) -> Result<(), FindingPoolDebitError> {
+    let mut nodes = 0_usize;
+    let mut bytes = 0_usize;
+    validate_purchase_argument_value(arguments, 0, &mut nodes, &mut bytes)
 }
 
 fn require_identifier(value: &str, field: &'static str) -> Result<(), FindingPoolDebitError> {

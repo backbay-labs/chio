@@ -25,6 +25,7 @@ pub(crate) struct RecordingLedger {
     receipt_authority: Mutex<Option<chio_core::crypto::PublicKey>>,
     receipt_sink_id: Mutex<Option<String>>,
     delay_pending_reads: AtomicBool,
+    fail_next_acknowledgement: AtomicBool,
     active_pending_reads: AtomicUsize,
     max_active_pending_reads: AtomicUsize,
 }
@@ -389,7 +390,7 @@ impl FindingPoolLedger for RecordingLedger {
             ));
         }
         drop(outbox);
-        let claims = self.delivery_claims.lock().map_err(|_| {
+        let mut claims = self.delivery_claims.lock().map_err(|_| {
             FindingPoolLedgerError::Storage("test delivery claim lock was poisoned".to_owned())
         })?;
         if !claims.iter().any(|(claimed_receipt_id, owner, _)| {
@@ -397,6 +398,12 @@ impl FindingPoolLedger for RecordingLedger {
         }) {
             return Err(FindingPoolLedgerError::Receipt(
                 "test tried to acknowledge another worker's claim".to_owned(),
+            ));
+        }
+        if self.fail_next_acknowledgement.swap(false, Ordering::SeqCst) {
+            claims.retain(|(claimed_receipt_id, _, _)| claimed_receipt_id != receipt_id);
+            return Err(FindingPoolLedgerError::Storage(
+                "injected post-projection acknowledgement failure".to_owned(),
             ));
         }
         drop(claims);
@@ -460,6 +467,19 @@ impl ReceiptStore for RecordingReceiptStore {
 
     fn durable_sink_id(&self) -> Option<&str> {
         Some(&self.sink_id)
+    }
+
+    fn load_chio_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        Ok(self
+            .receipts
+            .lock()
+            .map_err(|_| ReceiptStoreError::Conflict("test receipt lock was poisoned".to_owned()))?
+            .iter()
+            .find(|receipt| receipt.id == receipt_id)
+            .cloned())
     }
 
     fn append_child_receipt(
@@ -837,6 +857,86 @@ fn concurrent_pool_outbox_flushers_project_each_receipt_once() {
     assert!(ledger
         .pending_mutation_receipts()
         .is_ok_and(|receipts| receipts.is_empty()));
+}
+
+#[derive(Default)]
+struct CountingRuntimeTraceObserver {
+    receipt_appends: AtomicUsize,
+}
+
+impl crate::RuntimeTraceObserver for CountingRuntimeTraceObserver {
+    fn observe(&self, event: crate::RuntimeTraceEvent) {
+        if matches!(event, crate::RuntimeTraceEvent::ReceiptAppended { .. }) {
+            self.receipt_appends.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
+#[test]
+fn pool_outbox_retry_after_durable_append_does_not_duplicate_projection() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let receipt_store = Arc::new(RecordingReceiptStore::new(
+        "receipt-sink:retry-once".to_owned(),
+    ));
+    let mut kernel =
+        kernel_with_keys_and_store(Arc::clone(&ledger), 91, 92, Arc::clone(&receipt_store));
+    let trace = Arc::new(CountingRuntimeTraceObserver::default());
+    kernel.set_runtime_trace_observer(trace.clone());
+    ledger
+        .fail_next_acknowledgement
+        .store(true, Ordering::SeqCst);
+
+    assert!(kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .is_ok());
+    assert!(kernel
+        .flush_finding_pool_mutation_receipts(ledger.as_ref())
+        .is_err());
+    assert_eq!(
+        receipt_store
+            .receipts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len(),
+        1
+    );
+    assert_eq!(kernel.receipt_log().receipts().len(), 1);
+    assert_eq!(trace.receipt_appends.load(Ordering::SeqCst), 1);
+    assert!(kernel
+        .flush_finding_pool_mutation_receipts(ledger.as_ref())
+        .is_ok());
+
+    assert_eq!(
+        receipt_store
+            .receipts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len(),
+        1
+    );
+    assert_eq!(kernel.receipt_log().receipts().len(), 1);
+    assert_eq!(trace.receipt_appends.load(Ordering::SeqCst), 1);
+    assert!(ledger
+        .pending_mutation_receipts()
+        .is_ok_and(|receipts| receipts.is_empty()));
+}
+
+#[test]
+fn purchase_arguments_are_bounded_before_canonicalization() {
+    let mut too_deep = Value::Null;
+    for _ in 0..=MAX_PURCHASE_ARGUMENT_DEPTH {
+        too_deep = Value::Array(vec![too_deep]);
+    }
+    assert!(validate_purchase_arguments(&too_deep)
+        .is_err_and(|error| error.to_string().contains("nesting depth")));
+
+    let too_many_nodes = Value::Array(vec![Value::Null; MAX_PURCHASE_ARGUMENT_NODES]);
+    assert!(validate_purchase_arguments(&too_many_nodes)
+        .is_err_and(|error| error.to_string().contains("node limit")));
+
+    let too_many_bytes = Value::String("x".repeat(MAX_PURCHASE_ARGUMENT_BYTES));
+    assert!(validate_purchase_arguments(&too_many_bytes)
+        .is_err_and(|error| error.to_string().contains("byte limit")));
 }
 
 #[test]

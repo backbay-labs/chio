@@ -1416,30 +1416,6 @@ impl ChioKernel {
             });
         }
 
-        if let Err(error) = credential_reservation.retain_if_dropped() {
-            let reason = format!("dispatch credential retention failed before dispatch: {error}");
-            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                self.build_pre_dispatch_cleanup_deny_response_with_credentials(
-                    PreDispatchCleanupDeny {
-                        request,
-                        reason: &reason,
-                        timestamp: current_unix_timestamp(),
-                        matched_grant_index,
-                        cap,
-                        budget_mutation: &budget_mutation,
-                        payment_authorization: payment_authorization.as_ref(),
-                        durable_operation: durable_admission
-                            .as_ref()
-                            .map(DurableToolAdmission::operation),
-                        runtime_admission_metadata: runtime_admission_metadata.clone(),
-                        verified_payee_binding: verified_governed_payee_binding.as_ref(),
-                        budget_lease_acquired,
-                    },
-                    PaymentCredentialDisposition::RetentionOutcomeUnknown,
-                )
-            });
-        }
-
         // Claim the pool participant while the durable admission is still in a
         // compensatable pre-dispatch state. Exact replay makes a crash after
         // this point resumable without capturing the invocation twice.
@@ -1482,6 +1458,33 @@ impl ChioKernel {
                     } else {
                         PaymentCredentialDisposition::NonePresent
                     },
+                )
+            });
+        }
+
+        // A pool-claim denial is still pre-dispatch, so credentials must remain
+        // rollback-owned until the claim succeeds. Only then may Drop stop
+        // compensating them during later ambiguous dispatch boundaries.
+        if let Err(error) = credential_reservation.retain_if_dropped() {
+            let reason = format!("dispatch credential retention failed before dispatch: {error}");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                    PreDispatchCleanupDeny {
+                        request,
+                        reason: &reason,
+                        timestamp: current_unix_timestamp(),
+                        matched_grant_index,
+                        cap,
+                        budget_mutation: &budget_mutation,
+                        payment_authorization: payment_authorization.as_ref(),
+                        durable_operation: durable_admission
+                            .as_ref()
+                            .map(DurableToolAdmission::operation),
+                        runtime_admission_metadata: runtime_admission_metadata.clone(),
+                        verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                        budget_lease_acquired,
+                    },
+                    PaymentCredentialDisposition::RetentionOutcomeUnknown,
                 )
             });
         }

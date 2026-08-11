@@ -218,8 +218,8 @@ impl ChioKernel {
         if receipt.is_allowed() {
             self.check_revocation(&request.capability)?;
         }
-        let (trace_event, settlement_visible_at_ms) =
-            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition, true)?;
+        let (trace_event, settlement_visible_at_ms) = self
+            .record_chio_receipt_during_trace_transition(receipt, &trace_transition, true, false)?;
         drop(trace_transition);
         self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)?;
         self.apply_federation_cosign_for_admitted_request_with_snapshot(
@@ -288,8 +288,8 @@ impl ChioKernel {
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
         let trace_transition = self.lock_runtime_trace_transition()?;
-        let (trace_event, settlement_visible_at_ms) =
-            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition, true)?;
+        let (trace_event, settlement_visible_at_ms) = self
+            .record_chio_receipt_during_trace_transition(receipt, &trace_transition, true, false)?;
         drop(trace_transition);
         self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)
     }
@@ -297,14 +297,35 @@ impl ChioKernel {
     /// Persist an internal audit receipt without presenting it to the
     /// financial settlement observer. The durable receipt store and local
     /// trace still receive the exact signed receipt.
-    #[cfg(any(test, feature = "cognition-market-experimental"))]
+    #[cfg(test)]
     pub(crate) fn record_chio_receipt_without_settlement(
         &self,
         receipt: &ChioReceipt,
     ) -> Result<(), KernelError> {
         let trace_transition = self.lock_runtime_trace_transition()?;
-        let (trace_event, settlement_visible_at_ms) =
-            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition, false)?;
+        let (trace_event, settlement_visible_at_ms) = self
+            .record_chio_receipt_during_trace_transition(
+                receipt,
+                &trace_transition,
+                false,
+                false,
+            )?;
+        drop(trace_transition);
+        self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)
+    }
+
+    /// Project an internal audit receipt once, using retained durable history
+    /// as the replay authority. Exact replay after an outbox worker stops
+    /// between append and acknowledgement must not duplicate the local mirror
+    /// or runtime trace.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn record_chio_receipt_without_settlement_once(
+        &self,
+        receipt: &ChioReceipt,
+    ) -> Result<(), KernelError> {
+        let trace_transition = self.lock_runtime_trace_transition()?;
+        let (trace_event, settlement_visible_at_ms) = self
+            .record_chio_receipt_during_trace_transition(receipt, &trace_transition, false, true)?;
         drop(trace_transition);
         self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)
     }
@@ -314,6 +335,7 @@ impl ChioKernel {
         receipt: &ChioReceipt,
         _trace_transition: &std::sync::MutexGuard<'_, ()>,
         settlement_eligible: bool,
+        suppress_exact_durable_replay: bool,
     ) -> Result<(Option<RuntimeTraceEvent>, Option<u64>), KernelError> {
         let settlement_visible_at_ms = if settlement_eligible {
             self.settlement_observer
@@ -322,7 +344,7 @@ impl ChioKernel {
         } else {
             None
         };
-        {
+        let projected = {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())
             })?;
@@ -342,6 +364,31 @@ impl ChioKernel {
                     // Surface it as due work instead of losing it on the timeout.
                     crate::settlement_routing::record_unresolved_claim_missed(&receipt.id);
                 })?;
+                self.append_chio_receipt_to_local_log(receipt.clone());
+                true
+            } else if suppress_exact_durable_replay {
+                let inserted = self
+                    .with_receipt_store(|store| {
+                        match store.load_retained_chio_receipt(&receipt.id)? {
+                            Some(existing) if receipts_match(&existing, receipt)? => Ok(false),
+                            Some(_) => Err(KernelError::DurableAdmission(format!(
+                                "receipt projection {} conflicts with retained durable history",
+                                receipt.id
+                            ))),
+                            None => {
+                                store.append_chio_receipt_with_timeout(
+                                    receipt,
+                                    self.config.deadlines.receipt_append_budget(),
+                                )?;
+                                Ok(true)
+                            }
+                        }
+                    })?
+                    .unwrap_or(true);
+                if inserted {
+                    self.append_chio_receipt_to_local_log(receipt.clone());
+                }
+                inserted
             } else {
                 // Bound the commit round trip so a wedged writer cannot pin
                 // the kernel-wide receipt write lock indefinitely. On timeout
@@ -352,8 +399,12 @@ impl ChioKernel {
                         self.config.deadlines.receipt_append_budget(),
                     )?)
                 })?;
+                self.append_chio_receipt_to_local_log(receipt.clone());
+                true
             }
-            self.append_chio_receipt_to_local_log(receipt.clone());
+        };
+        if !projected {
+            return Ok((None, None));
         }
         let trace_event = if self.runtime_trace_observer.is_some() {
             Some(RuntimeTraceEvent::ReceiptAppended {
