@@ -129,21 +129,21 @@ use chio_settle::{
 use chio_store_sqlite::finding_market_store::{FindingRecordInput, SqliteFindingMarketStore};
 use chio_store_sqlite::{
     derive_dispute_bond_funding_intent_key, dispute_bond_funding_intent_digest,
-    FindingChallengeState, FindingChallengeVerdict, FindingDisputeLockDisposition,
-    FindingDisputeLockInput, FindingDisputeLockState, FindingEffectIntentKind,
-    FindingEffectIntentState, FindingLiabilityState, FindingPurchaseDeliveryInput,
-    FindingPurchaseDenyInput, FindingPurchaseReservationInput, SqliteAuthorityStore,
-    SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
+    FindingChallengeState, FindingChallengeVerdict, FindingChallengeWriteOutcome,
+    FindingDisputeLockDisposition, FindingDisputeLockInput, FindingDisputeLockState,
+    FindingEffectIntentKind, FindingEffectIntentState, FindingLiabilityState,
+    FindingPurchaseDeliveryInput, FindingPurchaseDenyInput, FindingPurchaseReservationInput,
+    SqliteAuthorityStore, SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
 };
 
 use crate::trust_control::finding_challenge_coordinator::{
-    derive_anchor_evidence_intent_key, derive_defect_key, derive_liability_key,
-    root_intent_commitment, AppealDisposition, AppealResolution, AuthorizedImpairment,
-    ChallengeCoordinatorError, ChallengeEvaluationRequest, ChallengeSubmissionOutcome,
-    EvaluationAdmission, FindingAuditRound, FindingAuthorityStatus, FindingAuthorityStatusResolver,
-    FindingChallengeCoordinator, FindingCollateralFacts, FindingFilingResolver,
-    FindingFinalization, FindingLiabilityIdentity, FindingPenaltyGovernance, UpheldLiability,
-    FINDING_AUTHORITY_STATUS_SCHEMA_V1,
+    anchor_evidence_intent_commitment, derive_anchor_evidence_intent_key, derive_defect_key,
+    derive_liability_key, root_intent_commitment, AppealDisposition, AppealResolution,
+    AuthorizedImpairment, ChallengeCoordinatorError, ChallengeEvaluationRequest,
+    ChallengeSubmissionOutcome, EvaluationAdmission, FindingAuditRound, FindingAuthorityStatus,
+    FindingAuthorityStatusResolver, FindingChallengeCoordinator, FindingCollateralFacts,
+    FindingFilingResolver, FindingFinalization, FindingLiabilityIdentity, FindingPenaltyGovernance,
+    UpheldLiability, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
 use crate::trust_control::{
     FederationAdmissionRateLimiter, FindingAuthorityPin, FindingChallengeSubmissionExecutor,
@@ -4542,6 +4542,29 @@ fn finding_challenge_a_filing_outside_the_schedule_window_is_refused() -> TestRe
     Ok(())
 }
 
+#[test]
+fn finding_challenge_rejects_an_undersized_appeal_window_before_filing() -> TestResult {
+    let terms = market_terms_shaped(|terms| terms.appeal_window_secs = 24 * 60 * 60 - 1)?;
+    let deployment = deployment_publishing_terms(&[terms.clone()])?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenge = buyer_challenge_bound_to_admission_terms(&keypair(41), &terms)?;
+    let (_, raw) = finding_artifact()?;
+
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("an appeal window below the venue minimum admits no filing");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::DisputeTerms("appeal window")
+    ));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // The three bond dispositions
 // ---------------------------------------------------------------------------
@@ -6060,6 +6083,34 @@ fn finding_challenge_refreshes_a_snapshot_only_before_impairment_dispatch() -> T
     )?;
     let seller = keypair(22).public_key();
     let observed_at = APPEAL_FINAL_AT + 10;
+    let proof = anchor_proof()?;
+    let evidence_hash = anchor_evidence_hash()?;
+    let merkle_root = proof.receipt_inclusion.merkle_root.to_hex_prefixed();
+    let old_seller_intent = authorized
+        .enforcement
+        .body
+        .effect_intents
+        .iter()
+        .find(|binding| binding.kind == chio_finding::FindingEffectIntentKind::SellerImpair)
+        .map(|binding| binding.intent_id.as_str())
+        .ok_or("the original enforcement carries its seller intent")?;
+    let old_anchor_commitment = anchor_evidence_intent_commitment(
+        &authorized.enforcement.body.liability_key,
+        old_seller_intent,
+        &authorized.enforcement.body.penalty_envelope_sha256,
+        &merkle_root,
+    );
+    assert_eq!(
+        case.deployment.challenges.record_effect_intent(
+            &derive_anchor_evidence_intent_key(&evidence_hash),
+            FindingEffectIntentKind::RootIntent,
+            &old_anchor_commitment,
+            Some(&authorized.enforcement.body.liability_key),
+            false,
+            observed_at,
+        )?,
+        FindingChallengeWriteOutcome::Inserted
+    );
     let mut snapshot = FindingFinalizedBondSnapshot {
         schema: FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1.to_string(),
         snapshot_id: String::new(),
@@ -6099,6 +6150,33 @@ fn finding_challenge_refreshes_a_snapshot_only_before_impairment_dispatch() -> T
     );
     assert_eq!(refreshed.slash.penalty, authorized.slash.penalty);
     assert_eq!(refreshed.effect_intent_keys, authorized.effect_intent_keys);
+    let refreshed_seller_intent = refreshed
+        .enforcement
+        .body
+        .effect_intents
+        .iter()
+        .find(|binding| binding.kind == chio_finding::FindingEffectIntentKind::SellerImpair)
+        .map(|binding| binding.intent_id.as_str())
+        .ok_or("the refreshed enforcement carries its seller intent")?;
+    let refreshed_anchor_commitment = anchor_evidence_intent_commitment(
+        &refreshed.enforcement.body.liability_key,
+        refreshed_seller_intent,
+        &refreshed.enforcement.body.penalty_envelope_sha256,
+        &merkle_root,
+    );
+    assert_eq!(refreshed_anchor_commitment, old_anchor_commitment);
+    assert_eq!(
+        case.deployment.challenges.record_effect_intent(
+            &derive_anchor_evidence_intent_key(&evidence_hash),
+            FindingEffectIntentKind::RootIntent,
+            &refreshed_anchor_commitment,
+            Some(&refreshed.enforcement.body.liability_key),
+            false,
+            observed_at + 1,
+        )?,
+        FindingChallengeWriteOutcome::ExistingSame,
+        "a crash after the anchor fence must resume under a refreshed snapshot"
+    );
 
     let seller_intent = authorized
         .effect_intent_keys

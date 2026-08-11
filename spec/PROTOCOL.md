@@ -1885,16 +1885,33 @@ assumption rather than an enforceable one.
 
 An independent report verifier MUST also receive the exact signed
 `chio.finding.audit-round-authorization.v1` envelope and the externally
-pinned governance lifecycle policy. It MUST require that policy to cover the
-authorization time, verify the signature under its key, re-derive the epoch
+pinned audit-authority and governance lifecycle policies. Each policy binds
+an authority identifier, signing key, key epoch, validity interval, and
+revocation-status reference. The audit-authority policy MUST cover the epoch
+commitment through report publication, and the epoch and report signatures
+MUST verify under that externally pinned key. A verifier MUST receive a status
+reading signed by its externally pinned status authority for the exact audit
+policy. That reading MUST bind the policy's status reference, authority, key,
+and key epoch, MUST be observed at or after report publication and no more
+than 3,600 seconds later, and MUST reject when `revoked_from` is at or before
+report publication.
+
+The governance policy MUST cover the authorization time. The verifier MUST
+verify the authorization signature under its key, re-derive the epoch
 precommitment, require the epoch's `authorization_digest` to equal the exact
 authorization envelope digest, and require the authorization to cover the
-epoch commitment time. For every signed evaluator outcome, the verifier MUST
-resolve an independently signed, fresh status reading for the outcome's
-exact evaluator policy. The reading MUST bind the policy's status reference,
-authority, key, and key epoch, MUST be observed after the evaluation and no
-later than report publication, and MUST reject when `revoked_from` is at or
-before the evaluation time.
+epoch commitment time. A governance status reading signed by the same pinned
+status authority MUST bind the exact governance policy, cover the
+authorization time, be observed no later than report publication, and be no
+more than 3,600 seconds old at publication. It MUST reject when
+`revoked_from` is at or before authorization. For every signed evaluator
+outcome, the verifier MUST likewise resolve an independently signed status
+reading for the outcome's exact historical evaluator policy. The reading MUST
+bind the policy's status reference, authority, key, and key epoch, MUST be
+observed after the evaluation and no later than report publication, MUST be no
+more than 3,600 seconds old at publication, and MUST reject when
+`revoked_from` is at or before the evaluation time. Missing, stale,
+self-asserted, or mismatched lifecycle evidence fails closed.
 
 #### 6.4.7.18 `chio.finding.replay-observation.v1`
 

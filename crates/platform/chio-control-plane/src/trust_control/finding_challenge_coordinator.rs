@@ -317,6 +317,29 @@ pub fn derive_anchor_evidence_intent_key(evidence_hash: &str) -> String {
     sha256_hex(format!("{EFFECT_ANCHOR_EVIDENCE_DOMAIN}\0{evidence_hash}").as_bytes())
 }
 
+/// Stable commitment fenced under one anchored evidence leaf.
+///
+/// The enforcement envelope and its content-addressed identifier change when
+/// an expired observer snapshot is refreshed. The seller-impair intent does
+/// not: it already commits the liability, chain, vault contract, and sealed
+/// allocation. Binding the leaf to that stable intent lets a crash after the
+/// anchor fence resume with a fresh snapshot while a different impairment
+/// still collides and rejects.
+#[must_use]
+pub(super) fn anchor_evidence_intent_commitment(
+    liability_key: &str,
+    seller_impair_intent_id: &str,
+    penalty_envelope_sha256: &str,
+    merkle_root: &str,
+) -> String {
+    sha256_hex(
+        format!(
+            "{EFFECT_ANCHOR_EVIDENCE_DOMAIN}\0{liability_key}\0{seller_impair_intent_id}\0{penalty_envelope_sha256}\0{merkle_root}"
+        )
+        .as_bytes(),
+    )
+}
+
 /// Domain-keyed identity of the status-feed retraction.
 #[must_use]
 pub fn derive_retraction_intent_key(
@@ -3293,6 +3316,9 @@ impl FindingChallengeCoordinator {
         if terms.body.listing_id != challenge.listing_id {
             return Err(ChallengeCoordinatorError::FilingTermsBinding("listing_id"));
         }
+        if terms.body.appeal_window_secs < MIN_APPEAL_WINDOW_SECS {
+            return Err(ChallengeCoordinatorError::DisputeTerms("appeal window"));
+        }
         Ok(terms)
     }
 
@@ -3920,11 +3946,12 @@ impl FindingChallengeCoordinator {
     /// The anchor proof arrives beside the instruction and authenticates
     /// only as a proof: nothing in it names the enforcement it is being
     /// spent on. The leaf is therefore committed here, before the call
-    /// leaves, to the liability, the enforcement, and the penalty it pays,
-    /// under a key that is the leaf itself. One anchored receipt can then
-    /// authorize exactly one impairment: presenting it again under
-    /// different terms collides with what is already durable and rejects,
-    /// and replaying the same terms reconciles.
+    /// leaves, to the liability, the stable seller-impair intent, and the
+    /// penalty it pays, under a key that is the leaf itself. The stable
+    /// intent survives an allowed observer-snapshot refresh, while one
+    /// anchored receipt still authorizes exactly one impairment: presenting
+    /// it again under different terms collides with what is already durable
+    /// and rejects, and replaying the same terms reconciles.
     fn fence_anchor_evidence(
         &self,
         liability_key: &str,
@@ -3932,15 +3959,11 @@ impl FindingChallengeCoordinator {
         intent: &chio_settle::FindingImpairmentIntent,
         now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
-        let enforcement = verified.enforcement();
-        let commitment = sha256_hex(
-            format!(
-                "{EFFECT_ANCHOR_EVIDENCE_DOMAIN}\0{liability_key}\0{enforcement_id}\0{penalty}\0{root}",
-                enforcement_id = enforcement.enforcement_id,
-                penalty = enforcement.penalty_envelope_sha256,
-                root = intent.merkle_root,
-            )
-            .as_bytes(),
+        let commitment = anchor_evidence_intent_commitment(
+            liability_key,
+            &intent.intent_id,
+            &verified.enforcement().penalty_envelope_sha256,
+            &intent.merkle_root,
         );
         self.challenges
             .record_effect_intent(
