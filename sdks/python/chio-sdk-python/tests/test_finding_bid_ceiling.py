@@ -85,3 +85,28 @@ def test_finding_bid_ceiling_rejects_arithmetic_and_binding_negatives() -> None:
     replay = _first()
     replay["expectedReplayRecipeSha256"] = "0" * 64
     _rejects(replay, "replay_recipe_substituted")
+
+
+def test_finding_bid_ceiling_wraps_malformed_string_field_types() -> None:
+    for section, field in [
+        ("estimate", "currency"),
+        ("policy", "currency"),
+        ("estimate", "sourceSha256"),
+        ("estimate", "contextSha256"),
+        ("estimate", "replayRecipeSha256"),
+    ]:
+        input_value = _first()
+        cast(dict[str, Any], input_value[section])[field] = 7
+        _rejects(
+            input_value,
+            "currency_mismatch" if field == "currency" else "digest_malformed",
+        )
+
+    for field in [
+        "expectedSourceSha256",
+        "expectedContextSha256",
+        "expectedReplayRecipeSha256",
+    ]:
+        input_value = _first()
+        cast(dict[str, Any], input_value)[field] = None
+        _rejects(input_value, "digest_malformed")

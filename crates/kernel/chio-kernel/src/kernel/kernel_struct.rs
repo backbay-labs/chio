@@ -591,6 +591,10 @@ pub struct ChioKernel {
     #[cfg(feature = "cognition-market-experimental")]
     pub(super) finding_pool_ledger:
         Option<Arc<dyn crate::finding_pool::QualifiedFindingPoolLedger>>,
+    /// Linearizes pending-read, ordinary-log append, and durable outbox ack so
+    /// concurrent pool operations cannot project one receipt twice.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) finding_pool_outbox_flush_lock: Mutex<()>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
     pub(super) runtime_admission_readiness_timeout: Duration,

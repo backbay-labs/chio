@@ -11,11 +11,12 @@ use std::time::Duration;
 
 use chio_core::receipt::body::ChioReceipt;
 use chio_kernel::finding_pool::{
-    AuthorizedFindingPoolClaim, AuthorizedFindingPoolDebit, AuthorizedFindingPoolRecoveryRelease,
-    AuthorizedFindingPoolTerminal, AuthorizedFindingPoolUnknownDispatchTerminal,
-    FindingPoolDebitReceipt, FindingPoolDebitState, FindingPoolLedger, FindingPoolLedgerError,
-    FindingPoolMutation, FindingPoolMutationAttestor, FindingPoolMutationKind,
-    FindingPoolTerminalDecision, QualifiedFindingPoolLedger, FINDING_POOL_MUTATION_SCHEMA_V1,
+    AuthorizedFindingPoolClaim, AuthorizedFindingPoolDebit, AuthorizedFindingPoolDebitReplay,
+    AuthorizedFindingPoolRecoveryRelease, AuthorizedFindingPoolTerminal,
+    AuthorizedFindingPoolUnknownDispatchTerminal, FindingPoolDebitReceipt, FindingPoolDebitState,
+    FindingPoolLedger, FindingPoolLedgerError, FindingPoolMutation, FindingPoolMutationAttestor,
+    FindingPoolMutationKind, FindingPoolTerminalDecision, QualifiedFindingPoolLedger,
+    FINDING_POOL_MUTATION_SCHEMA_V1,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS finding_pool_allocations (
 CREATE TABLE IF NOT EXISTS finding_pool_debits (
     purchase_id TEXT PRIMARY KEY,
     allocation_envelope_sha256 TEXT NOT NULL,
+    debit_request_binding_sha256 TEXT,
     finding_id TEXT NOT NULL,
     listing_id TEXT NOT NULL,
     reservation_id TEXT NOT NULL,
@@ -315,6 +317,66 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
     }
 
+    fn replay_debit(
+        &self,
+        replay: &AuthorizedFindingPoolDebitReplay,
+    ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
+        let connection = self
+            .pool
+            .get()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let stored = connection
+            .query_row(
+                "SELECT d.allocation_envelope_sha256, a.allocation_id, \
+                        d.debit_request_binding_sha256, d.amount_units, \
+                        d.currency, d.state, d.reserved_after_units, \
+                        d.spent_after_units, a.signed_amount_units \
+                 FROM finding_pool_debits d \
+                 JOIN finding_pool_allocations a \
+                   ON a.allocation_envelope_sha256 = d.allocation_envelope_sha256 \
+                 WHERE d.purchase_id = ?1",
+                [replay.purchase_id()],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, String>(8)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
+            .ok_or(FindingPoolLedgerError::ReservationMissing)?;
+        if stored.0 != replay.allocation_envelope_sha256()
+            || stored.2.as_deref() != Some(replay.debit_request_binding_sha256())
+        {
+            return Err(FindingPoolLedgerError::ReplayConflict);
+        }
+        let amount = parse_units(&stored.3, "debit.amount_units")?;
+        let state = parse_state(&stored.5)?;
+        let reserved_after = parse_units(&stored.6, "debit.reserved_after_units")?;
+        let spent_after = parse_units(&stored.7, "debit.spent_after_units")?;
+        let signed = parse_units(&stored.8, "signed_amount_units")?;
+        Ok(FindingPoolDebitReceipt {
+            purchase_id: replay.purchase_id().to_owned(),
+            allocation_id: stored.1,
+            allocation_envelope_sha256: stored.0,
+            amount_units: amount,
+            currency: stored.4,
+            state,
+            reserved_after_units: reserved_after,
+            spent_after_units: spent_after,
+            remaining_after_units: remaining_units(signed, reserved_after, spent_after)?,
+            replayed: true,
+        })
+    }
+
     fn list_claimed_admission_operations(
         &self,
         after_operation_id: Option<&str>,
@@ -378,7 +440,8 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
 
         if let Some(existing) = transaction
             .query_row(
-                "SELECT d.allocation_envelope_sha256, a.allocation_id, d.finding_id, \
+                "SELECT d.allocation_envelope_sha256, a.allocation_id, \
+                        d.debit_request_binding_sha256, d.finding_id, \
                         d.listing_id, d.reservation_id, \
                         d.authoritative_payment_operation_id, \
                         d.accepted_bid_envelope_sha256, \
@@ -394,7 +457,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
+                        row.get::<_, Option<String>>(2)?,
                         row.get::<_, String>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, String>(5)?,
@@ -406,27 +469,29 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                         row.get::<_, String>(11)?,
                         row.get::<_, String>(12)?,
                         row.get::<_, String>(13)?,
+                        row.get::<_, String>(14)?,
                     ))
                 },
             )
             .optional()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
         {
-            let amount = parse_units(&existing.8, "debit.amount_units")?;
-            let state = parse_state(&existing.10)?;
-            let reserved_after = parse_units(&existing.11, "debit.reserved_after_units")?;
-            let spent_after = parse_units(&existing.12, "debit.spent_after_units")?;
-            let signed = parse_units(&existing.13, "signed_amount_units")?;
+            let amount = parse_units(&existing.9, "debit.amount_units")?;
+            let state = parse_state(&existing.11)?;
+            let reserved_after = parse_units(&existing.12, "debit.reserved_after_units")?;
+            let spent_after = parse_units(&existing.13, "debit.spent_after_units")?;
+            let signed = parse_units(&existing.14, "signed_amount_units")?;
             if existing.0 != debit.allocation_envelope_sha256()
                 || existing.1 != debit.allocation_id()
-                || existing.2 != debit.finding_id()
-                || existing.3 != debit.listing_id()
-                || existing.4 != debit.reservation_id()
-                || existing.5 != debit.authoritative_payment_operation_id()
-                || existing.6 != debit.accepted_bid_envelope_sha256()
-                || existing.7 != debit.venue_admission_envelope_sha256()
+                || existing.2.as_deref() != Some(debit.debit_request_binding_sha256())
+                || existing.3 != debit.finding_id()
+                || existing.4 != debit.listing_id()
+                || existing.5 != debit.reservation_id()
+                || existing.6 != debit.authoritative_payment_operation_id()
+                || existing.7 != debit.accepted_bid_envelope_sha256()
+                || existing.8 != debit.venue_admission_envelope_sha256()
                 || amount != debit.debit_amount_units()
-                || existing.9 != debit.currency()
+                || existing.10 != debit.currency()
                 || signed != debit.signed_amount_units()
             {
                 return Err(FindingPoolLedgerError::ReplayConflict);
@@ -541,16 +606,18 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         transaction
             .execute(
                 "INSERT INTO finding_pool_debits (\
-                    purchase_id, allocation_envelope_sha256, finding_id, listing_id, \
+                    purchase_id, allocation_envelope_sha256, debit_request_binding_sha256, \
+                    finding_id, listing_id, \
                     reservation_id, authoritative_payment_operation_id, \
                     accepted_bid_envelope_sha256, venue_admission_envelope_sha256, \
                     amount_units, currency, state, claim_deadline_unix_ms, \
                     claimed_at_unix_ms, reserved_after_units, spent_after_units\
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, \
-                           'reserved', ?11, NULL, ?12, ?13)",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, \
+                           'reserved', ?12, NULL, ?13, ?14)",
                 params![
                     debit.purchase_id(),
                     debit.allocation_envelope_sha256(),
+                    debit.debit_request_binding_sha256(),
                     debit.finding_id(),
                     debit.listing_id(),
                     debit.reservation_id(),
@@ -1531,6 +1598,12 @@ fn reclaim_expired_unclaimed(
 fn ensure_lifecycle_columns(
     connection: &rusqlite::Connection,
 ) -> Result<(), FindingPoolLedgerError> {
+    ensure_column(
+        connection,
+        "finding_pool_debits",
+        "debit_request_binding_sha256",
+        "ALTER TABLE finding_pool_debits ADD COLUMN debit_request_binding_sha256 TEXT",
+    )?;
     ensure_column(
         connection,
         "finding_pool_allocations",

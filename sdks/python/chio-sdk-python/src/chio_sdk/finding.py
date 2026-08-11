@@ -162,7 +162,7 @@ def _parse_u64(value: DecimalIntegerInput, field: str) -> int:
 
 
 def _validate_currency(value: str) -> None:
-    if not _CURRENCY.fullmatch(value):
+    if not isinstance(value, str) or not _CURRENCY.fullmatch(value):
         _fail(
             "currency_mismatch",
             "currency must be 1 to 16 uppercase ASCII letters or digits",
@@ -170,7 +170,7 @@ def _validate_currency(value: str) -> None:
 
 
 def _validate_digest(value: str, field: str) -> None:
-    if not _DIGEST.fullmatch(value):
+    if not isinstance(value, str) or not _DIGEST.fullmatch(value):
         _fail("digest_malformed", f"{field} must be canonical lowercase 64-hex")
 
 

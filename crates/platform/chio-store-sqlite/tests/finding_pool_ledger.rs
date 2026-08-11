@@ -117,6 +117,7 @@ fn debit(
 struct StaticPurchaseVerifier {
     purchase: VerifiedFindingPurchase,
     admissions: Arc<AtomicU64>,
+    reject_verification: bool,
     reject_admission: bool,
 }
 
@@ -125,7 +126,11 @@ impl FindingPurchaseVerifier for StaticPurchaseVerifier {
         &self,
         _view: &FindingPurchaseContextView<'_>,
     ) -> Result<VerifiedFindingPurchase, String> {
-        Ok(self.purchase.clone())
+        if self.reject_verification {
+            Err("purchase verifier key is retired".to_owned())
+        } else {
+            Ok(self.purchase.clone())
+        }
     }
 
     fn verify_purchase_admission(
@@ -243,6 +248,7 @@ fn debit_at_with_policy_and_kernel_key(
         reject_purchase_admission,
         kernel_key,
         fixture.authority.public_key(),
+        false,
     )
 }
 
@@ -259,6 +265,7 @@ fn debit_at_with_policy_and_authority(
     reject_purchase_admission: bool,
     kernel_key: Keypair,
     allocation_authority: PublicKey,
+    reject_purchase_verification: bool,
 ) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
     let verified_purchase = VerifiedFindingPurchase {
         finding_id: "a".repeat(64),
@@ -281,6 +288,7 @@ fn debit_at_with_policy_and_authority(
     let verifier = StaticPurchaseVerifier {
         purchase: verified_purchase,
         admissions: purchase_admissions,
+        reject_verification: reject_purchase_verification,
         reject_admission: reject_purchase_admission,
     };
     let receipt_directory = tempfile::tempdir().test_expect("create receipt directory");
@@ -835,6 +843,7 @@ fn cognition_market_pool_replays_after_allocation_authority_rotation() {
         false,
         Keypair::from_seed(&[99_u8; 32]),
         rotated_authority.clone(),
+        false,
     )
     .test_expect("replay debit signed by the prior allocation authority");
     assert!(replay.replayed);
@@ -851,8 +860,57 @@ fn cognition_market_pool_replays_after_allocation_authority_rotation() {
             false,
             Keypair::from_seed(&[99_u8; 32]),
             rotated_authority,
+            false,
         ),
         Err(FindingPoolDebitError::Allocation(_))
+    ));
+}
+
+#[test]
+fn cognition_market_pool_replays_after_purchase_verifier_rotation() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let ledger = SqliteFindingPoolLedger::open_qualified(
+        directory.path().join("pool.sqlite3"),
+        LEDGER_DOMAIN,
+    )
+    .test_expect("open qualified ledger");
+    let fixture = fixture(100);
+    debit(&ledger, &fixture, "purchase:before-verifier-rotation", 10)
+        .test_expect("commit debit before purchase verifier rotation");
+
+    let replay = debit_at_with_policy_and_authority(
+        &ledger,
+        &fixture,
+        "purchase:before-verifier-rotation",
+        10,
+        2_001,
+        None,
+        None,
+        Arc::new(AtomicU64::new(0)),
+        false,
+        Keypair::from_seed(&[99_u8; 32]),
+        fixture.authority.public_key(),
+        true,
+    )
+    .test_expect("replay debit without consulting the retired purchase verifier");
+    assert!(replay.replayed);
+    assert!(matches!(
+        debit_at_with_policy_and_authority(
+            &ledger,
+            &fixture,
+            "purchase:new-after-verifier-rotation",
+            10,
+            2_001,
+            None,
+            None,
+            Arc::new(AtomicU64::new(0)),
+            false,
+            Keypair::from_seed(&[99_u8; 32]),
+            fixture.authority.public_key(),
+            true,
+        ),
+        Err(FindingPoolDebitError::Allocation(error))
+            if error.contains("purchase verifier key is retired")
     ));
 }
 

@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Barrier, Mutex};
 
 use chio_core::capability::scope::MonetaryAmount;
 use chio_core::crypto::Keypair;
@@ -21,6 +22,9 @@ pub(crate) struct RecordingLedger {
     outbox: Mutex<Vec<ChioReceipt>>,
     acknowledged: Mutex<Vec<String>>,
     receipt_authority: Mutex<Option<chio_core::crypto::PublicKey>>,
+    delay_pending_reads: AtomicBool,
+    active_pending_reads: AtomicUsize,
+    max_active_pending_reads: AtomicUsize,
 }
 
 impl RecordingLedger {
@@ -65,6 +69,13 @@ impl RecordingLedger {
 impl FindingPoolLedger for RecordingLedger {
     fn contains_purchase(&self, _purchase_id: &str) -> Result<bool, FindingPoolLedgerError> {
         Ok(true)
+    }
+
+    fn replay_debit(
+        &self,
+        _replay: &AuthorizedFindingPoolDebitReplay,
+    ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
+        Err(FindingPoolLedgerError::ReplayConflict)
     }
 
     fn list_claimed_admission_operations(
@@ -297,17 +308,25 @@ impl FindingPoolLedger for RecordingLedger {
     }
 
     fn pending_mutation_receipts(&self) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
+        let active = self.active_pending_reads.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max_active_pending_reads
+            .fetch_max(active, Ordering::SeqCst);
+        if self.delay_pending_reads.load(Ordering::SeqCst) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         let outbox = self.outbox.lock().map_err(|_| {
             FindingPoolLedgerError::Storage("test outbox lock was poisoned".to_owned())
         })?;
         let acknowledged = self.acknowledged.lock().map_err(|_| {
             FindingPoolLedgerError::Storage("test ack lock was poisoned".to_owned())
         })?;
-        Ok(outbox
+        let pending = outbox
             .iter()
             .filter(|receipt| !acknowledged.contains(&receipt.id))
             .cloned()
-            .collect())
+            .collect();
+        self.active_pending_reads.fetch_sub(1, Ordering::SeqCst);
+        Ok(pending)
     }
 
     fn acknowledge_mutation_receipt(
@@ -656,6 +675,36 @@ fn pending_pool_receipt_is_not_acknowledged_without_a_durable_store() {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .is_empty());
+}
+
+#[test]
+fn concurrent_pool_outbox_flushers_project_each_receipt_once() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let kernel = Arc::new(kernel_with_ledger(Arc::clone(&ledger)));
+    assert!(kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .is_ok());
+    ledger.delay_pending_reads.store(true, Ordering::SeqCst);
+    let barrier = Arc::new(Barrier::new(5));
+    let mut handles = Vec::new();
+    for _ in 0..4 {
+        let kernel = Arc::clone(&kernel);
+        let ledger = Arc::clone(&ledger);
+        let barrier = Arc::clone(&barrier);
+        handles.push(std::thread::spawn(move || {
+            barrier.wait();
+            kernel.flush_finding_pool_mutation_receipts(ledger.as_ref())
+        }));
+    }
+    barrier.wait();
+    for handle in handles {
+        assert!(handle.join().is_ok_and(|result| result.is_ok()));
+    }
+    assert_eq!(ledger.max_active_pending_reads.load(Ordering::SeqCst), 1);
+    assert_eq!(kernel.receipt_log().receipts().len(), 1);
+    assert!(ledger
+        .pending_mutation_receipts()
+        .is_ok_and(|receipts| receipts.is_empty()));
 }
 
 #[test]

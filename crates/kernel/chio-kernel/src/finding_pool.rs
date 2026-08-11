@@ -48,6 +48,24 @@ pub struct FindingPoolDebitAuthorization {
 
 pub type SignedFindingPoolDebitAuthorization = SignedExportEnvelope<FindingPoolDebitAuthorization>;
 
+/// Stable subset of a debit authorization that must remain identical across
+/// response-loss retries. The trusted-time expiry may be renewed, but no
+/// request, capability, allocation, or purchaser binding may change.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+struct FindingPoolDebitReplayBinding<'a> {
+    schema: &'a str,
+    purchase_id: &'a str,
+    allocation_envelope_sha256: &'a str,
+    purchaser_id: &'a str,
+    purchase_context_sha256: &'a str,
+    capability_id: &'a str,
+    server_id: &'a str,
+    tool_name: &'a str,
+    arguments_sha256: &'a str,
+    expected_output_digest: &'a str,
+}
+
 /// Exact state transition committed by a qualified finding-pool ledger.
 ///
 /// Numeric values are decimal strings so the attestation remains I-JSON safe
@@ -141,6 +159,8 @@ pub enum FindingPoolLedgerError {
     Storage(String),
     #[error("finding pool mutation receipt failed: {0}")]
     Receipt(String),
+    #[error("finding pool mutation receipt outbox flush lock is poisoned")]
+    MutationReceiptFlushPoisoned,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -193,6 +213,7 @@ pub struct AuthorizedFindingPoolDebit {
     purchase_id: String,
     allocation_id: String,
     allocation_envelope_sha256: String,
+    debit_request_binding_sha256: String,
     ledger_domain: String,
     pool_id: String,
     pool_sha256: String,
@@ -211,6 +232,19 @@ pub struct AuthorizedFindingPoolDebit {
     allocation_expires_at_unix_ms: u64,
     debit_requested_at_unix_ms: u64,
     claim_deadline_unix_ms: u64,
+}
+
+/// Exact, already-committed debit identity authenticated without consulting
+/// mutable purchase-verifier trust roots.
+///
+/// Fields are private so only the kernel can construct this after verifying
+/// the retained allocation signer and purchaser authorization. The ledger
+/// compares the allocation envelope and stable signed-request digest with the
+/// durable reservation before it returns a prior receipt.
+pub struct AuthorizedFindingPoolDebitReplay {
+    purchase_id: String,
+    allocation_envelope_sha256: String,
+    debit_request_binding_sha256: String,
 }
 
 /// Kernel-authenticated claim that moves a short-lived pool reservation into
@@ -415,6 +449,11 @@ impl AuthorizedFindingPoolDebit {
     }
 
     #[must_use]
+    pub fn debit_request_binding_sha256(&self) -> &str {
+        &self.debit_request_binding_sha256
+    }
+
+    #[must_use]
     pub fn ledger_domain(&self) -> &str {
         &self.ledger_domain
     }
@@ -505,11 +544,35 @@ impl AuthorizedFindingPoolDebit {
     }
 }
 
+impl AuthorizedFindingPoolDebitReplay {
+    #[must_use]
+    pub fn purchase_id(&self) -> &str {
+        &self.purchase_id
+    }
+
+    #[must_use]
+    pub fn allocation_envelope_sha256(&self) -> &str {
+        &self.allocation_envelope_sha256
+    }
+
+    #[must_use]
+    pub fn debit_request_binding_sha256(&self) -> &str {
+        &self.debit_request_binding_sha256
+    }
+}
+
 pub trait FindingPoolLedger: Send + Sync {
     /// Whether `purchase_id` already has a durable reservation. A `true`
     /// result only selects the replay path; [`Self::debit`] must still compare every
     /// authenticated field before returning the prior receipt.
     fn contains_purchase(&self, purchase_id: &str) -> Result<bool, FindingPoolLedgerError>;
+
+    /// Return an exact committed debit only when the immutable allocation and
+    /// signed purchase context match the durable reservation.
+    fn replay_debit(
+        &self,
+        replay: &AuthorizedFindingPoolDebitReplay,
+    ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError>;
 
     /// Lists claimed, nonterminal pool reservations by their durable admission
     /// operation id. Results must be strictly ascending, start after the
@@ -623,36 +686,14 @@ impl ChioKernel {
         let allocation = &request.allocation.body;
         let allocation_is_live = trusted_now_unix_ms >= allocation.issued_at_unix_ms
             && trusted_now_unix_ms < allocation.expires_at_unix_ms;
-        let purchase = self
-            .verify_purchase_context_for_pool(&request.purchase_context)
-            .map_err(FindingPoolDebitError::Allocation)?;
-        require_identifier(&purchase.purchase_intent_id, "purchase_intent_id")?;
-        require_identifier(&purchase.reservation_id, "reservation_id")?;
-        require_identifier(
-            &purchase.authoritative_payment_operation_id,
-            "authoritative_payment_operation_id",
-        )?;
-        require_hex64(&purchase.finding_id, "finding_id")?;
-        require_identifier(&purchase.listing_id, "listing_id")?;
-        require_hex64(
-            &purchase.accepted_bid_envelope_sha256,
-            "accepted_bid_envelope_sha256",
-        )?;
-        require_hex64(
-            &purchase.venue_admission_envelope_sha256,
-            "venue_admission_envelope_sha256",
-        )?;
         require_hex64(
             request.expected_allocation_envelope_sha256,
             "expected_allocation_envelope_sha256",
         )?;
-        if purchase.accepted_price.units == 0 {
-            return Err(FindingPoolDebitError::ZeroAmount);
-        }
-        let payer_key = PublicKey::from_hex(&purchase.payer_key_hex)
-            .map_err(|_| FindingPoolDebitError::InvalidField("payer_key_hex"))?;
+        let candidate_purchase_id = &request.purchaser_authorization.body.purchase_id;
+        require_identifier(candidate_purchase_id, "authorization.purchase_id")?;
         let committed_purchase = ledger
-            .contains_purchase(&purchase.purchase_intent_id)
+            .contains_purchase(candidate_purchase_id)
             .map_err(FindingPoolDebitError::Ledger)?;
         let structural_time = if allocation.issued_at_unix_ms < allocation.expires_at_unix_ms {
             trusted_now_unix_ms.clamp(
@@ -684,15 +725,60 @@ impl ChioKernel {
         if verified.envelope_sha256 != request.expected_allocation_envelope_sha256 {
             return Err(FindingPoolDebitError::EnvelopeDigestMismatch);
         }
-        if verified.purchaser_id != request.purchaser_id || verified.purchaser_key != payer_key {
+        if verified.purchaser_id != request.purchaser_id
+            || verified.purchaser_key != request.purchase_context.capability.subject
+        {
             return Err(FindingPoolDebitError::PurchaserMismatch);
         }
-        let authorization_expires_at =
-            verify_purchaser_authorization(&request, &purchase, &payer_key)?;
-        if !committed_purchase && trusted_now_unix_ms >= authorization_expires_at {
+        let (authorization_expires_at, debit_request_binding_sha256) =
+            verify_purchaser_authorization(
+                &request,
+                candidate_purchase_id,
+                &verified.purchaser_key,
+            )?;
+        if committed_purchase {
+            let replay = AuthorizedFindingPoolDebitReplay {
+                purchase_id: candidate_purchase_id.clone(),
+                allocation_envelope_sha256: verified.envelope_sha256,
+                debit_request_binding_sha256,
+            };
+            return self
+                .replay_finding_pool_debit(ledger, &replay)
+                .map_err(FindingPoolDebitError::Ledger);
+        }
+        if trusted_now_unix_ms >= authorization_expires_at {
             return Err(FindingPoolDebitError::PurchaserAuthorization(
                 "authorization expired before reservation".to_owned(),
             ));
+        }
+        let purchase = self
+            .verify_purchase_context_for_pool(&request.purchase_context)
+            .map_err(FindingPoolDebitError::Allocation)?;
+        require_identifier(&purchase.purchase_intent_id, "purchase_intent_id")?;
+        require_identifier(&purchase.reservation_id, "reservation_id")?;
+        require_identifier(
+            &purchase.authoritative_payment_operation_id,
+            "authoritative_payment_operation_id",
+        )?;
+        require_hex64(&purchase.finding_id, "finding_id")?;
+        require_identifier(&purchase.listing_id, "listing_id")?;
+        require_hex64(
+            &purchase.accepted_bid_envelope_sha256,
+            "accepted_bid_envelope_sha256",
+        )?;
+        require_hex64(
+            &purchase.venue_admission_envelope_sha256,
+            "venue_admission_envelope_sha256",
+        )?;
+        if purchase.accepted_price.units == 0 {
+            return Err(FindingPoolDebitError::ZeroAmount);
+        }
+        let payer_key = PublicKey::from_hex(&purchase.payer_key_hex)
+            .map_err(|_| FindingPoolDebitError::InvalidField("payer_key_hex"))?;
+        if purchase.purchase_intent_id != *candidate_purchase_id
+            || payer_key != verified.purchaser_key
+        {
+            return Err(FindingPoolDebitError::PurchaserMismatch);
         }
         if verified.currency != purchase.accepted_price.currency {
             return Err(FindingPoolDebitError::CurrencyMismatch);
@@ -701,6 +787,7 @@ impl ChioKernel {
             purchase_id: purchase.purchase_intent_id.clone(),
             allocation_id: verified.allocation_id,
             allocation_envelope_sha256: verified.envelope_sha256,
+            debit_request_binding_sha256,
             ledger_domain: verified.ledger_domain,
             pool_id: verified.pool_id,
             pool_sha256: verified.pool_sha256,
@@ -722,11 +809,6 @@ impl ChioKernel {
                 .saturating_add(FINDING_POOL_CLAIM_WINDOW_MS)
                 .min(verified.expires_at_unix_ms),
         };
-        if committed_purchase {
-            return self
-                .commit_finding_pool_debit(ledger, &debit)
-                .map_err(FindingPoolDebitError::Ledger);
-        }
         if !allocation_is_live {
             return Err(FindingPoolLedgerError::AllocationNotLive.into());
         }
@@ -765,6 +847,17 @@ impl ChioKernel {
             .map_err(FindingPoolDebitError::Ledger)
     }
 
+    fn replay_finding_pool_debit(
+        &self,
+        ledger: &dyn QualifiedFindingPoolLedger,
+        replay: &AuthorizedFindingPoolDebitReplay,
+    ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
+        self.flush_finding_pool_mutation_receipts(ledger)?;
+        let result = ledger.replay_debit(replay);
+        self.flush_finding_pool_mutation_receipts(ledger)?;
+        result
+    }
+
     fn commit_finding_pool_debit(
         &self,
         ledger: &dyn QualifiedFindingPoolLedger,
@@ -784,6 +877,10 @@ impl ChioKernel {
         &self,
         ledger: &dyn QualifiedFindingPoolLedger,
     ) -> Result<(), FindingPoolLedgerError> {
+        let _flush = self
+            .finding_pool_outbox_flush_lock
+            .lock()
+            .map_err(|_| FindingPoolLedgerError::MutationReceiptFlushPoisoned)?;
         let durable_store_configured = self
             .with_receipt_store(|_| Ok(()))
             .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?
@@ -1022,9 +1119,9 @@ impl ChioKernel {
 
 fn verify_purchaser_authorization(
     request: &FindingPoolDebitRequest<'_>,
-    purchase: &crate::finding_purchase::VerifiedFindingPurchase,
+    expected_purchase_id: &str,
     payer_key: &PublicKey,
-) -> Result<u64, FindingPoolDebitError> {
+) -> Result<(u64, String), FindingPoolDebitError> {
     let authorization = request.purchaser_authorization;
     let body = &authorization.body;
     if body.schema != FINDING_POOL_DEBIT_AUTHORIZATION_SCHEMA_V1 {
@@ -1078,7 +1175,7 @@ fn verify_purchaser_authorization(
             )
         })?,
     );
-    if body.purchase_id != purchase.purchase_intent_id
+    if body.purchase_id != expected_purchase_id
         || body.allocation_envelope_sha256 != request.expected_allocation_envelope_sha256
         || body.purchaser_id != request.purchaser_id
         || body.purchase_context_sha256
@@ -1093,7 +1190,25 @@ fn verify_purchaser_authorization(
             "authorization does not bind the debit request".to_owned(),
         ));
     }
-    Ok(expires_at_unix_ms)
+    let replay_binding = FindingPoolDebitReplayBinding {
+        schema: &body.schema,
+        purchase_id: &body.purchase_id,
+        allocation_envelope_sha256: &body.allocation_envelope_sha256,
+        purchaser_id: &body.purchaser_id,
+        purchase_context_sha256: &body.purchase_context_sha256,
+        capability_id: &body.capability_id,
+        server_id: &body.server_id,
+        tool_name: &body.tool_name,
+        arguments_sha256: &body.arguments_sha256,
+        expected_output_digest: &body.expected_output_digest,
+    };
+    let replay_binding_sha256 =
+        sha256_hex(&canonical_json_bytes(&replay_binding).map_err(|_| {
+            FindingPoolDebitError::PurchaserAuthorization(
+                "replay binding is not canonicalizable".to_owned(),
+            )
+        })?);
+    Ok((expires_at_unix_ms, replay_binding_sha256))
 }
 
 fn require_identifier(value: &str, field: &'static str) -> Result<(), FindingPoolDebitError> {

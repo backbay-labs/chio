@@ -160,6 +160,34 @@ fn durable_startup_reconciliation_rejects_late_pool_ledger_installation() {
     );
 }
 
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn configured_pool_ledger_freezes_the_durable_admission_runtime() {
+    use crate::admission_operation::AdmissionOperationError;
+    use crate::finding_pool::tests::RecordingLedger;
+
+    let (mut kernel, _request, store, _invocations) =
+        durable_admission_fixture("pool-freezes-durable-admission-runtime");
+    kernel
+        .set_receipt_store(Box::new(AdmissionReceiptProjectionStore::default()))
+        .expect("pool mutation receipt store");
+    kernel
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[96; 32]))
+        .expect("pool mutation receipt authority");
+    kernel
+        .set_finding_pool_ledger(std::sync::Arc::new(RecordingLedger::default()))
+        .expect("qualified finding pool ledger");
+
+    assert_eq!(
+        kernel.set_durable_admission_store(
+            store.clone(),
+            store,
+            admission_test_fence(),
+        ),
+        Err(AdmissionOperationError::FindingPoolLedgerAlreadyConfigured)
+    );
+}
+
 #[test]
 fn nested_durable_url_elicitation_terminalizes_as_outcome_unknown() {
     let (mut kernel, request, store, _invocations) =
