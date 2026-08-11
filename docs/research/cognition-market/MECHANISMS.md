@@ -422,11 +422,12 @@ policies must not treat a metered-cost facet as burned-work or truth proof.
 M8 retains `SwarmBudgetPool` as an unsigned planning object and adds
 `chio.finding.pool-allocation.v1`, an authority-signed companion that binds
 its canonical digest, graph and pool ids, one authority-selected qualified
-ledger domain, one purchaser id and key, currency, hard amount, nonce,
-authority, and validity window. The kernel verifies that artifact against the
-installed ledger's persistent domain before constructing a private authorized
-debit. Pool projection count, identifier, and total-byte limits are checked
-before the digest projection is materialized.
+ledger domain, one concrete ledger-store binding, one purchaser id and key,
+currency, hard amount, nonce, authority, and validity window. The kernel
+verifies that artifact against the installed ledger's persistent domain and
+store binding before constructing a private authorized debit. Pool accounting,
+projection count, identifier, and total-byte limits are checked before the
+digest projection is materialized.
 
 The shipped qualifying backend is durable SQLite. It uses `BEGIN IMMEDIATE`,
 canonical decimal-text `u64` amounts, a unique pool binding, checked
@@ -436,7 +437,8 @@ one-purchaser-per-pool and never-exceed-signed-amount hard invariants. An
 in-memory backend and an advisory or eventually consistent remote budget view
 do not implement the qualifying marker and therefore cannot make the hard
 ceiling claim. Two disjoint qualified ledgers cannot each spend the same
-allocation because only the signed ledger domain is accepted.
+allocation because each SQLite store generates a different persistent binding
+and the allocation authority signs the selected binding.
 
 - Intra-pool: the planner should deduplicate an artifact request, buy once
   with retry-safe purchase identity, and distribute internally via governed

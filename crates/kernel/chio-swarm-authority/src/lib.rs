@@ -25,5 +25,6 @@ pub use verifier::{
     mint_swarm_continuation_token, mint_swarm_join_receipt, release_swarm_budget_fanin,
     reserve_swarm_budget_fanout, sign_swarm_continuation_token, sign_swarm_delegation_witness_hop,
     sign_swarm_join_receipt, sign_swarm_revocation_epoch, sign_swarm_route_plan_receipt,
-    sign_swarm_task_graph, sign_swarm_terminal_graph_receipt, verify_swarm_authority_bundle,
+    sign_swarm_task_graph, sign_swarm_terminal_graph_receipt,
+    validate_swarm_budget_pool_accounting, verify_swarm_authority_bundle,
 };

@@ -8,6 +8,7 @@ use chio_core::receipt::body::ChioReceipt;
 use chio_kernel::finding_pool::FindingPoolLedgerError;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use rand_core::{OsRng, RngCore};
 use rusqlite::TransactionBehavior;
 use sha2::{Digest, Sha256};
 
@@ -133,6 +134,132 @@ pub(super) fn bind_receipt_authority(
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
     if persisted.as_deref() != Some(authority_json.as_str()) {
         return Err(FindingPoolLedgerError::ReceiptAuthorityMismatch);
+    }
+    transaction
+        .commit()
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+}
+
+pub(super) fn bind_receipt_configuration(
+    pool: &Pool<SqliteConnectionManager>,
+    authority: &PublicKey,
+    receipt_sink_id: &str,
+) -> Result<(), FindingPoolLedgerError> {
+    super::validate_receipt_sink_id(receipt_sink_id)?;
+    let authority_json = canonical_receipt_authority_json(authority)?;
+    let mut connection = pool
+        .get()
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let (persisted_sink, persisted_authority) = transaction
+        .query_row(
+            "SELECT receipt_sink_id, receipt_authority_json \
+             FROM finding_pool_ledger_metadata WHERE singleton = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                ))
+            },
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    if persisted_sink
+        .as_deref()
+        .is_some_and(|persisted| persisted != receipt_sink_id)
+    {
+        return Err(FindingPoolLedgerError::ReceiptSinkMismatch);
+    }
+    if persisted_authority
+        .as_deref()
+        .is_some_and(|persisted| persisted != authority_json)
+    {
+        return Err(FindingPoolLedgerError::ReceiptAuthorityMismatch);
+    }
+    if persisted_authority.is_none() {
+        verify_legacy_outbox_authority(&transaction, &authority_json)?;
+    }
+    transaction
+        .execute(
+            "UPDATE finding_pool_ledger_metadata \
+             SET receipt_sink_id = COALESCE(receipt_sink_id, ?1), \
+                 receipt_authority_json = COALESCE(receipt_authority_json, ?2) \
+             WHERE singleton = 1",
+            rusqlite::params![receipt_sink_id, authority_json],
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let rebound = transaction
+        .query_row(
+            "SELECT receipt_sink_id, receipt_authority_json \
+             FROM finding_pool_ledger_metadata WHERE singleton = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                ))
+            },
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    if rebound.0.as_deref() != Some(receipt_sink_id)
+        || rebound.1.as_deref() != Some(authority_json.as_str())
+    {
+        return Err(FindingPoolLedgerError::ReceiptConfigurationMismatch);
+    }
+    transaction
+        .commit()
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+}
+
+pub(super) fn bind_ledger_store(
+    connection: &mut rusqlite::Connection,
+) -> Result<(), FindingPoolLedgerError> {
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let persisted = transaction
+        .query_row(
+            "SELECT ledger_store_binding_sha256 FROM finding_pool_ledger_metadata \
+             WHERE singleton = 1",
+            [],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    if persisted.is_none() {
+        let mut random = [0_u8; 32];
+        OsRng.try_fill_bytes(&mut random).map_err(|error| {
+            FindingPoolLedgerError::Storage(format!(
+                "qualified finding pool ledger store binding entropy failed: {error}"
+            ))
+        })?;
+        transaction
+            .execute(
+                "UPDATE finding_pool_ledger_metadata \
+                 SET ledger_store_binding_sha256 = ?1 \
+                 WHERE singleton = 1 AND ledger_store_binding_sha256 IS NULL",
+                [hex::encode(random)],
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    }
+    let bound = transaction
+        .query_row(
+            "SELECT ledger_store_binding_sha256 FROM finding_pool_ledger_metadata \
+             WHERE singleton = 1",
+            [],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
+        .ok_or_else(|| super::invariant("ledger store binding is absent"))?;
+    if bound.len() != 64
+        || !bound
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(super::invariant(
+            "ledger store binding is not canonical SHA-256",
+        ));
     }
     transaction
         .commit()

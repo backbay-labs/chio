@@ -21,113 +21,6 @@ mod terminal;
 pub use terminal::*;
 mod transport;
 
-const MAX_KERNEL_URL_ELICITATIONS: usize = 16;
-const MAX_KERNEL_URL_ELICITATION_MESSAGE_BYTES: usize = 4 * 1024;
-const MAX_KERNEL_URL_ELICITATION_URL_BYTES: usize = 4 * 1024;
-const MAX_KERNEL_URL_ELICITATION_ID_BYTES: usize = 256;
-const MAX_KERNEL_URL_ELICITATION_INPUT_BYTES: usize = 32 * 1024;
-const MAX_KERNEL_URL_ELICITATION_META_DEPTH: usize = 16;
-const MAX_KERNEL_URL_ELICITATION_META_NODES: usize = 512;
-const MAX_KERNEL_URL_ELICITATION_CONTAINER_ITEMS: usize = 64;
-
-fn account_url_elicitation_bytes(total: &mut usize, additional: usize) -> bool {
-    let Some(next) = total.checked_add(additional) else {
-        return false;
-    };
-    if next > MAX_KERNEL_URL_ELICITATION_INPUT_BYTES {
-        return false;
-    }
-    *total = next;
-    true
-}
-
-fn validate_url_elicitation_meta(
-    value: &Value,
-    depth: usize,
-    nodes: &mut usize,
-    bytes: &mut usize,
-) -> bool {
-    if depth > MAX_KERNEL_URL_ELICITATION_META_DEPTH {
-        return false;
-    }
-    let Some(next_nodes) = nodes.checked_add(1) else {
-        return false;
-    };
-    if next_nodes > MAX_KERNEL_URL_ELICITATION_META_NODES {
-        return false;
-    }
-    *nodes = next_nodes;
-    if !account_url_elicitation_bytes(bytes, 8) {
-        return false;
-    }
-    match value {
-        Value::Null | Value::Bool(_) => true,
-        Value::Number(number) => account_url_elicitation_bytes(bytes, number.to_string().len()),
-        Value::String(text) => account_url_elicitation_bytes(bytes, text.len()),
-        Value::Array(values) => {
-            values.len() <= MAX_KERNEL_URL_ELICITATION_CONTAINER_ITEMS
-                && values
-                    .iter()
-                    .all(|value| validate_url_elicitation_meta(value, depth + 1, nodes, bytes))
-        }
-        Value::Object(values) => {
-            values.len() <= MAX_KERNEL_URL_ELICITATION_CONTAINER_ITEMS
-                && values.iter().all(|(key, value)| {
-                    account_url_elicitation_bytes(bytes, key.len())
-                        && validate_url_elicitation_meta(value, depth + 1, nodes, bytes)
-                })
-        }
-    }
-}
-
-fn validate_kernel_url_elicitation_input(
-    message: &str,
-    elicitations: &[crate::CreateElicitationOperation],
-) -> Result<(), ToolOutcomeError> {
-    let mut bytes = 0_usize;
-    let mut nodes = 0_usize;
-    if message.is_empty()
-        || message.len() > MAX_KERNEL_URL_ELICITATION_MESSAGE_BYTES
-        || elicitations.is_empty()
-        || elicitations.len() > MAX_KERNEL_URL_ELICITATIONS
-        || !account_url_elicitation_bytes(&mut bytes, message.len())
-    {
-        return Err(ToolOutcomeError::Invalid("kernel_url_elicitation.bounds"));
-    }
-    for elicitation in elicitations {
-        let crate::CreateElicitationOperation::Url {
-            meta,
-            message,
-            url,
-            elicitation_id,
-        } = elicitation
-        else {
-            return Err(ToolOutcomeError::Invalid("kernel_url_elicitation.kind"));
-        };
-        if message.is_empty()
-            || message.len() > MAX_KERNEL_URL_ELICITATION_MESSAGE_BYTES
-            || url.is_empty()
-            || url.len() > MAX_KERNEL_URL_ELICITATION_URL_BYTES
-            || elicitation_id.is_empty()
-            || elicitation_id.len() > MAX_KERNEL_URL_ELICITATION_ID_BYTES
-            || !account_url_elicitation_bytes(
-                &mut bytes,
-                message
-                    .len()
-                    .checked_add(url.len())
-                    .and_then(|size| size.checked_add(elicitation_id.len()))
-                    .ok_or(ToolOutcomeError::Invalid("kernel_url_elicitation.bounds"))?,
-            )
-            || meta
-                .as_ref()
-                .is_some_and(|meta| !validate_url_elicitation_meta(meta, 0, &mut nodes, &mut bytes))
-        {
-            return Err(ToolOutcomeError::Invalid("kernel_url_elicitation.bounds"));
-        }
-    }
-    Ok(())
-}
-
 #[allow(dead_code)]
 fn release_id(
     field: &'static str,
@@ -156,7 +49,6 @@ pub enum ReleaseEvidenceArtifactKindV1 {
     TerminalToolOutcome,
     TerminalPostReturnEvaluation,
     VerifierPolicy,
-    KernelUrlElicitation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1181,30 +1073,6 @@ struct EconomicEffectCancellationArtifactV1 {
     checkpoint_digest: AdmissionDigest,
 }
 
-const KERNEL_URL_ELICITATION_NO_EFFECT_SCHEMA: &str = "chio.kernel-url-elicitation-no-effect.v1";
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct KernelUrlElicitationNoEffectArtifactV1 {
-    schema: String,
-    operation_id: AdmissionOperationId,
-    request_id: AdmissionIdentifier,
-    request_binding_hash: AdmissionDigest,
-    dispatch_commit: AdmissionDispatchCommitBindingV1,
-    provider_attempt: ProviderAttemptBindingV1,
-    message: String,
-    elicitations: Vec<crate::CreateElicitationOperation>,
-    elicitation_count: u64,
-    elicitation_evidence_digest: AdmissionDigest,
-    observed_at_unix_ms: u64,
-}
-
-#[derive(Serialize)]
-struct KernelUrlElicitationEvidence<'a> {
-    message: &'a str,
-    elicitations: &'a [crate::CreateElicitationOperation],
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct VerifiedTransportNotAccepted {
     operation_id: AdmissionOperationId,
@@ -1265,100 +1133,6 @@ impl VerifiedTransportNotAccepted {
             self.artifacts.first().map(|artifact| artifact.kind),
             Some(ReleaseEvidenceArtifactKindV1::EconomicEffectCancellation)
         )
-    }
-
-    pub(crate) fn from_kernel_url_elicitation(
-        message: &str,
-        elicitations: &[crate::CreateElicitationOperation],
-        operation: &AdmissionOperationV1,
-        context: &AdmissionProjectionContext,
-    ) -> Result<Self, ToolOutcomeError> {
-        validate_kernel_url_elicitation_input(message, elicitations)?;
-        validate_projection_context(operation, context)?;
-        if operation.state() != AdmissionOperationState::DispatchCommitted {
-            return Err(ToolOutcomeError::Binding(
-                "kernel_url_elicitation.operation",
-            ));
-        }
-        let commit = operation
-            .dispatch_commit()
-            .ok_or(ToolOutcomeError::Binding(
-                "kernel_url_elicitation.dispatch_commit",
-            ))?;
-        validate_retained_dispatch_commit(operation, commit)?;
-        let attempt = operation
-            .provider_attempt()
-            .ok_or(ToolOutcomeError::Binding(
-                "kernel_url_elicitation.provider_attempt",
-            ))?;
-        attempt
-            .validate()
-            .map_err(|error| ToolOutcomeError::Canonical(error.to_string()))?;
-        let elicitation_count = u64::try_from(elicitations.len())
-            .map_err(|_| ToolOutcomeError::Invalid("kernel_url_elicitation.count"))?;
-        positive("kernel_url_elicitation.count", elicitation_count)?;
-        let elicitation_evidence_digest = domain_digest(
-            KERNEL_URL_ELICITATION_NO_EFFECT_SCHEMA,
-            &KernelUrlElicitationEvidence {
-                message,
-                elicitations,
-            },
-        )?;
-        let artifact = ImmutableReleaseArtifactV1::new(
-            ReleaseEvidenceArtifactKindV1::KernelUrlElicitation,
-            release_id(
-                "kernel_url_elicitation_evidence_id",
-                format!(
-                    "{}:url-elicitation",
-                    operation.binding().operation_id().as_str()
-                ),
-            )?,
-            serde_json::to_value(KernelUrlElicitationNoEffectArtifactV1 {
-                schema: KERNEL_URL_ELICITATION_NO_EFFECT_SCHEMA.to_owned(),
-                operation_id: operation.binding().operation_id().clone(),
-                request_id: operation.replay_key().request_id.clone(),
-                request_binding_hash: operation.binding().request_binding_hash().clone(),
-                dispatch_commit: commit.clone(),
-                provider_attempt: attempt.clone(),
-                message: message.to_owned(),
-                elicitations: elicitations.to_vec(),
-                elicitation_count,
-                elicitation_evidence_digest,
-                observed_at_unix_ms: context.trusted_time_unix_ms,
-            })
-            .map_err(|error| ToolOutcomeError::Canonical(error.to_string()))?,
-        )?;
-        let qualification_digest = domain_digest(
-            KERNEL_URL_ELICITATION_NO_EFFECT_SCHEMA,
-            &(attempt.transport_id.as_str(), attempt.transport_key_epoch),
-        )?;
-        let proof = Self {
-            operation_id: operation.binding().operation_id().clone(),
-            operation_version: operation.version(),
-            request_id: operation.replay_key().request_id.clone(),
-            request_binding_hash: operation.binding().request_binding_hash().clone(),
-            dispatch_operation_version: commit.committed_version,
-            dispatch_fence: commit.store_fence.owner_epoch,
-            projection_coordinator_lease_id: context.coordinator_lease_id.clone(),
-            projection_coordinator_lease_epoch: context.coordinator_lease_epoch,
-            projection_store_fence: context.store_fence.clone(),
-            transport_attempt_id: release_id("transport_attempt_id", attempt.attempt_id.clone())?,
-            transport_identity: release_id("transport_identity", attempt.transport_id.clone())?,
-            transport_key_epoch: attempt.transport_key_epoch,
-            signed_status_digest: artifact.digest.clone(),
-            qualification_digest: qualification_digest.clone(),
-            cancellation_fence: operation.version(),
-            verified_at_unix_ms: context.trusted_time_unix_ms,
-            verifier_identity: release_id(
-                "kernel_url_elicitation_verifier",
-                "kernel-url-elicitation-v1",
-            )?,
-            monotonic_checkpoint_digest: artifact.digest.clone(),
-            verifier_policy_digest: qualification_digest,
-            artifacts: vec![artifact],
-        };
-        proof.validate_against(operation, context)?;
-        Ok(proof)
     }
 
     pub(crate) fn from_canonical_record_verified(
@@ -1731,9 +1505,6 @@ impl VerifiedTransportNotAccepted {
             Some(ReleaseEvidenceArtifactKindV1::EconomicEffectCancellation) => {
                 self.validate_economic_evidence(operation)
             }
-            Some(ReleaseEvidenceArtifactKindV1::KernelUrlElicitation) => {
-                self.validate_kernel_url_elicitation_evidence(operation)
-            }
             _ => Err(ToolOutcomeError::Binding(
                 "transport_not_accepted.artifact_kind",
             )),
@@ -1853,71 +1624,6 @@ impl VerifiedTransportNotAccepted {
         self.artifacts
             .iter()
             .try_for_each(ImmutableReleaseArtifactV1::validate)
-    }
-
-    fn validate_kernel_url_elicitation_evidence(
-        &self,
-        operation: &AdmissionOperationV1,
-    ) -> Result<(), ToolOutcomeError> {
-        let [artifact] = self.artifacts.as_slice() else {
-            return Err(ToolOutcomeError::Binding(
-                "kernel_url_elicitation.artifact_count",
-            ));
-        };
-        artifact.validate()?;
-        let evidence: KernelUrlElicitationNoEffectArtifactV1 = parse_artifact_value(artifact)?;
-        validate_kernel_url_elicitation_input(&evidence.message, &evidence.elicitations)?;
-        let attempt = operation
-            .provider_attempt()
-            .ok_or(ToolOutcomeError::Binding(
-                "kernel_url_elicitation.provider_attempt",
-            ))?;
-        let commit = operation
-            .dispatch_commit()
-            .ok_or(ToolOutcomeError::Binding(
-                "kernel_url_elicitation.dispatch_commit",
-            ))?;
-        let expected_qualification = domain_digest(
-            KERNEL_URL_ELICITATION_NO_EFFECT_SCHEMA,
-            &(attempt.transport_id.as_str(), attempt.transport_key_epoch),
-        )?;
-        let expected_elicitation_count = u64::try_from(evidence.elicitations.len())
-            .map_err(|_| ToolOutcomeError::Invalid("kernel_url_elicitation.count"))?;
-        let expected_evidence_digest = domain_digest(
-            KERNEL_URL_ELICITATION_NO_EFFECT_SCHEMA,
-            &KernelUrlElicitationEvidence {
-                message: &evidence.message,
-                elicitations: &evidence.elicitations,
-            },
-        )?;
-        positive("kernel_url_elicitation.count", evidence.elicitation_count)?;
-        if evidence.schema != KERNEL_URL_ELICITATION_NO_EFFECT_SCHEMA
-            || evidence.operation_id != *operation.binding().operation_id()
-            || evidence.request_id != operation.replay_key().request_id
-            || evidence.request_binding_hash != *operation.binding().request_binding_hash()
-            || evidence.dispatch_commit != *commit
-            || evidence.provider_attempt != *attempt
-            || evidence.elicitation_count != expected_elicitation_count
-            || evidence.elicitation_evidence_digest != expected_evidence_digest
-            || evidence.observed_at_unix_ms != self.verified_at_unix_ms
-            || self.operation_id != evidence.operation_id
-            || self.request_id != evidence.request_id
-            || self.request_binding_hash != evidence.request_binding_hash
-            || self.transport_attempt_id.as_str() != attempt.attempt_id
-            || self.transport_identity.as_str() != attempt.transport_id
-            || self.transport_key_epoch != attempt.transport_key_epoch
-            || self.signed_status_digest != artifact.digest
-            || self.monotonic_checkpoint_digest != artifact.digest
-            || self.qualification_digest != expected_qualification
-            || self.verifier_policy_digest != expected_qualification
-            || self.cancellation_fence != operation.version()
-            || self.verifier_identity.as_str() != "kernel-url-elicitation-v1"
-        {
-            return Err(ToolOutcomeError::Binding(
-                "kernel_url_elicitation.artifacts",
-            ));
-        }
-        Ok(())
     }
 }
 

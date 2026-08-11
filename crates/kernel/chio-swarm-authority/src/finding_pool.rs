@@ -32,6 +32,10 @@ pub struct FindingPoolAllocation {
     /// Authority-selected domain of the one qualified ledger permitted to
     /// account for this allocation.
     pub ledger_domain: String,
+    /// Authority-visible binding generated and persisted by one concrete
+    /// durable ledger store. Distinct stores in the same domain must expose
+    /// different bindings.
+    pub ledger_store_binding_sha256: String,
     pub pool_id: String,
     pub pool_sha256: String,
     pub graph_id: String,
@@ -56,6 +60,7 @@ pub struct VerifiedFindingPoolAllocation {
     pub allocation_id: String,
     pub envelope_sha256: String,
     pub ledger_domain: String,
+    pub ledger_store_binding_sha256: String,
     pub pool_id: String,
     pub pool_sha256: String,
     pub purchaser_id: String,
@@ -102,6 +107,7 @@ pub fn swarm_budget_pool_digest_projection_bytes(
     pool: &SwarmBudgetPool,
 ) -> Result<Vec<u8>, SwarmAuthorityError> {
     validate_pool_projection_bounds(pool)?;
+    crate::validate_swarm_budget_pool_accounting(pool)?;
     let projection = SwarmBudgetPoolDigestProjection {
         schema: SWARM_BUDGET_POOL_DIGEST_PROJECTION_SCHEMA_V1,
         pool_schema: &pool.schema,
@@ -178,6 +184,7 @@ pub fn verify_finding_pool_allocation(
     pool: &SwarmBudgetPool,
     pinned_authority: &PublicKey,
     expected_ledger_domain: &str,
+    expected_ledger_store_binding_sha256: &str,
     now_unix_ms: u64,
 ) -> Result<VerifiedFindingPoolAllocation, SwarmAuthorityError> {
     let body = &signed.body;
@@ -201,6 +208,19 @@ pub fn verify_finding_pool_allocation(
     require_non_empty(&body.ledger_domain, "ledger_domain")?;
     if body.ledger_domain != expected_ledger_domain {
         return Err(rejected("finding pool allocation ledger domain mismatch"));
+    }
+    require_sha256(
+        expected_ledger_store_binding_sha256,
+        "expected ledger_store_binding_sha256",
+    )?;
+    require_sha256(
+        &body.ledger_store_binding_sha256,
+        "ledger_store_binding_sha256",
+    )?;
+    if body.ledger_store_binding_sha256 != expected_ledger_store_binding_sha256 {
+        return Err(rejected(
+            "finding pool allocation ledger store binding mismatch",
+        ));
     }
     require_non_empty(&body.pool_id, "pool_id")?;
     require_non_empty(&body.graph_id, "graph_id")?;
@@ -267,6 +287,7 @@ pub fn verify_finding_pool_allocation(
         allocation_id: body.allocation_id.clone(),
         envelope_sha256: finding_pool_allocation_envelope_sha256(signed)?,
         ledger_domain: body.ledger_domain.clone(),
+        ledger_store_binding_sha256: body.ledger_store_binding_sha256.clone(),
         pool_id: body.pool_id.clone(),
         pool_sha256,
         purchaser_id: body.purchaser_id.clone(),
@@ -404,11 +425,11 @@ mod tests {
                 dimension_id: "dimension:max".to_owned(),
                 state: crate::SwarmBudgetAllocationState::Consumed,
                 max_units: u64::MAX,
-                reserved_units: u64::MAX,
-                active_units: u64::MAX,
+                reserved_units: 0,
+                active_units: 0,
                 consumed_units: u64::MAX,
-                released_units: u64::MAX,
-                reversed_units: u64::MAX,
+                released_units: 0,
+                reversed_units: 0,
             }],
         };
         let expected_pool_projection = serde_json::json!({
@@ -424,11 +445,11 @@ mod tests {
                 "dimensionId": "dimension:max",
                 "state": "consumed",
                 "maxUnits": u64::MAX.to_string(),
-                "reservedUnits": u64::MAX.to_string(),
-                "activeUnits": u64::MAX.to_string(),
+                "reservedUnits": "0",
+                "activeUnits": "0",
                 "consumedUnits": u64::MAX.to_string(),
-                "releasedUnits": u64::MAX.to_string(),
-                "reversedUnits": u64::MAX.to_string()
+                "releasedUnits": "0",
+                "reversedUnits": "0"
             }]
         });
         let expected_pool_digest = sha256_hex(
@@ -447,6 +468,7 @@ mod tests {
                 schema: FINDING_POOL_ALLOCATION_SCHEMA_V1.to_string(),
                 allocation_id: String::new(),
                 ledger_domain: "ledger:max".to_string(),
+                ledger_store_binding_sha256: "ab".repeat(32),
                 pool_id: pool.pool_id.clone(),
                 pool_sha256: swarm_budget_pool_sha256(&pool).test_expect("hash pool"),
                 graph_id: pool.graph_id.clone(),
@@ -470,6 +492,7 @@ mod tests {
             &pool,
             &authority.public_key(),
             "ledger:max",
+            &"ab".repeat(32),
             1,
         )
         .test_expect("verify full-domain amount");
@@ -508,6 +531,81 @@ mod tests {
     }
 
     #[test]
+    fn signed_allocation_rejects_malformed_pool_accounting() {
+        let authority = Keypair::from_seed(&[83; 32]);
+        let purchaser = Keypair::from_seed(&[84; 32]);
+        let allocation = crate::SwarmBudgetAllocation {
+            allocation_id: "allocation:accounting".to_owned(),
+            task_id: "task:accounting".to_owned(),
+            dimension_id: "dimension:accounting".to_owned(),
+            state: crate::SwarmBudgetAllocationState::Reserved,
+            max_units: 10,
+            reserved_units: 10,
+            active_units: 0,
+            consumed_units: 0,
+            released_units: 0,
+            reversed_units: 0,
+        };
+        let pool = SwarmBudgetPool {
+            schema: CHIO_SWARM_BUDGET_POOL_SCHEMA.to_owned(),
+            pool_id: "pool:accounting".to_owned(),
+            graph_id: "graph:accounting".to_owned(),
+            currency: "USD".to_owned(),
+            total_units: 10,
+            allocations: vec![allocation.clone()],
+        };
+        let signed = sign_finding_pool_allocation(
+            FindingPoolAllocation {
+                schema: FINDING_POOL_ALLOCATION_SCHEMA_V1.to_owned(),
+                allocation_id: String::new(),
+                ledger_domain: "ledger:accounting".to_owned(),
+                ledger_store_binding_sha256: "cd".repeat(32),
+                pool_id: pool.pool_id.clone(),
+                pool_sha256: swarm_budget_pool_sha256(&pool).test_expect("hash valid pool"),
+                graph_id: pool.graph_id.clone(),
+                purpose: FINDING_POOL_PURPOSE_V1.to_owned(),
+                purchaser_id: "buyer:accounting".to_owned(),
+                purchaser_key: purchaser.public_key(),
+                currency: "USD".to_owned(),
+                amount_units: "10".to_owned(),
+                nonce: "nonce:accounting".to_owned(),
+                authority: authority.public_key(),
+                issued_at_unix_ms: 1,
+                expires_at_unix_ms: 3,
+            },
+            &authority,
+        )
+        .test_expect("sign valid allocation companion");
+
+        let duplicate = SwarmBudgetPool {
+            total_units: 20,
+            allocations: vec![allocation.clone(), allocation.clone()],
+            ..pool.clone()
+        };
+        let error = verify_finding_pool_allocation(
+            &signed,
+            &duplicate,
+            &authority.public_key(),
+            "ledger:accounting",
+            &"cd".repeat(32),
+            2,
+        )
+        .test_expect_err("duplicate allocation ids must fail before digest acceptance");
+        assert!(error
+            .to_string()
+            .contains("duplicate swarm budget allocation"));
+
+        let mut bad_rollup = pool.clone();
+        bad_rollup.allocations[0].reserved_units = 9;
+        assert!(swarm_budget_pool_sha256(&bad_rollup).is_err());
+        let overcommitted = SwarmBudgetPool {
+            total_units: 9,
+            ..pool
+        };
+        assert!(swarm_budget_pool_sha256(&overcommitted).is_err());
+    }
+
+    #[test]
     fn allocation_rejects_a_different_qualified_ledger_domain() {
         let authority = Keypair::from_seed(&[81; 32]);
         let purchaser = Keypair::from_seed(&[82; 32]);
@@ -524,6 +622,7 @@ mod tests {
                 schema: FINDING_POOL_ALLOCATION_SCHEMA_V1.to_owned(),
                 allocation_id: String::new(),
                 ledger_domain: "ledger:primary".to_owned(),
+                ledger_store_binding_sha256: "ab".repeat(32),
                 pool_id: pool.pool_id.clone(),
                 pool_sha256: swarm_budget_pool_sha256(&pool).test_expect("hash pool"),
                 graph_id: pool.graph_id.clone(),
@@ -548,6 +647,7 @@ mod tests {
             &pool,
             &authority.public_key(),
             "ledger:primary",
+            &"ab".repeat(32),
             2,
         )
         .test_expect_err("oversized fields reject before the invalid signature");
@@ -569,6 +669,7 @@ mod tests {
             &pool,
             &authority.public_key(),
             "ledger:primary",
+            &"ab".repeat(32),
             2,
         )
         .test_expect_err("weak Ed25519 purchaser key must fail closed");
@@ -579,6 +680,7 @@ mod tests {
             &pool,
             &authority.public_key(),
             "ledger:other",
+            &"ab".repeat(32),
             2,
         )
         .is_err());

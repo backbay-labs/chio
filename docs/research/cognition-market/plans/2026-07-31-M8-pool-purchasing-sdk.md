@@ -32,7 +32,8 @@ Rust accept the same decimal-string domain.
 `SwarmBudgetPool` remains an unsigned planning object. The registered
 `chio.finding.pool-allocation.v1` companion authenticates the exact canonical
 pool digest, graph and pool ids, purchaser id and key, currency, amount, nonce,
-authority, authority-selected qualified-ledger domain, and validity window.
+authority, authority-selected qualified-ledger domain, concrete ledger-store
+binding, and validity window.
 The kernel resolves it against an externally pinned authority and the
 installed ledger's persistent domain, and charges only facts returned by the
 installed strict purchase verifier: payer key, purchase intent, reservation

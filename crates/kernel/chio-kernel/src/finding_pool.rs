@@ -154,6 +154,8 @@ pub enum FindingPoolLedgerError {
     InvalidReceiptSink,
     #[error("finding pool ledger is bound to another mutation receipt authority")]
     ReceiptAuthorityMismatch,
+    #[error("finding pool receipt authority and sink configuration did not bind atomically")]
+    ReceiptConfigurationMismatch,
     #[error("finding pool mutation receipt authority is invalid")]
     InvalidReceiptAuthority,
     #[error("finding pool purchase has no durable reservation")]
@@ -683,12 +685,25 @@ pub trait QualifiedFindingPoolLedger: FindingPoolLedger {
     /// may account for a signed allocation.
     fn ledger_domain(&self) -> &str;
 
+    /// Authority-visible identity of this concrete durable store. Allocation
+    /// envelopes bind it so two stores cannot spend the same allocation merely
+    /// by reusing a deployment domain string.
+    fn ledger_store_binding_sha256(&self) -> &str;
+
     /// Bind this ledger to the one public key authorized to sign mutation
     /// receipts. Reopening with the same key is idempotent; a different key
     /// fails closed during installation, before any mutation can run.
     fn bind_receipt_authority(
         &self,
         authority: &chio_core::crypto::PublicKey,
+    ) -> Result<(), FindingPoolLedgerError>;
+
+    /// Atomically validate and bind the mutation-receipt authority and durable
+    /// sink. A failed installation must not persist either half.
+    fn bind_receipt_configuration(
+        &self,
+        authority: &chio_core::crypto::PublicKey,
+        receipt_sink_id: &str,
     ) -> Result<(), FindingPoolLedgerError>;
 
     /// Bind this ledger to the one durable ordinary receipt sink that receives
@@ -760,6 +775,7 @@ impl ChioKernel {
             request.pool,
             allocation_authority,
             ledger.ledger_domain(),
+            ledger.ledger_store_binding_sha256(),
             structural_time,
         )
         .map_err(|error| FindingPoolDebitError::Allocation(error.runtime_detail()))?;

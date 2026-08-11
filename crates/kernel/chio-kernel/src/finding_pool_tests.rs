@@ -431,6 +431,10 @@ impl QualifiedFindingPoolLedger for RecordingLedger {
         "ledger:test-recording"
     }
 
+    fn ledger_store_binding_sha256(&self) -> &str {
+        "abababababababababababababababababababababababababababababababab"
+    }
+
     fn bind_receipt_authority(
         &self,
         authority: &chio_core::crypto::PublicKey,
@@ -453,6 +457,42 @@ impl QualifiedFindingPoolLedger for RecordingLedger {
                 Ok(())
             }
         }
+    }
+
+    fn bind_receipt_configuration(
+        &self,
+        authority: &chio_core::crypto::PublicKey,
+        receipt_sink_id: &str,
+    ) -> Result<(), FindingPoolLedgerError> {
+        if authority.algorithm() != chio_core::crypto::SigningAlgorithm::Ed25519
+            || authority.is_weak_ed25519()
+        {
+            return Err(FindingPoolLedgerError::InvalidReceiptAuthority);
+        }
+        if receipt_sink_id.is_empty() {
+            return Err(FindingPoolLedgerError::InvalidReceiptSink);
+        }
+        let mut bound_authority = self.receipt_authority.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test receipt authority lock was poisoned".to_owned())
+        })?;
+        let mut bound_sink = self.receipt_sink_id.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test receipt sink lock was poisoned".to_owned())
+        })?;
+        if bound_authority
+            .as_ref()
+            .is_some_and(|existing| existing != authority)
+        {
+            return Err(FindingPoolLedgerError::ReceiptAuthorityMismatch);
+        }
+        if bound_sink
+            .as_deref()
+            .is_some_and(|existing| existing != receipt_sink_id)
+        {
+            return Err(FindingPoolLedgerError::ReceiptSinkMismatch);
+        }
+        *bound_authority = Some(authority.clone());
+        *bound_sink = Some(receipt_sink_id.to_owned());
+        Ok(())
     }
 
     fn bind_receipt_sink(&self, receipt_sink_id: &str) -> Result<(), FindingPoolLedgerError> {

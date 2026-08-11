@@ -3,8 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::error::SwarmAuthorityError;
 use chio_core_types::crypto::{canonical_json_bytes, sha256_hex, Keypair, PublicKey, Signature};
 
+mod budget_accounting;
 mod util;
 mod witness;
+pub use budget_accounting::validate_swarm_budget_pool_accounting;
 use util::{
     canonical_sha256, continuation_token_signature_body, join_receipt_signature_body, rejected,
     require_non_empty, require_same_graph, require_sha256, require_unique_strings,
@@ -1411,37 +1413,19 @@ fn validate_budget_pool<'a>(
     task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
 ) -> Result<BTreeMap<&'a str, &'a SwarmBudgetAllocation>, SwarmAuthorityError> {
     let budget = &bundle.budget_pool;
-    if budget.schema != CHIO_SWARM_BUDGET_POOL_SCHEMA {
-        return Err(rejected(format!(
-            "unsupported swarm budget pool schema: {}",
-            budget.schema
-        )));
-    }
-    require_non_empty(&budget.pool_id, "swarm budget pool id")?;
+    validate_swarm_budget_pool_accounting(budget)?;
     require_same_graph(&budget.graph_id, &bundle.task_graph.graph_id, "budget pool")?;
     if budget.pool_id != bundle.task_graph.budget_pool_ref {
         return Err(rejected("swarm budget pool ref mismatch"));
     }
-    require_non_empty(&budget.currency, "swarm budget currency")?;
-    let mut total = 0_u64;
     let mut allocations = BTreeMap::new();
     for allocation in &budget.allocations {
-        require_non_empty(&allocation.allocation_id, "swarm budget allocation id")?;
-        require_non_empty(&allocation.task_id, "swarm budget task id")?;
-        require_non_empty(
-            &allocation.dimension_id,
-            "swarm budget allocation dimension",
-        )?;
         if !task_by_id.contains_key(allocation.task_id.as_str()) {
             return Err(rejected(format!(
                 "swarm budget allocation task is unknown: {}",
                 allocation.task_id
             )));
         }
-        validate_budget_allocation_units(allocation)?;
-        total = total
-            .checked_add(allocation.max_units)
-            .ok_or_else(|| rejected("swarm budget allocation overflow"))?;
         if allocations
             .insert(allocation.allocation_id.as_str(), allocation)
             .is_some()
@@ -1452,35 +1436,7 @@ fn validate_budget_pool<'a>(
             )));
         }
     }
-    if total > budget.total_units {
-        return Err(rejected("swarm budget allocations exceed pool total"));
-    }
     Ok(allocations)
-}
-
-fn validate_budget_allocation_units(
-    allocation: &SwarmBudgetAllocation,
-) -> Result<(), SwarmAuthorityError> {
-    let units = allocation
-        .reserved_units
-        .checked_add(allocation.active_units)
-        .and_then(|units| units.checked_add(allocation.consumed_units))
-        .and_then(|units| units.checked_add(allocation.released_units))
-        .and_then(|units| units.checked_add(allocation.reversed_units))
-        .ok_or_else(|| rejected("swarm budget allocation unit overflow"))?;
-    if units != allocation.max_units {
-        return Err(rejected(format!(
-            "swarm budget allocation unit rollup mismatch: {}",
-            allocation.allocation_id
-        )));
-    }
-    if allocation.state == SwarmBudgetAllocationState::Active && allocation.active_units == 0 {
-        return Err(rejected(format!(
-            "swarm budget allocation has no active units: {}",
-            allocation.allocation_id
-        )));
-    }
-    Ok(())
 }
 
 fn validate_revocation_epoch(

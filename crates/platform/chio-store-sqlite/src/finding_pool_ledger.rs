@@ -28,11 +28,16 @@ use crate::{is_in_memory_sqlite_path, sqlite_parent_dir_to_create};
 
 mod expiration;
 mod qualification;
+mod schema;
 
 use expiration::expired_unclaimed_reservations;
 use qualification::{
-    acquire_domain_lease, bind_receipt_authority, canonical_receipt_authority_json,
-    database_identity, FindingPoolDomainLease,
+    acquire_domain_lease, bind_ledger_store, bind_receipt_authority, bind_receipt_configuration,
+    canonical_receipt_authority_json, database_identity, FindingPoolDomainLease,
+};
+use schema::{
+    ensure_column, ensure_lifecycle_columns, ensure_outbox_delivery_claim_columns,
+    ensure_query_indexes,
 };
 
 const SCHEMA: &str = r#"
@@ -40,7 +45,8 @@ CREATE TABLE IF NOT EXISTS finding_pool_ledger_metadata (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     ledger_domain TEXT NOT NULL,
     receipt_sink_id TEXT,
-    receipt_authority_json TEXT
+    receipt_authority_json TEXT,
+    ledger_store_binding_sha256 TEXT
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS finding_pool_allocations (
@@ -88,7 +94,8 @@ CREATE TABLE IF NOT EXISTS finding_pool_receipt_outbox (
     occurred_at_unix_ms TEXT NOT NULL,
     acknowledged_at_unix_ms TEXT,
     delivery_claim_owner TEXT,
-    delivery_claim_expires_at_unix_ms INTEGER
+    delivery_claim_expires_at_unix_ms INTEGER,
+    delivery_sequence INTEGER
 ) STRICT;
 "#;
 
@@ -98,6 +105,7 @@ const MAX_EXPIRED_RECLAMATIONS_PER_DEBIT: usize = 64;
 pub struct SqliteFindingPoolLedger {
     pool: Pool<SqliteConnectionManager>,
     ledger_domain: String,
+    ledger_store_binding_sha256: String,
     _domain_lease: Arc<FindingPoolDomainLease>,
 }
 
@@ -141,7 +149,7 @@ impl SqliteFindingPoolLedger {
             .build(manager)
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         {
-            let connection = pool
+            let mut connection = pool
                 .get()
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
             connection
@@ -159,7 +167,15 @@ impl SqliteFindingPoolLedger {
                 "receipt_authority_json",
                 "ALTER TABLE finding_pool_ledger_metadata ADD COLUMN receipt_authority_json TEXT",
             )?;
+            ensure_column(
+                &connection,
+                "finding_pool_ledger_metadata",
+                "ledger_store_binding_sha256",
+                "ALTER TABLE finding_pool_ledger_metadata \
+                 ADD COLUMN ledger_store_binding_sha256 TEXT",
+            )?;
             bind_ledger_domain(&connection, &ledger_domain)?;
+            bind_ledger_store(&mut connection)?;
             ensure_lifecycle_columns(&connection)?;
             ensure_outbox_delivery_claim_columns(&connection)?;
             ensure_query_indexes(&connection)?;
@@ -172,11 +188,24 @@ impl SqliteFindingPoolLedger {
                     ))
                 })?;
         }
+        let connection = pool
+            .get()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let ledger_store_binding_sha256 = connection
+            .query_row(
+                "SELECT ledger_store_binding_sha256 FROM finding_pool_ledger_metadata \
+                 WHERE singleton = 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        drop(connection);
         let database_identity = database_identity(path_text)?;
         let domain_lease = acquire_domain_lease(&ledger_domain, &database_identity)?;
         Ok(Self {
             pool,
             ledger_domain,
+            ledger_store_binding_sha256,
             _domain_lease: domain_lease,
         })
     }
@@ -1190,7 +1219,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                  WHERE acknowledged_at_unix_ms IS NULL \
                    AND (delivery_claim_expires_at_unix_ms IS NULL \
                         OR delivery_claim_expires_at_unix_ms <= ?1) \
-                 ORDER BY rowid LIMIT ?2",
+                 ORDER BY delivery_sequence LIMIT ?2",
             )
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         let mut rows = statement
@@ -1439,8 +1468,20 @@ impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {
         &self.ledger_domain
     }
 
+    fn ledger_store_binding_sha256(&self) -> &str {
+        &self.ledger_store_binding_sha256
+    }
+
     fn bind_receipt_authority(&self, authority: &PublicKey) -> Result<(), FindingPoolLedgerError> {
         bind_receipt_authority(&self.pool, authority)
+    }
+
+    fn bind_receipt_configuration(
+        &self,
+        authority: &PublicKey,
+        receipt_sink_id: &str,
+    ) -> Result<(), FindingPoolLedgerError> {
+        bind_receipt_configuration(&self.pool, authority, receipt_sink_id)
     }
 
     fn bind_receipt_sink(&self, receipt_sink_id: &str) -> Result<(), FindingPoolLedgerError> {
@@ -1628,12 +1669,24 @@ fn record_mutation_receipt(
             .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?,
     )
     .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
+    let last_delivery_sequence = transaction
+        .query_row(
+            "SELECT MAX(delivery_sequence) FROM finding_pool_receipt_outbox",
+            [],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
+        .unwrap_or(0);
+    let delivery_sequence = last_delivery_sequence
+        .checked_add(1)
+        .ok_or_else(|| invariant("mutation receipt delivery sequence overflowed"))?;
     transaction
         .execute(
             "INSERT INTO finding_pool_receipt_outbox (\
                 receipt_id, purchase_id, allocation_envelope_sha256, mutation_kind, \
-                signed_receipt_json, occurred_at_unix_ms, acknowledged_at_unix_ms\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+                signed_receipt_json, occurred_at_unix_ms, acknowledged_at_unix_ms, \
+                delivery_sequence\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)",
             params![
                 receipt.id,
                 mutation.purchase_id,
@@ -1641,6 +1694,7 @@ fn record_mutation_receipt(
                 mutation_kind_text(mutation.kind),
                 receipt_json,
                 mutation.occurred_at_unix_ms,
+                delivery_sequence,
             ],
         )
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
@@ -1745,155 +1799,6 @@ fn reclaim_expired_unclaimed(
     Ok(())
 }
 
-fn ensure_lifecycle_columns(
-    connection: &rusqlite::Connection,
-) -> Result<(), FindingPoolLedgerError> {
-    ensure_column(
-        connection,
-        "finding_pool_debits",
-        "debit_request_binding_sha256",
-        "ALTER TABLE finding_pool_debits ADD COLUMN debit_request_binding_sha256 TEXT",
-    )?;
-    ensure_column(
-        connection,
-        "finding_pool_allocations",
-        "reserved_units",
-        "ALTER TABLE finding_pool_allocations \
-         ADD COLUMN reserved_units TEXT NOT NULL DEFAULT '0'",
-    )?;
-    ensure_column(
-        connection,
-        "finding_pool_debits",
-        "state",
-        "ALTER TABLE finding_pool_debits ADD COLUMN state TEXT NOT NULL \
-         DEFAULT 'finalized' CHECK (state IN ('reserved', 'finalized', 'released'))",
-    )?;
-    ensure_column(
-        connection,
-        "finding_pool_debits",
-        "reserved_after_units",
-        "ALTER TABLE finding_pool_debits \
-         ADD COLUMN reserved_after_units TEXT NOT NULL DEFAULT '0'",
-    )?;
-    ensure_column(
-        connection,
-        "finding_pool_debits",
-        "claim_deadline_unix_ms",
-        "ALTER TABLE finding_pool_debits \
-         ADD COLUMN claim_deadline_unix_ms TEXT NOT NULL DEFAULT '0'",
-    )?;
-    ensure_column(
-        connection,
-        "finding_pool_debits",
-        "claimed_at_unix_ms",
-        "ALTER TABLE finding_pool_debits ADD COLUMN claimed_at_unix_ms TEXT",
-    )?;
-    ensure_column(
-        connection,
-        "finding_pool_debits",
-        "durable_admission_operation_id",
-        "ALTER TABLE finding_pool_debits ADD COLUMN durable_admission_operation_id TEXT",
-    )?;
-    connection
-        .execute(
-            "UPDATE finding_pool_debits SET claimed_at_unix_ms = '0' \
-             WHERE state = 'reserved' AND claim_deadline_unix_ms = '0' \
-               AND claimed_at_unix_ms IS NULL",
-            [],
-        )
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    let unbound_claims = connection
-        .query_row(
-            "SELECT COUNT(*) FROM finding_pool_debits \
-             WHERE state = 'reserved' AND claimed_at_unix_ms IS NOT NULL \
-               AND durable_admission_operation_id IS NULL",
-            [],
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    if unbound_claims != 0 {
-        return Err(invariant(
-            "claimed reservation lacks its durable admission operation binding",
-        ));
-    }
-    connection
-        .execute_batch(
-            "CREATE UNIQUE INDEX IF NOT EXISTS finding_pool_debits_admission_operation \
-             ON finding_pool_debits(durable_admission_operation_id) \
-             WHERE durable_admission_operation_id IS NOT NULL;",
-        )
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    Ok(())
-}
-
-fn ensure_outbox_delivery_claim_columns(
-    connection: &rusqlite::Connection,
-) -> Result<(), FindingPoolLedgerError> {
-    ensure_column(
-        connection,
-        "finding_pool_receipt_outbox",
-        "delivery_claim_owner",
-        "ALTER TABLE finding_pool_receipt_outbox ADD COLUMN delivery_claim_owner TEXT",
-    )?;
-    ensure_column(
-        connection,
-        "finding_pool_receipt_outbox",
-        "delivery_claim_expires_at_unix_ms",
-        "ALTER TABLE finding_pool_receipt_outbox \
-         ADD COLUMN delivery_claim_expires_at_unix_ms INTEGER",
-    )
-}
-
-fn ensure_query_indexes(connection: &rusqlite::Connection) -> Result<(), FindingPoolLedgerError> {
-    connection
-        .execute_batch(
-            "CREATE INDEX IF NOT EXISTS finding_pool_receipt_outbox_pending \
-                 ON finding_pool_receipt_outbox(\
-                     acknowledged_at_unix_ms, delivery_claim_expires_at_unix_ms\
-                 ) WHERE acknowledged_at_unix_ms IS NULL; \
-             CREATE INDEX IF NOT EXISTS finding_pool_debits_expiration_reclamation \
-                 ON finding_pool_debits(\
-                     allocation_envelope_sha256, state, claimed_at_unix_ms, purchase_id\
-                 ); \
-             CREATE INDEX IF NOT EXISTS finding_pool_debits_expiration_reclamation_v2 \
-                 ON finding_pool_debits(\
-                     allocation_envelope_sha256, length(claim_deadline_unix_ms), \
-                     claim_deadline_unix_ms, purchase_id\
-                 ) WHERE state = 'reserved' AND claimed_at_unix_ms IS NULL;",
-        )
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
-}
-
-fn ensure_column(
-    connection: &rusqlite::Connection,
-    table: &str,
-    column: &str,
-    ddl: &str,
-) -> Result<(), FindingPoolLedgerError> {
-    let mut statement = connection
-        .prepare(&format!("PRAGMA table_info({table})"))
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    let mut rows = statement
-        .query([])
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    while let Some(row) = rows
-        .next()
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
-    {
-        let name = row
-            .get::<_, String>(1)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        if name == column {
-            return Ok(());
-        }
-    }
-    drop(rows);
-    drop(statement);
-    connection
-        .execute_batch(ddl)
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
-}
-
 fn parse_state(value: &str) -> Result<FindingPoolDebitState, FindingPoolLedgerError> {
     match value {
         "reserved" => Ok(FindingPoolDebitState::Reserved),
@@ -1954,6 +1859,7 @@ mod tests {
         let connection = ledger.pool.get().test_expect("open pool ledger connection");
         for index in [
             "finding_pool_receipt_outbox_pending",
+            "finding_pool_receipt_outbox_delivery_sequence",
             "finding_pool_debits_expiration_reclamation",
             "finding_pool_debits_expiration_reclamation_v2",
         ] {
@@ -1966,6 +1872,28 @@ mod tests {
                 .test_expect("query qualified index");
             assert!(present, "qualified schema is missing {index}");
         }
+        let mut plan = connection
+            .prepare(
+                "EXPLAIN QUERY PLAN \
+                 SELECT receipt_id, signed_receipt_json \
+                 FROM finding_pool_receipt_outbox \
+                 WHERE acknowledged_at_unix_ms IS NULL \
+                   AND (delivery_claim_expires_at_unix_ms IS NULL \
+                        OR delivery_claim_expires_at_unix_ms <= ?1) \
+                 ORDER BY delivery_sequence LIMIT ?2",
+            )
+            .test_expect("prepare pending outbox query plan");
+        let details = plan
+            .query_map(params![1_i64, 1_i64], |row| row.get::<_, String>(3))
+            .test_expect("query pending outbox plan")
+            .collect::<Result<Vec<_>, _>>()
+            .test_expect("collect pending outbox plan");
+        assert!(details
+            .iter()
+            .all(|detail| !detail.contains("USE TEMP B-TREE")));
+        assert!(details
+            .iter()
+            .any(|detail| detail.contains("finding_pool_receipt_outbox_pending")));
     }
 
     #[test]

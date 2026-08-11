@@ -124,7 +124,7 @@ Schema ids in the program (registration path in section 7):
 | `chio.finding.mediator-backing.v1` | bond-authority-signed non-reusable M7 mediator allocation and liability horizon | new at M7 |
 | `chio.finding.escrow-witness.v1` | settlement-authority attestation of exact funded/final escrow state | new at M7 |
 | `chio.finding.settlement-release.v1` | settlement-authority receipt binding delivery inclusion to one escrow release | new at M7 |
-| `chio.finding.pool-allocation.v1` | authority-signed M8 companion binding one exact unsigned pool digest, qualified-ledger domain, purchaser, currency, amount, nonce, and validity window | new at M8 |
+| `chio.finding.pool-allocation.v1` | authority-signed M8 companion binding one exact unsigned pool digest, qualified-ledger domain and concrete store binding, purchaser, currency, amount, nonce, and validity window | new at M8 |
 | `chio.finding.rederivation-quote.v1` | optional signed producer estimate for an exact context/recipe and currency | not shipped at M8; future only if authenticated quotes ship |
 | `chio.marketplace.bid-request.v1` etc. | purchase handshake | reuse unchanged (`crates/economy/chio-open-market/src/bidding.rs:33-42`) |
 
@@ -1148,9 +1148,10 @@ purchase authority.
    object's schema as `poolSchema`, preserves allocation order, and encodes
    `totalUnits` plus every allocation unit field as the shortest unsigned
    base-10 string (`0` or a nonzero digit followed by digits). The shipped
-   SQLite backend serializes debits, persists exact replay, and uniquely binds
-   one purchaser allocation to the pool id. Advisory remote budget views
-   cannot make this hard-ceiling claim.
+   SQLite backend serializes debits, persists exact replay, generates a stable
+   per-store binding for authority issuance, and uniquely binds one purchaser
+   allocation to the pool id. Advisory remote budget views cannot make this
+   hard-ceiling claim.
 
 ### F3. Purchase and reveal (single-operator / wedge path)
 

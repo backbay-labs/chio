@@ -17,6 +17,7 @@
         "schema",
         "allocation_id",
         "ledger_domain",
+        "ledger_store_binding_sha256",
         "pool_id",
         "pool_sha256",
         "graph_id",
@@ -39,6 +40,9 @@
         },
         "ledger_domain": {
           "$ref": "#/$defs/nonBlankString"
+        },
+        "ledger_store_binding_sha256": {
+          "$ref": "#/$defs/sha256"
         },
         "pool_id": {
           "$ref": "#/$defs/nonBlankString"

@@ -57,12 +57,16 @@ struct PoolFixture {
     _receipt_directory: Arc<tempfile::TempDir>,
 }
 
-fn fixture(amount_units: u64) -> PoolFixture {
-    fixture_until(amount_units, 10_000)
+fn fixture(amount_units: u64, ledger: &SqliteFindingPoolLedger) -> PoolFixture {
+    fixture_until(amount_units, 10_000, ledger)
 }
 
-fn fixture_until(amount_units: u64, expires_at_unix_ms: u64) -> PoolFixture {
-    fixture_for_pool(amount_units, expires_at_unix_ms, "buyer-1", 71, 72)
+fn fixture_until(
+    amount_units: u64,
+    expires_at_unix_ms: u64,
+    ledger: &SqliteFindingPoolLedger,
+) -> PoolFixture {
+    fixture_for_pool(amount_units, expires_at_unix_ms, "buyer-1", 71, 72, ledger)
 }
 
 fn fixture_for_pool(
@@ -71,6 +75,7 @@ fn fixture_for_pool(
     pool_suffix: &str,
     authority_seed: u8,
     purchaser_seed: u8,
+    ledger: &SqliteFindingPoolLedger,
 ) -> PoolFixture {
     let receipt_directory =
         Arc::new(tempfile::tempdir().test_expect("create fixture receipt directory"));
@@ -93,6 +98,7 @@ fn fixture_for_pool(
             schema: FINDING_POOL_ALLOCATION_SCHEMA_V1.to_string(),
             allocation_id: String::new(),
             ledger_domain: ledger_domain(),
+            ledger_store_binding_sha256: ledger.ledger_store_binding_sha256().to_owned(),
             pool_id: pool.pool_id.clone(),
             pool_sha256: swarm_budget_pool_sha256(&pool).test_expect("hash pool"),
             graph_id: pool.graph_id.clone(),
@@ -457,7 +463,7 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
         SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
             .test_expect("open qualified ledger"),
     );
-    let fixture = Arc::new(fixture(100));
+    let fixture = Arc::new(fixture(100, &ledger));
 
     let mut handles = Vec::new();
     for index in 0..20_u64 {
@@ -558,7 +564,7 @@ fn sqlite_outbox_claim_serializes_independent_ledger_instances() {
     let database = directory.path().join("finding-pool.sqlite3");
     let producer = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open producer ledger");
-    let fixture = fixture(100);
+    let fixture = fixture(100, &producer);
     debit(&producer, &fixture, "purchase:outbox-claim", 10)
         .test_expect("commit and project pool debit");
     let connection = rusqlite::Connection::open(&database).test_expect("open outbox fixture");
@@ -637,12 +643,37 @@ fn cognition_market_pool_domain_excludes_a_second_live_store() {
 }
 
 #[test]
+fn cognition_market_allocation_binds_one_concrete_store_across_deployments() {
+    let first_directory = tempfile::tempdir().test_expect("create first ledger directory");
+    let second_directory = tempfile::tempdir().test_expect("create second ledger directory");
+    let domain = format!("{}:store-binding", ledger_domain());
+    let first = SqliteFindingPoolLedger::open_qualified(
+        first_directory.path().join("pool.sqlite3"),
+        &domain,
+    )
+    .test_expect("open allocation-bound store");
+    let fixture = fixture(100, &first);
+    let first_binding = first.ledger_store_binding_sha256().to_owned();
+    drop(first);
+
+    let second = SqliteFindingPoolLedger::open_qualified(
+        second_directory.path().join("pool.sqlite3"),
+        &domain,
+    )
+    .test_expect("open distinct deployment store");
+    assert_ne!(second.ledger_store_binding_sha256(), first_binding);
+    let error = debit(&second, &fixture, "purchase:wrong-store", 10)
+        .test_expect_err("allocation must not cross its authority-bound store");
+    assert!(matches!(error, FindingPoolDebitError::Allocation(_)));
+}
+
+#[test]
 fn cognition_market_pool_receipts_survive_ordinary_kernel_key_rotation() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("finding-pool.sqlite3");
     let ledger = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open qualified ledger");
-    let fixture = fixture(100);
+    let fixture = fixture(100, &ledger);
     debit(&ledger, &fixture, "purchase:before-rotation", 10)
         .test_expect("reserve before kernel key rotation");
 
@@ -764,7 +795,7 @@ fn cognition_market_pool_receipt_authority_is_pinned_ledger_wide() {
     let database = directory.path().join("finding-pool.sqlite3");
     let ledger = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open qualified ledger");
-    let first = fixture_for_pool(100, 10_000, "receipt-authority-one", 71, 72);
+    let first = fixture_for_pool(100, 10_000, "receipt-authority-one", 71, 72, &ledger);
     debit(&ledger, &first, "purchase:receipt-authority-one", 10)
         .test_expect("record the first ledger authority");
 
@@ -777,7 +808,7 @@ fn cognition_market_pool_receipt_authority_is_pinned_ledger_wide() {
         .test_expect("simulate the pre-binding schema migration");
     drop(connection);
 
-    let second = fixture_for_pool(100, 10_000, "receipt-authority-two", 73, 74);
+    let second = fixture_for_pool(100, 10_000, "receipt-authority-two", 73, 74, &ledger);
     assert_eq!(
         ledger.bind_receipt_authority(&second.receipt_authority.public_key()),
         Err(FindingPoolLedgerError::ReceiptAuthorityMismatch)
@@ -790,6 +821,29 @@ fn cognition_market_pool_receipt_authority_is_pinned_ledger_wide() {
 }
 
 #[test]
+fn cognition_market_pool_configuration_failure_is_atomic() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let ledger = SqliteFindingPoolLedger::open_qualified(
+        directory.path().join("pool.sqlite3"),
+        ledger_domain(),
+    )
+    .test_expect("open qualified ledger");
+    ledger
+        .bind_receipt_sink("receipt-sink:existing")
+        .test_expect("simulate legacy sink-only binding");
+    let rejected_authority = Keypair::from_seed(&[73_u8; 32]).public_key();
+    assert_eq!(
+        ledger.bind_receipt_configuration(&rejected_authority, "receipt-sink:wrong"),
+        Err(FindingPoolLedgerError::ReceiptSinkMismatch)
+    );
+
+    let accepted_authority = Keypair::from_seed(&[71_u8; 32]).public_key();
+    ledger
+        .bind_receipt_configuration(&accepted_authority, "receipt-sink:existing")
+        .test_expect("bind both identities after the rejected attempt");
+}
+
+#[test]
 fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitution() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(
@@ -797,7 +851,7 @@ fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitutio
         ledger_domain(),
     )
     .test_expect("open qualified ledger");
-    let fixture = fixture(100);
+    let fixture = fixture(100, &ledger);
 
     let mut wrong_digest = fixture.clone();
     wrong_digest.envelope_sha256 = "0".repeat(64);
@@ -825,6 +879,7 @@ fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitutio
         &fixture.pool,
         &p256_authority,
         &ledger_domain(),
+        ledger.ledger_store_binding_sha256(),
         2_000,
     )
     .test_expect_err("non-Ed25519 allocation authority must fail closed");
@@ -896,7 +951,7 @@ fn cognition_market_pool_binds_one_purchaser_allocation_per_pool() {
         ledger_domain(),
     )
     .test_expect("open qualified ledger");
-    let first = fixture(100);
+    let first = fixture(100, &ledger);
     debit(&ledger, &first, "purchase:first", 10).test_expect("first pool debit");
 
     let mut second = first.clone();
@@ -928,7 +983,7 @@ fn cognition_market_pool_replays_after_expiry_but_rejects_new_spend() {
         ledger_domain(),
     )
     .test_expect("open qualified ledger");
-    let fixture = fixture(100);
+    let fixture = fixture(100, &ledger);
     debit_at(&ledger, &fixture, "purchase:committed", 10, 9_999)
         .test_expect("commit before allocation expiry");
 
@@ -951,7 +1006,7 @@ fn cognition_market_pool_replays_after_allocation_authority_rotation() {
         ledger_domain(),
     )
     .test_expect("open qualified ledger");
-    let fixture = fixture(100);
+    let fixture = fixture(100, &ledger);
     debit(&ledger, &fixture, "purchase:before-authority-rotation", 10)
         .test_expect("commit debit before allocation authority rotation");
     let rotated_authority = Keypair::from_seed(&[73_u8; 32]).public_key();
@@ -998,7 +1053,7 @@ fn cognition_market_pool_replays_after_purchase_verifier_rotation() {
         ledger_domain(),
     )
     .test_expect("open qualified ledger");
-    let fixture = fixture(100);
+    let fixture = fixture(100, &ledger);
     debit(&ledger, &fixture, "purchase:before-verifier-rotation", 10)
         .test_expect("commit debit before purchase verifier rotation");
 
@@ -1046,7 +1101,7 @@ fn cognition_market_pool_replay_skips_mutable_purchase_admission() {
         ledger_domain(),
     )
     .test_expect("open qualified ledger");
-    let fixture = fixture(100);
+    let fixture = fixture(100, &ledger);
     let admissions = Arc::new(AtomicU64::new(0));
     debit_at_with_policy(
         &ledger,
@@ -1099,7 +1154,7 @@ fn cognition_market_pool_reclaims_unclaimed_reservations_at_the_claim_deadline()
     let database = directory.path().join("pool.sqlite3");
     let ledger = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open qualified ledger");
-    let fixture = fixture_until(10, 100_000);
+    let fixture = fixture_until(10, 100_000, &ledger);
     debit_at(&ledger, &fixture, "purchase:abandoned", 10, 2_000)
         .test_expect("reserve the complete allocation");
     assert!(matches!(
@@ -1158,7 +1213,7 @@ fn cognition_market_pool_bounds_expired_reclamation_per_debit() {
     let database = directory.path().join("pool.sqlite3");
     let ledger = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open qualified ledger");
-    let fixture = fixture_until(129, 100_000);
+    let fixture = fixture_until(129, 100_000, &ledger);
     for index in 0..65_u64 {
         debit_at(
             &ledger,
@@ -1204,7 +1259,7 @@ fn cognition_market_pool_reclamation_progress_survives_a_capacity_rejection() {
     let database = directory.path().join("pool.sqlite3");
     let ledger = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open qualified ledger");
-    let fixture = fixture_until(65, 100_000);
+    let fixture = fixture_until(65, 100_000, &ledger);
     for index in 0..65_u64 {
         debit_at(
             &ledger,
@@ -1277,7 +1332,7 @@ fn cognition_market_pool_requires_live_status_before_new_debit_but_replays() {
         ledger_domain(),
     )
     .test_expect("open qualified ledger");
-    let fixture = fixture(100);
+    let fixture = fixture(100, &ledger);
     let admissions = Arc::new(AtomicU64::new(0));
     let verifier = Arc::new(StaticStatusVerifier {
         admissions: Arc::clone(&admissions),
@@ -1355,7 +1410,7 @@ fn cognition_market_kernel_refuses_pool_ledger_replacement() {
         "ledger:cognition-market:replacement",
     )
     .test_expect("open second qualified ledger");
-    let fixture = fixture(100);
+    let fixture = fixture(100, &first);
     let receipt_directory = tempfile::tempdir().test_expect("create receipt directory");
     let mut kernel = ChioKernel::new(KernelConfig {
         keypair: Keypair::from_seed(&[99_u8; 32]),
