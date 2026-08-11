@@ -199,6 +199,13 @@ impl FindingStatusEpochPublisher {
                 "current finding status epoch does not match the durable sparse map".to_owned(),
             );
         }
+        if record.operator_authorization_sha256 != self.operator.authorization_sha256 {
+            // Authorization lifecycle changes are public state transitions
+            // even when the operator key and sparse root are unchanged.
+            // Re-sign at a higher map epoch so the durable record and every
+            // regenerated point proof bind the current authorization pin.
+            return Ok(None);
+        }
         let current_authorization = authorization(&self.operator)?;
         if signed.body.operator_key_epoch < current_authorization.operator.key_epoch
             && signed.body.operator_id == current_authorization.operator.authority_id

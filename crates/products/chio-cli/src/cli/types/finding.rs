@@ -86,7 +86,7 @@ pub(crate) enum FindingCommands {
         /// Governance-pinned status operator authorization (strict canonical JSON).
         #[arg(long)]
         operator_authorization: PathBuf,
-        /// Durable rollback floor for this feed and stable operator identity.
+        /// Durable rollback floor; retain its sibling `.retractions` directory.
         #[arg(long)]
         rollback_floor: PathBuf,
         /// Maximum accepted age of the signed status epoch in seconds.

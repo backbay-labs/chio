@@ -97,9 +97,11 @@ verifies the proof and embedded signed epoch against the out-of-band operator
 authorization, applies the configured freshness limit, cross-checks the
 response projection, atomically advances the caller-selected durable rollback
 floor, and prints the verified status. Reuse the same rollback-floor path for
-every query against that feed and stable operator identity. A transport,
-canonicalization, signature, lifecycle, digest, feed, finding, epoch, or
-sparse-path failure exits nonzero.
+every query against that feed and stable operator identity. Sticky per-finding
+retractions are stored under the sibling `<rollback-floor>.retractions/`
+directory, which must be retained and backed up with the floor file. A
+transport, canonicalization, signature, lifecycle, digest, feed, finding,
+epoch, or sparse-path failure exits nonzero.
 
 At minimum, monitoring checks:
 

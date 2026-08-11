@@ -700,9 +700,69 @@ fn status_floor_keeps_retractions_sticky_across_later_epochs() {
     )
     .unwrap_err()
     .to_string()
-    .contains("sticky local retraction"));
-    let floor = read_status_floor(&floor_path).unwrap().unwrap();
-    assert!(floor.retracted_finding_ids.contains(GOLDEN_FINDING_ID));
+    .contains("durably retracted"));
+    let retraction_directory = dir.path().join("status-floor.json.retractions");
+    assert_eq!(
+        std::fs::read_dir(retraction_directory).unwrap().count(),
+        1
+    );
+}
+
+#[test]
+fn status_floor_partitions_retractions_without_growing_the_epoch_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let floor_path = dir.path().join("status-floor.json");
+    let authorization = chio_finding::FindingStatusOperatorAuthorization {
+        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
+        feed_id: "status-feed/venue-01".to_owned(),
+        operator: chio_finding::FindingAuthorityKeyPolicy {
+            authority_id: "venue-01-status-operator".to_owned(),
+            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
+            key_epoch: 4,
+            valid_from: 1_700_000_000,
+            valid_until: 1_900_000_000,
+            rotation_policy_ref: "governance/status-rotation".to_owned(),
+            revocation_status_ref: "governance/status-revocation".to_owned(),
+        },
+        revoked_from: None,
+    };
+    let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
+    let mut response = FindingStatusProofResponse {
+        feed_id: authorization.feed_id.clone(),
+        key_domain_nonce: 3_318_287_169_837_494,
+        map_epoch: 8,
+        epoch_id: "1".repeat(64),
+        root_hash: "2".repeat(64),
+        finding_id: String::new(),
+        proof_kind: "inclusion".to_owned(),
+        proof_sha256: "3".repeat(64),
+        proof_input_b64: String::new(),
+        signed_epoch_sha256: "4".repeat(64),
+        signed_epoch_b64: String::new(),
+        checked_at: 1_800_000_000,
+        valid_until: 1_800_000_300,
+    };
+    for index in 0..300_u16 {
+        response.finding_id = format!("{index:064x}");
+        advance_status_floor(
+            &floor_path,
+            &response,
+            &authorization,
+            &authorization_sha256,
+        )
+        .unwrap();
+    }
+
+    assert!(read_status_floor(&floor_path).unwrap().is_some());
+    assert!(
+        std::fs::metadata(&floor_path).unwrap().len() < 16 * 1024,
+        "epoch floor exceeded its read bound"
+    );
+    let retraction_directory = dir.path().join("status-floor.json.retractions");
+    assert_eq!(
+        std::fs::read_dir(retraction_directory).unwrap().count(),
+        300
+    );
 }
 
 #[test]

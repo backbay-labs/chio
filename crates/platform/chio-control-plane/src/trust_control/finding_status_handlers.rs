@@ -1343,6 +1343,43 @@ mod tests {
     }
 
     #[test]
+    fn changed_operator_authorization_advances_an_unchanged_status_root(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp, authority) = provision_authority()?;
+        let (operator, bond) = config();
+        let store = authority.finding_status_store();
+        let publisher = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store.clone(),
+            operator.clone(),
+            bond.clone(),
+            operator_key(),
+            300,
+        )?;
+        let first = publisher.publish_non_inclusion(&sha256_hex(b"first"), &[], NOW)?;
+
+        let mut refreshed_operator = operator;
+        refreshed_operator.revoked_from = Some(NOW + 500);
+        refreshed_operator.authorization_sha256 = sha256_hex(b"refreshed-status-authorization");
+        let refreshed = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store.clone(),
+            refreshed_operator.clone(),
+            bond,
+            operator_key(),
+            300,
+        )?;
+        let second = refreshed.publish_non_inclusion(&sha256_hex(b"second"), &[], NOW + 1)?;
+
+        assert_eq!(second.map_epoch, first.map_epoch + 1);
+        assert_eq!(
+            store
+                .get_current_epoch(FEED_ID)?
+                .operator_authorization_sha256,
+            refreshed_operator.authorization_sha256
+        );
+        Ok(())
+    }
+
+    #[test]
     fn publisher_rejects_epoch_reuse_after_operator_revocation(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (_temp, authority) = provision_authority()?;
