@@ -113,10 +113,14 @@ impl SqliteFindingPoolLedger {
     /// Open the qualifying durable backend.
     ///
     /// In-memory paths are refused because restart durability is part of the
-    /// hard-ceiling qualification.
+    /// hard-ceiling qualification. `store_identity` must be held outside the
+    /// SQLite database. Its live proof of possession and the canonical
+    /// database identity jointly derive the authority-visible store binding,
+    /// so a copied database cannot qualify on its own.
     pub fn open_qualified(
         path: impl AsRef<Path>,
         ledger_domain: impl Into<String>,
+        store_identity: &dyn chio_core::crypto::SigningBackend,
     ) -> Result<Self, FindingPoolLedgerError> {
         let ledger_domain = ledger_domain.into();
         validate_ledger_domain(&ledger_domain)?;
@@ -148,6 +152,9 @@ impl SqliteFindingPoolLedger {
             .max_size(8)
             .build(manager)
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let database_identity = database_identity(path_text)?;
+        let domain_lease = acquire_domain_lease(&ledger_domain, &database_identity)?;
+        let ledger_store_binding_sha256;
         {
             let mut connection = pool
                 .get()
@@ -175,7 +182,12 @@ impl SqliteFindingPoolLedger {
                  ADD COLUMN ledger_store_binding_sha256 TEXT",
             )?;
             bind_ledger_domain(&connection, &ledger_domain)?;
-            bind_ledger_store(&mut connection)?;
+            ledger_store_binding_sha256 = bind_ledger_store(
+                &mut connection,
+                &ledger_domain,
+                &database_identity,
+                store_identity,
+            )?;
             ensure_lifecycle_columns(&connection)?;
             ensure_outbox_delivery_claim_columns(&connection)?;
             ensure_query_indexes(&connection)?;
@@ -188,20 +200,6 @@ impl SqliteFindingPoolLedger {
                     ))
                 })?;
         }
-        let connection = pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let ledger_store_binding_sha256 = connection
-            .query_row(
-                "SELECT ledger_store_binding_sha256 FROM finding_pool_ledger_metadata \
-                 WHERE singleton = 1",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        drop(connection);
-        let database_identity = database_identity(path_text)?;
-        let domain_lease = acquire_domain_lease(&ledger_domain, &database_identity)?;
         Ok(Self {
             pool,
             ledger_domain,
@@ -1846,16 +1844,22 @@ fn parse_units(value: &str, field: &str) -> Result<u64, FindingPoolLedgerError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chio_core::crypto::{Ed25519Backend, Keypair};
     use chio_test_support::prelude::*;
+
+    fn open_qualified(
+        path: impl AsRef<Path>,
+        ledger_domain: impl Into<String>,
+    ) -> Result<SqliteFindingPoolLedger, FindingPoolLedgerError> {
+        let identity = Ed25519Backend::new(Keypair::from_seed(&[70_u8; 32]));
+        SqliteFindingPoolLedger::open_qualified(path, ledger_domain, &identity)
+    }
 
     #[test]
     fn qualified_schema_indexes_pending_outbox_and_expiration_reclamation() {
         let directory = tempfile::tempdir().test_expect("create pool ledger directory");
-        let ledger = SqliteFindingPoolLedger::open_qualified(
-            directory.path().join("pool.sqlite3"),
-            "ledger:test-indexes",
-        )
-        .test_expect("open qualified pool ledger");
+        let ledger = open_qualified(directory.path().join("pool.sqlite3"), "ledger:test-indexes")
+            .test_expect("open qualified pool ledger");
         let connection = ledger.pool.get().test_expect("open pool ledger connection");
         for index in [
             "finding_pool_receipt_outbox_pending",
@@ -1900,11 +1904,10 @@ mod tests {
     fn qualified_ledger_rejects_unusable_domains() {
         let directory = tempfile::tempdir().test_expect("create pool ledger directory");
         for (suffix, domain) in [("unicode", "ledger:é"), ("spaces", "   ")] {
-            assert!(SqliteFindingPoolLedger::open_qualified(
-                directory.path().join(format!("{suffix}.sqlite3")),
-                domain,
-            )
-            .is_err());
+            assert!(
+                open_qualified(directory.path().join(format!("{suffix}.sqlite3")), domain,)
+                    .is_err()
+            );
         }
     }
 
@@ -1912,8 +1915,8 @@ mod tests {
     fn qualified_ledger_persists_one_receipt_sink() {
         let directory = tempfile::tempdir().test_expect("create pool ledger directory");
         let path = directory.path().join("pool.sqlite3");
-        let ledger = SqliteFindingPoolLedger::open_qualified(&path, "ledger:test-sink")
-            .test_expect("open qualified pool ledger");
+        let ledger =
+            open_qualified(&path, "ledger:test-sink").test_expect("open qualified pool ledger");
         ledger
             .bind_receipt_sink("receipt-sink:first")
             .test_expect("bind first receipt sink");
@@ -1925,8 +1928,8 @@ mod tests {
             Err(FindingPoolLedgerError::ReceiptSinkMismatch)
         );
 
-        let reopened = SqliteFindingPoolLedger::open_qualified(&path, "ledger:test-sink")
-            .test_expect("reopen qualified pool ledger");
+        let reopened =
+            open_qualified(&path, "ledger:test-sink").test_expect("reopen qualified pool ledger");
         reopened
             .bind_receipt_sink("receipt-sink:first")
             .test_expect("reopen with bound receipt sink");
@@ -1935,7 +1938,7 @@ mod tests {
     #[test]
     fn claimed_admission_operation_scan_is_bounded_and_cursor_ordered() {
         let directory = tempfile::tempdir().test_expect("create pool ledger directory");
-        let ledger = SqliteFindingPoolLedger::open_qualified(
+        let ledger = open_qualified(
             directory.path().join("pool.sqlite3"),
             "ledger:test-internal-scan",
         )
@@ -2027,7 +2030,7 @@ mod tests {
     #[test]
     fn unknown_dispatch_exact_replay_ignores_later_allocation_totals() {
         let directory = tempfile::tempdir().test_expect("create pool ledger directory");
-        let ledger = SqliteFindingPoolLedger::open_qualified(
+        let ledger = open_qualified(
             directory.path().join("pool.sqlite3"),
             "ledger:test-internal-unknown-dispatch",
         )

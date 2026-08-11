@@ -430,15 +430,18 @@ projection count, identifier, and total-byte limits are checked before the
 digest projection is materialized.
 
 The shipped qualifying backend is durable SQLite. It uses `BEGIN IMMEDIATE`,
-canonical decimal-text `u64` amounts, a unique pool binding, checked
-accumulation, one receipt authority across the complete ledger, and durable
-exact purchase-id replay. That path makes
-one-purchaser-per-pool and never-exceed-signed-amount hard invariants. An
+canonical decimal-text `u64` amounts, checked accumulation, one receipt
+authority across the complete ledger, and durable exact purchase-id replay.
+Its unique pool binding combines the canonical database identity with a live
+proof from an external signing identity that is not stored in SQLite. A copied
+database therefore cannot preserve the qualifying binding by itself. That
+path makes one-purchaser-per-pool and never-exceed-signed-amount hard
+invariants. An
 in-memory backend and an advisory or eventually consistent remote budget view
 do not implement the qualifying marker and therefore cannot make the hard
 ceiling claim. Two disjoint qualified ledgers cannot each spend the same
-allocation because each SQLite store generates a different persistent binding
-and the allocation authority signs the selected binding.
+allocation because each concrete SQLite store and external identity derive a
+different binding, and the allocation authority signs the selected binding.
 
 - Intra-pool: the planner should deduplicate an artifact request, buy once
   with retry-safe purchase identity, and distribute internally via governed

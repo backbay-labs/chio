@@ -3,7 +3,7 @@ use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
-use chio_core::crypto::{PublicKey, SigningAlgorithm};
+use chio_core::crypto::{PublicKey, SigningAlgorithm, SigningBackend};
 use chio_core::receipt::body::ChioReceipt;
 use chio_kernel::finding_pool::FindingPoolLedgerError;
 use r2d2::Pool;
@@ -215,7 +215,11 @@ pub(super) fn bind_receipt_configuration(
 
 pub(super) fn bind_ledger_store(
     connection: &mut rusqlite::Connection,
-) -> Result<(), FindingPoolLedgerError> {
+    ledger_domain: &str,
+    database_identity: &Path,
+    store_identity: &dyn SigningBackend,
+) -> Result<String, FindingPoolLedgerError> {
+    let expected = derive_ledger_store_binding(ledger_domain, database_identity, store_identity)?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
@@ -227,19 +231,17 @@ pub(super) fn bind_ledger_store(
             |row| row.get::<_, Option<String>>(0),
         )
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    if persisted.is_none() {
-        let mut random = [0_u8; 32];
-        OsRng.try_fill_bytes(&mut random).map_err(|error| {
-            FindingPoolLedgerError::Storage(format!(
-                "qualified finding pool ledger store binding entropy failed: {error}"
-            ))
-        })?;
+    if let Some(persisted) = persisted.as_deref() {
+        if persisted != expected {
+            return Err(FindingPoolLedgerError::LedgerStoreBindingMismatch);
+        }
+    } else {
         transaction
             .execute(
                 "UPDATE finding_pool_ledger_metadata \
                  SET ledger_store_binding_sha256 = ?1 \
                  WHERE singleton = 1 AND ledger_store_binding_sha256 IS NULL",
-                [hex::encode(random)],
+                [&expected],
             )
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
     }
@@ -261,9 +263,79 @@ pub(super) fn bind_ledger_store(
             "ledger store binding is not canonical SHA-256",
         ));
     }
+    if bound != expected {
+        return Err(FindingPoolLedgerError::LedgerStoreBindingMismatch);
+    }
     transaction
         .commit()
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    Ok(expected)
+}
+
+fn derive_ledger_store_binding(
+    ledger_domain: &str,
+    database_identity: &Path,
+    store_identity: &dyn SigningBackend,
+) -> Result<String, FindingPoolLedgerError> {
+    let public_key = store_identity.public_key();
+    if public_key.algorithm() == SigningAlgorithm::Ed25519 && public_key.is_weak_ed25519() {
+        return Err(FindingPoolLedgerError::InvalidLedgerStoreIdentity);
+    }
+    let identity_material = database_identity_material(database_identity)?;
+    let public_key_bytes = chio_core::canonical::canonical_json_bytes(&public_key)
+        .map_err(|_| FindingPoolLedgerError::InvalidLedgerStoreIdentity)?;
+
+    let mut nonce = [0_u8; 32];
+    OsRng.try_fill_bytes(&mut nonce).map_err(|error| {
+        FindingPoolLedgerError::Storage(format!(
+            "qualified finding pool store identity challenge entropy failed: {error}"
+        ))
+    })?;
+    let mut challenge = Vec::new();
+    append_binding_part(&mut challenge, b"chio.finding-pool.store-identity-proof.v1");
+    append_binding_part(&mut challenge, ledger_domain.as_bytes());
+    append_binding_part(&mut challenge, &identity_material);
+    append_binding_part(&mut challenge, &nonce);
+    let proof = store_identity
+        .sign_bytes(&challenge)
+        .map_err(|_| FindingPoolLedgerError::InvalidLedgerStoreIdentity)?;
+    if !public_key.verify(&challenge, &proof) {
+        return Err(FindingPoolLedgerError::InvalidLedgerStoreIdentity);
+    }
+
+    let mut binding = Sha256::new();
+    binding.update(b"chio.finding-pool.store-binding.v2");
+    binding.update((ledger_domain.len() as u64).to_be_bytes());
+    binding.update(ledger_domain.as_bytes());
+    binding.update((identity_material.len() as u64).to_be_bytes());
+    binding.update(&identity_material);
+    binding.update((public_key_bytes.len() as u64).to_be_bytes());
+    binding.update(public_key_bytes);
+    Ok(hex::encode(binding.finalize()))
+}
+
+fn database_identity_material(path: &Path) -> Result<Vec<u8>, FindingPoolLedgerError> {
+    let canonical_path = path.to_str().ok_or_else(|| {
+        FindingPoolLedgerError::Storage(
+            "qualified finding pool database identity is not valid UTF-8".to_string(),
+        )
+    })?;
+    let mut material = Vec::new();
+    append_binding_part(&mut material, canonical_path.as_bytes());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = std::fs::metadata(path)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        append_binding_part(&mut material, &metadata.dev().to_be_bytes());
+        append_binding_part(&mut material, &metadata.ino().to_be_bytes());
+    }
+    Ok(material)
+}
+
+fn append_binding_part(target: &mut Vec<u8>, value: &[u8]) {
+    target.extend_from_slice(&(value.len() as u64).to_be_bytes());
+    target.extend_from_slice(value);
 }
 
 fn verify_legacy_outbox_authority(

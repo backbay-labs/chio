@@ -1148,10 +1148,14 @@ purchase authority.
    object's schema as `poolSchema`, preserves allocation order, and encodes
    `totalUnits` plus every allocation unit field as the shortest unsigned
    base-10 string (`0` or a nonzero digit followed by digits). The shipped
-   SQLite backend serializes debits, persists exact replay, generates a stable
-   per-store binding for authority issuance, and uniquely binds one purchaser
-   allocation to the pool id. Advisory remote budget views cannot make this
-   hard-ceiling claim.
+   SQLite backend serializes debits, persists exact replay, and derives its
+   authority-visible store binding from a live proof of an externally held
+   signing identity plus the canonical database identity. Copying SQLite state
+   without that external identity cannot qualify the clone, while moving or
+   restoring the database creates a new concrete identity and requires a new
+   authority allocation. The backend uniquely binds one purchaser allocation
+   to the pool id. Advisory remote budget views cannot make this hard-ceiling
+   claim.
 
 ### F3. Purchase and reveal (single-operator / wedge path)
 

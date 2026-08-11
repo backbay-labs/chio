@@ -148,6 +148,10 @@ pub enum FindingPoolLedgerError {
     LedgerDomainMismatch,
     #[error("finding pool ledger domain is already served by another durable store")]
     LedgerDomainInUse,
+    #[error("finding pool ledger is bound to another external store identity")]
+    LedgerStoreBindingMismatch,
+    #[error("finding pool external store identity is invalid")]
+    InvalidLedgerStoreIdentity,
     #[error("finding pool ledger is bound to another durable receipt sink")]
     ReceiptSinkMismatch,
     #[error("finding pool durable receipt sink identity is invalid")]
@@ -685,9 +689,11 @@ pub trait QualifiedFindingPoolLedger: FindingPoolLedger {
     /// may account for a signed allocation.
     fn ledger_domain(&self) -> &str;
 
-    /// Authority-visible identity of this concrete durable store. Allocation
-    /// envelopes bind it so two stores cannot spend the same allocation merely
-    /// by reusing a deployment domain string.
+    /// Authority-visible identity of this concrete durable store. It binds an
+    /// externally held signing identity to the canonical database identity, so
+    /// copying the database alone cannot copy the qualifying store identity.
+    /// Allocation envelopes bind it so two stores cannot spend the same
+    /// allocation merely by reusing a deployment domain string.
     fn ledger_store_binding_sha256(&self) -> &str;
 
     /// Bind this ledger to the one public key authorized to sign mutation
