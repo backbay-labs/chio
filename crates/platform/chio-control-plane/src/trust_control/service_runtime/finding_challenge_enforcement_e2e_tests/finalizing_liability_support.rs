@@ -28,6 +28,7 @@ struct FinalizingLiability {
     status_intent_key: String,
     enforcement: SignedFindingChallengeEnforcement,
     penalty: SignedOpenMarketPenalty,
+    slash: FindingPenaltyOutcome,
     snapshot: SignedFindingFinalizedBondSnapshot,
 }
 
@@ -337,7 +338,7 @@ fn finalizing_liability_with_prior_retraction(
     };
     let retained = serde_json::json!({
         "enforcement": enforcement.clone(),
-        "slash": slash,
+        "slash": slash.clone(),
     });
     let authorization_json = canonical_json_bytes(&retained)?;
     let authorization_sha256 = sha256_hex(&authorization_json);
@@ -374,6 +375,7 @@ fn finalizing_liability_with_prior_retraction(
         status_intent_key,
         enforcement,
         penalty,
+        slash,
         snapshot,
     };
     if root == EnforcementRoot::Confirmed
@@ -413,6 +415,28 @@ fn finalizing_liability_with_prior_retraction(
 }
 
 impl FinalizingLiability {
+    fn authorized(&self) -> Result<AuthorizedImpairment, AnyError> {
+        Ok(AuthorizedImpairment {
+            enforcement: self.enforcement.clone(),
+            enforcement_envelope_sha256: signed_envelope_sha256(&self.enforcement)?,
+            slash: self.slash.clone(),
+            effect_intent_keys: vec![
+                (
+                    FindingEffectIntentKind::SellerImpair,
+                    self.intent_key.clone(),
+                ),
+                (
+                    FindingEffectIntentKind::RootIntent,
+                    enforcement_root_intent_key(),
+                ),
+                (
+                    FindingEffectIntentKind::Retraction,
+                    self.retraction_key.clone(),
+                ),
+            ],
+        })
+    }
+
     /// Run the settlement choke point against this head with the given
     /// publisher.
     fn finalize(

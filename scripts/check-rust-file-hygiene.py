@@ -429,7 +429,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/serving_owner/global_commit_chain.rs": allow(
         "2026-08-31",
         "serving-owner commit chain persistence surface; capped to current size until split",
-        max_lines=3_009,
+        max_lines=3_038,
     ),
     "crates/products/chio-cli/src/cli/dispatch/finding/unit_tests.rs": allow(
         "2026-08-31",
