@@ -995,6 +995,7 @@ impl MarketWeb {
             checkpoint: &checkpoint,
             recipe_bytes: &recipe_bytes,
             backing: &backing,
+            terms: &terms,
             fee_schedule: &schedule,
             collateral: &collateral,
         };

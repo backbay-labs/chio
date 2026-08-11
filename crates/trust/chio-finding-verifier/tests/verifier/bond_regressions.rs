@@ -1,5 +1,8 @@
 use super::*;
-use chio_finding::FindingFacetResult;
+use chio_finding::{
+    compute_terms_id, FindingBackingRequirement, FindingChallengeBondLimit, FindingFacetResult,
+    FindingMarketTerms, FINDING_MARKET_TERMS_SCHEMA_V1,
+};
 use chio_fiscal::fee_schedule::{
     OpenMarketBondClass, OpenMarketBondRequirement, OpenMarketCollateralReferenceKind,
     OpenMarketEconomicsScope, OpenMarketFeeScheduleArtifact,
@@ -11,6 +14,44 @@ fn usd(units: u64) -> MonetaryAmount {
         units,
         currency: "USD".to_owned(),
     }
+}
+
+pub(super) fn fixture_terms(
+    seller: &Keypair,
+    finding: &Finding,
+    raw_finding: &str,
+    profile_envelope_sha256: &str,
+) -> Result<SignedFindingMarketTerms, Box<dyn Error>> {
+    let mut terms = FindingMarketTerms {
+        schema: FINDING_MARKET_TERMS_SCHEMA_V1.to_string(),
+        terms_id: String::new(),
+        finding_id: finding.finding_id.clone(),
+        finding_artifact_sha256: sha256_hex(raw_finding.as_bytes()),
+        listing_id: "finding-listing-01".to_string(),
+        seller: seller.public_key(),
+        backing_requirement: FindingBackingRequirement {
+            base_finding_stake: usd(50),
+            maximum_sale_exposure: usd(450),
+            collateral_policy: "venue_ledger_exclusive_v1".to_string(),
+        },
+        filing_window_secs: 86_400,
+        claim_window_secs: 604_800,
+        appeal_window_secs: 259_200,
+        audit_epoch_length_secs: 604_800,
+        audit_eligible: true,
+        decision_rule_refs: vec!["decision/replay-v1".to_string()],
+        verifier_profile_envelope_sha256: profile_envelope_sha256.to_string(),
+        challenge_bond_limits: vec![FindingChallengeBondLimit {
+            guarantee_class: FindingGuaranteeClass::DeterministicReplay,
+            min_bond: usd(10),
+            max_bond: usd(100),
+        }],
+        payout_policy: "pro_rata_capped_v1".to_string(),
+        issued_at: 1_700_000_000,
+        expires_at: 1_900_000_000,
+    };
+    terms.terms_id = compute_terms_id(&terms)?;
+    Ok(SignedExportEnvelope::sign(terms, seller)?)
 }
 
 pub(super) fn fixture_fee_schedule(
@@ -138,7 +179,49 @@ fn smaller_signed_requirement_cannot_back_larger_sale_exposure() -> TestResult {
     rebind_mutated_requirement(&fx, &mut evidence, |requirement| {
         requirement.required_amount.units = 1;
     })?;
-    assert_bond_failure(&fx, &evidence, "does not cover maximum sale exposure")
+    assert_bond_failure(
+        &fx,
+        &evidence,
+        "does not cover base stake plus sale exposure",
+    )
+}
+
+#[test]
+fn listing_requirement_must_include_the_base_finding_stake() -> TestResult {
+    let fx = fixture()?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    rebind_mutated_requirement(&fx, &mut evidence, |requirement| {
+        requirement.required_amount.units = 450;
+    })?;
+    assert_bond_failure(
+        &fx,
+        &evidence,
+        "does not cover base stake plus sale exposure",
+    )
+}
+
+#[test]
+fn locked_allocation_must_include_the_base_finding_stake() -> TestResult {
+    let fx = fixture()?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    let snapshot = evidence
+        .bond_snapshot
+        .as_mut()
+        .ok_or("bond snapshot missing")?;
+    let mut backing = snapshot.backing.body.clone();
+    backing.locked_amount.units = 450;
+    backing.allocation_id = compute_allocation_id(&backing)?;
+    snapshot.backing = SignedExportEnvelope::sign(backing, &keypair(4))?;
+    snapshot.store_snapshot.body.allocation_id = snapshot.backing.body.allocation_id.clone();
+    snapshot.store_snapshot.body.backing_envelope_sha256 =
+        signed_envelope_sha256(&snapshot.backing)?;
+    snapshot.store_snapshot =
+        SignedExportEnvelope::sign(snapshot.store_snapshot.body.clone(), &keypair(4))?;
+    assert_bond_failure(
+        &fx,
+        &evidence,
+        "locked allocation does not cover base stake",
+    )
 }
 
 #[test]

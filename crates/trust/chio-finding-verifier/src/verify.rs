@@ -37,7 +37,7 @@ use chio_finding::{
     FindingGuaranteeClass, FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput,
     FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusProofInput,
     FindingVerifierReport, SignedFindingAuthorityStatus, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
+    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms, SignedFindingVerifierReport,
     FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{
@@ -193,6 +193,9 @@ pub struct FindingBondSnapshot {
     /// alone is a seller-supplied assertion; only the signature under the
     /// pinned authority makes it evidence.
     pub backing: SignedFindingBondBacking,
+    /// Exact seller-signed terms carrying the base stake and sale exposure
+    /// this allocation promises to cover.
+    pub terms: SignedFindingMarketTerms,
     /// Exact authority-signed schedule carrying the referenced requirement.
     pub fee_schedule: chio_fiscal::fee_schedule::SignedOpenMarketFeeSchedule,
     /// Signed store state for this exact backing envelope. Liveness and

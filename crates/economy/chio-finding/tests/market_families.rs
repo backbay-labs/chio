@@ -9,18 +9,19 @@ use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_profile_id,
-    compute_report_id, compute_terms_id, signed_envelope_sha256, verify_signed_admission,
-    verify_signed_bond_backing, verify_signed_market_terms, verify_signed_seller_authorization,
-    verify_signed_verifier_report, FindingAdmission, FindingAuthorityKeyPolicy,
-    FindingBackingRequirement, FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass,
-    FindingChallengeBondLimit, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
-    FindingClaimedVerdict, FindingCollateralVault, FindingError, FindingFacetKind,
-    FindingFacetOutcome, FindingFacetResult, FindingFeeEvent, FindingFeeTerminalBinding,
-    FindingGuaranteeClass, FindingMarketTerms, FindingOutcomeClass, FindingPayee,
-    FindingPoolBinding, FindingPreRunTemplate, FindingPredicate, FindingReceiptRole,
-    FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind,
-    FindingReplayRecipeInput, FindingResourceCaps, FindingSellerAuthorization,
-    FindingVerifierReport, FINDING_ADMISSION_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
+    compute_report_id, compute_terms_id, finding_checkpoint_log_id, signed_envelope_sha256,
+    verify_signed_admission, verify_signed_bond_backing, verify_signed_market_terms,
+    verify_signed_seller_authorization, verify_signed_verifier_report, FindingAdmission,
+    FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
+    FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
+    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
+    FindingCollateralVault, FindingError, FindingFacetKind, FindingFacetOutcome,
+    FindingFacetResult, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
+    FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding,
+    FindingPreRunTemplate, FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole,
+    FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput,
+    FindingResourceCaps, FindingSellerAuthorization, FindingVerifierReport,
+    FINDING_ADMISSION_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
     FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SELLER_AUTHORIZATION_SCHEMA_V1,
     FINDING_VERIFIER_REPORT_SCHEMA_V1, MAX_FINDING_ARTIFACT_ITEMS, MAX_FINDING_IDENTIFIER_BYTES,
@@ -77,7 +78,7 @@ fn profile_body() -> Result<FindingChallengeVerifierProfile, FindingError> {
             },
         ],
         checkpoint_logs: vec![FindingCheckpointLogPolicy {
-            log_id: "local-log-wedge".to_string(),
+            log_id: finding_checkpoint_log_id(&keypair(14).public_key()),
             signer: key_policy(14, "checkpoint"),
         }],
         bbs_projection_issuer: FindingBbsIssuerPolicy {
@@ -533,6 +534,18 @@ fn profile_rejects_overlapping_receipt_role_keys() -> TestResult {
         profile.receipt_signers[1].policy.valid_from + 60;
     profile.profile_id = compute_profile_id(&profile)?;
     profile.validate()?;
+    Ok(())
+}
+
+#[test]
+fn profile_rejects_checkpoint_log_aliases() -> TestResult {
+    let mut profile = profile_body()?;
+    profile.checkpoint_logs[0].log_id = "caller-chosen-log-alias".to_string();
+    profile.profile_id = compute_profile_id(&profile)?;
+    assert_eq!(
+        profile.validate(),
+        Err(FindingError::InvalidField("checkpoint_logs[].log_id"))
+    );
     Ok(())
 }
 

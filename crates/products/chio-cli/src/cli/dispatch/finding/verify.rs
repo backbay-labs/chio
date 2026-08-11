@@ -393,6 +393,7 @@ struct FindingDeliveryEvidenceEntry {
 #[serde(deny_unknown_fields)]
 struct FindingBondSnapshotEntry {
     backing: SignedFindingBondBacking,
+    terms: chio_finding::SignedFindingMarketTerms,
     fee_schedule: SignedOpenMarketFeeSchedule,
     store_snapshot: SignedFindingBondStoreSnapshot,
 }
@@ -442,6 +443,7 @@ impl From<FindingBondSnapshotEntry> for FindingBondSnapshot {
     fn from(entry: FindingBondSnapshotEntry) -> Self {
         Self {
             backing: entry.backing,
+            terms: entry.terms,
             fee_schedule: entry.fee_schedule,
             store_snapshot: entry.store_snapshot,
         }

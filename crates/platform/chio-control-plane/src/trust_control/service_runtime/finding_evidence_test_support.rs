@@ -9,7 +9,7 @@ use chio_core::receipt::metadata::{
 use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_finding::{
     Finding, FindingAuthorityStatus, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
+    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms, SignedFindingVerifierReport,
     FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
 use chio_finding_verifier::{
@@ -31,6 +31,7 @@ pub(super) struct FindingReportInputs<'a> {
     pub(super) checkpoint: &'a KernelCheckpoint,
     pub(super) recipe_bytes: &'a [u8],
     pub(super) backing: &'a SignedFindingBondBacking,
+    pub(super) terms: &'a SignedFindingMarketTerms,
     pub(super) fee_schedule: &'a SignedOpenMarketFeeSchedule,
     pub(super) collateral: &'a Keypair,
 }
@@ -82,6 +83,7 @@ pub(super) fn make_signed_finding_report(
         runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
             backing: inputs.backing.clone(),
+            terms: inputs.terms.clone(),
             fee_schedule: inputs.fee_schedule.clone(),
             store_snapshot: SignedExportEnvelope::sign(
                 FindingBondStoreSnapshot {

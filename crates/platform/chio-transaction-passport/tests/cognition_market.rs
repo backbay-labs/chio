@@ -8,14 +8,14 @@ use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
     build_status_inclusion_proof_input, build_status_non_inclusion_proof_input, compute_profile_id,
-    compute_report_id, compute_status_epoch_id, signed_envelope_sha256, FindingAuthorityKeyPolicy,
-    FindingAuthorityStatus, FindingBbsIssuerPolicy, FindingChallengeVerifierProfile,
-    FindingCheckpointLogPolicy, FindingClaimedVerdict, FindingFacetKind, FindingFacetOutcome,
-    FindingFacetResult, FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole,
-    FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput,
-    FindingResourceCaps, FindingStatusEpoch, FindingStatusFreshnessPolicy,
-    FindingStatusOperatorAuthorization, FindingStatusOperatorRole, FindingStatusProofInput,
-    FindingVerifierReport, SignedFindingChallengeVerifierProfile,
+    compute_report_id, compute_status_epoch_id, finding_checkpoint_log_id, signed_envelope_sha256,
+    FindingAuthorityKeyPolicy, FindingAuthorityStatus, FindingBbsIssuerPolicy,
+    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
+    FindingFacetKind, FindingFacetOutcome, FindingFacetResult, FindingPredicate,
+    FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase,
+    FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps, FindingStatusEpoch,
+    FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusOperatorRole,
+    FindingStatusProofInput, FindingVerifierReport, SignedFindingChallengeVerifierProfile,
     FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1,
     FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
@@ -206,7 +206,7 @@ fn verifier_profile() -> TestResult<SignedFindingChallengeVerifierProfile> {
             },
         ],
         checkpoint_logs: vec![FindingCheckpointLogPolicy {
-            log_id: "qualified-finding-checkpoint-log".to_owned(),
+            log_id: finding_checkpoint_log_id(&profile_key_policy(21, "checkpoint-log").key),
             signer: profile_key_policy(21, "checkpoint-log"),
         }],
         bbs_projection_issuer: FindingBbsIssuerPolicy {

@@ -1,7 +1,7 @@
 {
   "body": {
     "schema": "chio.finding.challenge-verifier-profile.v1",
-    "profile_id": "26845afc58111332f29b3f5e90766406061d151515e7a0957bafbfc1b1754681",
+    "profile_id": "9cdfc597044c13602ce86b8acaba8c919daa0faf63545c9ec5e4b9e3464ca987",
     "governance_authority": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
     "operator": "venue-operator",
     "receipt_signers": [
@@ -44,7 +44,7 @@
     ],
     "checkpoint_logs": [
       {
-        "log_id": "local-log-wedge",
+        "log_id": "local-log-52168a9c192c6d153a2f0b1ce4f4144cd40ef9d86ad3fefc7f4caa1adb5ae969",
         "signer": {
           "authority_id": "authority-checkpoint",
           "key": "0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc",
@@ -119,5 +119,5 @@
     "expires_at": 1900000000
   },
   "signerKey": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
-  "signature": "00c937a126b2c3e85d2b2103a31cb56fe1dc09250538b27f1aef98a3eecb1681897a9efe21847818bd53ea93592a2e726e844329ce27f9ab5cb2e48f1c838b09"
+  "signature": "2f9a50a7f078cebd426bef9055c2ce9338d694ce9d6a1e2bf8a95e11299c7735f518020d82d43fe23684c4fda2a3c32f8b10228bed9c67b02d908c1ba7fc2a0c"
 }

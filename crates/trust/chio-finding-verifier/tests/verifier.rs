@@ -44,7 +44,7 @@ use chio_finding::{
     FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput,
     FindingResourceCaps, FindingStatusEpoch, FindingStatusFreshnessPolicy,
     FindingStatusOperatorAuthorization, FindingStatusOperatorRole, SignedFindingAuthorityStatus,
-    FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
+    SignedFindingMarketTerms, FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
     FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
     FINDING_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
 };
@@ -248,6 +248,7 @@ struct Fixture {
     recipe_bytes: Vec<u8>,
     finding_payload_sha256: String,
     backing: SignedExportEnvelope<FindingBondBacking>,
+    terms: SignedFindingMarketTerms,
     fee_schedule: SignedOpenMarketFeeSchedule,
     fee_schedule_authority: Keypair,
     bond_store_snapshot: SignedFindingBondStoreSnapshot,
@@ -355,7 +356,6 @@ fn fixture_with_runtime_assurance(
     let fee_schedule_authority = keypair(8);
     let seller = keypair(2);
 
-    // Receipts first: the finding binds their recomputed ids in order.
     let payload_sha256 = HEX64.to_string();
     let first = receipt(
         &kernel,
@@ -489,6 +489,10 @@ fn fixture_with_runtime_assurance(
     let finding = sign_finding(finding, &issuer)?;
     let raw_finding = String::from_utf8(canonical_json_bytes(&finding)?)?;
 
+    let terms =
+        bond_regressions::fixture_terms(&seller, &finding, &raw_finding, &profile_envelope_sha256)?;
+    let terms_envelope_sha256 = signed_envelope_sha256(&terms)?;
+
     let (fee_schedule, fee_requirement_sha256) =
         bond_regressions::fixture_fee_schedule(&fee_schedule_authority)?;
     let fee_schedule_envelope_sha256 = signed_envelope_sha256(&fee_schedule)?;
@@ -501,7 +505,7 @@ fn fixture_with_runtime_assurance(
         authorization_envelope_sha256: HEX64.to_string(),
         finding_id: finding.finding_id.clone(),
         listing_id: "finding-listing-01".to_string(),
-        terms_envelope_sha256: HEX64.to_string(),
+        terms_envelope_sha256,
         profile_envelope_sha256: profile_envelope_sha256.clone(),
         fee_requirement_sha256,
         fee_schedule_envelope_sha256,
@@ -590,6 +594,7 @@ fn fixture_with_runtime_assurance(
         checkpoint_transparency,
         recipe_bytes,
         backing,
+        terms,
         fee_schedule,
         fee_schedule_authority,
         bond_store_snapshot,
@@ -733,6 +738,7 @@ fn bundle<'a>(
         runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
             backing: fx.backing.clone(),
+            terms: fx.terms.clone(),
             fee_schedule: fx.fee_schedule.clone(),
             store_snapshot: fx.bond_store_snapshot.clone(),
         }),
@@ -994,7 +1000,6 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
         Some(fx.backing.body.allocation_id.as_str())
     );
 
-    // Report round trip under the pinned verifier authority.
     let signed =
         sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.verifier)?;
     verify_signed_verifier_report(&signed, &fx.verifier.public_key())?;
@@ -1830,7 +1835,6 @@ fn wrapper_tampering_fails_membership_on_every_closed_gap() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
 
-    // Outer leaf index diverges from the inner proof.
     let mut receipts = clone_receipts(&fx);
     receipts[0].inclusion_proof.leaf_index = 1;
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, receipts))?;
@@ -1839,7 +1843,6 @@ fn wrapper_tampering_fails_membership_on_every_closed_gap() -> TestResult {
         Some(FindingFacetOutcome::Failed)
     );
 
-    // Inner tree size diverges from the signed checkpoint.
     let mut receipts = clone_receipts(&fx);
     receipts[0].inclusion_proof.proof.tree_size = 4;
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, receipts))?;
@@ -1848,7 +1851,6 @@ fn wrapper_tampering_fails_membership_on_every_closed_gap() -> TestResult {
         Some(FindingFacetOutcome::Failed)
     );
 
-    // Claimed root diverges from the signed root.
     let mut receipts = clone_receipts(&fx);
     receipts[0].inclusion_proof.merkle_root = receipts[0]
         .inclusion_proof
@@ -1860,7 +1862,6 @@ fn wrapper_tampering_fails_membership_on_every_closed_gap() -> TestResult {
         Some(FindingFacetOutcome::Failed)
     );
 
-    // Receipt seq outside the batch range.
     let mut receipts = clone_receipts(&fx);
     receipts[0].inclusion_proof.receipt_seq = 999;
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, receipts))?;
