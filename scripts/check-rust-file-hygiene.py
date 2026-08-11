@@ -354,12 +354,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",
         "cognition challenge lifecycle coordinator; capped to current size until split",
-        max_lines=5_965,
+        max_lines=5_988,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs": allow(
         "2026-08-31",
         "cognition challenge enforcement end-to-end regression suite; capped to current size until split",
-        max_lines=10_677,
+        max_lines=10_698,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
         "2026-08-31",
@@ -399,12 +399,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/finding_purchase_store.rs": allow(
         "2026-08-31",
         "cognition purchase and recovery authority store; capped to current size until split",
-        max_lines=3_247,
+        max_lines=3_258,
     ),
     "crates/platform/chio-store-sqlite/src/finding_purchase_store_tests.rs": allow(
         "2026-08-31",
         "cognition purchase authority store regression suite; capped to current size until split",
-        max_lines=2_875,
+        max_lines=2_976,
     ),
     "crates/platform/chio-store-sqlite/src/fiscal_store.rs": allow(
         "2026-08-31",
@@ -419,12 +419,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/serving_owner/global_commit_chain.rs": allow(
         "2026-08-31",
         "serving-owner commit chain persistence surface; capped to current size until split",
-        max_lines=2_721,
+        max_lines=2_727,
     ),
     "crates/platform/chio-store-sqlite/src/serving_owner/tests.rs": allow(
         "2026-08-31",
         "serving-owner provisioning test suite; capped to current size until split",
-        max_lines=2_224,
+        max_lines=2_278,
     ),
     "crates/products/chio-api-protect/src/proxy/mediated.rs": allow(
         "2026-08-31",

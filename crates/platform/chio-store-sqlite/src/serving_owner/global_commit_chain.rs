@@ -1396,7 +1396,13 @@ fn finding_market_snapshot_digest_version(
     snapshots.push(table_snapshot_where(
         connection,
         "payout_destinations",
-        if include_failed_deliveries {
+        if include_finalizing_authorizations {
+            // The current public admission API can create a buyer slot
+            // before any purchase binding exists. Every such actionable row
+            // affects collision and capacity decisions and must therefore be
+            // committed even while it is unattached.
+            "1 = 1"
+        } else if include_failed_deliveries {
             r#"
             slot_index = 0 OR EXISTS (
                 SELECT 1

@@ -85,6 +85,9 @@ pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 10;
 /// Revision whose eagerly admitted reservation destinations must be reduced
 /// to the settled roster when upgrading.
 const FINDING_PURCHASE_EAGER_PAYOUT_VERSION: i32 = 7;
+/// First revision that eagerly admitted a reservation destination. Its
+/// payout-binding table did not yet carry the revision-7 binding kind.
+const FINDING_PURCHASE_UNTYPED_EAGER_PAYOUT_VERSION: i32 = 6;
 /// Revision that introduced the listing-keyed, never-lifted sales block.
 const FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION: i32 = 2;
 /// Name the listing-keyed block table is parked under while the episode
@@ -2609,8 +2612,8 @@ pub(crate) fn initialize_finding_purchase_schema(
         .map_err(sqlite_error)?;
     park_listing_keyed_sales_blocks(&transaction, on_disk)?;
     park_rail_only_payout_destinations(&transaction)?;
-    park_untyped_purchase_payout_bindings(&transaction)?;
     release_eager_reservation_payout_destinations(&transaction, on_disk)?;
+    park_untyped_purchase_payout_bindings(&transaction)?;
     transaction
         .execute_batch(FINDING_PURCHASE_SCHEMA)
         .map_err(sqlite_error)?;
@@ -2627,10 +2630,10 @@ pub(crate) fn initialize_finding_purchase_schema(
     transaction.commit().map_err(sqlite_error)
 }
 
-/// Remove buyer slots revision 7 admitted solely for reservations that
-/// never settled.
+/// Remove buyer slots revisions 6 and 7 admitted solely for reservations
+/// that never settled.
 ///
-/// Revision 7 promoted a buyer destination while opening its reservation.
+/// Both revisions promoted a buyer destination while opening its reservation.
 /// Those immutable rows outlived release and expiry, eventually exhausting
 /// an allocation even though no purchase had paid to them. A destination
 /// used by any consumed reservation remains settled history; slot zero is
@@ -2641,11 +2644,19 @@ fn release_eager_reservation_payout_destinations(
     transaction: &Transaction<'_>,
     on_disk_version: i32,
 ) -> Result<(), FindingPurchaseStoreError> {
-    if on_disk_version != FINDING_PURCHASE_EAGER_PAYOUT_VERSION {
+    if !matches!(
+        on_disk_version,
+        FINDING_PURCHASE_UNTYPED_EAGER_PAYOUT_VERSION | FINDING_PURCHASE_EAGER_PAYOUT_VERSION
+    ) {
         return Ok(());
     }
+    let evm_binding = if on_disk_version == FINDING_PURCHASE_EAGER_PAYOUT_VERSION {
+        "AND bindings.binding_kind = 'evm'"
+    } else {
+        ""
+    };
     transaction
-        .execute_batch(
+        .execute_batch(&format!(
             r#"
             DROP TRIGGER IF EXISTS payout_destinations_immutable;
             DROP TRIGGER IF EXISTS payout_destinations_no_delete;
@@ -2661,7 +2672,7 @@ fn release_eager_reservation_payout_destinations(
                     ON encumbrances.reservation_id = reservations.reservation_id
                   WHERE encumbrances.allocation_id = destinations.allocation_id
                     AND bindings.destination = destinations.destination
-                    AND bindings.binding_kind = 'evm'
+                    {evm_binding}
               )
               AND NOT EXISTS (
                   SELECT 1
@@ -2672,11 +2683,11 @@ fn release_eager_reservation_payout_destinations(
                     ON encumbrances.reservation_id = reservations.reservation_id
                   WHERE encumbrances.allocation_id = destinations.allocation_id
                     AND bindings.destination = destinations.destination
-                    AND bindings.binding_kind = 'evm'
+                    {evm_binding}
                     AND reservations.state = 'consumed'
               );
-            "#,
-        )
+            "#
+        ))
         .map_err(sqlite_error)?;
     Ok(())
 }

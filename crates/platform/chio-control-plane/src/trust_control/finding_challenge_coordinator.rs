@@ -945,13 +945,32 @@ impl FindingChallengeCoordinator {
         now: u64,
     ) -> Result<ChallengeSubmissionOutcome, ChallengeCoordinatorError> {
         let body = &challenge.body;
-        // The pinned audit authority is the only key that may file a
-        // bondless audit; a buyer submission verifies against the
-        // challenger it names, so neither branch can borrow the other's
-        // authorization.
+        // A bondless audit resolves its signer from the exact retained round.
+        // This lets an in-flight round finish across configured key rotation
+        // without letting the challenge select an unrelated historical key.
+        // A buyer submission verifies against the challenger it names, so
+        // neither branch can borrow the other's authorization.
         let audit_authority = match &body.authorization {
-            FindingChallengeAuthorization::VenueAudit(_) => {
-                self.require_live_role(&self.pins.audit_authority, body.filed_at, now, "audit")?
+            FindingChallengeAuthorization::VenueAudit(audit) => {
+                let round = self
+                    .filings
+                    .audit_round(&audit.audit_epoch_envelope_sha256)
+                    .ok_or(ChallengeCoordinatorError::UnknownAuditRound)?;
+                if self.envelope_digest(&round.epoch)? != audit.audit_epoch_envelope_sha256 {
+                    return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                        "audit_epoch_envelope_sha256",
+                    ));
+                }
+                if challenge.signer_key != round.epoch.signer_key {
+                    return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                        "challenge_signer",
+                    ));
+                }
+                let historical_policy = self
+                    .filings
+                    .audit_policy_for_key(&round.epoch.signer_key)
+                    .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
+                self.require_live_role(&historical_policy, body.filed_at, now, "historical audit")?
             }
             FindingChallengeAuthorization::BuyerSubmission(_) => self
                 .pins
@@ -3204,11 +3223,15 @@ impl FindingChallengeCoordinator {
                 "audit_epoch_envelope_sha256",
             ));
         }
+        let historical_policy = self
+            .filings
+            .audit_policy_for_key(&round.epoch.signer_key)
+            .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
         let audit_authority = self.require_live_role(
-            &self.pins.audit_authority,
+            &historical_policy,
             round.epoch.body.committed_at,
             now,
-            "audit",
+            "historical audit",
         )?;
         let randomness_witness = self.require_live_role(
             &self.pins.audit_randomness_witness,

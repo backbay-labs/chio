@@ -355,6 +355,60 @@ fn finding_challenge_snapshot_rollback_is_rejected_by_the_global_anchor() {
 
 #[cfg(feature = "cognition-market-experimental")]
 #[test]
+fn finding_market_projection_commits_manually_admitted_buyer_slots() {
+    let (_temp, database, lock_root) = fixture();
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision");
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open");
+    let purchases = authority.finding_purchase_store();
+    let allocation_id = "a".repeat(64);
+    purchases
+        .register_community_fund_destination(
+            &allocation_id,
+            "0xcccccccccccccccccccccccccccccccccccccccc",
+            1_750_000_000,
+        )
+        .expect("register community fund");
+    let before: String = Connection::open(&database)
+        .expect("open projection reader")
+        .query_row(
+            r#"
+            SELECT authority_projection_digest FROM authority_global_commits
+            WHERE projection_kind = 'finding_challenge'
+            ORDER BY commit_sequence DESC LIMIT 1
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .expect("read projection before buyer slot");
+
+    purchases
+        .admit_payout_destination(
+            &allocation_id,
+            "0x000000000000000000000000000000000000002a",
+            1_750_000_001,
+        )
+        .expect("admit buyer payout slot");
+    let after: String = Connection::open(&database)
+        .expect("open projection reader")
+        .query_row(
+            r#"
+            SELECT authority_projection_digest FROM authority_global_commits
+            WHERE projection_kind = 'finding_challenge'
+            ORDER BY commit_sequence DESC LIMIT 1
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .expect("read projection after buyer slot");
+
+    assert_ne!(
+        before, after,
+        "an actionable buyer slot must change the committed market projection"
+    );
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
 fn finding_challenge_projection_rejects_offline_state_tampering() {
     use crate::finding_challenge_store::{
         FindingChallengeAuthorizationBranch, FindingChallengeEvidenceClass,

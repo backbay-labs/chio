@@ -8932,6 +8932,27 @@ fn finding_challenge_uphold_resolves_the_audits_historical_policy() -> TestResul
 }
 
 #[test]
+fn finding_challenge_submit_resolves_the_rounds_historical_audit_policy() -> TestResult {
+    let deployment = deployment()?;
+    let (_, raw) = finding_artifact()?;
+    let challenge = venue_audit_challenge()?;
+    let mut rotated_config = market_config();
+    rotated_config.audit_authority = authority_pin(50, "audit-authority-rotated");
+    rotated_config.audit_authority.key_epoch = PINNED_KEY_EPOCH + 1;
+    rotated_config.audit_authority.valid_from = NOW + 1;
+    let rotated =
+        deployment.coordinator_under(&rotated_config, FindingDisputeLockDisposition::Forfeited)?;
+
+    let submitted = rotated.submit(&challenge, &raw, NOW + 2)?;
+    assert_eq!(
+        submitted.write,
+        FindingChallengeWriteOutcome::Inserted,
+        "a retained round remains fileable under its authenticated signer after rotation"
+    );
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle() -> TestResult {
     // Venue admission.
     {

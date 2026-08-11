@@ -2523,6 +2523,107 @@ fn revision_seven_releases_only_unsettled_eager_payout_destinations() {
 }
 
 #[test]
+fn revision_six_releases_unsettled_eager_payout_destinations() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    let allocation_id = hex64('a');
+    let abandoned = "0x000000000000000000000000000000000000002a";
+    let community = "0xcccccccccccccccccccccccccccccccccccccccc";
+    connection
+        .execute_batch(&format!(
+            r#"
+            INSERT INTO purchase_reservations (
+                reservation_id, purchase_intent_id,
+                authoritative_payment_operation_id, payer_hex, agent_id,
+                finding_id, listing_id, bid_envelope_sha256, ask_digest,
+                admission_envelope_sha256, amount_units, currency,
+                expires_at, state, created_at, updated_at
+            ) VALUES (
+                'reservation-abandoned-v6', 'intent-abandoned-v6',
+                'payment-abandoned-v6', '{payer}', 'agent-abandoned-v6',
+                '{finding}', 'listing-v6', '{bid}', '{ask}', '{admission}',
+                1, 'USD', {expires}, 'released', {now}, {now}
+            );
+
+            INSERT INTO purchase_payout_bindings (
+                reservation_id, destination, binding_kind
+            ) VALUES ('reservation-abandoned-v6', '{abandoned}', 'evm');
+
+            INSERT INTO seller_exposure_encumbrances (
+                encumbrance_id, allocation_id, reservation_id, amount_units,
+                currency, state, retention_expires_at, opened_at, updated_at
+            ) VALUES (
+                'encumbrance-abandoned-v6', '{allocation_id}',
+                'reservation-abandoned-v6', 1, 'USD', 'released', NULL,
+                {now}, {now}
+            );
+
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES
+                ('{allocation_id}', '{community}', 0, {now}),
+                ('{allocation_id}', '{abandoned}', 1, {now});
+
+            DROP TRIGGER purchase_payout_bindings_immutable;
+            DROP TRIGGER purchase_payout_bindings_no_delete;
+            ALTER TABLE purchase_payout_bindings
+                RENAME TO purchase_payout_bindings_typed;
+            CREATE TABLE purchase_payout_bindings (
+                reservation_id TEXT NOT NULL PRIMARY KEY
+                    REFERENCES purchase_reservations(reservation_id),
+                destination TEXT NOT NULL CHECK (length(destination) BETWEEN 1 AND 512)
+            );
+            INSERT INTO purchase_payout_bindings (reservation_id, destination)
+            SELECT reservation_id, destination
+            FROM purchase_payout_bindings_typed;
+            DROP TABLE purchase_payout_bindings_typed;
+
+            PRAGMA application_id = {application_id};
+            "#,
+            payer = hex64('b'),
+            finding = hex64('c'),
+            bid = hex64('d'),
+            ask = hex64('e'),
+            admission = hex64('f'),
+            expires = NOW + 100,
+            now = NOW,
+            application_id = crate::CHIO_SQLITE_APPLICATION_ID,
+        ))
+        .expect("seed revision-six eager destination");
+    crate::stamp_schema_version(
+        &connection,
+        FINDING_PURCHASE_SCHEMA_KEY,
+        FINDING_PURCHASE_UNTYPED_EAGER_PAYOUT_VERSION,
+    )
+    .expect("stamp revision six");
+
+    initialize_finding_purchase_schema(&mut connection).expect("migrate revision six");
+
+    let destinations = connection
+        .prepare(
+            r#"
+            SELECT slot_index, destination FROM payout_destinations
+            WHERE allocation_id = ?1 ORDER BY slot_index
+            "#,
+        )
+        .expect("prepare migrated destinations")
+        .query_map([&allocation_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .expect("read migrated destinations")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect migrated destinations");
+    assert_eq!(
+        destinations,
+        vec![(0, community.to_owned())],
+        "the abandoned revision-six eager slot is released"
+    );
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at current revision");
+}
+
+#[test]
 fn revision_eight_adds_legacy_history_without_rewriting_actionable_payouts() {
     let mut connection = Connection::open_in_memory().expect("in-memory database");
     connection
