@@ -98,6 +98,18 @@ fn audit_authority_policy() -> FindingAuthorityKeyPolicy {
     }
 }
 
+fn seed_witness_policy() -> FindingAuthorityKeyPolicy {
+    FindingAuthorityKeyPolicy {
+        authority_id: "audit-seed-witness".to_owned(),
+        key: seed_witness().public_key(),
+        key_epoch: 1,
+        valid_from: COMMITTED_AT - 3,
+        valid_until: REPORTED_AT + 1,
+        rotation_policy_ref: "rotation/audit-seed-witness".to_owned(),
+        revocation_status_ref: "revocations/audit-seed-witness".to_owned(),
+    }
+}
+
 fn governance_policy() -> FindingAuthorityKeyPolicy {
     FindingAuthorityKeyPolicy {
         authority_id: "audit-governance".to_owned(),
@@ -158,12 +170,13 @@ fn report_witnesses<'a>(
     resolved_outcomes: &'a [SignedFindingChallengeOutcome],
 ) -> FindingAuditReportWitnesses<'a> {
     FindingAuditReportWitnesses {
-        pinned_seed_witness: seed_witness().public_key(),
+        pinned_seed_witness_policy: seed_witness_policy(),
         pinned_audit_policy: audit_authority_policy(),
         pinned_governance_policy: governance_policy(),
         round_authorization: round_authorization(epoch),
         pinned_status_authority: status_authority().public_key(),
         audit_status: evaluator_status(&audit_authority_policy(), None),
+        seed_witness_status: evaluator_status(&seed_witness_policy(), None),
         governance_status: evaluator_status(&governance_policy(), None),
         pinned_evaluator_policies: policies,
         evaluator_statuses: policies
@@ -811,6 +824,44 @@ fn report_verification_authenticates_the_audit_authority_lifecycle() {
 }
 
 #[test]
+fn report_verification_authenticates_the_seed_witness_lifecycle() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let report = report_for(&envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+    let policies = [audit_evaluator_policy()];
+    let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
+
+    witnesses.pinned_seed_witness_policy.valid_until = epoch.seed_witnessed_at;
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::SeedWitnessWindow
+    );
+
+    witnesses.pinned_seed_witness_policy = seed_witness_policy();
+    witnesses.seed_witness_status =
+        evaluator_status(&seed_witness_policy(), Some(epoch.seed_witnessed_at));
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::SeedWitnessRevoked
+    );
+}
+
+#[test]
 fn report_verification_authenticates_the_governance_round_authorization() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
@@ -992,8 +1043,13 @@ fn report_verification_requires_fresh_authenticated_evaluator_status() {
     let mut stale_report = report;
     stale_report.reported_at = REPORTED_AT + 3_601;
     reseal(&mut stale_report);
+    witnesses.pinned_audit_policy.valid_until = stale_report.reported_at + 1;
     witnesses.governance_status =
         evaluator_status_observed_at(&governance_policy(), None, stale_report.reported_at);
+    witnesses.audit_status =
+        evaluator_status_observed_at(&audit_authority_policy(), None, stale_report.reported_at);
+    witnesses.seed_witness_status =
+        evaluator_status_observed_at(&seed_witness_policy(), None, stale_report.reported_at);
     witnesses.evaluator_statuses = vec![evaluator_status(&policies[0], None)];
     assert!(matches!(
         verify_audit_report_with_witness(

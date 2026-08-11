@@ -85,6 +85,7 @@ use chio_kernel::checkpoint::{
     build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_body_sha256,
     checkpoint_log_id, CheckpointTransparencySummary, KernelCheckpoint,
 };
+use chio_open_market::evaluation::OpenMarketPenaltyEvaluation;
 use chio_open_market::evidence::{OpenMarketEvidenceKind, OpenMarketEvidenceReference};
 use chio_open_market::fee_schedule::{
     build_open_market_fee_schedule_artifact, OpenMarketBondClass, OpenMarketBondRequirement,
@@ -143,7 +144,7 @@ use crate::trust_control::finding_challenge_coordinator::{
     ChallengeSubmissionOutcome, EvaluationAdmission, FindingAuditRound, FindingAuthorityStatus,
     FindingAuthorityStatusResolver, FindingChallengeCoordinator, FindingCollateralFacts,
     FindingFilingResolver, FindingFinalization, FindingLiabilityIdentity, FindingPenaltyGovernance,
-    UpheldLiability, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
+    FindingPenaltyOutcome, UpheldLiability, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
 use crate::trust_control::{
     FederationAdmissionRateLimiter, FindingAuthorityPin, FindingChallengeSubmissionExecutor,
@@ -475,6 +476,8 @@ struct PublishedArtifacts {
     admissions: BTreeMap<(String, String, String), SignedFindingAdmission>,
     admissions_by_digest: BTreeMap<String, SignedFindingAdmission>,
     venue_policies: BTreeMap<String, FindingAuthorityPin>,
+    profile_governance_policies: BTreeMap<String, FindingAuthorityPin>,
+    audit_policies: BTreeMap<String, FindingAuthorityPin>,
     market_terms: BTreeMap<String, SignedFindingMarketTerms>,
 }
 
@@ -519,6 +522,21 @@ impl PublishedArtifacts {
             .insert(signed_envelope_sha256(terms)?, terms.clone());
         Ok(self)
     }
+
+    fn publish_profile_policy(
+        mut self,
+        profile: &SignedFindingChallengeVerifierProfile,
+        governance_policy: FindingAuthorityPin,
+    ) -> Result<Self, AnyError> {
+        self.profile_governance_policies
+            .insert(signed_envelope_sha256(profile)?, governance_policy);
+        Ok(self)
+    }
+
+    fn publish_audit_policy(mut self, policy: FindingAuthorityPin) -> Self {
+        self.audit_policies.insert(policy.key_hex.clone(), policy);
+        self
+    }
 }
 
 impl FindingFilingResolver for PublishedArtifacts {
@@ -554,6 +572,16 @@ impl FindingFilingResolver for PublishedArtifacts {
 
     fn venue_policy_for_admission(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
         self.venue_policies.get(envelope_sha256).cloned()
+    }
+
+    fn governance_policy_for_profile(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
+        self.profile_governance_policies
+            .get(envelope_sha256)
+            .cloned()
+    }
+
+    fn audit_policy_for_key(&self, key: &PublicKey) -> Option<FindingAuthorityPin> {
+        self.audit_policies.get(&key.to_hex()).cloned()
     }
 
     fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms> {
@@ -646,7 +674,9 @@ fn deployment_publishing_terms_and_rounds(
         .publish_terms(&lapsed_window_terms()?)?
         .publish_terms(&audit_disabled_terms()?)?
         .publish_terms(&narrow_bond_terms()?)?
-        .publish_admission(&admission, market_config().venue)?;
+        .publish_admission(&admission, market_config().venue)?
+        .publish_profile_policy(&verifier_profile()?, market_config().governance_root)?
+        .publish_audit_policy(market_config().audit_authority);
     for terms in extra_terms {
         filings = filings.publish_terms(terms)?;
     }
@@ -4545,7 +4575,7 @@ fn finding_challenge_a_filing_outside_the_schedule_window_is_refused() -> TestRe
 #[test]
 fn finding_challenge_rejects_an_undersized_appeal_window_before_filing() -> TestResult {
     let terms = market_terms_shaped(|terms| terms.appeal_window_secs = 24 * 60 * 60 - 1)?;
-    let deployment = deployment_publishing_terms(&[terms.clone()])?;
+    let deployment = deployment_publishing_terms(std::slice::from_ref(&terms))?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let challenge = buyer_challenge_bound_to_admission_terms(&keypair(41), &terms)?;
     let (_, raw) = finding_artifact()?;
@@ -6984,19 +7014,6 @@ fn finalizing_liability_with(
         259_200,
         NOW + 3,
     )?;
-    deployment.challenges.begin_finalizing_under_sanction(
-        &liability_key,
-        FindingLiabilityState::PendingAppeal,
-        FIXTURE_SANCTION_CASE_ID,
-        &chio_store_sqlite::FindingFinalizingAuthorizationInput {
-            liability_key: &liability_key,
-            authorization_json: b"{}",
-            authorization_sha256: &sha256_hex(b"{}"),
-            recorded_at: NOW + 4,
-        },
-        NOW + 4,
-    )?;
-
     let intent_key = byte_hex64(0xc1);
     let penalty = fixture_slash_penalty()?;
     let penalty_envelope_sha256 = signed_envelope_sha256(&penalty)?;
@@ -7056,6 +7073,48 @@ fn finalizing_liability_with(
         &seller,
         &intent_key,
         &penalty_envelope_sha256,
+    )?;
+    let penalty_body = &penalty.body;
+    let slash = FindingPenaltyOutcome {
+        penalty: penalty.clone(),
+        penalty_envelope_sha256: penalty_envelope_sha256.clone(),
+        evaluation: OpenMarketPenaltyEvaluation {
+            listing_id: penalty_body.listing_id.clone(),
+            namespace: penalty_body.namespace.clone(),
+            fee_schedule_id: penalty_body.fee_schedule_id.clone(),
+            charter_id: penalty_body.charter_id.clone(),
+            case_id: penalty_body.case_id.clone(),
+            penalty_id: penalty_body.penalty_id.clone(),
+            governing_operator_id: penalty_body.governing_operator_id.clone(),
+            action: penalty_body.action,
+            state: penalty_body.state,
+            effective_state: OpenMarketPenaltyEffectiveState::BondSlashed,
+            evaluated_at: penalty_body.updated_at,
+            publication_fee: None,
+            dispute_fee: None,
+            market_participation_fee: None,
+            bond_requirement: None,
+            blocks_admission: true,
+            findings: Vec::new(),
+        },
+    };
+    let retained = serde_json::json!({
+        "enforcement": enforcement.clone(),
+        "slash": slash,
+    });
+    let authorization_json = canonical_json_bytes(&retained)?;
+    let authorization_sha256 = sha256_hex(&authorization_json);
+    deployment.challenges.begin_finalizing_under_sanction(
+        &liability_key,
+        FindingLiabilityState::PendingAppeal,
+        FIXTURE_SANCTION_CASE_ID,
+        &chio_store_sqlite::FindingFinalizingAuthorizationInput {
+            liability_key: &liability_key,
+            authorization_json: &authorization_json,
+            authorization_sha256: &authorization_sha256,
+            recorded_at: NOW + 4,
+        },
+        NOW + 4,
     )?;
     let case = FinalizingLiability {
         deployment,
@@ -8040,6 +8099,49 @@ fn finding_challenge_penalty_recovers_across_penalty_authority_rotation() -> Tes
 }
 
 #[test]
+fn finding_challenge_finalization_requires_the_retained_enforcement_envelope() -> TestResult {
+    let case = finalizing_liability()?;
+    let mut body = case.enforcement.body.clone();
+    let [buyer, community] = body.destinations.as_mut_slice() else {
+        return Err("the retained enforcement carries two payout destinations".into());
+    };
+    buyer.amount.units += 1;
+    community.amount.units -= 1;
+    body.enforcement_id.clear();
+    body.enforcement_id = compute_enforcement_id(&body)?;
+    let substituted = SignedExportEnvelope::sign(body, &keypair(32))?;
+
+    let refused = case
+        .coordinator
+        .finalize(
+            &case.liability_key,
+            &substituted,
+            &case.penalty,
+            &case.snapshot,
+            &case.seller,
+            &settlement_config()?,
+            &settlement_config()?.operator_address,
+            &evm_vault_snapshot(),
+            &anchor_proof()?,
+            &ScriptedObservations::qualified(),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )
+        .expect_err("a newly signed payout envelope cannot replace retained authorization");
+    let ChallengeCoordinatorError::Settlement(detail) = refused else {
+        return Err(format!("unexpected substituted-enforcement rejection: {refused:?}").into());
+    };
+    assert!(
+        detail.contains("retained finalizing authorization")
+            || detail.contains("retained enforcement semantics")
+            || detail.contains("snapshot refresh is outside the retained authorization"),
+        "unexpected substituted-enforcement settlement rejection: {detail}"
+    );
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_an_enforcement_naming_another_vault_never_reaches_the_publisher() -> TestResult
 {
     let case = finalizing_liability()?;
@@ -8662,6 +8764,94 @@ fn finding_challenge_uphold_uses_the_recorded_historical_evaluator_policy() -> T
             &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
         )
     );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_evaluation_resolves_the_profiles_historical_governance_policy() -> TestResult {
+    let deployment = deployment()?;
+    let original = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenged = challenged_finding()?;
+    let sale = settle_purchase(
+        &deployment,
+        "profile-rotation",
+        BUYER_ONE_DESTINATION,
+        50,
+        NOW,
+    )?;
+    let case = evidence_invalid_case(
+        &challenged,
+        ProductionShape::ForeignSignature,
+        &sale,
+        Filing::Buyer,
+    )?;
+    original.submit(&case.challenge, &challenged.raw_finding, NOW + 1)?;
+
+    let mut rotated_config = market_config();
+    rotated_config.governance_root = authority_pin(49, "governance-rotated");
+    rotated_config.governance_root.key_epoch = PINNED_KEY_EPOCH + 1;
+    rotated_config.governance_root.valid_from = NOW + 2;
+    let rotated =
+        deployment.coordinator_under(&rotated_config, FindingDisputeLockDisposition::Forfeited)?;
+    let stake = usd(300);
+    let required = usd(5_000);
+    let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
+    let evidence = case.evidence();
+    let evaluated = rotated
+        .evaluate(&evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &collateral,
+            NOW + 3,
+        ))?
+        .ok_or("a retained profile survives governance-key rotation")?;
+    assert_eq!(evaluated.state, FindingChallengeState::Upheld);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_uphold_resolves_the_audits_historical_policy() -> TestResult {
+    let deployment = deployment()?;
+    let original = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let (finding, raw) = finding_artifact()?;
+    let challenge = venue_audit_challenge()?;
+    original.submit(&challenge, &raw, NOW)?;
+    let outcome = upheld_outcome(&challenge, &deployment.allocation_id, 0, "USD")?;
+    let outcome_json = canonical_json_bytes(&outcome)?;
+    close_challenge(
+        &deployment,
+        &challenge.body.challenge_id,
+        FindingChallengeVerdict::Upheld,
+        &signed_envelope_sha256(&outcome)?,
+        &outcome_json,
+        NOW + 1,
+    )?;
+
+    let mut rotated_config = market_config();
+    rotated_config.audit_authority = authority_pin(50, "audit-authority-rotated");
+    rotated_config.audit_authority.key_epoch = PINNED_KEY_EPOCH + 1;
+    rotated_config.audit_authority.valid_from = NOW + 2;
+    let rotated =
+        deployment.coordinator_under(&rotated_config, FindingDisputeLockDisposition::Forfeited)?;
+    let stake = usd(300);
+    let required = usd(5_000);
+    let upheld = uphold_across_claim_window(
+        &rotated,
+        &market_terms(CLAIM_WINDOW_SECS)?,
+        &challenge,
+        &outcome,
+        &liability_identity(&finding.finding_id, &deployment.allocation_id),
+        0,
+        &[],
+        &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+        &governance.context(),
+        &governance.sanction_case,
+        NOW + 3,
+    )?;
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert_eq!(upheld.liability_key.len(), 64);
     Ok(())
 }
 

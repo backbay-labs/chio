@@ -122,7 +122,9 @@ pub struct AuditSelection {
 /// one report verification. Grouping the witness set keeps the verifier API
 /// explicit without an error-prone positional authority list.
 pub struct FindingAuditReportWitnesses<'a> {
-    pub pinned_seed_witness: PublicKey,
+    /// Governance-pinned lifecycle policy for the independent randomness
+    /// witness that committed the seed before it was revealed.
+    pub pinned_seed_witness_policy: FindingAuthorityKeyPolicy,
     /// Governance-authenticated lifecycle policy for the authority that
     /// signs the epoch, attempts, and report.
     pub pinned_audit_policy: FindingAuthorityKeyPolicy,
@@ -131,6 +133,9 @@ pub struct FindingAuditReportWitnesses<'a> {
     pub pinned_status_authority: PublicKey,
     /// Fresh post-publication status for the audit authority policy.
     pub audit_status: SignedFindingAuthorityStatus,
+    /// Fresh authenticated status covering the instant the seed witness
+    /// signed its commitment.
+    pub seed_witness_status: SignedFindingAuthorityStatus,
     /// Fresh status reading for the exact governance policy that authorized
     /// this round. It must cover the authorization instant and remain fresh
     /// at report publication.
@@ -168,6 +173,18 @@ pub enum FindingAuditError {
     AuditAuthorityStatusStale,
     #[error("audit authority was revoked when it published the report")]
     AuditAuthorityRevoked,
+    #[error("audit seed-witness policy rejected: {0}")]
+    SeedWitnessPolicy(FindingError),
+    #[error("audit seed-witness policy does not cover the signed commitment")]
+    SeedWitnessWindow,
+    #[error("audit seed-witness status rejected: {0}")]
+    SeedWitnessStatus(FindingError),
+    #[error("audit seed-witness status does not bind the pinned policy")]
+    SeedWitnessStatusBinding,
+    #[error("audit seed-witness status is not fresh at report publication")]
+    SeedWitnessStatusStale,
+    #[error("audit seed witness was revoked when it signed the commitment")]
+    SeedWitnessRevoked,
     #[error("audit round authorization rejected: {0}")]
     RoundAuthorization(FindingError),
     #[error("audit epoch does not bind its governance authorization")]
@@ -415,17 +432,24 @@ pub fn verify_audit_report(
     witnesses: &FindingAuditReportWitnesses<'_>,
 ) -> Result<(), FindingAuditError> {
     witnesses
+        .pinned_seed_witness_policy
+        .validate("audit seed witness policy")
+        .map_err(FindingAuditError::SeedWitnessPolicy)?;
+    witnesses
         .pinned_audit_policy
         .validate("audit authority policy")
         .map_err(FindingAuditError::AuditAuthorityPolicy)?;
     verify_signed_audit_epoch(
         epoch,
         &witnesses.pinned_audit_policy.key,
-        &witnesses.pinned_seed_witness,
+        &witnesses.pinned_seed_witness_policy.key,
     )
     .map_err(FindingAuditError::Epoch)?;
     verify_signed_audit_report(report, &witnesses.pinned_audit_policy.key)
         .map_err(FindingAuditError::Report)?;
+    if report.body.reported_at <= epoch.body.committed_at {
+        return Err(FindingAuditError::ReportNotAfterEpoch);
+    }
     if epoch.body.committed_at < witnesses.pinned_audit_policy.valid_from
         || report.body.reported_at >= witnesses.pinned_audit_policy.valid_until
     {
@@ -454,6 +478,40 @@ pub fn verify_audit_report(
         .is_some_and(|revoked_from| revoked_from <= report.body.reported_at)
     {
         return Err(FindingAuditError::AuditAuthorityRevoked);
+    }
+    if epoch.body.seed_witnessed_at < witnesses.pinned_seed_witness_policy.valid_from
+        || epoch.body.seed_witnessed_at >= witnesses.pinned_seed_witness_policy.valid_until
+    {
+        return Err(FindingAuditError::SeedWitnessWindow);
+    }
+    verify_signed_authority_status(
+        &witnesses.seed_witness_status,
+        &witnesses.pinned_status_authority,
+    )
+    .map_err(FindingAuditError::SeedWitnessStatus)?;
+    let seed_status = &witnesses.seed_witness_status.body;
+    if seed_status.status_ref != witnesses.pinned_seed_witness_policy.revocation_status_ref
+        || seed_status.authority_id != witnesses.pinned_seed_witness_policy.authority_id
+        || seed_status.key != witnesses.pinned_seed_witness_policy.key
+        || seed_status.key_epoch != witnesses.pinned_seed_witness_policy.key_epoch
+    {
+        return Err(FindingAuditError::SeedWitnessStatusBinding);
+    }
+    if seed_status.observed_at < epoch.body.seed_witnessed_at
+        || seed_status.observed_at > report.body.reported_at
+        || report
+            .body
+            .reported_at
+            .saturating_sub(seed_status.observed_at)
+            > MAX_AUDIT_STATUS_AGE_SECS
+    {
+        return Err(FindingAuditError::SeedWitnessStatusStale);
+    }
+    if seed_status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= epoch.body.seed_witnessed_at)
+    {
+        return Err(FindingAuditError::SeedWitnessRevoked);
     }
     witnesses
         .pinned_governance_policy
@@ -494,13 +552,10 @@ pub fn verify_audit_report(
 
     let expected = select_audit_targets(
         epoch,
-        &witnesses.pinned_seed_witness,
+        &witnesses.pinned_seed_witness_policy.key,
         &report.revealed_seed,
         eligible,
     )?;
-    if report.reported_at <= epoch.committed_at {
-        return Err(FindingAuditError::ReportNotAfterEpoch);
-    }
     verify_signed_authority_status(
         &witnesses.governance_status,
         &witnesses.pinned_status_authority,
