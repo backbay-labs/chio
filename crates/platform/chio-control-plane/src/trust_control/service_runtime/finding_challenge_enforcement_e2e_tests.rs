@@ -541,7 +541,7 @@ impl FindingRailObserver for RecordingRail {
 /// The venue's published record of the signed artifacts a filing may bind
 /// by digest. A filing resolves against this and nothing else, so a digest
 /// that names an artifact the venue never published resolves to nothing.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct PublishedArtifacts {
     fee_schedules: BTreeMap<String, SignedOpenMarketFeeSchedule>,
     audit_rounds: BTreeMap<String, FindingAuditRound>,
@@ -9531,23 +9531,22 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
             .coordinator_with_revoked_role(authority, FindingDisputeLockDisposition::Forfeited)?;
         let stake = usd(300);
         let required = usd(5_000);
-        let refused = revoked
-            .uphold(
-                &ready.challenge_id,
-                &ready.challenge,
-                &ready.outcome,
-                &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
-                &market_terms(CLAIM_WINDOW_SECS)?,
-                0,
-                &[],
-                &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
-                &governance.context(),
-                &governance.sanction_case,
-                NOW + 2,
-            )
-            .expect_err("a revoked authority opens no liability");
         assert!(matches!(
-            refused,
+            revoked
+                .uphold(
+                    &ready.challenge_id,
+                    &ready.challenge,
+                    &ready.outcome,
+                    &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+                    &market_terms(CLAIM_WINDOW_SECS)?,
+                    0,
+                    &[],
+                    &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+                    &governance.context(),
+                    &governance.sanction_case,
+                    NOW + 2,
+                )
+                .expect_err("a revoked authority opens no liability"),
             ChallengeCoordinatorError::AuthorityLifecycle {
                 role: actual,
                 ..
@@ -9630,42 +9629,8 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
     Ok(())
 }
 
-#[test]
-fn finding_challenge_governance_charter_uses_its_retained_pinned_window() -> TestResult {
-    let deployment = deployment()?;
-    let live = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
-    let ready = ready_to_uphold(&deployment, &live)?;
-    let governance = governance()?;
-    let mut config = market_config();
-    config.governance_root.valid_from = NOW - 650;
-    let coordinator =
-        deployment.coordinator_under(&config, FindingDisputeLockDisposition::Forfeited)?;
-    let stake = usd(300);
-    let required = usd(5_000);
-
-    let retry = coordinator
-        .uphold(
-            &ready.challenge_id,
-            &ready.challenge,
-            &ready.outcome,
-            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
-            &market_terms(CLAIM_WINDOW_SECS)?,
-            0,
-            &[],
-            &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
-            &governance.context(),
-            &governance.sanction_case,
-            NOW + 2,
-        )
-        .expect_err("the first uphold opens the claim window without sealing it");
-    assert!(
-        matches!(&retry, ChallengeCoordinatorError::ClaimWindowOpen),
-        "{retry:?}"
-    );
-    assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 1);
-    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
-    Ok(())
-}
+#[path = "finding_challenge_lifecycle_m9_tests.rs"]
+mod finding_challenge_lifecycle_m9_tests;
 
 #[test]
 fn finding_challenge_listing_ceiling_comes_from_the_signed_schedule() -> TestResult {

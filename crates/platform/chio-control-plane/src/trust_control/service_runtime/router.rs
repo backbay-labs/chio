@@ -769,6 +769,10 @@ fn finding_market_routes() -> Router<TrustServiceState> {
 mod tests;
 
 #[cfg(test)]
+#[path = "finding_evidence_test_support.rs"]
+mod finding_evidence_test_support;
+
+#[cfg(test)]
 #[path = "finding_market_exit_tests.rs"]
 mod finding_market_exit_tests;
 

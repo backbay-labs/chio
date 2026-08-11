@@ -9,6 +9,7 @@
 
 use super::super::super::*;
 use super::build_router;
+use super::finding_evidence_test_support::{matched_delivery_metadata, signed_nonce_resolver};
 
 use std::sync::Arc;
 
@@ -22,9 +23,6 @@ use chio_core::receipt::body::{ChioReceipt, ChioReceiptBody};
 use chio_core::receipt::decision::{Decision, ToolCallAction};
 use chio_core::receipt::kinds::TrustLevel;
 use chio_core::receipt::lineage::SignedExportEnvelope;
-use chio_core::receipt::metadata::{
-    DeliveryContract, DeliveryResult, DELIVERY_CONTRACT_METADATA_KEY, DELIVERY_CONTRACT_SCHEMA,
-};
 use chio_core::sha256_hex;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
@@ -46,7 +44,7 @@ use chio_finding::{
 };
 use chio_finding_verifier::{
     sign_finding_verifier_report, verify_finding_evidence, FindingBondSnapshot,
-    FindingBondStoreSnapshot, FindingEvidenceBundle, FindingVerifierTrustRoots, NoNonceEvidence,
+    FindingBondStoreSnapshot, FindingEvidenceBundle, FindingVerifierTrustRoots,
     ResolvedReceiptEvidence, FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1,
 };
 use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
@@ -285,25 +283,11 @@ fn json_body(bytes: &[u8]) -> Result<serde_json::Value, AnyError> {
     Ok(serde_json::from_slice(bytes)?)
 }
 
-fn matched_delivery_metadata(content_hash: &str) -> Result<serde_json::Value, AnyError> {
-    let mut metadata = serde_json::Map::new();
-    metadata.insert(
-        DELIVERY_CONTRACT_METADATA_KEY.to_string(),
-        serde_json::to_value(DeliveryContract {
-            schema: DELIVERY_CONTRACT_SCHEMA.to_string(),
-            expected_digest: content_hash.to_string(),
-            observed_digest: content_hash.to_string(),
-            result: DeliveryResult::Matched,
-        })?,
-    );
-    Ok(serde_json::Value::Object(metadata))
-}
-
 /// One evidence receipt signed by the admitted kernel key.
 fn receipt(kernel: &Keypair, index: u32) -> Result<ChioReceipt, AnyError> {
     let body = ChioReceiptBody {
         id: String::new(),
-        timestamp: 1_750_000_000 + u64::from(index),
+        timestamp: ISSUED_AT,
         capability_id: format!("cap-evidence-{index}"),
         tool_server: SERVER_ID.to_string(),
         tool_name: "finding.produce".to_string(),
@@ -318,7 +302,7 @@ fn receipt(kernel: &Keypair, index: u32) -> Result<ChioReceipt, AnyError> {
         content_hash: HEX64.to_string(),
         policy_hash: "policy-wedge".to_string(),
         evidence: Vec::new(),
-        metadata: Some(matched_delivery_metadata(HEX64)?),
+        metadata: Some(matched_delivery_metadata(HEX64, index)?),
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: kernel.public_key(),
@@ -772,6 +756,7 @@ fn make_signed_report(
         resolver_policy_sha256: HEX64.to_string(),
         trusted_time_input_sha256: HEX64.to_string(),
     };
+    let nonce_resolver = signed_nonce_resolver(inputs.receipts, inputs.kernel)?;
     let bundle = FindingEvidenceBundle {
         receipts: clone_receipts(inputs.receipts),
         checkpoints: vec![inputs.checkpoint.clone()],
@@ -798,7 +783,7 @@ fn make_signed_report(
                 inputs.collateral,
             )?,
         }),
-        nonce_resolver: &NoNonceEvidence,
+        nonce_resolver: &nonce_resolver,
     };
     let draft = verify_finding_evidence(inputs.raw_finding, &trust, &bundle)?;
     if !draft.satisfies_required_facets(&trust.profile.body) {
