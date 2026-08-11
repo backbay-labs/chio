@@ -1398,7 +1398,11 @@ impl FindingChallengeCoordinator {
         }
 
         let challenge_envelope_sha256 = self.envelope_digest(request.challenge)?;
-        let evidence_bundle_digest = self.evidence_bundle_digest(body, request.evidence)?;
+        let evidence_bundle_digest = self.evidence_bundle_digest(
+            body,
+            request.evidence,
+            purchase_authority_status.as_ref(),
+        )?;
         let attempt = self
             .challenges
             .get_challenge(&body.challenge_id)
@@ -2073,7 +2077,8 @@ impl FindingChallengeCoordinator {
                     .and_then(|deadline| deadline.checked_add(1))
                     .ok_or(ChallengeCoordinatorError::AppealNotFinal(
                         "appeal deadline has no representable successor",
-                    ))?;
+                    ))?
+                    .max(self.penalty_pin.valid_from);
                 let slash = self.mint_penalty(
                     FindingPenaltyBranch::AppealFinalImpairment,
                     governance,
@@ -5890,6 +5895,7 @@ impl FindingChallengeCoordinator {
         &self,
         challenge: &FindingChallenge,
         evidence: &FindingChallengeClassEvidence<'_>,
+        purchase_authority_status: Option<&SignedFindingAuthorityStatus>,
     ) -> Result<String, ChallengeCoordinatorError> {
         let bytes = chio_core::canonical_json_bytes(&challenge.evidence)
             .map_err(|_| ChallengeCoordinatorError::Canonical)?;
@@ -5899,6 +5905,9 @@ impl FindingChallengeCoordinator {
                     self.envelope_digest(resolved.purchase_record)?,
                     self.envelope_digest(resolved.production_authority_status)?,
                 ];
+                if let Some(status) = purchase_authority_status {
+                    digests.push(self.envelope_digest(status)?);
+                }
                 for receipt in resolved.challenged_receipts {
                     digests.push(self.resolved_receipt_digest(
                         &receipt.canonical_receipt_bytes,
@@ -5932,6 +5941,9 @@ impl FindingChallengeCoordinator {
                     self.envelope_digest(resolved.purchase_record)?,
                     self.envelope_digest(resolved.replay_authority_status)?,
                 ];
+                if let Some(status) = purchase_authority_status {
+                    digests.push(self.envelope_digest(status)?);
+                }
                 for reproduction in resolved.reproductions {
                     let reproduction_digest = self.canonical_digest(&(
                         self.resolved_receipt_digest(

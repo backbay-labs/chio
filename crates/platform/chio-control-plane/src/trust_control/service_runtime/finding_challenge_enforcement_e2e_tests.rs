@@ -6488,6 +6488,61 @@ fn finding_challenge_appeal_finality_impairs_and_fences_every_effect_intent() ->
 }
 
 #[test]
+fn finding_challenge_final_penalty_uses_the_rotated_authority_window() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    let deadline = case
+        .deployment
+        .challenges
+        .get_liability(&case.upheld.liability_key)?
+        .and_then(|liability| liability.appeal_deadline)
+        .ok_or("the upheld liability carries an appeal deadline")?;
+    let mut rotated_config = market_config();
+    rotated_config.market_penalty = authority_pin(50, "market-penalty-rotated");
+    rotated_config.market_penalty.valid_from = deadline + 5;
+    let resolved_at = deadline + 10;
+    let coordinator = FindingChallengeCoordinator::new(
+        case.deployment.challenges.clone(),
+        case.deployment.purchases.clone(),
+        &rotated_config,
+        keypair(31),
+        keypair(32),
+        keypair(50),
+        Arc::new(TestAuthorityStatusResolver::live()),
+        case.deployment.rail.clone(),
+        case.deployment.filings.clone(),
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+
+    let resolution = coordinator.resolve_appeal(
+        &case.upheld.liability_key,
+        &case.outcome,
+        &identity,
+        Some(&case.upheld.sealed),
+        &case.governance.context(),
+        &AppealDisposition::Final {
+            sanction_case: &case.governance.sanction_case,
+        },
+        &case.upheld.sanction_case_id,
+        &case.upheld.hold,
+        &hex64('7'),
+        resolved_at,
+    )?;
+    let AppealResolution::Finalizing(authorized) = resolution else {
+        return Err("appeal finality under the rotated penalty key must authorize".into());
+    };
+    assert_eq!(
+        authorized.slash.penalty.body.opened_at,
+        rotated_config.market_penalty.valid_from
+    );
+    assert_eq!(
+        authorized.slash.penalty.body.updated_at,
+        rotated_config.market_penalty.valid_from
+    );
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_appeal_finality_uses_the_sanctions_retained_governance_policy() -> TestResult {
     let case = upheld_liability()?;
     let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
@@ -10400,16 +10455,64 @@ fn finding_challenge_evidence_bundle_commits_resolved_membership_inputs() -> Tes
     let challenged = challenged_finding()?;
     let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 50, NOW)?;
     let case = evidence_invalid_case(&challenged, ProductionShape::Sound, &sale, Filing::Buyer)?;
+    let status_resolver = TestAuthorityStatusResolver::live();
+    let purchase_pin = market_config().purchase;
+    let purchase_status = status_resolver
+        .resolve(&purchase_pin, NOW + 2)
+        .map_err(std::io::Error::other)?;
+    let later_purchase_status = status_resolver
+        .resolve(&purchase_pin, NOW + 3)
+        .map_err(std::io::Error::other)?;
 
     let resolved = case.evidence();
     let unresolved = case.unresolved_evidence();
-    let resolved_digest = coordinator.evidence_bundle_digest(&case.challenge.body, &resolved)?;
-    let unresolved_digest =
-        coordinator.evidence_bundle_digest(&case.challenge.body, &unresolved)?;
+    let resolved_digest = coordinator.evidence_bundle_digest(
+        &case.challenge.body,
+        &resolved,
+        Some(&purchase_status),
+    )?;
+    let unresolved_digest = coordinator.evidence_bundle_digest(
+        &case.challenge.body,
+        &unresolved,
+        Some(&purchase_status),
+    )?;
 
     assert_ne!(
         resolved_digest, unresolved_digest,
         "checkpoint and transparency substitutions must change the signed evidence commitment"
+    );
+    assert_ne!(
+        resolved_digest,
+        coordinator.evidence_bundle_digest(
+            &case.challenge.body,
+            &resolved,
+            Some(&later_purchase_status),
+        )?,
+        "purchase standing substitutions must change the evidence-invalid commitment"
+    );
+
+    let replay = replay_case(
+        &challenged,
+        "bundle-status",
+        &[PhaseShape::baseline_fails(), PhaseShape::candidate_passes()],
+        None,
+        &sale,
+    )?;
+    let reproductions = replay.reproductions();
+    let replay_evidence = replay.evidence(&reproductions);
+    let replay_digest = coordinator.evidence_bundle_digest(
+        &replay.challenge.body,
+        &replay_evidence,
+        Some(&purchase_status),
+    )?;
+    assert_ne!(
+        replay_digest,
+        coordinator.evidence_bundle_digest(
+            &replay.challenge.body,
+            &replay_evidence,
+            Some(&later_purchase_status),
+        )?,
+        "purchase standing substitutions must change the replay commitment"
     );
     Ok(())
 }

@@ -240,7 +240,7 @@ pub(crate) fn evaluate_evidence_invalid(
                     evidence.production_authority_status,
                     context.pinned_authority_status_key,
                     production_policy,
-                    resolved.receipt.timestamp,
+                    context.finding.issued_at,
                     context.evaluated_at,
                 ) =>
             {

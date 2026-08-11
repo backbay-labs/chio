@@ -3,7 +3,9 @@
 
 mod support;
 
-use chio_finding::{FindingChallengeVerdict, FindingEvidenceClass, FindingGuaranteeClass};
+use chio_finding::{
+    FindingChallengeVerdict, FindingEvidenceClass, FindingGuaranteeClass, FindingReceiptRole,
+};
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeInadmissible,
     FindingChallengeReason, FindingEvidenceInvalidEvidence,
@@ -27,6 +29,36 @@ fn authenticated_non_revocation_rejects_a_challenge_to_sound_evidence() -> TestR
     assert_eq!(adjudication.verdict(), FindingChallengeVerdict::Rejected);
     assert!(!evaluation.authorizes_penalty());
     outcome_for(&world, &case.challenge, &adjudication)?;
+    Ok(())
+}
+
+#[test]
+fn production_status_revoked_by_publication_cannot_clear_the_challenge() -> TestResult {
+    let world = world()?;
+    let mut case = evidence_case(&world, EvidenceShape::Sound)?;
+    let production_policy = world
+        .profile
+        .body
+        .receipt_signers
+        .iter()
+        .find(|signer| signer.role == FindingReceiptRole::Production)
+        .map(|signer| &signer.policy)
+        .ok_or("missing production role policy")?;
+    case.production_authority_status =
+        world.status_for_policy(production_policy, Some(PUBLISHED_AT - 1))?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::EvidenceKeyRevocationNotEstablished,
+    )?;
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
+    assert!(!evaluation.authorizes_penalty());
     Ok(())
 }
 
