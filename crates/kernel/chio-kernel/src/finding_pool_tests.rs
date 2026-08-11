@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 
 use chio_core::capability::scope::MonetaryAmount;
-use chio_core::crypto::Keypair;
+use chio_core::crypto::{Keypair, PublicKey};
 use chio_core::receipt::lineage::ChildRequestReceipt;
 
 use super::*;
@@ -656,6 +656,34 @@ fn recorded_pool_mutation(kernel: &ChioKernel) -> FindingPoolMutation {
     let receipts = kernel.receipt_log().receipts();
     assert_eq!(receipts.len(), 1);
     pool_mutation_from_receipt(&receipts[0])
+}
+
+#[test]
+fn pool_allocation_authority_rejects_non_ed25519_and_weak_keys_at_configuration() {
+    let mut kernel = kernel_without_receipt_store(91, 92);
+    let mut p256_bytes = [0_u8; 65];
+    p256_bytes[0] = 0x04;
+    let p256 = PublicKey::from_p256_sec1(&p256_bytes)
+        .unwrap_or_else(|error| panic!("construct P-256 test key: {error}"));
+    assert_eq!(
+        kernel.set_finding_pool_allocation_authority(p256),
+        Err(FindingPoolLedgerError::InvalidAllocationAuthority)
+    );
+
+    let weak =
+        PublicKey::from_hex("0100000000000000000000000000000000000000000000000000000000000000")
+            .unwrap_or_else(|error| panic!("construct weak Ed25519 test key: {error}"));
+    assert_eq!(
+        kernel.set_finding_pool_allocation_authority(weak),
+        Err(FindingPoolLedgerError::InvalidAllocationAuthority)
+    );
+
+    let valid = Keypair::from_seed(&[93; 32]).public_key();
+    assert_eq!(
+        kernel.set_finding_pool_allocation_authority(valid.clone()),
+        Ok(())
+    );
+    assert_eq!(kernel.finding_pool_allocation_authority(), Some(&valid));
 }
 
 #[test]

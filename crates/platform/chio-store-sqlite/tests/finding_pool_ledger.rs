@@ -350,7 +350,9 @@ fn debit_at_with_policy_and_authority(
         .set_receipt_store_handle(fixture.receipt_store.clone())
         .test_expect("configure durable receipt store");
     kernel.set_finding_purchase_verifier(Arc::new(verifier));
-    kernel.set_finding_pool_allocation_authority(allocation_authority);
+    kernel
+        .set_finding_pool_allocation_authority(allocation_authority)
+        .test_expect("configure pool allocation authority");
     kernel
         .set_finding_pool_receipt_authority(fixture.receipt_authority.clone())
         .test_expect("configure stable pool receipt authority");

@@ -958,8 +958,14 @@ impl ChioKernel {
     pub fn set_finding_pool_allocation_authority(
         &mut self,
         authority: chio_core::crypto::PublicKey,
-    ) {
+    ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+        if authority.algorithm() != chio_core::crypto::SigningAlgorithm::Ed25519
+            || authority.is_weak_ed25519()
+        {
+            return Err(crate::finding_pool::FindingPoolLedgerError::InvalidAllocationAuthority);
+        }
         self.finding_pool_allocation_authority = Some(authority);
+        Ok(())
     }
 
     pub fn set_price_oracle(&mut self, price_oracle: Box<dyn PriceOracle>) {

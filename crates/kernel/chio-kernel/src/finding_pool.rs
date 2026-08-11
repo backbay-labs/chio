@@ -162,6 +162,8 @@ pub enum FindingPoolLedgerError {
     ReceiptConfigurationMismatch,
     #[error("finding pool mutation receipt authority is invalid")]
     InvalidReceiptAuthority,
+    #[error("finding pool allocation authority is invalid")]
+    InvalidAllocationAuthority,
     #[error("finding pool purchase has no durable reservation")]
     ReservationMissing,
     #[error("finding pool reservation conflicts with its recorded terminal")]
