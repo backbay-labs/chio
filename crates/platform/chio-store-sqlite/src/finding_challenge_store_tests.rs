@@ -2822,6 +2822,26 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
         ),
         "a dispatched seller impairment freezes the retained authorization"
     );
+    fixture
+        .store
+        .advance_effect_intent(&seller_intent, FindingEffectIntentState::Failed, NOW + 9)
+        .expect("retryable dispatch returns the intent to failed");
+    let retry_refresh_json = br#"{"refresh":3}"#;
+    assert_eq!(
+        fixture
+            .store
+            .refresh_finalizing_authorization(
+                &retained.authorization_sha256,
+                &FindingFinalizingAuthorizationInput {
+                    liability_key: &head.liability_key,
+                    authorization_json: retry_refresh_json,
+                    authorization_sha256: &sha256_hex(retry_refresh_json),
+                    recorded_at: NOW + 10,
+                },
+            )
+            .expect("a retryable failed impairment can refresh"),
+        FindingChallengeWriteOutcome::Inserted
+    );
 }
 
 #[test]

@@ -2096,8 +2096,10 @@ impl FindingChallengeCoordinator {
     /// but queueing or reconciliation delay can age out the snapshot that
     /// closed the appeal. The liability and every semantic effect remain
     /// frozen; only the observer-signed snapshot digest and finalization
-    /// instant change. Once the seller intent leaves `pending`, refresh is
-    /// refused because an external impairment may already exist.
+    /// instant change. A retryable dispatch failure may also refresh because
+    /// the semantic intent id and frozen impairment call remain exact, and
+    /// the publisher is required to replay that id idempotently. Dispatched,
+    /// confirmed, or quarantined intents cannot refresh.
     pub fn refresh_finalizing_enforcement(
         &self,
         authorized: &AuthorizedImpairment,
@@ -2145,10 +2147,14 @@ impl FindingChallengeCoordinator {
             .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
         if seller_intent.kind != FindingEffectIntentKind::SellerImpair
             || seller_intent.liability_key.as_deref() != Some(old.body.liability_key.as_str())
-            || seller_intent.state != FindingEffectIntentState::Pending
+            || !matches!(
+                seller_intent.state,
+                FindingEffectIntentState::Pending | FindingEffectIntentState::Failed
+            )
         {
             return Err(ChallengeCoordinatorError::Settlement(
-                "bond snapshot refresh is permitted only before impairment dispatch".to_owned(),
+                "bond snapshot refresh is permitted only before dispatch or after a retryable failed dispatch"
+                    .to_owned(),
             ));
         }
         self.require_retained_finalizing_authorization(

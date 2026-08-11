@@ -1826,8 +1826,8 @@ impl SqliteFindingChallengeStore {
             .transpose()
     }
 
-    /// Append a refreshed finalizing authorization before the seller
-    /// impairment has left `pending`.
+    /// Append a refreshed finalizing authorization before dispatch or after
+    /// a retryable dispatch returned the exact seller intent to `failed`.
     ///
     /// The previous digest is a compare-and-set boundary. This prevents two
     /// observers from replacing one another's snapshot, while the append-only
@@ -1848,10 +1848,11 @@ impl SqliteFindingChallengeStore {
                 "only a finalizing liability can refresh its authorization".to_owned(),
             ));
         }
-        let (seller_intents, pending_seller_intents) = transaction
+        let (seller_intents, refreshable_seller_intents) = transaction
             .query_row(
                 r#"
-                SELECT COUNT(*), COALESCE(SUM(state = 'pending'), 0)
+                SELECT COUNT(*),
+                       COALESCE(SUM(state IN ('pending', 'failed')), 0)
                 FROM effect_intents
                 WHERE liability_key = ?1
                   AND kind = 'seller_impair'
@@ -1861,9 +1862,9 @@ impl SqliteFindingChallengeStore {
                 |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
             )
             .map_err(sqlite_error)?;
-        if seller_intents != 1 || pending_seller_intents != 1 {
+        if seller_intents != 1 || refreshable_seller_intents != 1 {
             return Err(FindingChallengeStoreError::Conflict(
-                "finalizing authorization may refresh only before seller impairment dispatch"
+                "finalizing authorization may refresh only before dispatch or after a retryable failed seller impairment"
                     .to_owned(),
             ));
         }

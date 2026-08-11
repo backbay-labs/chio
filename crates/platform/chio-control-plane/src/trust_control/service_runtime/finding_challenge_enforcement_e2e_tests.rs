@@ -6496,7 +6496,7 @@ fn finding_challenge_appeal_finality_uses_the_sanctions_retained_governance_poli
 }
 
 #[test]
-fn finding_challenge_refreshes_a_snapshot_only_before_impairment_dispatch() -> TestResult {
+fn finding_challenge_refreshes_snapshot_before_dispatch_or_after_retryable_failure() -> TestResult {
     let case = finalizing_liability()?;
     let authorized = case.authorized()?;
     let observed_at = SETTLEMENT_NOW + 10;
@@ -6617,7 +6617,7 @@ fn finding_challenge_refreshes_a_snapshot_only_before_impairment_dispatch() -> T
     assert!(matches!(
         refused,
         ChallengeCoordinatorError::Settlement(detail)
-            if detail.contains("only before impairment dispatch")
+            if detail.contains("only before dispatch")
     ));
     case.deployment.challenges.advance_effect_intent(
         seller_intent,
@@ -6652,17 +6652,12 @@ fn finding_challenge_refreshes_a_snapshot_only_before_impairment_dispatch() -> T
             .ok_or("seller impairment intent is durable")?;
         assert_eq!(intent.state, FindingEffectIntentState::Failed);
     }
-    case.deployment.challenges.advance_effect_intent(
-        seller_intent,
-        FindingEffectIntentState::Dispatched,
-        observed_at + 7,
-    )?;
-    case.deployment.challenges.advance_effect_intent(
-        seller_intent,
-        FindingEffectIntentState::Confirmed,
-        observed_at + 7,
-    )?;
-    let confirmed_retry = case.coordinator.finalize(
+    let stale_at = snapshot
+        .body
+        .observed_at
+        .saturating_add(MAX_SNAPSHOT_AGE_SECS)
+        .saturating_add(1);
+    let stale_retry = case.coordinator.finalize(
         &refreshed.enforcement.body.liability_key,
         &refreshed.enforcement,
         &refreshed.slash.penalty,
@@ -6672,12 +6667,63 @@ fn finding_challenge_refreshes_a_snapshot_only_before_impairment_dispatch() -> T
         &settlement_config()?.operator_address,
         &evm_vault_snapshot(),
         &proof,
+        &ScriptedObservations::qualified(),
+        &UnreachableChainPublisher,
+        stale_at,
+    );
+    assert!(
+        matches!(stale_retry, Err(ChallengeCoordinatorError::Settlement(_))),
+        "the aged-out failed authorization must require a fresh snapshot: {stale_retry:?}"
+    );
+    let mut recovery_snapshot_body = snapshot.body.clone();
+    recovery_snapshot_body.snapshot_id.clear();
+    recovery_snapshot_body.block_number = recovery_snapshot_body.block_number.saturating_add(1);
+    recovery_snapshot_body.block_hash = chain_hash(0xbe);
+    recovery_snapshot_body.observed_at = stale_at;
+    recovery_snapshot_body.snapshot_id = compute_snapshot_id(&recovery_snapshot_body)?;
+    let recovery_snapshot = SignedExportEnvelope::sign(recovery_snapshot_body, &keypair(34))?;
+    let retryable_refreshed = case.coordinator.refresh_finalizing_enforcement(
+        &refreshed,
+        &recovery_snapshot,
+        &case.seller,
+        stale_at,
+    )?;
+    assert_eq!(
+        retryable_refreshed
+            .enforcement
+            .body
+            .bond_snapshot_envelope_sha256,
+        signed_envelope_sha256(&recovery_snapshot)?,
+        "a failed exact intent can recover after its old snapshot expires"
+    );
+    let mut recovery_observation = qualified_observation();
+    recovery_observation.block_hash = Some(recovery_snapshot.body.block_hash.clone());
+    case.deployment.challenges.advance_effect_intent(
+        seller_intent,
+        FindingEffectIntentState::Dispatched,
+        stale_at + 1,
+    )?;
+    case.deployment.challenges.advance_effect_intent(
+        seller_intent,
+        FindingEffectIntentState::Confirmed,
+        stale_at + 1,
+    )?;
+    let confirmed_retry = case.coordinator.finalize(
+        &retryable_refreshed.enforcement.body.liability_key,
+        &retryable_refreshed.enforcement,
+        &retryable_refreshed.slash.penalty,
+        &recovery_snapshot,
+        &case.seller,
+        &settlement_config()?,
+        &settlement_config()?.operator_address,
+        &evm_vault_snapshot(),
+        &proof,
         &ScriptedObservations::then_qualified(vec![
-            refreshed_observation.clone(),
-            refreshed_observation,
+            recovery_observation.clone(),
+            recovery_observation,
         ]),
         &UnreachablePublisher,
-        observed_at + 8,
+        stale_at + 2,
     );
     assert!(
         confirmed_retry.is_ok(),
