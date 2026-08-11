@@ -53,6 +53,10 @@ use crate::receipts::verify_receipt_strict;
 /// inputs.
 pub const MAX_RAW_FINDING_BYTES: usize = 256 * 1024;
 
+/// Schema for the collateral-authority-signed store view used during one
+/// verifier evaluation.
+pub const FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1: &str = "chio.finding.bond-store-snapshot.v1";
+
 /// Terminal verifier failures: conditions under which no report draft can
 /// be produced at all (facet-level failures are report content instead).
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -138,20 +142,35 @@ pub struct ResolvedFindingDeliveryEvidence {
     pub checkpoint_transparency: CheckpointTransparencySummary,
 }
 
+/// Signed collateral-store state for one exact backing envelope.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingBondStoreSnapshot {
+    pub schema: String,
+    pub finding_id: String,
+    pub allocation_id: String,
+    pub backing_envelope_sha256: String,
+    pub live: bool,
+    pub accepted_at: u64,
+    /// Venue trusted time at which this store state was observed.
+    pub observed_at: u64,
+}
+
+/// Collateral-authority-signed store snapshot.
+pub type SignedFindingBondStoreSnapshot = SignedExportEnvelope<FindingBondStoreSnapshot>;
+
 /// Fresh authority view of the named collateral allocation, resolved by
 /// the caller from the venue collateral store immediately before
-/// evaluation. A stale or absent snapshot reports bond backing
-/// unavailable, never verified.
+/// evaluation. A stale, unsigned, or absent snapshot reports bond backing
+/// unavailable or failed, never verified.
 pub struct FindingBondSnapshot {
     /// The collateral-authority-signed allocation envelope. The body
     /// alone is a seller-supplied assertion; only the signature under the
     /// pinned authority makes it evidence.
     pub backing: SignedFindingBondBacking,
-    /// Store state: live and unconsumed right now.
-    pub live: bool,
-    /// Venue trusted time when the collateral authority registered the
-    /// allocation (the report-before-backing comparison input).
-    pub accepted_at: u64,
+    /// Signed store state for this exact backing envelope. Liveness and
+    /// acceptance time are authority statements, not caller booleans.
+    pub store_snapshot: SignedFindingBondStoreSnapshot,
 }
 
 /// The resolved evidence bundle. Resolution happens at the owning
@@ -1002,6 +1021,76 @@ fn evaluate_bond_backing(
         );
     }
     let backing = &snapshot.backing.body;
+    if let Err(error) = verify_pinned_envelope(
+        &snapshot.store_snapshot,
+        &trust.collateral_authority,
+        "bond_store_snapshot",
+    ) {
+        return (
+            facet(
+                FindingFacetKind::BondBacking,
+                FindingFacetOutcome::Failed,
+                format!("collateral store snapshot rejected: {error}"),
+            ),
+            None,
+        );
+    }
+    let store_snapshot = &snapshot.store_snapshot.body;
+    if store_snapshot.schema != FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1 {
+        return (
+            facet(
+                FindingFacetKind::BondBacking,
+                FindingFacetOutcome::Failed,
+                "collateral store snapshot has an unsupported schema",
+            ),
+            None,
+        );
+    }
+    let backing_envelope_sha256 = match signed_envelope_sha256(&snapshot.backing) {
+        Ok(digest) => digest,
+        Err(error) => {
+            return (
+                facet(
+                    FindingFacetKind::BondBacking,
+                    FindingFacetOutcome::Failed,
+                    format!("backing envelope digest rejected: {error}"),
+                ),
+                None,
+            );
+        }
+    };
+    if store_snapshot.backing_envelope_sha256 != backing_envelope_sha256
+        || store_snapshot.allocation_id != backing.allocation_id
+    {
+        return (
+            facet(
+                FindingFacetKind::BondBacking,
+                FindingFacetOutcome::Failed,
+                "collateral store snapshot does not bind the backing allocation",
+            ),
+            None,
+        );
+    }
+    if store_snapshot.finding_id != finding.finding_id {
+        return (
+            facet(
+                FindingFacetKind::BondBacking,
+                FindingFacetOutcome::Failed,
+                "collateral store snapshot names a different finding",
+            ),
+            None,
+        );
+    }
+    if store_snapshot.observed_at != trust.trusted_time {
+        return (
+            facet(
+                FindingFacetKind::BondBacking,
+                FindingFacetOutcome::Failed,
+                "collateral store snapshot is not fresh for this evaluation",
+            ),
+            None,
+        );
+    }
     // A live allocation that expires before the claim, audit, and appeal
     // horizons it promises is not backing.
     let horizon_end = backing
@@ -1033,7 +1122,7 @@ fn evaluate_bond_backing(
             None,
         );
     }
-    if backing.issued_at > snapshot.accepted_at {
+    if backing.issued_at > store_snapshot.accepted_at {
         return (
             facet(
                 FindingFacetKind::BondBacking,
@@ -1043,7 +1132,7 @@ fn evaluate_bond_backing(
             None,
         );
     }
-    if snapshot.accepted_at >= trust.trusted_time {
+    if store_snapshot.accepted_at >= trust.trusted_time {
         return (
             facet(
                 FindingFacetKind::BondBacking,
@@ -1053,7 +1142,7 @@ fn evaluate_bond_backing(
             None,
         );
     }
-    if !snapshot.live {
+    if !store_snapshot.live {
         return (
             facet(
                 FindingFacetKind::BondBacking,
@@ -1385,8 +1474,7 @@ fn bundle_digest(
         attestation_trust_policy_sha256: Option<String>,
         backing_allocation_id: Option<&'a str>,
         backing_envelope_sha256: Option<String>,
-        backing_live: Option<bool>,
-        backing_accepted_at: Option<u64>,
+        backing_store_snapshot_envelope_sha256: Option<String>,
     }
     let receipt_sha256s = bundle
         .receipts
@@ -1441,6 +1529,12 @@ fn bundle_digest(
         }
         None => None,
     };
+    let backing_store_snapshot_envelope_sha256 = bundle
+        .bond_snapshot
+        .as_ref()
+        .map(|snapshot| signed_envelope_sha256(&snapshot.store_snapshot))
+        .transpose()
+        .map_err(|_| FindingVerifierError::Canonicalization)?;
     let status_operator_authorization_sha256 = trust
         .status_operator_authorization
         .as_ref()
@@ -1501,11 +1595,7 @@ fn bundle_digest(
             .as_ref()
             .map(|snapshot| snapshot.backing.body.allocation_id.as_str()),
         backing_envelope_sha256,
-        backing_live: bundle.bond_snapshot.as_ref().map(|snapshot| snapshot.live),
-        backing_accepted_at: bundle
-            .bond_snapshot
-            .as_ref()
-            .map(|snapshot| snapshot.accepted_at),
+        backing_store_snapshot_envelope_sha256,
     };
     let bytes =
         canonical_json_bytes(&commitment).map_err(|_| FindingVerifierError::Canonicalization)?;

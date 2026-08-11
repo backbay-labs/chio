@@ -46,7 +46,8 @@ use chio_finding::{
 };
 use chio_finding_verifier::{
     sign_finding_verifier_report, verify_finding_evidence, FindingBondSnapshot,
-    FindingEvidenceBundle, FindingVerifierTrustRoots, NoNonceEvidence, ResolvedReceiptEvidence,
+    FindingBondStoreSnapshot, FindingEvidenceBundle, FindingVerifierTrustRoots, NoNonceEvidence,
+    ResolvedReceiptEvidence, FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1,
 };
 use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
 use chio_kernel::checkpoint::{
@@ -784,8 +785,18 @@ fn make_signed_report(
         runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
             backing: inputs.backing.clone(),
-            live: true,
-            accepted_at: trusted_time.saturating_sub(7_200),
+            store_snapshot: SignedExportEnvelope::sign(
+                FindingBondStoreSnapshot {
+                    schema: FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1.to_string(),
+                    finding_id: inputs.backing.body.finding_id.clone(),
+                    allocation_id: inputs.backing.body.allocation_id.clone(),
+                    backing_envelope_sha256: sha256_hex(&canonical_json_bytes(inputs.backing)?),
+                    live: true,
+                    accepted_at: trusted_time.saturating_sub(7_200),
+                    observed_at: trusted_time,
+                },
+                inputs.collateral,
+            )?,
         }),
         nonce_resolver: &NoNonceEvidence,
     };

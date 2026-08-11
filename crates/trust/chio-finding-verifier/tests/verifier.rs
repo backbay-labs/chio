@@ -47,9 +47,10 @@ use chio_finding::{
 };
 use chio_finding_verifier::{
     sign_finding_verifier_report, verify_checkpoint_membership, verify_finding_evidence,
-    CheckpointMembershipError, FindingBondSnapshot, FindingEvidenceBundle, FindingVerifierError,
-    FindingVerifierTrustRoots, NoNonceEvidence, ResolvedFindingDeliveryEvidence,
-    ResolvedReceiptEvidence,
+    CheckpointMembershipError, FindingBondSnapshot, FindingBondStoreSnapshot,
+    FindingEvidenceBundle, FindingVerifierError, FindingVerifierTrustRoots, NoNonceEvidence,
+    ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot,
+    FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{
     build_checkpoint, build_checkpoint_transparency, build_checkpoint_with_previous,
@@ -165,6 +166,7 @@ struct Fixture {
     recipe_bytes: Vec<u8>,
     finding_payload_sha256: String,
     backing: SignedExportEnvelope<FindingBondBacking>,
+    bond_store_snapshot: SignedFindingBondStoreSnapshot,
     profile: SignedExportEnvelope<FindingChallengeVerifierProfile>,
 }
 
@@ -425,6 +427,18 @@ fn fixture_with_runtime_assurance(
     };
     backing.allocation_id = compute_allocation_id(&backing)?;
     let backing = SignedExportEnvelope::sign(backing, &collateral)?;
+    let bond_store_snapshot = SignedExportEnvelope::sign(
+        FindingBondStoreSnapshot {
+            schema: FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1.to_string(),
+            finding_id: finding.finding_id.clone(),
+            allocation_id: backing.body.allocation_id.clone(),
+            backing_envelope_sha256: sha256_hex(&canonical_json_bytes(&backing)?),
+            live: true,
+            accepted_at: 1_749_000_000,
+            observed_at: 1_750_000_010,
+        },
+        &collateral,
+    )?;
 
     let receipts = vec![
         ResolvedReceiptEvidence {
@@ -450,6 +464,7 @@ fn fixture_with_runtime_assurance(
         checkpoint_transparency,
         recipe_bytes,
         backing,
+        bond_store_snapshot,
         profile,
     })
 }
@@ -578,8 +593,7 @@ fn bundle<'a>(
         runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
             backing: fx.backing.clone(),
-            live: true,
-            accepted_at: 1_749_000_000,
+            store_snapshot: fx.bond_store_snapshot.clone(),
         }),
         nonce_resolver: &NoNonceEvidence,
     }
@@ -1554,7 +1568,7 @@ fn missing_bond_snapshot_is_unavailable_and_denies() -> TestResult {
 }
 
 #[test]
-fn backing_accepted_at_or_after_evaluation_is_not_verified() -> TestResult {
+fn unsigned_collateral_store_state_is_not_verified() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
     let mut evidence_bundle = bundle(&fx, clone_receipts(&fx));
@@ -1562,7 +1576,33 @@ fn backing_accepted_at_or_after_evaluation_is_not_verified() -> TestResult {
         .bond_snapshot
         .as_mut()
         .ok_or("bond snapshot missing")?
-        .accepted_at = trust.trusted_time;
+        .store_snapshot
+        .body
+        .live = false;
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence_bundle)?;
+    let backing = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::BondBacking)
+        .ok_or("bond-backing facet missing")?;
+    assert_eq!(backing.outcome, FindingFacetOutcome::Failed);
+    assert!(backing.reason.contains("store snapshot rejected"));
+    assert!(draft.backing_allocation_id.is_none());
+    Ok(())
+}
+
+#[test]
+fn backing_accepted_at_or_after_evaluation_is_not_verified() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let mut evidence_bundle = bundle(&fx, clone_receipts(&fx));
+    let snapshot = evidence_bundle
+        .bond_snapshot
+        .as_mut()
+        .ok_or("bond snapshot missing")?;
+    snapshot.store_snapshot.body.accepted_at = trust.trusted_time;
+    snapshot.store_snapshot =
+        SignedExportEnvelope::sign(snapshot.store_snapshot.body.clone(), &keypair(4))?;
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence_bundle)?;
     assert_eq!(
         draft.facet_outcome(FindingFacetKind::BondBacking),
@@ -1583,9 +1623,14 @@ fn backing_cannot_be_accepted_before_its_signed_issue_time() -> TestResult {
         .as_mut()
         .ok_or("bond snapshot missing")?;
     let mut backing = snapshot.backing.body.clone();
-    backing.issued_at = snapshot.accepted_at.saturating_add(1);
+    backing.issued_at = snapshot.store_snapshot.body.accepted_at.saturating_add(1);
     backing.allocation_id = compute_allocation_id(&backing)?;
     snapshot.backing = SignedExportEnvelope::sign(backing, &keypair(4))?;
+    snapshot.store_snapshot.body.allocation_id = snapshot.backing.body.allocation_id.clone();
+    snapshot.store_snapshot.body.backing_envelope_sha256 =
+        sha256_hex(&canonical_json_bytes(&snapshot.backing)?);
+    snapshot.store_snapshot =
+        SignedExportEnvelope::sign(snapshot.store_snapshot.body.clone(), &keypair(4))?;
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence_bundle)?;
     let backing = draft

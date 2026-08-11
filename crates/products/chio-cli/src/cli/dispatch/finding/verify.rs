@@ -17,7 +17,7 @@ use chio_finding::{
 use chio_finding_verifier::{
     verify_finding_evidence, FindingBondSnapshot, FindingEvidenceBundle, FindingVerifierDraft,
     FindingVerifierTrustRoots, NoNonceEvidence, ResolvedFindingDeliveryEvidence,
-    ResolvedReceiptEvidence, MAX_RAW_FINDING_BYTES,
+    ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot, MAX_RAW_FINDING_BYTES,
 };
 use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
@@ -374,16 +374,14 @@ struct FindingDeliveryEvidenceEntry {
 #[serde(deny_unknown_fields)]
 struct FindingBondSnapshotEntry {
     backing: SignedFindingBondBacking,
-    live: bool,
-    accepted_at: u64,
+    store_snapshot: SignedFindingBondStoreSnapshot,
 }
 
 impl From<FindingBondSnapshotEntry> for FindingBondSnapshot {
     fn from(entry: FindingBondSnapshotEntry) -> Self {
         Self {
             backing: entry.backing,
-            live: entry.live,
-            accepted_at: entry.accepted_at,
+            store_snapshot: entry.store_snapshot,
         }
     }
 }

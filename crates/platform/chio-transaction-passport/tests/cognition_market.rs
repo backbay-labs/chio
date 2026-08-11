@@ -418,6 +418,11 @@ fn claim_set_bytes(report_path: &str, recipe_path: &str, status_path: &str) -> T
         "schema": "chio.transaction.claim-set.v1",
         "id": "claim-set-cognition-market-qualified-profile",
         "issued_at": "2026-07-31T20:00:30Z",
+        "subject": {
+            "kind": "finding",
+            "id": FINDING_ID,
+            "artifact_sha256": HEX64
+        },
         "claims": claims
     }))?)
 }
@@ -512,10 +517,11 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         trusted_passport_signer_keys: vec![root.public_key()],
         trusted_checkpoint_signer_keys: Vec::new(),
         finding_verifier_authority: verifier_keypair().public_key(),
-        finding_verifier_signer: verifier_signer_policy(),
         trusted_verifier_profile_envelope_sha256,
         trusted_verifier_profile,
         trusted_trust_root_snapshot_sha256: "45".repeat(32),
+        trusted_resolver_policy_sha256: "56".repeat(32),
+        trusted_time_input_sha256: "67".repeat(32),
         status: Some(CognitionMarketStatusTrust {
             status_operator_authorization: status_authorization(&status_keypair),
             status_freshness: FindingStatusFreshnessPolicy {
@@ -1239,9 +1245,73 @@ fn cognition_market_qualified_profile_rejects_unpinned_trust_root_snapshot() -> 
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_unpinned_resolution_inputs() -> TestResult {
+    let mut wrong_resolver = build_bundle()?;
+    wrong_resolver.trust.trusted_resolver_policy_sha256 = "ab".repeat(32);
+    let resolver_error = verify(&wrong_resolver)
+        .err()
+        .ok_or("report from an unpinned resolver policy was accepted")?
+        .to_string();
+    assert!(
+        resolver_error.contains("deployment-pinned resolver policy"),
+        "unexpected error: {resolver_error}"
+    );
+
+    let mut wrong_time = build_bundle()?;
+    wrong_time.trust.trusted_time_input_sha256 = "cd".repeat(32);
+    let time_error = verify(&wrong_time)
+        .err()
+        .ok_or("report from an unpinned trusted-time input was accepted")?
+        .to_string();
+    assert!(
+        time_error.contains("deployment-pinned trusted-time input"),
+        "unexpected error: {time_error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_claim_set_subject_must_match_the_signed_report() -> TestResult {
+    for (field, replacement, expected_error) in [
+        (
+            "id",
+            "ab".repeat(32),
+            "names a different Finding than the signed verifier report",
+        ),
+        (
+            "artifact_sha256",
+            "cd".repeat(32),
+            "subject artifact digest does not match the signed verifier report",
+        ),
+    ] {
+        let mut bundle = build_bundle()?;
+        let mut claim_set: Value = serde_json::from_slice(
+            bundle
+                .artifacts
+                .get("claim-set.json")
+                .ok_or("claim set missing")?,
+        )?;
+        claim_set["subject"][field] = Value::String(replacement);
+        let claim_set_bytes = canonical_json_bytes(&claim_set)?;
+        bundle.passport.claim_set_sha256 =
+            replace_graph_artifact(&mut bundle, "claim-set.json", claim_set_bytes)?;
+        resign_graph(&mut bundle)?;
+
+        let error = verify(&bundle)
+            .err()
+            .ok_or("ClaimSet with a mismatched Finding subject was accepted")?
+            .to_string();
+        assert!(
+            error.contains(expected_error),
+            "unexpected error for subject {field}: {error}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_enforces_verifier_signer_lifecycle() -> TestResult {
     let mut wrong_epoch = build_bundle()?;
-    wrong_epoch.trust.finding_verifier_signer.key_epoch = 2;
     replace_trusted_profile(&mut wrong_epoch, |profile| {
         profile.verifier_report_signer.key_epoch = 2;
     })?;
@@ -1255,7 +1325,6 @@ fn cognition_market_qualified_profile_enforces_verifier_signer_lifecycle() -> Te
     );
 
     let mut expired = build_bundle()?;
-    expired.trust.finding_verifier_signer.valid_until = CHECKED_AT;
     replace_trusted_profile(&mut expired, |profile| {
         profile.verifier_report_signer.valid_until = CHECKED_AT;
     })?;

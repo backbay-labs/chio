@@ -9,6 +9,7 @@
     "schema": { "const": "chio.transaction.claim-set.v1" },
     "id": { "type": "string", "minLength": 1 },
     "issued_at": { "type": "string", "minLength": 1 },
+    "subject": { "$ref": "#/$defs/subject" },
     "claims": {
       "type": "array",
       "items": { "$ref": "#/$defs/claim" },
@@ -16,6 +17,19 @@
     }
   },
   "$defs": {
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "artifact_sha256"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "artifact_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
     "claim": {
       "type": "object",
       "additionalProperties": false,

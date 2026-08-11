@@ -117,8 +117,11 @@ is the same trusted time recorded in the report.
 
 `chio finding verify --evidence <FILE>` supplies resolved evidence:
 `receipts` (each `{receipt, inclusion_proof}`), `checkpoints`, and an
-optional `bond_snapshot` of `{backing, live, accepted_at}`. A portable status
-proof is carried as `status_proof_input_b64`, preserving the exact canonical
+optional `bond_snapshot` of `{backing, store_snapshot}`. The collateral
+authority must sign `store_snapshot`, which binds the exact backing-envelope
+digest, allocation, Finding, liveness, acceptance time, and evaluation time.
+A portable status proof is carried as `status_proof_input_b64`, preserving the
+exact canonical
 `chio.finding.status-proof-input.v1` bytes. It is accepted only when the paired
 status trust fields above are pinned and `--status-rollback-floor <FILE>` names
 durable per-feed high-water state. The same floor file may be shared with

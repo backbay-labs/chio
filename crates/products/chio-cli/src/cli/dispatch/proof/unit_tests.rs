@@ -33,24 +33,6 @@ fn proof_test_ok<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -
     }
 }
 
-fn write_verifier_signer_policy(
-    directory: &std::path::Path,
-    policy: &chio_finding::FindingAuthorityKeyPolicy,
-) -> std::path::PathBuf {
-    let path = directory.join("finding-verifier-signer-policy.json");
-    proof_test_ok(
-        std::fs::write(
-            &path,
-            proof_test_ok(
-                chio_core_types::canonical_json_bytes(&policy),
-                "serialize verifier signer policy",
-            ),
-        ),
-        "write verifier signer policy",
-    );
-    path
-}
-
 fn verifier_profile_fixture(
 ) -> (
     std::path::PathBuf,
@@ -137,9 +119,6 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
     };
     let (profile_path, profile, profile_digest) = verifier_profile_fixture();
     let verifier_key = profile.body.verifier_report_signer.key.clone();
-    let tempdir = proof_test_ok(tempfile::tempdir(), "create verifier policy tempdir");
-    let signer_policy_path =
-        write_verifier_signer_policy(tempdir.path(), &profile.body.verifier_report_signer);
     let verifier_key = verifier_key.to_hex();
     let _env = TestEnvGuard::set(&[
         (
@@ -161,8 +140,16 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
             ),
         ),
         (
-            "CHIO_FINDING_VERIFIER_SIGNER_POLICY_PATH",
-            signer_policy_path.as_os_str(),
+            "CHIO_FINDING_RESOLVER_POLICY_SHA256",
+            std::ffi::OsStr::new(
+                "5656565656565656565656565656565656565656565656565656565656565656",
+            ),
+        ),
+        (
+            "CHIO_FINDING_TRUSTED_TIME_INPUT_SHA256",
+            std::ffi::OsStr::new(
+                "6767676767676767676767676767676767676767676767676767676767676767",
+            ),
         ),
     ]);
     let passport_key = chio_core_types::Keypair::from_seed(&[85_u8; 32]).public_key();
@@ -279,10 +266,6 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
     let tempdir = proof_test_ok(tempfile::tempdir(), "create tempdir");
     let (profile_path, profile, profile_digest) = verifier_profile_fixture();
     let verifier_authority = profile.body.verifier_report_signer.key.clone();
-    let signer_policy_path = write_verifier_signer_policy(
-        tempdir.path(),
-        &profile.body.verifier_report_signer,
-    );
     let verifier_authority_hex = verifier_authority.to_hex();
     let authorization = chio_finding::FindingStatusOperatorAuthorization {
         role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
@@ -371,8 +354,16 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
             ),
         ),
         (
-            "CHIO_FINDING_VERIFIER_SIGNER_POLICY_PATH",
-            signer_policy_path.as_os_str(),
+            "CHIO_FINDING_RESOLVER_POLICY_SHA256",
+            std::ffi::OsStr::new(
+                "5656565656565656565656565656565656565656565656565656565656565656",
+            ),
+        ),
+        (
+            "CHIO_FINDING_TRUSTED_TIME_INPUT_SHA256",
+            std::ffi::OsStr::new(
+                "6767676767676767676767676767676767676767676767676767676767676767",
+            ),
         ),
         (
             "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH",
