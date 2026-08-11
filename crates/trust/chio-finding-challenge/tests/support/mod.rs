@@ -216,6 +216,7 @@ pub struct World {
     pub audit_authority_key: PublicKey,
     pub authority_status: Keypair,
     pub authority_status_key: PublicKey,
+    pub purchase_authority_status: SignedFindingAuthorityStatus,
     pub purchase_authority: Keypair,
     pub failed_delivery_authority: Keypair,
     pub production_kernel: Keypair,
@@ -420,6 +421,8 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
     profile_body.profile_id = compute_profile_id(&profile_body)?;
     let profile = SignedExportEnvelope::sign(profile_body, &governance)?;
     let profile_envelope_sha256 = signed_envelope_sha256(&profile)?;
+    let purchase_authority_status =
+        signed_authority_status(&profile.body.purchase_authority, &authority_status, None)?;
 
     // Step 3: the recipe commits the admitted profile.
     let recipe = recipe_body(&profile_envelope_sha256);
@@ -467,6 +470,7 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
         audit_authority_key: audit_authority.public_key(),
         audit_authority,
         authority_status_key: authority_status.public_key(),
+        purchase_authority_status,
         authority_status,
         purchase_authority,
         failed_delivery_authority,
@@ -527,6 +531,21 @@ fn recipe_body(profile_envelope_sha256: &str) -> FindingReplayRecipeInput {
 }
 
 impl World {
+    pub fn purchase_status(
+        &self,
+        revoked_from: Option<u64>,
+    ) -> Built<SignedFindingAuthorityStatus> {
+        self.status_for_policy(&self.profile.body.purchase_authority, revoked_from)
+    }
+
+    pub fn status_for_policy(
+        &self,
+        policy: &FindingAuthorityKeyPolicy,
+        revoked_from: Option<u64>,
+    ) -> Built<SignedFindingAuthorityStatus> {
+        signed_authority_status(policy, &self.authority_status, revoked_from)
+    }
+
     pub fn input<'a>(
         &'a self,
         challenge: &'a SignedFindingChallenge,
@@ -540,6 +559,7 @@ impl World {
             governance_authority: &self.governance_key,
             pinned_admission_profile_envelope_sha256: &self.profile_envelope_sha256,
             pinned_purchase_authority: &self.profile.body.purchase_authority,
+            purchase_authority_status: Some(&self.purchase_authority_status),
             pinned_authority_status_key: &self.authority_status_key,
             evaluated_at: EVALUATED_AT,
             evidence,

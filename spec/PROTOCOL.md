@@ -1896,6 +1896,17 @@ and key epoch, MUST be observed at or after report publication and no more
 than 3,600 seconds later, and MUST reject when `revoked_from` is at or before
 report publication.
 
+The verifier MUST additionally receive a governance-pinned lifecycle policy
+for the independent seed-witness key and a status reading signed by the same
+externally pinned status authority. The seed-witness policy MUST cover the
+epoch's `seed_witnessed_at` instant and MUST name the key that signed the seed
+commitment. The status reading MUST bind that policy's status reference,
+authority, key, and key epoch, MUST be observed at or after
+`seed_witnessed_at` and no later than report publication, and MUST be no more
+than 3,600 seconds old at publication. It MUST reject when `revoked_from` is
+at or before `seed_witnessed_at`. Missing, stale, self-asserted, or mismatched
+seed-witness lifecycle evidence fails closed.
+
 The governance policy MUST cover the authorization time. The verifier MUST
 verify the authorization signature under its key, re-derive the epoch
 precommitment, require the epoch's `authorization_digest` to equal the exact
@@ -1912,6 +1923,12 @@ observed after the evaluation and no later than report publication, MUST be no
 more than 3,600 seconds old at publication, and MUST reject when
 `revoked_from` is at or before the evaluation time. Missing, stale,
 self-asserted, or mismatched lifecycle evidence fails closed.
+
+Every signed audit-attempt challenge MUST carry venue-audit authorization for
+the exact signed epoch envelope, the exact deterministic draw of its selected
+finding and listing, and the exact round-authorization envelope digest. A
+report verifier MUST recompute and compare all three bindings before treating
+the attempt as accounting for a selected target.
 
 #### 6.4.7.18 `chio.finding.replay-observation.v1`
 

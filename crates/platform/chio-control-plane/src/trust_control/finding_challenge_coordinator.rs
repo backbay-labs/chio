@@ -1230,7 +1230,11 @@ impl FindingChallengeCoordinator {
         self.require_live_evaluator_key(request)?;
         let body = &request.challenge.body;
         let admission = self.resolve_admission(body, request.now)?;
-        self.require_authoritative_purchase_standing(&admission, request.evidence, request.now)?;
+        let purchase_authority_status = self.require_authoritative_purchase_standing(
+            &admission,
+            request.evidence,
+            request.now,
+        )?;
         self.require_failed_delivery_reservation_binding(body, request.evidence, &admission)?;
         if request.collateral.bond_snapshot.body.allocation_id
             != admission.body.backing_allocation_id
@@ -1296,6 +1300,7 @@ impl FindingChallengeCoordinator {
             governance_authority: &governance_authority,
             pinned_admission_profile_envelope_sha256: &admission.body.profile_envelope_sha256,
             pinned_purchase_authority: &admission.body.purchase_authority,
+            purchase_authority_status: purchase_authority_status.as_ref(),
             pinned_authority_status_key: &authority_status_key,
             evaluated_at: request.now,
             evidence: request.evidence,
@@ -2253,7 +2258,12 @@ impl FindingChallengeCoordinator {
             liability_key,
             enforcement,
             penalty,
-            seller_intent.state == FindingEffectIntentState::Pending,
+            matches!(
+                seller_intent.state,
+                FindingEffectIntentState::Pending
+                    | FindingEffectIntentState::Failed
+                    | FindingEffectIntentState::Confirmed
+            ),
         )?;
         let seller_was_confirmed = seller_intent.state == FindingEffectIntentState::Confirmed;
         let settlement_observer = if seller_was_confirmed {
@@ -3096,6 +3106,17 @@ impl FindingChallengeCoordinator {
         now: u64,
         role: &'static str,
     ) -> Result<PublicKey, ChallengeCoordinatorError> {
+        self.resolve_live_role(pin, acted_at, now, role)
+            .map(|(key, _)| key)
+    }
+
+    fn resolve_live_role(
+        &self,
+        pin: &FindingAuthorityPin,
+        acted_at: u64,
+        now: u64,
+        role: &'static str,
+    ) -> Result<(PublicKey, SignedFindingAuthorityStatus), ChallengeCoordinatorError> {
         let reject = |reason| ChallengeCoordinatorError::AuthorityLifecycle { role, reason };
         if acted_at > now {
             return Err(reject("role action is ahead of the venue clock"));
@@ -3153,7 +3174,7 @@ impl FindingChallengeCoordinator {
         {
             return Err(reject("key was revoked when the role acted"));
         }
-        Ok(key)
+        Ok((key, signed))
     }
 
     /// Require a bondless venue audit to be one the published round drew.
@@ -4952,13 +4973,13 @@ impl FindingChallengeCoordinator {
         admission: &SignedFindingAdmission,
         evidence: &FindingChallengeClassEvidence<'_>,
         now: u64,
-    ) -> Result<(), ChallengeCoordinatorError> {
+    ) -> Result<Option<SignedFindingAuthorityStatus>, ChallengeCoordinatorError> {
         let signed = match evidence {
             FindingChallengeClassEvidence::EvidenceInvalid(evidence) => evidence.purchase_record,
             FindingChallengeClassEvidence::ReplayContradiction(evidence) => {
                 evidence.purchase_record
             }
-            FindingChallengeClassEvidence::DigestMismatch(_) => return Ok(()),
+            FindingChallengeClassEvidence::DigestMismatch(_) => return Ok(None),
         };
         let record = &signed.body;
         let stored = self
@@ -4995,10 +5016,11 @@ impl FindingChallengeCoordinator {
             valid_until: policy.valid_until,
             revocation_status_ref: policy.revocation_status_ref.clone(),
         };
-        let purchase_authority =
-            self.require_live_role(&standing_pin, record.recorded_at, now, "purchase standing")?;
+        let (purchase_authority, purchase_authority_status) =
+            self.resolve_live_role(&standing_pin, record.recorded_at, now, "purchase standing")?;
         verify_signed_purchase_record(signed, &purchase_authority)
-            .map_err(|error| ChallengeCoordinatorError::PurchaseStanding(error.to_string()))
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStanding(error.to_string()))?;
+        Ok(Some(purchase_authority_status))
     }
 
     /// Verify a historical purchase under the authority policy the venue

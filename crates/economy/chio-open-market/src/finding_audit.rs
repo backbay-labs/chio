@@ -710,6 +710,11 @@ pub fn verify_audit_report(
                 challenge.challenge_id.clone(),
             ));
         }
+        if authorization.authorization_digest != authorization_digest {
+            return Err(FindingAuditError::AttemptRoundBinding(
+                challenge.challenge_id.clone(),
+            ));
+        }
         if challenge.filed_at <= epoch.committed_at || challenge.filed_at > report.reported_at {
             return Err(FindingAuditError::AttemptTimeBinding(
                 challenge.challenge_id.clone(),
@@ -717,6 +722,19 @@ pub fn verify_audit_report(
         }
         let selection = (challenge.finding_id.as_str(), challenge.listing_id.as_str());
         if !attempted_selections.contains(&selection) {
+            return Err(FindingAuditError::AttemptSelectionBinding(
+                challenge.challenge_id.clone(),
+            ));
+        }
+        let Some(expected_selection) = expected.iter().find(|expected| {
+            expected.finding_id == challenge.finding_id
+                && expected.listing_id == challenge.listing_id
+        }) else {
+            return Err(FindingAuditError::AttemptSelectionBinding(
+                challenge.challenge_id.clone(),
+            ));
+        };
+        if authorization.selection_digest != expected_selection.draw {
             return Err(FindingAuditError::AttemptSelectionBinding(
                 challenge.challenge_id.clone(),
             ));

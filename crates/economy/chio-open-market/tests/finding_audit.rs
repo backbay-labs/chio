@@ -217,7 +217,7 @@ fn verify_audit_report(
     report: &FindingAuditReport,
     eligible: &[EligibleListing],
 ) -> Result<(), FindingAuditError> {
-    let audit_attempts = audit_attempts_for_report(report, eligible);
+    let audit_attempts = audit_attempts_for_report(report, eligible, epoch);
     let resolved_outcomes = resolved_outcomes_for_report(report, eligible, &audit_attempts);
     let evaluator_policies = [audit_evaluator_policy()];
     let witnesses = report_witnesses(
@@ -344,6 +344,7 @@ fn signed_epoch_digest(epoch: &FindingAuditEpoch) -> String {
 fn audit_attempts_for_report(
     report: &FindingAuditReport,
     eligible: &[EligibleListing],
+    epoch: &FindingAuditEpoch,
 ) -> Vec<SignedFindingChallenge> {
     report
         .selected_finding_ids
@@ -379,13 +380,12 @@ fn audit_attempts_for_report(
                 authorization: FindingChallengeAuthorization::VenueAudit(
                     FindingVenueAuditAuthorization {
                         audit_epoch_envelope_sha256: report.audit_epoch_envelope_sha256.clone(),
-                        selection_digest: sha256_hex(
-                            format!("audit selection:{finding_id}:{}", listing.listing_id)
-                                .as_bytes(),
+                        selection_digest: derive_audit_draw(
+                            &report.revealed_seed,
+                            finding_id,
+                            &listing.listing_id,
                         ),
-                        authorization_digest: sha256_hex(
-                            format!("audit authorization:{finding_id}").as_bytes(),
-                        ),
+                        authorization_digest: epoch.authorization_digest.clone(),
                     },
                 ),
                 evidence: FindingChallengeEvidence::EvidenceInvalid {
@@ -477,6 +477,7 @@ fn resolved_outcomes_for_report(
 /// A report that accounts for the standard round exactly: three selected,
 /// one recorded as missed, two attempted with one signed envelope each.
 fn report_for(
+    epoch: &FindingAuditEpoch,
     epoch_envelope_sha256: &str,
     selection: &[AuditSelection],
 ) -> chio_finding::FindingAuditReport {
@@ -506,7 +507,7 @@ fn report_for(
             weight_or_none: Some(selected.weight),
         })
         .collect();
-    let audit_attempts = audit_attempts_for_report(&report, &selected_entries);
+    let audit_attempts = audit_attempts_for_report(&report, &selected_entries, &epoch);
     report.attempt_envelope_sha256s = audit_attempts
         .iter()
         .map(|attempt| signed_envelope_sha256(attempt).test_expect("audit attempt envelope digest"))
@@ -775,7 +776,7 @@ fn an_exact_match_report_verifies() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let report = report_for(&envelope, &selection);
+    let report = report_for(&epoch, &envelope, &selection);
     verify_audit_report(&epoch, &envelope, &report, &eligible).test_expect("report verifies");
 
     // Selection order is not part of the report's contract.
@@ -791,8 +792,8 @@ fn report_verification_authenticates_the_audit_authority_lifecycle() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     let policies = [audit_evaluator_policy()];
     let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
@@ -828,8 +829,8 @@ fn report_verification_authenticates_the_seed_witness_lifecycle() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     let policies = [audit_evaluator_policy()];
     let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
@@ -866,8 +867,8 @@ fn report_verification_authenticates_the_governance_round_authorization() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     let policies = [audit_evaluator_policy()];
     let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
@@ -989,8 +990,8 @@ fn report_verification_requires_fresh_authenticated_evaluator_status() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     let policies = [audit_evaluator_policy()];
     let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
@@ -1068,8 +1069,8 @@ fn report_verification_uses_the_newest_authenticated_evaluator_status() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     let policies = [audit_evaluator_policy()];
     let older = evaluator_status_observed_at(&policies[0], None, outcomes[0].body.evaluated_at);
@@ -1103,8 +1104,8 @@ fn report_verification_rejects_conflicting_latest_evaluator_statuses() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     let policies = [audit_evaluator_policy()];
     let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
@@ -1130,8 +1131,8 @@ fn report_verification_requires_pinned_epoch_and_report_signatures() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let resolved_outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     let policies = [audit_evaluator_policy()];
     let witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &resolved_outcomes);
@@ -1169,8 +1170,8 @@ fn an_outcome_cannot_predate_its_signed_audit_attempt() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let mut report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let mut report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let mut resolved_outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     let attempt_filed_at = audit_attempts[0].body.filed_at;
     resolved_outcomes[0].body.evaluated_at = attempt_filed_at - 1;
@@ -1202,7 +1203,7 @@ fn a_report_cannot_fabricate_an_outcome_envelope_digest() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let mut report = report_for(&envelope, &selection);
+    let mut report = report_for(&epoch, &envelope, &selection);
     report.outcome_envelope_digests[0] = sha256_hex(b"fabricated audit outcome envelope");
     reseal(&mut report);
 
@@ -1217,7 +1218,7 @@ fn a_report_cannot_fabricate_an_attempt_envelope_digest() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let mut report = report_for(&envelope, &selection);
+    let mut report = report_for(&epoch, &envelope, &selection);
     report.attempt_envelope_sha256s[0] = sha256_hex(b"fabricated audit attempt envelope");
     reseal(&mut report);
 
@@ -1228,12 +1229,82 @@ fn a_report_cannot_fabricate_an_attempt_envelope_digest() {
 }
 
 #[test]
+fn an_audit_attempt_must_bind_the_selected_draw() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let mut report = report_for(&epoch, &envelope, &selection);
+    let mut audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
+    let attempt = audit_attempts.first_mut().test_expect("audit attempt");
+    let FindingChallengeAuthorization::VenueAudit(authorization) = &mut attempt.body.authorization
+    else {
+        panic!("audit attempt must carry venue-audit authorization");
+    };
+    authorization.selection_digest = sha256_hex(b"another selected draw");
+    attempt.body.challenge_id =
+        compute_challenge_id(&attempt.body).test_expect("audit challenge id");
+    *attempt = SignedFindingChallenge::sign(attempt.body.clone(), &audit_authority())
+        .test_expect("sign audit attempt");
+    report.attempt_envelope_sha256s[0] =
+        signed_envelope_sha256(attempt).test_expect("attempt digest");
+    reseal(&mut report);
+    let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+    let policies = [audit_evaluator_policy()];
+
+    assert!(matches!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &report_witnesses(&epoch, &policies, &audit_attempts, &outcomes),
+        )
+        .test_unwrap_err(),
+        FindingAuditError::AttemptSelectionBinding(_)
+    ));
+}
+
+#[test]
+fn an_audit_attempt_must_bind_the_round_authorization() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let mut report = report_for(&epoch, &envelope, &selection);
+    let mut audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
+    let attempt = audit_attempts.first_mut().test_expect("audit attempt");
+    let FindingChallengeAuthorization::VenueAudit(authorization) = &mut attempt.body.authorization
+    else {
+        panic!("audit attempt must carry venue-audit authorization");
+    };
+    authorization.authorization_digest = sha256_hex(b"another round authorization");
+    attempt.body.challenge_id =
+        compute_challenge_id(&attempt.body).test_expect("audit challenge id");
+    *attempt = SignedFindingChallenge::sign(attempt.body.clone(), &audit_authority())
+        .test_expect("sign audit attempt");
+    report.attempt_envelope_sha256s[0] =
+        signed_envelope_sha256(attempt).test_expect("attempt digest");
+    reseal(&mut report);
+    let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+    let policies = [audit_evaluator_policy()];
+
+    assert!(matches!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &report_witnesses(&epoch, &policies, &audit_attempts, &outcomes),
+        )
+        .test_unwrap_err(),
+        FindingAuditError::AttemptRoundBinding(_)
+    ));
+}
+
+#[test]
 fn an_outcome_from_an_unpinned_evaluator_cannot_resolve_a_report() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let outcomes: Vec<SignedFindingChallengeOutcome> =
         resolved_outcomes_for_report(&report, &eligible, &audit_attempts)
             .into_iter()
@@ -1263,8 +1334,8 @@ fn a_report_authenticates_each_historical_evaluator_across_rotation() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let mut report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let mut report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let mut outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     let rotated = Keypair::from_seed(&[46_u8; 32]);
     let rotated_policy = evaluator_policy("audit-evaluator-rotated", rotated.public_key(), 2);
@@ -1303,8 +1374,8 @@ fn a_signed_outcome_for_an_unattempted_selection_cannot_resolve_a_report() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let mut report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let mut report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let mut outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     outcomes[0].body.finding_id = report.missed_attempts[0].finding_id.clone();
     outcomes[0].body.listing_id = selection[2].listing_id.clone();
@@ -1333,8 +1404,8 @@ fn an_outcome_from_another_audit_round_cannot_resolve_a_report() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let mut report = report_for(&envelope, &selection);
-    let audit_attempts = audit_attempts_for_report(&report, &eligible);
+    let mut report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
     let mut outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
     outcomes[0].body.audit_epoch_envelope_sha256 =
         Some(sha256_hex(b"another audit epoch envelope"));
@@ -1365,7 +1436,7 @@ fn a_report_that_does_not_strictly_follow_its_epoch_rejects() {
     let envelope = signed_epoch_digest(&epoch);
 
     for reported_at in [COMMITTED_AT - 1, COMMITTED_AT] {
-        let mut report = report_for(&envelope, &selection);
+        let mut report = report_for(&epoch, &envelope, &selection);
         report.reported_at = reported_at;
         reseal(&mut report);
         assert_eq!(
@@ -1381,7 +1452,7 @@ fn a_report_revealing_a_wrong_seed_rejects() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let mut report = report_for(&envelope, &selection);
+    let mut report = report_for(&epoch, &envelope, &selection);
     report.revealed_seed = OTHER_SEED.to_owned();
     reseal(&mut report);
     assert_eq!(
@@ -1424,7 +1495,7 @@ fn a_report_with_an_added_selection_rejects() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let mut report = report_for(&envelope, &selection);
+    let mut report = report_for(&epoch, &envelope, &selection);
     // A listing the round did not draw, smuggled into the reported set.
     let unselected = eligible
         .iter()
@@ -1444,7 +1515,7 @@ fn a_report_with_a_dropped_selection_rejects() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let mut report = report_for(&envelope, &selection);
+    let mut report = report_for(&epoch, &envelope, &selection);
     let dropped = report.selected_finding_ids.remove(0);
     report.attempt_envelope_sha256s.truncate(1);
     reseal(&mut report);
@@ -1462,7 +1533,7 @@ fn a_report_leaving_a_target_unaccounted_rejects() {
 
     // Two of three targets attempted, but only one attempt envelope: the
     // third is neither attempted nor recorded as missed.
-    let mut short = report_for(&envelope, &selection);
+    let mut short = report_for(&epoch, &envelope, &selection);
     short.attempt_envelope_sha256s.truncate(1);
     reseal(&mut short);
     assert_eq!(
@@ -1474,7 +1545,7 @@ fn a_report_leaving_a_target_unaccounted_rejects() {
     );
 
     // Padding the receipts past the attempted count fails just as loudly.
-    let mut padded = report_for(&envelope, &selection);
+    let mut padded = report_for(&epoch, &envelope, &selection);
     padded
         .attempt_envelope_sha256s
         .push(sha256_hex(b"audit attempt envelope 3"));
@@ -1488,7 +1559,7 @@ fn a_report_leaving_a_target_unaccounted_rejects() {
     );
 
     // Every attempted target also owes one signed outcome envelope.
-    let mut missing_outcome = report_for(&envelope, &selection);
+    let mut missing_outcome = report_for(&epoch, &envelope, &selection);
     missing_outcome.outcome_envelope_digests.truncate(1);
     reseal(&mut missing_outcome);
     assert_eq!(
@@ -1500,7 +1571,7 @@ fn a_report_leaving_a_target_unaccounted_rejects() {
     );
 
     // So does a signed outcome for a target that was never attempted.
-    let mut extra_outcome = report_for(&envelope, &selection);
+    let mut extra_outcome = report_for(&epoch, &envelope, &selection);
     extra_outcome
         .outcome_envelope_digests
         .push(sha256_hex(b"third-audit-outcome-envelope"));
@@ -1519,7 +1590,7 @@ fn a_report_bound_to_another_epoch_envelope_rejects() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
     let envelope = signed_epoch_digest(&epoch);
-    let report = report_for(&envelope, &selection);
+    let report = report_for(&epoch, &envelope, &selection);
 
     // Same body, different signed round: the report answers for exactly one
     // envelope, not for any epoch with equal contents.

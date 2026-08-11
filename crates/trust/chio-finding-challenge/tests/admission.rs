@@ -164,6 +164,7 @@ fn the_raw_finding_must_be_its_own_canonical_serialization() -> TestResult {
         governance_authority: &world.governance_key,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
@@ -191,6 +192,7 @@ fn a_self_consistent_retired_profile_cannot_replace_the_admitted_profile() -> Te
         governance_authority: &world.governance_key,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
@@ -217,6 +219,7 @@ fn the_profile_must_verify_under_the_pinned_governance_root() -> TestResult {
         governance_authority: &interloper,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
@@ -246,6 +249,7 @@ fn the_profile_body_must_name_the_pinned_governance_root() -> TestResult {
         governance_authority: &world.governance_key,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
@@ -275,6 +279,7 @@ fn a_venue_audit_must_verify_under_the_pinned_audit_authority() -> TestResult {
         governance_authority: &world.governance_key,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
@@ -303,6 +308,7 @@ fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
         governance_authority: &world.governance_key,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
+        purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
         evidence: &evidence,
@@ -349,8 +355,10 @@ fn standing_uses_the_exact_admission_purchase_authority_after_rotation() -> Test
     admission_policy.authority_id = "purchase-rotated".to_owned();
     admission_policy.key = world.delivery_kernel.public_key();
     admission_policy.key_epoch += 1;
+    let admission_status = world.status_for_policy(&admission_policy, None)?;
     let mut input = world.input(&case.challenge, &evidence);
     input.pinned_purchase_authority = &admission_policy;
+    input.purchase_authority_status = Some(&admission_status);
 
     let evaluation = evaluate_finding_challenge(&input);
     let adjudication = evaluation
@@ -465,6 +473,23 @@ fn standing_must_belong_to_the_challenger() -> TestResult {
 fn standing_must_settle_inside_the_purchase_authority_window() -> TestResult {
     let world = world()?;
     let case = evidence_case_with_standing(&world, StandingShape::OutsideAuthorityWindow)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingAuthorityNotEstablished,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn standing_requires_fresh_purchase_authority_status() -> TestResult {
+    let mut world = world()?;
+    let case = evidence_case(&world, EvidenceShape::Sound)?;
+    world.purchase_authority_status =
+        world.purchase_status(Some(case.purchase_record.body.recorded_at))?;
     let proofs = case.revocation_proofs();
     let evidence = case.evidence(&proofs);
     let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));

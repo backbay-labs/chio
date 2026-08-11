@@ -44,6 +44,10 @@ pub struct FindingChallengeEvaluationInput<'a> {
     /// admission the challenge names. This may differ from the reusable
     /// verifier profile after an admission-specific rotation.
     pub pinned_purchase_authority: &'a FindingAuthorityKeyPolicy,
+    /// Fresh authenticated lifecycle reading for the admission-pinned
+    /// purchase authority. Required whenever the selected evidence relies on
+    /// a purchase record for standing.
+    pub purchase_authority_status: Option<&'a SignedFindingAuthorityStatus>,
     /// Independent signer for authenticated readings from the revocation
     /// references pinned by role policies.
     pub pinned_authority_status_key: &'a PublicKey,
