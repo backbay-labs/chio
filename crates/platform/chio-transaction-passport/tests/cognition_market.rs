@@ -1751,6 +1751,34 @@ fn cognition_market_qualified_profile_rejects_backdated_report_after_revocation(
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_backdated_report_after_key_expiry() -> TestResult {
+    let mut bundle = build_bundle()?;
+    replace_trusted_profile(&mut bundle, |profile| {
+        profile.verifier_report_signer.valid_until = CHECKED_AT + 1;
+    })?;
+    let mut status = bundle
+        .trust
+        .verifier_authority_status
+        .signed_status
+        .body
+        .clone();
+    status.observed_at = CHECKED_AT + 2;
+    bundle.trust.verifier_authority_status.signed_status =
+        SignedExportEnvelope::sign(status, &Keypair::from_seed(&[10_u8; 32]))?;
+    bundle.trust.verifier_authority_status.checked_at = CHECKED_AT + 2;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("backdated report under an expired key was accepted")?
+        .to_string();
+    assert!(
+        error.contains("after verifier-key expiration"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_inconsistent_status_clock() -> TestResult {
     let mut bundle = build_bundle()?;
     bundle

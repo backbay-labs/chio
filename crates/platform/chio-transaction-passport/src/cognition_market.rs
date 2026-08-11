@@ -516,6 +516,14 @@ fn verify_verifier_authority_status(
         ));
     }
     // The report carries no independently authenticated signing-time anchor.
+    // Once deployment trusted time reaches the key expiry, possession of the
+    // old key would permit a newly created report with a backdated evaluation.
+    if trust.checked_at >= policy.valid_until {
+        return Err(claim_failed(
+            "unanchored signed verifier report cannot be accepted after verifier-key expiration",
+        ));
+    }
+    // The report carries no independently authenticated signing-time anchor.
     // Once the deployment learns that this key is revoked, a key holder can
     // backdate evaluation_time, so no report under that key remains admissible.
     if status.revoked_from.is_some() {
