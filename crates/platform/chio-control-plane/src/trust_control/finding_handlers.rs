@@ -17,9 +17,9 @@
 //! the standalone artifact surfaces (publish, recipes, profiles).
 
 use chio_finding::{
-    verify_signed_bond_backing, verify_signed_profile, verify_signed_seller_authorization,
-    verify_signed_verifier_report, Finding, FindingChallengeVerifierProfile, FindingEvidenceClass,
-    FindingFacetKind, FindingFacetOutcome, FindingFeeEvent, FindingGuaranteeClass, FindingPayee,
+    required_finding_facets, verify_signed_bond_backing, verify_signed_profile,
+    verify_signed_seller_authorization, verify_signed_verifier_report, Finding, FindingFacetKind,
+    FindingFacetOutcome, FindingFeeEvent, FindingGuaranteeClass, FindingPayee,
     FindingReplayRecipeInput, SignedFindingAdmission, SignedFindingBondBacking,
     SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
     SignedFindingSellerAuthorization, SignedFindingVerifierReport,
@@ -737,30 +737,6 @@ pub(crate) struct FindingActivateRequest {
     pub pricing_hint: chio_open_market::listing::SignedListingPricingHint,
 }
 
-/// The facets a finding REQUIRES exactly `verified` before admission: the
-/// profile's floor plus every claim the artifact itself makes. The
-/// verifier derives required facets the same way when it evaluates
-/// outcomes; nothing here waives a profile-listed facet.
-fn required_facets(
-    finding: &Finding,
-    profile: &FindingChallengeVerifierProfile,
-) -> Vec<FindingFacetKind> {
-    let mut required: std::collections::BTreeSet<FindingFacetKind> =
-        profile.required_facets.iter().copied().collect();
-    required.insert(FindingFacetKind::ArtifactIntegrity);
-    if finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
-        required.insert(FindingFacetKind::RecipeBinding);
-    }
-    if finding.evidence_class == FindingEvidenceClass::Verified {
-        required.insert(FindingFacetKind::ReceiptAuthenticity);
-        required.insert(FindingFacetKind::CheckpointMembership);
-    }
-    if finding.runtime_assurance_tier.is_some() {
-        required.insert(FindingFacetKind::RuntimeAssuranceBacking);
-    }
-    required.into_iter().collect()
-}
-
 pub(crate) fn verify_profile_for_activation(
     profile: &SignedFindingChallengeVerifierProfile,
     expected_envelope_sha256: &str,
@@ -1251,7 +1227,7 @@ pub(crate) async fn handle_activate_finding(
             "verifier report contains a failed facet; admission denied",
         );
     }
-    for facet in required_facets(&finding, &profile.body) {
+    for facet in required_finding_facets(&finding, &profile.body) {
         if report.facet_outcome(facet) != Some(FindingFacetOutcome::Verified) {
             return plain_http_error(
                 StatusCode::BAD_REQUEST,

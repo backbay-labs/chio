@@ -8,11 +8,15 @@
 //! `bond_backing: verified` only for a named allocation that already
 //! existed when it was evaluated (enforced mechanically at activation).
 
+use std::collections::BTreeSet;
+
 use chio_core_types::crypto::PublicKey;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::envelope::require_ed25519;
+use crate::profile::FindingChallengeVerifierProfile;
+use crate::types::{Finding, FindingEvidenceClass, FindingGuaranteeClass};
 use crate::validate::{
     require_bounded_id, require_bounded_text, require_hex64, require_i_json_u64, require_max_items,
     require_nonzero, FindingError, MAX_FINDING_ARTIFACT_ITEMS,
@@ -21,6 +25,14 @@ use crate::validate::{
 /// Verifier-authority-signed facet report.
 pub const FINDING_VERIFIER_REPORT_SCHEMA_V1: &str =
     chio_core_types::CHIO_FINDING_VERIFIER_REPORT_V1_SCHEMA;
+
+fn deserialize_non_null_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
 
 /// The closed 13-facet vocabulary (ARCHITECTURE 4.1.1).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -58,6 +70,37 @@ impl FindingFacetKind {
         FindingFacetKind::StatusLiveness,
         FindingFacetKind::GuaranteeConsistency,
     ];
+}
+
+/// Derive the exact facet floor shared by verification and activation.
+/// Keeping this policy in one function prevents an activation boundary
+/// from accepting a report that the verifier itself would reject.
+pub fn required_finding_facets(
+    finding: &Finding,
+    profile: &FindingChallengeVerifierProfile,
+) -> Vec<FindingFacetKind> {
+    let mut required: BTreeSet<FindingFacetKind> =
+        profile.required_facets.iter().copied().collect();
+    required.insert(FindingFacetKind::ArtifactIntegrity);
+    if finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
+        required.insert(FindingFacetKind::RecipeBinding);
+    }
+    if matches!(
+        finding.evidence_class,
+        FindingEvidenceClass::Verified | FindingEvidenceClass::Observed
+    ) {
+        required.insert(FindingFacetKind::ReceiptAuthenticity);
+        required.insert(FindingFacetKind::CheckpointMembership);
+    }
+    if finding.guarantee_class == FindingGuaranteeClass::MeteredAttested {
+        required.insert(FindingFacetKind::ReceiptAuthenticity);
+        required.insert(FindingFacetKind::CheckpointMembership);
+        required.insert(FindingFacetKind::MeteredExposureBacking);
+    }
+    if finding.runtime_assurance_tier.is_some() {
+        required.insert(FindingFacetKind::RuntimeAssuranceBacking);
+    }
+    required.into_iter().collect()
 }
 
 /// Facet outcomes. `Failed` always denies admission because a check ran
@@ -101,17 +144,29 @@ pub struct FindingVerifierReport {
     /// Exact canonical replay-recipe input bytes independently rechecked by
     /// the verifier. The unsigned input remains a non-authority attachment;
     /// this digest is the signed commitment to those bytes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub replay_recipe_input_sha256: Option<String>,
     /// Exact canonical portable status-proof input bytes independently
     /// rechecked by the verifier. The proof input is not promoted to a signed
     /// artifact role; the report commits its bytes here.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub status_proof_input_sha256: Option<String>,
     /// Post-purchase delivery receipt that the verifier authenticated as a
     /// successful delivery of this exact Finding and found in a pinned
     /// checkpoint log. Absent on pre-sale admission reports.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub finding_delivery_receipt_id: Option<String>,
     pub trust_root_snapshot_sha256: String,
     pub resolver_policy_sha256: String,
@@ -122,7 +177,11 @@ pub struct FindingVerifierReport {
     /// live allocation the verdict is about. The allocation must already
     /// have existed when the report was evaluated; a report cannot claim
     /// backing from an allocation created afterward.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub backing_allocation_id: Option<String>,
     /// Verifier authority that must sign the enclosing envelope; the
     /// deployment pin and the profile's named report signer must agree.

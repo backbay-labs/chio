@@ -11,8 +11,6 @@
 //! evaluated by the caller against the profile plus the finding's own
 //! claims.
 
-use std::collections::BTreeSet;
-
 use chio_appraisal::{
     verify_runtime_attestation_record, SignedRuntimeAttestationAppraisalReport,
     RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA,
@@ -30,15 +28,16 @@ use chio_core_types::receipt::metadata::{
 };
 use chio_core_types::receipt::MEDIATED_SPEND_PROFILE;
 use chio_finding::{
-    compute_report_id, signed_envelope_sha256, verify_finding, verify_pinned_envelope,
-    verify_signed_authority_status, verify_signed_bond_backing, verify_signed_profile,
-    verify_status_proof_input, Finding, FindingAuthorityKeyPolicy, FindingChallengeVerifierProfile,
-    FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome, FindingFacetResult,
-    FindingGuaranteeClass, FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput,
-    FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusProofInput,
-    FindingVerifierReport, SignedFindingAuthorityStatus, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms, SignedFindingVerifierReport,
-    FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    compute_report_id, required_finding_facets, signed_envelope_sha256, verify_finding,
+    verify_pinned_envelope, verify_signed_authority_status, verify_signed_bond_backing,
+    verify_signed_profile, verify_status_proof_input, Finding, FindingAuthorityKeyPolicy,
+    FindingChallengeVerifierProfile, FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome,
+    FindingFacetResult, FindingGuaranteeClass, FindingPredicate, FindingReceiptRole,
+    FindingReplayRecipeInput, FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization,
+    FindingStatusProofInput, FindingVerifierReport, SignedFindingAuthorityStatus,
+    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
+    SignedFindingVerifierReport, FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1,
+    FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
@@ -270,28 +269,7 @@ impl FindingVerifierDraft {
         &self,
         profile: &FindingChallengeVerifierProfile,
     ) -> Vec<FindingFacetKind> {
-        let mut required: BTreeSet<FindingFacetKind> =
-            profile.required_facets.iter().copied().collect();
-        required.insert(FindingFacetKind::ArtifactIntegrity);
-        if self.finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
-            required.insert(FindingFacetKind::RecipeBinding);
-        }
-        if matches!(
-            self.finding.evidence_class,
-            FindingEvidenceClass::Verified | FindingEvidenceClass::Observed
-        ) {
-            required.insert(FindingFacetKind::ReceiptAuthenticity);
-            required.insert(FindingFacetKind::CheckpointMembership);
-        }
-        if self.finding.guarantee_class == FindingGuaranteeClass::MeteredAttested {
-            required.insert(FindingFacetKind::ReceiptAuthenticity);
-            required.insert(FindingFacetKind::CheckpointMembership);
-            required.insert(FindingFacetKind::MeteredExposureBacking);
-        }
-        if self.finding.runtime_assurance_tier.is_some() {
-            required.insert(FindingFacetKind::RuntimeAssuranceBacking);
-        }
-        required.into_iter().collect()
+        required_finding_facets(&self.finding, profile)
     }
 
     /// True when no facet failed and every required facet is exactly

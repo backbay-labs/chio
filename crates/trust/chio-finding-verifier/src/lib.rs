@@ -29,6 +29,7 @@ mod receipts;
 mod verify;
 
 pub use checkpoints::{verify_checkpoint_membership, CheckpointMembershipError};
+pub use chio_finding::required_finding_facets;
 // The checkpoint and inclusion-proof types are part of this crate's
 // verification contract, so a consumer can name them without taking a
 // kernel dependency for two type aliases.

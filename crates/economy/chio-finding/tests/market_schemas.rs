@@ -918,6 +918,28 @@ fn golden_verifier_report_fixture_validates() -> TestResult {
 }
 
 #[test]
+fn signed_verifier_report_rejects_explicit_null_optionals() -> TestResult {
+    for field in [
+        "replay_recipe_input_sha256",
+        "status_proof_input_sha256",
+        "finding_delivery_receipt_id",
+        "backing_allocation_id",
+    ] {
+        let mut value: Value = serde_json::from_str(GOLDEN_REPORT_RAW)?;
+        let body = value
+            .get_mut("body")
+            .and_then(Value::as_object_mut)
+            .ok_or("signed verifier report body")?;
+        body.insert(field.to_string(), Value::Null);
+        assert!(
+            serde_json::from_value::<SignedFindingVerifierReport>(value).is_err(),
+            "explicit null was accepted for {field}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn golden_venue_admission_fixture_validates() -> TestResult {
     let strict_canonical = canonical_json_bytes_from_str(GOLDEN_ADMISSION_RAW)?;
     let value: Value = serde_json::from_str(GOLDEN_ADMISSION_RAW)?;
