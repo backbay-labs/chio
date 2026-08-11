@@ -266,7 +266,12 @@ pub(super) fn cognition_market_proof_trust_from_env(
         required_sha256_env(FINDING_RESOLVER_POLICY_SHA256_ENV)?;
     let trusted_time_input_sha256 =
         required_sha256_env(FINDING_TRUSTED_TIME_INPUT_SHA256_ENV)?;
-    let status = if status_claim_selected {
+    let status_liveness_required = status_claim_selected
+        || trusted_verifier_profile
+            .body
+            .required_facets
+            .contains(&chio_finding::FindingFacetKind::StatusLiveness);
+    let status = if status_liveness_required {
         Some(cognition_market_status_trust_from_env()?)
     } else {
         None

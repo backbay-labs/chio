@@ -13,6 +13,15 @@ impl TestEnvGuard {
         }
         Self(previous)
     }
+
+    fn remove(names: &[&'static str]) -> Self {
+        let mut previous = Vec::with_capacity(names.len());
+        for name in names {
+            previous.push((*name, std::env::var_os(name)));
+            std::env::remove_var(name);
+        }
+        Self(previous)
+    }
 }
 
 impl Drop for TestEnvGuard {
@@ -182,6 +191,89 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
     };
     assert!(
         error.contains("CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn cognition_market_trust_loads_status_for_profile_liveness_floor() {
+    let _env_lock = match AGENT_WEB_ENV_LOCK.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let tempdir = proof_test_ok(tempfile::tempdir(), "create status-profile directory");
+    let (_, profile, _) = verifier_profile_fixture();
+    let governance = chio_core_types::Keypair::from_seed(&[101_u8; 32]);
+    let mut body = profile.body;
+    body.governance_authority = governance.public_key();
+    body.required_facets = vec![chio_finding::FindingFacetKind::StatusLiveness];
+    body.profile_id = proof_test_ok(chio_finding::compute_profile_id(&body), "compute profile id");
+    let signed = proof_test_ok(
+        chio_core_types::receipt::lineage::SignedExportEnvelope::sign(body, &governance),
+        "sign status-profile fixture",
+    );
+    let profile_bytes = proof_test_ok(
+        chio_core_types::canonical_json_bytes(&signed),
+        "serialize status-profile fixture",
+    );
+    let profile_path = tempdir.path().join("verifier-profile.json");
+    proof_test_ok(
+        std::fs::write(&profile_path, &profile_bytes),
+        "write status-profile fixture",
+    );
+    let governance_key = governance.public_key().to_hex();
+    let verifier_key = signed.body.verifier_report_signer.key.to_hex();
+    let profile_digest = chio_core_types::crypto::sha256_hex(&profile_bytes);
+    let _env = TestEnvGuard::set(&[
+        (
+            "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY",
+            std::ffi::OsStr::new(&governance_key),
+        ),
+        (
+            "CHIO_FINDING_VERIFIER_AUTHORITY_KEY",
+            std::ffi::OsStr::new(&verifier_key),
+        ),
+        (
+            "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256",
+            std::ffi::OsStr::new(&profile_digest),
+        ),
+        (
+            "CHIO_FINDING_VERIFIER_PROFILE_PATH",
+            profile_path.as_os_str(),
+        ),
+        (
+            "CHIO_FINDING_TRUST_ROOT_SNAPSHOT_SHA256",
+            std::ffi::OsStr::new(
+                "4545454545454545454545454545454545454545454545454545454545454545",
+            ),
+        ),
+        (
+            "CHIO_FINDING_RESOLVER_POLICY_SHA256",
+            std::ffi::OsStr::new(
+                "5656565656565656565656565656565656565656565656565656565656565656",
+            ),
+        ),
+        (
+            "CHIO_FINDING_TRUSTED_TIME_INPUT_SHA256",
+            std::ffi::OsStr::new(
+                "6767676767676767676767676767676767676767676767676767676767676767",
+            ),
+        ),
+    ]);
+    let _missing_status_env = TestEnvGuard::remove(&[
+        "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH",
+        "CHIO_FINDING_STATUS_AUTHORITY_DATABASE_PATH",
+        "CHIO_FINDING_STATUS_AUTHORITY_LOCK_ROOT",
+        "CHIO_FINDING_STATUS_NOW_UNIX_SECONDS",
+        "CHIO_FINDING_STATUS_MAX_AGE_SECONDS",
+    ]);
+
+    let error = match cognition_market_proof_trust_from_env(&[], &[], false) {
+        Ok(_) => panic!("profile-required status trust was not loaded"),
+        Err(error) => error.to_string(),
+    };
+    assert!(
+        error.contains("CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH"),
         "unexpected error: {error}"
     );
 }
