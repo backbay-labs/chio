@@ -1725,6 +1725,32 @@ fn cognition_market_qualified_profile_rejects_revoked_verifier_signer() -> TestR
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_backdated_report_after_revocation() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let mut status = bundle
+        .trust
+        .verifier_authority_status
+        .signed_status
+        .body
+        .clone();
+    status.revoked_from = Some(CHECKED_AT + 1);
+    status.observed_at = CHECKED_AT + 2;
+    bundle.trust.verifier_authority_status.signed_status =
+        SignedExportEnvelope::sign(status, &Keypair::from_seed(&[10_u8; 32]))?;
+    bundle.trust.verifier_authority_status.checked_at = CHECKED_AT + 2;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("backdated report under a subsequently revoked key was accepted")?
+        .to_string();
+    assert!(
+        error.contains("unanchored signed verifier report"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_inconsistent_status_clock() -> TestResult {
     let mut bundle = build_bundle()?;
     bundle

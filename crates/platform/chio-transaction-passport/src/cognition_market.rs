@@ -515,12 +515,12 @@ fn verify_verifier_authority_status(
             "verifier authority status is stale for the signed report",
         ));
     }
-    if status
-        .revoked_from
-        .is_some_and(|revoked_from| revoked_from <= report_evaluation_time)
-    {
+    // The report carries no independently authenticated signing-time anchor.
+    // Once the deployment learns that this key is revoked, a key holder can
+    // backdate evaluation_time, so no report under that key remains admissible.
+    if status.revoked_from.is_some() {
         return Err(claim_failed(
-            "signed verifier report was produced after verifier-key revocation",
+            "unanchored signed verifier report cannot be accepted after verifier-key revocation",
         ));
     }
     Ok(())
