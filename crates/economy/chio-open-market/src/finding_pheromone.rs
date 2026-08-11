@@ -264,6 +264,7 @@ fn validate_convention(
         || convention.max_observation_cost_microunits == 0
         || !is_bounded_printable_identifier(&convention.registry_operator_id)
         || convention.registry_key.algorithm() != SigningAlgorithm::Ed25519
+        || convention.registry_key.is_weak_ed25519()
     {
         return Err(FindingPheromoneError::Convention("receiver policy"));
     }
@@ -355,7 +356,14 @@ fn validate_current_listing(
             "current listing assertion shape is invalid".to_owned(),
         ));
     }
-    match assertion.verify_signature() {
+    if !is_bounded_printable_identifier(registry_operator_id)
+        || assertion.signer_key != *registry_key
+    {
+        return Err(FindingPheromoneError::Listing(
+            "current listing assertion is not signed by the pinned registry authority".to_owned(),
+        ));
+    }
+    match registry_key.verify_canonical_strict(&assertion.body, &assertion.signature) {
         Ok(true) => {}
         Ok(false) => {
             return Err(FindingPheromoneError::Listing(
@@ -363,13 +371,6 @@ fn validate_current_listing(
             ));
         }
         Err(error) => return Err(FindingPheromoneError::Listing(error.to_string())),
-    }
-    if !is_bounded_printable_identifier(registry_operator_id)
-        || assertion.signer_key != *registry_key
-    {
-        return Err(FindingPheromoneError::Listing(
-            "current listing assertion is not signed by the pinned registry authority".to_owned(),
-        ));
     }
     let listing_sha256 = signed_envelope_sha256(&listing.listing)
         .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;

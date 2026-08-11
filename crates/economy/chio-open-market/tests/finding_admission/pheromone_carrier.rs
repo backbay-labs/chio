@@ -90,3 +90,43 @@ fn finding_pheromone_rejects_oversized_indicator_before_authenticated_resolution
         ));
     });
 }
+
+#[test]
+fn finding_pheromone_rejects_a_weak_registry_key() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let assertion = finding_current_listing_assertion(&listing, &web.operator);
+        let mut convention = finding_pheromone_convention();
+        convention.registry_key = PublicKey::from_hex(
+            "0100000000000000000000000000000000000000000000000000000000000000",
+        )
+        .test_expect("construct weak Ed25519 registry key");
+
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                finding_pheromone_deposit(
+                    &web,
+                    &listing,
+                    &passport,
+                    "hint-weak-registry-key",
+                    125,
+                ),
+                &finding_pheromone_context(&passport, &kernel),
+                &convention,
+                AuthenticatedCurrentFindingListing::new(&listing, &assertion),
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Convention("receiver policy"))
+        ));
+    });
+}

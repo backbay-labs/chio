@@ -377,12 +377,17 @@ impl ChioKernel {
         }
         let operation_count = self.reconcile_recoverable_admissions()?;
         #[cfg(feature = "cognition-market-experimental")]
+        let finding_pool_receipt_count = self.reconcile_finding_pool_mutation_receipts()?;
+        #[cfg(not(feature = "cognition-market-experimental"))]
+        let finding_pool_receipt_count = 0_usize;
+        #[cfg(feature = "cognition-market-experimental")]
         let finding_pool_count = self.reconcile_finding_pool_terminal_claims()?;
         #[cfg(not(feature = "cognition-market-experimental"))]
         let finding_pool_count = 0_usize;
         let receipt_count = self.reconcile_durable_admission_receipt_projections()?;
         let total = operation_count
-            .checked_add(finding_pool_count)
+            .checked_add(finding_pool_receipt_count)
+            .and_then(|count| count.checked_add(finding_pool_count))
             .and_then(|count| count.checked_add(receipt_count))
             .ok_or_else(|| {
                 KernelError::DurableAdmission("startup reconciliation count overflow".to_owned())

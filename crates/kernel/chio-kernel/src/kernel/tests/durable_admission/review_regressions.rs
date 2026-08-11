@@ -164,6 +164,50 @@ fn durable_startup_reconciliation_rejects_late_pool_ledger_installation() {
 
 #[cfg(feature = "cognition-market-experimental")]
 #[test]
+fn durable_startup_reconciliation_drains_the_pool_receipt_outbox() {
+    use crate::finding_pool::tests::{purchase, RecordingLedger};
+
+    let (mut kernel, _request, _store, _invocations) =
+        durable_admission_fixture("startup-pool-outbox-drain");
+    let projection = AdmissionReceiptProjectionStore::default();
+    kernel
+        .set_receipt_store(Box::new(projection.clone()))
+        .expect("pool mutation receipt store");
+    kernel
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[97; 32]))
+        .expect("pool mutation receipt authority");
+    let ledger = std::sync::Arc::new(RecordingLedger::default());
+    kernel
+        .set_finding_pool_ledger(ledger.clone())
+        .expect("qualified finding pool ledger");
+    kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:startup-outbox"))
+        .expect("commit a pool mutation with a pending signed receipt");
+    ledger.clear_active_claim_operations();
+    assert_eq!(
+        ledger
+            .pending_mutation_receipts()
+            .expect("pending pool receipt")
+            .len(),
+        1
+    );
+    assert_eq!(projection.successful_appends(), 0);
+
+    assert_eq!(
+        kernel
+            .reconcile_durable_admission_startup()
+            .expect("startup reconciliation drains the pool outbox"),
+        1
+    );
+    assert!(ledger
+        .pending_mutation_receipts()
+        .expect("drained pool outbox")
+        .is_empty());
+    assert_eq!(projection.successful_appends(), 1);
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
 fn configured_pool_ledger_freezes_the_durable_admission_runtime() {
     use crate::admission_operation::AdmissionOperationError;
     use crate::finding_pool::tests::RecordingLedger;

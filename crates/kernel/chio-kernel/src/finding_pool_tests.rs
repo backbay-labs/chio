@@ -45,7 +45,9 @@ impl RecordingLedger {
             .clone()
     }
 
-    fn pending_mutation_receipts(&self) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
+    pub(crate) fn pending_mutation_receipts(
+        &self,
+    ) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
         let outbox = self.outbox.lock().map_err(|_| {
             FindingPoolLedgerError::Storage("test outbox lock was poisoned".to_owned())
         })?;
@@ -57,6 +59,13 @@ impl RecordingLedger {
             .filter(|receipt| !acknowledged.contains(&receipt.id))
             .cloned()
             .collect())
+    }
+
+    pub(crate) fn clear_active_claim_operations(&self) {
+        self.active_claim_operations
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
     }
 
     fn store_attestation(
@@ -545,7 +554,7 @@ fn kernel_without_receipt_store(kernel_key_seed: u8, pool_authority_seed: u8) ->
     kernel
 }
 
-fn purchase() -> crate::finding_purchase::VerifiedFindingPurchase {
+pub(crate) fn purchase() -> crate::finding_purchase::VerifiedFindingPurchase {
     crate::finding_purchase::VerifiedFindingPurchase {
         finding_id: "b".repeat(64),
         listing_id: "listing:test".to_owned(),

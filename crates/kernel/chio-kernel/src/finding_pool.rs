@@ -30,6 +30,8 @@ const MAX_PURCHASE_ARGUMENT_BYTES: usize = 1024 * 1024;
 const MAX_PURCHASE_CONTEXT_CANONICAL_BYTES: usize = 262_144;
 const MAX_PURCHASE_CONTEXT_ENCODED_BYTES: usize =
     MAX_PURCHASE_CONTEXT_CANONICAL_BYTES.div_ceil(3) * 4;
+const FINDING_POOL_OUTBOX_DELIVERY_LEASE_MS: u64 = 60_000;
+const FINDING_POOL_OUTBOX_BATCH_LIMIT: usize = 200;
 
 /// Purchaser-signed proof of possession for one exact pool reservation.
 ///
@@ -902,6 +904,14 @@ impl ChioKernel {
         &self,
         ledger: &dyn QualifiedFindingPoolLedger,
     ) -> Result<(), FindingPoolLedgerError> {
+        self.drain_finding_pool_mutation_receipts(ledger)
+            .map(|_| ())
+    }
+
+    fn drain_finding_pool_mutation_receipts(
+        &self,
+        ledger: &dyn QualifiedFindingPoolLedger,
+    ) -> Result<usize, FindingPoolLedgerError> {
         let durable_store_configured = self
             .with_receipt_store(|_| Ok(()))
             .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?
@@ -909,14 +919,13 @@ impl ChioKernel {
         if !durable_store_configured {
             return Err(FindingPoolLedgerError::DurableReceiptStoreMissing);
         }
-        const DELIVERY_LEASE_MS: u64 = 60_000;
-        const MAX_RECEIPTS_PER_FLUSH: usize = 200;
-        for _ in 0..MAX_RECEIPTS_PER_FLUSH {
+        let mut drained = 0_usize;
+        for _ in 0..FINDING_POOL_OUTBOX_BATCH_LIMIT {
             let claimed_at = crate::kernel::current_unix_timestamp_ms();
             let mut claimed = ledger.claim_pending_mutation_receipts(
                 &self.finding_pool_outbox_worker_id,
                 claimed_at,
-                DELIVERY_LEASE_MS,
+                FINDING_POOL_OUTBOX_DELIVERY_LEASE_MS,
                 1,
             )?;
             let Some(receipt) = claimed.pop() else {
@@ -929,8 +938,39 @@ impl ChioKernel {
                 &self.finding_pool_outbox_worker_id,
                 crate::kernel::current_unix_timestamp_ms(),
             )?;
+            drained = drained.checked_add(1).ok_or_else(|| {
+                FindingPoolLedgerError::Receipt(
+                    "finding pool mutation receipt count overflowed".to_owned(),
+                )
+            })?;
         }
-        Ok(())
+        Ok(drained)
+    }
+
+    pub(crate) fn reconcile_finding_pool_mutation_receipts(
+        &self,
+    ) -> Result<usize, crate::KernelError> {
+        let Some(ledger) = self.finding_pool_ledger() else {
+            return Ok(0);
+        };
+        let mut reconciled = 0_usize;
+        loop {
+            let drained = self
+                .drain_finding_pool_mutation_receipts(ledger)
+                .map_err(|error| {
+                    crate::KernelError::DurableAdmission(format!(
+                        "finding pool receipt outbox reconciliation failed: {error}"
+                    ))
+                })?;
+            reconciled = reconciled.checked_add(drained).ok_or_else(|| {
+                crate::KernelError::DurableAdmission(
+                    "finding pool receipt reconciliation count overflow".to_owned(),
+                )
+            })?;
+            if drained < FINDING_POOL_OUTBOX_BATCH_LIMIT {
+                return Ok(reconciled);
+            }
+        }
     }
 
     /// Transfer a pending pool reservation into the durable delivery
