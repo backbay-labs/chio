@@ -1235,7 +1235,15 @@ fn finding_market_snapshot_digest(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, true, true, true,
+        connection, true, true, true, true, true, true, true, true, true, true,
+    )
+}
+
+fn finding_market_snapshot_digest_v11(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, true, true, true, true, false,
     )
 }
 
@@ -1243,7 +1251,7 @@ fn finding_market_snapshot_digest_v10(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, true, true, false,
+        connection, true, true, true, true, true, true, true, true, false, false,
     )
 }
 
@@ -1251,7 +1259,7 @@ fn finding_market_snapshot_digest_v9(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, true, false, false,
+        connection, true, true, true, true, true, true, true, false, false, false,
     )
 }
 
@@ -1259,7 +1267,7 @@ fn finding_market_snapshot_digest_v8(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, false, false, false,
+        connection, true, true, true, true, true, true, false, false, false, false,
     )
 }
 
@@ -1267,7 +1275,7 @@ fn finding_market_snapshot_digest_v7(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, false, false, false, false,
+        connection, true, true, true, true, true, false, false, false, false, false,
     )
 }
 
@@ -1275,7 +1283,7 @@ fn finding_market_snapshot_digest_v6(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, true, true, true, false, false, false, false, false,
+        connection, true, true, true, true, false, false, false, false, false, false,
     )
 }
 
@@ -1283,7 +1291,7 @@ fn finding_market_snapshot_digest_v5(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, true, true, false, false, false, false, false, false,
+        connection, true, true, true, false, false, false, false, false, false, false,
     )
 }
 
@@ -1291,7 +1299,7 @@ fn finding_market_snapshot_digest_v4(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, true, false, false, false, false, false, false, false,
+        connection, true, true, false, false, false, false, false, false, false, false,
     )
 }
 
@@ -1299,7 +1307,7 @@ fn finding_market_snapshot_digest_v3(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, true, false, false, false, false, false, false, false, false,
+        connection, true, false, false, false, false, false, false, false, false, false,
     )
 }
 
@@ -1307,7 +1315,7 @@ fn finding_market_snapshot_digest_v2(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
     finding_market_snapshot_digest_version(
-        connection, false, false, false, false, false, false, false, false, false,
+        connection, false, false, false, false, false, false, false, false, false, false,
     )
 }
 
@@ -1323,6 +1331,7 @@ fn finding_market_snapshot_digest_version(
     include_failed_deliveries: bool,
     include_finalizing_authorizations: bool,
     include_finalizing_authorization_refreshes: bool,
+    include_terminal_reservations: bool,
 ) -> Result<String, SqliteServingOwnerError> {
     let mut challenge_tables = vec![
         "challenges",
@@ -1380,7 +1389,9 @@ fn finding_market_snapshot_digest_version(
         snapshots.push(table_snapshot_where(
             connection,
             table,
-            if include_failed_deliveries {
+            if include_terminal_reservations {
+                "1 = 1"
+            } else if include_failed_deliveries {
                 r#"
                 reservation_id IN (
                     SELECT reservation_id FROM purchase_records
@@ -1466,7 +1477,9 @@ fn finding_market_snapshot_digest_version(
         },
     )?);
     digest(&AuthoritySnapshot {
-        format: if include_failed_deliveries {
+        format: if include_terminal_reservations {
+            "chio.sqlite-finding-market-snapshot.v12"
+        } else if include_failed_deliveries {
             "chio.sqlite-finding-market-snapshot.v9"
         } else if include_capture_intents {
             "chio.sqlite-finding-market-snapshot.v8"
@@ -1988,10 +2001,7 @@ pub(super) fn verify_finding_challenge_projection_coverage(
             OR EXISTS(SELECT 1 FROM listing_sales_blocks)
             OR EXISTS(SELECT 1 FROM purchase_records)
             OR EXISTS(SELECT 1 FROM failed_delivery_records)
-            OR EXISTS(
-                SELECT 1 FROM purchase_reservations
-                WHERE state IN ('open', 'slot_reserved')
-            )
+            OR EXISTS(SELECT 1 FROM purchase_reservations)
             OR EXISTS(SELECT 1 FROM payout_destinations)
         "#,
         [],
@@ -2000,6 +2010,7 @@ pub(super) fn verify_finding_challenge_projection_coverage(
     match rows.last() {
         Some((_, _, snapshot_digest, _, _)) => {
             let current_market = finding_market_snapshot_digest(connection)?;
+            let current_market_v11 = finding_market_snapshot_digest_v11(connection)?;
             let current_market_v10 = finding_market_snapshot_digest_v10(connection)?;
             let current_market_v9 = finding_market_snapshot_digest_v9(connection)?;
             let current_market_v8 = finding_market_snapshot_digest_v8(connection)?;
@@ -2058,6 +2069,11 @@ pub(super) fn verify_finding_challenge_projection_coverage(
                 [],
                 |row| row.get::<_, bool>(0),
             )?;
+            let has_v12_terminal_reservation = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM purchase_reservations WHERE state IN ('released', 'expired'))",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
             let uncovered_before_v10 = current_market_v9 != *snapshot_digest
                 && (has_v9_failed_delivery
                     || (current_market_v8 != *snapshot_digest
@@ -2076,8 +2092,10 @@ pub(super) fn verify_finding_challenge_projection_coverage(
                 && (has_v10_finalizing_authorization
                     || has_v10_actionable_payout_slot
                     || uncovered_before_v10);
+            let uncovered_before_v12 = current_market_v11 != *snapshot_digest
+                && (has_v11_finalizing_authorization_refresh || uncovered_before_v11);
             if current_market != *snapshot_digest
-                && (has_v11_finalizing_authorization_refresh || uncovered_before_v11)
+                && (has_v12_terminal_reservation || uncovered_before_v12)
             {
                 return Err(invalid(
                     "finding challenge projection does not cover current state",

@@ -524,6 +524,35 @@ fn purchase_writes_advance_the_rollback_protected_market_projection() {
     );
 }
 
+#[test]
+fn terminal_reservation_identity_is_rollback_protected() {
+    let fixture = fixture();
+    let purchase = Purchase::new("terminal-projection", LISTING_ID, 10);
+    open_reservation(&fixture, &purchase);
+    fixture
+        .store
+        .release_reservation(&purchase.reservation_id, NOW + 1)
+        .expect("release reservation");
+
+    let connection = fixture.store.connection().expect("purchase connection");
+    connection
+        .execute_batch("DROP TRIGGER purchase_reservations_immutable_identity;")
+        .expect("disable identity trigger for offline tamper");
+    assert_eq!(
+        connection
+            .execute(
+                "UPDATE purchase_reservations SET purchase_intent_id = ?1 WHERE reservation_id = ?2",
+                ["purchase-intent-substituted", purchase.reservation_id.as_str()],
+            )
+            .expect("substitute terminal identity"),
+        1
+    );
+    assert!(
+        crate::serving_owner::verify_finding_market_projection_for_tests(&connection).is_err(),
+        "terminal reservation identity must remain committed after release"
+    );
+}
+
 fn finding_projection_counts(store: &SqliteFindingPurchaseStore) -> (i64, i64) {
     let connection = store.connection.lock().expect("purchase lock");
     connection

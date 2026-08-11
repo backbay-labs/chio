@@ -284,8 +284,10 @@ fn eligible_snapshot(count: usize) -> Vec<EligibleListing> {
 fn epoch_for(eligible: &[EligibleListing], rate_bps: u64, budget_units: u64) -> FindingAuditEpoch {
     let audit_authority = audit_authority();
     let seed_witness = seed_witness();
-    let seed_witnessed_at = COMMITTED_AT - 2;
-    let eligible_snapshot_at = COMMITTED_AT - 1;
+    let eligible_snapshot_at = COMMITTED_AT - 2;
+    let seed_witnessed_at = COMMITTED_AT - 1;
+    let eligible_snapshot_digest =
+        derive_eligible_snapshot_digest(eligible).test_expect("snapshot digest");
     let seed_commitment = derive_audit_seed_commitment(SEED);
     let mut epoch = FindingAuditEpoch {
         schema: FINDING_AUDIT_EPOCH_SCHEMA_V1.to_owned(),
@@ -298,12 +300,12 @@ fn epoch_for(eligible: &[EligibleListing], rate_bps: u64, budget_units: u64) -> 
         seed_witness_signature: seed_witness.sign(&audit_seed_witness_signing_bytes(
             &audit_authority.public_key(),
             7,
+            &eligible_snapshot_digest,
             &seed_commitment,
-            seed_witnessed_at,
             eligible_snapshot_at,
+            seed_witnessed_at,
         )),
-        eligible_snapshot_digest: derive_eligible_snapshot_digest(eligible)
-            .test_expect("snapshot digest"),
+        eligible_snapshot_digest,
         eligible_listing_count: eligible.len() as u64,
         fee_schedule_envelope_sha256: sha256_hex(b"fee-schedule-envelope"),
         seed_commitment,
@@ -1026,6 +1028,22 @@ fn report_verification_requires_fresh_authenticated_evaluator_status() {
         ))
     ));
 
+    witnesses.evaluator_statuses = vec![evaluator_status_observed_at(
+        &policies[0],
+        None,
+        outcomes[0].body.evaluated_at,
+    )];
+    assert!(matches!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::OutcomeStatusStale(_)
+    ));
+
     witnesses.evaluator_statuses = vec![evaluator_status(
         &policies[0],
         Some(outcomes[0].body.evaluated_at),
@@ -1462,15 +1480,37 @@ fn a_report_revealing_a_wrong_seed_rejects() {
 }
 
 #[test]
-fn a_snapshot_cutoff_substituted_after_the_seed_witnessed_it_rejects() {
+fn a_snapshot_digest_substituted_after_the_seed_witness_signed_rejects() {
     let (eligible, mut epoch) = standard_round();
-    epoch.eligible_snapshot_at += 1;
+    epoch.eligible_snapshot_digest = sha256_hex(b"substituted eligible snapshot");
     epoch.audit_epoch_id = String::new();
     epoch.audit_epoch_id = compute_audit_epoch_id(&epoch).test_expect("epoch id");
     assert_eq!(
         select_audit_targets(&epoch, SEED, &eligible).test_unwrap_err(),
         FindingAuditError::Epoch(chio_finding::FindingError::EnvelopeSignatureInvalid(
             "audit_seed_witness"
+        ))
+    );
+}
+
+#[test]
+fn a_seed_commitment_witnessed_before_eligibility_rejects() {
+    let (eligible, mut epoch) = standard_round();
+    epoch.seed_witnessed_at = epoch.eligible_snapshot_at;
+    epoch.seed_witness_signature = seed_witness().sign(&audit_seed_witness_signing_bytes(
+        &epoch.audit_authority,
+        epoch.epoch_index,
+        &epoch.eligible_snapshot_digest,
+        &epoch.seed_commitment,
+        epoch.eligible_snapshot_at,
+        epoch.seed_witnessed_at,
+    ));
+    epoch.audit_epoch_id = String::new();
+    epoch.audit_epoch_id = compute_audit_epoch_id(&epoch).test_expect("epoch id");
+    assert_eq!(
+        select_audit_targets(&epoch, SEED, &eligible).test_unwrap_err(),
+        FindingAuditError::Epoch(chio_finding::FindingError::InvalidField(
+            "seed_witnessed_at"
         ))
     );
 }

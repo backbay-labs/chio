@@ -22,7 +22,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use axum::body::{to_bytes, Body};
 use axum::http::header::AUTHORIZATION;
@@ -477,7 +477,8 @@ struct PublishedArtifacts {
     admissions_by_digest: BTreeMap<String, SignedFindingAdmission>,
     venue_policies: BTreeMap<String, FindingAuthorityPin>,
     profile_governance_policies: BTreeMap<String, FindingAuthorityPin>,
-    case_governance_policies: BTreeMap<String, FindingAuthorityPin>,
+    case_governance_policies: RwLock<BTreeMap<String, FindingAuthorityPin>>,
+    penalty_policies: RwLock<BTreeMap<String, FindingAuthorityPin>>,
     audit_policies: BTreeMap<String, FindingAuthorityPin>,
     audit_witness_policies: BTreeMap<String, FindingAuthorityPin>,
     audit_governance_policies: BTreeMap<String, FindingAuthorityPin>,
@@ -552,8 +553,22 @@ impl PublishedArtifacts {
         governance_policy: FindingAuthorityPin,
     ) -> Result<Self, AnyError> {
         self.case_governance_policies
+            .get_mut()
+            .map_err(|_| "governance-policy index lock is poisoned")?
             .insert(signed_envelope_sha256(artifact)?, governance_policy);
         Ok(self)
+    }
+
+    fn retain_governance_policy<T: serde::Serialize>(
+        &self,
+        artifact: &SignedExportEnvelope<T>,
+        governance_policy: FindingAuthorityPin,
+    ) -> Result<(), AnyError> {
+        self.case_governance_policies
+            .write()
+            .map_err(|_| "governance-policy index lock is poisoned")?
+            .insert(signed_envelope_sha256(artifact)?, governance_policy);
+        Ok(())
     }
 
     fn publish_audit_policy(mut self, policy: FindingAuthorityPin) -> Self {
@@ -604,7 +619,51 @@ impl FindingFilingResolver for PublishedArtifacts {
     }
 
     fn governance_policy_for_case(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        self.case_governance_policies.get(envelope_sha256).cloned()
+        self.case_governance_policies
+            .read()
+            .ok()?
+            .get(envelope_sha256)
+            .cloned()
+    }
+
+    fn governance_policy_for_activation(
+        &self,
+        envelope_sha256: &str,
+    ) -> Option<FindingAuthorityPin> {
+        self.case_governance_policies
+            .read()
+            .ok()?
+            .get(envelope_sha256)
+            .cloned()
+    }
+
+    fn penalty_policy_for_penalty(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
+        self.penalty_policies
+            .read()
+            .ok()?
+            .get(envelope_sha256)
+            .cloned()
+    }
+
+    fn retain_penalty_policy(
+        &self,
+        envelope_sha256: &str,
+        policy: &FindingAuthorityPin,
+    ) -> Result<(), String> {
+        let mut policies = self
+            .penalty_policies
+            .write()
+            .map_err(|_| "penalty-policy index lock is poisoned".to_owned())?;
+        match policies.get(envelope_sha256) {
+            Some(existing) if existing != policy => {
+                Err("penalty envelope is already bound to another policy".to_owned())
+            }
+            Some(_) => Ok(()),
+            None => {
+                policies.insert(envelope_sha256.to_owned(), policy.clone());
+                Ok(())
+            }
+        }
     }
 
     fn audit_policy_for_key(&self, key: &PublicKey) -> Option<FindingAuthorityPin> {
@@ -732,6 +791,10 @@ fn deployment_publishing_terms_and_rounds(
         .publish_admission(&admission, config.venue.clone())?
         .publish_profile_policy(&verifier_profile()?, config.governance_root.clone())?
         .publish_governance_policy(&retained_governance.charter, config.governance_root.clone())?
+        .publish_governance_policy(
+            &retained_governance.activation,
+            config.governance_root.clone(),
+        )?
         .publish_governance_policy(
             &retained_governance.sanction_case,
             config.governance_root.clone(),
@@ -2278,8 +2341,9 @@ fn audit_round_over(eligible: Vec<EligibleListing>) -> Result<FindingAuditRound,
     let revealed_seed = audit_seed();
     let audit_authority = keypair(35);
     let randomness_witness = keypair(37);
-    let seed_witnessed_at = NOW - 2_000;
-    let eligible_snapshot_at = NOW - 1_500;
+    let eligible_snapshot_at = NOW - 2_000;
+    let seed_witnessed_at = NOW - 1_500;
+    let eligible_snapshot_digest = derive_eligible_snapshot_digest(&eligible)?;
     let seed_commitment = derive_audit_seed_commitment(&revealed_seed);
     let mut epoch = FindingAuditEpoch {
         schema: FINDING_AUDIT_EPOCH_SCHEMA_V1.to_string(),
@@ -2292,11 +2356,12 @@ fn audit_round_over(eligible: Vec<EligibleListing>) -> Result<FindingAuditRound,
         seed_witness_signature: randomness_witness.sign(&audit_seed_witness_signing_bytes(
             &audit_authority.public_key(),
             1,
+            &eligible_snapshot_digest,
             &seed_commitment,
-            seed_witnessed_at,
             eligible_snapshot_at,
+            seed_witnessed_at,
         )),
-        eligible_snapshot_digest: derive_eligible_snapshot_digest(&eligible)?,
+        eligible_snapshot_digest,
         eligible_listing_count: u64::try_from(eligible.len())?,
         fee_schedule_envelope_sha256: signed_envelope_sha256(&published_fee_schedule()?)?,
         seed_commitment,
@@ -2955,6 +3020,12 @@ fn market_terms_shaped(
 /// Admitted terms whose filing window lapsed before the fixture clock.
 fn lapsed_window_terms() -> Result<SignedFindingMarketTerms, AnyError> {
     market_terms_shaped(|terms| terms.filing_window_secs = 600)
+}
+
+/// Admitted terms whose artifact expiry closes before their longer filing
+/// duration would otherwise end.
+fn early_expiry_terms() -> Result<SignedFindingMarketTerms, AnyError> {
+    market_terms_shaped(|terms| terms.expires_at = NOW)
 }
 
 /// Admitted terms that keep the listing out of the audit rotation.
@@ -4517,6 +4588,30 @@ fn finding_challenge_a_filing_past_the_signed_filing_window_is_refused() -> Test
 }
 
 #[test]
+fn finding_challenge_terms_expiry_closes_initial_filing_admission() -> TestResult {
+    let terms = early_expiry_terms()?;
+    let deployment = deployment_publishing_terms(std::slice::from_ref(&terms))?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (_, raw) = finding_artifact()?;
+    let terms_digest = signed_envelope_sha256(&terms)?;
+    let challenge = buyer_challenge_bound_to_terms(&keypair(41), &terms_digest)?;
+
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("terms expiry must close the same instant recovery considers expired");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::FilingWindowClosed
+    ));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_a_late_venue_audit_is_refused() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -5987,6 +6082,96 @@ fn finding_challenge_successful_appeal_reverses_before_impairment() -> TestResul
         FindingLiabilityState::ReversedBeforeImpairment
     );
     assert!(!liability.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_appeal_accepts_a_retained_activation_across_governance_rotation() -> TestResult
+{
+    let case = upheld_liability()?;
+    let rotated_key = keypair(52);
+    let appeal_case = sample_case(
+        &rotated_key,
+        &case.governance.listing,
+        &case.governance.activation,
+        &case.governance.charter,
+        GenericGovernanceCaseKind::Appeal,
+        Some(case.upheld.sanction_case_id.clone()),
+        Some(case.upheld.sanction_case_id.clone()),
+    )?;
+    let mut rotated_policy = authority_pin(52, "governance-rotated");
+    rotated_policy.key_epoch = PINNED_KEY_EPOCH + 1;
+    rotated_policy.valid_from = NOW;
+    case.deployment
+        .filings
+        .retain_governance_policy(&appeal_case, rotated_policy.clone())?;
+    let mut rotated_config = market_config();
+    rotated_config.governance_root = rotated_policy;
+    let coordinator = case
+        .deployment
+        .coordinator_under(&rotated_config, FindingDisputeLockDisposition::Forfeited)?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+
+    let resolution = coordinator.resolve_appeal(
+        &case.upheld.liability_key,
+        &case.outcome,
+        &identity,
+        Some(&case.upheld.sealed),
+        &case.governance.context(),
+        &AppealDisposition::Successful {
+            appeal_case: &appeal_case,
+            appeal_case_id: &appeal_case.body.case_id,
+        },
+        &case.upheld.sanction_case_id,
+        &case.upheld.hold,
+        &hex64('7'),
+        NOW + 20,
+    )?;
+    assert!(matches!(
+        resolution,
+        AppealResolution::ReversedBeforeImpairment { .. }
+    ));
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_appeal_accepts_a_prior_hold_across_penalty_rotation() -> TestResult {
+    let case = upheld_liability()?;
+    let mut rotated_config = market_config();
+    rotated_config.market_penalty = authority_pin(50, "market-penalty-rotated");
+    let coordinator = FindingChallengeCoordinator::new(
+        case.deployment.challenges.clone(),
+        case.deployment.purchases.clone(),
+        &rotated_config,
+        keypair(31),
+        keypair(32),
+        keypair(50),
+        Arc::new(TestAuthorityStatusResolver::live()),
+        case.deployment.rail.clone(),
+        case.deployment.filings.clone(),
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+
+    let resolution = coordinator.resolve_appeal(
+        &case.upheld.liability_key,
+        &case.outcome,
+        &identity,
+        Some(&case.upheld.sealed),
+        &case.governance.context(),
+        &AppealDisposition::Successful {
+            appeal_case: &case.governance.appeal_case,
+            appeal_case_id: &case.governance.appeal_case.body.case_id,
+        },
+        &case.upheld.sanction_case_id,
+        &case.upheld.hold,
+        &hex64('7'),
+        NOW + 20,
+    )?;
+    assert!(matches!(
+        resolution,
+        AppealResolution::ReversedBeforeImpairment { .. }
+    ));
     Ok(())
 }
 

@@ -1,6 +1,6 @@
 //! `chio.finding.audit-epoch.v1`: the venue's signed precommitment for one
-//! audit round, published after an independent randomness witness has
-//! committed the seed and before any listing snapshot is taken.
+//! audit round, published after the eligible listing snapshot is fixed and
+//! an independent randomness witness has generated and committed a seed.
 //!
 //! Random auditing is an operator assumption unless the round commits its
 //! inputs before it samples. This artifact commits the eligible listing
@@ -49,22 +49,23 @@ pub fn derive_audit_seed_commitment(revealed_seed: &str) -> String {
     chio_core_types::crypto::sha256_hex(&preimage)
 }
 
-/// Exact bytes the independent randomness witness signs before the
-/// eligible listing snapshot exists.
+/// Exact bytes the independent randomness witness signs after the eligible
+/// listing snapshot is fixed.
 ///
-/// The future snapshot time is committed here so the venue cannot reuse a
-/// witness statement for a snapshot it had already observed. The snapshot
-/// digest is deliberately absent because it does not exist yet.
+/// The witness controls and withholds the seed until the report. Binding the
+/// already committed snapshot digest prevents the venue from selecting or
+/// weighting listings after learning the seed commitment.
 #[must_use]
 pub fn audit_seed_witness_signing_bytes(
     audit_authority: &PublicKey,
     epoch_index: u64,
+    eligible_snapshot_digest: &str,
     seed_commitment: &str,
-    seed_witnessed_at: u64,
     eligible_snapshot_at: u64,
+    seed_witnessed_at: u64,
 ) -> Vec<u8> {
     format!(
-        "{AUDIT_SEED_WITNESS_DOMAIN}\0{}\0{epoch_index}\0{seed_commitment}\0{seed_witnessed_at}\0{eligible_snapshot_at}",
+        "{AUDIT_SEED_WITNESS_DOMAIN}\0{}\0{epoch_index}\0{eligible_snapshot_digest}\0{eligible_snapshot_at}\0{seed_commitment}\0{seed_witnessed_at}",
         audit_authority.to_hex()
     )
     .into_bytes()
@@ -82,10 +83,11 @@ pub struct FindingAuditEpoch {
     /// The externally pinned signer of the enclosing epoch envelope. The
     /// witness statement binds its commitment to this exact authority.
     pub audit_authority: PublicKey,
-    /// Time the independently trusted witness committed the seed.
+    /// Time the independently trusted witness generated and committed the
+    /// seed. This must be strictly after the eligible snapshot was fixed.
     pub seed_witnessed_at: u64,
-    /// Time the venue took the eligible listing snapshot. This must be
-    /// strictly later than the witness commitment.
+    /// Time the venue fixed the eligible listing snapshot, before the
+    /// witness generated the seed.
     pub eligible_snapshot_at: u64,
     /// Independently pinned randomness-witness key.
     pub seed_witness: PublicKey,
@@ -123,8 +125,8 @@ impl FindingAuditEpoch {
         }
         require_nonzero(self.seed_witnessed_at, "seed_witnessed_at")?;
         require_nonzero(self.eligible_snapshot_at, "eligible_snapshot_at")?;
-        if self.seed_witnessed_at >= self.eligible_snapshot_at {
-            return Err(FindingError::InvalidField("eligible_snapshot_at"));
+        if self.eligible_snapshot_at >= self.seed_witnessed_at {
+            return Err(FindingError::InvalidField("seed_witnessed_at"));
         }
         require_hex64(&self.eligible_snapshot_digest, "eligible_snapshot_digest")?;
         require_nonzero(self.eligible_listing_count, "eligible_listing_count")?;
@@ -142,7 +144,7 @@ impl FindingAuditEpoch {
         require_currency(&self.available_budget.currency, "available_budget.currency")?;
         require_hex64(&self.authorization_digest, "authorization_digest")?;
         require_nonzero(self.committed_at, "committed_at")?;
-        if self.eligible_snapshot_at > self.committed_at {
+        if self.seed_witnessed_at > self.committed_at {
             return Err(FindingError::InvalidField("committed_at"));
         }
         self.verify_seed_witness()?;
@@ -154,9 +156,10 @@ impl FindingAuditEpoch {
         let message = audit_seed_witness_signing_bytes(
             &self.audit_authority,
             self.epoch_index,
+            &self.eligible_snapshot_digest,
             &self.seed_commitment,
-            self.seed_witnessed_at,
             self.eligible_snapshot_at,
+            self.seed_witnessed_at,
         );
         if self
             .seed_witness

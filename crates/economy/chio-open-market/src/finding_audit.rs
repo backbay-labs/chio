@@ -800,7 +800,7 @@ pub fn verify_audit_report(
                 outcome.outcome_id.clone(),
             ));
         };
-        if status.body.observed_at < outcome.evaluated_at
+        if status.body.observed_at <= outcome.evaluated_at
             || status.body.observed_at > report.reported_at
             || report.reported_at.saturating_sub(status.body.observed_at)
                 > MAX_AUDIT_STATUS_AGE_SECS

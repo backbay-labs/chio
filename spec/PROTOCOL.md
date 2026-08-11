@@ -1846,6 +1846,14 @@ selection algorithm, the published rate in basis points (nonzero and at most
 commitment time. The seed itself has no encoding in this artifact and MUST
 NOT be published with its commitment.
 
+The venue MUST fix the eligible snapshot before the independent randomness
+witness generates the seed. `eligible_snapshot_at` MUST be strictly before
+`seed_witnessed_at`. The witness MUST control and withhold the seed until the
+report, and its signature MUST bind the audit authority, epoch index, exact
+eligible snapshot digest and time, seed commitment, and witness time. A
+witness statement that omits the snapshot or precedes it does not prevent a
+venue that knows the seed from shaping eligibility and MUST be rejected.
+
 The `authorization_digest` MUST be the SHA-256 digest of the exact signed
 `chio.finding.audit-round-authorization.v1` envelope. Its precommitment digest
 is computed over the canonical epoch body after clearing only

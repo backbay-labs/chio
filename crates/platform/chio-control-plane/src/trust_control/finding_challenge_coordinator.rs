@@ -387,6 +387,12 @@ pub enum ChallengeCoordinatorError {
     UnknownProfileGovernancePolicy,
     #[error("retained governance case has no authenticated governance policy")]
     UnknownGovernanceCasePolicy,
+    #[error("retained trust activation has no authenticated governance policy")]
+    UnknownGovernanceActivationPolicy,
+    #[error("retained prior penalty has no authenticated penalty-authority policy")]
+    UnknownPenaltyAuthorityPolicy,
+    #[error("penalty-authority policy could not be retained: {0}")]
+    PenaltyPolicyRetention(String),
     #[error("retained venue-audit challenge has no authenticated audit policy")]
     UnknownAuditAuthorityPolicy,
     #[error("retained audit epoch has no authenticated randomness-witness policy")]
@@ -569,6 +575,26 @@ pub trait FindingFilingResolver: Send + Sync {
     /// case envelope. A sanction remains enforceable across governance-key
     /// rotation only when the venue retained the policy that admitted it.
     fn governance_policy_for_case(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+
+    /// The retained governance policy that authenticated this exact trust
+    /// activation. Activation and appeal cases can legitimately span a
+    /// governance-key rotation.
+    fn governance_policy_for_activation(
+        &self,
+        envelope_sha256: &str,
+    ) -> Option<FindingAuthorityPin>;
+
+    /// The retained penalty-authority policy that authenticated this exact
+    /// signed penalty envelope.
+    fn penalty_policy_for_penalty(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+
+    /// Retain the trusted policy used to mint an exact penalty so a later
+    /// appeal can authenticate it after authority rotation.
+    fn retain_penalty_policy(
+        &self,
+        envelope_sha256: &str,
+        policy: &FindingAuthorityPin,
+    ) -> Result<(), String>;
 
     /// A governance-published historical audit-authority policy, resolved
     /// independently of the challenge envelope that names its signer.
@@ -3503,7 +3529,12 @@ impl FindingChallengeCoordinator {
             .issued_at
             .checked_add(terms.filing_window_secs)
             .ok_or(ChallengeCoordinatorError::FilingWindowClosed)?;
-        if filed_at < terms.issued_at || filed_at > deadline || received_at > deadline {
+        if filed_at < terms.issued_at
+            || filed_at > deadline
+            || received_at > deadline
+            || filed_at >= terms.expires_at
+            || received_at >= terms.expires_at
+        {
             return Err(ChallengeCoordinatorError::FilingWindowClosed);
         }
         Ok(())
@@ -3552,7 +3583,7 @@ impl FindingChallengeCoordinator {
         case: &SignedGenericGovernanceCase,
         prior_penalty: Option<&SignedOpenMarketPenalty>,
         now: u64,
-    ) -> Result<PublicKey, ChallengeCoordinatorError> {
+    ) -> Result<Vec<PublicKey>, ChallengeCoordinatorError> {
         let case_envelope_sha256 = self.envelope_digest(case)?;
         let governance_policy = self
             .filings
@@ -3614,20 +3645,52 @@ impl FindingChallengeCoordinator {
                 "governance case",
             ));
         }
-        if governance
-            .activation
-            .is_some_and(|activation| activation.signer_key != governance_key)
-        {
-            return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
-                "trust activation",
-            ));
+        let mut trusted = vec![governance_key, charter_governance_key];
+        if let Some(activation) = governance.activation {
+            let activation_digest = self.envelope_digest(activation)?;
+            let activation_policy = self
+                .filings
+                .governance_policy_for_activation(&activation_digest)
+                .ok_or(ChallengeCoordinatorError::UnknownGovernanceActivationPolicy)?;
+            let activation_at = activation
+                .body
+                .reviewed_at
+                .unwrap_or(activation.body.requested_at);
+            let activation_key = self.require_live_role(
+                &activation_policy,
+                activation_at,
+                now,
+                "historical trust activation",
+            )?;
+            if activation.signer_key != activation_key {
+                return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
+                    "trust activation",
+                ));
+            }
+            if !trusted.contains(&activation_key) {
+                trusted.push(activation_key);
+            }
         }
-        if prior_penalty
-            .is_some_and(|prior| prior.signer_key != self.penalty_authority.public_key())
-        {
-            return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
-                "prior penalty",
-            ));
+        if let Some(prior) = prior_penalty {
+            let prior_digest = self.envelope_digest(prior)?;
+            let prior_policy = self
+                .filings
+                .penalty_policy_for_penalty(&prior_digest)
+                .ok_or(ChallengeCoordinatorError::UnknownPenaltyAuthorityPolicy)?;
+            let prior_key = self.require_live_role(
+                &prior_policy,
+                prior.body.updated_at,
+                now,
+                "historical prior penalty",
+            )?;
+            if prior.signer_key != prior_key {
+                return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
+                    "prior penalty",
+                ));
+            }
+            if !trusted.contains(&prior_key) {
+                trusted.push(prior_key);
+            }
         }
         ensure_generic_listing_signed_by_namespace_owner(governance.listing, "penalty listing")
             .map_err(ChallengeCoordinatorError::PenaltyMint)?;
@@ -3702,7 +3765,7 @@ impl FindingChallengeCoordinator {
             .current_publisher
             .validate()
             .map_err(ChallengeCoordinatorError::PenaltyMint)?;
-        Ok(governance_key)
+        Ok(trusted)
     }
 
     /// Resolve the instant this liability's claim window closes.
@@ -5711,8 +5774,7 @@ impl FindingChallengeCoordinator {
     ) -> Result<FindingPenaltyOutcome, ChallengeCoordinatorError> {
         self.require_live_role(&self.penalty_pin, issued_at, now, "penalty")?;
         let penalty_key = self.penalty_authority.public_key();
-        let governance_key =
-            self.require_pinned_governance(governance, case, prior_penalty, now)?;
+        let mut trusted = self.require_pinned_governance(governance, case, prior_penalty, now)?;
         let outcome_envelope_sha256 = self.envelope_digest(outcome)?;
         let (action, state, supersedes) = match branch {
             FindingPenaltyBranch::PendingAppeal => (
@@ -5756,11 +5818,11 @@ impl FindingChallengeCoordinator {
             expires_at: governance.penalty_expires_at,
             note: None,
         };
-        let trusted = vec![
-            governance_key,
-            governance.fee_schedule.signer_key.clone(),
-            penalty_key,
-        ];
+        for key in [governance.fee_schedule.signer_key.clone(), penalty_key] {
+            if !trusted.contains(&key) {
+                trusted.push(key);
+            }
+        }
         let artifact = build_open_market_penalty_artifact_with_trusted_signers(
             governance.local_operator_id,
             &issue,
@@ -5796,6 +5858,9 @@ impl FindingChallengeCoordinator {
             &trusted,
         )
         .map_err(|error| ChallengeCoordinatorError::PenaltyEvaluation(error.to_string()))?;
+        self.filings
+            .retain_penalty_policy(&penalty_envelope_sha256, &self.penalty_pin)
+            .map_err(ChallengeCoordinatorError::PenaltyPolicyRetention)?;
         Ok(FindingPenaltyOutcome {
             penalty,
             penalty_envelope_sha256,

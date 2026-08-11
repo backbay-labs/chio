@@ -510,8 +510,8 @@ fn bond_snapshot_body(seller: &Keypair) -> Result<FindingFinalizedBondSnapshot, 
 fn audit_epoch_body() -> Result<FindingAuditEpoch, FindingError> {
     let audit_authority = keypair(42);
     let seed_witness = keypair(43);
-    let seed_witnessed_at = 1_749_999_000;
-    let eligible_snapshot_at = 1_749_999_500;
+    let eligible_snapshot_at = 1_749_999_000;
+    let seed_witnessed_at = 1_749_999_500;
     let seed_commitment = derive_audit_seed_commitment(SEED);
     let mut epoch = FindingAuditEpoch {
         schema: FINDING_AUDIT_EPOCH_SCHEMA_V1.to_string(),
@@ -524,9 +524,10 @@ fn audit_epoch_body() -> Result<FindingAuditEpoch, FindingError> {
         seed_witness_signature: seed_witness.sign(&audit_seed_witness_signing_bytes(
             &audit_authority.public_key(),
             4,
+            HEX64,
             &seed_commitment,
-            seed_witnessed_at,
             eligible_snapshot_at,
+            seed_witnessed_at,
         )),
         eligible_snapshot_digest: HEX64.to_string(),
         eligible_listing_count: 128,
