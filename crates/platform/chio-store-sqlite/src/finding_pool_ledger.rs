@@ -7,8 +7,10 @@
 //! exact purchase-id and delivery-terminal replay are durable.
 
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
+use chio_core::crypto::PublicKey;
 use chio_core::receipt::body::ChioReceipt;
 use chio_kernel::finding_pool::{
     AuthorizedFindingPoolClaim, AuthorizedFindingPoolDebit, AuthorizedFindingPoolDebitReplay,
@@ -24,11 +26,21 @@ use rusqlite::{params, OptionalExtension, TransactionBehavior};
 
 use crate::{is_in_memory_sqlite_path, sqlite_parent_dir_to_create};
 
+mod expiration;
+mod qualification;
+
+use expiration::expired_unclaimed_reservations;
+use qualification::{
+    acquire_domain_lease, bind_receipt_authority, canonical_receipt_authority_json,
+    database_identity, FindingPoolDomainLease,
+};
+
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS finding_pool_ledger_metadata (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     ledger_domain TEXT NOT NULL,
-    receipt_sink_id TEXT
+    receipt_sink_id TEXT,
+    receipt_authority_json TEXT
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS finding_pool_allocations (
@@ -86,6 +98,7 @@ const MAX_EXPIRED_RECLAMATIONS_PER_DEBIT: usize = 64;
 pub struct SqliteFindingPoolLedger {
     pool: Pool<SqliteConnectionManager>,
     ledger_domain: String,
+    _domain_lease: Arc<FindingPoolDomainLease>,
 }
 
 impl SqliteFindingPoolLedger {
@@ -140,6 +153,12 @@ impl SqliteFindingPoolLedger {
                 "receipt_sink_id",
                 "ALTER TABLE finding_pool_ledger_metadata ADD COLUMN receipt_sink_id TEXT",
             )?;
+            ensure_column(
+                &connection,
+                "finding_pool_ledger_metadata",
+                "receipt_authority_json",
+                "ALTER TABLE finding_pool_ledger_metadata ADD COLUMN receipt_authority_json TEXT",
+            )?;
             bind_ledger_domain(&connection, &ledger_domain)?;
             ensure_lifecycle_columns(&connection)?;
             ensure_outbox_delivery_claim_columns(&connection)?;
@@ -153,9 +172,12 @@ impl SqliteFindingPoolLedger {
                     ))
                 })?;
         }
+        let database_identity = database_identity(path_text)?;
+        let domain_lease = acquire_domain_lease(&ledger_domain, &database_identity)?;
         Ok(Self {
             pool,
             ledger_domain,
+            _domain_lease: domain_lease,
         })
     }
 
@@ -475,6 +497,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             &cleanup_transaction,
             debit.allocation_envelope_sha256(),
             debit.debit_requested_at_unix_ms(),
+            None,
             attestor,
         )?;
         cleanup_transaction
@@ -784,6 +807,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                 &transaction,
                 &stored.0,
                 claim.claimed_at_unix_ms(),
+                Some(claim.purchase_id()),
                 attestor,
             )?;
             transaction
@@ -1415,6 +1439,10 @@ impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {
         &self.ledger_domain
     }
 
+    fn bind_receipt_authority(&self, authority: &PublicKey) -> Result<(), FindingPoolLedgerError> {
+        bind_receipt_authority(&self.pool, authority)
+    }
+
     fn bind_receipt_sink(&self, receipt_sink_id: &str) -> Result<(), FindingPoolLedgerError> {
         validate_receipt_sink_id(receipt_sink_id)?;
         let mut connection = self
@@ -1583,28 +1611,17 @@ fn record_mutation_receipt(
             "signed mutation receipt does not bind the committed transition".to_string(),
         ));
     }
-    let prior_authority = transaction
+    let persisted_authority_json = transaction
         .query_row(
-            "SELECT signed_receipt_json FROM finding_pool_receipt_outbox \
-             ORDER BY rowid LIMIT 1",
+            "SELECT receipt_authority_json FROM finding_pool_ledger_metadata WHERE singleton = 1",
             [],
-            |row| row.get::<_, String>(0),
+            |row| row.get::<_, Option<String>>(0),
         )
-        .optional()
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
-        .map(|json| {
-            serde_json::from_str::<ChioReceipt>(&json)
-                .map(|prior| prior.kernel_key)
-                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
-        })
-        .transpose()?;
-    if prior_authority
-        .as_ref()
-        .is_some_and(|authority| authority != &receipt.kernel_key)
-    {
-        return Err(FindingPoolLedgerError::Receipt(
-            "finding pool mutation receipt authority changed".to_string(),
-        ));
+        .ok_or(FindingPoolLedgerError::ReceiptAuthorityMissing)?;
+    let expected_authority_json = canonical_receipt_authority_json(&receipt.kernel_key)?;
+    if persisted_authority_json != expected_authority_json {
+        return Err(FindingPoolLedgerError::ReceiptAuthorityMismatch);
     }
     let receipt_json = String::from_utf8(
         chio_core::canonical::canonical_json_bytes(&receipt)
@@ -1644,6 +1661,7 @@ fn reclaim_expired_unclaimed(
     transaction: &rusqlite::Transaction<'_>,
     allocation_envelope_sha256: &str,
     trusted_now_unix_ms: u64,
+    required_purchase_id: Option<&str>,
     attestor: &FindingPoolMutationAttestor<'_>,
 ) -> Result<(), FindingPoolLedgerError> {
     let Some((signed_text, reserved_text, spent_text)) = transaction
@@ -1667,54 +1685,12 @@ fn reclaim_expired_unclaimed(
     let signed = parse_units(&signed_text, "signed_amount_units")?;
     let original_reserved = parse_units(&reserved_text, "reserved_units")?;
     let spent = parse_units(&spent_text, "spent_units")?;
-    let trusted_now_text = trusted_now_unix_ms.to_string();
-    let batch_limit = i64::try_from(MAX_EXPIRED_RECLAMATIONS_PER_DEBIT)
-        .map_err(|_| invariant("expired reservation batch limit is invalid"))?;
-    let mut statement = transaction
-        .prepare(
-            "SELECT purchase_id, amount_units, claim_deadline_unix_ms \
-             FROM finding_pool_debits \
-             WHERE allocation_envelope_sha256 = ?1 AND state = 'reserved' \
-               AND claimed_at_unix_ms IS NULL \
-               AND claim_deadline_unix_ms <> '' \
-               AND claim_deadline_unix_ms NOT GLOB '*[^0-9]*' \
-               AND (length(claim_deadline_unix_ms) < length(?2) \
-                    OR (length(claim_deadline_unix_ms) = length(?2) \
-                        AND claim_deadline_unix_ms <= ?2)) \
-             ORDER BY length(claim_deadline_unix_ms), claim_deadline_unix_ms, purchase_id \
-             LIMIT ?3",
-        )
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    let mut rows = statement
-        .query(params![
-            allocation_envelope_sha256,
-            trusted_now_text,
-            batch_limit
-        ])
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    let mut expired = Vec::new();
-    while let Some(row) = rows
-        .next()
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
-    {
-        let purchase_id = row
-            .get::<_, String>(0)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let amount_text = row
-            .get::<_, String>(1)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let deadline_text = row
-            .get::<_, String>(2)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let amount = parse_units(&amount_text, "debit.amount_units")?;
-        let deadline = parse_units(&deadline_text, "debit.claim_deadline_unix_ms")?;
-        if deadline > trusted_now_unix_ms {
-            return Err(invariant("expiration query returned a live reservation"));
-        }
-        expired.push((purchase_id, amount));
-    }
-    drop(rows);
-    drop(statement);
+    let expired = expired_unclaimed_reservations(
+        transaction,
+        allocation_envelope_sha256,
+        trusted_now_unix_ms,
+        required_purchase_id,
+    )?;
     if expired.is_empty() {
         return Ok(());
     }
@@ -2033,7 +2009,7 @@ mod tests {
         let directory = tempfile::tempdir().test_expect("create pool ledger directory");
         let ledger = SqliteFindingPoolLedger::open_qualified(
             directory.path().join("pool.sqlite3"),
-            "ledger:test-internal",
+            "ledger:test-internal-scan",
         )
         .test_expect("open qualified pool ledger");
         let allocation_digest = "d".repeat(64);
@@ -2125,7 +2101,7 @@ mod tests {
         let directory = tempfile::tempdir().test_expect("create pool ledger directory");
         let ledger = SqliteFindingPoolLedger::open_qualified(
             directory.path().join("pool.sqlite3"),
-            "ledger:test-internal",
+            "ledger:test-internal-unknown-dispatch",
         )
         .test_expect("open qualified pool ledger");
         let allocation_digest = "a".repeat(64);

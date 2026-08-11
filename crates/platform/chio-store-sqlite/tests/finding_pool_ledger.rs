@@ -14,7 +14,7 @@ use chio_core::receipt::body::ChioReceipt;
 use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_kernel::finding_pool::{
     FindingPoolDebitAuthorization, FindingPoolDebitError, FindingPoolDebitRequest,
-    FindingPoolDebitState, FindingPoolLedger, FindingPoolLedgerError,
+    FindingPoolDebitState, FindingPoolLedger, FindingPoolLedgerError, QualifiedFindingPoolLedger,
     FINDING_POOL_DEBIT_AUTHORIZATION_SCHEMA_V1,
 };
 use chio_kernel::finding_purchase::{
@@ -36,7 +36,13 @@ use chio_swarm_authority::finding_pool::{
 use chio_swarm_authority::{SwarmBudgetPool, CHIO_SWARM_BUDGET_POOL_SCHEMA};
 use chio_test_support::prelude::*;
 
-const LEDGER_DOMAIN: &str = "ledger:cognition-market:test";
+fn ledger_domain() -> String {
+    let thread = std::thread::current();
+    format!(
+        "ledger:cognition-market:test:{}",
+        thread.name().unwrap_or("unnamed")
+    )
+}
 
 #[derive(Clone)]
 struct PoolFixture {
@@ -44,6 +50,7 @@ struct PoolFixture {
     allocation: SignedFindingPoolAllocation,
     envelope_sha256: String,
     authority: Keypair,
+    receipt_authority: Keypair,
     purchaser: Keypair,
     debit_signer: Keypair,
     receipt_store: Arc<SqliteReceiptStore>,
@@ -85,7 +92,7 @@ fn fixture_for_pool(
         FindingPoolAllocation {
             schema: FINDING_POOL_ALLOCATION_SCHEMA_V1.to_string(),
             allocation_id: String::new(),
-            ledger_domain: LEDGER_DOMAIN.to_owned(),
+            ledger_domain: ledger_domain(),
             pool_id: pool.pool_id.clone(),
             pool_sha256: swarm_budget_pool_sha256(&pool).test_expect("hash pool"),
             graph_id: pool.graph_id.clone(),
@@ -108,6 +115,7 @@ fn fixture_for_pool(
         pool,
         allocation,
         envelope_sha256,
+        receipt_authority: authority.clone(),
         authority,
         debit_signer: purchaser.clone(),
         purchaser,
@@ -327,7 +335,7 @@ fn debit_at_with_policy_and_authority(
     kernel.set_finding_purchase_verifier(Arc::new(verifier));
     kernel.set_finding_pool_allocation_authority(allocation_authority);
     kernel
-        .set_finding_pool_receipt_authority(fixture.authority.clone())
+        .set_finding_pool_receipt_authority(fixture.receipt_authority.clone())
         .test_expect("configure stable pool receipt authority");
     kernel
         .set_finding_pool_ledger(Arc::new(ledger.clone()))
@@ -446,7 +454,7 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("finding-pool.sqlite3");
     let ledger = Arc::new(
-        SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+        SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
             .test_expect("open qualified ledger"),
     );
     let fixture = Arc::new(fixture(100));
@@ -498,7 +506,7 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
     );
 
     drop(ledger);
-    let restarted = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+    let restarted = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("restart ledger");
     assert_eq!(
         restarted
@@ -548,7 +556,7 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
 fn sqlite_outbox_claim_serializes_independent_ledger_instances() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("finding-pool.sqlite3");
-    let producer = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+    let producer = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open producer ledger");
     let fixture = fixture(100);
     debit(&producer, &fixture, "purchase:outbox-claim", 10)
@@ -567,9 +575,9 @@ fn sqlite_outbox_claim_serializes_independent_ledger_instances() {
     );
     drop(connection);
 
-    let first = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+    let first = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open first consumer");
-    let second = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+    let second = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open second consumer");
     let claimed = first
         .claim_pending_mutation_receipts("worker:first", 3_000, 60_000, 1)
@@ -596,7 +604,7 @@ fn cognition_market_pool_ledger_persists_its_authority_selected_domain() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("finding-pool.sqlite3");
     drop(
-        SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+        SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
             .test_expect("initialize qualified ledger domain"),
     );
 
@@ -610,16 +618,35 @@ fn cognition_market_pool_ledger_persists_its_authority_selected_domain() {
 }
 
 #[test]
+fn cognition_market_pool_domain_excludes_a_second_live_store() {
+    let first_directory = tempfile::tempdir().test_expect("create first ledger directory");
+    let second_directory = tempfile::tempdir().test_expect("create second ledger directory");
+    let domain = format!("{}:exclusive", ledger_domain());
+    let first_path = first_directory.path().join("pool.sqlite3");
+    let second_path = second_directory.path().join("pool.sqlite3");
+    let first = SqliteFindingPoolLedger::open_qualified(&first_path, &domain)
+        .test_expect("open first domain owner");
+    let same = SqliteFindingPoolLedger::open_qualified(&first_path, &domain)
+        .test_expect("share the lease for the same durable store");
+    assert!(matches!(
+        SqliteFindingPoolLedger::open_qualified(&second_path, &domain),
+        Err(FindingPoolLedgerError::LedgerDomainInUse)
+    ));
+    drop(same);
+    drop(first);
+}
+
+#[test]
 fn cognition_market_pool_receipts_survive_ordinary_kernel_key_rotation() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("finding-pool.sqlite3");
-    let ledger = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+    let ledger = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open qualified ledger");
     let fixture = fixture(100);
     debit(&ledger, &fixture, "purchase:before-rotation", 10)
         .test_expect("reserve before kernel key rotation");
 
-    let reopened = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+    let reopened = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("reopen qualified ledger");
     debit_at_with_policy_and_kernel_key(
         &reopened,
@@ -661,7 +688,7 @@ fn qualified_pool_rejects_percent_decoded_nul_uris() {
     for path in ["file:%00", "file::memory:%00", "file:pool?mode=memory%00"] {
         assert!(
             matches!(
-                SqliteFindingPoolLedger::open_qualified(path, LEDGER_DOMAIN),
+                SqliteFindingPoolLedger::open_qualified(path, ledger_domain()),
                 Err(FindingPoolLedgerError::Storage(_))
             ),
             "{path} must be rejected before SQLite opens it"
@@ -679,7 +706,7 @@ fn qualified_pool_creates_percent_decoded_uri_parent() {
     );
 
     drop(
-        SqliteFindingPoolLedger::open_qualified(&encoded_uri, LEDGER_DOMAIN)
+        SqliteFindingPoolLedger::open_qualified(&encoded_uri, ledger_domain())
             .test_expect("open qualified ledger through encoded URI"),
     );
 
@@ -699,7 +726,7 @@ fn qualified_pool_rejects_sqlite_uris_that_disable_file_locking() {
     ] {
         assert!(
             matches!(
-                SqliteFindingPoolLedger::open_qualified(&path, LEDGER_DOMAIN),
+                SqliteFindingPoolLedger::open_qualified(&path, ledger_domain()),
                 Err(FindingPoolLedgerError::Storage(_))
             ),
             "lockless SQLite URI {path:?} must not qualify"
@@ -712,7 +739,7 @@ fn qualified_pool_rejects_read_only_sqlite_uris() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("pool.sqlite3");
     drop(
-        SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+        SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
             .test_expect("initialize writable pool ledger"),
     );
     let base = format!("file:{}", database.display());
@@ -723,7 +750,7 @@ fn qualified_pool_rejects_read_only_sqlite_uris() {
     ] {
         assert!(
             matches!(
-                SqliteFindingPoolLedger::open_qualified(&path, LEDGER_DOMAIN),
+                SqliteFindingPoolLedger::open_qualified(&path, ledger_domain()),
                 Err(FindingPoolLedgerError::Storage(_))
             ),
             "read-only SQLite URI {path:?} must not qualify"
@@ -734,24 +761,32 @@ fn qualified_pool_rejects_read_only_sqlite_uris() {
 #[test]
 fn cognition_market_pool_receipt_authority_is_pinned_ledger_wide() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
-    let ledger = SqliteFindingPoolLedger::open_qualified(
-        directory.path().join("finding-pool.sqlite3"),
-        LEDGER_DOMAIN,
-    )
-    .test_expect("open qualified ledger");
+    let database = directory.path().join("finding-pool.sqlite3");
+    let ledger = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
+        .test_expect("open qualified ledger");
     let first = fixture_for_pool(100, 10_000, "receipt-authority-one", 71, 72);
     debit(&ledger, &first, "purchase:receipt-authority-one", 10)
         .test_expect("record the first ledger authority");
 
-    let mut second = fixture_for_pool(100, 10_000, "receipt-authority-two", 73, 74);
-    second.receipt_store = Arc::clone(&first.receipt_store);
-    second._receipt_directory = Arc::clone(&first._receipt_directory);
-    assert!(matches!(
-        debit(&ledger, &second, "purchase:receipt-authority-two", 10),
-        Err(FindingPoolDebitError::Ledger(
-            FindingPoolLedgerError::Receipt(message)
-        )) if message.contains("receipt authority changed")
-    ));
+    let connection = rusqlite::Connection::open(&database).test_expect("open ledger metadata");
+    connection
+        .execute(
+            "UPDATE finding_pool_ledger_metadata SET receipt_authority_json = NULL",
+            [],
+        )
+        .test_expect("simulate the pre-binding schema migration");
+    drop(connection);
+
+    let second = fixture_for_pool(100, 10_000, "receipt-authority-two", 73, 74);
+    assert_eq!(
+        ledger.bind_receipt_authority(&second.receipt_authority.public_key()),
+        Err(FindingPoolLedgerError::ReceiptAuthorityMismatch)
+    );
+    let reopened = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
+        .test_expect("reopen authority-bound ledger");
+    reopened
+        .bind_receipt_authority(&first.receipt_authority.public_key())
+        .test_expect("retain the same receipt authority across reopen");
 }
 
 #[test]
@@ -759,7 +794,7 @@ fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitutio
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(
         directory.path().join("pool.sqlite3"),
-        LEDGER_DOMAIN,
+        ledger_domain(),
     )
     .test_expect("open qualified ledger");
     let fixture = fixture(100);
@@ -789,7 +824,7 @@ fn cognition_market_pool_rejects_authority_purchaser_digest_and_pool_substitutio
         &non_ed25519_authority,
         &fixture.pool,
         &p256_authority,
-        LEDGER_DOMAIN,
+        &ledger_domain(),
         2_000,
     )
     .test_expect_err("non-Ed25519 allocation authority must fail closed");
@@ -858,7 +893,7 @@ fn cognition_market_pool_binds_one_purchaser_allocation_per_pool() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(
         directory.path().join("pool.sqlite3"),
-        LEDGER_DOMAIN,
+        ledger_domain(),
     )
     .test_expect("open qualified ledger");
     let first = fixture(100);
@@ -890,7 +925,7 @@ fn cognition_market_pool_replays_after_expiry_but_rejects_new_spend() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(
         directory.path().join("pool.sqlite3"),
-        LEDGER_DOMAIN,
+        ledger_domain(),
     )
     .test_expect("open qualified ledger");
     let fixture = fixture(100);
@@ -913,7 +948,7 @@ fn cognition_market_pool_replays_after_allocation_authority_rotation() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(
         directory.path().join("pool.sqlite3"),
-        LEDGER_DOMAIN,
+        ledger_domain(),
     )
     .test_expect("open qualified ledger");
     let fixture = fixture(100);
@@ -960,7 +995,7 @@ fn cognition_market_pool_replays_after_purchase_verifier_rotation() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(
         directory.path().join("pool.sqlite3"),
-        LEDGER_DOMAIN,
+        ledger_domain(),
     )
     .test_expect("open qualified ledger");
     let fixture = fixture(100);
@@ -1008,7 +1043,7 @@ fn cognition_market_pool_replay_skips_mutable_purchase_admission() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(
         directory.path().join("pool.sqlite3"),
-        LEDGER_DOMAIN,
+        ledger_domain(),
     )
     .test_expect("open qualified ledger");
     let fixture = fixture(100);
@@ -1062,7 +1097,7 @@ fn cognition_market_pool_replay_skips_mutable_purchase_admission() {
 fn cognition_market_pool_reclaims_unclaimed_reservations_at_the_claim_deadline() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("pool.sqlite3");
-    let ledger = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+    let ledger = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open qualified ledger");
     let fixture = fixture_until(10, 100_000);
     debit_at(&ledger, &fixture, "purchase:abandoned", 10, 2_000)
@@ -1121,7 +1156,7 @@ fn cognition_market_pool_reclaims_unclaimed_reservations_at_the_claim_deadline()
 fn cognition_market_pool_bounds_expired_reclamation_per_debit() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("pool.sqlite3");
-    let ledger = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+    let ledger = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open qualified ledger");
     let fixture = fixture_until(129, 100_000);
     for index in 0..65_u64 {
@@ -1167,7 +1202,7 @@ fn cognition_market_pool_bounds_expired_reclamation_per_debit() {
 fn cognition_market_pool_reclamation_progress_survives_a_capacity_rejection() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("pool.sqlite3");
-    let ledger = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+    let ledger = SqliteFindingPoolLedger::open_qualified(&database, ledger_domain())
         .test_expect("open qualified ledger");
     let fixture = fixture_until(65, 100_000);
     for index in 0..65_u64 {
@@ -1239,7 +1274,7 @@ fn cognition_market_pool_requires_live_status_before_new_debit_but_replays() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(
         directory.path().join("pool.sqlite3"),
-        LEDGER_DOMAIN,
+        ledger_domain(),
     )
     .test_expect("open qualified ledger");
     let fixture = fixture(100);
@@ -1312,7 +1347,7 @@ fn cognition_market_kernel_refuses_pool_ledger_replacement() {
     let second_directory = tempfile::tempdir().test_expect("create second ledger directory");
     let first = SqliteFindingPoolLedger::open_qualified(
         first_directory.path().join("pool.sqlite3"),
-        LEDGER_DOMAIN,
+        ledger_domain(),
     )
     .test_expect("open first qualified ledger");
     let second = SqliteFindingPoolLedger::open_qualified(
@@ -1395,7 +1430,7 @@ fn cognition_market_qualified_pool_refuses_in_memory_storage() {
     ] {
         assert!(
             matches!(
-                SqliteFindingPoolLedger::open_qualified(path, LEDGER_DOMAIN),
+                SqliteFindingPoolLedger::open_qualified(path, ledger_domain()),
                 Err(FindingPoolLedgerError::Storage(_))
             ),
             "temporary SQLite path {path:?} must not qualify"

@@ -206,7 +206,9 @@ pub fn verify_finding_pool_allocation(
     require_non_empty(&body.graph_id, "graph_id")?;
     require_non_empty(&body.purchaser_id, "purchaser_id")?;
     require_non_empty(&body.nonce, "nonce")?;
-    if body.purchaser_key.algorithm() != SigningAlgorithm::Ed25519 {
+    if body.purchaser_key.algorithm() != SigningAlgorithm::Ed25519
+        || body.purchaser_key.is_weak_ed25519()
+    {
         return Err(rejected(
             "finding pool allocation purchaser key must be Ed25519",
         ));
@@ -550,6 +552,27 @@ mod tests {
         )
         .test_expect_err("oversized fields reject before the invalid signature");
         assert!(error.to_string().contains("nonce is invalid"));
+
+        let weak_purchaser =
+            PublicKey::from_hex("0100000000000000000000000000000000000000000000000000000000000000")
+                .test_expect("construct weak Ed25519 purchaser key");
+        let weak = sign_finding_pool_allocation(
+            FindingPoolAllocation {
+                purchaser_key: weak_purchaser,
+                ..signed.body.clone()
+            },
+            &authority,
+        )
+        .test_expect("sign weak-purchaser allocation with the real authority");
+        let error = verify_finding_pool_allocation(
+            &weak,
+            &pool,
+            &authority.public_key(),
+            "ledger:primary",
+            2,
+        )
+        .test_expect_err("weak Ed25519 purchaser key must fail closed");
+        assert!(error.to_string().contains("purchaser key must be Ed25519"));
 
         assert!(verify_finding_pool_allocation(
             &signed,

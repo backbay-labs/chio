@@ -74,7 +74,7 @@ impl RecordingLedger {
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError> {
         let receipt = attestor(&mutation)?;
-        let Ok(mut receipt_authority) = self.receipt_authority.lock() else {
+        let Ok(receipt_authority) = self.receipt_authority.lock() else {
             return Err(FindingPoolLedgerError::Storage(
                 "test receipt authority lock was poisoned".to_owned(),
             ));
@@ -86,7 +86,7 @@ impl RecordingLedger {
                 ));
             }
             Some(_) => {}
-            None => *receipt_authority = Some(receipt.kernel_key.clone()),
+            None => return Err(FindingPoolLedgerError::ReceiptAuthorityMissing),
         }
         drop(receipt_authority);
         let Ok(mut outbox) = self.outbox.lock() else {
@@ -429,6 +429,30 @@ impl FindingPoolLedger for RecordingLedger {
 impl QualifiedFindingPoolLedger for RecordingLedger {
     fn ledger_domain(&self) -> &str {
         "ledger:test-recording"
+    }
+
+    fn bind_receipt_authority(
+        &self,
+        authority: &chio_core::crypto::PublicKey,
+    ) -> Result<(), FindingPoolLedgerError> {
+        if authority.algorithm() != chio_core::crypto::SigningAlgorithm::Ed25519
+            || authority.is_weak_ed25519()
+        {
+            return Err(FindingPoolLedgerError::InvalidReceiptAuthority);
+        }
+        let mut bound = self.receipt_authority.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test receipt authority lock was poisoned".to_owned())
+        })?;
+        match bound.as_ref() {
+            Some(existing) if existing != authority => {
+                Err(FindingPoolLedgerError::ReceiptAuthorityMismatch)
+            }
+            Some(_) => Ok(()),
+            None => {
+                *bound = Some(authority.clone());
+                Ok(())
+            }
+        }
     }
 
     fn bind_receipt_sink(&self, receipt_sink_id: &str) -> Result<(), FindingPoolLedgerError> {
@@ -972,6 +996,21 @@ fn pool_ledger_rejects_a_second_durable_receipt_sink() {
     assert_eq!(
         second.set_finding_pool_ledger(ledger),
         Err(FindingPoolLedgerError::ReceiptSinkMismatch)
+    );
+}
+
+#[test]
+fn pool_ledger_rejects_a_second_receipt_authority_during_installation() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let first_store = Arc::new(RecordingReceiptStore::new("receipt-sink:shared".to_owned()));
+    let _first = kernel_with_keys_and_store(Arc::clone(&ledger), 91, 92, first_store);
+
+    let second_store = Arc::new(RecordingReceiptStore::new("receipt-sink:shared".to_owned()));
+    let mut second = kernel_without_receipt_store(93, 94);
+    assert!(second.set_receipt_store_handle(second_store).is_ok());
+    assert_eq!(
+        second.set_finding_pool_ledger(ledger),
+        Err(FindingPoolLedgerError::ReceiptAuthorityMismatch)
     );
 }
 

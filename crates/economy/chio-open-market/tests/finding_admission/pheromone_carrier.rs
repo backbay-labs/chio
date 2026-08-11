@@ -66,7 +66,26 @@ fn finding_pheromone_rejects_oversized_indicator_before_authenticated_resolution
                 &web.admission,
                 &web.context(resolver),
             ),
-            Err(FindingPheromoneError::IndicatorMalformed)
+            Err(FindingPheromoneError::CarrierMalformed)
+        ));
+
+        let mut oversized_nonce =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-nonce", 125);
+        oversized_nonce.body.nonce = "n".repeat(1_000_000);
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                oversized_nonce,
+                &finding_pheromone_context(&passport, &kernel),
+                &finding_pheromone_convention(),
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::CarrierMalformed)
         ));
 
         let mut invalid_carrier =

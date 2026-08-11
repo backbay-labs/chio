@@ -359,9 +359,11 @@ impl ChioKernel {
         if self.finding_pool_ledger.is_some() {
             return Err(crate::finding_pool::FindingPoolLedgerError::AlreadyConfigured);
         }
-        if self.finding_pool_receipt_authority.is_none() {
-            return Err(crate::finding_pool::FindingPoolLedgerError::ReceiptAuthorityMissing);
-        }
+        let receipt_authority = self
+            .finding_pool_receipt_authority
+            .as_ref()
+            .ok_or(crate::finding_pool::FindingPoolLedgerError::ReceiptAuthorityMissing)?
+            .public_key();
         if self.receipt_store.is_none() {
             return Err(crate::finding_pool::FindingPoolLedgerError::DurableReceiptStoreMissing);
         }
@@ -371,6 +373,7 @@ impl ChioKernel {
             .and_then(|store| store.durable_sink_id())
             .ok_or(crate::finding_pool::FindingPoolLedgerError::InvalidReceiptSink)?;
         self.ensure_finding_pool_configuration_precedes_startup_reconciliation()?;
+        ledger.bind_receipt_authority(&receipt_authority)?;
         ledger.bind_receipt_sink(receipt_sink_id)?;
         self.finding_pool_ledger = Some(ledger);
         Ok(())

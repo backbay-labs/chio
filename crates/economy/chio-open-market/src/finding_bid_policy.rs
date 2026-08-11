@@ -217,6 +217,9 @@ fn parse_bps(value: &str, field: &'static str) -> Result<u128, FindingBidCeiling
 }
 
 fn parse_u64_decimal(value: &str, field: &'static str) -> Result<u128, FindingBidCeilingError> {
+    if value.len() > 20 {
+        return Err(FindingBidCeilingError::U64Overflow { field });
+    }
     if value.is_empty()
         || (value.len() > 1 && value.starts_with('0'))
         || !value.bytes().all(|byte| byte.is_ascii_digit())
@@ -230,4 +233,19 @@ fn parse_u64_decimal(value: &str, field: &'static str) -> Result<u128, FindingBi
         return Err(FindingBidCeilingError::U64Overflow { field });
     }
     Ok(parsed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decimal_parser_rejects_oversized_input_before_scanning_digits() {
+        assert_eq!(
+            parse_u64_decimal(&"9".repeat(1_000_000), "estimate.units"),
+            Err(FindingBidCeilingError::U64Overflow {
+                field: "estimate.units"
+            })
+        );
+    }
 }

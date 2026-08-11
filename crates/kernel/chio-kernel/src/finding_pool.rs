@@ -146,10 +146,16 @@ pub enum FindingPoolLedgerError {
     PoolBindingConflict,
     #[error("finding pool allocation is bound to another qualified ledger domain")]
     LedgerDomainMismatch,
+    #[error("finding pool ledger domain is already served by another durable store")]
+    LedgerDomainInUse,
     #[error("finding pool ledger is bound to another durable receipt sink")]
     ReceiptSinkMismatch,
     #[error("finding pool durable receipt sink identity is invalid")]
     InvalidReceiptSink,
+    #[error("finding pool ledger is bound to another mutation receipt authority")]
+    ReceiptAuthorityMismatch,
+    #[error("finding pool mutation receipt authority is invalid")]
+    InvalidReceiptAuthority,
     #[error("finding pool purchase has no durable reservation")]
     ReservationMissing,
     #[error("finding pool reservation conflicts with its recorded terminal")]
@@ -676,6 +682,14 @@ pub trait QualifiedFindingPoolLedger: FindingPoolLedger {
     /// Stable authority-selected namespace for the one ledger deployment that
     /// may account for a signed allocation.
     fn ledger_domain(&self) -> &str;
+
+    /// Bind this ledger to the one public key authorized to sign mutation
+    /// receipts. Reopening with the same key is idempotent; a different key
+    /// fails closed during installation, before any mutation can run.
+    fn bind_receipt_authority(
+        &self,
+        authority: &chio_core::crypto::PublicKey,
+    ) -> Result<(), FindingPoolLedgerError>;
 
     /// Bind this ledger to the one durable ordinary receipt sink that receives
     /// every signed mutation receipt. Reopening with the same sink is

@@ -36,6 +36,12 @@ pub const FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1: &str =
     "chio.finding.current-listing-assertion.v1";
 const MAX_LISTING_ENVELOPE_STRING_BYTES: usize = 4 * 1_024;
 const MAX_PRICING_ENVELOPE_STRING_BYTES: usize = 2 * 1_024;
+const MAX_FINDING_CARRIER_STRING_BYTES: usize = 4 * 1_024;
+const MAX_FINDING_CARRIER_AGGREGATE_BYTES: usize = 64 * 1_024;
+const MAX_FINDING_CARRIER_JSON_NODES: usize = 512;
+const MAX_FINDING_CARRIER_JSON_DEPTH: usize = 16;
+const MAX_FINDING_CARRIER_TREATIES: usize = 32;
+const MAX_FINDING_CARRIER_AUDIT_PATH: usize = 64;
 
 /// Registry-owner assertion that one exact listing and pricing pair was
 /// current at a bounded observation time.
@@ -213,7 +219,144 @@ fn validate_finding_carrier(deposit: &PheromoneDeposit) -> Result<(), FindingPhe
     {
         return Err(FindingPheromoneError::CarrierMalformed);
     }
+    let mut budget = FindingCarrierBudget::default();
+    for value in [
+        &body.schema,
+        &body.kernel_id,
+        &body.agent_passport_key_hash,
+        &body.agent_passport_jwk_thumbprint,
+        &body.subject_class,
+        &body.subject_class_namespace,
+        &body.nonce,
+    ] {
+        budget.charge_string(value)?;
+    }
+    if body.treaty_scope.len() > MAX_FINDING_CARRIER_TREATIES {
+        return Err(FindingPheromoneError::CarrierMalformed);
+    }
+    for treaty in &body.treaty_scope {
+        budget.charge_string(treaty)?;
+    }
+    budget.charge_json(&body.indicator, 0)?;
+    if let Some(commitment) = body.cost_commitment.as_ref() {
+        let statement = &commitment.statement;
+        for value in [
+            &commitment.schema,
+            &statement.schema,
+            &statement.commitment_id,
+            &statement.verifier_id,
+            &statement.verifier_key_id,
+            &statement.runtime_policy_sha256,
+            &statement.scarcity_policy_sha256,
+            &statement.deposit_body_sha256,
+            &statement.deposit_signature_sha256,
+            &statement.kernel_id,
+            &statement.agent_passport_key_hash,
+            &statement.treaty_id,
+            &statement.subject_class_namespace,
+            &statement.subject_class,
+            &statement.event_digest_sha256,
+            &statement.cost.unit,
+            &statement.telemetry.schema,
+            &statement.telemetry.algorithm,
+            &statement.telemetry.verifier_id,
+            &statement.telemetry.verifier_key_id,
+            &statement.leaf_preimage_sha256,
+        ] {
+            budget.charge_string(value)?;
+        }
+        if statement.inclusion_proof.audit_path.len() > MAX_FINDING_CARRIER_AUDIT_PATH {
+            return Err(FindingPheromoneError::CarrierMalformed);
+        }
+        budget.charge_bytes(
+            statement
+                .inclusion_proof
+                .audit_path
+                .len()
+                .checked_mul(32)
+                .ok_or(FindingPheromoneError::CarrierMalformed)?,
+        )?;
+    }
+    if let Some(workflow) = body.workflow_context.as_ref() {
+        for value in [
+            &workflow.schema,
+            &workflow.workflow_id,
+            &workflow.workflow_receipt_id,
+            &workflow.workflow_receipt_sha256,
+            &workflow.workflow_intersection_id,
+            &workflow.workflow_intersection_sha256,
+            &workflow.tool_receipt_id,
+            &workflow.bilateral_dsse_sha256,
+            &workflow.consistency_anchor,
+        ] {
+            budget.charge_string(value)?;
+        }
+    }
     Ok(())
+}
+
+#[derive(Default)]
+struct FindingCarrierBudget {
+    bytes: usize,
+    json_nodes: usize,
+}
+
+impl FindingCarrierBudget {
+    fn charge_bytes(&mut self, bytes: usize) -> Result<(), FindingPheromoneError> {
+        self.bytes = self
+            .bytes
+            .checked_add(bytes)
+            .filter(|total| *total <= MAX_FINDING_CARRIER_AGGREGATE_BYTES)
+            .ok_or(FindingPheromoneError::CarrierMalformed)?;
+        Ok(())
+    }
+
+    fn charge_string(&mut self, value: &str) -> Result<(), FindingPheromoneError> {
+        if value.len() > MAX_FINDING_CARRIER_STRING_BYTES {
+            return Err(FindingPheromoneError::CarrierMalformed);
+        }
+        self.charge_bytes(value.len())
+    }
+
+    fn charge_json(
+        &mut self,
+        value: &serde_json::Value,
+        depth: usize,
+    ) -> Result<(), FindingPheromoneError> {
+        if depth > MAX_FINDING_CARRIER_JSON_DEPTH {
+            return Err(FindingPheromoneError::CarrierMalformed);
+        }
+        self.json_nodes = self
+            .json_nodes
+            .checked_add(1)
+            .filter(|nodes| *nodes <= MAX_FINDING_CARRIER_JSON_NODES)
+            .ok_or(FindingPheromoneError::CarrierMalformed)?;
+        self.charge_bytes(1)?;
+        match value {
+            serde_json::Value::Null | serde_json::Value::Bool(_) => Ok(()),
+            serde_json::Value::Number(_) => self.charge_bytes(32),
+            serde_json::Value::String(value) => self.charge_string(value),
+            serde_json::Value::Array(values) => {
+                if values.len() > MAX_FINDING_CARRIER_JSON_NODES {
+                    return Err(FindingPheromoneError::CarrierMalformed);
+                }
+                for value in values {
+                    self.charge_json(value, depth + 1)?;
+                }
+                Ok(())
+            }
+            serde_json::Value::Object(values) => {
+                if values.len() > MAX_FINDING_CARRIER_JSON_NODES {
+                    return Err(FindingPheromoneError::CarrierMalformed);
+                }
+                for (key, value) in values {
+                    self.charge_string(key)?;
+                    self.charge_json(value, depth + 1)?;
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 fn decode_indicator(
