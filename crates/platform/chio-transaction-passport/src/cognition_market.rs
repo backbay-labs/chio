@@ -14,8 +14,7 @@ use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
     signed_envelope_sha256, verify_signed_profile, verify_signed_verifier_report,
     verify_status_proof_input, FindingFacetKind, FindingFacetOutcome, FindingReplayRecipeInput,
-    FindingStatusFreshnessPolicy, FindingStatusNonInclusionProofInput,
-    FindingStatusOperatorAuthorization, FindingStatusProofInput,
+    FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusProofInput,
     SignedFindingChallengeVerifierProfile, SignedFindingStatusEpoch, SignedFindingVerifierReport,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
@@ -42,7 +41,7 @@ const FINDING_VERIFIER_MODULE: &str = "chio-finding-verifier";
 pub struct CognitionMarketStatusObservation<'a> {
     pub signed_epoch: &'a SignedFindingStatusEpoch,
     pub signed_epoch_bytes: &'a [u8],
-    pub proof: &'a FindingStatusNonInclusionProofInput,
+    pub proof: &'a FindingStatusProofInput,
     pub proof_bytes: &'a [u8],
     pub operator_authorization_sha256: &'a str,
     pub recorded_at: u64,
@@ -52,10 +51,11 @@ pub struct CognitionMarketStatusObservation<'a> {
 ///
 /// Implementations must atomically enforce a monotonic epoch floor for the
 /// feed and stable operator identity, reject same-epoch conflicts, retain
-/// sticky pending or retracted state, and accept only an exact current-floor
-/// non-inclusion proof for the named Finding.
+/// sticky pending or retracted state, retain authenticated inclusion proofs,
+/// and accept only an exact current-floor non-inclusion proof for a live
+/// Finding.
 pub trait CognitionMarketStatusTrustStore: Send + Sync {
-    fn admit_verified_non_inclusion(
+    fn admit_verified_status(
         &self,
         observation: &CognitionMarketStatusObservation<'_>,
     ) -> Result<(), String>;
@@ -350,11 +350,6 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
                 "status-proof attachment does not name the report Finding",
             ));
         }
-        if !matches!(status, FindingStatusProofInput::NonInclusion(_)) {
-            return Err(claim_failed(
-                "qualified status-liveness verification requires a non-inclusion proof",
-            ));
-        }
         if status_trust.status_freshness.now != report.body.evaluation_time {
             return Err(claim_failed(
                 "status freshness clock does not match the signed report evaluation time",
@@ -366,6 +361,29 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             status_trust.status_freshness,
         )
         .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
+        if matches!(status, FindingStatusProofInput::Inclusion(_)) {
+            let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
+                .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
+            let authorization_bytes =
+                canonical_json_bytes(&status_trust.status_operator_authorization)
+                    .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
+            let operator_authorization_sha256 = crate::sha256_hex(&authorization_bytes);
+            let admission = status_trust.status_store.admit_verified_status(
+                &CognitionMarketStatusObservation {
+                    signed_epoch: &signed_epoch,
+                    signed_epoch_bytes: &signed_epoch_bytes,
+                    proof: &status,
+                    proof_bytes: status_bytes,
+                    operator_authorization_sha256: &operator_authorization_sha256,
+                    recorded_at: status_trust.status_freshness.now,
+                },
+            );
+            return Err(claim_failed(match admission {
+                Ok(()) => "qualified status-liveness verification requires a non-inclusion proof"
+                    .to_owned(),
+                Err(error) => format!("durable finding status trust rejected proof: {error}"),
+            }));
+        }
         Some((status_node.path, status_bytes, status, signed_epoch))
     } else {
         None
@@ -414,11 +432,6 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         let status_trust = trust.status.as_ref().ok_or_else(|| {
             claim_failed("status-liveness verification has no deployment-pinned status trust")
         })?;
-        let FindingStatusProofInput::NonInclusion(non_inclusion) = &status else {
-            return Err(claim_failed(
-                "qualified status-liveness verification requires a non-inclusion proof",
-            ));
-        };
         let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
             .map_err(|error| invalid_artifact(status_path, error.to_string()))?;
         let authorization_bytes = canonical_json_bytes(&status_trust.status_operator_authorization)
@@ -426,10 +439,10 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         let operator_authorization_sha256 = crate::sha256_hex(&authorization_bytes);
         status_trust
             .status_store
-            .admit_verified_non_inclusion(&CognitionMarketStatusObservation {
+            .admit_verified_status(&CognitionMarketStatusObservation {
                 signed_epoch: &signed_epoch,
                 signed_epoch_bytes: &signed_epoch_bytes,
-                proof: non_inclusion,
+                proof: &status,
                 proof_bytes: status_bytes,
                 operator_authorization_sha256: &operator_authorization_sha256,
                 recorded_at: status_trust.status_freshness.now,

@@ -7,17 +7,18 @@ use chio_core_types::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
-    build_status_non_inclusion_proof_input, compute_profile_id, compute_report_id,
-    compute_status_epoch_id, signed_envelope_sha256, FindingAuthorityKeyPolicy,
+    build_status_inclusion_proof_input, build_status_non_inclusion_proof_input, compute_profile_id,
+    compute_report_id, compute_status_epoch_id, signed_envelope_sha256, FindingAuthorityKeyPolicy,
     FindingBbsIssuerPolicy, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
     FindingClaimedVerdict, FindingFacetKind, FindingFacetOutcome, FindingFacetResult,
     FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
     FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
     FindingStatusEpoch, FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization,
-    FindingStatusOperatorRole, FindingVerifierReport, SignedFindingChallengeVerifierProfile,
-    FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
-    FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
-    FINDING_STATUS_SIGNATURE_DOMAIN, FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    FindingStatusOperatorRole, FindingStatusProofInput, FindingVerifierReport,
+    SignedFindingChallengeVerifierProfile, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
+    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1,
+    FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
+    FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_revocation_oracle::{
     finding_status_empty_leaf_hash, FindingStatusSparseMap, FINDING_STATUS_BRANCH_DOMAIN,
@@ -94,7 +95,7 @@ impl TestStatusStore {
 }
 
 impl CognitionMarketStatusTrustStore for TestStatusStore {
-    fn admit_verified_non_inclusion(
+    fn admit_verified_status(
         &self,
         observation: &CognitionMarketStatusObservation<'_>,
     ) -> Result<(), String> {
@@ -103,9 +104,9 @@ impl CognitionMarketStatusTrustStore for TestStatusStore {
             .state
             .lock()
             .map_err(|_| "test status trust lock poisoned".to_owned())?;
-        if state
-            .retracted_findings
-            .contains(&observation.proof.finding_id)
+        let finding_id = observation.proof.finding_id();
+        if matches!(observation.proof, FindingStatusProofInput::NonInclusion(_))
+            && state.retracted_findings.contains(finding_id)
         {
             return Err("non-inclusion contradicts sticky retracted state".to_owned());
         }
@@ -129,7 +130,12 @@ impl CognitionMarketStatusTrustStore for TestStatusStore {
             epoch.status_epoch_id.clone(),
             epoch.root_hash.clone(),
         ));
-        Ok(())
+        if matches!(observation.proof, FindingStatusProofInput::Inclusion(_)) {
+            state.retracted_findings.insert(finding_id.to_owned());
+            Err("finding is retracted".to_owned())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -223,7 +229,7 @@ fn verifier_profile() -> TestResult<SignedFindingChallengeVerifierProfile> {
         },
         predicate_engine: "chio-replay-v1".to_owned(),
         allowed_predicates: vec![FindingPredicate::BaselineFailsCandidatePassesV1],
-        required_facets: vec![FindingFacetKind::KernelAndRevocationTrust],
+        required_facets: Vec::new(),
         verifier_report_signer: verifier_signer_policy(),
         purchase_authority: profile_key_policy(22, "purchase-authority"),
         failed_delivery_authority: profile_key_policy(23, "failed-delivery-authority"),
@@ -256,9 +262,20 @@ fn status_authorization(keypair: &Keypair) -> FindingStatusOperatorAuthorization
 }
 
 fn status_proof_bytes() -> TestResult<Vec<u8>> {
+    status_proof_bytes_for(false)
+}
+
+fn status_proof_bytes_for(inclusion: bool) -> TestResult<Vec<u8>> {
     let keypair = status_keypair();
     let mut map = FindingStatusSparseMap::new();
-    let root = map.insert(RETRACTED_FINDING_ID, RETRACTION_INTENT)?;
+    let root = map.insert(
+        if inclusion {
+            FINDING_ID
+        } else {
+            RETRACTED_FINDING_ID
+        },
+        RETRACTION_INTENT,
+    )?;
     let sparse = map.proof(FINDING_ID)?;
     let mut epoch = FindingStatusEpoch {
         schema: FINDING_STATUS_EPOCH_SCHEMA_V1.to_string(),
@@ -287,7 +304,17 @@ fn status_proof_bytes() -> TestResult<Vec<u8>> {
     };
     epoch.status_epoch_id = compute_status_epoch_id(&epoch)?;
     let signed = SignedExportEnvelope::sign(epoch, &keypair)?;
-    let proof = build_status_non_inclusion_proof_input(&signed, FINDING_ID, &sparse, CHECKED_AT)?;
+    let proof = if inclusion {
+        build_status_inclusion_proof_input(
+            &signed,
+            FINDING_ID,
+            RETRACTION_INTENT,
+            &sparse,
+            CHECKED_AT,
+        )?
+    } else {
+        build_status_non_inclusion_proof_input(&signed, FINDING_ID, &sparse, CHECKED_AT)?
+    };
     Ok(canonical_json_bytes(&proof)?)
 }
 
@@ -589,25 +616,30 @@ fn require_profile_facet(
             profile.required_facets.push(required_facet);
         }
     })?;
-    let report_bytes = bundle
+    let recipe_bytes = bundle
         .artifacts
-        .get("report.json")
-        .ok_or("report missing")?;
-    let signed: SignedExportEnvelope<FindingVerifierReport> = serde_json::from_slice(report_bytes)?;
-    let mut report = signed.body;
-    report.verifier_profile_id = bundle
-        .trust
-        .trusted_verifier_profile
-        .body
-        .profile_id
-        .clone();
-    report.verifier_profile_envelope_sha256 = bundle
+        .get("attachments/replay-recipe-input.json")
+        .ok_or("recipe missing")?;
+    let mut recipe: FindingReplayRecipeInput = serde_json::from_slice(recipe_bytes)?;
+    recipe.verifier_profile_envelope_sha256 = bundle
         .trust
         .trusted_verifier_profile_envelope_sha256
         .clone();
-    report.report_id = compute_report_id(&report)?;
-    let replacement = SignedExportEnvelope::sign(report, &verifier_keypair())?;
-    replace_graph_artifact(bundle, "report.json", canonical_json_bytes(&replacement)?)?;
+    recipe.validate()?;
+    let recipe_bytes = canonical_json_bytes(&recipe)?;
+    let status_bytes = bundle
+        .artifacts
+        .get("attachments/status-proof-input.json")
+        .ok_or("status proof missing")?
+        .clone();
+    let report_bytes = report_bytes_for_profile(
+        &recipe_bytes,
+        &status_bytes,
+        &bundle.trust.trusted_verifier_profile.body.profile_id,
+        &bundle.trust.trusted_verifier_profile_envelope_sha256,
+    )?;
+    replace_graph_artifact(bundle, "attachments/replay-recipe-input.json", recipe_bytes)?;
+    replace_graph_artifact(bundle, "report.json", report_bytes)?;
     resign_graph(bundle)
 }
 
@@ -1384,6 +1416,7 @@ fn cognition_market_qualified_profile_rejects_self_pinned_governance() -> TestRe
 #[test]
 fn cognition_market_qualified_profile_enforces_required_facet_floor() -> TestResult {
     let mut bundle = build_bundle()?;
+    require_profile_facet(&mut bundle, FindingFacetKind::KernelAndRevocationTrust)?;
     let report_bytes = bundle
         .artifacts
         .get("report.json")
@@ -1425,7 +1458,7 @@ fn cognition_market_qualified_profile_rejects_an_independent_facet_projection() 
         .trusted_verifier_profile
         .body
         .required_facets
-        .clear();
+        .push(FindingFacetKind::StatusLiveness);
 
     let error = verify(&bundle)
         .err()
@@ -1589,6 +1622,45 @@ fn cognition_market_qualified_profile_rejects_durable_status_rollback() -> TestR
         error.contains("status epoch rollback"),
         "unexpected error: {error}"
     );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_persists_authenticated_inclusion_before_denying() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let status_path = "attachments/status-proof-input.json";
+    let status = status_proof_bytes_for(true)?;
+    let recipe = bundle
+        .artifacts
+        .get("attachments/replay-recipe-input.json")
+        .ok_or("recipe attachment missing")?
+        .clone();
+    let report = report_bytes(&recipe, &status)?;
+    replace_graph_artifact(&mut bundle, status_path, status)?;
+    replace_graph_artifact(&mut bundle, "report.json", report)?;
+    let status_store = Arc::new(TestStatusStore::default());
+    bundle
+        .trust
+        .status
+        .as_mut()
+        .ok_or("status trust missing")?
+        .status_store = status_store.clone();
+    resign_graph(&mut bundle)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("a retracted Finding was accepted")?
+        .to_string();
+    assert!(
+        error.contains("finding is retracted"),
+        "unexpected error: {error}"
+    );
+    let state = status_store
+        .state
+        .lock()
+        .map_err(|_| "test status trust lock poisoned")?;
+    assert!(state.retracted_findings.contains(FINDING_ID));
+    assert_eq!(state.floor.as_ref().map(|floor| floor.2), Some(1));
     Ok(())
 }
 

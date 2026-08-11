@@ -23,10 +23,12 @@ use chio_core_types::capability::runtime_attestation::RuntimeAttestationEvidence
 use chio_core_types::capability::trust_policy::AttestationTrustPolicy;
 use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core_types::receipt::body::{chio_receipt_id, ChioReceipt};
+use chio_core_types::receipt::kinds::{BoundaryClass, ReceiptKind, TrustLevel};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::receipt::metadata::{
     DeliveryResult, FindingDelivery, FindingMediaTypeCheck, FINDING_DELIVERY_METADATA_KEY,
 };
+use chio_core_types::receipt::{BudgetAuthorityReceiptRef, MEDIATED_SPEND_PROFILE};
 use chio_finding::{
     compute_report_id, signed_envelope_sha256, verify_finding, verify_pinned_envelope,
     verify_signed_bond_backing, verify_signed_profile, verify_status_proof_input, Finding,
@@ -290,6 +292,55 @@ pub(crate) const fn policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u
     instant >= policy.valid_from && instant < policy.valid_until
 }
 
+fn verify_required_receipt_semantics(
+    receipt: &ChioReceipt,
+    required_semantics: &str,
+) -> Result<(), &'static str> {
+    if required_semantics != MEDIATED_SPEND_PROFILE {
+        return Err("unsupported receipt semantics profile");
+    }
+    if receipt.receipt_kind != ReceiptKind::MediatedDecision {
+        return Err("receipt is not a mediated decision");
+    }
+    if receipt.boundary_class != BoundaryClass::Prevent {
+        return Err("receipt is not from a preventive boundary");
+    }
+    if receipt.observation_outcome.is_some() {
+        return Err("mediated receipt carries an observation outcome");
+    }
+    if receipt.trust_level != TrustLevel::Mediated {
+        return Err("receipt trust level is not mediated");
+    }
+    if !receipt.is_allowed() {
+        return Err("receipt is not an allow decision");
+    }
+    let budget = BudgetAuthorityReceiptRef::from_receipt(receipt)
+        .ok_or("receipt has no typed budget-authority lineage")?;
+    if budget.hold_id.is_empty() {
+        return Err("receipt has an empty budget hold id");
+    }
+    if budget.reconcile_event_id.is_none() {
+        return Err("receipt budget hold is not reconciled");
+    }
+    if budget.exposed_units == 0 {
+        return Err("receipt commits no budget exposure");
+    }
+    if budget.execution_nonce_id.is_none() {
+        return Err("receipt has no execution nonce link");
+    }
+    let mediated_spend_profile = receipt
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("budget_authority"))
+        .and_then(|authority| authority.get("mediated_spend"))
+        .and_then(|mediated_spend| mediated_spend.get("profile"))
+        .and_then(serde_json::Value::as_str);
+    if mediated_spend_profile != Some(required_semantics) {
+        return Err("receipt does not pin the required mediated-spend profile");
+    }
+    Ok(())
+}
+
 fn verify_finding_delivery_receipt(
     finding: &Finding,
     profile: &FindingChallengeVerifierProfile,
@@ -426,6 +477,16 @@ pub fn verify_finding_evidence(
     // an unverified profile no facet below is meaningful.
     verify_signed_profile(&trust.profile, &trust.governance_authority)
         .map_err(|_| FindingVerifierError::ProfileInvalid)?;
+    if trust.profile.body.required_receipt_semantics != MEDIATED_SPEND_PROFILE
+        || trust.profile.body.required_facets.iter().any(|facet| {
+            matches!(
+                facet,
+                FindingFacetKind::KernelAndRevocationTrust | FindingFacetKind::IssuerLineage
+            )
+        })
+    {
+        return Err(FindingVerifierError::ProfileInvalid);
+    }
     if trust.trusted_time < trust.profile.body.issued_at
         || trust.trusted_time >= trust.profile.body.expires_at
     {
@@ -473,6 +534,16 @@ pub fn verify_finding_evidence(
     for (index, evidence) in bundle.receipts.iter().enumerate() {
         if let Err(error) = verify_receipt_strict(&evidence.receipt) {
             failure = Some(format!("receipt {}: {error}", evidence.receipt.id));
+            break;
+        }
+        if let Err(error) = verify_required_receipt_semantics(
+            &evidence.receipt,
+            &profile.required_receipt_semantics,
+        ) {
+            failure = Some(format!(
+                "receipt {} violates required receipt semantics: {error}",
+                evidence.receipt.id
+            ));
             break;
         }
         match canonical_json_bytes(&evidence.receipt) {

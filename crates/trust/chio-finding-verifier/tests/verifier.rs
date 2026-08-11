@@ -92,6 +92,29 @@ fn receipt(
     finding_delivery: Option<FindingDelivery>,
 ) -> Result<ChioReceipt, Box<dyn Error>> {
     let mut metadata = serde_json::Map::new();
+    metadata.insert(
+        "budget_authority".to_owned(),
+        serde_json::json!({
+            "guarantee_level": "single_node_atomic",
+            "authority_profile": "authoritative_hold_event",
+            "metering_profile": "max_cost_preauthorize_then_reconcile_actual",
+            "hold_id": format!("hold-evidence-{index}"),
+            "execution_nonce_id": format!("nonce-evidence-{index}"),
+            "mediated_spend": { "profile": "chio.mediated_spend.v1" },
+            "authorize": {
+                "event_id": format!("hold-evidence-{index}:authorize"),
+                "exposure_units": 1,
+                "committed_cost_units_after": 1
+            },
+            "terminal": {
+                "disposition": "reconciled",
+                "event_id": format!("hold-evidence-{index}:reconcile"),
+                "exposure_units": 1,
+                "realized_spend_units": 1,
+                "committed_cost_units_after": 1
+            }
+        }),
+    );
     if delivery_contract {
         metadata.insert(
             "delivery_contract".to_owned(),
@@ -825,6 +848,38 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
     let signed =
         sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.verifier)?;
     verify_signed_verifier_report(&signed, &fx.verifier.public_key())?;
+    Ok(())
+}
+
+#[test]
+fn production_receipts_must_satisfy_the_profile_receipt_semantics() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let mut receipts = clone_receipts(&fx);
+    let first = receipts.first_mut().ok_or("production receipt missing")?;
+    let mut body = first.receipt.body();
+    body.metadata
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|metadata| metadata.get_mut("budget_authority"))
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("budget-authority metadata missing")?
+        .remove("mediated_spend");
+    first.receipt = ChioReceipt::sign(body, &keypair(21))?;
+    first.canonical_receipt_bytes = canonical_json_bytes(&first.receipt)?;
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, receipts))?;
+    let authenticity = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
+        .ok_or("receipt-authenticity facet missing")?;
+    assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
+    assert!(
+        authenticity.reason.contains("required receipt semantics"),
+        "unexpected reason: {}",
+        authenticity.reason
+    );
     Ok(())
 }
 
@@ -1660,6 +1715,38 @@ fn unpinned_profile_or_empty_kernel_keys_reject_outright() -> TestResult {
     assert_eq!(
         verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx))).err(),
         Some(FindingVerifierError::NoAdmittedKernelKeys)
+    );
+    Ok(())
+}
+
+#[test]
+fn unsupported_profile_requirements_reject_outright() -> TestResult {
+    let fx = fixture()?;
+
+    for facet in [
+        FindingFacetKind::KernelAndRevocationTrust,
+        FindingFacetKind::IssuerLineage,
+    ] {
+        let mut profile = fx.profile.body.clone();
+        profile.required_facets.push(facet);
+        profile.profile_id = compute_profile_id(&profile)?;
+        let mut trust = trust_roots(&fx);
+        trust.profile = SignedExportEnvelope::sign(profile, &fx.governance)?;
+        assert_eq!(
+            verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))
+                .err(),
+            Some(FindingVerifierError::ProfileInvalid)
+        );
+    }
+
+    let mut profile = fx.profile.body.clone();
+    profile.required_receipt_semantics = "chio.unknown_spend.v1".to_owned();
+    profile.profile_id = compute_profile_id(&profile)?;
+    let mut trust = trust_roots(&fx);
+    trust.profile = SignedExportEnvelope::sign(profile, &fx.governance)?;
+    assert_eq!(
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx))).err(),
+        Some(FindingVerifierError::ProfileInvalid)
     );
     Ok(())
 }

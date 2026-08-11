@@ -12,7 +12,8 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chio_core::{sha256_hex, StoreMutationFence};
+use chio_core::{canonical_json_bytes, sha256_hex, StoreMutationFence};
+use chio_finding::FindingStatusProofInput;
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use chio_transaction_passport::{
     CognitionMarketStatusObservation, CognitionMarketStatusTrustStore,
@@ -1486,12 +1487,48 @@ impl SqliteFindingStatusStore {
 }
 
 impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
-    fn admit_verified_non_inclusion(
+    fn admit_verified_status(
         &self,
         observation: &CognitionMarketStatusObservation<'_>,
     ) -> Result<(), String> {
         let epoch = &observation.signed_epoch.body;
-        let proof = observation.proof;
+        let (
+            feed_id,
+            key_domain_nonce,
+            map_epoch,
+            epoch_id,
+            root_hash,
+            finding_id,
+            kind,
+            checked_at,
+            status_value_bytes,
+            retraction_intent_sha256,
+        ) = match observation.proof {
+            FindingStatusProofInput::NonInclusion(proof) => (
+                proof.feed_id.as_str(),
+                proof.key_domain_nonce,
+                proof.map_epoch,
+                proof.status_epoch_id.as_str(),
+                proof.root_hash.as_str(),
+                proof.finding_id.as_str(),
+                FindingStatusProofKind::NonInclusion,
+                proof.checked_at,
+                None,
+                None,
+            ),
+            FindingStatusProofInput::Inclusion(proof) => (
+                proof.feed_id.as_str(),
+                proof.key_domain_nonce,
+                proof.map_epoch,
+                proof.status_epoch_id.as_str(),
+                proof.root_hash.as_str(),
+                proof.finding_id.as_str(),
+                FindingStatusProofKind::Inclusion,
+                proof.checked_at,
+                Some(canonical_json_bytes(&proof.status).map_err(|error| error.to_string())?),
+                Some(proof.retraction_intent_sha256.as_str()),
+            ),
+        };
         self.advance_epoch(&FindingStatusEpochAdvance {
             epoch: VerifiedFindingStatusEpochInput {
                 feed_id: &epoch.feed_id,
@@ -1510,18 +1547,18 @@ impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
             },
             leaves: &[],
             proofs: &[VerifiedFindingStatusProofInput {
-                feed_id: &proof.feed_id,
+                feed_id,
                 operator_id: &epoch.operator_id,
-                key_domain_nonce: proof.key_domain_nonce,
-                map_epoch: proof.map_epoch,
-                epoch_id: &proof.status_epoch_id,
-                root_hash: &proof.root_hash,
-                finding_id: &proof.finding_id,
-                kind: FindingStatusProofKind::NonInclusion,
+                key_domain_nonce,
+                map_epoch,
+                epoch_id,
+                root_hash,
+                finding_id,
+                kind,
                 proof_bytes: observation.proof_bytes,
-                status_value_bytes: None,
-                retraction_intent_sha256: None,
-                checked_at: proof.checked_at,
+                status_value_bytes: status_value_bytes.as_deref(),
+                retraction_intent_sha256,
+                checked_at,
                 valid_until: epoch.valid_until,
                 recorded_at: observation.recorded_at,
             }],
@@ -1530,14 +1567,15 @@ impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
 
         let expected_proof_sha256 = sha256_hex(observation.proof_bytes);
         match self
-            .status_for_purchase(&proof.feed_id, &proof.finding_id, observation.recorded_at)
+            .status_for_purchase(feed_id, finding_id, observation.recorded_at)
             .map_err(|error| error.to_string())?
         {
             FindingStatusDecision::VerifiedLive(record)
-                if record.proof_sha256 == expected_proof_sha256
-                    && record.map_epoch == proof.map_epoch
-                    && record.epoch_id == proof.status_epoch_id
-                    && record.root_hash == proof.root_hash =>
+                if kind == FindingStatusProofKind::NonInclusion
+                    && record.proof_sha256 == expected_proof_sha256
+                    && record.map_epoch == map_epoch
+                    && record.epoch_id == epoch_id
+                    && record.root_hash == root_hash =>
             {
                 Ok(())
             }
