@@ -405,7 +405,9 @@ fn validate_current_listing(
         .validate(assertion_body.generated_at)
         .map_err(FindingPheromoneError::Listing)?;
     let assessed_freshness = freshness_window.assess(assertion_body.generated_at, now);
-    if listing.freshness != assessed_freshness
+    if listing.freshness.generated_at != assessed_freshness.generated_at
+        || listing.freshness.max_age_secs != assessed_freshness.max_age_secs
+        || listing.freshness.valid_until != assessed_freshness.valid_until
         || assessed_freshness.state != GenericListingFreshnessState::Fresh
         || !listing.is_admissible_at(now)
         || listing.freshness.valid_until <= now

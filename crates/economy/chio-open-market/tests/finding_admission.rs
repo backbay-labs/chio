@@ -1142,6 +1142,37 @@ fn finding_pheromone_requires_authenticated_current_listing_freshness() {
 }
 
 #[test]
+fn finding_pheromone_reassesses_immutable_listing_freshness_at_the_current_clock() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let current_listing_assertion = finding_current_listing_assertion(&listing, &web.operator);
+        let deposit =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-reassessed-freshness", 125);
+        let mut context = finding_pheromone_context(&passport, &kernel);
+        context.now_unix_ms += 1_000;
+
+        admit_and_resolve_finding_pheromone_hint(
+            &InMemoryPheromoneSubstrate::new(),
+            deposit,
+            &context,
+            &finding_pheromone_convention(),
+            AuthenticatedCurrentFindingListing::new(&listing, &current_listing_assertion),
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect("immutable freshness metadata is reassessed at the current clock");
+    });
+}
+
+#[test]
 fn finding_pheromone_requires_the_policy_selected_by_generic_admission() {
     with_fiscal(|resolver| {
         let web = base_web();

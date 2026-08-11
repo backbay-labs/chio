@@ -58,6 +58,10 @@ def test_finding_bid_ceiling_rejects_arithmetic_and_binding_negatives() -> None:
     overflow["estimate"]["units"] = "18446744073709551616"
     _rejects(overflow, "u64_overflow")
 
+    overlong = _first()
+    overlong["estimate"]["units"] = "1" * 4_301
+    _rejects(overlong, "invalid_decimal")
+
     bps = _first()
     bps["policy"]["wouldHaveRunBps"] = "10001"
     _rejects(bps, "basis_points_out_of_range")

@@ -231,7 +231,7 @@ pub fn verify_finding_pool_allocation(
             "finding pool allocation validity window is invalid",
         ));
     }
-    match signed.verify_signature() {
+    match pinned_authority.verify_canonical_strict(body, &signed.signature) {
         Ok(true) => {}
         Ok(false) => return Err(rejected("finding pool allocation signature is invalid")),
         Err(error) => {
@@ -548,7 +548,7 @@ mod tests {
             "ledger:primary",
             2,
         )
-        .expect_err("oversized fields reject before the invalid signature");
+        .test_expect_err("oversized fields reject before the invalid signature");
         assert!(error.to_string().contains("nonce is invalid"));
 
         assert!(verify_finding_pool_allocation(

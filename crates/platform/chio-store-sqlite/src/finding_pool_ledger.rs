@@ -467,16 +467,23 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             .pool
             .get()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let transaction = connection
+        let cleanup_transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
 
         reclaim_expired_unclaimed(
-            &transaction,
+            &cleanup_transaction,
             debit.allocation_envelope_sha256(),
             debit.debit_requested_at_unix_ms(),
             attestor,
         )?;
+        cleanup_transaction
+            .commit()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
 
         if let Some(existing) = transaction
             .query_row(

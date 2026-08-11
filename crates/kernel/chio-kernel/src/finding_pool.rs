@@ -27,6 +27,9 @@ pub const FINDING_POOL_DEBIT_AUTHORIZATION_SCHEMA_V1: &str =
 const MAX_PURCHASE_ARGUMENT_DEPTH: usize = 32;
 const MAX_PURCHASE_ARGUMENT_NODES: usize = 4_096;
 const MAX_PURCHASE_ARGUMENT_BYTES: usize = 1024 * 1024;
+const MAX_PURCHASE_CONTEXT_CANONICAL_BYTES: usize = 262_144;
+const MAX_PURCHASE_CONTEXT_ENCODED_BYTES: usize =
+    MAX_PURCHASE_CONTEXT_CANONICAL_BYTES.div_ceil(3) * 4;
 
 /// Purchaser-signed proof of possession for one exact pool reservation.
 ///
@@ -1212,11 +1215,11 @@ fn verify_purchaser_authorization(
         ));
     }
     let arguments_sha256 = sha256_hex(&canonical_arguments);
+    let context_sha256 = bounded_purchase_context_sha256(request.purchase_context.context_b64)?;
     if body.purchase_id != expected_purchase_id
         || body.allocation_envelope_sha256 != request.expected_allocation_envelope_sha256
         || body.purchaser_id != request.purchaser_id
-        || body.purchase_context_sha256
-            != sha256_hex(request.purchase_context.context_b64.as_bytes())
+        || body.purchase_context_sha256 != context_sha256
         || body.capability_id != request.purchase_context.capability.id
         || body.server_id != request.purchase_context.server_id
         || body.tool_name != request.purchase_context.tool_name
@@ -1246,6 +1249,15 @@ fn verify_purchaser_authorization(
             )
         })?);
     Ok((expires_at_unix_ms, replay_binding_sha256))
+}
+
+fn bounded_purchase_context_sha256(context_b64: &str) -> Result<String, FindingPoolDebitError> {
+    if context_b64.is_empty() || context_b64.len() > MAX_PURCHASE_CONTEXT_ENCODED_BYTES {
+        return Err(FindingPoolDebitError::PurchaserAuthorization(
+            "purchase context carrier exceeds the encoded byte limit".to_owned(),
+        ));
+    }
+    Ok(sha256_hex(context_b64.as_bytes()))
 }
 
 fn account_purchase_argument_bytes(

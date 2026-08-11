@@ -150,7 +150,11 @@ def _parse_u64(value: DecimalIntegerInput, field: str) -> int:
         if value < 0:
             _fail("invalid_decimal", f"{field} must be nonnegative")
         parsed = value
-    elif isinstance(value, str) and _DECIMAL.fullmatch(value):
+    elif (
+        isinstance(value, str)
+        and len(value) <= 20
+        and _DECIMAL.fullmatch(value)
+    ):
         parsed = int(value)
     else:
         _fail(

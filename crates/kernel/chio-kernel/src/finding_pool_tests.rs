@@ -940,6 +940,18 @@ fn purchase_arguments_are_bounded_before_canonicalization() {
 }
 
 #[test]
+fn purchase_context_carrier_is_bounded_before_hashing() {
+    assert!(bounded_purchase_context_sha256("").is_err());
+    assert!(
+        bounded_purchase_context_sha256(&"A".repeat(MAX_PURCHASE_CONTEXT_ENCODED_BYTES + 1))
+            .is_err_and(|error| error.to_string().contains("encoded byte limit"))
+    );
+    assert!(
+        bounded_purchase_context_sha256(&"A".repeat(MAX_PURCHASE_CONTEXT_ENCODED_BYTES)).is_ok()
+    );
+}
+
+#[test]
 fn pool_ledger_rejects_a_second_durable_receipt_sink() {
     let ledger = Arc::new(RecordingLedger::default());
     let first_store = Arc::new(RecordingReceiptStore::new("receipt-sink:first".to_owned()));

@@ -1164,6 +1164,77 @@ fn cognition_market_pool_bounds_expired_reclamation_per_debit() {
 }
 
 #[test]
+fn cognition_market_pool_reclamation_progress_survives_a_capacity_rejection() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let database = directory.path().join("pool.sqlite3");
+    let ledger = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+        .test_expect("open qualified ledger");
+    let fixture = fixture_until(65, 100_000);
+    for index in 0..65_u64 {
+        debit_at(
+            &ledger,
+            &fixture,
+            &format!("purchase:expired-progress:{index:02}"),
+            1,
+            2_000,
+        )
+        .test_expect("reserve one expiring unit");
+    }
+
+    assert!(matches!(
+        debit_at(
+            &ledger,
+            &fixture,
+            "purchase:replacement-progress",
+            65,
+            32_000,
+        ),
+        Err(FindingPoolDebitError::Ledger(
+            FindingPoolLedgerError::AmountExceeded
+        ))
+    ));
+    assert_eq!(
+        ledger
+            .reserved_units(&fixture.envelope_sha256)
+            .test_expect("read reservations after the first cleanup batch"),
+        Some(1)
+    );
+
+    debit_at(
+        &ledger,
+        &fixture,
+        "purchase:replacement-progress",
+        65,
+        32_000,
+    )
+    .test_expect("retry after the committed cleanup batch");
+    assert_eq!(
+        ledger
+            .reserved_units(&fixture.envelope_sha256)
+            .test_expect("read the replacement reservation"),
+        Some(65)
+    );
+
+    let connection = rusqlite::Connection::open(&database).test_expect("open ledger database");
+    let released: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM finding_pool_debits WHERE state = 'released'",
+            [],
+            |row| row.get(0),
+        )
+        .test_expect("count released reservations");
+    let reserved: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM finding_pool_debits WHERE state = 'reserved'",
+            [],
+            |row| row.get(0),
+        )
+        .test_expect("count reserved reservations");
+    assert_eq!(released, 65);
+    assert_eq!(reserved, 1);
+}
+
+#[test]
 fn cognition_market_pool_requires_live_status_before_new_debit_but_replays() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(
