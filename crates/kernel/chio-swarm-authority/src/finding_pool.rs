@@ -642,16 +642,18 @@ mod tests {
 
         let mut oversized = signed.clone();
         oversized.body.nonce = "n".repeat(513);
-        let error = verify_finding_pool_allocation(
+        let result = verify_finding_pool_allocation(
             &oversized,
             &pool,
             &authority.public_key(),
             "ledger:primary",
             &"ab".repeat(32),
             2,
-        )
-        .test_expect_err("oversized fields reject before the invalid signature");
-        assert!(error.to_string().contains("nonce is invalid"));
+        );
+        assert!(matches!(
+            &result,
+            Err(error) if error.to_string().contains("nonce is invalid")
+        ));
 
         let weak_purchaser =
             PublicKey::from_hex("0100000000000000000000000000000000000000000000000000000000000000")
