@@ -156,6 +156,11 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "transaction passport integration suite with runtime-security and transparency-anchor review regressions; capped until split",
         max_lines=2_800,
     ),
+    "crates/platform/chio-transaction-passport/tests/cognition_market.rs": allow(
+        "2026-08-31",
+        "cognition-market transaction passport regression suite; capped to current size until split",
+        max_lines=2_028,
+    ),
     "crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
         "2026-08-31",
         "existing oversized remote MCP test suite; capped to current size until split",
@@ -380,6 +385,11 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "2026-08-31",
         "cognition challenge artifact and schema regression suite; capped to current size until split",
         max_lines=2_277,
+    ),
+    "crates/trust/chio-finding-verifier/tests/verifier.rs": allow(
+        "2026-08-31",
+        "cognition finding verifier regression suite; capped to current size until split",
+        max_lines=2_014,
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",
