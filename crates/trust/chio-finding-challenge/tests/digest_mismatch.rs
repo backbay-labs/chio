@@ -6,14 +6,17 @@ mod support;
 use chio_core_types::receipt::decision::Decision;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{DeliveryResult, FindingMediaTypeCheck};
-use chio_finding::FindingChallengeVerdict;
+use chio_finding::{
+    compute_challenge_id, signed_envelope_sha256, FindingChallengeAuthorization,
+    FindingChallengeEvidence, FindingChallengeStanding, FindingChallengeVerdict,
+};
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeInadmissible, FindingChallengeReason,
 };
 
 use support::{
-    digest_case, expect_inadmissible, expect_reason, outcome_for, venue_digest_case, world,
-    DenyShape, DenySigner, TestResult, EVALUATED_AT, HEX64_THIRD,
+    digest_case, expect_inadmissible, expect_reason, keypair, outcome_for, venue_digest_case,
+    world, DenyShape, DenySigner, TestResult, EVALUATED_AT, HEX64_THIRD,
 };
 
 #[test]
@@ -35,6 +38,57 @@ fn authenticated_seller_origin_mismatch_upholds() -> TestResult {
     // an upheld mismatch actually differ.
     let outcome = outcome_for(&world, &case.challenge, &adjudication)?;
     assert!(outcome.penalty_calculation.is_some());
+    Ok(())
+}
+
+#[test]
+fn admission_pinned_failed_delivery_rotation_overrides_the_reusable_profile() -> TestResult {
+    let world = world()?;
+    let mut case = digest_case(&world, &DenyShape::seller_origin())?;
+    let rotated_authority = keypair(91);
+    let mut admission_policy = world.profile.body.failed_delivery_authority.clone();
+    admission_policy.authority_id = "authority-failed-delivery-admission".to_string();
+    admission_policy.key = rotated_authority.public_key();
+    admission_policy.key_epoch += 1;
+
+    case.failed_delivery =
+        SignedExportEnvelope::sign(case.failed_delivery.body.clone(), &rotated_authority)?;
+    let failed_delivery_envelope_sha256 = signed_envelope_sha256(&case.failed_delivery)?;
+    let FindingChallengeEvidence::DigestMismatch {
+        failed_delivery_envelope_sha256: challenged_digest,
+        ..
+    } = &mut case.challenge.body.evidence
+    else {
+        return Err("digest case must contain digest-mismatch evidence".into());
+    };
+    *challenged_digest = failed_delivery_envelope_sha256.clone();
+    let FindingChallengeAuthorization::BuyerSubmission(submission) =
+        &mut case.challenge.body.authorization
+    else {
+        return Err("digest case must be buyer authorized".into());
+    };
+    let FindingChallengeStanding::FailedDelivery {
+        failed_delivery_envelope_sha256: standing_digest,
+        ..
+    } = &mut submission.standing
+    else {
+        return Err("digest case must carry failed-delivery standing".into());
+    };
+    *standing_digest = failed_delivery_envelope_sha256;
+    case.challenge.body.challenge_id = compute_challenge_id(&case.challenge.body)?;
+    case.challenge = SignedExportEnvelope::sign(case.challenge.body.clone(), &world.buyer)?;
+    case.failed_delivery_authority_status = world.status_for_policy(&admission_policy, None)?;
+
+    let evidence = case.evidence();
+    let mut input = world.input(&case.challenge, &evidence);
+    input.pinned_failed_delivery_authority = &admission_policy;
+    let evaluation = evaluate_finding_challenge(&input);
+
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::SellerOriginDigestMismatch,
+    )?;
+    assert_eq!(adjudication.verdict(), FindingChallengeVerdict::Upheld);
     Ok(())
 }
 

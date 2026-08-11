@@ -44,7 +44,8 @@ use crate::input::{
 };
 use crate::reason::FindingChallengeReason;
 use crate::receipts::{
-    checkpoint_matches_reference, policy_covers, receipt_matches_reference, role_policy,
+    authority_status_establishes_role, checkpoint_matches_reference, policy_covers,
+    receipt_matches_reference, role_policy,
 };
 use crate::revocation::{revocation_standing, KeyRevocationStanding};
 use crate::standing::bind_purchase_record;
@@ -234,6 +235,17 @@ pub(crate) fn evaluate_evidence_invalid(
             KeyRevocationStanding::RevokedAfter => {
                 FindingChallengeReason::EvidenceKeyRevokedAfterPublication
             }
+            KeyRevocationStanding::NoneOffered
+                if authority_status_establishes_role(
+                    evidence.production_authority_status,
+                    context.pinned_authority_status_key,
+                    production_policy,
+                    resolved.receipt.timestamp,
+                    context.evaluated_at,
+                ) =>
+            {
+                continue;
+            }
             KeyRevocationStanding::NoneOffered | KeyRevocationStanding::NotEstablished => {
                 FindingChallengeReason::EvidenceKeyRevocationNotEstablished
             }
@@ -271,7 +283,9 @@ fn standing_of(
         evidence.revoked_keys,
         policy,
         &resolved.receipt.kernel_key,
-        context.governance_authority,
+        context.governance_policy,
+        context.pinned_authority_status_key,
+        context.evaluated_at,
         context.finding.issued_at,
     )
 }

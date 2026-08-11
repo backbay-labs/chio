@@ -67,7 +67,7 @@ pub(crate) fn evaluate_digest_mismatch(
             "failed_delivery_envelope_sha256",
         ));
     }
-    let failed_delivery_authority = &context.profile.failed_delivery_authority;
+    let failed_delivery_authority = context.failed_delivery_authority;
     verify_signed_failed_delivery(evidence.failed_delivery, &failed_delivery_authority.key)
         .map_err(FindingChallengeInadmissible::StandingRejected)?;
     let terminal = &evidence.failed_delivery.body;

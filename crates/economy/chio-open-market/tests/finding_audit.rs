@@ -1418,6 +1418,47 @@ fn a_signed_outcome_for_an_unattempted_selection_cannot_resolve_a_report() {
 }
 
 #[test]
+fn signed_outcomes_cannot_be_swapped_between_audit_attempts() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let mut report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
+    let mut outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+
+    let first_selection = (
+        outcomes[0].body.finding_id.clone(),
+        outcomes[0].body.listing_id.clone(),
+    );
+    outcomes[0].body.finding_id = outcomes[1].body.finding_id.clone();
+    outcomes[0].body.listing_id = outcomes[1].body.listing_id.clone();
+    outcomes[1].body.finding_id = first_selection.0;
+    outcomes[1].body.listing_id = first_selection.1;
+    for outcome in &mut outcomes {
+        outcome.body.outcome_id = derive_outcome_id(&outcome.body).test_expect("outcome id");
+        *outcome = SignedFindingChallengeOutcome::sign(outcome.body.clone(), &audit_evaluator())
+            .test_expect("sign swapped outcome");
+    }
+    report.outcome_envelope_digests = outcomes
+        .iter()
+        .map(|outcome| signed_envelope_sha256(outcome).test_expect("outcome envelope digest"))
+        .collect();
+    reseal(&mut report);
+    let policies = [audit_evaluator_policy()];
+
+    assert!(matches!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &report_witnesses(&epoch, &policies, &audit_attempts, &outcomes),
+        )
+        .test_unwrap_err(),
+        FindingAuditError::OutcomeAttemptBinding(_)
+    ));
+}
+
+#[test]
 fn an_outcome_from_another_audit_round_cannot_resolve_a_report() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");

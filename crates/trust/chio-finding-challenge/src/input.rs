@@ -37,6 +37,10 @@ pub struct FindingChallengeEvaluationInput<'a> {
     pub profile: &'a SignedFindingChallengeVerifierProfile,
     /// The governance root that must have signed the profile envelope.
     pub governance_authority: &'a PublicKey,
+    /// Exact lifecycle policy retained for the governance key that signed
+    /// the profile. Revocation statements count only while this policy was
+    /// live at the statement's recording time.
+    pub pinned_governance_policy: FindingRetainedAuthorityPolicy<'a>,
     /// Profile digest pinned by the exact retained, authenticated admission.
     /// This is independent of the caller-controlled challenge and profile.
     pub pinned_admission_profile_envelope_sha256: &'a str,
@@ -44,6 +48,9 @@ pub struct FindingChallengeEvaluationInput<'a> {
     /// admission the challenge names. This may differ from the reusable
     /// verifier profile after an admission-specific rotation.
     pub pinned_purchase_authority: &'a FindingAuthorityKeyPolicy,
+    /// Failed-delivery policy from the exact retained admission. It may
+    /// differ from the reusable profile after an admission-specific rotation.
+    pub pinned_failed_delivery_authority: &'a FindingAuthorityKeyPolicy,
     /// Fresh authenticated lifecycle reading for the admission-pinned
     /// purchase authority. Required whenever the selected evidence relies on
     /// a purchase record for standing.
@@ -57,6 +64,19 @@ pub struct FindingChallengeEvaluationInput<'a> {
     /// Exactly the evidence the challenge's evidence class selects. A branch
     /// that does not match the challenge's class is inadmissible.
     pub evidence: &'a FindingChallengeClassEvidence<'a>,
+}
+
+/// Lifecycle fields retained for a historical authority configuration.
+/// This deliberately excludes artifact-authored policy fields that are not
+/// part of the deployment pin.
+#[derive(Debug, Clone, Copy)]
+pub struct FindingRetainedAuthorityPolicy<'a> {
+    pub authority_id: &'a str,
+    pub key: &'a PublicKey,
+    pub key_epoch: u64,
+    pub valid_from: u64,
+    pub valid_until: u64,
+    pub revocation_status_ref: &'a str,
 }
 
 /// The resolved evidence for exactly one class.
@@ -95,6 +115,9 @@ pub struct FindingEvidenceInvalidEvidence<'a> {
     pub challenged_checkpoint: &'a KernelCheckpoint,
     /// Retained publication records for the exact checkpoint set.
     pub checkpoint_transparency: &'a CheckpointTransparencySummary,
+    /// Fresh authenticated lifecycle reading for the production receipt role.
+    /// This proves non-revocation when no revocation statement exists.
+    pub production_authority_status: &'a SignedFindingAuthorityStatus,
     /// What the caller resolved from the revocation feeds the profile pins.
     /// A statement that only holds from after publication is a key-lifecycle
     /// event, not retroactive fabrication, and cannot uphold.
@@ -113,6 +136,10 @@ pub struct FindingRevokedKeyProof<'a> {
     /// The signed statement. The evaluator re-verifies it against the same
     /// pinned governance root that authorized the profile.
     pub statement: &'a SignedFindingKeyRevocation,
+    /// Status reading for the retained governance key, observed after the
+    /// statement was recorded. This prevents a compromised retired key from
+    /// minting a newly backdated revocation.
+    pub governance_authority_status: &'a SignedFindingAuthorityStatus,
 }
 
 /// Resolved evidence for a `replay_contradiction` challenge.

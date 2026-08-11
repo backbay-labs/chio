@@ -1956,6 +1956,7 @@ struct EvidenceInvalidCase {
     receipts: Vec<ResolvedReceiptEvidence>,
     checkpoint: KernelCheckpoint,
     checkpoint_transparency: CheckpointTransparencySummary,
+    production_authority_status: SignedFindingAuthorityStatus,
     /// A checkpoint carrying the named identity but not the artifact the
     /// reference names, which is an unresolved input rather than a
     /// contradiction.
@@ -1985,6 +1986,7 @@ impl EvidenceInvalidCase {
             challenged_receipts: &self.receipts,
             challenged_checkpoint: checkpoint,
             checkpoint_transparency,
+            production_authority_status: &self.production_authority_status,
             revoked_keys: &[],
         })
     }
@@ -2035,12 +2037,32 @@ fn evidence_invalid_case(
         build_checkpoint_transparency(core::slice::from_ref(&evidence.checkpoint))?;
     let unresolved_checkpoint_transparency =
         build_checkpoint_transparency(core::slice::from_ref(&unresolved_checkpoint))?;
+    let production_policy = challenged
+        .profile
+        .body
+        .receipt_signers
+        .iter()
+        .find(|signer| signer.role == FindingReceiptRole::Production)
+        .ok_or("missing production role policy")?;
+    let production_authority_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: production_policy.policy.revocation_status_ref.clone(),
+            authority_id: production_policy.policy.authority_id.clone(),
+            key: production_policy.policy.key.clone(),
+            key_epoch: production_policy.policy.key_epoch,
+            revoked_from: None,
+            observed_at: NOW,
+        },
+        &keypair(36),
+    )?;
     Ok(EvidenceInvalidCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
         purchase_record: standing.record.clone(),
         receipts: evidence.receipts,
         checkpoint: evidence.checkpoint,
         checkpoint_transparency,
+        production_authority_status,
         unresolved_checkpoint,
         unresolved_checkpoint_transparency,
     })

@@ -54,7 +54,8 @@ use chio_finding_challenge::{
     FindingChallengeAdjudication, FindingChallengeClassEvidence, FindingChallengeEvaluation,
     FindingChallengeEvaluationInput, FindingChallengeInadmissible, FindingChallengeReason,
     FindingDigestMismatchEvidence, FindingEvidenceInvalidEvidence,
-    FindingReplayContradictionEvidence, FindingResolvedReproduction, FindingRevokedKeyProof,
+    FindingReplayContradictionEvidence, FindingResolvedReproduction,
+    FindingRetainedAuthorityPolicy, FindingRevokedKeyProof,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_kernel::checkpoint::{
@@ -210,6 +211,8 @@ fn receipt_reference(evidence: &ResolvedReceiptEvidence) -> FindingReceiptRef {
 pub struct World {
     pub governance: Keypair,
     pub governance_key: PublicKey,
+    pub governance_policy: FindingAuthorityKeyPolicy,
+    pub governance_authority_status: SignedFindingAuthorityStatus,
     pub issuer: Keypair,
     pub buyer: Keypair,
     pub audit_authority: Keypair,
@@ -290,6 +293,9 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
     let buyer = keypair(41);
     let audit_authority = keypair(42);
     let authority_status = keypair(18);
+    let governance_policy = key_policy(&governance.public_key(), "governance");
+    let governance_authority_status =
+        signed_authority_status(&governance_policy, &authority_status, None)?;
     let purchase_authority = keypair(16);
     let failed_delivery_authority = keypair(17);
     let production_kernel = keypair(21);
@@ -464,6 +470,8 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
 
     Ok(World {
         governance_key: governance.public_key(),
+        governance_policy,
+        governance_authority_status,
         governance,
         issuer,
         buyer,
@@ -531,6 +539,17 @@ fn recipe_body(profile_envelope_sha256: &str) -> FindingReplayRecipeInput {
 }
 
 impl World {
+    pub fn retained_governance_policy(&self) -> FindingRetainedAuthorityPolicy<'_> {
+        FindingRetainedAuthorityPolicy {
+            authority_id: &self.governance_policy.authority_id,
+            key: &self.governance_policy.key,
+            key_epoch: self.governance_policy.key_epoch,
+            valid_from: self.governance_policy.valid_from,
+            valid_until: self.governance_policy.valid_until,
+            revocation_status_ref: &self.governance_policy.revocation_status_ref,
+        }
+    }
+
     pub fn purchase_status(
         &self,
         revoked_from: Option<u64>,
@@ -557,8 +576,10 @@ impl World {
             raw_finding: &self.raw_finding,
             profile: &self.profile,
             governance_authority: &self.governance_key,
+            pinned_governance_policy: self.retained_governance_policy(),
             pinned_admission_profile_envelope_sha256: &self.profile_envelope_sha256,
             pinned_purchase_authority: &self.profile.body.purchase_authority,
+            pinned_failed_delivery_authority: &self.profile.body.failed_delivery_authority,
             purchase_authority_status: Some(&self.purchase_authority_status),
             pinned_authority_status_key: &self.authority_status_key,
             evaluated_at: EVALUATED_AT,
@@ -745,6 +766,7 @@ impl World {
         };
         Ok(RevokedKey {
             statement: SignedExportEnvelope::sign(body, signer)?,
+            governance_authority_status: self.governance_authority_status.clone(),
         })
     }
 }
@@ -1050,6 +1072,7 @@ pub struct EvidenceCase {
     pub challenged_receipts: Vec<ResolvedReceiptEvidence>,
     pub challenged_checkpoint: KernelCheckpoint,
     pub checkpoint_transparency: CheckpointTransparencySummary,
+    pub production_authority_status: SignedFindingAuthorityStatus,
     pub revoked_keys: Vec<RevokedKey>,
 }
 
@@ -1073,6 +1096,7 @@ pub enum RevocationShape {
 /// An owned revocation statement, so a case can hand out borrowed views.
 pub struct RevokedKey {
     pub statement: SignedFindingKeyRevocation,
+    pub governance_authority_status: SignedFindingAuthorityStatus,
 }
 
 impl EvidenceCase {
@@ -1081,6 +1105,7 @@ impl EvidenceCase {
             .iter()
             .map(|proof| FindingRevokedKeyProof {
                 statement: &proof.statement,
+                governance_authority_status: &proof.governance_authority_status,
             })
             .collect()
     }
@@ -1094,6 +1119,7 @@ impl EvidenceCase {
             challenged_receipts: &self.challenged_receipts,
             challenged_checkpoint: &self.challenged_checkpoint,
             checkpoint_transparency: &self.checkpoint_transparency,
+            production_authority_status: &self.production_authority_status,
             revoked_keys: proofs,
         })
     }
@@ -1240,12 +1266,23 @@ fn build_evidence_case(
     let checkpoint_transparency =
         build_checkpoint_transparency(core::slice::from_ref(&challenged_checkpoint))
             .unwrap_or_default();
+    let production_policy = world
+        .profile
+        .body
+        .receipt_signers
+        .iter()
+        .find(|signer| signer.role == FindingReceiptRole::Production)
+        .map(|signer| &signer.policy)
+        .ok_or("missing production role policy")?;
+    let production_authority_status =
+        signed_authority_status(production_policy, &world.authority_status, None)?;
     Ok(EvidenceCase {
         challenge,
         purchase_record,
         challenged_receipts,
         challenged_checkpoint,
         checkpoint_transparency,
+        production_authority_status,
         revoked_keys,
     })
 }

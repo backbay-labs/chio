@@ -20,9 +20,12 @@
 //! not.
 
 use chio_core_types::crypto::PublicKey;
-use chio_finding::{verify_signed_key_revocation, FindingAuthorityKeyPolicy};
+use chio_finding::{
+    verify_signed_authority_status, verify_signed_key_revocation, FindingAuthorityKeyPolicy,
+};
 
-use crate::input::FindingRevokedKeyProof;
+use crate::input::{FindingRetainedAuthorityPolicy, FindingRevokedKeyProof};
+use crate::receipts::MAX_AUTHORITY_STATUS_AGE_SECS;
 
 /// What the offered statements establish about one key at one instant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,7 +51,9 @@ pub(crate) fn revocation_standing(
     proofs: &[FindingRevokedKeyProof<'_>],
     policy: Option<&FindingAuthorityKeyPolicy>,
     key: &PublicKey,
-    governance_authority: &PublicKey,
+    governance_policy: FindingRetainedAuthorityPolicy<'_>,
+    pinned_status_authority: &PublicKey,
+    evaluated_at: u64,
     instant: u64,
 ) -> KeyRevocationStanding {
     let mut standing = KeyRevocationStanding::NoneOffered;
@@ -59,7 +64,15 @@ pub(crate) fn revocation_standing(
         if proof.statement.body.key != *key {
             continue;
         }
-        if !policy.is_some_and(|policy| authenticates(proof, policy, governance_authority)) {
+        if !policy.is_some_and(|policy| {
+            authenticates(
+                proof,
+                policy,
+                governance_policy,
+                pinned_status_authority,
+                evaluated_at,
+            )
+        }) {
             return KeyRevocationStanding::NotEstablished;
         }
         if proof.statement.body.revoked_from <= instant {
@@ -76,14 +89,38 @@ pub(crate) fn revocation_standing(
 fn authenticates(
     proof: &FindingRevokedKeyProof<'_>,
     policy: &FindingAuthorityKeyPolicy,
-    governance_authority: &PublicKey,
+    governance_policy: FindingRetainedAuthorityPolicy<'_>,
+    pinned_status_authority: &PublicKey,
+    evaluated_at: u64,
 ) -> bool {
-    if verify_signed_key_revocation(proof.statement, governance_authority).is_err() {
+    if verify_signed_key_revocation(proof.statement, governance_policy.key).is_err() {
         return false;
     }
     let body = &proof.statement.body;
-    body.revocation_status_ref == policy.revocation_status_ref
-        && body.authority_id == policy.authority_id
-        && body.key == policy.key
-        && body.key_epoch == policy.key_epoch
+    if body.revocation_status_ref != policy.revocation_status_ref
+        || body.authority_id != policy.authority_id
+        || body.key != policy.key
+        || body.key_epoch != policy.key_epoch
+        || body.recorded_at < governance_policy.valid_from
+        || body.recorded_at >= governance_policy.valid_until
+        || body.recorded_at > evaluated_at
+    {
+        return false;
+    }
+    if verify_signed_authority_status(proof.governance_authority_status, pinned_status_authority)
+        .is_err()
+    {
+        return false;
+    }
+    let status = &proof.governance_authority_status.body;
+    status.status_ref == governance_policy.revocation_status_ref
+        && status.authority_id == governance_policy.authority_id
+        && status.key == *governance_policy.key
+        && status.key_epoch == governance_policy.key_epoch
+        && status.observed_at >= body.recorded_at
+        && status.observed_at <= evaluated_at
+        && evaluated_at.saturating_sub(status.observed_at) <= MAX_AUTHORITY_STATUS_AGE_SECS
+        && status.revoked_from.is_none_or(|revoked_from| {
+            revoked_from > body.recorded_at && revoked_from <= status.observed_at
+        })
 }

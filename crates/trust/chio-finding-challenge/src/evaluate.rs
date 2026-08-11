@@ -20,7 +20,7 @@ use crate::evidence_invalid::evaluate_evidence_invalid;
 use crate::ingress::strict_parse;
 use crate::input::{
     FindingChallengeClassEvidence, FindingChallengeEvaluation, FindingChallengeEvaluationInput,
-    FindingChallengeInadmissible,
+    FindingChallengeInadmissible, FindingRetainedAuthorityPolicy,
 };
 use crate::replay_contradiction::evaluate_replay_contradiction;
 
@@ -32,9 +32,10 @@ pub(crate) struct EvaluationContext<'a> {
     pub(crate) profile_envelope_sha256: &'a str,
     /// The deployment's pinned governance root, the authority that signed
     /// this profile and the only one that may withdraw a key it pins.
-    pub(crate) governance_authority: &'a PublicKey,
+    pub(crate) governance_policy: FindingRetainedAuthorityPolicy<'a>,
     /// Authority policy frozen by the exact retained venue admission.
     pub(crate) purchase_authority: &'a FindingAuthorityKeyPolicy,
+    pub(crate) failed_delivery_authority: &'a FindingAuthorityKeyPolicy,
     pub(crate) purchase_authority_status: Option<&'a SignedFindingAuthorityStatus>,
     pub(crate) pinned_authority_status_key: &'a PublicKey,
     pub(crate) evaluated_at: u64,
@@ -116,8 +117,9 @@ fn adjudicate(
         finding: &finding,
         profile: &input.profile.body,
         profile_envelope_sha256: &profile_envelope_sha256,
-        governance_authority: input.governance_authority,
+        governance_policy: input.pinned_governance_policy,
         purchase_authority: input.pinned_purchase_authority,
+        failed_delivery_authority: input.pinned_failed_delivery_authority,
         purchase_authority_status: input.purchase_authority_status,
         pinned_authority_status_key: input.pinned_authority_status_key,
         evaluated_at: input.evaluated_at,

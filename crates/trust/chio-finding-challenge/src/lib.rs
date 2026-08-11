@@ -50,6 +50,6 @@ pub use input::{
     FindingChallengeAdjudication, FindingChallengeClassEvidence, FindingChallengeEvaluation,
     FindingChallengeEvaluationInput, FindingChallengeInadmissible, FindingDigestMismatchEvidence,
     FindingEvidenceInvalidEvidence, FindingReplayContradictionEvidence,
-    FindingResolvedReproduction, FindingRevokedKeyProof,
+    FindingResolvedReproduction, FindingRetainedAuthorityPolicy, FindingRevokedKeyProof,
 };
 pub use reason::{FindingChallengeReason, FindingChallengeReasonClass};

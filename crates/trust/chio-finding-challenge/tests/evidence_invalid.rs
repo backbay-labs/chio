@@ -16,9 +16,32 @@ use support::{
 };
 
 #[test]
-fn sound_evidence_without_authenticated_revocation_status_is_indeterminate() -> TestResult {
+fn authenticated_non_revocation_rejects_a_challenge_to_sound_evidence() -> TestResult {
     let world = world()?;
     let case = evidence_case(&world, EvidenceShape::Sound)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(&evaluation, FindingChallengeReason::ChallengedEvidenceValid)?;
+    assert_eq!(adjudication.verdict(), FindingChallengeVerdict::Rejected);
+    assert!(!evaluation.authorizes_penalty());
+    outcome_for(&world, &case.challenge, &adjudication)?;
+    Ok(())
+}
+
+#[test]
+fn a_revocation_signed_after_governance_compromise_cannot_uphold() -> TestResult {
+    let world = world()?;
+    let mut revoked = vec![world.revocation(
+        &world.production_kernel.public_key(),
+        PUBLISHED_AT - 1,
+        RevocationShape::Sound,
+    )?];
+    let recorded_at = revoked[0].statement.body.recorded_at;
+    revoked[0].governance_authority_status =
+        world.status_for_policy(&world.governance_policy, Some(recorded_at))?;
+    let case = evidence_case_with_revocations(&world, EvidenceShape::Sound, revoked)?;
     let proofs = case.revocation_proofs();
     let evidence = case.evidence(&proofs);
     let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
@@ -32,7 +55,6 @@ fn sound_evidence_without_authenticated_revocation_status_is_indeterminate() -> 
         FindingChallengeVerdict::Indeterminate
     );
     assert!(!evaluation.authorizes_penalty());
-    outcome_for(&world, &case.challenge, &adjudication)?;
     Ok(())
 }
 
@@ -489,6 +511,7 @@ fn an_evidence_set_smaller_than_the_contested_subset_is_inadmissible() -> TestRe
         challenged_receipts: &case.challenged_receipts[..1],
         challenged_checkpoint: &case.challenged_checkpoint,
         checkpoint_transparency: &case.checkpoint_transparency,
+        production_authority_status: &case.production_authority_status,
         revoked_keys: &proofs,
     });
     let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));

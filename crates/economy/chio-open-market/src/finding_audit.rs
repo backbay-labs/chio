@@ -853,6 +853,13 @@ pub fn verify_audit_report(
                 outcome.outcome_id.clone(),
             ));
         };
+        if outcome.finding_id != attempt.body.finding_id
+            || outcome.listing_id != attempt.body.listing_id
+        {
+            return Err(FindingAuditError::OutcomeAttemptBinding(
+                outcome.outcome_id.clone(),
+            ));
+        }
         if outcome.evaluated_at < attempt.body.filed_at {
             return Err(FindingAuditError::OutcomeTimeBinding(
                 outcome.outcome_id.clone(),

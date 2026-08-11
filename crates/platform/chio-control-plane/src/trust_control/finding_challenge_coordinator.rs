@@ -70,7 +70,7 @@ pub use chio_finding::{
 };
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeEvaluation,
-    FindingChallengeEvaluationInput,
+    FindingChallengeEvaluationInput, FindingRetainedAuthorityPolicy,
 };
 use chio_kernel::admission_operation::StoreMutationFence;
 use chio_open_market::evaluation::{
@@ -1355,6 +1355,14 @@ impl FindingChallengeCoordinator {
             request.now,
             "historical profile governance",
         )?;
+        let pinned_governance_policy = FindingRetainedAuthorityPolicy {
+            authority_id: &profile_governance_policy.authority_id,
+            key: &governance_authority,
+            key_epoch: profile_governance_policy.key_epoch,
+            valid_from: profile_governance_policy.valid_from,
+            valid_until: profile_governance_policy.valid_until,
+            revocation_status_ref: &profile_governance_policy.revocation_status_ref,
+        };
         let authority_status_key = self
             .pins
             .authority_status
@@ -1366,8 +1374,10 @@ impl FindingChallengeCoordinator {
             raw_finding: request.raw_finding,
             profile: request.profile,
             governance_authority: &governance_authority,
+            pinned_governance_policy,
             pinned_admission_profile_envelope_sha256: &admission.body.profile_envelope_sha256,
             pinned_purchase_authority: &admission.body.purchase_authority,
+            pinned_failed_delivery_authority: &admission.body.failed_delivery_authority,
             purchase_authority_status: purchase_authority_status.as_ref(),
             pinned_authority_status_key: &authority_status_key,
             evaluated_at: request.now,
@@ -5885,7 +5895,10 @@ impl FindingChallengeCoordinator {
             .map_err(|_| ChallengeCoordinatorError::Canonical)?;
         let (branch, supplemental_digests) = match evidence {
             FindingChallengeClassEvidence::EvidenceInvalid(resolved) => {
-                let mut digests = vec![self.envelope_digest(resolved.purchase_record)?];
+                let mut digests = vec![
+                    self.envelope_digest(resolved.purchase_record)?,
+                    self.envelope_digest(resolved.production_authority_status)?,
+                ];
                 for receipt in resolved.challenged_receipts {
                     digests.push(self.resolved_receipt_digest(
                         &receipt.canonical_receipt_bytes,
@@ -5896,6 +5909,7 @@ impl FindingChallengeCoordinator {
                 digests.push(self.canonical_digest(resolved.checkpoint_transparency)?);
                 for proof in resolved.revoked_keys {
                     digests.push(self.envelope_digest(proof.statement)?);
+                    digests.push(self.envelope_digest(proof.governance_authority_status)?);
                 }
                 ("evidence_invalid", digests)
             }
