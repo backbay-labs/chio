@@ -317,7 +317,6 @@ impl ChioKernel {
     /// as the replay authority. Exact replay after an outbox worker stops
     /// between append and acknowledgement must not duplicate the local mirror
     /// or runtime trace.
-    #[cfg(feature = "cognition-market-experimental")]
     pub(crate) fn record_chio_receipt_without_settlement_once(
         &self,
         receipt: &ChioReceipt,
