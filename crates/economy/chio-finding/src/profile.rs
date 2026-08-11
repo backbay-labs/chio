@@ -212,6 +212,15 @@ impl FindingChallengeVerifierProfile {
                 return Err(FindingError::DuplicateEntry("receipt_signers[].role"));
             }
         }
+        for (index, signer) in self.receipt_signers.iter().enumerate() {
+            for other in &self.receipt_signers[index + 1..] {
+                let validity_overlaps = signer.policy.valid_from < other.policy.valid_until
+                    && other.policy.valid_from < signer.policy.valid_until;
+                if signer.policy.key == other.policy.key && validity_overlaps {
+                    return Err(FindingError::InvalidField("receipt_signers[].policy.key"));
+                }
+            }
+        }
         for role in [
             FindingReceiptRole::Production,
             FindingReceiptRole::Delivery,

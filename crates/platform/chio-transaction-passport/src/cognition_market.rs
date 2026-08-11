@@ -12,9 +12,10 @@ use std::sync::Arc;
 use chio_core_types::crypto::PublicKey;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
-    signed_envelope_sha256, verify_signed_profile, verify_signed_verifier_report,
-    verify_status_proof_input, FindingFacetKind, FindingFacetOutcome, FindingReplayRecipeInput,
-    FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusProofInput,
+    signed_envelope_sha256, verify_signed_authority_status, verify_signed_profile,
+    verify_signed_verifier_report, verify_status_proof_input, FindingAuthorityKeyPolicy,
+    FindingFacetKind, FindingFacetOutcome, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
+    FindingStatusOperatorAuthorization, FindingStatusProofInput, SignedFindingAuthorityStatus,
     SignedFindingChallengeVerifierProfile, SignedFindingStatusEpoch, SignedFindingVerifierReport,
     FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
     FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
@@ -74,7 +75,18 @@ pub struct CognitionMarketProofTrust {
     pub trusted_trust_root_snapshot_sha256: String,
     pub trusted_resolver_policy_sha256: String,
     pub trusted_time_input_sha256: String,
+    pub verifier_authority_status: CognitionMarketVerifierAuthorityStatusTrust,
     pub status: Option<CognitionMarketStatusTrust>,
+}
+
+/// Deployment-authenticated and freshness-bounded revocation status for the
+/// verifier-report signer pinned by the profile.
+#[derive(Clone)]
+pub struct CognitionMarketVerifierAuthorityStatusTrust {
+    pub signed_status: SignedFindingAuthorityStatus,
+    pub status_authority: PublicKey,
+    pub checked_at: u64,
+    pub max_age_secs: u64,
 }
 
 /// Deployment-owned trust needed by the status claim or a pinned profile that
@@ -282,6 +294,11 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "signed verifier report evaluation time is outside the deployment-pinned signer lifecycle",
         ));
     }
+    verify_verifier_authority_status(
+        finding_verifier_signer,
+        &trust.verifier_authority_status,
+        report.body.evaluation_time,
+    )?;
     if report.body.evaluation_time < trust.trusted_verifier_profile.body.issued_at
         || report.body.evaluation_time >= trust.trusted_verifier_profile.body.expires_at
     {
@@ -466,6 +483,47 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             })?;
     }
     Ok(report)
+}
+
+fn verify_verifier_authority_status(
+    policy: &FindingAuthorityKeyPolicy,
+    trust: &CognitionMarketVerifierAuthorityStatusTrust,
+    report_evaluation_time: u64,
+) -> Result<(), TransactionPassportError> {
+    if trust.checked_at == 0 || trust.max_age_secs == 0 {
+        return Err(claim_failed(
+            "verifier authority status freshness policy is invalid",
+        ));
+    }
+    verify_signed_authority_status(&trust.signed_status, &trust.status_authority)
+        .map_err(|error| claim_failed(format!("verifier authority status is invalid: {error}")))?;
+    let status = &trust.signed_status.body;
+    if status.status_ref != policy.revocation_status_ref
+        || status.authority_id != policy.authority_id
+        || status.key != policy.key
+        || status.key_epoch != policy.key_epoch
+    {
+        return Err(claim_failed(
+            "verifier authority status does not match the deployment-pinned signer policy",
+        ));
+    }
+    if status.observed_at < report_evaluation_time
+        || status.observed_at > trust.checked_at
+        || trust.checked_at.saturating_sub(status.observed_at) > trust.max_age_secs
+    {
+        return Err(claim_failed(
+            "verifier authority status is stale for the signed report",
+        ));
+    }
+    if status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= report_evaluation_time)
+    {
+        return Err(claim_failed(
+            "signed verifier report was produced after verifier-key revocation",
+        ));
+    }
+    Ok(())
 }
 
 fn selected_cognition_report_claim(

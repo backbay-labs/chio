@@ -519,6 +519,24 @@ fn profile_requires_all_three_receipt_roles_exactly_once() -> TestResult {
 }
 
 #[test]
+fn profile_rejects_overlapping_receipt_role_keys() -> TestResult {
+    let mut profile = profile_body()?;
+    profile.receipt_signers[1].policy = profile.receipt_signers[0].policy.clone();
+    profile.profile_id = compute_profile_id(&profile)?;
+    assert_eq!(
+        profile.validate(),
+        Err(FindingError::InvalidField("receipt_signers[].policy.key"))
+    );
+
+    profile.receipt_signers[1].policy.valid_from = profile.receipt_signers[0].policy.valid_until;
+    profile.receipt_signers[1].policy.valid_until =
+        profile.receipt_signers[1].policy.valid_from + 60;
+    profile.profile_id = compute_profile_id(&profile)?;
+    profile.validate()?;
+    Ok(())
+}
+
+#[test]
 fn recipe_phase_order_is_normative() -> TestResult {
     let mut recipe = recipe_body();
     recipe.phases.swap(0, 1);

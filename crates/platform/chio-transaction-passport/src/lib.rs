@@ -12,7 +12,7 @@ pub use cognition_market::{
     verify_cognition_market_passport_artifacts,
     verify_cognition_market_passport_artifacts_with_external_claims, CognitionMarketProofTrust,
     CognitionMarketStatusObservation, CognitionMarketStatusTrust, CognitionMarketStatusTrustStore,
-    COGNITION_MARKET_CLAIMS,
+    CognitionMarketVerifierAuthorityStatusTrust, COGNITION_MARKET_CLAIMS,
 };
 pub use error::TransactionPassportError;
 pub use evidence_graph::validate_transaction_evidence_graph;

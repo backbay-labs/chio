@@ -9,13 +9,14 @@ use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
     build_status_inclusion_proof_input, build_status_non_inclusion_proof_input, compute_profile_id,
     compute_report_id, compute_status_epoch_id, signed_envelope_sha256, FindingAuthorityKeyPolicy,
-    FindingBbsIssuerPolicy, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
-    FindingClaimedVerdict, FindingFacetKind, FindingFacetOutcome, FindingFacetResult,
-    FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
-    FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
-    FindingStatusEpoch, FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization,
-    FindingStatusOperatorRole, FindingStatusProofInput, FindingVerifierReport,
-    SignedFindingChallengeVerifierProfile, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
+    FindingAuthorityStatus, FindingBbsIssuerPolicy, FindingChallengeVerifierProfile,
+    FindingCheckpointLogPolicy, FindingClaimedVerdict, FindingFacetKind, FindingFacetOutcome,
+    FindingFacetResult, FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole,
+    FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput,
+    FindingResourceCaps, FindingStatusEpoch, FindingStatusFreshnessPolicy,
+    FindingStatusOperatorAuthorization, FindingStatusOperatorRole, FindingStatusProofInput,
+    FindingVerifierReport, SignedFindingChallengeVerifierProfile,
+    FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1,
     FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
@@ -31,7 +32,7 @@ use chio_transaction_passport::{
     sign_transaction_passport, verify_cognition_market_passport_artifacts,
     verify_cognition_market_passport_artifacts_with_external_claims, CognitionMarketProofTrust,
     CognitionMarketStatusObservation, CognitionMarketStatusTrust, CognitionMarketStatusTrustStore,
-    TransactionPassport, COGNITION_MARKET_CLAIMS,
+    CognitionMarketVerifierAuthorityStatusTrust, TransactionPassport, COGNITION_MARKET_CLAIMS,
 };
 use serde_json::{json, Value};
 
@@ -546,6 +547,20 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
     let trusted_verifier_profile = verifier_profile()?;
     let trusted_verifier_profile_envelope_sha256 =
         signed_envelope_sha256(&trusted_verifier_profile)?;
+    let verifier_status_authority = Keypair::from_seed(&[10_u8; 32]);
+    let verifier_signer_policy = &trusted_verifier_profile.body.verifier_report_signer;
+    let verifier_authority_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: verifier_signer_policy.revocation_status_ref.clone(),
+            authority_id: verifier_signer_policy.authority_id.clone(),
+            key: verifier_signer_policy.key.clone(),
+            key_epoch: verifier_signer_policy.key_epoch,
+            revoked_from: None,
+            observed_at: CHECKED_AT,
+        },
+        &verifier_status_authority,
+    )?;
     let trust = CognitionMarketProofTrust {
         trusted_passport_signer_keys: vec![root.public_key()],
         trusted_checkpoint_signer_keys: Vec::new(),
@@ -556,6 +571,12 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         trusted_trust_root_snapshot_sha256: "45".repeat(32),
         trusted_resolver_policy_sha256: "56".repeat(32),
         trusted_time_input_sha256: "67".repeat(32),
+        verifier_authority_status: CognitionMarketVerifierAuthorityStatusTrust {
+            signed_status: verifier_authority_status,
+            status_authority: verifier_status_authority.public_key(),
+            checked_at: CHECKED_AT,
+            max_age_secs: 60,
+        },
         status: Some(CognitionMarketStatusTrust {
             status_operator_authorization: status_authorization(&status_keypair),
             status_freshness: FindingStatusFreshnessPolicy {
@@ -1675,6 +1696,30 @@ fn cognition_market_qualified_profile_enforces_verifier_signer_lifecycle() -> Te
     assert!(
         lifecycle_error.contains("signer lifecycle"),
         "unexpected error: {lifecycle_error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_revoked_verifier_signer() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let mut status = bundle
+        .trust
+        .verifier_authority_status
+        .signed_status
+        .body
+        .clone();
+    status.revoked_from = Some(CHECKED_AT);
+    bundle.trust.verifier_authority_status.signed_status =
+        SignedExportEnvelope::sign(status, &Keypair::from_seed(&[10_u8; 32]))?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("report signed by a revoked verifier key was accepted")?
+        .to_string();
+    assert!(
+        error.contains("after verifier-key revocation"),
+        "unexpected error: {error}"
     );
     Ok(())
 }

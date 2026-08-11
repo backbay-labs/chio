@@ -26,6 +26,14 @@ const FINDING_TRUST_ROOT_SNAPSHOT_SHA256_ENV: &str =
 const FINDING_RESOLVER_POLICY_SHA256_ENV: &str = "CHIO_FINDING_RESOLVER_POLICY_SHA256";
 const FINDING_TRUSTED_TIME_INPUT_SHA256_ENV: &str =
     "CHIO_FINDING_TRUSTED_TIME_INPUT_SHA256";
+const FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV: &str =
+    "CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_PATH";
+const FINDING_VERIFIER_STATUS_AUTHORITY_KEY_ENV: &str =
+    "CHIO_FINDING_VERIFIER_STATUS_AUTHORITY_KEY";
+const FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT_ENV: &str =
+    "CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT";
+const FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS_ENV: &str =
+    "CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS";
 const FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV: &str =
     "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH";
 const FINDING_STATUS_AUTHORITY_DATABASE_PATH_ENV: &str =
@@ -34,6 +42,7 @@ const FINDING_STATUS_AUTHORITY_LOCK_ROOT_ENV: &str = "CHIO_FINDING_STATUS_AUTHOR
 const FINDING_STATUS_NOW_UNIX_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_NOW_UNIX_SECONDS";
 const FINDING_STATUS_MAX_AGE_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_MAX_AGE_SECONDS";
 const FINDING_STATUS_AUTHORIZATION_MAX_BYTES: usize = 64 * 1024;
+const FINDING_VERIFIER_AUTHORITY_STATUS_MAX_BYTES: usize = 64 * 1024;
 const FINDING_VERIFIER_PROFILE_MAX_BYTES: usize = 256 * 1024;
 const RUNTIME_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_RUNTIME_TRUSTED_ROOT_KEYS";
 const ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV: &str = "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS";
@@ -266,6 +275,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
         required_sha256_env(FINDING_RESOLVER_POLICY_SHA256_ENV)?;
     let trusted_time_input_sha256 =
         required_sha256_env(FINDING_TRUSTED_TIME_INPUT_SHA256_ENV)?;
+    let verifier_authority_status = finding_verifier_authority_status_trust_from_env()?;
     let status_liveness_required = status_claim_selected
         || trusted_verifier_profile
             .body
@@ -287,6 +297,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
             trusted_trust_root_snapshot_sha256,
             trusted_resolver_policy_sha256,
             trusted_time_input_sha256,
+            verifier_authority_status,
             status,
         },
     )
@@ -336,6 +347,86 @@ fn finding_verifier_profile_from_env(
         )));
     }
     Ok(profile)
+}
+
+fn finding_verifier_authority_status_trust_from_env(
+) -> Result<
+    chio_control_plane::transaction_passport::CognitionMarketVerifierAuthorityStatusTrust,
+    CliError,
+> {
+    let path = required_utf8_env(FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV)?;
+    let mut reader = std::fs::File::open(&path)?
+        .take((FINDING_VERIFIER_AUTHORITY_STATUS_MAX_BYTES as u64).saturating_add(1));
+    let mut bytes =
+        Vec::with_capacity(FINDING_VERIFIER_AUTHORITY_STATUS_MAX_BYTES.saturating_add(1));
+    reader.read_to_end(&mut bytes)?;
+    if bytes.len() > FINDING_VERIFIER_AUTHORITY_STATUS_MAX_BYTES {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} exceeds the authority-status size bound"
+        )));
+    }
+    let text = std::str::from_utf8(&bytes).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} is not valid UTF-8: {error}"
+        ))
+    })?;
+    let canonical = chio_core_types::canonical_json_bytes_from_str(text).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} is not strict canonical I-JSON: {error}"
+        ))
+    })?;
+    if canonical != bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} is not the canonical authority-status serialization"
+        )));
+    }
+    let signed_status: chio_finding::SignedFindingAuthorityStatus =
+        serde_json::from_slice(&bytes).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} is not a signed Finding authority status: {error}"
+            ))
+        })?;
+    let typed = chio_core_types::canonical_json_bytes(&signed_status).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} could not be canonicalized: {error}"
+        ))
+    })?;
+    if typed != bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} typed status does not preserve the exact canonical bytes"
+        )));
+    }
+    let status_authorities = required_public_keys_from_env(
+        FINDING_VERIFIER_STATUS_AUTHORITY_KEY_ENV,
+        "Finding verifier status authority",
+    )?;
+    if status_authorities.len() != 1 {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_STATUS_AUTHORITY_KEY_ENV} must contain exactly one public key"
+        )));
+    }
+    let status_authority = status_authorities.into_iter().next().ok_or_else(|| {
+        CliError::cli_other_error("Finding verifier status authority key is missing")
+    })?;
+    chio_finding::verify_signed_authority_status(&signed_status, &status_authority).map_err(
+        |error| {
+            CliError::cli_other_error(format!(
+                "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} is not authorized by {FINDING_VERIFIER_STATUS_AUTHORITY_KEY_ENV}: {error}"
+            ))
+        },
+    )?;
+    Ok(
+        chio_control_plane::transaction_passport::CognitionMarketVerifierAuthorityStatusTrust {
+            signed_status,
+            status_authority,
+            checked_at: required_positive_u64_env(
+                FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT_ENV,
+            )?,
+            max_age_secs: required_positive_u64_env(
+                FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS_ENV,
+            )?,
+        },
+    )
 }
 
 fn cognition_market_status_trust_from_env(
