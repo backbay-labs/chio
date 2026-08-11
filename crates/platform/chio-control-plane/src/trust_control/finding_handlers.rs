@@ -17,11 +17,11 @@
 //! the standalone artifact surfaces (publish, recipes, profiles).
 
 use chio_finding::{
-    required_finding_facets, verify_signed_bond_backing, verify_signed_profile,
-    verify_signed_seller_authorization, verify_signed_verifier_report, Finding, FindingFacetKind,
-    FindingFacetOutcome, FindingFeeEvent, FindingGuaranteeClass, FindingPayee,
-    FindingReplayRecipeInput, SignedFindingAdmission, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
+    required_finding_facets, verify_signed_authority_status, verify_signed_bond_backing,
+    verify_signed_profile, verify_signed_seller_authorization, verify_signed_verifier_report,
+    Finding, FindingFacetKind, FindingFacetOutcome, FindingFeeEvent, FindingGuaranteeClass,
+    FindingPayee, FindingReplayRecipeInput, SignedFindingAdmission, SignedFindingAuthorityStatus,
+    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
     SignedFindingSellerAuthorization, SignedFindingVerifierReport,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
 };
@@ -51,6 +51,9 @@ pub(crate) const FINDING_PUBLISH_MAX_BODY_BYTES: usize = 256 * 1024;
 /// Dependency uploads (recipes, input bundles, profiles) may carry larger
 /// canonical payloads; still bounded well below the service cap.
 pub(crate) const FINDING_DEPENDENCY_MAX_BODY_BYTES: usize = 1024 * 1024;
+/// A status reading older than this cannot establish current verifier-key
+/// standing at the activation boundary.
+pub(crate) const VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS: u64 = 3_600;
 
 const FINDING_SCHEMA_JSON: &str =
     include_str!("../../../../../spec/schemas/chio-finding/v1/finding.schema.json");
@@ -733,6 +736,7 @@ pub(crate) struct FindingActivateRequest {
     pub backing: SignedFindingBondBacking,
     pub fee_schedule: SignedOpenMarketFeeSchedule,
     pub verifier_report: SignedFindingVerifierReport,
+    pub verifier_authority_status: SignedFindingAuthorityStatus,
     pub listing: SignedGenericListing,
     pub pricing_hint: chio_open_market::listing::SignedListingPricingHint,
 }
@@ -764,8 +768,10 @@ pub(crate) fn verify_profile_for_activation(
 
 pub(crate) fn verify_report_authority_lifecycle(
     report: &SignedFindingVerifierReport,
+    authority_status: &SignedFindingAuthorityStatus,
     profile: &SignedFindingChallengeVerifierProfile,
     config: &FindingMarketConfig,
+    now: u64,
 ) -> Result<(), String> {
     let instant = report.body.evaluation_time;
     let verifier_key = config
@@ -775,6 +781,9 @@ pub(crate) fn verify_report_authority_lifecycle(
     verify_signed_verifier_report(report, &verifier_key).map_err(|error| error.to_string())?;
     if !config.verifier_report.covers(instant) {
         return Err("verifier report evaluation is outside the pinned key validity window".into());
+    }
+    if !config.verifier_report.covers(now) {
+        return Err("verifier report authority is not live at activation".into());
     }
     if report.body.verifier_key_epoch != config.verifier_report.key_epoch {
         return Err("verifier report key epoch does not match the deployment pin".into());
@@ -789,6 +798,35 @@ pub(crate) fn verify_report_authority_lifecycle(
     }
     if instant < policy.valid_from || instant >= policy.valid_until {
         return Err("verifier report evaluation is outside the profile signer policy".into());
+    }
+    if now < policy.valid_from || now >= policy.valid_until {
+        return Err("profile verifier-report authority is not live at activation".into());
+    }
+
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live at activation".into());
+    }
+    if status.status_ref != config.verifier_report.revocation_status_ref
+        || status.authority_id != config.verifier_report.authority_id
+        || status.key != verifier_key
+        || status.key_epoch != config.verifier_report.key_epoch
+    {
+        return Err("verifier authority status does not bind the deployment pin".into());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("verifier authority status is not a fresh current reading".into());
+    }
+    if status.revoked_from.is_some() {
+        return Err("verifier report authority is revoked at activation".into());
     }
     Ok(())
 }
@@ -1117,9 +1155,13 @@ pub(crate) async fn handle_activate_finding(
         }
         None => FindingFeeScheduleGate::Legacy,
     };
-    if let Err(error) =
-        verify_report_authority_lifecycle(&request.verifier_report, &profile, &config)
-    {
+    if let Err(error) = verify_report_authority_lifecycle(
+        &request.verifier_report,
+        &request.verifier_authority_status,
+        &profile,
+        &config,
+        now,
+    ) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     // The report's affirmative bond claim, if any, feeds the admission
@@ -1170,14 +1212,9 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
     }
 
-    // Verifier report: pinned signer, exact bindings, report-before-
-    // backing, and the required-facet policy against the
-    // retained profile.
-    if let Err(error) =
-        verify_report_authority_lifecycle(&request.verifier_report, &profile, &config)
-    {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error);
-    }
+    // The verifier signer and its current authenticated status were checked
+    // above before the report influenced admission sizing. Continue with its
+    // exact bindings and required-facet policy against the retained profile.
     let report = &request.verifier_report.body;
     let report_digest = match canonical_digest_of(&request.verifier_report) {
         Ok(digest) => digest,

@@ -50,16 +50,18 @@ use chio_finding::{
     compute_profile_id, compute_terms_id, derive_finding_recovery_id, derive_purchase_key,
     sign_finding, signed_envelope_sha256, verify_signed_failed_delivery,
     verify_signed_purchase_record, Finding, FindingAdmission, FindingAuthorityKeyPolicy,
-    FindingBackingRequirement, FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass,
-    FindingChallengeBondLimit, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
-    FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor, FindingEvidenceClass,
-    FindingFacetKind, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
-    FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
+    FindingAuthorityStatus, FindingBackingRequirement,
+    FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
+    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
+    FindingCollateralVault, FindingDescriptor, FindingEvidenceClass, FindingFacetKind,
+    FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass, FindingMarketTerms,
+    FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
     FindingPurchaseContext, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
     FindingRecipePhase, FindingRecipePhaseKind, FindingRecoveryContext, FindingReplayRecipeInput,
     FindingResourceCaps, FindingSellerAuthorization, SignedFindingAdmission,
-    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
-    SignedFindingSellerAuthorization, SignedFindingVerifierReport, FINDING_ADMISSION_SCHEMA_V1,
+    SignedFindingAuthorityStatus, SignedFindingBondBacking, SignedFindingChallengeVerifierProfile,
+    SignedFindingMarketTerms, SignedFindingSellerAuthorization, SignedFindingVerifierReport,
+    FINDING_ADMISSION_SCHEMA_V1, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
     FINDING_BOND_BACKING_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
     FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_RECOVERY_CONTEXT_SCHEMA_V1,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
@@ -233,6 +235,25 @@ fn key_policy(seed: u8, label: &str) -> FindingAuthorityKeyPolicy {
         rotation_policy_ref: "rotation-policy-v1".to_string(),
         revocation_status_ref: "revocations/finding-market".to_string(),
     }
+}
+
+fn signed_verifier_authority_status(
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(15, "verifier-report");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
 }
 
 fn market_config() -> FindingMarketConfig {
@@ -1171,6 +1192,9 @@ impl MarketWeb {
             "backing": serde_json::to_value(&self.backing)?,
             "feeSchedule": serde_json::to_value(&self.schedule)?,
             "verifierReport": serde_json::to_value(&self.report)?,
+            "verifierAuthorityStatus": serde_json::to_value(signed_verifier_authority_status(
+                unix_timestamp_now(),
+            )?)?,
             "listing": serde_json::to_value(&self.listing)?,
             "pricingHint": serde_json::to_value(&self.pricing_hint)?,
         })
@@ -4258,6 +4282,17 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
             "purchase"
         ))
     ));
+    let mut boundary_body = fixture.deployment.web.admission.body.clone();
+    boundary_body.purchase_authority.valid_until = now;
+    boundary_body.admission_id = compute_admission_id(&boundary_body)?;
+    let boundary: SignedFindingAdmission =
+        SignedExportEnvelope::sign(boundary_body, &fixture.deployment.web.venue)?;
+    assert!(matches!(
+        fixture.reserve_with(&boundary, now),
+        Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+            "purchase"
+        ))
+    ));
     let mut future_body = fixture.deployment.web.admission.body.clone();
     future_body.purchase_authority.valid_from = now.saturating_add(1);
     future_body.admission_id = compute_admission_id(&future_body)?;
@@ -4683,6 +4718,9 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
         "backing": serde_json::to_value(&second_backing)?,
         "feeSchedule": serde_json::to_value(&web.schedule)?,
         "verifierReport": serde_json::to_value(&second_report)?,
+        "verifierAuthorityStatus": serde_json::to_value(signed_verifier_authority_status(
+            unix_timestamp_now(),
+        )?)?,
         "listing": serde_json::to_value(&web.listing)?,
         "pricingHint": serde_json::to_value(&web.pricing_hint)?,
     })

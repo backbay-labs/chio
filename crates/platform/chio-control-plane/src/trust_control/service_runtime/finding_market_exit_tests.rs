@@ -30,19 +30,20 @@ use chio_core::sha256_hex;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
     compute_profile_id, compute_report_id, compute_terms_id, sign_finding, Finding,
-    FindingAdmission, FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
-    FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
+    FindingAdmission, FindingAuthorityKeyPolicy, FindingAuthorityStatus, FindingBackingRequirement,
+    FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
     FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
     FindingCollateralVault, FindingDescriptor, FindingEvidenceClass, FindingFacetKind,
     FindingFacetOutcome, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
     FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
     FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase,
     FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
-    FindingSellerAuthorization, SignedFindingAdmission, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
+    FindingSellerAuthorization, SignedFindingAdmission, SignedFindingAuthorityStatus,
+    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
     SignedFindingSellerAuthorization, SignedFindingVerifierReport, FINDING_ADMISSION_SCHEMA_V1,
-    FINDING_BOND_BACKING_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
-    FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
+    FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
+    FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1,
+    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
     FINDING_SELLER_AUTHORIZATION_SCHEMA_V1,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
@@ -154,6 +155,26 @@ fn key_policy(seed: u8, label: &str) -> FindingAuthorityKeyPolicy {
         rotation_policy_ref: "rotation-policy-v1".to_string(),
         revocation_status_ref: "revocations/finding-market".to_string(),
     }
+}
+
+fn signed_verifier_authority_status(
+    observed_at: u64,
+    revoked_from: Option<u64>,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(15, "verifier-report");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
 }
 
 fn audit_pool_binding() -> FindingPoolBinding {
@@ -1118,6 +1139,10 @@ impl MarketWeb {
             "backing": serde_json::to_value(&self.backing)?,
             "feeSchedule": serde_json::to_value(schedule)?,
             "verifierReport": serde_json::to_value(report)?,
+            "verifierAuthorityStatus": serde_json::to_value(signed_verifier_authority_status(
+                unix_timestamp_now(),
+                None,
+            )?)?,
             "listing": serde_json::to_value(listing)?,
             "pricingHint": serde_json::to_value(&self.pricing_hint)?,
         });
@@ -2249,10 +2274,16 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
     )?;
     let config = market_config();
     let profile_sha256 = digest_of(&profile)?;
-    let now = stack.web.report.body.evaluation_time;
+    let now = stack
+        .web
+        .report
+        .body
+        .evaluation_time
+        .saturating_add(VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS + 1);
+    let live_status = signed_verifier_authority_status(now, None)?;
     verify_profile_for_activation(&profile, &profile_sha256, &config, now)
         .map_err(std::io::Error::other)?;
-    verify_report_authority_lifecycle(&stack.web.report, &profile, &config)
+    verify_report_authority_lifecycle(&stack.web.report, &live_status, &profile, &config, now)
         .map_err(std::io::Error::other)?;
 
     let forged = build_profile(
@@ -2270,11 +2301,48 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
 
     let mut stale_pin = config.clone();
     stale_pin.verifier_report.valid_until = stack.web.report.body.evaluation_time;
-    assert!(verify_report_authority_lifecycle(&stack.web.report, &profile, &stale_pin).is_err());
+    assert!(verify_report_authority_lifecycle(
+        &stack.web.report,
+        &live_status,
+        &profile,
+        &stale_pin,
+        now,
+    )
+    .is_err());
 
-    let mut wrong_epoch = config;
+    let mut wrong_epoch = config.clone();
     wrong_epoch.verifier_report.key_epoch += 1;
-    assert!(verify_report_authority_lifecycle(&stack.web.report, &profile, &wrong_epoch).is_err());
+    assert!(verify_report_authority_lifecycle(
+        &stack.web.report,
+        &live_status,
+        &profile,
+        &wrong_epoch,
+        now,
+    )
+    .is_err());
+
+    let revoked_status = signed_verifier_authority_status(now, Some(now))?;
+    assert!(verify_report_authority_lifecycle(
+        &stack.web.report,
+        &revoked_status,
+        &profile,
+        &config,
+        now,
+    )
+    .is_err());
+
+    let stale_status = signed_verifier_authority_status(
+        now.saturating_sub(VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS + 1),
+        None,
+    )?;
+    assert!(verify_report_authority_lifecycle(
+        &stack.web.report,
+        &stale_status,
+        &profile,
+        &config,
+        now,
+    )
+    .is_err());
     Ok(())
 }
 

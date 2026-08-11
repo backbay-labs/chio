@@ -27,9 +27,9 @@ use chio_core::receipt::metadata::{
 use chio_finding::{
     compute_failed_delivery_id, derive_purchase_key, validate_evm_payout_destination,
     verify_finding, verify_signed_bond_backing, verify_signed_seller_authorization, Finding,
-    FindingFailedDelivery, FindingHoldReleaseTerminal, FindingPurchaseRecord,
-    SignedFindingAdmission, SignedFindingBondBacking, SignedFindingFailedDelivery,
-    SignedFindingPurchaseRecord, SignedFindingSellerAuthorization,
+    FindingAuthorityKeyPolicy, FindingFailedDelivery, FindingHoldReleaseTerminal,
+    FindingPurchaseRecord, SignedFindingAdmission, SignedFindingBondBacking,
+    SignedFindingFailedDelivery, SignedFindingPurchaseRecord, SignedFindingSellerAuthorization,
     FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
 };
 use chio_kernel::admission_operation::{
@@ -62,6 +62,10 @@ const RESERVATION_DOMAIN: &str = "chio.finding.reservation.v1";
 
 /// Domain separator for the deterministic encumbrance identity.
 const ENCUMBRANCE_DOMAIN: &str = "chio.finding.encumbrance.v1";
+
+fn authority_policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u64) -> bool {
+    instant >= policy.valid_from && instant < policy.valid_until
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExpectedPurchaseTerminal {
@@ -323,7 +327,7 @@ impl FindingPurchaseCoordinator {
             if policy.key != signing_key {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
             }
-            if now < policy.valid_from || now >= policy.valid_until {
+            if !authority_policy_covers(policy, now) {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
         }
@@ -573,9 +577,7 @@ impl FindingPurchaseCoordinator {
             if policy.key != signing_key {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
             }
-            if reservation.created_at < policy.valid_from
-                || reservation.created_at >= policy.valid_until
-            {
+            if !authority_policy_covers(policy, reservation.created_at) {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
         }
