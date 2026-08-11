@@ -528,6 +528,7 @@ fn validate_current_listing(
         || assertion_body.listing_envelope_sha256 != listing_sha256
         || assertion_body.pricing_hint_envelope_sha256 != pricing_sha256
         || assertion_body.generated_at < listing.listing.body.published_at
+        || assertion_body.generated_at < listing.pricing.body.issued_at
         || assertion_body.max_age_secs == 0
         || assertion_body.max_age_secs > max_freshness_age_secs
         || assertion_body.valid_until > listing.pricing.body.expires_at
@@ -568,20 +569,26 @@ fn validate_current_listing(
     }
     ensure_generic_listing_signed_by_namespace_owner(&listing.listing, "finding listing")
         .map_err(FindingPheromoneError::Listing)?;
+    let owner_key = &listing.listing.body.namespace_ownership.signer_public_key;
+    if owner_key.is_weak_ed25519() {
+        return Err(FindingPheromoneError::Listing(
+            "finding listing authority key is weak".to_owned(),
+        ));
+    }
+    match owner_key.verify_canonical_strict(&listing.listing.body, &listing.listing.signature) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err(FindingPheromoneError::Listing(
+                "finding listing signature is invalid".to_owned(),
+            ));
+        }
+        Err(error) => return Err(FindingPheromoneError::Listing(error.to_string())),
+    }
     listing
         .pricing
         .body
         .validate()
         .map_err(FindingPheromoneError::Listing)?;
-    match listing.pricing.verify_signature() {
-        Ok(true) => {}
-        Ok(false) => {
-            return Err(FindingPheromoneError::Listing(
-                "pricing hint signature is invalid".to_string(),
-            ));
-        }
-        Err(error) => return Err(FindingPheromoneError::Listing(error.to_string())),
-    }
     if normalize_namespace(&listing.pricing.body.namespace)
         != normalize_namespace(&listing.listing.body.namespace)
         || listing.pricing.body.listing_id != listing.listing.body.listing_id
@@ -593,6 +600,15 @@ fn validate_current_listing(
         return Err(FindingPheromoneError::Listing(
             "pricing hint is not bound to the current listing authority".to_string(),
         ));
+    }
+    match owner_key.verify_canonical_strict(&listing.pricing.body, &listing.pricing.signature) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err(FindingPheromoneError::Listing(
+                "pricing hint signature is invalid".to_owned(),
+            ));
+        }
+        Err(error) => return Err(FindingPheromoneError::Listing(error.to_string())),
     }
     Ok(())
 }

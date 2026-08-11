@@ -34,7 +34,7 @@ use chio_open_market::canonical_json_bytes;
 use chio_open_market::{
     bidding::{BidMintContext, BidRequest, RequestedScope, SignedBidRequest, BID_REQUEST_SCHEMA},
     capability::scope::MonetaryAmount,
-    crypto::{Keypair, PublicKey},
+    crypto::{Keypair, PublicKey, Signature},
     evaluation::OpenMarketPenaltyEvaluation,
     evidence::{OpenMarketFinding, OpenMarketFindingCode},
     fee_schedule::{
@@ -1003,6 +1003,85 @@ fn finding_pheromone_pins_current_listing_to_registry_authority() {
                 &web.context(resolver),
             ),
             Err(FindingPheromoneError::Listing(_))
+        ));
+    });
+}
+
+#[test]
+fn finding_pheromone_rejects_weak_listing_authority_signatures() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let mut listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let weak_key =
+            PublicKey::from_hex("0100000000000000000000000000000000000000000000000000000000000000")
+                .test_expect("construct weak listing authority key");
+        let forged_signature = Signature::from_hex(
+            "0100000000000000000000000000000000000000000000000000000000000000\
+             0000000000000000000000000000000000000000000000000000000000000000",
+        )
+        .test_expect("construct forged weak-key signature");
+        listing.listing.body.namespace_ownership.signer_public_key = weak_key.clone();
+        listing.listing.signer_key = weak_key.clone();
+        listing.listing.signature = forged_signature.clone();
+        listing.pricing.signer_key = weak_key;
+        listing.pricing.signature = forged_signature;
+        let assertion = finding_current_listing_assertion(&listing, &web.operator);
+
+        let error = admit_and_resolve_finding_pheromone_hint(
+            &InMemoryPheromoneSubstrate::new(),
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-weak-owner", 125),
+            &finding_pheromone_context(&passport, &kernel),
+            &finding_pheromone_convention(),
+            AuthenticatedCurrentFindingListing::new(&listing, &assertion),
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect_err("weak listing authority must fail strict verification");
+        assert!(matches!(
+            error,
+            FindingPheromoneError::Listing(message) if message.contains("weak")
+        ));
+    });
+}
+
+#[test]
+fn finding_pheromone_assertion_cannot_predate_pricing_issuance() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let mut listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let mut pricing = listing.pricing.body.clone();
+        pricing.issued_at = listing.freshness.generated_at + 1;
+        listing.pricing = SignedListingPricingHint::sign(pricing, &web.operator)
+            .test_expect("sign not-yet-issued pricing hint");
+        let assertion = finding_current_listing_assertion(&listing, &web.operator);
+
+        let error = admit_and_resolve_finding_pheromone_hint(
+            &InMemoryPheromoneSubstrate::new(),
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-pricing-issued-later", 125),
+            &finding_pheromone_context(&passport, &kernel),
+            &finding_pheromone_convention(),
+            AuthenticatedCurrentFindingListing::new(&listing, &assertion),
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect_err("current-listing assertion cannot predate the pricing hint");
+        assert!(matches!(
+            error,
+            FindingPheromoneError::Listing(message) if message.contains("binding is invalid")
         ));
     });
 }
