@@ -1447,6 +1447,37 @@ fn sqlite_receipt_store_identity_survives_reopen() {
 }
 
 #[test]
+fn cloned_receipt_database_cannot_reuse_the_ledger_sink_binding() {
+    let directory = tempfile::tempdir().test_expect("create store directory");
+    let receipt_path = directory.path().join("receipts.sqlite3");
+    let clone_path = directory.path().join("receipts-restored.sqlite3");
+    let ledger = open_qualified(directory.path().join("pool.sqlite3"), ledger_domain())
+        .test_expect("open qualified pool ledger");
+    let first = SqliteReceiptStore::open(&receipt_path).test_expect("open first receipt store");
+    let first_sink = first
+        .durable_sink_id()
+        .test_expect("read first durable sink identity")
+        .to_owned();
+    ledger
+        .bind_receipt_sink(&first_sink)
+        .test_expect("bind first receipt sink");
+    drop(first);
+
+    std::fs::copy(&receipt_path, &clone_path).test_expect("clone receipt database snapshot");
+    let cloned =
+        SqliteReceiptStore::open_existing(&clone_path).test_expect("open cloned receipt database");
+    let cloned_sink = cloned
+        .durable_sink_id()
+        .test_expect("read cloned durable sink identity");
+
+    assert_ne!(cloned_sink, first_sink);
+    assert_eq!(
+        ledger.bind_receipt_sink(cloned_sink),
+        Err(FindingPoolLedgerError::ReceiptSinkMismatch)
+    );
+}
+
+#[test]
 fn cognition_market_qualified_pool_refuses_in_memory_storage() {
     for path in [
         ":memory:",

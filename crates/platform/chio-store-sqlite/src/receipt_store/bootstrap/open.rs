@@ -1,5 +1,7 @@
 use super::*;
 
+use std::path::PathBuf;
+
 /// Tables that identify a database this receipt store may open, all of them the
 /// store's own: `chio_tool_receipts` is the current anchor (also the table the
 /// store shipped before schema stamping existed) and `http_receipts` /
@@ -147,6 +149,64 @@ fn load_receipt_sink_identity(connection: &Connection) -> Result<String, Receipt
         ));
     }
     Ok(sink_id)
+}
+
+fn durable_receipt_sink_binding(
+    path: &Path,
+    internal_sink_id: &str,
+) -> Result<String, ReceiptStoreError> {
+    let Some(path_text) = path.to_str() else {
+        return durable_receipt_sink_file_binding(path, internal_sink_id);
+    };
+    if crate::is_in_memory_sqlite_path(path_text) {
+        // An in-memory store cannot be installed beside a qualified pool
+        // ledger, which independently refuses all SQLite memory spellings.
+        return Ok(internal_sink_id.to_owned());
+    }
+    let path_without_fragment = path_text
+        .split_once('#')
+        .map_or(path_text, |(database, _)| database);
+    let filesystem_path = crate::sqlite_filesystem_path(path_without_fragment);
+    let filesystem_path = if path_text.starts_with("file:") {
+        PathBuf::from(crate::percent_decode_sqlite_uri(
+            filesystem_path.to_string_lossy().as_ref(),
+        ))
+    } else {
+        filesystem_path
+    };
+    durable_receipt_sink_file_binding(&filesystem_path, internal_sink_id)
+}
+
+fn durable_receipt_sink_file_binding(
+    path: &Path,
+    internal_sink_id: &str,
+) -> Result<String, ReceiptStoreError> {
+    let canonical_path = fs::canonicalize(path).map_err(|error| {
+        ReceiptStoreError::Io(std::io::Error::new(
+            error.kind(),
+            format!(
+                "receipt database filesystem identity is unavailable for {}: {error}",
+                path.display()
+            ),
+        ))
+    })?;
+    let metadata = fs::metadata(&canonical_path)?;
+    let mut material = Vec::new();
+    append_receipt_sink_binding_part(&mut material, b"chio.receipt-store.durable-sink-binding.v1");
+    append_receipt_sink_binding_part(&mut material, internal_sink_id.as_bytes());
+    append_receipt_sink_binding_part(&mut material, canonical_path.as_os_str().as_encoded_bytes());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        append_receipt_sink_binding_part(&mut material, &metadata.dev().to_be_bytes());
+        append_receipt_sink_binding_part(&mut material, &metadata.ino().to_be_bytes());
+    }
+    Ok(sha256_hex(&material))
+}
+
+fn append_receipt_sink_binding_part(material: &mut Vec<u8>, part: &[u8]) {
+    material.extend_from_slice(&(part.len() as u64).to_be_bytes());
+    material.extend_from_slice(part);
 }
 
 fn settlement_projection_schema_is_installed(
@@ -318,7 +378,8 @@ impl SqliteReceiptStore {
             configure_sqlite_connection(&mut connection, options.pool.max_page_count)?;
             super::support::ensure_transparency_projection_guards(&connection)?;
             verify_receipt_cost_projection(&connection)?;
-            let durable_sink_id = load_receipt_sink_identity(&connection)?;
+            let internal_sink_id = load_receipt_sink_identity(&connection)?;
+            let durable_sink_id = durable_receipt_sink_binding(path, &internal_sink_id)?;
             let settlement_store_binding = settlement_store_binding_if_ready(&connection)?;
             drop(connection);
 
@@ -1345,7 +1406,7 @@ impl SqliteReceiptStore {
         let migration =
             connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         ensure_capability_lineage_provenance_columns(&migration)?;
-        let durable_sink_id = ensure_receipt_sink_identity(&migration)?;
+        let internal_sink_id = ensure_receipt_sink_identity(&migration)?;
         crate::stamp_schema_version(
             &migration,
             RECEIPT_STORE_SCHEMA_KEY,
@@ -1353,6 +1414,8 @@ impl SqliteReceiptStore {
         )
         .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
         migration.commit()?;
+
+        let durable_sink_id = durable_receipt_sink_binding(path, &internal_sink_id)?;
 
         let settlement_store_binding = settlement_store_binding_if_ready(&connection)?;
 
