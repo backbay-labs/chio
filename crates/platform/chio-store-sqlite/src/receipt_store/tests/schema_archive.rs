@@ -45,7 +45,7 @@ fn archive_schema_is_stamped_and_rejects_older_binaries() -> Result<(), Box<dyn 
     connection.execute_batch("DETACH DATABASE archive")?;
 
     let reopened = crate::SqliteReceiptStore::open_existing(&archive)?;
-    assert_eq!(reopened.durable_sink_id(), Some(first_sink_id.as_str()));
+    assert_eq!(reopened.durable_sink_id(), None);
     drop(reopened);
 
     let archived = rusqlite::Connection::open(&archive)?;

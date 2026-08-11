@@ -48,11 +48,38 @@ fn store_identity() -> Ed25519Backend {
     Ed25519Backend::new(Keypair::from_seed(&[70_u8; 32]))
 }
 
+fn rollback_anchor_root() -> &'static std::path::Path {
+    static ROOT: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    ROOT.get_or_init(|| {
+        let root = std::env::temp_dir().join(format!(
+            "chio-finding-pool-test-anchors-{}",
+            std::process::id()
+        ));
+        let mut builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt as _;
+            builder.mode(0o700);
+        }
+        if let Err(error) = builder.create(&root) {
+            if error.kind() != std::io::ErrorKind::AlreadyExists {
+                panic!("create test rollback anchor root: {error}");
+            }
+        }
+        root
+    })
+}
+
 fn open_qualified(
     path: impl AsRef<std::path::Path>,
     ledger_domain: impl Into<String>,
 ) -> Result<SqliteFindingPoolLedger, FindingPoolLedgerError> {
-    SqliteFindingPoolLedger::open_qualified(path, ledger_domain, &store_identity())
+    SqliteFindingPoolLedger::open_qualified(
+        path,
+        ledger_domain,
+        &store_identity(),
+        rollback_anchor_root(),
+    )
 }
 
 #[derive(Clone)]
@@ -91,8 +118,11 @@ fn fixture_for_pool(
     let receipt_directory =
         Arc::new(tempfile::tempdir().test_expect("create fixture receipt directory"));
     let receipt_store = Arc::new(
-        SqliteReceiptStore::open(receipt_directory.path().join("receipts.sqlite3"))
-            .test_expect("open fixture receipt store"),
+        SqliteReceiptStore::open_for_finding_pool(
+            receipt_directory.path().join("receipts.sqlite3"),
+            rollback_anchor_root(),
+        )
+        .test_expect("open fixture receipt store"),
     );
     let authority = Keypair::from_seed(&[authority_seed; 32]);
     let purchaser = Keypair::from_seed(&[purchaser_seed; 32]);
@@ -1414,8 +1444,11 @@ fn cognition_market_kernel_refuses_pool_ledger_replacement() {
     });
     kernel
         .set_receipt_store(Box::new(
-            SqliteReceiptStore::open(receipt_directory.path().join("receipts.sqlite3"))
-                .test_expect("open durable receipt store"),
+            SqliteReceiptStore::open_for_finding_pool(
+                receipt_directory.path().join("receipts.sqlite3"),
+                rollback_anchor_root(),
+            )
+            .test_expect("open durable receipt store"),
         ))
         .test_expect("configure durable receipt store");
     kernel
@@ -1434,7 +1467,8 @@ fn cognition_market_kernel_refuses_pool_ledger_replacement() {
 fn sqlite_receipt_store_identity_survives_reopen() {
     let directory = tempfile::tempdir().test_expect("create receipt directory");
     let path = directory.path().join("receipts.sqlite3");
-    let first = SqliteReceiptStore::open(&path).test_expect("open first receipt store");
+    let first = SqliteReceiptStore::open_for_finding_pool(&path, rollback_anchor_root())
+        .test_expect("open first receipt store");
     let first_sink = first
         .durable_sink_id()
         .test_expect("read first durable sink identity")
@@ -1442,7 +1476,8 @@ fn sqlite_receipt_store_identity_survives_reopen() {
     drop(first);
 
     let reopened =
-        SqliteReceiptStore::open_existing(&path).test_expect("reopen existing receipt store");
+        SqliteReceiptStore::open_existing_for_finding_pool(&path, rollback_anchor_root())
+            .test_expect("reopen existing receipt store");
     assert_eq!(reopened.durable_sink_id(), Some(first_sink.as_str()));
 }
 
@@ -1453,7 +1488,8 @@ fn cloned_receipt_database_cannot_reuse_the_ledger_sink_binding() {
     let clone_path = directory.path().join("receipts-restored.sqlite3");
     let ledger = open_qualified(directory.path().join("pool.sqlite3"), ledger_domain())
         .test_expect("open qualified pool ledger");
-    let first = SqliteReceiptStore::open(&receipt_path).test_expect("open first receipt store");
+    let first = SqliteReceiptStore::open_for_finding_pool(&receipt_path, rollback_anchor_root())
+        .test_expect("open first receipt store");
     let first_sink = first
         .durable_sink_id()
         .test_expect("read first durable sink identity")
@@ -1465,7 +1501,8 @@ fn cloned_receipt_database_cannot_reuse_the_ledger_sink_binding() {
 
     std::fs::copy(&receipt_path, &clone_path).test_expect("clone receipt database snapshot");
     let cloned =
-        SqliteReceiptStore::open_existing(&clone_path).test_expect("open cloned receipt database");
+        SqliteReceiptStore::open_existing_for_finding_pool(&clone_path, rollback_anchor_root())
+            .test_expect("open cloned receipt database");
     let cloned_sink = cloned
         .durable_sink_id()
         .test_expect("read cloned durable sink identity");
@@ -1475,6 +1512,135 @@ fn cloned_receipt_database_cannot_reuse_the_ledger_sink_binding() {
         ledger.bind_receipt_sink(cloned_sink),
         Err(FindingPoolLedgerError::ReceiptSinkMismatch)
     );
+}
+
+#[test]
+fn cognition_market_ledger_rejects_an_in_place_rollback() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let database = directory.path().join("pool.sqlite3");
+    let snapshot = directory.path().join("pool-before-spend.sqlite3");
+    let domain = ledger_domain();
+
+    let ledger = open_qualified(&database, &domain).test_expect("initialize qualified ledger");
+    let fixture = fixture(100, &ledger);
+    drop(ledger);
+    let checkpoint = rusqlite::Connection::open(&database).test_expect("open ledger checkpoint");
+    checkpoint
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .test_expect("checkpoint initial ledger");
+    drop(checkpoint);
+    std::fs::copy(&database, &snapshot).test_expect("snapshot initial ledger");
+
+    let ledger = open_qualified(&database, &domain).test_expect("reopen qualified ledger");
+    debit(&ledger, &fixture, "purchase:rollback-spend", 25).test_expect("commit pool spend");
+    drop(ledger);
+    let checkpoint = rusqlite::Connection::open(&database).test_expect("open spent checkpoint");
+    checkpoint
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .test_expect("checkpoint spent ledger");
+    drop(checkpoint);
+
+    std::fs::copy(&snapshot, &database).test_expect("restore snapshot in place");
+    assert!(matches!(
+        open_qualified(&database, &domain),
+        Err(FindingPoolLedgerError::Storage(message))
+            if message.contains("rollback protection")
+    ));
+}
+
+#[test]
+fn cognition_market_receipt_sink_rejects_an_in_place_rollback_after_acknowledgment() {
+    let directory = tempfile::tempdir().test_expect("create store directory");
+    let snapshot = directory.path().join("receipts-before-append.sqlite3");
+    let ledger = open_qualified(directory.path().join("pool.sqlite3"), ledger_domain())
+        .test_expect("open qualified pool ledger");
+    let fixture = fixture(100, &ledger);
+    let receipt_directory = Arc::clone(&fixture._receipt_directory);
+    let receipt_path = receipt_directory.path().join("receipts.sqlite3");
+    fixture
+        .receipt_store
+        .flush_receipt_writes()
+        .test_expect("flush initial receipt sink");
+    let checkpoint =
+        rusqlite::Connection::open(&receipt_path).test_expect("open initial receipt checkpoint");
+    checkpoint
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .test_expect("checkpoint initial receipt store");
+    drop(checkpoint);
+    std::fs::copy(&receipt_path, &snapshot).test_expect("snapshot initial receipt store");
+
+    debit(&ledger, &fixture, "purchase:receipt-rollback", 25)
+        .test_expect("append and acknowledge pool mutation receipt");
+    drop(fixture);
+    drop(ledger);
+    let checkpoint =
+        rusqlite::Connection::open(&receipt_path).test_expect("open appended receipt checkpoint");
+    checkpoint
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .test_expect("checkpoint appended receipt store");
+    drop(checkpoint);
+
+    std::fs::copy(&snapshot, &receipt_path).test_expect("restore receipt snapshot in place");
+    assert!(matches!(
+        SqliteReceiptStore::open_existing_for_finding_pool(
+            &receipt_path,
+            rollback_anchor_root(),
+        ),
+        Err(chio_kernel::ReceiptStoreError::Conflict(message))
+            if message.contains("rollback protection")
+    ));
+}
+
+#[test]
+fn in_memory_receipt_stores_never_advertise_a_durable_pool_sink() {
+    for path in [":memory:", "file:receipt-pool?mode=memory"] {
+        if let Ok(ordinary) = SqliteReceiptStore::open(path) {
+            assert_eq!(ordinary.durable_sink_id(), None);
+        }
+        assert!(SqliteReceiptStore::open_for_finding_pool(path, rollback_anchor_root()).is_err());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn qualified_pool_rejects_a_symlink_database_path() {
+    use std::os::unix::fs::symlink;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let target = directory.path().join("target.sqlite3");
+    let alias = directory.path().join("pool.sqlite3");
+    std::fs::File::create(&target).test_expect("create target database");
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600))
+        .test_expect("secure target database");
+    symlink(&target, &alias).test_expect("create database symlink");
+
+    assert!(matches!(
+        open_qualified(&alias, format!("{}:symlink", ledger_domain())),
+        Err(FindingPoolLedgerError::Storage(_))
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn qualified_pool_rejects_group_or_world_writable_database_files() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    for mode in [0o620, 0o602] {
+        let directory = tempfile::tempdir().test_expect("create ledger directory");
+        let database = directory.path().join("pool.sqlite3");
+        std::fs::File::create(&database).test_expect("create pool database");
+        std::fs::set_permissions(&database, std::fs::Permissions::from_mode(mode))
+            .test_expect("set unsafe pool database mode");
+        assert!(matches!(
+            open_qualified(
+                &database,
+                format!("{}:unsafe-mode-{mode:o}", ledger_domain()),
+            ),
+            Err(FindingPoolLedgerError::Storage(message))
+                if message.contains("unsafe ownership or permissions")
+        ));
+    }
 }
 
 #[test]

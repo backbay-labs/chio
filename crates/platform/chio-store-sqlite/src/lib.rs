@@ -66,6 +66,7 @@ pub mod receipt_query;
 pub mod receipt_store;
 mod replay_clock;
 pub mod revocation_store;
+mod rollback_generation;
 pub mod schema_version;
 pub mod serving_owner;
 pub mod settle_attempts;

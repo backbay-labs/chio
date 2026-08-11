@@ -106,7 +106,7 @@ pub struct SqliteReceiptStore {
     pub(crate) pool: Pool<SqliteConnectionManager>,
     receipt_commit_actor: ReceiptCommitActor,
     settlement_store_binding: Option<chio_settle::SettlementStoreBinding>,
-    durable_sink_id: String,
+    durable_sink_id: Option<String>,
     /// Multi-tenant receipt isolation: when true, tenant-
     /// scoped queries exclude the pre-multitenant NULL-tagged set. When
     /// false, queries with `tenant_filter = Some(id)` return rows where
@@ -129,6 +129,48 @@ const RECEIPT_GROUP_COMMIT_FLUSH_DELAY: Duration = Duration::from_micros(500);
 const RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY: usize = RECEIPT_GROUP_COMMIT_MAX_BATCH * 16;
 const RECEIPT_APPEND_TIMEOUT_MARKER: &str = "sqlite receipt commit append timed out";
 const RECEIPT_WRITE_TIMEOUT_MARKER: &str = "sqlite receipt commit write timed out";
+const RECEIPT_ROLLBACK_GENERATION_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS chio_receipt_sink_generation (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    store_generation TEXT NOT NULL
+) STRICT;
+INSERT OR IGNORE INTO chio_receipt_sink_generation (singleton, store_generation)
+VALUES (1, '0');
+"#;
+
+fn ensure_receipt_rollback_generation(connection: &Connection) -> Result<u64, ReceiptStoreError> {
+    connection.execute_batch(RECEIPT_ROLLBACK_GENERATION_SCHEMA)?;
+    load_receipt_rollback_generation(connection)
+}
+
+fn load_receipt_rollback_generation(connection: &Connection) -> Result<u64, ReceiptStoreError> {
+    let generation = connection.query_row(
+        "SELECT store_generation FROM chio_receipt_sink_generation WHERE singleton = 1",
+        [],
+        |row| row.get::<_, String>(0),
+    )?;
+    if generation.is_empty()
+        || (generation.len() > 1 && generation.starts_with('0'))
+        || !generation.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err(ReceiptStoreError::Conflict(
+            "receipt rollback generation is not canonical".to_string(),
+        ));
+    }
+    generation.parse::<u64>().map_err(|error| {
+        ReceiptStoreError::Conflict(format!("receipt rollback generation is invalid: {error}"))
+    })
+}
+
+fn receipt_store_has_receipts(connection: &Connection) -> Result<bool, ReceiptStoreError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM claim_receipt_log_entries LIMIT 1)",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(ReceiptStoreError::from)
+}
 
 fn is_receipt_writer_timeout_marker(message: &str) -> bool {
     matches!(
@@ -528,7 +570,11 @@ impl ReceiptCommitCommand {
 }
 
 impl ReceiptCommitActor {
-    fn start(pool: Pool<SqliteConnectionManager>, incremental_verification: bool) -> Self {
+    fn start(
+        pool: Pool<SqliteConnectionManager>,
+        incremental_verification: bool,
+        rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
+    ) -> Self {
         let (sender, receiver) = receipt_commit_channel();
         let health = Arc::new(ReceiptCommitWriterHealth::default());
         let actor_health = Arc::clone(&health);
@@ -556,6 +602,7 @@ impl ReceiptCommitActor {
                 &receiver,
                 Arc::clone(&actor_health),
                 incremental_verification,
+                rollback_anchor.clone(),
                 &mut checkpoint_signer,
             )
         });
@@ -1204,6 +1251,7 @@ fn receipt_commit_actor_loop(
     receiver: &mpsc::Receiver<ReceiptCommitCommand>,
     health: Arc<ReceiptCommitWriterHealth>,
     incremental_verification: bool,
+    rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
     checkpoint_signer: &mut Option<BackgroundCheckpointSigner>,
 ) -> SupervisedOutcome {
     let mut head_state = match pool
@@ -1301,6 +1349,7 @@ fn receipt_commit_actor_loop(
                             &pool,
                             &mut head_state,
                             incremental_verification,
+                            rollback_anchor.as_deref(),
                             requests,
                             &health,
                             completions,
@@ -2137,6 +2186,7 @@ fn commit_receipt_batch(
     pool: &Pool<SqliteConnectionManager>,
     head_state: &mut WriterHeadState,
     incremental_verification: bool,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
     requests: Vec<ReceiptCommitRequest>,
     health: &ReceiptCommitWriterHealth,
 ) -> Option<ReceiptStoreError> {
@@ -2144,6 +2194,7 @@ fn commit_receipt_batch(
         pool,
         head_state,
         incremental_verification,
+        rollback_anchor,
         requests,
         health,
         Vec::new(),
@@ -2154,13 +2205,20 @@ fn commit_receipt_batch_with_completions(
     pool: &Pool<SqliteConnectionManager>,
     head_state: &mut WriterHeadState,
     incremental_verification: bool,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
     requests: Vec<ReceiptCommitRequest>,
     health: &ReceiptCommitWriterHealth,
     mut completions: Vec<WriterCommandCompletion>,
 ) -> Option<ReceiptStoreError> {
     let batch_outcome = match head_state {
         WriterHeadState::Verified(head) => {
-            match append_receipt_batch(pool, head, incremental_verification, &requests) {
+            match append_receipt_batch(
+                pool,
+                head,
+                incremental_verification,
+                rollback_anchor,
+                &requests,
+            ) {
                 Ok(results) => {
                     health.store_head_snapshot(head);
                     Ok(results)
@@ -2910,6 +2968,7 @@ fn append_receipt_batch(
     pool: &Pool<SqliteConnectionManager>,
     head: &mut VerifiedHead,
     incremental_verification: bool,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
     requests: &[ReceiptCommitRequest],
 ) -> Result<Vec<Result<u64, ReceiptStoreError>>, ReceiptStoreError> {
     let mut connection = pool
@@ -2925,6 +2984,15 @@ fn append_receipt_batch(
     let tx = connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(ReceiptStoreError::Sqlite)?;
+    let rollback_generation = rollback_anchor
+        .map(|anchor| {
+            let generation = load_receipt_rollback_generation(&tx)?;
+            anchor.verify(generation).map_err(|error| {
+                ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+            })?;
+            Ok::<_, ReceiptStoreError>(generation)
+        })
+        .transpose()?;
     if !incremental_verification {
         verify_latest_checkpoint_integrity(&tx)?;
     }
@@ -3026,7 +3094,34 @@ fn append_receipt_batch(
     if delta_count > 0 {
         validate_adopted_claim_log_delta(&tx, baseline_max, post_max)?;
     }
-    tx.commit().map_err(ReceiptStoreError::Sqlite)?;
+    match (rollback_anchor, rollback_generation, inserted > 0) {
+        (Some(anchor), Some(generation), true) => {
+            let next = generation.checked_add(1).ok_or_else(|| {
+                ReceiptStoreError::Conflict("receipt rollback generation overflowed".to_string())
+            })?;
+            let changed = tx.execute(
+                "UPDATE chio_receipt_sink_generation SET store_generation = ?1 \
+                 WHERE singleton = 1 AND store_generation = ?2",
+                params![next.to_string(), generation.to_string()],
+            )?;
+            if changed != 1 {
+                return Err(ReceiptStoreError::Conflict(
+                    "receipt rollback generation compare-and-set failed".to_string(),
+                ));
+            }
+            anchor
+                .advance_while(generation, next, || {
+                    tx.commit()
+                        .map_err(|error| format!("SQLite commit failed: {error}"))
+                })
+                .map_err(|error| {
+                    ReceiptStoreError::Conflict(format!(
+                        "receipt rollback protection failed: {error}"
+                    ))
+                })?;
+        }
+        _ => tx.commit().map_err(ReceiptStoreError::Sqlite)?,
+    }
     head.claim_log_count = head
         .claim_log_count
         .saturating_add(pre_delta)

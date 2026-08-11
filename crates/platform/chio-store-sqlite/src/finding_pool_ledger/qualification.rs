@@ -1,26 +1,125 @@
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use chio_core::crypto::{PublicKey, SigningAlgorithm, SigningBackend};
 use chio_core::receipt::body::ChioReceipt;
 use chio_kernel::finding_pool::FindingPoolLedgerError;
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use rand_core::{OsRng, RngCore};
-use rusqlite::TransactionBehavior;
+use rusqlite::{Transaction, TransactionBehavior};
 use sha2::{Digest, Sha256};
+
+use crate::rollback_generation::RollbackGenerationAnchor;
 
 pub(super) struct FindingPoolDomainLease {
     database_identity: PathBuf,
     _lock_file: File,
 }
 
+#[derive(Clone)]
+pub(super) struct QualifiedDatabaseIdentity {
+    path: PathBuf,
+    device: u64,
+    inode: u64,
+}
+
+impl QualifiedDatabaseIdentity {
+    pub(super) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(super) fn validate(&self) -> Result<(), FindingPoolLedgerError> {
+        let metadata = std::fs::metadata(&self.path)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        validate_database_metadata(&metadata)?;
+        if metadata_device(&metadata)? != self.device || metadata_inode(&metadata)? != self.inode {
+            return Err(FindingPoolLedgerError::Storage(
+                "qualified finding pool database inode changed".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub(super) struct AnchoredLedgerTransaction<'connection> {
+    transaction: Transaction<'connection>,
+    anchor: Arc<RollbackGenerationAnchor>,
+    generation: u64,
+}
+
+impl<'connection> AnchoredLedgerTransaction<'connection> {
+    pub(super) fn begin(
+        connection: &'connection mut rusqlite::Connection,
+        anchor: Arc<RollbackGenerationAnchor>,
+    ) -> Result<Self, FindingPoolLedgerError> {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let generation = load_store_generation(&transaction)?;
+        anchor.verify(generation).map_err(rollback_anchor_error)?;
+        Ok(Self {
+            transaction,
+            anchor,
+            generation,
+        })
+    }
+
+    pub(super) fn commit(self) -> Result<(), FindingPoolLedgerError> {
+        let next = self.generation.checked_add(1).ok_or_else(|| {
+            FindingPoolLedgerError::Storage(
+                "finding pool rollback generation overflowed".to_string(),
+            )
+        })?;
+        let changed = self
+            .transaction
+            .execute(
+                "UPDATE finding_pool_ledger_metadata SET store_generation = ?1 \
+                 WHERE singleton = 1 AND store_generation = ?2",
+                rusqlite::params![next.to_string(), self.generation.to_string()],
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        if changed != 1 {
+            return Err(FindingPoolLedgerError::Storage(
+                "finding pool rollback generation compare-and-set failed".to_string(),
+            ));
+        }
+        let Self {
+            transaction,
+            anchor,
+            generation,
+        } = self;
+        anchor
+            .advance_while(generation, next, || {
+                transaction
+                    .commit()
+                    .map_err(|error| format!("SQLite commit failed: {error}"))
+            })
+            .map_err(rollback_anchor_error)
+    }
+}
+
+impl<'connection> Deref for AnchoredLedgerTransaction<'connection> {
+    type Target = Transaction<'connection>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.transaction
+    }
+}
+
+impl<'connection> DerefMut for AnchoredLedgerTransaction<'connection> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.transaction
+    }
+}
+
 static FINDING_POOL_DOMAIN_LEASES: OnceLock<Mutex<BTreeMap<String, Weak<FindingPoolDomainLease>>>> =
     OnceLock::new();
 
-pub(super) fn database_identity(path_text: &str) -> Result<PathBuf, FindingPoolLedgerError> {
+pub(super) fn prepare_database_identity(
+    path_text: &str,
+) -> Result<QualifiedDatabaseIdentity, FindingPoolLedgerError> {
     let filesystem_path = if path_text.starts_with("file:") {
         let encoded = sqlite_uri_filename(path_text);
         let decoded = super::percent_decode_uri_component(encoded).ok_or_else(|| {
@@ -37,11 +136,89 @@ pub(super) fn database_identity(path_text: &str) -> Result<PathBuf, FindingPoolL
     } else {
         PathBuf::from(path_text)
     };
-    std::fs::canonicalize(&filesystem_path).map_err(|error| {
+    let mut options = OpenOptions::new();
+    options.create(true).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    }
+    let file = options.open(&filesystem_path).map_err(|error| {
+        FindingPoolLedgerError::Storage(format!(
+            "qualified finding pool database cannot be securely opened: {error}"
+        ))
+    })?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    validate_database_metadata(&metadata)?;
+    let device = metadata_device(&metadata)?;
+    let inode = metadata_inode(&metadata)?;
+    let path = std::fs::canonicalize(&filesystem_path).map_err(|error| {
         FindingPoolLedgerError::Storage(format!(
             "qualified finding pool database identity is unavailable: {error}"
         ))
-    })
+    })?;
+    let identity = QualifiedDatabaseIdentity {
+        path,
+        device,
+        inode,
+    };
+    identity.validate()?;
+    Ok(identity)
+}
+
+pub(super) fn open_rollback_anchor(
+    root: &Path,
+    ledger_domain: &str,
+    database_identity: &QualifiedDatabaseIdentity,
+    store_identity: &dyn SigningBackend,
+) -> Result<Arc<RollbackGenerationAnchor>, FindingPoolLedgerError> {
+    let public_key = store_identity.public_key();
+    let public_key_bytes = chio_core::canonical::canonical_json_bytes(&public_key)
+        .map_err(|_| FindingPoolLedgerError::InvalidLedgerStoreIdentity)?;
+    let mut scope = Vec::new();
+    append_binding_part(&mut scope, b"chio.finding-pool.rollback-generation.v1");
+    append_binding_part(&mut scope, ledger_domain.as_bytes());
+    append_binding_part(
+        &mut scope,
+        database_identity.path().as_os_str().as_encoded_bytes(),
+    );
+    append_binding_part(&mut scope, &public_key_bytes);
+    RollbackGenerationAnchor::open(root, &scope)
+        .map(Arc::new)
+        .map_err(rollback_anchor_error)
+}
+
+pub(super) fn bind_rollback_anchor(
+    connection: &rusqlite::Connection,
+    anchor: &RollbackGenerationAnchor,
+) -> Result<(), FindingPoolLedgerError> {
+    anchor
+        .bind_initial_while(|| {
+            let generation =
+                load_store_generation(connection).map_err(|error| error.to_string())?;
+            let populated = connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM finding_pool_allocations LIMIT 1) \
+                            OR EXISTS(SELECT 1 FROM finding_pool_debits LIMIT 1) \
+                            OR EXISTS(SELECT 1 FROM finding_pool_receipt_outbox LIMIT 1)",
+                    [],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(|error| error.to_string())?;
+            Ok((generation, !populated))
+        })
+        .map_err(rollback_anchor_error)
+}
+
+pub(super) fn verify_rollback_anchor(
+    connection: &rusqlite::Connection,
+    anchor: &RollbackGenerationAnchor,
+) -> Result<(), FindingPoolLedgerError> {
+    anchor
+        .verify_while(|| load_store_generation(connection).map_err(|error| error.to_string()))
+        .map_err(rollback_anchor_error)
 }
 
 pub(super) fn acquire_domain_lease(
@@ -94,16 +271,10 @@ pub(super) fn acquire_domain_lease(
 }
 
 pub(super) fn bind_receipt_authority(
-    pool: &Pool<SqliteConnectionManager>,
+    transaction: &rusqlite::Transaction<'_>,
     authority: &PublicKey,
 ) -> Result<(), FindingPoolLedgerError> {
     let authority_json = canonical_receipt_authority_json(authority)?;
-    let mut connection = pool
-        .get()
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
     let persisted = transaction
         .query_row(
             "SELECT receipt_authority_json FROM finding_pool_ledger_metadata WHERE singleton = 1",
@@ -116,7 +287,7 @@ pub(super) fn bind_receipt_authority(
             return Err(FindingPoolLedgerError::ReceiptAuthorityMismatch);
         }
     } else {
-        verify_legacy_outbox_authority(&transaction, &authority_json)?;
+        verify_legacy_outbox_authority(transaction, &authority_json)?;
     }
     transaction
         .execute(
@@ -135,24 +306,16 @@ pub(super) fn bind_receipt_authority(
     if persisted.as_deref() != Some(authority_json.as_str()) {
         return Err(FindingPoolLedgerError::ReceiptAuthorityMismatch);
     }
-    transaction
-        .commit()
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+    Ok(())
 }
 
 pub(super) fn bind_receipt_configuration(
-    pool: &Pool<SqliteConnectionManager>,
+    transaction: &rusqlite::Transaction<'_>,
     authority: &PublicKey,
     receipt_sink_id: &str,
 ) -> Result<(), FindingPoolLedgerError> {
     super::validate_receipt_sink_id(receipt_sink_id)?;
     let authority_json = canonical_receipt_authority_json(authority)?;
-    let mut connection = pool
-        .get()
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
     let (persisted_sink, persisted_authority) = transaction
         .query_row(
             "SELECT receipt_sink_id, receipt_authority_json \
@@ -179,7 +342,7 @@ pub(super) fn bind_receipt_configuration(
         return Err(FindingPoolLedgerError::ReceiptAuthorityMismatch);
     }
     if persisted_authority.is_none() {
-        verify_legacy_outbox_authority(&transaction, &authority_json)?;
+        verify_legacy_outbox_authority(transaction, &authority_json)?;
     }
     transaction
         .execute(
@@ -208,15 +371,13 @@ pub(super) fn bind_receipt_configuration(
     {
         return Err(FindingPoolLedgerError::ReceiptConfigurationMismatch);
     }
-    transaction
-        .commit()
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+    Ok(())
 }
 
 pub(super) fn bind_ledger_store(
     connection: &mut rusqlite::Connection,
     ledger_domain: &str,
-    database_identity: &Path,
+    database_identity: &QualifiedDatabaseIdentity,
     store_identity: &dyn SigningBackend,
 ) -> Result<String, FindingPoolLedgerError> {
     let expected = derive_ledger_store_binding(ledger_domain, database_identity, store_identity)?;
@@ -274,7 +435,7 @@ pub(super) fn bind_ledger_store(
 
 fn derive_ledger_store_binding(
     ledger_domain: &str,
-    database_identity: &Path,
+    database_identity: &QualifiedDatabaseIdentity,
     store_identity: &dyn SigningBackend,
 ) -> Result<String, FindingPoolLedgerError> {
     let public_key = store_identity.public_key();
@@ -314,7 +475,11 @@ fn derive_ledger_store_binding(
     Ok(hex::encode(binding.finalize()))
 }
 
-fn database_identity_material(path: &Path) -> Result<Vec<u8>, FindingPoolLedgerError> {
+fn database_identity_material(
+    identity: &QualifiedDatabaseIdentity,
+) -> Result<Vec<u8>, FindingPoolLedgerError> {
+    identity.validate()?;
+    let path = identity.path();
     let canonical_path = path.to_str().ok_or_else(|| {
         FindingPoolLedgerError::Storage(
             "qualified finding pool database identity is not valid UTF-8".to_string(),
@@ -324,11 +489,8 @@ fn database_identity_material(path: &Path) -> Result<Vec<u8>, FindingPoolLedgerE
     append_binding_part(&mut material, canonical_path.as_bytes());
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
-        let metadata = std::fs::metadata(path)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        append_binding_part(&mut material, &metadata.dev().to_be_bytes());
-        append_binding_part(&mut material, &metadata.ino().to_be_bytes());
+        append_binding_part(&mut material, &identity.device.to_be_bytes());
+        append_binding_part(&mut material, &identity.inode.to_be_bytes());
     }
     Ok(material)
 }
@@ -454,4 +616,80 @@ fn validate_domain_lock(lock_file: &File) -> Result<(), FindingPoolLedgerError> 
         }
     }
     Ok(())
+}
+
+fn load_store_generation(connection: &rusqlite::Connection) -> Result<u64, FindingPoolLedgerError> {
+    let generation = connection
+        .query_row(
+            "SELECT store_generation FROM finding_pool_ledger_metadata WHERE singleton = 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    if generation.is_empty()
+        || (generation.len() > 1 && generation.starts_with('0'))
+        || !generation.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err(FindingPoolLedgerError::Storage(
+            "finding pool rollback generation is not canonical".to_string(),
+        ));
+    }
+    generation.parse::<u64>().map_err(|error| {
+        FindingPoolLedgerError::Storage(format!(
+            "finding pool rollback generation is invalid: {error}"
+        ))
+    })
+}
+
+fn rollback_anchor_error(error: String) -> FindingPoolLedgerError {
+    FindingPoolLedgerError::Storage(format!("finding pool rollback protection failed: {error}"))
+}
+
+#[cfg(unix)]
+fn validate_database_metadata(metadata: &std::fs::Metadata) -> Result<(), FindingPoolLedgerError> {
+    use std::os::unix::fs::MetadataExt as _;
+
+    if !metadata.file_type().is_file()
+        || metadata.nlink() != 1
+        || metadata.uid() != nix::unistd::geteuid().as_raw()
+        || metadata.mode() & 0o022 != 0
+    {
+        return Err(FindingPoolLedgerError::Storage(
+            "qualified finding pool database has unsafe ownership or permissions".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn validate_database_metadata(_metadata: &std::fs::Metadata) -> Result<(), FindingPoolLedgerError> {
+    Err(FindingPoolLedgerError::Storage(
+        "qualified finding pool databases require Unix file identity".to_string(),
+    ))
+}
+
+#[cfg(unix)]
+fn metadata_device(metadata: &std::fs::Metadata) -> Result<u64, FindingPoolLedgerError> {
+    use std::os::unix::fs::MetadataExt as _;
+    Ok(metadata.dev())
+}
+
+#[cfg(not(unix))]
+fn metadata_device(_metadata: &std::fs::Metadata) -> Result<u64, FindingPoolLedgerError> {
+    Err(FindingPoolLedgerError::Storage(
+        "qualified finding pool databases require Unix file identity".to_string(),
+    ))
+}
+
+#[cfg(unix)]
+fn metadata_inode(metadata: &std::fs::Metadata) -> Result<u64, FindingPoolLedgerError> {
+    use std::os::unix::fs::MetadataExt as _;
+    Ok(metadata.ino())
+}
+
+#[cfg(not(unix))]
+fn metadata_inode(_metadata: &std::fs::Metadata) -> Result<u64, FindingPoolLedgerError> {
+    Err(FindingPoolLedgerError::Storage(
+        "qualified finding pool databases require Unix file identity".to_string(),
+    ))
 }

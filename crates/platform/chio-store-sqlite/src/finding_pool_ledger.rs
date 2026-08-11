@@ -20,9 +20,9 @@ use chio_kernel::finding_pool::{
     FindingPoolMutationKind, FindingPoolTerminalDecision, QualifiedFindingPoolLedger,
     FINDING_POOL_MUTATION_SCHEMA_V1,
 };
-use r2d2::Pool;
+use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{params, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, OptionalExtension};
 
 use crate::{is_in_memory_sqlite_path, sqlite_parent_dir_to_create};
 
@@ -30,10 +30,13 @@ mod expiration;
 mod qualification;
 mod schema;
 
+use crate::rollback_generation::RollbackGenerationAnchor;
 use expiration::expired_unclaimed_reservations;
 use qualification::{
     acquire_domain_lease, bind_ledger_store, bind_receipt_authority, bind_receipt_configuration,
-    canonical_receipt_authority_json, database_identity, FindingPoolDomainLease,
+    bind_rollback_anchor, canonical_receipt_authority_json, open_rollback_anchor,
+    prepare_database_identity, verify_rollback_anchor, AnchoredLedgerTransaction,
+    FindingPoolDomainLease, QualifiedDatabaseIdentity,
 };
 use schema::{
     ensure_column, ensure_lifecycle_columns, ensure_outbox_delivery_claim_columns,
@@ -46,7 +49,8 @@ CREATE TABLE IF NOT EXISTS finding_pool_ledger_metadata (
     ledger_domain TEXT NOT NULL,
     receipt_sink_id TEXT,
     receipt_authority_json TEXT,
-    ledger_store_binding_sha256 TEXT
+    ledger_store_binding_sha256 TEXT,
+    store_generation TEXT NOT NULL DEFAULT '0'
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS finding_pool_allocations (
@@ -107,6 +111,8 @@ pub struct SqliteFindingPoolLedger {
     pool: Pool<SqliteConnectionManager>,
     ledger_domain: String,
     ledger_store_binding_sha256: String,
+    database_identity: QualifiedDatabaseIdentity,
+    rollback_anchor: Arc<RollbackGenerationAnchor>,
     _domain_lease: Arc<FindingPoolDomainLease>,
 }
 
@@ -122,6 +128,7 @@ impl SqliteFindingPoolLedger {
         path: impl AsRef<Path>,
         ledger_domain: impl Into<String>,
         store_identity: &dyn chio_core::crypto::SigningBackend,
+        rollback_anchor_root: impl AsRef<Path>,
     ) -> Result<Self, FindingPoolLedgerError> {
         let ledger_domain = ledger_domain.into();
         validate_ledger_domain(&ledger_domain)?;
@@ -144,17 +151,24 @@ impl SqliteFindingPoolLedger {
             std::fs::create_dir_all(parent)
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         }
-        let manager = SqliteConnectionManager::file(path).with_init(|connection| {
-            connection.busy_timeout(Duration::from_secs(30))?;
-            connection.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
-            Ok(())
-        });
+        let database_identity = prepare_database_identity(path_text)?;
+        let manager =
+            SqliteConnectionManager::file(database_identity.path()).with_init(|connection| {
+                connection.busy_timeout(Duration::from_secs(30))?;
+                connection.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
+                Ok(())
+            });
         let pool = Pool::builder()
             .max_size(8)
             .build(manager)
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let database_identity = database_identity(path_text)?;
-        let domain_lease = acquire_domain_lease(&ledger_domain, &database_identity)?;
+        let domain_lease = acquire_domain_lease(&ledger_domain, database_identity.path())?;
+        let rollback_anchor = open_rollback_anchor(
+            rollback_anchor_root.as_ref(),
+            &ledger_domain,
+            &database_identity,
+            store_identity,
+        )?;
         let ledger_store_binding_sha256;
         {
             let mut connection = pool
@@ -182,7 +196,15 @@ impl SqliteFindingPoolLedger {
                 "ALTER TABLE finding_pool_ledger_metadata \
                  ADD COLUMN ledger_store_binding_sha256 TEXT",
             )?;
+            ensure_column(
+                &connection,
+                "finding_pool_ledger_metadata",
+                "store_generation",
+                "ALTER TABLE finding_pool_ledger_metadata \
+                 ADD COLUMN store_generation TEXT NOT NULL DEFAULT '0'",
+            )?;
             bind_ledger_domain(&connection, &ledger_domain)?;
+            bind_rollback_anchor(&connection, &rollback_anchor)?;
             ledger_store_binding_sha256 = bind_ledger_store(
                 &mut connection,
                 &ledger_domain,
@@ -205,8 +227,30 @@ impl SqliteFindingPoolLedger {
             pool,
             ledger_domain,
             ledger_store_binding_sha256,
+            database_identity,
+            rollback_anchor,
             _domain_lease: domain_lease,
         })
+    }
+
+    fn connection(
+        &self,
+    ) -> Result<PooledConnection<SqliteConnectionManager>, FindingPoolLedgerError> {
+        self.database_identity.validate()?;
+        let connection = self
+            .pool
+            .get()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        verify_rollback_anchor(&connection, &self.rollback_anchor)?;
+        Ok(connection)
+    }
+
+    fn transaction<'connection>(
+        &self,
+        connection: &'connection mut rusqlite::Connection,
+    ) -> Result<AnchoredLedgerTransaction<'connection>, FindingPoolLedgerError> {
+        self.database_identity.validate()?;
+        AnchoredLedgerTransaction::begin(connection, Arc::clone(&self.rollback_anchor))
     }
 
     /// Return the finalized spend for one signed allocation envelope.
@@ -231,10 +275,7 @@ impl SqliteFindingPoolLedger {
         allocation_envelope_sha256: &str,
         column: &'static str,
     ) -> Result<Option<u64>, FindingPoolLedgerError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let connection = self.connection()?;
         let sql = format!(
             "SELECT {column} FROM finding_pool_allocations \
              WHERE allocation_envelope_sha256 = ?1"
@@ -392,10 +433,7 @@ fn verify_qualified_connection(
 
 impl FindingPoolLedger for SqliteFindingPoolLedger {
     fn contains_purchase(&self, purchase_id: &str) -> Result<bool, FindingPoolLedgerError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let connection = self.connection()?;
         connection
             .query_row(
                 "SELECT 1 FROM finding_pool_debits WHERE purchase_id = ?1 LIMIT 1",
@@ -411,10 +449,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         &self,
         replay: &AuthorizedFindingPoolDebitReplay,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let connection = self.connection()?;
         let stored = connection
             .query_row(
                 "SELECT d.allocation_envelope_sha256, a.allocation_id, \
@@ -482,10 +517,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                 "finding pool claimed-operation page limit exceeds SQLite range".to_owned(),
             )
         })?;
-        let connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let connection = self.connection()?;
         let mut statement = connection
             .prepare(
                 "SELECT durable_admission_operation_id \
@@ -515,13 +547,8 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         if debit.ledger_domain() != self.ledger_domain {
             return Err(FindingPoolLedgerError::LedgerDomainMismatch);
         }
-        let mut connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let cleanup_transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut connection = self.connection()?;
+        let cleanup_transaction = self.transaction(&mut connection)?;
 
         reclaim_expired_unclaimed(
             &cleanup_transaction,
@@ -534,9 +561,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             .commit()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
 
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let transaction = self.transaction(&mut connection)?;
 
         if let Some(existing) = transaction
             .query_row(
@@ -771,13 +796,8 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         claim: &AuthorizedFindingPoolClaim,
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError> {
-        let mut connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut connection = self.connection()?;
+        let transaction = self.transaction(&mut connection)?;
         let stored = transaction
             .query_row(
                 "SELECT allocation_envelope_sha256, finding_id, listing_id, \
@@ -885,13 +905,8 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         release: &AuthorizedFindingPoolRecoveryRelease,
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<(), FindingPoolLedgerError> {
-        let mut connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut connection = self.connection()?;
+        let transaction = self.transaction(&mut connection)?;
         let stored = transaction
             .query_row(
                 "SELECT d.purchase_id, d.allocation_envelope_sha256, d.state, \
@@ -1019,13 +1034,8 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         terminal: &AuthorizedFindingPoolTerminal,
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError> {
-        let mut connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut connection = self.connection()?;
+        let transaction = self.transaction(&mut connection)?;
         let stored = transaction
             .query_row(
                 "SELECT d.allocation_envelope_sha256, a.allocation_id, d.finding_id, \
@@ -1209,13 +1219,8 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         let limit = i64::try_from(limit).map_err(|_| {
             FindingPoolLedgerError::Receipt("mutation receipt claim limit is invalid".to_owned())
         })?;
-        let mut connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut connection = self.connection()?;
+        let transaction = self.transaction(&mut connection)?;
         let mut statement = transaction
             .prepare(
                 "SELECT receipt_id, signed_receipt_json \
@@ -1288,11 +1293,9 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         claimant_id: &str,
         acknowledged_at_unix_ms: u64,
     ) -> Result<(), FindingPoolLedgerError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let changed = connection
+        let mut connection = self.connection()?;
+        let transaction = self.transaction(&mut connection)?;
+        let changed = transaction
             .execute(
                 "UPDATE finding_pool_receipt_outbox \
                  SET acknowledged_at_unix_ms = ?2 \
@@ -1302,9 +1305,10 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             )
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         if changed == 1 {
+            transaction.commit()?;
             return Ok(());
         }
-        let state = connection
+        let state = transaction
             .query_row(
                 "SELECT acknowledged_at_unix_ms, delivery_claim_owner \
                  FROM finding_pool_receipt_outbox WHERE receipt_id = ?1",
@@ -1318,7 +1322,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             )
             .optional()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        match state {
+        let result = match state {
             Some((Some(_), _)) => Ok(()),
             Some((None, owner)) if owner.as_deref() != Some(claimant_id) => {
                 Err(FindingPoolLedgerError::Receipt(
@@ -1331,7 +1335,11 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             None => Err(FindingPoolLedgerError::Receipt(
                 "cannot acknowledge an unknown mutation receipt".to_owned(),
             )),
+        };
+        if result.is_ok() {
+            transaction.commit()?;
         }
+        result
     }
 }
 
@@ -1341,13 +1349,8 @@ fn finalize_claimed_after_unknown_dispatch_by_operation(
     finalized_at_unix_ms: u64,
     attestor: &FindingPoolMutationAttestor<'_>,
 ) -> Result<(), FindingPoolLedgerError> {
-    let mut connection = ledger
-        .pool
-        .get()
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+    let mut connection = ledger.connection()?;
+    let transaction = ledger.transaction(&mut connection)?;
     let stored = transaction
         .query_row(
             "SELECT d.purchase_id, d.allocation_envelope_sha256, d.state, \
@@ -1477,7 +1480,10 @@ impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {
     }
 
     fn bind_receipt_authority(&self, authority: &PublicKey) -> Result<(), FindingPoolLedgerError> {
-        bind_receipt_authority(&self.pool, authority)
+        let mut connection = self.connection()?;
+        let transaction = self.transaction(&mut connection)?;
+        bind_receipt_authority(&transaction, authority)?;
+        transaction.commit()
     }
 
     fn bind_receipt_configuration(
@@ -1485,18 +1491,16 @@ impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {
         authority: &PublicKey,
         receipt_sink_id: &str,
     ) -> Result<(), FindingPoolLedgerError> {
-        bind_receipt_configuration(&self.pool, authority, receipt_sink_id)
+        let mut connection = self.connection()?;
+        let transaction = self.transaction(&mut connection)?;
+        bind_receipt_configuration(&transaction, authority, receipt_sink_id)?;
+        transaction.commit()
     }
 
     fn bind_receipt_sink(&self, receipt_sink_id: &str) -> Result<(), FindingPoolLedgerError> {
         validate_receipt_sink_id(receipt_sink_id)?;
-        let mut connection = self
-            .pool
-            .get()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut connection = self.connection()?;
+        let transaction = self.transaction(&mut connection)?;
         transaction
             .execute(
                 "UPDATE finding_pool_ledger_metadata SET receipt_sink_id = ?1 \
@@ -1856,12 +1860,39 @@ mod tests {
     use chio_core::crypto::{Ed25519Backend, Keypair};
     use chio_test_support::prelude::*;
 
+    fn rollback_anchor_root() -> &'static Path {
+        static ROOT: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+        ROOT.get_or_init(|| {
+            let root = std::env::temp_dir().join(format!(
+                "chio-finding-pool-unit-anchors-{}",
+                std::process::id()
+            ));
+            let mut builder = std::fs::DirBuilder::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt as _;
+                builder.mode(0o700);
+            }
+            if let Err(error) = builder.create(&root) {
+                if error.kind() != std::io::ErrorKind::AlreadyExists {
+                    panic!("create test rollback anchor root: {error}");
+                }
+            }
+            root
+        })
+    }
+
     fn open_qualified(
         path: impl AsRef<Path>,
         ledger_domain: impl Into<String>,
     ) -> Result<SqliteFindingPoolLedger, FindingPoolLedgerError> {
         let identity = Ed25519Backend::new(Keypair::from_seed(&[70_u8; 32]));
-        SqliteFindingPoolLedger::open_qualified(path, ledger_domain, &identity)
+        SqliteFindingPoolLedger::open_qualified(
+            path,
+            ledger_domain,
+            &identity,
+            rollback_anchor_root(),
+        )
     }
 
     #[test]
@@ -2078,7 +2109,7 @@ mod tests {
             )
             .test_expect("seed tenant reservation");
         let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .test_expect("start tenant recovery transaction");
         let mutation = mutation_for_purchase(
             &transaction,

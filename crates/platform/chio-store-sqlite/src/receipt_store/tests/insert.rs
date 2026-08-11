@@ -157,10 +157,15 @@ fn append_receipt_batch_commits_multiple_receipts_together(
         });
     }
 
-    let seqs: Vec<u64> =
-        append_receipt_batch(&store.pool, &mut VerifiedHead::default(), true, &requests)?
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()?;
+    let seqs: Vec<u64> = append_receipt_batch(
+        &store.pool,
+        &mut VerifiedHead::default(),
+        true,
+        None,
+        &requests,
+    )?
+    .into_iter()
+    .collect::<Result<Vec<_>, _>>()?;
 
     assert_eq!(seqs, vec![1, 2, 3, 4]);
     assert_eq!(store.tool_receipt_count()?, 4);
@@ -329,7 +334,13 @@ fn append_receipt_batch_isolates_per_record_error() -> Result<(), Box<dyn std::e
         });
     }
 
-    let results = append_receipt_batch(&store.pool, &mut VerifiedHead::default(), true, &requests)?;
+    let results = append_receipt_batch(
+        &store.pool,
+        &mut VerifiedHead::default(),
+        true,
+        None,
+        &requests,
+    )?;
 
     assert!(
         results[0].is_ok(),
@@ -458,7 +469,13 @@ fn append_receipt_batch_isolates_trailing_invalid_in_full_batch(
         });
     }
 
-    let results = append_receipt_batch(&store.pool, &mut VerifiedHead::default(), true, &requests)?;
+    let results = append_receipt_batch(
+        &store.pool,
+        &mut VerifiedHead::default(),
+        true,
+        None,
+        &requests,
+    )?;
     let last = results.len() - 1;
     for (index, result) in results.iter().enumerate() {
         if index == last {
@@ -836,6 +853,7 @@ fn batched_duplicate_receipts_commit_without_false_drift() -> Result<(), Box<dyn
         &store.pool,
         &mut head,
         store.incremental_verification,
+        None,
         &requests,
     )?;
 
@@ -918,6 +936,7 @@ fn group_commit_isolates_per_record_failure() -> Result<(), Box<dyn std::error::
         &store.pool,
         &mut head,
         store.incremental_verification,
+        None,
         &requests,
     )?;
 
