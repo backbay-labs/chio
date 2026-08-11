@@ -217,17 +217,27 @@ pub(crate) async fn handle_submit_finding_challenge(
         );
     }
 
-    let audit_authority = match config.audit_authority.key() {
-        Ok(authority) => authority,
-        Err(_) => {
-            return plain_http_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "finding challenge audit authority is misconfigured",
-            )
+    // A buyer signs for itself, while a venue audit signs under the
+    // authority retained for the round it names. The coordinator resolves
+    // that historical policy after binding the exact durable envelope.
+    // Checking an audit against only the deployment's current key here
+    // would strand an otherwise valid in-flight round after rotation.
+    if matches!(
+        &request.challenge.body.authorization,
+        chio_finding::FindingChallengeAuthorization::BuyerSubmission(_)
+    ) {
+        let audit_authority = match config.audit_authority.key() {
+            Ok(authority) => authority,
+            Err(_) => {
+                return plain_http_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "finding challenge audit authority is misconfigured",
+                )
+            }
+        };
+        if verify_signed_challenge(&request.challenge, &audit_authority).is_err() {
+            return plain_http_error(StatusCode::BAD_REQUEST, "signed challenge rejected");
         }
-    };
-    if verify_signed_challenge(&request.challenge, &audit_authority).is_err() {
-        return plain_http_error(StatusCode::BAD_REQUEST, "signed challenge rejected");
     }
 
     let raw_finding = match store.get_finding_bytes(&finding_id) {

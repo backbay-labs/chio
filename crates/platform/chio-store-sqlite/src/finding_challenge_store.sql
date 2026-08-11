@@ -410,6 +410,38 @@ BEGIN
     SELECT RAISE(ABORT, 'finalizing authorization must be retained');
 END;
 
+CREATE TABLE IF NOT EXISTS finding_finalizing_authorization_refreshes (
+    liability_key TEXT NOT NULL
+        REFERENCES finding_finalizing_authorizations(liability_key),
+    refresh_ordinal INTEGER NOT NULL CHECK (refresh_ordinal > 0),
+    previous_authorization_sha256 TEXT NOT NULL CHECK (
+        length(previous_authorization_sha256) = 64
+        AND previous_authorization_sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+    authorization_json BLOB NOT NULL CHECK (
+        length(authorization_json) BETWEEN 1 AND 4194304
+    ),
+    authorization_sha256 TEXT NOT NULL CHECK (
+        length(authorization_sha256) = 64
+        AND authorization_sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+    recorded_at INTEGER NOT NULL CHECK (recorded_at > 0),
+    PRIMARY KEY (liability_key, refresh_ordinal),
+    UNIQUE (liability_key, authorization_sha256)
+);
+
+CREATE TRIGGER IF NOT EXISTS finding_finalizing_authorization_refreshes_immutable
+BEFORE UPDATE ON finding_finalizing_authorization_refreshes
+BEGIN
+    SELECT RAISE(ABORT, 'finalizing authorization refresh is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS finding_finalizing_authorization_refreshes_no_delete
+BEFORE DELETE ON finding_finalizing_authorization_refreshes
+BEGIN
+    SELECT RAISE(ABORT, 'finalizing authorization refresh must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS governance_case_index (
     case_id TEXT NOT NULL PRIMARY KEY
         CHECK (length(case_id) BETWEEN 1 AND 512),

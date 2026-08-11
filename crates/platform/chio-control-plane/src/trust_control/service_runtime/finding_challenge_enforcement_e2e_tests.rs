@@ -477,6 +477,7 @@ struct PublishedArtifacts {
     admissions_by_digest: BTreeMap<String, SignedFindingAdmission>,
     venue_policies: BTreeMap<String, FindingAuthorityPin>,
     profile_governance_policies: BTreeMap<String, FindingAuthorityPin>,
+    case_governance_policies: BTreeMap<String, FindingAuthorityPin>,
     audit_policies: BTreeMap<String, FindingAuthorityPin>,
     audit_witness_policies: BTreeMap<String, FindingAuthorityPin>,
     audit_governance_policies: BTreeMap<String, FindingAuthorityPin>,
@@ -545,6 +546,16 @@ impl PublishedArtifacts {
         Ok(self)
     }
 
+    fn publish_governance_policy<T: serde::Serialize>(
+        mut self,
+        artifact: &SignedExportEnvelope<T>,
+        governance_policy: FindingAuthorityPin,
+    ) -> Result<Self, AnyError> {
+        self.case_governance_policies
+            .insert(signed_envelope_sha256(artifact)?, governance_policy);
+        Ok(self)
+    }
+
     fn publish_audit_policy(mut self, policy: FindingAuthorityPin) -> Self {
         self.audit_policies.insert(policy.key_hex.clone(), policy);
         self
@@ -590,6 +601,10 @@ impl FindingFilingResolver for PublishedArtifacts {
         self.profile_governance_policies
             .get(envelope_sha256)
             .cloned()
+    }
+
+    fn governance_policy_for_case(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
+        self.case_governance_policies.get(envelope_sha256).cloned()
     }
 
     fn audit_policy_for_key(&self, key: &PublicKey) -> Option<FindingAuthorityPin> {
@@ -697,6 +712,7 @@ fn deployment_publishing_terms_and_rounds(
         NOW,
     )?;
     let config = market_config();
+    let retained_governance = governance()?;
     let mut filings = PublishedArtifacts::default()
         .publish_schedule(&published_fee_schedule()?)?
         .publish_round(
@@ -715,6 +731,15 @@ fn deployment_publishing_terms_and_rounds(
         .publish_terms(&narrow_bond_terms()?)?
         .publish_admission(&admission, config.venue.clone())?
         .publish_profile_policy(&verifier_profile()?, config.governance_root.clone())?
+        .publish_governance_policy(&retained_governance.charter, config.governance_root.clone())?
+        .publish_governance_policy(
+            &retained_governance.sanction_case,
+            config.governance_root.clone(),
+        )?
+        .publish_governance_policy(
+            &retained_governance.appeal_case,
+            config.governance_root.clone(),
+        )?
         .publish_audit_policy(config.audit_authority.clone());
     for terms in extra_terms {
         filings = filings.publish_terms(terms)?;
@@ -3371,6 +3396,47 @@ async fn finding_challenge_live_route_submits_to_the_durable_coordinator_exactly
     Ok(())
 }
 
+#[tokio::test]
+async fn finding_challenge_live_route_defers_historical_audit_authority_resolution() -> TestResult {
+    let deployment = deployment()?;
+    let (finding, raw_finding) = finding_artifact()?;
+    deployment.market.put_finding(
+        &FindingRecordInput {
+            finding_id: &finding.finding_id,
+            artifact_json: &raw_finding,
+            topic: &finding.descriptor.topic,
+            context_sha256: &finding.descriptor.context_sha256,
+            issued_at: finding.issued_at,
+            expires_at: finding.expires_at,
+        },
+        NOW,
+    )?;
+    let challenge = venue_audit_challenge()?;
+    let raw_challenge = canonical_json_string(&challenge)?;
+    let mut rotated_config = market_config();
+    rotated_config.audit_authority = authority_pin(50, "audit-authority-rotated");
+    rotated_config.audit_authority.key_epoch = PINNED_KEY_EPOCH + 1;
+    rotated_config.audit_authority.valid_from = NOW + 1;
+    let executor = Arc::new(RouteChallengeExecutor {
+        coordinator: deployment
+            .coordinator_under(&rotated_config, FindingDisputeLockDisposition::Forfeited)?,
+        raw_challenge_envelopes: Mutex::new(Vec::new()),
+        raw_findings: Mutex::new(Vec::new()),
+        handler_times: Mutex::new(Vec::new()),
+    });
+    let mut state = challenge_route_state(&deployment, executor);
+    state.config.finding_market = Some(rotated_config);
+
+    let (status, body) =
+        submit_challenge_route(&state, &finding.finding_id, &raw_challenge, true).await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_some());
+    Ok(())
+}
+
 #[test]
 fn finding_challenge_buyer_submission_charges_the_challenge_administration_pool() -> TestResult {
     let deployment = deployment()?;
@@ -3682,6 +3748,78 @@ fn finding_challenge_reconciles_a_debited_bond_before_expired_recovery() -> Test
         deployment.rail.charges().len(),
         3,
         "funding reconciliation and bond return are idempotent"
+    );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_reconciles_a_debited_fee_before_expired_recovery() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenge = buyer_challenge(&keypair(41))?;
+    let challenge_id = challenge.body.challenge_id.clone();
+    let (_, raw) = finding_artifact()?;
+    let FindingChallengeAuthorization::BuyerSubmission(submission) = &challenge.body.authorization
+    else {
+        return Err("the compensation fixture is a buyer submission".into());
+    };
+
+    deployment.rail.fail_after_record_on_attempt(1);
+    assert!(matches!(
+        coordinator
+            .submit(&challenge, &raw, NOW)
+            .expect_err("the fee rail response is lost after the debit"),
+        ChallengeCoordinatorError::FeeRail(_)
+    ));
+    assert_eq!(
+        deployment.rail.charges().len(),
+        1,
+        "the filing fee reached the rail before its response was lost"
+    );
+
+    deployment.rail.accept();
+    assert!(matches!(
+        coordinator
+            .submit(&challenge, &raw, submission.dispute_lock_ref.expiry)
+            .expect_err("an expired fee-only filing closes after compensation"),
+        ChallengeCoordinatorError::DisputeBondWindow
+    ));
+    let instructions = deployment.rail.charges();
+    assert_eq!(
+        instructions.len(),
+        2,
+        "the idempotent fee replay adds only its compensation"
+    );
+    let fee_intent_key = instructions[0].idempotency_key.clone();
+    assert_eq!(instructions[1].payer, CHALLENGE_POOL_PRINCIPAL);
+    assert_eq!(
+        instructions[1].rail_destination,
+        keypair(41).public_key().to_hex()
+    );
+    assert_eq!(
+        deployment
+            .challenges
+            .get_effect_intent(&fee_intent_key)?
+            .ok_or("the reconciled fee intent remains durable")?
+            .state,
+        FindingEffectIntentState::Confirmed
+    );
+    assert_eq!(
+        deployment
+            .challenges
+            .get_challenge(&challenge_id)?
+            .ok_or("the compensated filing remains durable")?
+            .state,
+        FindingChallengeState::IndeterminateClosed
+    );
+
+    assert!(coordinator
+        .submit(&challenge, &raw, submission.dispute_lock_ref.expiry + 1)
+        .is_err());
+    assert_eq!(
+        deployment.rail.charges().len(),
+        2,
+        "fee reconciliation and compensation are idempotent"
     );
     Ok(())
 }
@@ -5209,7 +5347,7 @@ fn finding_challenge_a_governance_bundle_no_pinned_root_signed_mints_no_penalty(
         .expect_err("a self-signed governance bundle authorizes no sanction");
     assert!(matches!(
         refused,
-        ChallengeCoordinatorError::AuthorityPinMismatch(_)
+        ChallengeCoordinatorError::UnknownGovernanceCasePolicy
     ));
     assert_eq!(
         liability_heads(&deployment, &ready.finding.finding_id)?,
@@ -5993,7 +6131,7 @@ fn finding_challenge_an_unauthenticated_appeal_supersedes_nothing() -> TestResul
         .expect_err("an appeal no pinned authority signed reverses nothing");
     assert!(matches!(
         refused,
-        ChallengeCoordinatorError::AuthorityPinMismatch(_)
+        ChallengeCoordinatorError::UnknownGovernanceCasePolicy
     ));
 
     let cases = case
@@ -6143,6 +6281,36 @@ fn finding_challenge_appeal_finality_impairs_and_fences_every_effect_intent() ->
 }
 
 #[test]
+fn finding_challenge_appeal_finality_uses_the_sanctions_retained_governance_policy() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    let mut rotated_config = market_config();
+    rotated_config.governance_root = authority_pin(52, "governance-rotated");
+    rotated_config.governance_root.key_epoch = PINNED_KEY_EPOCH + 1;
+    rotated_config.governance_root.valid_from = NOW + 1;
+    let rotated = case
+        .deployment
+        .coordinator_under(&rotated_config, FindingDisputeLockDisposition::Forfeited)?;
+
+    let resolution = rotated.resolve_appeal(
+        &case.upheld.liability_key,
+        &case.outcome,
+        &identity,
+        Some(&case.upheld.sealed),
+        &case.governance.context(),
+        &AppealDisposition::Final {
+            sanction_case: &case.governance.sanction_case,
+        },
+        &case.upheld.sanction_case_id,
+        &case.upheld.hold,
+        &hex64('7'),
+        APPEAL_FINAL_AT,
+    )?;
+    assert!(matches!(resolution, AppealResolution::Finalizing(_)));
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_refreshes_a_snapshot_only_before_impairment_dispatch() -> TestResult {
     let case = finalizing_liability()?;
     let authorized = case.authorized()?;
@@ -6203,6 +6371,21 @@ fn finding_challenge_refreshes_a_snapshot_only_before_impairment_dispatch() -> T
     );
     assert_eq!(refreshed.slash.penalty, authorized.slash.penalty);
     assert_eq!(refreshed.effect_intent_keys, authorized.effect_intent_keys);
+    let retained_after_refresh = case
+        .deployment
+        .challenges
+        .get_finalizing_authorization(&refreshed.enforcement.body.liability_key)?
+        .ok_or("the refreshed authorization is retained for restart recovery")?;
+    let expected_retained = canonical_json_bytes(&serde_json::json!({
+        "enforcement": refreshed.enforcement.clone(),
+        "slash": refreshed.slash.clone(),
+    }))?;
+    assert_eq!(retained_after_refresh.authorization_json, expected_retained);
+    assert_eq!(
+        retained_after_refresh.authorization_sha256,
+        sha256_hex(&expected_retained)
+    );
+    assert_eq!(retained_after_refresh.recorded_at, observed_at + 1);
     let refreshed_seller_intent = refreshed
         .enforcement
         .body

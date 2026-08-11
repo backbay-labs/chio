@@ -385,6 +385,8 @@ pub enum ChallengeCoordinatorError {
     UnknownAdmission,
     #[error("retained verifier profile has no authenticated governance policy")]
     UnknownProfileGovernancePolicy,
+    #[error("retained governance case has no authenticated governance policy")]
+    UnknownGovernanceCasePolicy,
     #[error("retained venue-audit challenge has no authenticated audit policy")]
     UnknownAuditAuthorityPolicy,
     #[error("retained audit epoch has no authenticated randomness-witness policy")]
@@ -563,6 +565,11 @@ pub trait FindingFilingResolver: Send + Sync {
     /// rotation only when the venue retained the policy that signed it.
     fn governance_policy_for_profile(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
 
+    /// The retained governance policy that authenticated this exact signed
+    /// case envelope. A sanction remains enforceable across governance-key
+    /// rotation only when the venue retained the policy that admitted it.
+    fn governance_policy_for_case(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+
     /// A governance-published historical audit-authority policy, resolved
     /// independently of the challenge envelope that names its signer.
     fn audit_policy_for_key(&self, key: &PublicKey) -> Option<FindingAuthorityPin>;
@@ -592,7 +599,6 @@ pub trait FindingFilingResolver: Send + Sync {
 /// them is ever read out of an artifact.
 struct ChallengeRolePins {
     audit_authority: FindingAuthorityPin,
-    governance_authority: FindingAuthorityPin,
     authority_status: FindingAuthorityPin,
     settlement_observer: FindingAuthorityPin,
     settlement_finality_requirement: FindingFinalityRequirement,
@@ -899,7 +905,6 @@ impl FindingChallengeCoordinator {
             market_config: config.clone(),
             pins: ChallengeRolePins {
                 audit_authority: config.audit_authority.clone(),
-                governance_authority: config.governance_root.clone(),
                 authority_status: config.authority_status.clone(),
                 settlement_observer: config.settlement_observer.clone(),
                 settlement_finality_requirement: config.settlement_finality_requirement,
@@ -2162,12 +2167,37 @@ impl FindingChallengeCoordinator {
         };
         verify_finding_enforcement(&refreshed, bond_snapshot, &pins, now)
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-        Ok(AuthorizedImpairment {
+        let refreshed_authorization = AuthorizedImpairment {
             enforcement_envelope_sha256: self.envelope_digest(&refreshed)?,
             enforcement: refreshed,
             slash: authorized.slash.clone(),
             effect_intent_keys: authorized.effect_intent_keys.clone(),
-        })
+        };
+        let previous_retained = RetainedAuthorizedImpairment {
+            enforcement: authorized.enforcement.clone(),
+            slash: authorized.slash.clone(),
+        };
+        let previous_json = canonical_json_bytes(&previous_retained)
+            .map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        let refreshed_retained = RetainedAuthorizedImpairment {
+            enforcement: refreshed_authorization.enforcement.clone(),
+            slash: refreshed_authorization.slash.clone(),
+        };
+        let refreshed_json = canonical_json_bytes(&refreshed_retained)
+            .map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        let refreshed_sha256 = sha256_hex(&refreshed_json);
+        self.challenges
+            .refresh_finalizing_authorization(
+                &sha256_hex(&previous_json),
+                &FindingFinalizingAuthorizationInput {
+                    liability_key: &old.body.liability_key,
+                    authorization_json: &refreshed_json,
+                    authorization_sha256: &refreshed_sha256,
+                    recorded_at: now,
+                },
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        Ok(refreshed_authorization)
     }
 
     /// Verify the enforcement pair, prepare the exact authorized call,
@@ -2830,14 +2860,29 @@ impl FindingChallengeCoordinator {
             .challenges
             .get_effect_intent(&collected_instruction.idempotency_key)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
-        if !collected.is_some_and(|intent| {
-            intent.kind == FindingEffectIntentKind::Fee
-                && intent.liability_key.is_none()
-                && !intent.settlement_required
-                && intent.intent_digest == collected_digest
-                && intent.state == FindingEffectIntentState::Confirmed
-        }) {
+        let Some(collected) = collected else {
             return Ok(ExpiredFeeOnlyRecovery::Unchanged);
+        };
+        if collected.kind != FindingEffectIntentKind::Fee
+            || collected.liability_key.is_some()
+            || collected.settlement_required
+            || collected.intent_digest != collected_digest
+            || collected.state == FindingEffectIntentState::Quarantined
+        {
+            return Ok(ExpiredFeeOnlyRecovery::Unchanged);
+        }
+        if matches!(
+            collected.state,
+            FindingEffectIntentState::Pending
+                | FindingEffectIntentState::Dispatched
+                | FindingEffectIntentState::Failed
+        ) {
+            // The debit may already have reached the rail even though its
+            // response did not. Replay the exact durable instruction under
+            // its idempotency key before compensating it. This recovery runs
+            // before the filing-window check, so expiry cannot strand an
+            // uncertain external debit in a nonterminal local state.
+            self.charge_dispute_fee(&challenge.challenge_id, submission, now)?;
         }
         let funding_key = derive_dispute_bond_funding_intent_key(
             &challenge.challenge_id,
@@ -3507,18 +3552,28 @@ impl FindingChallengeCoordinator {
         case: &SignedGenericGovernanceCase,
         prior_penalty: Option<&SignedOpenMarketPenalty>,
         now: u64,
-    ) -> Result<(), ChallengeCoordinatorError> {
+    ) -> Result<PublicKey, ChallengeCoordinatorError> {
+        let case_envelope_sha256 = self.envelope_digest(case)?;
+        let governance_policy = self
+            .filings
+            .governance_policy_for_case(&case_envelope_sha256)
+            .ok_or(ChallengeCoordinatorError::UnknownGovernanceCasePolicy)?;
         let governance_key = self.require_live_role(
-            &self.pins.governance_authority,
+            &governance_policy,
             case.body.updated_at,
             now,
-            "governance",
+            "historical governance case",
         )?;
+        let charter_envelope_sha256 = self.envelope_digest(governance.charter)?;
+        let charter_policy = self
+            .filings
+            .governance_policy_for_case(&charter_envelope_sha256)
+            .unwrap_or_else(|| governance_policy.clone());
         let charter_governance_key = self.require_live_role(
-            &self.pins.governance_authority,
+            &charter_policy,
             governance.charter.body.issued_at,
             now,
-            "governance charter",
+            "historical governance charter",
         )?;
         // The listing authenticates against its own namespace owner rather
         // than a pinned key, so the case is what anchors it: a listing the
@@ -3647,7 +3702,7 @@ impl FindingChallengeCoordinator {
             .current_publisher
             .validate()
             .map_err(ChallengeCoordinatorError::PenaltyMint)?;
-        Ok(())
+        Ok(governance_key)
     }
 
     /// Resolve the instant this liability's claim window closes.
@@ -5656,13 +5711,8 @@ impl FindingChallengeCoordinator {
     ) -> Result<FindingPenaltyOutcome, ChallengeCoordinatorError> {
         self.require_live_role(&self.penalty_pin, issued_at, now, "penalty")?;
         let penalty_key = self.penalty_authority.public_key();
-        let governance_key = self.require_live_role(
-            &self.pins.governance_authority,
-            case.body.updated_at,
-            now,
-            "governance",
-        )?;
-        self.require_pinned_governance(governance, case, prior_penalty, now)?;
+        let governance_key =
+            self.require_pinned_governance(governance, case, prior_penalty, now)?;
         let outcome_envelope_sha256 = self.envelope_digest(outcome)?;
         let (action, state, supersedes) = match branch {
             FindingPenaltyBranch::PendingAppeal => (

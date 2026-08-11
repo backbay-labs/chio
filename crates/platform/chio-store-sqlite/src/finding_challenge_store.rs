@@ -5,7 +5,7 @@
 //! case, the sealed claim snapshot, and the domain-keyed effect intents
 //! fenced before anything leaves this operator.
 //!
-//! Ten tables back the lane. `challenges` is the adjudication record:
+//! Eleven tables back the lane. `challenges` is the adjudication record:
 //! one authorization branch, one evidence class, one bounded retry, and a
 //! lifecycle that only ever runs
 //! `submitted -> evaluating -> rejected | indeterminate_retryable |
@@ -24,7 +24,9 @@
 //! target a liability and resolves the single live head among them.
 //! `claim_snapshots` seals the frozen accounting the payout derives from.
 //! `finding_finalizing_authorizations` retains the exact signed
-//! authorization in the transition that enters `finalizing`.
+//! authorization in the transition that enters `finalizing`, and
+//! `finding_finalizing_authorization_refreshes` appends every permitted
+//! pre-dispatch snapshot refresh.
 //! `effect_intents` is the durable fence every external effect passes
 //! through before it is dispatched. `effect_root_bindings` immutably
 //! refines a root intent with the exact Merkle root and evidence hash that
@@ -83,11 +85,11 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-/// Revision 10 retains the exact finalizing authorization atomically with
-/// the liability transition; revision 9 retains exact signed evaluator
-/// outcomes with their verdict; revision 8 binds root publication to its
-/// concrete anchor proof.
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 10;
+/// Revision 11 retains pre-dispatch finalizing-authorization refreshes;
+/// revision 10 retains the initial exact finalizing authorization atomically
+/// with the liability transition; revision 9 retains exact signed evaluator
+/// outcomes with their verdict.
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 11;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "challenges",
     "finding_challenge_projection_commits",
@@ -1788,8 +1790,19 @@ impl SqliteFindingChallengeStore {
             .query_row(
                 r#"
                 SELECT authorization_json, authorization_sha256, recorded_at
-                FROM finding_finalizing_authorizations
-                WHERE liability_key = ?1
+                FROM (
+                    SELECT authorization_json, authorization_sha256,
+                           recorded_at, 0 AS refresh_ordinal
+                    FROM finding_finalizing_authorizations
+                    WHERE liability_key = ?1
+                    UNION ALL
+                    SELECT authorization_json, authorization_sha256,
+                           recorded_at, refresh_ordinal
+                    FROM finding_finalizing_authorization_refreshes
+                    WHERE liability_key = ?1
+                )
+                ORDER BY refresh_ordinal DESC
+                LIMIT 1
                 "#,
                 [liability_key],
                 |row| {
@@ -1811,6 +1824,145 @@ impl SqliteFindingChallengeStore {
                 })
             })
             .transpose()
+    }
+
+    /// Append a refreshed finalizing authorization before the seller
+    /// impairment has left `pending`.
+    ///
+    /// The previous digest is a compare-and-set boundary. This prevents two
+    /// observers from replacing one another's snapshot, while the append-only
+    /// row keeps the entire signed authorization lineage recoverable.
+    pub fn refresh_finalizing_authorization(
+        &self,
+        expected_previous_sha256: &str,
+        authorization: &FindingFinalizingAuthorizationInput<'_>,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        require_hex64(expected_previous_sha256, "expected_previous_sha256")?;
+        require_finalizing_authorization(authorization)?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let liability = load_liability_tx(&transaction, authorization.liability_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if liability.state != FindingLiabilityState::Finalizing {
+            return Err(FindingChallengeStoreError::Conflict(
+                "only a finalizing liability can refresh its authorization".to_owned(),
+            ));
+        }
+        let (seller_intents, pending_seller_intents) = transaction
+            .query_row(
+                r#"
+                SELECT COUNT(*), COALESCE(SUM(state = 'pending'), 0)
+                FROM effect_intents
+                WHERE liability_key = ?1
+                  AND kind = 'seller_impair'
+                  AND settlement_required = 1
+                "#,
+                [authorization.liability_key],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .map_err(sqlite_error)?;
+        if seller_intents != 1 || pending_seller_intents != 1 {
+            return Err(FindingChallengeStoreError::Conflict(
+                "finalizing authorization may refresh only before seller impairment dispatch"
+                    .to_owned(),
+            ));
+        }
+        let base = transaction
+            .query_row(
+                r#"
+                SELECT authorization_json, authorization_sha256, recorded_at
+                FROM finding_finalizing_authorizations
+                WHERE liability_key = ?1
+                "#,
+                [authorization.liability_key],
+                |row| {
+                    Ok((
+                        row.get::<_, Vec<u8>>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(sqlite_error)?
+            .ok_or_else(|| invariant("finalizing liability has no retained authorization"))?;
+        let latest = transaction
+            .query_row(
+                r#"
+                SELECT refresh_ordinal, authorization_json,
+                       authorization_sha256, recorded_at
+                FROM finding_finalizing_authorization_refreshes
+                WHERE liability_key = ?1
+                ORDER BY refresh_ordinal DESC
+                LIMIT 1
+                "#,
+                [authorization.liability_key],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Vec<u8>>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        let (latest_ordinal, latest_json, latest_sha256, latest_recorded_at) =
+            latest.unwrap_or((0, base.0, base.1, base.2));
+        if latest_sha256 == authorization.authorization_sha256 {
+            if latest_json == authorization.authorization_json
+                && stored_u64(latest_recorded_at, "finalizing authorization recorded_at")?
+                    == authorization.recorded_at
+            {
+                return Ok(FindingChallengeWriteOutcome::ExistingSame);
+            }
+            return Err(FindingChallengeStoreError::Conflict(
+                "finalizing authorization digest is already bound to different bytes".to_owned(),
+            ));
+        }
+        if latest_sha256 != expected_previous_sha256 {
+            return Err(FindingChallengeStoreError::Conflict(
+                "finalizing authorization refresh lost its compare-and-set race".to_owned(),
+            ));
+        }
+        let latest_recorded_at =
+            stored_u64(latest_recorded_at, "finalizing authorization recorded_at")?;
+        if authorization.recorded_at <= latest_recorded_at {
+            return Err(FindingChallengeStoreError::Conflict(
+                "finalizing authorization refresh time must advance".to_owned(),
+            ));
+        }
+        let next_ordinal = latest_ordinal
+            .checked_add(1)
+            .ok_or_else(|| invariant("finalizing authorization refresh ordinal overflowed"))?;
+        let inserted = transaction
+            .execute(
+                r#"
+                INSERT INTO finding_finalizing_authorization_refreshes (
+                    liability_key, refresh_ordinal,
+                    previous_authorization_sha256, authorization_json,
+                    authorization_sha256, recorded_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
+                params![
+                    authorization.liability_key,
+                    next_ordinal,
+                    expected_previous_sha256,
+                    authorization.authorization_json,
+                    authorization.authorization_sha256,
+                    sqlite_i64(authorization.recorded_at, "recorded_at")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        if inserted != 1 {
+            return Err(invariant(
+                "finalizing authorization refresh insert did not affect one row",
+            ));
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingChallengeWriteOutcome::Inserted)
     }
 
     /// Compare-and-set `finalizing -> settled`, clearing the pending
@@ -4178,6 +4330,22 @@ pub(crate) fn initialize_finding_challenge_schema(
     if on_disk == FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
         return verify_finding_challenge_invariants(connection);
     }
+    if on_disk == 10 {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+        transaction
+            .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .map_err(sqlite_error)?;
+        crate::stamp_schema_version(
+            &transaction,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| invariant(error.to_string()))?;
+        verify_finding_challenge_invariants(&transaction)?;
+        return transaction.commit().map_err(sqlite_error);
+    }
     if on_disk == 9 {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -4704,6 +4872,48 @@ pub(crate) fn verify_finding_challenge_invariants(
     if invalid_authorization_coverage {
         return Err(invariant("finalizing authorization coverage is not exact"));
     }
+    let invalid_authorization_refresh = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM finding_finalizing_authorization_refreshes AS refresh
+                JOIN liability_heads AS liability
+                  ON liability.liability_key = refresh.liability_key
+                WHERE liability.state NOT IN ('finalizing', 'settled')
+            ) OR EXISTS(
+                SELECT 1
+                FROM finding_finalizing_authorization_refreshes AS refresh
+                WHERE (
+                    refresh.refresh_ordinal = 1
+                    AND refresh.previous_authorization_sha256 <> (
+                        SELECT base.authorization_sha256
+                        FROM finding_finalizing_authorizations AS base
+                        WHERE base.liability_key = refresh.liability_key
+                    )
+                ) OR (
+                    refresh.refresh_ordinal > 1
+                    AND NOT EXISTS(
+                        SELECT 1
+                        FROM finding_finalizing_authorization_refreshes AS previous
+                        WHERE previous.liability_key = refresh.liability_key
+                          AND previous.refresh_ordinal = refresh.refresh_ordinal - 1
+                          AND previous.authorization_sha256 =
+                              refresh.previous_authorization_sha256
+                          AND previous.recorded_at < refresh.recorded_at
+                    )
+                )
+            )
+            "#,
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(sqlite_error)?;
+    if invalid_authorization_refresh {
+        return Err(invariant(
+            "finalizing authorization refresh lineage is invalid",
+        ));
+    }
     Ok(())
 }
 
@@ -4725,6 +4935,8 @@ fn finding_challenge_schema_catalog(
                OR tbl_name GLOB 'liability_heads*'
                OR name GLOB 'finding_finalizing_authorizations*'
                OR tbl_name GLOB 'finding_finalizing_authorizations*'
+               OR name GLOB 'finding_finalizing_authorization_refreshes*'
+               OR tbl_name GLOB 'finding_finalizing_authorization_refreshes*'
                OR name GLOB 'governance_case_index*'
                OR tbl_name GLOB 'governance_case_index*'
                OR name GLOB 'claim_snapshots*'

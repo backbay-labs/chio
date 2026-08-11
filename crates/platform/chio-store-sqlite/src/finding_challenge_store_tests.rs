@@ -2761,6 +2761,67 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
         liability(&fixture, &head.liability_key).state,
         FindingLiabilityState::Finalizing
     );
+
+    let seller_intent = digest("seller-impair-finality-race");
+    fixture
+        .store
+        .record_effect_intent(
+            &seller_intent,
+            FindingEffectIntentKind::SellerImpair,
+            &digest("seller-impair-instruction"),
+            Some(&head.liability_key),
+            true,
+            NOW + 5,
+        )
+        .expect("fence seller impairment");
+    let refreshed_json = br#"{"refresh":1}"#;
+    let refreshed_sha256 = sha256_hex(refreshed_json);
+    assert_eq!(
+        fixture
+            .store
+            .refresh_finalizing_authorization(
+                &sha256_hex(b"{}"),
+                &FindingFinalizingAuthorizationInput {
+                    liability_key: &head.liability_key,
+                    authorization_json: refreshed_json,
+                    authorization_sha256: &refreshed_sha256,
+                    recorded_at: NOW + 6,
+                },
+            )
+            .expect("append pre-dispatch authorization refresh"),
+        FindingChallengeWriteOutcome::Inserted
+    );
+    let retained = fixture
+        .store
+        .get_finalizing_authorization(&head.liability_key)
+        .expect("read refreshed authorization")
+        .expect("refreshed authorization remains durable");
+    assert_eq!(retained.authorization_json, refreshed_json);
+    assert_eq!(retained.authorization_sha256, refreshed_sha256);
+
+    fixture
+        .store
+        .advance_effect_intent(
+            &seller_intent,
+            FindingEffectIntentState::Dispatched,
+            NOW + 7,
+        )
+        .expect("seller impairment leaves pending");
+    assert!(
+        matches!(
+            fixture.store.refresh_finalizing_authorization(
+                &retained.authorization_sha256,
+                &FindingFinalizingAuthorizationInput {
+                    liability_key: &head.liability_key,
+                    authorization_json: br#"{"refresh":2}"#,
+                    authorization_sha256: &sha256_hex(br#"{"refresh":2}"#),
+                    recorded_at: NOW + 8,
+                },
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "a dispatched seller impairment freezes the retained authorization"
+    );
 }
 
 #[test]
@@ -3880,6 +3941,44 @@ fn v8_schema_adds_exact_outcome_retention() {
             |row| row.get::<_, bool>(0),
         )
         .expect("inspect outcome-retention table"));
+    verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
+fn v10_schema_adds_append_only_finalizing_authorization_refreshes() {
+    let mut connection = Connection::open_in_memory().expect("open previous database");
+    connection
+        .execute_batch(FINDING_CHALLENGE_SCHEMA)
+        .expect("install current challenge schema");
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER finding_finalizing_authorization_refreshes_immutable;
+            DROP TRIGGER finding_finalizing_authorization_refreshes_no_delete;
+            DROP TABLE finding_finalizing_authorization_refreshes;
+            "#,
+        )
+        .expect("rewind authorization refresh schema objects");
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 10)
+        .expect("stamp previous schema");
+
+    initialize_finding_challenge_schema(&mut connection).expect("migrate revision ten");
+
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_CHALLENGE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION);
+    assert!(connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'finding_finalizing_authorization_refreshes')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect authorization refresh table"));
     verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
 }
 
