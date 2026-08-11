@@ -236,7 +236,6 @@ fn configured_pool_ledger_freezes_the_durable_admission_runtime() {
     );
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn pool_ledger_allows_the_initial_durable_admission_runtime() {
     use crate::admission_operation::AdmissionOperationError;
