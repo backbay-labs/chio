@@ -37,7 +37,7 @@ use chio_finding::{
     FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
     FindingStatusOperatorAuthorization, FindingStatusProofInput, FindingVerifierReport,
     SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
-    FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
@@ -73,6 +73,8 @@ pub enum FindingVerifierError {
     Deserialization,
     #[error("verifier profile envelope failed pinned verification")]
     ProfileInvalid,
+    #[error("report evaluation is outside the Finding validity window")]
+    FindingInactive,
     #[error("no admitted kernel keys configured")]
     NoAdmittedKernelKeys,
     #[error("report body construction failed canonicalization")]
@@ -478,6 +480,7 @@ pub fn verify_finding_evidence(
     verify_signed_profile(&trust.profile, &trust.governance_authority)
         .map_err(|_| FindingVerifierError::ProfileInvalid)?;
     if trust.profile.body.required_receipt_semantics != MEDIATED_SPEND_PROFILE
+        || trust.profile.body.predicate_engine != FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1
         || trust.profile.body.required_facets.iter().any(|facet| {
             matches!(
                 facet,
@@ -494,6 +497,9 @@ pub fn verify_finding_evidence(
     }
     if trust.admitted_kernel_keys.is_empty() {
         return Err(FindingVerifierError::NoAdmittedKernelKeys);
+    }
+    if trust.trusted_time < finding.issued_at || trust.trusted_time >= finding.expires_at {
+        return Err(FindingVerifierError::FindingInactive);
     }
     let profile = &trust.profile.body;
     let profile_envelope_bytes =
@@ -811,7 +817,8 @@ pub fn verify_finding_evidence(
     ));
 
     // Step 7 / facet 11: bond backing against the fresh store snapshot.
-    let (bond_backing, backing_allocation_id) = evaluate_bond_backing(&finding, trust, bundle);
+    let (bond_backing, backing_allocation_id) =
+        evaluate_bond_backing(&finding, trust, bundle, &profile_envelope_sha256);
     facets.push(bond_backing);
 
     // Facet 12: status liveness. Only a fresh, governance-authorized portable
@@ -1068,6 +1075,7 @@ fn evaluate_bond_backing(
     finding: &Finding,
     trust: &FindingVerifierTrustRoots,
     bundle: &FindingEvidenceBundle<'_>,
+    profile_envelope_sha256: &str,
 ) -> (FindingFacetResult, Option<String>) {
     let Some(snapshot) = &bundle.bond_snapshot else {
         return (
@@ -1092,6 +1100,16 @@ fn evaluate_bond_backing(
         );
     }
     let backing = &snapshot.backing.body;
+    if backing.profile_envelope_sha256 != profile_envelope_sha256 {
+        return (
+            facet(
+                FindingFacetKind::BondBacking,
+                FindingFacetOutcome::Failed,
+                "backing allocation does not bind the evaluated verifier profile",
+            ),
+            None,
+        );
+    }
     if let Err(error) = verify_pinned_envelope(
         &snapshot.store_snapshot,
         &trust.collateral_authority,

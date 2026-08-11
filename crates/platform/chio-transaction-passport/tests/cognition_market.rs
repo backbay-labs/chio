@@ -1414,6 +1414,24 @@ fn cognition_market_qualified_profile_rejects_self_pinned_governance() -> TestRe
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_an_unsupported_predicate_engine() -> TestResult {
+    let mut bundle = build_bundle()?;
+    replace_trusted_profile(&mut bundle, |profile| {
+        profile.predicate_engine = "foreign-replay-v1".to_owned();
+    })?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("an unsupported predicate engine was accepted")?
+        .to_string();
+    assert!(
+        error.contains("unsupported predicate engine"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_enforces_required_facet_floor() -> TestResult {
     let mut bundle = build_bundle()?;
     require_profile_facet(&mut bundle, FindingFacetKind::KernelAndRevocationTrust)?;

@@ -425,7 +425,7 @@ fn fixture_with_runtime_assurance(
         finding_id: finding.finding_id.clone(),
         listing_id: "finding-listing-01".to_string(),
         terms_envelope_sha256: HEX64.to_string(),
-        profile_envelope_sha256: HEX64.to_string(),
+        profile_envelope_sha256: profile_envelope_sha256.clone(),
         fee_requirement_sha256: HEX64.to_string(),
         fee_schedule_envelope_sha256: HEX64.to_string(),
         bond_class: FindingBondClass::Listing,
@@ -1042,6 +1042,33 @@ fn production_checkpoints_cannot_postdate_report_evaluation() -> TestResult {
 }
 
 #[test]
+fn production_receipts_cannot_postdate_their_checkpoint() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.checkpoints[0] = checkpoint_at(
+        evidence.checkpoints[0].clone(),
+        fx.receipts[0].receipt.timestamp,
+        &keypair(21),
+    )?;
+    evidence.checkpoint_transparency = build_checkpoint_transparency(&evidence.checkpoints)?;
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let membership = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::CheckpointMembership)
+        .ok_or("checkpoint-membership facet missing")?;
+    assert_eq!(membership.outcome, FindingFacetOutcome::Failed);
+    assert!(
+        membership.reason.contains("issued after checkpoint"),
+        "unexpected reason: {}",
+        membership.reason
+    );
+    Ok(())
+}
+
+#[test]
 fn asserted_finding_can_be_verified_from_checkpointed_delivery_alone() -> TestResult {
     let fx = fixture()?;
     let mut finding: Finding = serde_json::from_str(&fx.raw_finding)?;
@@ -1483,6 +1510,30 @@ fn raw_ingress_rejects_noncanonical_and_oversized_findings() -> TestResult {
 }
 
 #[test]
+fn report_evaluation_must_be_inside_the_finding_validity_window() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+
+    for (issued_at, expires_at) in [
+        (trust.trusted_time.saturating_add(1), 1_900_000_000),
+        (1_700_000_000, trust.trusted_time),
+    ] {
+        let mut finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+        finding.issued_at = issued_at;
+        finding.expires_at = expires_at;
+        finding.signature.clear();
+        finding.finding_id = compute_finding_id(&finding)?;
+        let finding = sign_finding(finding, &fx.issuer)?;
+        let raw_finding = String::from_utf8(canonical_json_bytes(&finding)?)?;
+        assert_eq!(
+            verify_finding_evidence(&raw_finding, &trust, &bundle(&fx, clone_receipts(&fx))).err(),
+            Some(FindingVerifierError::FindingInactive)
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn wrapper_tampering_fails_membership_on_every_closed_gap() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
@@ -1700,6 +1751,41 @@ fn backing_cannot_be_accepted_before_its_signed_issue_time() -> TestResult {
 }
 
 #[test]
+fn bond_backing_must_bind_the_evaluated_verifier_profile() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let mut evidence_bundle = bundle(&fx, clone_receipts(&fx));
+    let snapshot = evidence_bundle
+        .bond_snapshot
+        .as_mut()
+        .ok_or("bond snapshot missing")?;
+    let mut backing = snapshot.backing.body.clone();
+    backing.profile_envelope_sha256 = "ab".repeat(32);
+    backing.allocation_id = compute_allocation_id(&backing)?;
+    snapshot.backing = SignedExportEnvelope::sign(backing, &keypair(4))?;
+    snapshot.store_snapshot.body.allocation_id = snapshot.backing.body.allocation_id.clone();
+    snapshot.store_snapshot.body.backing_envelope_sha256 =
+        sha256_hex(&canonical_json_bytes(&snapshot.backing)?);
+    snapshot.store_snapshot =
+        SignedExportEnvelope::sign(snapshot.store_snapshot.body.clone(), &keypair(4))?;
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence_bundle)?;
+    let backing = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::BondBacking)
+        .ok_or("bond-backing facet missing")?;
+    assert_eq!(backing.outcome, FindingFacetOutcome::Failed);
+    assert!(
+        backing.reason.contains("evaluated verifier profile"),
+        "unexpected reason: {}",
+        backing.reason
+    );
+    assert!(draft.backing_allocation_id.is_none());
+    Ok(())
+}
+
+#[test]
 fn unpinned_profile_or_empty_kernel_keys_reject_outright() -> TestResult {
     let fx = fixture()?;
 
@@ -1741,6 +1827,16 @@ fn unsupported_profile_requirements_reject_outright() -> TestResult {
 
     let mut profile = fx.profile.body.clone();
     profile.required_receipt_semantics = "chio.unknown_spend.v1".to_owned();
+    profile.profile_id = compute_profile_id(&profile)?;
+    let mut trust = trust_roots(&fx);
+    trust.profile = SignedExportEnvelope::sign(profile, &fx.governance)?;
+    assert_eq!(
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx))).err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
+
+    let mut profile = fx.profile.body.clone();
+    profile.predicate_engine = "foreign-replay-v1".to_owned();
     profile.profile_id = compute_profile_id(&profile)?;
     let mut trust = trust_roots(&fx);
     trust.profile = SignedExportEnvelope::sign(profile, &fx.governance)?;

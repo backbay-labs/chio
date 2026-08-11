@@ -56,6 +56,8 @@ pub enum CheckpointMembershipError {
     DuplicateProof(u64),
     #[error("receipt seq {0} outside the checkpoint batch range")]
     ReceiptSeqOutOfRange(u64),
+    #[error("receipt seq {0} was issued after checkpoint seq {1}")]
+    ReceiptIssuedAfterCheckpoint(u64, u64),
     #[error("outer leaf index does not equal the inner proof leaf index")]
     LeafIndexMismatch,
     #[error("inner proof tree size does not equal the checkpoint tree size")]
@@ -194,6 +196,12 @@ fn verify_checkpoint_membership_inner(
             return Err(CheckpointMembershipError::DuplicateProof(proof.receipt_seq));
         }
         let body = &checkpoint.body;
+        if evidence.receipt.timestamp > body.issued_at {
+            return Err(CheckpointMembershipError::ReceiptIssuedAfterCheckpoint(
+                proof.receipt_seq,
+                body.checkpoint_seq,
+            ));
+        }
         if proof.receipt_seq < body.batch_start_seq || proof.receipt_seq > body.batch_end_seq {
             return Err(CheckpointMembershipError::ReceiptSeqOutOfRange(
                 proof.receipt_seq,

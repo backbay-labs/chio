@@ -24,6 +24,9 @@ use crate::validate::{
 pub const FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1: &str =
     chio_core_types::CHIO_FINDING_CHALLENGE_VERIFIER_PROFILE_V1_SCHEMA;
 
+/// Predicate engine implemented by the shipped finding verifier.
+pub const FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1: &str = "chio-replay-v1";
+
 /// Receipt signer roles the profile pins.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]

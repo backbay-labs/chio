@@ -16,8 +16,8 @@ use chio_finding::{
     verify_status_proof_input, FindingFacetKind, FindingFacetOutcome, FindingReplayRecipeInput,
     FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusProofInput,
     SignedFindingChallengeVerifierProfile, SignedFindingStatusEpoch, SignedFindingVerifierReport,
-    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
-    FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+    FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -256,6 +256,13 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         &trust.profile_governance_authority,
     )
     .map_err(|error| claim_failed(format!("trusted verifier profile is invalid: {error}")))?;
+    if trust.trusted_verifier_profile.body.predicate_engine
+        != FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1
+    {
+        return Err(claim_failed(
+            "trusted verifier profile names an unsupported predicate engine",
+        ));
+    }
     verify_signed_verifier_report(&report, &trust.finding_verifier_authority)
         .map_err(|error| invalid_artifact(report_node.path, error.to_string()))?;
     if report.body.verifier_key_epoch != finding_verifier_signer.key_epoch {
