@@ -8,6 +8,12 @@ pub(super) fn ensure_lifecycle_columns(
     ensure_column(
         connection,
         "finding_pool_debits",
+        "tenant_id",
+        "ALTER TABLE finding_pool_debits ADD COLUMN tenant_id TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "finding_pool_debits",
         "debit_request_binding_sha256",
         "ALTER TABLE finding_pool_debits ADD COLUMN debit_request_binding_sha256 TEXT",
     )?;

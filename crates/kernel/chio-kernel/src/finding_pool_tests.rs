@@ -171,6 +171,7 @@ impl FindingPoolLedger for RecordingLedger {
                 schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
                 kind: FindingPoolMutationKind::Claim,
                 purchase_id: claim.purchase_id().to_owned(),
+                tenant_id: None,
                 allocation_id: "allocation:test".to_owned(),
                 allocation_envelope_sha256: "a".repeat(64),
                 amount_units: claim.amount_units().to_string(),
@@ -213,6 +214,7 @@ impl FindingPoolLedger for RecordingLedger {
                 schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
                 kind: FindingPoolMutationKind::Release,
                 purchase_id: "purchase:test".to_owned(),
+                tenant_id: None,
                 allocation_id: "allocation:test".to_owned(),
                 allocation_envelope_sha256: "a".repeat(64),
                 amount_units: "25".to_owned(),
@@ -262,6 +264,7 @@ impl FindingPoolLedger for RecordingLedger {
                 schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
                 kind: FindingPoolMutationKind::Finalize,
                 purchase_id: "purchase:test".to_owned(),
+                tenant_id: None,
                 allocation_id: "allocation:test".to_owned(),
                 allocation_envelope_sha256: "a".repeat(64),
                 amount_units: "25".to_owned(),
@@ -310,6 +313,7 @@ impl FindingPoolLedger for RecordingLedger {
                 schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
                 kind,
                 purchase_id: terminal.purchase_id().to_owned(),
+                tenant_id: None,
                 allocation_id: "allocation:test".to_owned(),
                 allocation_envelope_sha256: "a".repeat(64),
                 amount_units: terminal.amount_units().to_string(),
@@ -656,6 +660,36 @@ fn recorded_pool_mutation(kernel: &ChioKernel) -> FindingPoolMutation {
     let receipts = kernel.receipt_log().receipts();
     assert_eq!(receipts.len(), 1);
     pool_mutation_from_receipt(&receipts[0])
+}
+
+#[test]
+fn recovered_pool_mutation_receipt_uses_its_persisted_tenant() {
+    let kernel = kernel_without_receipt_store(91, 92);
+    let mutation = FindingPoolMutation {
+        schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
+        kind: FindingPoolMutationKind::ExpiredRelease,
+        purchase_id: "purchase:tenant-recovery".to_owned(),
+        tenant_id: Some("tenant-recovery".to_owned()),
+        allocation_id: "allocation:tenant-recovery".to_owned(),
+        allocation_envelope_sha256: "a".repeat(64),
+        amount_units: "25".to_owned(),
+        currency: "USD".to_owned(),
+        state: FindingPoolDebitState::Released,
+        reserved_after_units: "0".to_owned(),
+        spent_after_units: "0".to_owned(),
+        remaining_after_units: "75".to_owned(),
+        occurred_at_unix_ms: "12346".to_owned(),
+        durable_admission_operation_id: Some("operation:tenant-recovery".to_owned()),
+    };
+
+    let receipt = kernel
+        .build_finding_pool_mutation_receipt(&mutation)
+        .unwrap_or_else(|error| panic!("sign recovered pool mutation: {error}"));
+    assert_eq!(receipt.tenant_id.as_deref(), Some("tenant-recovery"));
+    assert_eq!(
+        pool_mutation_from_receipt(&receipt).tenant_id.as_deref(),
+        Some("tenant-recovery")
+    );
 }
 
 #[test]

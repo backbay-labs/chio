@@ -86,6 +86,8 @@ pub struct FindingPoolMutation {
     pub schema: String,
     pub kind: FindingPoolMutationKind,
     pub purchase_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
     pub allocation_id: String,
     pub allocation_envelope_sha256: String,
     pub amount_units: String,
@@ -238,6 +240,7 @@ pub struct FindingPoolDebitRequest<'a> {
 #[derive(Debug, Clone)]
 pub struct AuthorizedFindingPoolDebit {
     purchase_id: String,
+    tenant_id: Option<String>,
     allocation_id: String,
     allocation_envelope_sha256: String,
     debit_request_binding_sha256: String,
@@ -270,6 +273,7 @@ pub struct AuthorizedFindingPoolDebit {
 /// durable reservation before it returns a prior receipt.
 pub struct AuthorizedFindingPoolDebitReplay {
     purchase_id: String,
+    tenant_id: Option<String>,
     allocation_envelope_sha256: String,
     debit_request_binding_sha256: String,
 }
@@ -466,6 +470,11 @@ impl AuthorizedFindingPoolDebit {
     }
 
     #[must_use]
+    pub fn tenant_id(&self) -> Option<&str> {
+        self.tenant_id.as_deref()
+    }
+
+    #[must_use]
     pub fn allocation_id(&self) -> &str {
         &self.allocation_id
     }
@@ -575,6 +584,11 @@ impl AuthorizedFindingPoolDebitReplay {
     #[must_use]
     pub fn purchase_id(&self) -> &str {
         &self.purchase_id
+    }
+
+    #[must_use]
+    pub fn tenant_id(&self) -> Option<&str> {
+        self.tenant_id.as_deref()
     }
 
     #[must_use]
@@ -801,9 +815,11 @@ impl ChioKernel {
                 candidate_purchase_id,
                 &verified.purchaser_key,
             )?;
+        let tenant_id = crate::kernel::current_scoped_receipt_tenant_id();
         if committed_purchase {
             let replay = AuthorizedFindingPoolDebitReplay {
                 purchase_id: candidate_purchase_id.clone(),
+                tenant_id,
                 allocation_envelope_sha256: verified.envelope_sha256,
                 debit_request_binding_sha256,
             };
@@ -850,6 +866,7 @@ impl ChioKernel {
         }
         let debit = AuthorizedFindingPoolDebit {
             purchase_id: purchase.purchase_intent_id.clone(),
+            tenant_id,
             allocation_id: verified.allocation_id,
             allocation_envelope_sha256: verified.envelope_sha256,
             debit_request_binding_sha256,

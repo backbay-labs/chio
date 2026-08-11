@@ -67,7 +67,7 @@ impl ChioKernel {
                 })),
                 timestamp,
                 trust_level: chio_core::receipt::kinds::TrustLevel::Mediated,
-                tenant_id: None,
+                tenant_id: mutation.tenant_id.clone(),
             },
             authority,
         )

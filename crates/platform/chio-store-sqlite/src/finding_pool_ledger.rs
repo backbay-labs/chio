@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS finding_pool_allocations (
 
 CREATE TABLE IF NOT EXISTS finding_pool_debits (
     purchase_id TEXT PRIMARY KEY,
+    tenant_id TEXT,
     allocation_envelope_sha256 TEXT NOT NULL,
     debit_request_binding_sha256 TEXT,
     finding_id TEXT NOT NULL,
@@ -417,7 +418,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         let stored = connection
             .query_row(
                 "SELECT d.allocation_envelope_sha256, a.allocation_id, \
-                        d.debit_request_binding_sha256, d.amount_units, \
+                        d.debit_request_binding_sha256, d.tenant_id, d.amount_units, \
                         d.currency, d.state, d.reserved_after_units, \
                         d.spent_after_units, a.signed_amount_units \
                  FROM finding_pool_debits d \
@@ -430,12 +431,13 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, Option<String>>(2)?,
-                        row.get::<_, String>(3)?,
+                        row.get::<_, Option<String>>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, String>(5)?,
                         row.get::<_, String>(6)?,
                         row.get::<_, String>(7)?,
                         row.get::<_, String>(8)?,
+                        row.get::<_, String>(9)?,
                     ))
                 },
             )
@@ -444,20 +446,21 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             .ok_or(FindingPoolLedgerError::ReservationMissing)?;
         if stored.0 != replay.allocation_envelope_sha256()
             || stored.2.as_deref() != Some(replay.debit_request_binding_sha256())
+            || stored.3.as_deref() != replay.tenant_id()
         {
             return Err(FindingPoolLedgerError::ReplayConflict);
         }
-        let amount = parse_units(&stored.3, "debit.amount_units")?;
-        let state = parse_state(&stored.5)?;
-        let reserved_after = parse_units(&stored.6, "debit.reserved_after_units")?;
-        let spent_after = parse_units(&stored.7, "debit.spent_after_units")?;
-        let signed = parse_units(&stored.8, "signed_amount_units")?;
+        let amount = parse_units(&stored.4, "debit.amount_units")?;
+        let state = parse_state(&stored.6)?;
+        let reserved_after = parse_units(&stored.7, "debit.reserved_after_units")?;
+        let spent_after = parse_units(&stored.8, "debit.spent_after_units")?;
+        let signed = parse_units(&stored.9, "signed_amount_units")?;
         Ok(FindingPoolDebitReceipt {
             purchase_id: replay.purchase_id().to_owned(),
             allocation_id: stored.1,
             allocation_envelope_sha256: stored.0,
             amount_units: amount,
-            currency: stored.4,
+            currency: stored.5,
             state,
             reserved_after_units: reserved_after,
             spent_after_units: spent_after,
@@ -538,7 +541,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         if let Some(existing) = transaction
             .query_row(
                 "SELECT d.allocation_envelope_sha256, a.allocation_id, \
-                        d.debit_request_binding_sha256, d.finding_id, \
+                        d.debit_request_binding_sha256, d.tenant_id, d.finding_id, \
                         d.listing_id, d.reservation_id, \
                         d.authoritative_payment_operation_id, \
                         d.accepted_bid_envelope_sha256, \
@@ -555,7 +558,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, Option<String>>(2)?,
-                        row.get::<_, String>(3)?,
+                        row.get::<_, Option<String>>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, String>(5)?,
                         row.get::<_, String>(6)?,
@@ -567,28 +570,30 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                         row.get::<_, String>(12)?,
                         row.get::<_, String>(13)?,
                         row.get::<_, String>(14)?,
+                        row.get::<_, String>(15)?,
                     ))
                 },
             )
             .optional()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
         {
-            let amount = parse_units(&existing.9, "debit.amount_units")?;
-            let state = parse_state(&existing.11)?;
-            let reserved_after = parse_units(&existing.12, "debit.reserved_after_units")?;
-            let spent_after = parse_units(&existing.13, "debit.spent_after_units")?;
-            let signed = parse_units(&existing.14, "signed_amount_units")?;
+            let amount = parse_units(&existing.10, "debit.amount_units")?;
+            let state = parse_state(&existing.12)?;
+            let reserved_after = parse_units(&existing.13, "debit.reserved_after_units")?;
+            let spent_after = parse_units(&existing.14, "debit.spent_after_units")?;
+            let signed = parse_units(&existing.15, "signed_amount_units")?;
             if existing.0 != debit.allocation_envelope_sha256()
                 || existing.1 != debit.allocation_id()
                 || existing.2.as_deref() != Some(debit.debit_request_binding_sha256())
-                || existing.3 != debit.finding_id()
-                || existing.4 != debit.listing_id()
-                || existing.5 != debit.reservation_id()
-                || existing.6 != debit.authoritative_payment_operation_id()
-                || existing.7 != debit.accepted_bid_envelope_sha256()
-                || existing.8 != debit.venue_admission_envelope_sha256()
+                || existing.3.as_deref() != debit.tenant_id()
+                || existing.4 != debit.finding_id()
+                || existing.5 != debit.listing_id()
+                || existing.6 != debit.reservation_id()
+                || existing.7 != debit.authoritative_payment_operation_id()
+                || existing.8 != debit.accepted_bid_envelope_sha256()
+                || existing.9 != debit.venue_admission_envelope_sha256()
                 || amount != debit.debit_amount_units()
-                || existing.10 != debit.currency()
+                || existing.11 != debit.currency()
                 || signed != debit.signed_amount_units()
             {
                 return Err(FindingPoolLedgerError::ReplayConflict);
@@ -703,16 +708,17 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         transaction
             .execute(
                 "INSERT INTO finding_pool_debits (\
-                    purchase_id, allocation_envelope_sha256, debit_request_binding_sha256, \
-                    finding_id, listing_id, \
+                    purchase_id, tenant_id, allocation_envelope_sha256, \
+                    debit_request_binding_sha256, finding_id, listing_id, \
                     reservation_id, authoritative_payment_operation_id, \
                     accepted_bid_envelope_sha256, venue_admission_envelope_sha256, \
                     amount_units, currency, state, claim_deadline_unix_ms, \
                     claimed_at_unix_ms, reserved_after_units, spent_after_units\
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, \
-                           'reserved', ?12, NULL, ?13, ?14)",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
+                           'reserved', ?13, NULL, ?14, ?15)",
                 params![
                     debit.purchase_id(),
+                    debit.tenant_id(),
                     debit.allocation_envelope_sha256(),
                     debit.debit_request_binding_sha256(),
                     debit.finding_id(),
@@ -1573,8 +1579,8 @@ fn mutation_for_purchase(
 ) -> Result<FindingPoolMutation, FindingPoolLedgerError> {
     let stored = transaction
         .query_row(
-            "SELECT d.purchase_id, a.allocation_id, d.allocation_envelope_sha256, \
-                    d.amount_units, d.currency, d.state, a.reserved_units, \
+            "SELECT d.purchase_id, d.tenant_id, a.allocation_id, \
+                    d.allocation_envelope_sha256, d.amount_units, d.currency, d.state, a.reserved_units, \
                     a.spent_units, a.signed_amount_units, \
                     d.durable_admission_operation_id \
              FROM finding_pool_debits d \
@@ -1585,7 +1591,7 @@ fn mutation_for_purchase(
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
@@ -1593,29 +1599,31 @@ fn mutation_for_purchase(
                     row.get::<_, String>(6)?,
                     row.get::<_, String>(7)?,
                     row.get::<_, String>(8)?,
-                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, String>(9)?,
+                    row.get::<_, Option<String>>(10)?,
                 ))
             },
         )
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-    let amount = parse_units(&stored.3, "debit.amount_units")?;
-    let reserved = parse_units(&stored.6, "reserved_units")?;
-    let spent = parse_units(&stored.7, "spent_units")?;
-    let signed = parse_units(&stored.8, "signed_amount_units")?;
+    let amount = parse_units(&stored.4, "debit.amount_units")?;
+    let reserved = parse_units(&stored.7, "reserved_units")?;
+    let spent = parse_units(&stored.8, "spent_units")?;
+    let signed = parse_units(&stored.9, "signed_amount_units")?;
     Ok(FindingPoolMutation {
         schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_string(),
         kind,
         purchase_id: stored.0,
-        allocation_id: stored.1,
-        allocation_envelope_sha256: stored.2,
+        tenant_id: stored.1,
+        allocation_id: stored.2,
+        allocation_envelope_sha256: stored.3,
         amount_units: amount.to_string(),
-        currency: stored.4,
-        state: parse_state(&stored.5)?,
+        currency: stored.5,
+        state: parse_state(&stored.6)?,
         reserved_after_units: reserved.to_string(),
         spent_after_units: spent.to_string(),
         remaining_after_units: remaining_units(signed, reserved, spent)?.to_string(),
         occurred_at_unix_ms: occurred_at_unix_ms.to_string(),
-        durable_admission_operation_id: stored.9,
+        durable_admission_operation_id: stored.10,
     })
 }
 
@@ -1635,6 +1643,7 @@ fn record_mutation_receipt(
         .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
     if !signature_valid
         || receipt.capability_id != mutation.allocation_envelope_sha256
+        || receipt.tenant_id.as_deref() != mutation.tenant_id.as_deref()
         || receipt.tool_server != "chio-kernel"
         || receipt.tool_name != "finding_pool_mutation"
         || receipt.decision != Some(chio_core::receipt::decision::Decision::Allow)
@@ -2025,6 +2034,61 @@ mod tests {
             .list_claimed_admission_operations(Some(&second_operation), 1)
             .test_expect("read terminal claimed-operation page")
             .is_empty());
+    }
+
+    #[test]
+    fn recovered_mutation_loads_the_reservations_persisted_tenant() {
+        let directory = tempfile::tempdir().test_expect("create pool ledger directory");
+        let ledger = open_qualified(
+            directory.path().join("pool.sqlite3"),
+            "ledger:test-tenant-recovery",
+        )
+        .test_expect("open qualified pool ledger");
+        let allocation_digest = "a".repeat(64);
+        let mut connection = ledger.pool.get().test_expect("open pool ledger connection");
+        connection
+            .execute(
+                "INSERT INTO finding_pool_allocations (\
+                    allocation_envelope_sha256, allocation_id, pool_id, pool_sha256, \
+                    purchaser_id, purchaser_key_json, currency, signed_amount_units, \
+                    reserved_units, spent_units, expires_at_unix_ms\
+                 ) VALUES (?1, 'allocation:tenant', 'pool:tenant', ?2, 'buyer:tenant', '{}', \
+                           'USD', '100', '25', '0', '100000')",
+                params![allocation_digest, "b".repeat(64)],
+            )
+            .test_expect("seed tenant allocation");
+        connection
+            .execute(
+                "INSERT INTO finding_pool_debits (\
+                    purchase_id, tenant_id, allocation_envelope_sha256, finding_id, listing_id, \
+                    reservation_id, authoritative_payment_operation_id, \
+                    accepted_bid_envelope_sha256, venue_admission_envelope_sha256, \
+                    amount_units, currency, state, claim_deadline_unix_ms, \
+                    claimed_at_unix_ms, durable_admission_operation_id, \
+                    reserved_after_units, spent_after_units\
+                 ) VALUES ('purchase:tenant', 'tenant-recovery', ?1, ?2, 'listing:tenant', \
+                           'reservation:tenant', 'payment:tenant', ?3, ?4, '25', 'USD', \
+                           'reserved', '30000', '2000', 'operation:tenant', '25', '0')",
+                params![
+                    allocation_digest,
+                    "c".repeat(64),
+                    "d".repeat(64),
+                    "e".repeat(64),
+                ],
+            )
+            .test_expect("seed tenant reservation");
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .test_expect("start tenant recovery transaction");
+        let mutation = mutation_for_purchase(
+            &transaction,
+            "purchase:tenant",
+            FindingPoolMutationKind::Release,
+            3_000,
+        )
+        .test_expect("build recovered tenant mutation");
+
+        assert_eq!(mutation.tenant_id.as_deref(), Some("tenant-recovery"));
     }
 
     #[test]
