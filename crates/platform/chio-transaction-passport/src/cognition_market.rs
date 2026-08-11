@@ -12,10 +12,11 @@ use std::sync::Arc;
 use chio_core_types::crypto::PublicKey;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
-    verify_signed_verifier_report, verify_status_proof_input, FindingAuthorityKeyPolicy,
-    FindingFacetKind, FindingFacetOutcome, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
-    FindingStatusNonInclusionProofInput, FindingStatusOperatorAuthorization,
-    FindingStatusProofInput, SignedFindingStatusEpoch, SignedFindingVerifierReport,
+    signed_envelope_sha256, verify_signed_profile, verify_signed_verifier_report,
+    verify_status_proof_input, FindingAuthorityKeyPolicy, FindingFacetKind, FindingFacetOutcome,
+    FindingReplayRecipeInput, FindingStatusFreshnessPolicy, FindingStatusNonInclusionProofInput,
+    FindingStatusOperatorAuthorization, FindingStatusProofInput,
+    SignedFindingChallengeVerifierProfile, SignedFindingStatusEpoch, SignedFindingVerifierReport,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
@@ -69,7 +70,7 @@ pub struct CognitionMarketProofTrust {
     pub finding_verifier_authority: PublicKey,
     pub finding_verifier_signer: FindingAuthorityKeyPolicy,
     pub trusted_verifier_profile_envelope_sha256: String,
-    pub trusted_verifier_profile_required_facets: Vec<FindingFacetKind>,
+    pub trusted_verifier_profile: SignedFindingChallengeVerifierProfile,
     pub trusted_trust_root_snapshot_sha256: String,
     pub status: Option<CognitionMarketStatusTrust>,
 }
@@ -226,6 +227,23 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "trusted verifier signer policy and authority key disagree",
         ));
     }
+    let trusted_profile_digest = signed_envelope_sha256(&trust.trusted_verifier_profile)
+        .map_err(|error| claim_failed(format!("trusted verifier profile is invalid: {error}")))?;
+    if trusted_profile_digest != trust.trusted_verifier_profile_envelope_sha256 {
+        return Err(claim_failed(
+            "trusted verifier profile bytes do not match the deployment-pinned digest",
+        ));
+    }
+    verify_signed_profile(
+        &trust.trusted_verifier_profile,
+        &trust.trusted_verifier_profile.body.governance_authority,
+    )
+    .map_err(|error| claim_failed(format!("trusted verifier profile is invalid: {error}")))?;
+    if trust.trusted_verifier_profile.body.verifier_report_signer != trust.finding_verifier_signer {
+        return Err(claim_failed(
+            "trusted verifier signer policy does not match the deployment-pinned profile",
+        ));
+    }
     verify_signed_verifier_report(&report, &trust.finding_verifier_authority)
         .map_err(|error| invalid_artifact(report_node.path, error.to_string()))?;
     if report.body.verifier_key_epoch != trust.finding_verifier_signer.key_epoch {
@@ -238,6 +256,13 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     {
         return Err(claim_failed(
             "signed verifier report evaluation time is outside the deployment-pinned signer lifecycle",
+        ));
+    }
+    if report.body.evaluation_time < trust.trusted_verifier_profile.body.issued_at
+        || report.body.evaluation_time >= trust.trusted_verifier_profile.body.expires_at
+    {
+        return Err(claim_failed(
+            "signed verifier report evaluation time is outside the deployment-pinned profile lifecycle",
         ));
     }
     if report.body.verifier_profile_envelope_sha256
@@ -321,7 +346,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     require_report_facets(
         &report,
         &selected_claims,
-        &trust.trusted_verifier_profile_required_facets,
+        &trust.trusted_verifier_profile.body.required_facets,
     )?;
     validate_selected_cognition_claim_rows(
         &claim_set,

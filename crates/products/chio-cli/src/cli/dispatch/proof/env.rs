@@ -20,8 +20,7 @@ const FINDING_VERIFIER_SIGNER_POLICY_PATH_ENV: &str =
     "CHIO_FINDING_VERIFIER_SIGNER_POLICY_PATH";
 const FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV: &str =
     "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256";
-const FINDING_VERIFIER_PROFILE_REQUIRED_FACETS_ENV: &str =
-    "CHIO_FINDING_VERIFIER_PROFILE_REQUIRED_FACETS";
+const FINDING_VERIFIER_PROFILE_PATH_ENV: &str = "CHIO_FINDING_VERIFIER_PROFILE_PATH";
 const FINDING_TRUST_ROOT_SNAPSHOT_SHA256_ENV: &str =
     "CHIO_FINDING_TRUST_ROOT_SNAPSHOT_SHA256";
 const FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV: &str =
@@ -33,6 +32,7 @@ const FINDING_STATUS_NOW_UNIX_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_NOW_UNIX_
 const FINDING_STATUS_MAX_AGE_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_MAX_AGE_SECONDS";
 const FINDING_STATUS_AUTHORIZATION_MAX_BYTES: usize = 64 * 1024;
 const FINDING_VERIFIER_SIGNER_POLICY_MAX_BYTES: usize = 16 * 1024;
+const FINDING_VERIFIER_PROFILE_MAX_BYTES: usize = 256 * 1024;
 const RUNTIME_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_RUNTIME_TRUSTED_ROOT_KEYS";
 const ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV: &str = "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS";
 const ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV: &str =
@@ -237,7 +237,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
     }
     let trusted_verifier_profile_envelope_sha256 =
         required_sha256_env(FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV)?;
-    let trusted_verifier_profile_required_facets = required_finding_facets_from_env()?;
+    let trusted_verifier_profile = finding_verifier_profile_from_env()?;
     let trusted_trust_root_snapshot_sha256 =
         required_sha256_env(FINDING_TRUST_ROOT_SNAPSHOT_SHA256_ENV)?;
     let status = if status_claim_selected {
@@ -252,29 +252,57 @@ pub(super) fn cognition_market_proof_trust_from_env(
             finding_verifier_authority,
             finding_verifier_signer,
             trusted_verifier_profile_envelope_sha256,
-            trusted_verifier_profile_required_facets,
+            trusted_verifier_profile,
             trusted_trust_root_snapshot_sha256,
             status,
         },
     )
 }
 
-fn required_finding_facets_from_env() -> Result<Vec<chio_finding::FindingFacetKind>, CliError> {
-    let raw = required_utf8_env(FINDING_VERIFIER_PROFILE_REQUIRED_FACETS_ENV)?;
-    let facets: Vec<chio_finding::FindingFacetKind> = serde_json::from_str(&raw).map_err(|error| {
+fn finding_verifier_profile_from_env(
+) -> Result<chio_finding::SignedFindingChallengeVerifierProfile, CliError> {
+    let path = required_utf8_env(FINDING_VERIFIER_PROFILE_PATH_ENV)?;
+    let mut reader = std::fs::File::open(&path)?
+        .take((FINDING_VERIFIER_PROFILE_MAX_BYTES as u64).saturating_add(1));
+    let mut bytes = Vec::with_capacity(FINDING_VERIFIER_PROFILE_MAX_BYTES.saturating_add(1));
+    reader.read_to_end(&mut bytes)?;
+    if bytes.len() > FINDING_VERIFIER_PROFILE_MAX_BYTES {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_PROFILE_PATH_ENV} exceeds {FINDING_VERIFIER_PROFILE_MAX_BYTES} bytes"
+        )));
+    }
+    let raw = std::str::from_utf8(&bytes).map_err(|error| {
         CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_PROFILE_REQUIRED_FACETS_ENV} must be a JSON array of Finding facet names: {error}"
+            "{FINDING_VERIFIER_PROFILE_PATH_ENV} must be valid UTF-8: {error}"
         ))
     })?;
-    let mut unique = BTreeSet::new();
-    for facet in &facets {
-        if !unique.insert(*facet) {
-            return Err(CliError::cli_other_error(format!(
-                "{FINDING_VERIFIER_PROFILE_REQUIRED_FACETS_ENV} contains duplicate facets"
-            )));
-        }
+    let canonical = chio_core_types::canonical_json_bytes_from_str(raw).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_PROFILE_PATH_ENV} must contain canonical JSON: {error}"
+        ))
+    })?;
+    if canonical != bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_PROFILE_PATH_ENV} must contain exact canonical JSON bytes"
+        )));
     }
-    Ok(facets)
+    let profile: chio_finding::SignedFindingChallengeVerifierProfile =
+        serde_json::from_slice(&bytes).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "{FINDING_VERIFIER_PROFILE_PATH_ENV} is not a signed Finding verifier profile: {error}"
+            ))
+        })?;
+    let typed = chio_core_types::canonical_json_bytes(&profile).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_PROFILE_PATH_ENV} could not be canonicalized: {error}"
+        ))
+    })?;
+    if typed != bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_PROFILE_PATH_ENV} typed profile does not preserve the exact canonical bytes"
+        )));
+    }
+    Ok(profile)
 }
 
 fn finding_verifier_signer_policy_from_env(

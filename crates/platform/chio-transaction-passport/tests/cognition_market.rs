@@ -7,14 +7,17 @@ use chio_core_types::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
-    build_status_non_inclusion_proof_input, compute_report_id, compute_status_epoch_id,
-    FindingAuthorityKeyPolicy, FindingClaimedVerdict, FindingFacetKind, FindingFacetOutcome,
-    FindingFacetResult, FindingPredicate, FindingRecipeEnvironment, FindingRecipePhase,
-    FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps, FindingStatusEpoch,
-    FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusOperatorRole,
-    FindingVerifierReport, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1,
-    FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
-    FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    build_status_non_inclusion_proof_input, compute_profile_id, compute_report_id,
+    compute_status_epoch_id, signed_envelope_sha256, FindingAuthorityKeyPolicy,
+    FindingBbsIssuerPolicy, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
+    FindingClaimedVerdict, FindingFacetKind, FindingFacetOutcome, FindingFacetResult,
+    FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
+    FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
+    FindingStatusEpoch, FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization,
+    FindingStatusOperatorRole, FindingVerifierReport, SignedFindingChallengeVerifierProfile,
+    FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+    FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
+    FINDING_STATUS_SIGNATURE_DOMAIN, FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_revocation_oracle::{
     finding_status_empty_leaf_hash, FindingStatusSparseMap, FINDING_STATUS_BRANCH_DOMAIN,
@@ -162,6 +165,75 @@ fn verifier_signer_policy() -> FindingAuthorityKeyPolicy {
     }
 }
 
+fn profile_key_policy(seed: u8, authority_id: &str) -> FindingAuthorityKeyPolicy {
+    FindingAuthorityKeyPolicy {
+        authority_id: authority_id.to_owned(),
+        key: Keypair::from_seed(&[seed; 32]).public_key(),
+        key_epoch: 1,
+        valid_from: GENERATED_AT - 60,
+        valid_until: GENERATED_AT + 600,
+        rotation_policy_ref: format!("rotation/{authority_id}-v1"),
+        revocation_status_ref: format!("revocations/{authority_id}-v1"),
+    }
+}
+
+fn verifier_profile() -> TestResult<SignedFindingChallengeVerifierProfile> {
+    let governance = Keypair::from_seed(&[8_u8; 32]);
+    let mut profile = FindingChallengeVerifierProfile {
+        schema: FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1.to_owned(),
+        profile_id: String::new(),
+        governance_authority: governance.public_key(),
+        operator: "qualified-market-operator".to_owned(),
+        receipt_signers: vec![
+            FindingReceiptSignerRole {
+                role: FindingReceiptRole::Production,
+                policy: profile_key_policy(18, "production-receipts"),
+            },
+            FindingReceiptSignerRole {
+                role: FindingReceiptRole::Delivery,
+                policy: profile_key_policy(19, "delivery-receipts"),
+            },
+            FindingReceiptSignerRole {
+                role: FindingReceiptRole::Replay,
+                policy: profile_key_policy(20, "replay-receipts"),
+            },
+        ],
+        checkpoint_logs: vec![FindingCheckpointLogPolicy {
+            log_id: "qualified-finding-checkpoint-log".to_owned(),
+            signer: profile_key_policy(21, "checkpoint-log"),
+        }],
+        bbs_projection_issuer: FindingBbsIssuerPolicy {
+            issuer_fingerprint: "qualified-bbs-issuer".to_owned(),
+            key_hex: HEX64.to_owned(),
+            registry_ref: "registry/qualified-bbs-issuers".to_owned(),
+            key_epoch: 1,
+            valid_from: GENERATED_AT - 60,
+            valid_until: GENERATED_AT + 600,
+            revocation_status_ref: "revocations/qualified-bbs-issuer-v1".to_owned(),
+        },
+        allowed_runner_manifests: vec!["66".repeat(32)],
+        required_receipt_semantics: "chio.mediated_spend.v1".to_owned(),
+        resolver_policy_ref: "resolver/qualified-finding-v1".to_owned(),
+        retention_policy_ref: "retention/qualified-finding-v1".to_owned(),
+        resource_caps: FindingResourceCaps {
+            max_recipe_bytes: 65_536,
+            max_evidence_receipts: 8,
+            max_runtime_secs: 600,
+            max_memory_bytes: 1_073_741_824,
+        },
+        predicate_engine: "chio-replay-v1".to_owned(),
+        allowed_predicates: vec![FindingPredicate::BaselineFailsCandidatePassesV1],
+        required_facets: vec![FindingFacetKind::KernelAndRevocationTrust],
+        verifier_report_signer: verifier_signer_policy(),
+        purchase_authority: profile_key_policy(22, "purchase-authority"),
+        failed_delivery_authority: profile_key_policy(23, "failed-delivery-authority"),
+        issued_at: GENERATED_AT - 60,
+        expires_at: GENERATED_AT + 600,
+    };
+    profile.profile_id = compute_profile_id(&profile)?;
+    Ok(SignedExportEnvelope::sign(profile, &governance)?)
+}
+
 fn status_keypair() -> Keypair {
     Keypair::from_seed(&[42_u8; 32])
 }
@@ -220,12 +292,13 @@ fn status_proof_bytes() -> TestResult<Vec<u8>> {
 }
 
 fn recipe_bytes(payload_suffix: &str) -> TestResult<Vec<u8>> {
-    recipe_bytes_for_profile(payload_suffix, "23")
+    let profile = verifier_profile()?;
+    recipe_bytes_for_profile(payload_suffix, &signed_envelope_sha256(&profile)?)
 }
 
 fn recipe_bytes_for_profile(
     payload_suffix: &str,
-    verifier_profile_prefix: &str,
+    verifier_profile_digest: &str,
 ) -> TestResult<Vec<u8>> {
     let caps = FindingResourceCaps {
         max_recipe_bytes: 65_536,
@@ -245,7 +318,7 @@ fn recipe_bytes_for_profile(
     let recipe = FindingReplayRecipeInput {
         schema: FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1.to_string(),
         decision_rule_ref: "decision/baseline-fails-candidate-passes-v1".to_string(),
-        verifier_profile_envelope_sha256: verifier_profile_prefix.repeat(32),
+        verifier_profile_envelope_sha256: verifier_profile_digest.to_owned(),
         context_sha256: "44".repeat(32),
         payload_sha256: format!("{payload_suffix}{}", "5".repeat(62)),
         runner_server: "qualified-replay-runner".to_string(),
@@ -275,13 +348,14 @@ fn recipe_bytes_for_profile(
 }
 
 fn report_bytes(recipe: &[u8], status: &[u8]) -> TestResult<Vec<u8>> {
-    report_bytes_for_profile(recipe, status, "23")
+    let profile = verifier_profile()?;
+    report_bytes_for_profile(recipe, status, &signed_envelope_sha256(&profile)?)
 }
 
 fn report_bytes_for_profile(
     recipe: &[u8],
     status: &[u8],
-    verifier_profile_prefix: &str,
+    verifier_profile_digest: &str,
 ) -> TestResult<Vec<u8>> {
     let verifier = verifier_keypair();
     let facets = FindingFacetKind::ALL
@@ -299,7 +373,7 @@ fn report_bytes_for_profile(
         finding_id: FINDING_ID.to_string(),
         finding_artifact_sha256: HEX64.to_string(),
         verifier_profile_id: "12".repeat(32),
-        verifier_profile_envelope_sha256: verifier_profile_prefix.repeat(32),
+        verifier_profile_envelope_sha256: verifier_profile_digest.to_owned(),
         verifier_implementation_id: "chio-finding-verifier/0.1-qualified".to_string(),
         resolved_evidence_bundle_sha256: "34".repeat(32),
         replay_recipe_input_sha256: Some(sha256_hex(recipe)),
@@ -431,13 +505,16 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         (status_path.to_string(), status),
     ]);
     let status_keypair = status_keypair();
+    let trusted_verifier_profile = verifier_profile()?;
+    let trusted_verifier_profile_envelope_sha256 =
+        signed_envelope_sha256(&trusted_verifier_profile)?;
     let trust = CognitionMarketProofTrust {
         trusted_passport_signer_keys: vec![root.public_key()],
         trusted_checkpoint_signer_keys: Vec::new(),
         finding_verifier_authority: verifier_keypair().public_key(),
         finding_verifier_signer: verifier_signer_policy(),
-        trusted_verifier_profile_envelope_sha256: "23".repeat(32),
-        trusted_verifier_profile_required_facets: vec![FindingFacetKind::KernelAndRevocationTrust],
+        trusted_verifier_profile_envelope_sha256,
+        trusted_verifier_profile,
         trusted_trust_root_snapshot_sha256: "45".repeat(32),
         status: Some(CognitionMarketStatusTrust {
             status_operator_authorization: status_authorization(&status_keypair),
@@ -474,6 +551,19 @@ fn verify(bundle: &QualifiedBundle) -> TestResult {
             .iter()
             .any(|candidate| candidate == claim));
     }
+    Ok(())
+}
+
+fn replace_trusted_profile(
+    bundle: &mut QualifiedBundle,
+    mutate: impl FnOnce(&mut FindingChallengeVerifierProfile),
+) -> TestResult {
+    let mut profile = bundle.trust.trusted_verifier_profile.body.clone();
+    mutate(&mut profile);
+    profile.profile_id = compute_profile_id(&profile)?;
+    let signed = SignedExportEnvelope::sign(profile, &Keypair::from_seed(&[8_u8; 32]))?;
+    bundle.trust.trusted_verifier_profile_envelope_sha256 = signed_envelope_sha256(&signed)?;
+    bundle.trust.trusted_verifier_profile = signed;
     Ok(())
 }
 
@@ -1033,7 +1123,7 @@ fn cognition_market_qualified_profile_rejects_recipe_for_another_profile() -> Te
         .get("attachments/status-proof-input.json")
         .ok_or("status attachment missing")?
         .clone();
-    let recipe = recipe_bytes_for_profile("55", "33")?;
+    let recipe = recipe_bytes_for_profile("55", &"33".repeat(32))?;
     let report = report_bytes(&recipe, &status)?;
     replace_graph_artifact(&mut bundle, "attachments/replay-recipe-input.json", recipe)?;
     replace_graph_artifact(&mut bundle, "report.json", report)?;
@@ -1058,8 +1148,8 @@ fn cognition_market_qualified_profile_rejects_unpinned_profile() -> TestResult {
         .get("attachments/status-proof-input.json")
         .ok_or("status attachment missing")?
         .clone();
-    let recipe = recipe_bytes_for_profile("55", "33")?;
-    let report = report_bytes_for_profile(&recipe, &status, "33")?;
+    let recipe = recipe_bytes_for_profile("55", &"33".repeat(32))?;
+    let report = report_bytes_for_profile(&recipe, &status, &"33".repeat(32))?;
     replace_graph_artifact(&mut bundle, "attachments/replay-recipe-input.json", recipe)?;
     replace_graph_artifact(&mut bundle, "report.json", report)?;
     resign_graph(&mut bundle)?;
@@ -1112,6 +1202,27 @@ fn cognition_market_qualified_profile_enforces_required_facet_floor() -> TestRes
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_an_independent_facet_projection() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle
+        .trust
+        .trusted_verifier_profile
+        .body
+        .required_facets
+        .clear();
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("a facet projection detached from the pinned profile was accepted")?
+        .to_string();
+    assert!(
+        error.contains("profile bytes do not match the deployment-pinned digest"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_unpinned_trust_root_snapshot() -> TestResult {
     let mut bundle = build_bundle()?;
     bundle.trust.trusted_trust_root_snapshot_sha256 = "ab".repeat(32);
@@ -1131,6 +1242,9 @@ fn cognition_market_qualified_profile_rejects_unpinned_trust_root_snapshot() -> 
 fn cognition_market_qualified_profile_enforces_verifier_signer_lifecycle() -> TestResult {
     let mut wrong_epoch = build_bundle()?;
     wrong_epoch.trust.finding_verifier_signer.key_epoch = 2;
+    replace_trusted_profile(&mut wrong_epoch, |profile| {
+        profile.verifier_report_signer.key_epoch = 2;
+    })?;
     let epoch_error = verify(&wrong_epoch)
         .err()
         .ok_or("wrong verifier key epoch was accepted")?
@@ -1142,6 +1256,9 @@ fn cognition_market_qualified_profile_enforces_verifier_signer_lifecycle() -> Te
 
     let mut expired = build_bundle()?;
     expired.trust.finding_verifier_signer.valid_until = CHECKED_AT;
+    replace_trusted_profile(&mut expired, |profile| {
+        profile.verifier_report_signer.valid_until = CHECKED_AT;
+    })?;
     let lifecycle_error = verify(&expired)
         .err()
         .ok_or("expired verifier signer was accepted")?
@@ -1256,6 +1373,12 @@ fn cognition_market_qualified_profile_rejects_extra_finding_claim() -> TestResul
 fn persisted_cognition_market_golden_verifies() -> TestResult {
     let root = workspace_root().join(GOLDEN_RELATIVE);
     let mut bundle = build_bundle()?;
+    let persisted_profile = std::fs::read(root.join("deployment/verifier-profile.json"))?;
+    assert_eq!(
+        persisted_profile,
+        canonical_json_bytes(&bundle.trust.trusted_verifier_profile)?,
+        "deployment profile fixture must match the profile pinned by the golden report"
+    );
     bundle.passport =
         serde_json::from_slice(&std::fs::read(root.join("transaction-passport.json"))?)?;
     bundle.evidence_graph_bytes = std::fs::read(root.join("evidence-graph.json"))?;
@@ -1292,6 +1415,11 @@ fn regenerate_cognition_market_golden() -> TestResult {
     let bundle = build_bundle()?;
     let root = workspace_root().join(GOLDEN_RELATIVE);
     std::fs::create_dir_all(root.join("attachments"))?;
+    std::fs::create_dir_all(root.join("deployment"))?;
+    std::fs::write(
+        root.join("deployment/verifier-profile.json"),
+        canonical_json_bytes(&bundle.trust.trusted_verifier_profile)?,
+    )?;
     std::fs::write(
         root.join("transaction-passport.json"),
         canonical_json_bytes(&bundle.passport)?,

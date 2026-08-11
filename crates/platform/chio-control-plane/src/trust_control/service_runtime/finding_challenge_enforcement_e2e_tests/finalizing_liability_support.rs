@@ -775,3 +775,51 @@ fn finding_challenge_confirmed_impairment_keeps_reorged_snapshot_quarantined() -
     assert!(parked.publication_pending);
     Ok(())
 }
+
+#[test]
+fn finding_challenge_confirmed_impairment_keeps_inactive_operator_quarantined() -> TestResult {
+    let case = finalizing_liability()?;
+    let publisher = MiningPublisher::new();
+
+    case.finalize(&publisher, SETTLEMENT_NOW)?;
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Failed);
+
+    let inactive = FindingBondObservationRecheck {
+        operator_active: false,
+        ..qualified_observation()
+    };
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::then_qualified(vec![qualified_observation(), inactive]),
+            &publisher,
+            SETTLEMENT_NOW + 60,
+        )?
+        .expect_err("an inactive operator leaves the confirmed impairment quarantined");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::BondObservation(_)
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Confirmed);
+    assert!(case.head()?.quarantined);
+
+    let still_inactive = FindingBondObservationRecheck {
+        operator_active: false,
+        ..qualified_observation()
+    };
+    let retry = case
+        .finalize_observing(
+            &ScriptedObservations::then_qualified(vec![still_inactive]),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW + 120,
+        )?
+        .expect_err("recovery must not clear a still-inactive operator observation");
+    assert!(matches!(
+        retry,
+        ChallengeCoordinatorError::BondObservation(_)
+    ));
+    let parked = case.head()?;
+    assert_eq!(parked.state, FindingLiabilityState::Finalizing);
+    assert!(parked.quarantined);
+    assert!(parked.publication_pending);
+    Ok(())
+}
