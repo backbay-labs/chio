@@ -445,7 +445,6 @@ fn finding_market_projection_rejects_v9_snapshot_with_uncommitted_manual_slot() 
     ));
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn finding_challenge_projection_rejects_offline_state_tampering() {
     use crate::finding_challenge_store::{

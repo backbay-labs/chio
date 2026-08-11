@@ -82,6 +82,16 @@ fn v9_schema_migrates_the_legacy_anchor_recovery_trigger() {
     assert_legacy_anchor_recovery_trigger_migrates(9);
 }
 
+#[test]
+fn v10_schema_migrates_the_legacy_anchor_recovery_trigger() {
+    assert_legacy_anchor_recovery_trigger_migrates(10);
+}
+
+#[test]
+fn v11_schema_migrates_the_legacy_anchor_recovery_trigger() {
+    assert_legacy_anchor_recovery_trigger_migrates(11);
+}
+
 fn assert_legacy_anchor_recovery_trigger_migrates(previous_version: i32) {
     let mut connection = Connection::open_in_memory().expect("open previous database");
     connection
