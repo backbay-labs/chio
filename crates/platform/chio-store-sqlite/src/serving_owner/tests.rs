@@ -409,6 +409,48 @@ fn finding_market_projection_commits_manually_admitted_buyer_slots() {
 
 #[cfg(feature = "cognition-market-experimental")]
 #[test]
+fn finding_market_projection_rejects_v9_snapshot_with_uncommitted_manual_slot() {
+    let (_temp, database, lock_root) = fixture();
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision");
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open");
+    let allocation_id = "a".repeat(64);
+    authority
+        .finding_purchase_store()
+        .register_community_fund_destination(
+            &allocation_id,
+            "0xcccccccccccccccccccccccccccccccccccccccc",
+            1_750_000_000,
+        )
+        .expect("register community fund");
+    drop(authority);
+
+    // A v9 digest excludes unattached buyer slots, so inserting one offline
+    // leaves that legacy digest unchanged even though the current projection
+    // must reject the newly capacity-consuming row.
+    Connection::open(&database)
+        .expect("open authority offline")
+        .execute(
+            r#"
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES (?1, ?2, 1, ?3)
+            "#,
+            params![
+                allocation_id,
+                "0x000000000000000000000000000000000000002a",
+                1_750_000_001_i64,
+            ],
+        )
+        .expect("insert uncommitted manual buyer slot");
+
+    assert!(matches!(
+        SqliteAuthorityStore::open_serving(&database, &lock_root),
+        Err(SqliteServingOwnerError::Invalid(_))
+    ));
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
 fn finding_challenge_projection_rejects_offline_state_tampering() {
     use crate::finding_challenge_store::{
         FindingChallengeAuthorizationBranch, FindingChallengeEvidenceClass,

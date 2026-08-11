@@ -387,6 +387,10 @@ pub enum ChallengeCoordinatorError {
     UnknownProfileGovernancePolicy,
     #[error("retained venue-audit challenge has no authenticated audit policy")]
     UnknownAuditAuthorityPolicy,
+    #[error("retained audit epoch has no authenticated randomness-witness policy")]
+    UnknownAuditRandomnessWitnessPolicy,
+    #[error("retained audit authorization has no authenticated governance policy")]
+    UnknownAuditGovernancePolicy,
     #[error("resolved venue admission rejected: {0}")]
     AdmissionEnvelope(String),
     #[error("resolved venue admission does not bind the challenge: {0}")]
@@ -563,6 +567,22 @@ pub trait FindingFilingResolver: Send + Sync {
     /// independently of the challenge envelope that names its signer.
     fn audit_policy_for_key(&self, key: &PublicKey) -> Option<FindingAuthorityPin>;
 
+    /// The retained randomness-witness policy that authenticated this exact
+    /// audit epoch. An in-flight round remains verifiable across witness-key
+    /// rotation only when the venue retained the policy bound to the epoch.
+    fn randomness_witness_policy_for_epoch(
+        &self,
+        epoch_envelope_sha256: &str,
+    ) -> Option<FindingAuthorityPin>;
+
+    /// The retained governance policy that authenticated this exact audit
+    /// authorization. The authorization digest, rather than a caller-named
+    /// key, selects the historical policy.
+    fn governance_policy_for_audit_authorization(
+        &self,
+        authorization_envelope_sha256: &str,
+    ) -> Option<FindingAuthorityPin>;
+
     /// The seller-signed market terms this venue admitted under this
     /// envelope digest, or `None` when the venue admitted no such terms.
     fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms>;
@@ -572,7 +592,6 @@ pub trait FindingFilingResolver: Send + Sync {
 /// them is ever read out of an artifact.
 struct ChallengeRolePins {
     audit_authority: FindingAuthorityPin,
-    audit_randomness_witness: FindingAuthorityPin,
     governance_authority: FindingAuthorityPin,
     authority_status: FindingAuthorityPin,
     settlement_observer: FindingAuthorityPin,
@@ -880,7 +899,6 @@ impl FindingChallengeCoordinator {
             market_config: config.clone(),
             pins: ChallengeRolePins {
                 audit_authority: config.audit_authority.clone(),
-                audit_randomness_witness: config.audit_randomness_witness.clone(),
                 governance_authority: config.governance_root.clone(),
                 authority_status: config.authority_status.clone(),
                 settlement_observer: config.settlement_observer.clone(),
@@ -3233,11 +3251,15 @@ impl FindingChallengeCoordinator {
             now,
             "historical audit",
         )?;
+        let witness_policy = self
+            .filings
+            .randomness_witness_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
+            .ok_or(ChallengeCoordinatorError::UnknownAuditRandomnessWitnessPolicy)?;
         let randomness_witness = self.require_live_role(
-            &self.pins.audit_randomness_witness,
+            &witness_policy,
             round.epoch.body.seed_witnessed_at,
             now,
-            "audit randomness witness",
+            "historical audit randomness witness",
         )?;
         verify_signed_audit_epoch(&round.epoch, &audit_authority, &randomness_witness)
             .map_err(|error| ChallengeCoordinatorError::AuditEpoch(error.to_string()))?;
@@ -3254,11 +3276,15 @@ impl FindingChallengeCoordinator {
             .body
             .validate()
             .map_err(|_| ChallengeCoordinatorError::AuditRoundBinding("authorization_body"))?;
+        let governance_policy = self
+            .filings
+            .governance_policy_for_audit_authorization(&authorization_digest)
+            .ok_or(ChallengeCoordinatorError::UnknownAuditGovernancePolicy)?;
         let governance_authority = self.require_live_role(
-            &self.pins.governance_authority,
+            &governance_policy,
             round.authorization.body.authorized_at,
             now,
-            "governance",
+            "historical audit governance",
         )?;
         verify_signed_audit_round_authorization(&round.authorization, &governance_authority)
             .map_err(|_| ChallengeCoordinatorError::AuditRoundBinding("authorization_signature"))?;

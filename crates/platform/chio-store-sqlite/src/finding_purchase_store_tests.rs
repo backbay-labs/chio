@@ -2424,7 +2424,7 @@ fn pre_v5_terminal_opaque_reservation_reopens_without_inventing_an_evm_address()
 }
 
 #[test]
-fn revision_seven_releases_only_unsettled_eager_payout_destinations() {
+fn revision_seven_preserves_a_manual_slot_reused_by_a_released_reservation() {
     let mut connection = Connection::open_in_memory().expect("in-memory database");
     connection
         .execute_batch(FINDING_PURCHASE_SCHEMA)
@@ -2471,7 +2471,7 @@ fn revision_seven_releases_only_unsettled_eager_payout_destinations() {
                 allocation_id, destination, slot_index, admitted_at
             ) VALUES
                 ('{allocation_id}', '{community}', 0, {now}),
-                ('{allocation_id}', '{abandoned}', 1, {now}),
+                ('{allocation_id}', '{abandoned}', 1, {manual_admitted_at}),
                 ('{allocation_id}', '{settled}', 2, {now});
 
             PRAGMA application_id = {application_id};
@@ -2486,9 +2486,10 @@ fn revision_seven_releases_only_unsettled_eager_payout_destinations() {
             admission_b = hex64('3'),
             expires = NOW + 100,
             now = NOW,
+            manual_admitted_at = NOW - 10,
             application_id = crate::CHIO_SQLITE_APPLICATION_ID,
         ))
-        .expect("seed revision-seven eager destinations");
+        .expect("seed revision-seven mixed destinations");
     crate::stamp_schema_version(
         &connection,
         FINDING_PURCHASE_SCHEMA_KEY,
@@ -2515,15 +2516,19 @@ fn revision_seven_releases_only_unsettled_eager_payout_destinations() {
         .expect("collect migrated destinations");
     assert_eq!(
         destinations,
-        vec![(0, community.to_owned()), (2, settled.to_owned())],
-        "the abandoned eager slot is released while community and settled history remain"
+        vec![
+            (0, community.to_owned()),
+            (1, abandoned.to_owned()),
+            (2, settled.to_owned()),
+        ],
+        "an earlier manual admission remains immutable after a later reservation reuses and releases it"
     );
     drop(statement);
     initialize_finding_purchase_schema(&mut connection).expect("reopen at current revision");
 }
 
 #[test]
-fn revision_six_releases_unsettled_eager_payout_destinations() {
+fn revision_six_preserves_slots_without_origin_provenance() {
     let mut connection = Connection::open_in_memory().expect("in-memory database");
     connection
         .execute_batch(FINDING_PURCHASE_SCHEMA)
@@ -2617,8 +2622,8 @@ fn revision_six_releases_unsettled_eager_payout_destinations() {
         .expect("collect migrated destinations");
     assert_eq!(
         destinations,
-        vec![(0, community.to_owned())],
-        "the abandoned revision-six eager slot is released"
+        vec![(0, community.to_owned()), (1, abandoned.to_owned())],
+        "revision six recorded no provenance that would make deleting the buyer slot safe"
     );
     initialize_finding_purchase_schema(&mut connection).expect("reopen at current revision");
 }

@@ -478,6 +478,8 @@ struct PublishedArtifacts {
     venue_policies: BTreeMap<String, FindingAuthorityPin>,
     profile_governance_policies: BTreeMap<String, FindingAuthorityPin>,
     audit_policies: BTreeMap<String, FindingAuthorityPin>,
+    audit_witness_policies: BTreeMap<String, FindingAuthorityPin>,
+    audit_governance_policies: BTreeMap<String, FindingAuthorityPin>,
     market_terms: BTreeMap<String, SignedFindingMarketTerms>,
 }
 
@@ -491,9 +493,19 @@ impl PublishedArtifacts {
         Ok(self)
     }
 
-    fn publish_round(mut self, round: &FindingAuditRound) -> Result<Self, AnyError> {
-        self.audit_rounds
-            .insert(signed_envelope_sha256(&round.epoch)?, round.clone());
+    fn publish_round(
+        mut self,
+        round: &FindingAuditRound,
+        witness_policy: FindingAuthorityPin,
+        governance_policy: FindingAuthorityPin,
+    ) -> Result<Self, AnyError> {
+        let epoch_digest = signed_envelope_sha256(&round.epoch)?;
+        let authorization_digest = signed_envelope_sha256(&round.authorization)?;
+        self.audit_witness_policies
+            .insert(epoch_digest.clone(), witness_policy);
+        self.audit_governance_policies
+            .insert(authorization_digest, governance_policy);
+        self.audit_rounds.insert(epoch_digest, round.clone());
         Ok(self)
     }
 
@@ -584,6 +596,24 @@ impl FindingFilingResolver for PublishedArtifacts {
         self.audit_policies.get(&key.to_hex()).cloned()
     }
 
+    fn randomness_witness_policy_for_epoch(
+        &self,
+        epoch_envelope_sha256: &str,
+    ) -> Option<FindingAuthorityPin> {
+        self.audit_witness_policies
+            .get(epoch_envelope_sha256)
+            .cloned()
+    }
+
+    fn governance_policy_for_audit_authorization(
+        &self,
+        authorization_envelope_sha256: &str,
+    ) -> Option<FindingAuthorityPin> {
+        self.audit_governance_policies
+            .get(authorization_envelope_sha256)
+            .cloned()
+    }
+
     fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms> {
         self.market_terms.get(envelope_sha256).cloned()
     }
@@ -666,22 +696,35 @@ fn deployment_publishing_terms_and_rounds(
         &admission_envelope_sha256,
         NOW,
     )?;
+    let config = market_config();
     let mut filings = PublishedArtifacts::default()
         .publish_schedule(&published_fee_schedule()?)?
-        .publish_round(&published_audit_round()?)?
-        .publish_round(&unrelated_audit_round()?)?
+        .publish_round(
+            &published_audit_round()?,
+            config.audit_randomness_witness.clone(),
+            config.governance_root.clone(),
+        )?
+        .publish_round(
+            &unrelated_audit_round()?,
+            config.audit_randomness_witness.clone(),
+            config.governance_root.clone(),
+        )?
         .publish_terms(&terms)?
         .publish_terms(&lapsed_window_terms()?)?
         .publish_terms(&audit_disabled_terms()?)?
         .publish_terms(&narrow_bond_terms()?)?
-        .publish_admission(&admission, market_config().venue)?
-        .publish_profile_policy(&verifier_profile()?, market_config().governance_root)?
-        .publish_audit_policy(market_config().audit_authority);
+        .publish_admission(&admission, config.venue.clone())?
+        .publish_profile_policy(&verifier_profile()?, config.governance_root.clone())?
+        .publish_audit_policy(config.audit_authority.clone());
     for terms in extra_terms {
         filings = filings.publish_terms(terms)?;
     }
     for round in extra_rounds {
-        filings = filings.publish_round(round)?;
+        filings = filings.publish_round(
+            round,
+            config.audit_randomness_witness.clone(),
+            config.governance_root.clone(),
+        )?;
     }
     Ok(Deployment {
         _temp: temp,
@@ -8932,7 +8975,7 @@ fn finding_challenge_uphold_resolves_the_audits_historical_policy() -> TestResul
 }
 
 #[test]
-fn finding_challenge_submit_resolves_the_rounds_historical_audit_policy() -> TestResult {
+fn finding_challenge_submit_resolves_the_rounds_historical_role_policies() -> TestResult {
     let deployment = deployment()?;
     let (_, raw) = finding_artifact()?;
     let challenge = venue_audit_challenge()?;
@@ -8940,6 +8983,12 @@ fn finding_challenge_submit_resolves_the_rounds_historical_audit_policy() -> Tes
     rotated_config.audit_authority = authority_pin(50, "audit-authority-rotated");
     rotated_config.audit_authority.key_epoch = PINNED_KEY_EPOCH + 1;
     rotated_config.audit_authority.valid_from = NOW + 1;
+    rotated_config.audit_randomness_witness = authority_pin(51, "audit-witness-rotated");
+    rotated_config.audit_randomness_witness.key_epoch = PINNED_KEY_EPOCH + 1;
+    rotated_config.audit_randomness_witness.valid_from = NOW + 1;
+    rotated_config.governance_root = authority_pin(52, "audit-governance-rotated");
+    rotated_config.governance_root.key_epoch = PINNED_KEY_EPOCH + 1;
+    rotated_config.governance_root.valid_from = NOW + 1;
     let rotated =
         deployment.coordinator_under(&rotated_config, FindingDisputeLockDisposition::Forfeited)?;
 
@@ -8947,7 +8996,7 @@ fn finding_challenge_submit_resolves_the_rounds_historical_audit_policy() -> Tes
     assert_eq!(
         submitted.write,
         FindingChallengeWriteOutcome::Inserted,
-        "a retained round remains fileable under its authenticated signer after rotation"
+        "a retained round remains fileable under its authenticated signer and policies after rotation"
     );
     Ok(())
 }

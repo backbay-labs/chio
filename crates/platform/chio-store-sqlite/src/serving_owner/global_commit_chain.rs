@@ -1979,7 +1979,7 @@ pub(super) fn verify_finding_challenge_projection_coverage(
                 SELECT 1 FROM purchase_reservations
                 WHERE state IN ('open', 'slot_reserved')
             )
-            OR EXISTS(SELECT 1 FROM payout_destinations WHERE slot_index = 0)
+            OR EXISTS(SELECT 1 FROM payout_destinations)
         "#,
         [],
         |row| row.get::<_, bool>(0),
@@ -2034,8 +2034,14 @@ pub(super) fn verify_finding_challenge_projection_coverage(
                 [],
                 |row| row.get::<_, bool>(0),
             )?;
+            let has_v10_actionable_payout_slot = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM payout_destinations WHERE slot_index > 0)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
             if current_market != *snapshot_digest
                 && (has_v10_finalizing_authorization
+                    || has_v10_actionable_payout_slot
                     || (current_market_v9 != *snapshot_digest
                         && (has_v9_failed_delivery
                             || (current_market_v8 != *snapshot_digest

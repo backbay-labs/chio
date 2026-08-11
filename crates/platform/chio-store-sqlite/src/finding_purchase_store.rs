@@ -71,8 +71,10 @@ const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
 /// Revision 10 records an immutable capture intent before a payment rail can
 /// move funds, preventing expiry from abandoning a captured purchase; revision
 /// 9 retains pre-EVM payout rows as non-actionable history; revision
-/// 8 makes reservation payout capacity provisional until a settlement-capable
-/// purchase promotes it; revision 7 distinguishes retained legacy terminal
+/// 8 makes new reservation payout capacity provisional until a settlement-capable
+/// purchase promotes it. Buyer slots already present in revisions 6 and 7 are
+/// retained because those schemas did not record whether a public admission or
+/// an eager reservation created them; revision 7 distinguishes retained legacy terminal
 /// bindings from live EVM bindings; revision 6 made every payout slot an EVM
 /// destination and reserved a buyer destination before funds can move; revision 5 separated the
 /// buyer-signed payout address from agent identity;
@@ -82,11 +84,12 @@ const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
 /// revision-2 database also carries its listing-keyed blocks across in
 /// [`carry_listing_sales_blocks_across`].
 pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 10;
-/// Revision whose eagerly admitted reservation destinations must be reduced
-/// to the settled roster when upgrading.
+/// Revision whose reservation path eagerly admitted payout destinations.
+#[cfg(test)]
 const FINDING_PURCHASE_EAGER_PAYOUT_VERSION: i32 = 7;
-/// First revision that eagerly admitted a reservation destination. Its
-/// payout-binding table did not yet carry the revision-7 binding kind.
+/// First revision with eager reservation payout admission. Its payout-binding
+/// table did not yet carry the revision-7 binding kind.
+#[cfg(test)]
 const FINDING_PURCHASE_UNTYPED_EAGER_PAYOUT_VERSION: i32 = 6;
 /// Revision that introduced the listing-keyed, never-lifted sales block.
 const FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION: i32 = 2;
@@ -2612,7 +2615,6 @@ pub(crate) fn initialize_finding_purchase_schema(
         .map_err(sqlite_error)?;
     park_listing_keyed_sales_blocks(&transaction, on_disk)?;
     park_rail_only_payout_destinations(&transaction)?;
-    release_eager_reservation_payout_destinations(&transaction, on_disk)?;
     park_untyped_purchase_payout_bindings(&transaction)?;
     transaction
         .execute_batch(FINDING_PURCHASE_SCHEMA)
@@ -2628,68 +2630,6 @@ pub(crate) fn initialize_finding_purchase_schema(
     .map_err(|error| invariant(error.to_string()))?;
     verify_finding_purchase_invariants(&transaction)?;
     transaction.commit().map_err(sqlite_error)
-}
-
-/// Remove buyer slots revisions 6 and 7 admitted solely for reservations
-/// that never settled.
-///
-/// Both revisions promoted a buyer destination while opening its reservation.
-/// Those immutable rows outlived release and expiry, eventually exhausting
-/// an allocation even though no purchase had paid to them. A destination
-/// used by any consumed reservation remains settled history; slot zero is
-/// always the community fund and remains untouched. Dropping and recreating
-/// the retention triggers happens inside the schema transaction, so any
-/// later migration failure restores both the rows and their protections.
-fn release_eager_reservation_payout_destinations(
-    transaction: &Transaction<'_>,
-    on_disk_version: i32,
-) -> Result<(), FindingPurchaseStoreError> {
-    if !matches!(
-        on_disk_version,
-        FINDING_PURCHASE_UNTYPED_EAGER_PAYOUT_VERSION | FINDING_PURCHASE_EAGER_PAYOUT_VERSION
-    ) {
-        return Ok(());
-    }
-    let evm_binding = if on_disk_version == FINDING_PURCHASE_EAGER_PAYOUT_VERSION {
-        "AND bindings.binding_kind = 'evm'"
-    } else {
-        ""
-    };
-    transaction
-        .execute_batch(&format!(
-            r#"
-            DROP TRIGGER IF EXISTS payout_destinations_immutable;
-            DROP TRIGGER IF EXISTS payout_destinations_no_delete;
-
-            DELETE FROM payout_destinations AS destinations
-            WHERE destinations.slot_index BETWEEN 1 AND 15
-              AND EXISTS (
-                  SELECT 1
-                  FROM purchase_payout_bindings AS bindings
-                  JOIN purchase_reservations AS reservations
-                    ON reservations.reservation_id = bindings.reservation_id
-                  JOIN seller_exposure_encumbrances AS encumbrances
-                    ON encumbrances.reservation_id = reservations.reservation_id
-                  WHERE encumbrances.allocation_id = destinations.allocation_id
-                    AND bindings.destination = destinations.destination
-                    {evm_binding}
-              )
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM purchase_payout_bindings AS bindings
-                  JOIN purchase_reservations AS reservations
-                    ON reservations.reservation_id = bindings.reservation_id
-                  JOIN seller_exposure_encumbrances AS encumbrances
-                    ON encumbrances.reservation_id = reservations.reservation_id
-                  WHERE encumbrances.allocation_id = destinations.allocation_id
-                    AND bindings.destination = destinations.destination
-                    {evm_binding}
-                    AND reservations.state = 'consumed'
-              );
-            "#
-        ))
-        .map_err(sqlite_error)?;
-    Ok(())
 }
 
 /// Park a listing-keyed sales block table beside the schema batch so the
