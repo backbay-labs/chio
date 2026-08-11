@@ -36,8 +36,9 @@ use chio_finding::{
     FindingFacetKind, FindingFacetOutcome, FindingFacetResult, FindingGuaranteeClass,
     FindingPredicate, FindingReceiptRole, FindingReplayRecipeInput, FindingStatusFreshnessPolicy,
     FindingStatusOperatorAuthorization, FindingStatusProofInput, FindingVerifierReport,
-    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
-    FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    SignedFindingAuthorityStatus, SignedFindingBondBacking, SignedFindingChallengeVerifierProfile,
+    SignedFindingVerifierReport, FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1,
+    FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
@@ -58,6 +59,16 @@ pub const MAX_RAW_FINDING_BYTES: usize = 256 * 1024;
 /// Schema for the collateral-authority-signed store view used during one
 /// verifier evaluation.
 pub const FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1: &str = "chio.finding.bond-store-snapshot.v1";
+
+/// Fresh, independently authenticated revocation standing for every
+/// checkpoint signer a verifier may accept during this evaluation.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingCheckpointSignerStatusTrust {
+    pub signed_statuses: Vec<SignedFindingAuthorityStatus>,
+    pub status_authority: PublicKey,
+    pub max_age_secs: u64,
+}
 
 /// Terminal verifier failures: conditions under which no report draft can
 /// be produced at all (facet-level failures are report content instead).
@@ -115,6 +126,9 @@ pub struct FindingVerifierTrustRoots {
     pub status_operator_authorization: Option<FindingStatusOperatorAuthorization>,
     /// Trusted-time freshness policy applied to the portable status proof.
     pub status_freshness_policy: Option<FindingStatusFreshnessPolicy>,
+    /// Current authenticated standing for the profile-pinned checkpoint
+    /// signers. Missing or stale standing denies checkpoint membership.
+    pub checkpoint_signer_status: Option<FindingCheckpointSignerStatusTrust>,
     /// Venue trusted time for the evaluation stamp.
     pub trusted_time: u64,
     /// Digest of the trust-root snapshot the caller resolved (pinned
@@ -669,6 +683,7 @@ pub fn verify_finding_evidence(
                 &delivery.checkpoint_transparency,
                 profile,
                 trust.trusted_time,
+                trust.checkpoint_signer_status.as_ref(),
             ) {
                 Ok(()) => facet(
                     FindingFacetKind::CheckpointMembership,
@@ -694,7 +709,11 @@ pub fn verify_finding_evidence(
             &bundle.checkpoint_transparency,
             profile,
             &finding.evidence_checkpoint_ref,
-            trust.trusted_time,
+            finding.issued_at,
+            (
+                trust.trusted_time,
+                trust.checkpoint_signer_status.as_ref(),
+            ),
         ) {
             Ok(()) => match bundle.finding_delivery.as_ref() {
                 Some(delivery) => match verify_post_finding_checkpoint_membership(
@@ -703,6 +722,7 @@ pub fn verify_finding_evidence(
                     &delivery.checkpoint_transparency,
                     profile,
                     trust.trusted_time,
+                    trust.checkpoint_signer_status.as_ref(),
                 ) {
                     Ok(()) => facet(
                         FindingFacetKind::CheckpointMembership,
@@ -1541,9 +1561,13 @@ fn bundle_digest(
     #[derive(serde::Serialize)]
     struct BundleCommitment<'a> {
         receipt_sha256s: Vec<String>,
+        execution_nonce_envelope_sha256s: Vec<String>,
         inclusion_proof_sha256s: Vec<String>,
         checkpoint_sha256s: Vec<String>,
         checkpoint_transparency_sha256: String,
+        checkpoint_signer_status_sha256s: Vec<String>,
+        checkpoint_status_authority: Option<String>,
+        checkpoint_status_max_age_secs: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         finding_delivery_receipt_sha256: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1570,6 +1594,14 @@ fn bundle_digest(
         .iter()
         .map(|evidence| sha256_hex(&evidence.canonical_receipt_bytes))
         .collect();
+    let mut execution_nonce_envelope_sha256s = Vec::new();
+    for evidence in &bundle.receipts {
+        if let Some(nonce) = bundle.nonce_resolver.nonce_for(&evidence.receipt) {
+            let bytes =
+                canonical_json_bytes(nonce).map_err(|_| FindingVerifierError::Canonicalization)?;
+            execution_nonce_envelope_sha256s.push(sha256_hex(&bytes));
+        }
+    }
     let mut checkpoint_sha256s = Vec::with_capacity(bundle.checkpoints.len());
     for checkpoint in &bundle.checkpoints {
         let bytes =
@@ -1578,6 +1610,20 @@ fn bundle_digest(
     }
     let checkpoint_transparency_bytes = canonical_json_bytes(&bundle.checkpoint_transparency)
         .map_err(|_| FindingVerifierError::Canonicalization)?;
+    let mut checkpoint_signer_status_sha256s = trust
+        .checkpoint_signer_status
+        .as_ref()
+        .map(|status_trust| {
+            status_trust
+                .signed_statuses
+                .iter()
+                .map(signed_envelope_sha256)
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()
+        .map_err(|_| FindingVerifierError::Canonicalization)?
+        .unwrap_or_default();
+    checkpoint_signer_status_sha256s.sort();
     let mut inclusion_proof_sha256s = Vec::with_capacity(bundle.receipts.len());
     for evidence in &bundle.receipts {
         let bytes = canonical_json_bytes(&evidence.inclusion_proof)
@@ -1644,9 +1690,19 @@ fn bundle_digest(
         .map(|bytes| sha256_hex(&bytes));
     let commitment = BundleCommitment {
         receipt_sha256s,
+        execution_nonce_envelope_sha256s,
         inclusion_proof_sha256s,
         checkpoint_sha256s,
         checkpoint_transparency_sha256: sha256_hex(&checkpoint_transparency_bytes),
+        checkpoint_signer_status_sha256s,
+        checkpoint_status_authority: trust
+            .checkpoint_signer_status
+            .as_ref()
+            .map(|status| status.status_authority.to_hex()),
+        checkpoint_status_max_age_secs: trust
+            .checkpoint_signer_status
+            .as_ref()
+            .map(|status| status.max_age_secs),
         finding_delivery_receipt_sha256,
         finding_delivery_inclusion_proof_sha256,
         finding_delivery_checkpoint_sha256s,

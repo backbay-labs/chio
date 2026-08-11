@@ -9,9 +9,7 @@ use chio_core_types::capability::runtime_attestation::RuntimeAttestationEvidence
 use chio_core_types::capability::trust_policy::AttestationTrustPolicy;
 use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_core_types::message::SignedExecutionNonce;
-use chio_core_types::receipt::authoritative_spend::{
-    BudgetAuthorityReceiptRef, PresentedNonceView,
-};
+use chio_core_types::receipt::authoritative_spend::BudgetAuthorityReceiptRef;
 use chio_core_types::receipt::body::ChioReceipt;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
@@ -21,9 +19,10 @@ use chio_finding::{
     MAX_FINDING_IDENTIFIER_BYTES,
 };
 use chio_finding_verifier::{
-    verify_finding_evidence, FindingBondSnapshot, FindingEvidenceBundle, FindingVerifierDraft,
-    FindingNonceResolver, FindingVerifierTrustRoots, ResolvedFindingDeliveryEvidence,
-    ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot, MAX_RAW_FINDING_BYTES,
+    verify_finding_evidence, FindingBondSnapshot, FindingCheckpointSignerStatusTrust,
+    FindingEvidenceBundle, FindingNonceResolver, FindingVerifierDraft, FindingVerifierTrustRoots,
+    ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot,
+    MAX_RAW_FINDING_BYTES,
 };
 use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
@@ -113,6 +112,7 @@ pub(super) fn cmd_finding_verify(
         Some(trusted_time) => trusted_time,
         None => unix_seconds_now()?,
     };
+    let nonce_evidence_resolved = !evidence_file.execution_nonces.is_empty();
     if let Some(authorization) = &roots.status_operator_authorization {
         authorization.validate().map_err(|error| {
             CliError::cli_other_error(format!(
@@ -143,6 +143,7 @@ pub(super) fn cmd_finding_verify(
         attestation_trust_policy: roots.attestation_trust_policy,
         status_operator_authorization: roots.status_operator_authorization,
         status_freshness_policy,
+        checkpoint_signer_status: roots.checkpoint_signer_status,
         trusted_time,
         trust_root_snapshot_sha256,
         resolver_policy_sha256: resolver_policy_digest(
@@ -151,6 +152,7 @@ pub(super) fn cmd_finding_verify(
             status_proof_input.is_some(),
             status_freshness_policy.is_some(),
             status_floor_path.is_some(),
+            nonce_evidence_resolved,
         )?,
         trusted_time_input_sha256: trusted_time_input_digest(trusted_time, roots.trusted_time)?,
     };
@@ -331,6 +333,8 @@ struct FindingTrustRootsFile {
     status_operator_authorization: Option<chio_finding::FindingStatusOperatorAuthorization>,
     #[serde(default)]
     status_freshness_policy: Option<FindingStatusFreshnessPolicyFile>,
+    #[serde(default)]
+    checkpoint_signer_status: Option<FindingCheckpointSignerStatusTrust>,
 }
 
 #[derive(serde::Deserialize)]
@@ -423,11 +427,9 @@ impl CliFindingNonceResolver {
 }
 
 impl FindingNonceResolver for CliFindingNonceResolver {
-    fn nonce_for(&self, receipt: &ChioReceipt) -> Option<&dyn PresentedNonceView> {
+    fn nonce_for(&self, receipt: &ChioReceipt) -> Option<&SignedExecutionNonce> {
         let nonce_id = BudgetAuthorityReceiptRef::from_receipt(receipt)?.execution_nonce_id?;
-        self.nonces
-            .get(&nonce_id)
-            .map(|nonce| nonce as &dyn PresentedNonceView)
+        self.nonces.get(&nonce_id)
     }
 }
 
@@ -637,15 +639,15 @@ fn digest_of(value: &serde_json::Value) -> Result<String, CliError> {
     Ok(sha256_hex(&canonical_json_bytes(value)?))
 }
 
-/// Commits to what this surface actually resolved. Nonce evidence is
-/// never resolved here, so the cost facets can only report unavailable;
-/// recording that in the policy digest keeps the claim honest.
+/// Commits to what this surface actually resolved. Exact nonce envelopes
+/// are separately committed in the resolved evidence bundle.
 fn resolver_policy_digest(
     evidence_supplied: bool,
     recipe_supplied: bool,
     status_proof_supplied: bool,
     status_trust_configured: bool,
     durable_status_floor_configured: bool,
+    nonce_evidence_resolved: bool,
 ) -> Result<String, CliError> {
     digest_of(&serde_json::json!({
         "resolver": RESOLVER_POLICY_ID,
@@ -654,7 +656,7 @@ fn resolver_policy_digest(
         "status_proof_supplied": status_proof_supplied,
         "status_trust_configured": status_trust_configured,
         "durable_status_floor_configured": durable_status_floor_configured,
-        "nonce_evidence_resolved": false,
+        "nonce_evidence_resolved": nonce_evidence_resolved,
     }))
 }
 
@@ -958,6 +960,14 @@ mod tests {
         .ok_or_else(|| CliError::cli_other_error("status policy was not resolved".to_string()))?;
         assert_eq!(resolved.now, 1_750_000_030);
         assert_eq!(resolved.max_epoch_age_secs, 90);
+        Ok(())
+    }
+
+    #[test]
+    fn resolver_policy_records_resolved_nonce_evidence() -> Result<(), CliError> {
+        let without_nonce = resolver_policy_digest(true, false, false, false, false, false)?;
+        let with_nonce = resolver_policy_digest(true, false, false, false, false, true)?;
+        assert_ne!(without_nonce, with_nonce);
         Ok(())
     }
 

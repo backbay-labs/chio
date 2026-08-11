@@ -18,9 +18,7 @@ use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::capability::trust_policy::{AttestationTrustPolicy, AttestationTrustRule};
 use chio_core_types::crypto::Keypair;
 use chio_core_types::message::{ExecutionNonce, NonceBinding, SignedExecutionNonce};
-use chio_core_types::receipt::authoritative_spend::{
-    BudgetAuthorityReceiptRef, PresentedNonceView,
-};
+use chio_core_types::receipt::authoritative_spend::BudgetAuthorityReceiptRef;
 use chio_core_types::receipt::body::{ChioReceipt, ChioReceiptBody};
 use chio_core_types::receipt::decision::{Decision, ToolCallAction};
 use chio_core_types::receipt::governance::{
@@ -38,23 +36,25 @@ use chio_core_types::{canonical_json_bytes, sha256_hex};
 use chio_finding::{
     build_status_non_inclusion_proof_input, compute_allocation_id, compute_finding_id,
     compute_profile_id, compute_status_epoch_id, sign_finding, verify_signed_verifier_report,
-    Finding, FindingAuthorityKeyPolicy, FindingBbsIssuerPolicy, FindingBondBacking,
-    FindingBondClass, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
-    FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor, FindingEvidenceClass,
-    FindingFacetKind, FindingFacetOutcome, FindingGuaranteeClass, FindingOutcomeClass,
-    FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
-    FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
-    FindingStatusEpoch, FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization,
-    FindingStatusOperatorRole, FINDING_BOND_BACKING_SCHEMA_V1,
+    Finding, FindingAuthorityKeyPolicy, FindingAuthorityStatus, FindingBbsIssuerPolicy,
+    FindingBondBacking, FindingBondClass, FindingChallengeVerifierProfile,
+    FindingCheckpointLogPolicy, FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor,
+    FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome, FindingGuaranteeClass,
+    FindingOutcomeClass, FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole,
+    FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput,
+    FindingResourceCaps, FindingStatusEpoch, FindingStatusFreshnessPolicy,
+    FindingStatusOperatorAuthorization, FindingStatusOperatorRole, SignedFindingAuthorityStatus,
+    FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
     FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
     FINDING_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
 };
 use chio_finding_verifier::{
     sign_finding_verifier_report, verify_checkpoint_membership, verify_finding_evidence,
     CheckpointMembershipError, FindingBondSnapshot, FindingBondStoreSnapshot,
-    FindingEvidenceBundle, FindingNonceResolver, FindingVerifierError, FindingVerifierTrustRoots,
-    NoNonceEvidence, ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence,
-    SignedFindingBondStoreSnapshot, FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1,
+    FindingCheckpointSignerStatusTrust, FindingEvidenceBundle, FindingNonceResolver,
+    FindingVerifierError, FindingVerifierTrustRoots, NoNonceEvidence,
+    ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot,
+    FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{
     build_checkpoint, build_checkpoint_transparency, build_checkpoint_with_previous,
@@ -228,12 +228,11 @@ struct TestNonceResolver {
 }
 
 impl FindingNonceResolver for TestNonceResolver {
-    fn nonce_for(&self, receipt: &ChioReceipt) -> Option<&dyn PresentedNonceView> {
+    fn nonce_for(&self, receipt: &ChioReceipt) -> Option<&SignedExecutionNonce> {
         let nonce_id = BudgetAuthorityReceiptRef::from_receipt(receipt)?.execution_nonce_id?;
         self.nonces
             .iter()
             .find(|nonce| nonce.nonce_id() == nonce_id)
-            .map(|nonce| nonce as &dyn PresentedNonceView)
     }
 }
 
@@ -251,6 +250,8 @@ struct Fixture {
     bond_store_snapshot: SignedFindingBondStoreSnapshot,
     profile: SignedExportEnvelope<FindingChallengeVerifierProfile>,
     nonce_resolver: TestNonceResolver,
+    checkpoint_status_authority: Keypair,
+    checkpoint_signer_status: SignedFindingAuthorityStatus,
 }
 
 fn key_policy(seed: u8, label: &str) -> FindingAuthorityKeyPolicy {
@@ -543,6 +544,27 @@ fn fixture_with_runtime_assurance(
         },
     ];
 
+    let checkpoint_status_authority = keypair(22);
+    let checkpoint_signer = profile
+        .body
+        .checkpoint_logs
+        .first()
+        .ok_or("fixture checkpoint signer policy is missing")?
+        .signer
+        .clone();
+    let checkpoint_signer_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: checkpoint_signer.revocation_status_ref,
+            authority_id: checkpoint_signer.authority_id,
+            key: checkpoint_signer.key,
+            key_epoch: checkpoint_signer.key_epoch,
+            revoked_from: None,
+            observed_at: 1_750_000_010,
+        },
+        &checkpoint_status_authority,
+    )?;
+
     Ok(Fixture {
         issuer,
         governance,
@@ -557,6 +579,8 @@ fn fixture_with_runtime_assurance(
         bond_store_snapshot,
         profile,
         nonce_resolver,
+        checkpoint_status_authority,
+        checkpoint_signer_status,
     })
 }
 
@@ -655,6 +679,11 @@ fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
         attestation_trust_policy: None,
         status_operator_authorization: None,
         status_freshness_policy: None,
+        checkpoint_signer_status: Some(FindingCheckpointSignerStatusTrust {
+            signed_statuses: vec![fx.checkpoint_signer_status.clone()],
+            status_authority: fx.checkpoint_status_authority.public_key(),
+            max_age_secs: 300,
+        }),
         trusted_time: 1_750_000_010,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
@@ -1252,7 +1281,7 @@ fn production_receipts_cannot_postdate_the_finding() -> TestResult {
 }
 
 #[test]
-fn production_checkpoints_cannot_postdate_report_evaluation() -> TestResult {
+fn production_checkpoints_cannot_postdate_the_finding() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
     let mut evidence = bundle(&fx, clone_receipts(&fx));
@@ -1271,7 +1300,7 @@ fn production_checkpoints_cannot_postdate_report_evaluation() -> TestResult {
         .ok_or("checkpoint-membership facet missing")?;
     assert_eq!(membership.outcome, FindingFacetOutcome::Failed);
     assert!(
-        membership.reason.contains("after report evaluation"),
+        membership.reason.contains("after the Finding"),
         "unexpected reason: {}",
         membership.reason
     );
@@ -1941,3 +1970,5 @@ fn unsigned_collateral_store_state_is_not_verified() -> TestResult {
 
 #[path = "verifier/authority_regressions.rs"]
 mod authority_regressions;
+#[path = "verifier/checkpoint_status_regressions.rs"]
+mod checkpoint_status_regressions;

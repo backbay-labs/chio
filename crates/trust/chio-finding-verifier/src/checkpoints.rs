@@ -11,13 +11,15 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use chio_finding::FindingChallengeVerifierProfile;
+use chio_finding::{
+    verify_signed_authority_status, FindingAuthorityKeyPolicy, FindingChallengeVerifierProfile,
+};
 use chio_kernel::checkpoint::{
     checkpoint_log_id, validate_checkpoint, verify_checkpoint_transparency_records,
     CheckpointTransparencySummary, KernelCheckpoint,
 };
 
-use crate::verify::{policy_covers, ResolvedReceiptEvidence};
+use crate::verify::{policy_covers, FindingCheckpointSignerStatusTrust, ResolvedReceiptEvidence};
 
 fn has_strict_checkpoint_signature(checkpoint: &KernelCheckpoint) -> bool {
     matches!(
@@ -48,8 +50,24 @@ pub enum CheckpointMembershipError {
     SignerNotPinned(u64),
     #[error("checkpoint {0} was issued outside the pinned signer window")]
     SignerInactive(u64),
+    #[error("checkpoint {0} was issued after the Finding")]
+    IssuedAfterFinding(u64),
     #[error("checkpoint {0} was issued after report evaluation")]
     IssuedAfterEvaluation(u64),
+    #[error("checkpoint {0} has no authenticated signer-status reading")]
+    SignerStatusUnavailable(u64),
+    #[error("checkpoint {0} signer-status trust configuration is invalid")]
+    SignerStatusTrustInvalid(u64),
+    #[error("checkpoint {0} has duplicate signer-status readings")]
+    DuplicateSignerStatus(u64),
+    #[error("checkpoint {0} signer-status signature is invalid")]
+    SignerStatusSignatureInvalid(u64),
+    #[error("checkpoint {0} signer-status reading is stale or temporally inconsistent")]
+    SignerStatusStale(u64),
+    #[error(
+        "checkpoint {0} signer is revoked and its issuance time is not independently anchored"
+    )]
+    SignerRevoked(u64),
     #[error("inclusion proof references unknown checkpoint seq {0}")]
     UnknownCheckpoint(u64),
     #[error("duplicate inclusion proof for receipt seq {0}")]
@@ -89,18 +107,21 @@ pub fn verify_checkpoint_membership(
         profile,
         Some(evidence_checkpoint_ref),
         None,
+        None,
     )
 }
 
-/// Verify production evidence against the Finding's pinned checkpoint and
-/// the report evaluation clock.
+/// Verify production evidence against the Finding's pinned checkpoint. The
+/// checkpoint must already exist when the Finding is issued, and its signer
+/// must have fresh independently authenticated standing at evaluation time.
 pub(crate) fn verify_production_checkpoint_membership(
     receipts: &[ResolvedReceiptEvidence],
     checkpoints: &[KernelCheckpoint],
     transparency: &CheckpointTransparencySummary,
     profile: &FindingChallengeVerifierProfile,
     evidence_checkpoint_ref: &str,
-    evaluation_time: u64,
+    finding_issued_at: u64,
+    status_context: (u64, Option<&FindingCheckpointSignerStatusTrust>),
 ) -> Result<(), CheckpointMembershipError> {
     verify_checkpoint_membership_inner(
         receipts,
@@ -108,7 +129,8 @@ pub(crate) fn verify_production_checkpoint_membership(
         transparency,
         profile,
         Some(evidence_checkpoint_ref),
-        Some(evaluation_time),
+        Some((finding_issued_at, CheckpointIssuanceCeiling::Finding)),
+        Some(status_context),
     )
 }
 
@@ -121,6 +143,7 @@ pub(crate) fn verify_post_finding_checkpoint_membership(
     transparency: &CheckpointTransparencySummary,
     profile: &FindingChallengeVerifierProfile,
     evaluation_time: u64,
+    signer_status: Option<&FindingCheckpointSignerStatusTrust>,
 ) -> Result<(), CheckpointMembershipError> {
     verify_checkpoint_membership_inner(
         receipts,
@@ -128,7 +151,8 @@ pub(crate) fn verify_post_finding_checkpoint_membership(
         transparency,
         profile,
         None,
-        Some(evaluation_time),
+        Some((evaluation_time, CheckpointIssuanceCeiling::Evaluation)),
+        Some((evaluation_time, signer_status)),
     )
 }
 
@@ -138,7 +162,8 @@ fn verify_checkpoint_membership_inner(
     transparency: &CheckpointTransparencySummary,
     profile: &FindingChallengeVerifierProfile,
     evidence_checkpoint_ref: Option<&str>,
-    latest_issued_at: Option<u64>,
+    latest_issued_at: Option<(u64, CheckpointIssuanceCeiling)>,
+    status_context: Option<(u64, Option<&FindingCheckpointSignerStatusTrust>)>,
 ) -> Result<(), CheckpointMembershipError> {
     if checkpoints.is_empty() {
         return Err(CheckpointMembershipError::NoCheckpoints);
@@ -177,8 +202,26 @@ fn verify_checkpoint_membership_inner(
         if !policy_covers(pinned_signer, checkpoint.body.issued_at) {
             return Err(CheckpointMembershipError::SignerInactive(seq));
         }
-        if latest_issued_at.is_some_and(|latest| checkpoint.body.issued_at > latest) {
-            return Err(CheckpointMembershipError::IssuedAfterEvaluation(seq));
+        if let Some((latest, ceiling)) = latest_issued_at {
+            if checkpoint.body.issued_at > latest {
+                return Err(match ceiling {
+                    CheckpointIssuanceCeiling::Finding => {
+                        CheckpointMembershipError::IssuedAfterFinding(seq)
+                    }
+                    CheckpointIssuanceCeiling::Evaluation => {
+                        CheckpointMembershipError::IssuedAfterEvaluation(seq)
+                    }
+                });
+            }
+        }
+        if let Some((trusted_time, signer_status)) = status_context {
+            verify_checkpoint_signer_status(
+                pinned_signer,
+                seq,
+                checkpoint.body.issued_at,
+                trusted_time,
+                signer_status,
+            )?;
         }
         if by_seq.insert(seq, checkpoint).is_some() {
             return Err(CheckpointMembershipError::DuplicateCheckpoint(seq));
@@ -233,6 +276,64 @@ fn verify_checkpoint_membership_inner(
         {
             return Err(CheckpointMembershipError::InclusionInvalid);
         }
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum CheckpointIssuanceCeiling {
+    Finding,
+    Evaluation,
+}
+
+fn verify_checkpoint_signer_status(
+    signer: &FindingAuthorityKeyPolicy,
+    checkpoint_seq: u64,
+    checkpoint_issued_at: u64,
+    trusted_time: u64,
+    trust: Option<&FindingCheckpointSignerStatusTrust>,
+) -> Result<(), CheckpointMembershipError> {
+    let Some(trust) = trust else {
+        return Err(CheckpointMembershipError::SignerStatusUnavailable(
+            checkpoint_seq,
+        ));
+    };
+    if trust.max_age_secs == 0 {
+        return Err(CheckpointMembershipError::SignerStatusTrustInvalid(
+            checkpoint_seq,
+        ));
+    }
+    let mut matching = trust.signed_statuses.iter().filter(|signed| {
+        let status = &signed.body;
+        status.status_ref == signer.revocation_status_ref
+            && status.authority_id == signer.authority_id
+            && status.key == signer.key
+            && status.key_epoch == signer.key_epoch
+    });
+    let Some(signed_status) = matching.next() else {
+        return Err(CheckpointMembershipError::SignerStatusUnavailable(
+            checkpoint_seq,
+        ));
+    };
+    if matching.next().is_some() {
+        return Err(CheckpointMembershipError::DuplicateSignerStatus(
+            checkpoint_seq,
+        ));
+    }
+    verify_signed_authority_status(signed_status, &trust.status_authority)
+        .map_err(|_| CheckpointMembershipError::SignerStatusSignatureInvalid(checkpoint_seq))?;
+    let status = &signed_status.body;
+    if status.observed_at < checkpoint_issued_at
+        || status.observed_at > trusted_time
+        || trusted_time.saturating_sub(status.observed_at) > trust.max_age_secs
+    {
+        return Err(CheckpointMembershipError::SignerStatusStale(checkpoint_seq));
+    }
+    // A checkpoint's issued_at is signer-controlled. Once the independently
+    // authenticated feed reports revocation, the signer can backdate a new
+    // checkpoint, so no such unanchored checkpoint remains admissible.
+    if status.revoked_from.is_some() {
+        return Err(CheckpointMembershipError::SignerRevoked(checkpoint_seq));
     }
     Ok(())
 }

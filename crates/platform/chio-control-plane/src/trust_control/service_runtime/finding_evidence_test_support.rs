@@ -1,12 +1,60 @@
 use chio_core::canonical_json_bytes;
 use chio_core::crypto::Keypair;
 use chio_core::message::{ExecutionNonce, NonceBinding, SignedExecutionNonce};
-use chio_core::receipt::authoritative_spend::{BudgetAuthorityReceiptRef, PresentedNonceView};
+use chio_core::receipt::authoritative_spend::BudgetAuthorityReceiptRef;
 use chio_core::receipt::body::ChioReceipt;
+use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_core::receipt::metadata::{
     DeliveryContract, DeliveryResult, DELIVERY_CONTRACT_METADATA_KEY, DELIVERY_CONTRACT_SCHEMA,
 };
-use chio_finding_verifier::{FindingNonceResolver, ResolvedReceiptEvidence};
+use chio_finding::{
+    FindingAuthorityStatus, SignedFindingChallengeVerifierProfile,
+    FINDING_AUTHORITY_STATUS_SCHEMA_V1,
+};
+use chio_finding_verifier::{
+    FindingCheckpointSignerStatusTrust, FindingNonceResolver, ResolvedReceiptEvidence,
+};
+use chio_kernel::checkpoint::KernelCheckpoint;
+
+pub(super) fn checkpoint_at(
+    mut checkpoint: KernelCheckpoint,
+    issued_at: u64,
+    signer: &Keypair,
+) -> Result<KernelCheckpoint, Box<dyn std::error::Error>> {
+    checkpoint.body.issued_at = issued_at;
+    checkpoint.signature = signer.sign(&canonical_json_bytes(&checkpoint.body)?);
+    Ok(checkpoint)
+}
+
+pub(super) fn checkpoint_status_trust(
+    profile: &SignedFindingChallengeVerifierProfile,
+    status_authority: &Keypair,
+    observed_at: u64,
+) -> Result<FindingCheckpointSignerStatusTrust, Box<dyn std::error::Error>> {
+    let signer = &profile
+        .body
+        .checkpoint_logs
+        .first()
+        .ok_or("checkpoint signer policy missing")?
+        .signer;
+    let signed_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: signer.revocation_status_ref.clone(),
+            authority_id: signer.authority_id.clone(),
+            key: signer.key.clone(),
+            key_epoch: signer.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        status_authority,
+    )?;
+    Ok(FindingCheckpointSignerStatusTrust {
+        signed_statuses: vec![signed_status],
+        status_authority: status_authority.public_key(),
+        max_age_secs: 300,
+    })
+}
 
 fn add_mediated_spend_metadata(
     metadata: &mut serde_json::Map<String, serde_json::Value>,
@@ -73,12 +121,11 @@ pub(super) struct TestFindingNonceResolver {
 }
 
 impl FindingNonceResolver for TestFindingNonceResolver {
-    fn nonce_for(&self, receipt: &ChioReceipt) -> Option<&dyn PresentedNonceView> {
+    fn nonce_for(&self, receipt: &ChioReceipt) -> Option<&SignedExecutionNonce> {
         let nonce_id = BudgetAuthorityReceiptRef::from_receipt(receipt)?.execution_nonce_id?;
         self.nonces
             .iter()
             .find(|nonce| nonce.nonce.nonce_id == nonce_id)
-            .map(|nonce| nonce as &dyn PresentedNonceView)
     }
 }
 

@@ -11,7 +11,9 @@
 
 use super::super::super::*;
 use super::build_router;
-use super::finding_evidence_test_support::{matched_delivery_metadata, signed_nonce_resolver};
+use super::finding_evidence_test_support::{
+    checkpoint_at, checkpoint_status_trust, matched_delivery_metadata, signed_nonce_resolver,
+};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -853,6 +855,11 @@ fn make_signed_report(
         attestation_trust_policy: None,
         status_operator_authorization: None,
         status_freshness_policy: None,
+        checkpoint_signer_status: Some(checkpoint_status_trust(
+            inputs.profile,
+            inputs.governance,
+            trusted_time,
+        )?),
         trusted_time,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
@@ -1054,11 +1061,15 @@ impl MarketWeb {
         let first_bytes = canonical_json_bytes(&first)?;
         let second_bytes = canonical_json_bytes(&second)?;
         let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
-        let checkpoint = build_checkpoint(
-            1,
-            1,
-            2,
-            &[first_bytes.clone(), second_bytes.clone()],
+        let checkpoint = checkpoint_at(
+            build_checkpoint(
+                1,
+                1,
+                2,
+                &[first_bytes.clone(), second_bytes.clone()],
+                &kernel,
+            )?,
+            ISSUED_AT,
             &kernel,
         )?;
         let log_id = checkpoint_log_id(&checkpoint);
