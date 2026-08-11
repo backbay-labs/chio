@@ -266,6 +266,18 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
                 format!("invalid signed verifier report: {error}"),
             )
         })?;
+    let typed_report_bytes = canonical_json_bytes(&report).map_err(|error| {
+        invalid_artifact(
+            report_node.path,
+            format!("signed verifier report cannot be canonically serialized: {error}"),
+        )
+    })?;
+    if typed_report_bytes != report_bytes {
+        return Err(invalid_artifact(
+            report_node.path,
+            "signed verifier report bytes do not match the typed canonical encoding",
+        ));
+    }
     let finding_verifier_signer = &trust.trusted_verifier_profile.body.verifier_report_signer;
     finding_verifier_signer
         .validate("finding_verifier_signer")

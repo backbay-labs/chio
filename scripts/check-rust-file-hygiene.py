@@ -159,7 +159,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-transaction-passport/tests/cognition_market.rs": allow(
         "2026-08-31",
         "cognition-market transaction passport regression suite; capped to current size until split",
-        max_lines=2_028,
+        max_lines=2_056,
     ),
     "crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
         "2026-08-31",

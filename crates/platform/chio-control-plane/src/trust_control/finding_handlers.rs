@@ -820,6 +820,9 @@ pub(crate) fn verify_report_authority_lifecycle(
     {
         return Err("verifier authority status does not bind the deployment pin".into());
     }
+    if status.observed_at < instant {
+        return Err("verifier authority status predates the report evaluation".into());
+    }
     if status.observed_at > now
         || now.saturating_sub(status.observed_at) > VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS
     {

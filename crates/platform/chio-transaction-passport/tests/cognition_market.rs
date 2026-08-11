@@ -1370,6 +1370,34 @@ fn cognition_market_qualified_profile_rejects_wrong_digest() -> TestResult {
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_non_typed_report_encoding() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let report_bytes = bundle
+        .artifacts
+        .get("report.json")
+        .ok_or("report missing")?;
+    let mut report: Value = serde_json::from_slice(report_bytes)?;
+    let first_facet = report["body"]["facets"]
+        .as_array_mut()
+        .and_then(|facets| facets.first_mut())
+        .ok_or("report facet missing")?;
+    assert!(first_facet.get("evidence_refs").is_none());
+    first_facet["evidence_refs"] = json!([]);
+    replace_graph_artifact(&mut bundle, "report.json", canonical_json_bytes(&report)?)?;
+    resign_graph(&mut bundle)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("alternate typed report encoding was accepted")?
+        .to_string();
+    assert!(
+        error.contains("typed canonical encoding"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_substituted_attachment() -> TestResult {
     let mut bundle = build_bundle()?;
     let path = "attachments/replay-recipe-input.json";

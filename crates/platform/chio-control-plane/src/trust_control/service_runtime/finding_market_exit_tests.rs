@@ -2343,6 +2343,23 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
         now,
     )
     .is_err());
+
+    let evaluation_time = stack.web.report.body.evaluation_time;
+    let pre_report_status =
+        signed_verifier_authority_status(evaluation_time.saturating_sub(1), None)?;
+    let error = verify_report_authority_lifecycle(
+        &stack.web.report,
+        &pre_report_status,
+        &profile,
+        &config,
+        evaluation_time,
+    )
+    .err()
+    .ok_or("authority status predating report evaluation was accepted")?;
+    assert!(
+        error.contains("predates the report evaluation"),
+        "unexpected error: {error}"
+    );
     Ok(())
 }
 
