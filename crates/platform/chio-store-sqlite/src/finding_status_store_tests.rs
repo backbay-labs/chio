@@ -219,6 +219,33 @@ fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
     store
         .observe_verified_non_inclusion(&proof_two)
         .expect("refresh live proof");
+    let connection = Connection::open(&fixture.database).expect("open proof cache reader");
+    let retained: Vec<i64> = connection
+        .prepare(
+            "SELECT map_epoch FROM finding_status_proofs \
+             WHERE feed_id = ?1 AND finding_id = ?2 AND proof_kind = 'non_inclusion' \
+             ORDER BY map_epoch",
+        )
+        .expect("prepare retained proof query")
+        .query_map(params![FEED, finding_id], |row| row.get(0))
+        .expect("query retained proofs")
+        .collect::<Result<_, _>>()
+        .expect("collect retained proofs");
+    assert_eq!(retained, vec![2]);
+    assert_eq!(
+        connection
+            .query_row("SELECT COUNT(*) FROM finding_status_epochs", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("count retained signed epochs"),
+        2
+    );
+    assert!(connection
+        .execute(
+            "DELETE FROM finding_status_proofs WHERE feed_id = ?1 AND finding_id = ?2",
+            params![FEED, finding_id],
+        )
+        .is_err());
     assert!(store
         .list_non_inclusion_refresh_candidates(FEED, NOW + 10, 200)
         .expect("refreshed candidates")

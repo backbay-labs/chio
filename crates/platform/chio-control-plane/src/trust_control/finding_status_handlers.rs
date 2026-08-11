@@ -1342,6 +1342,42 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn publisher_rejects_epoch_reuse_after_operator_revocation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp, authority) = provision_authority()?;
+        let (operator, bond) = config();
+        let store = authority.finding_status_store();
+        let publisher = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store.clone(),
+            operator.clone(),
+            bond.clone(),
+            operator_key(),
+            1_000,
+        )?;
+        let finding_id = sha256_hex(b"pre-revocation-finding");
+        publisher.publish_non_inclusion(&finding_id, &[], NOW)?;
+
+        let mut revoked_operator = operator;
+        revoked_operator.revoked_from = Some(NOW + 700);
+        let revoked_publisher =
+            super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+                store,
+                revoked_operator,
+                bond,
+                operator_key(),
+                1_000,
+            )?;
+        let error = revoked_publisher
+            .publish_non_inclusion(&finding_id, &[], NOW + 701)
+            .test_expect_err("revoked operator must not reuse a prior signed epoch");
+        assert!(
+            error.contains("outside its validity window"),
+            "unexpected error: {error}"
+        );
+        Ok(())
+    }
+
     #[tokio::test]
     async fn status_handlers_fail_closed_without_live_bond_or_authentication(
     ) -> Result<(), Box<dyn std::error::Error>> {

@@ -9336,11 +9336,13 @@ fn finding_challenge_uphold_resolves_the_audits_historical_policy() -> TestResul
     let challenge = venue_audit_challenge()?;
     original.submit(&challenge, &raw, NOW)?;
     let outcome = upheld_outcome(&challenge, &deployment.allocation_id, 0, "USD")?;
+    let outcome_json = canonical_json_bytes(&outcome)?;
     close_challenge(
         &deployment,
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &signed_envelope_sha256(&outcome)?,
+        &outcome_json,
         NOW + 1,
     )?;
 

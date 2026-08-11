@@ -211,6 +211,9 @@ impl FindingStatusEpochPublisher {
         }
         chio_finding::verify_signed_status_epoch(&signed, &current_authorization)
             .map_err(|error| error.to_string())?;
+        self.operator
+            .require_live(&self.operator.feed_id, now)
+            .map_err(|error| error.to_string())?;
         if canonical_anchor_refs(&signed.body.anchor_refs) != canonical_anchor_refs(anchor_refs) {
             // A newly finalized anchor set describes a new public commitment
             // even when the sparse-map root is unchanged. Advance instead of
