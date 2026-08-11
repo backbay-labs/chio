@@ -73,7 +73,9 @@ CREATE TABLE IF NOT EXISTS finding_pool_receipt_outbox (
     mutation_kind TEXT NOT NULL,
     signed_receipt_json TEXT NOT NULL,
     occurred_at_unix_ms TEXT NOT NULL,
-    acknowledged_at_unix_ms TEXT
+    acknowledged_at_unix_ms TEXT,
+    delivery_claim_owner TEXT,
+    delivery_claim_expires_at_unix_ms INTEGER
 ) STRICT;
 "#;
 
@@ -131,6 +133,8 @@ impl SqliteFindingPoolLedger {
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
             bind_ledger_domain(&connection, &ledger_domain)?;
             ensure_lifecycle_columns(&connection)?;
+            ensure_outbox_delivery_claim_columns(&connection)?;
+            ensure_query_indexes(&connection)?;
             verify_qualified_connection(&connection)?;
             connection
                 .execute_batch("BEGIN IMMEDIATE; ROLLBACK;")
@@ -1079,20 +1083,51 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         })
     }
 
-    fn pending_mutation_receipts(&self) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
-        let connection = self
+    fn claim_pending_mutation_receipts(
+        &self,
+        claimant_id: &str,
+        claimed_at_unix_ms: u64,
+        lease_ms: u64,
+        limit: usize,
+    ) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
+        if claimant_id.is_empty() || claimant_id.len() > 128 || lease_ms == 0 || limit == 0 {
+            return Err(FindingPoolLedgerError::Receipt(
+                "mutation receipt delivery claim is invalid".to_owned(),
+            ));
+        }
+        let claimed_at = i64::try_from(claimed_at_unix_ms).map_err(|_| {
+            FindingPoolLedgerError::Receipt("mutation receipt claim time is invalid".to_owned())
+        })?;
+        let claim_expires = claimed_at_unix_ms
+            .checked_add(lease_ms)
+            .and_then(|value| i64::try_from(value).ok())
+            .ok_or_else(|| {
+                FindingPoolLedgerError::Receipt(
+                    "mutation receipt delivery lease overflowed".to_owned(),
+                )
+            })?;
+        let limit = i64::try_from(limit).map_err(|_| {
+            FindingPoolLedgerError::Receipt("mutation receipt claim limit is invalid".to_owned())
+        })?;
+        let mut connection = self
             .pool
             .get()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let mut statement = connection
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let mut statement = transaction
             .prepare(
                 "SELECT receipt_id, signed_receipt_json \
                  FROM finding_pool_receipt_outbox \
-                 WHERE acknowledged_at_unix_ms IS NULL ORDER BY rowid",
+                 WHERE acknowledged_at_unix_ms IS NULL \
+                   AND (delivery_claim_expires_at_unix_ms IS NULL \
+                        OR delivery_claim_expires_at_unix_ms <= ?1) \
+                 ORDER BY rowid LIMIT ?2",
             )
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         let mut rows = statement
-            .query([])
+            .query(params![claimed_at, limit])
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         let mut receipts = Vec::new();
         while let Some(row) = rows
@@ -1122,12 +1157,35 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             }
             receipts.push(receipt);
         }
+        drop(rows);
+        drop(statement);
+        for receipt in &receipts {
+            let changed = transaction
+                .execute(
+                    "UPDATE finding_pool_receipt_outbox \
+                     SET delivery_claim_owner = ?2, delivery_claim_expires_at_unix_ms = ?3 \
+                     WHERE receipt_id = ?1 AND acknowledged_at_unix_ms IS NULL \
+                       AND (delivery_claim_expires_at_unix_ms IS NULL \
+                            OR delivery_claim_expires_at_unix_ms <= ?4)",
+                    params![receipt.id, claimant_id, claim_expires, claimed_at],
+                )
+                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+            if changed != 1 {
+                return Err(FindingPoolLedgerError::Receipt(
+                    "mutation receipt delivery claim lost its compare-and-set".to_owned(),
+                ));
+            }
+        }
+        transaction
+            .commit()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         Ok(receipts)
     }
 
     fn acknowledge_mutation_receipt(
         &self,
         receipt_id: &str,
+        claimant_id: &str,
         acknowledged_at_unix_ms: u64,
     ) -> Result<(), FindingPoolLedgerError> {
         let connection = self
@@ -1138,28 +1196,41 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             .execute(
                 "UPDATE finding_pool_receipt_outbox \
                  SET acknowledged_at_unix_ms = ?2 \
-                 WHERE receipt_id = ?1 AND acknowledged_at_unix_ms IS NULL",
-                params![receipt_id, acknowledged_at_unix_ms.to_string()],
+                 WHERE receipt_id = ?1 AND acknowledged_at_unix_ms IS NULL \
+                   AND delivery_claim_owner = ?3",
+                params![receipt_id, acknowledged_at_unix_ms.to_string(), claimant_id],
             )
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         if changed == 1 {
             return Ok(());
         }
-        let exists = connection
+        let state = connection
             .query_row(
-                "SELECT 1 FROM finding_pool_receipt_outbox WHERE receipt_id = ?1",
+                "SELECT acknowledged_at_unix_ms, delivery_claim_owner \
+                 FROM finding_pool_receipt_outbox WHERE receipt_id = ?1",
                 [receipt_id],
-                |_| Ok(()),
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                    ))
+                },
             )
             .optional()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
-            .is_some();
-        if exists {
-            Ok(())
-        } else {
-            Err(FindingPoolLedgerError::Receipt(
-                "cannot acknowledge an unknown mutation receipt".to_string(),
-            ))
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        match state {
+            Some((Some(_), _)) => Ok(()),
+            Some((None, owner)) if owner.as_deref() != Some(claimant_id) => {
+                Err(FindingPoolLedgerError::Receipt(
+                    "cannot acknowledge a mutation receipt claimed by another worker".to_owned(),
+                ))
+            }
+            Some((None, _)) => Err(FindingPoolLedgerError::Receipt(
+                "mutation receipt acknowledgment compare-and-set failed".to_owned(),
+            )),
+            None => Err(FindingPoolLedgerError::Receipt(
+                "cannot acknowledge an unknown mutation receipt".to_owned(),
+            )),
         }
     }
 }
@@ -1676,6 +1747,39 @@ fn ensure_lifecycle_columns(
     Ok(())
 }
 
+fn ensure_outbox_delivery_claim_columns(
+    connection: &rusqlite::Connection,
+) -> Result<(), FindingPoolLedgerError> {
+    ensure_column(
+        connection,
+        "finding_pool_receipt_outbox",
+        "delivery_claim_owner",
+        "ALTER TABLE finding_pool_receipt_outbox ADD COLUMN delivery_claim_owner TEXT",
+    )?;
+    ensure_column(
+        connection,
+        "finding_pool_receipt_outbox",
+        "delivery_claim_expires_at_unix_ms",
+        "ALTER TABLE finding_pool_receipt_outbox \
+         ADD COLUMN delivery_claim_expires_at_unix_ms INTEGER",
+    )
+}
+
+fn ensure_query_indexes(connection: &rusqlite::Connection) -> Result<(), FindingPoolLedgerError> {
+    connection
+        .execute_batch(
+            "CREATE INDEX IF NOT EXISTS finding_pool_receipt_outbox_pending \
+                 ON finding_pool_receipt_outbox(\
+                     acknowledged_at_unix_ms, delivery_claim_expires_at_unix_ms\
+                 ) WHERE acknowledged_at_unix_ms IS NULL; \
+             CREATE INDEX IF NOT EXISTS finding_pool_debits_expiration_reclamation \
+                 ON finding_pool_debits(\
+                     allocation_envelope_sha256, state, claimed_at_unix_ms, purchase_id\
+                 );",
+        )
+        .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+}
+
 fn ensure_column(
     connection: &rusqlite::Connection,
     table: &str,
@@ -1754,6 +1858,30 @@ fn parse_units(value: &str, field: &str) -> Result<u64, FindingPoolLedgerError> 
 mod tests {
     use super::*;
     use chio_test_support::prelude::*;
+
+    #[test]
+    fn qualified_schema_indexes_pending_outbox_and_expiration_reclamation() {
+        let directory = tempfile::tempdir().test_expect("create pool ledger directory");
+        let ledger = SqliteFindingPoolLedger::open_qualified(
+            directory.path().join("pool.sqlite3"),
+            "ledger:test-indexes",
+        )
+        .test_expect("open qualified pool ledger");
+        let connection = ledger.pool.get().test_expect("open pool ledger connection");
+        for index in [
+            "finding_pool_receipt_outbox_pending",
+            "finding_pool_debits_expiration_reclamation",
+        ] {
+            let present = connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'index' AND name = ?1)",
+                    [index],
+                    |row| row.get::<_, bool>(0),
+                )
+                .test_expect("query qualified index");
+            assert!(present, "qualified schema is missing {index}");
+        }
+    }
 
     #[test]
     fn claimed_admission_operation_scan_is_bounded_and_cursor_ordered() {

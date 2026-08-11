@@ -634,14 +634,23 @@ pub trait FindingPoolLedger: Send + Sync {
         attestor: &FindingPoolMutationAttestor<'_>,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolLedgerError>;
 
-    /// Signed mutation receipts not yet copied into the kernel's ordinary
-    /// receipt log. The durable outbox itself remains append-only after ack.
-    fn pending_mutation_receipts(&self) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError>;
+    /// Transactionally claim a bounded set of signed mutation receipts that
+    /// are not yet copied into the kernel's ordinary receipt log. A backend
+    /// shared by several kernel instances must serialize this claim in durable
+    /// storage so only one receipt sink can deliver a row during the lease.
+    fn claim_pending_mutation_receipts(
+        &self,
+        claimant_id: &str,
+        claimed_at_unix_ms: u64,
+        lease_ms: u64,
+        limit: usize,
+    ) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError>;
 
-    /// Mark an outbox receipt as copied to the ordinary receipt log.
+    /// Mark a claimed outbox receipt as copied to the ordinary receipt log.
     fn acknowledge_mutation_receipt(
         &self,
         receipt_id: &str,
+        claimant_id: &str,
         acknowledged_at_unix_ms: u64,
     ) -> Result<(), FindingPoolLedgerError>;
 }
@@ -877,10 +886,6 @@ impl ChioKernel {
         &self,
         ledger: &dyn QualifiedFindingPoolLedger,
     ) -> Result<(), FindingPoolLedgerError> {
-        let _flush = self
-            .finding_pool_outbox_flush_lock
-            .lock()
-            .map_err(|_| FindingPoolLedgerError::MutationReceiptFlushPoisoned)?;
         let durable_store_configured = self
             .with_receipt_store(|_| Ok(()))
             .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?
@@ -888,11 +893,24 @@ impl ChioKernel {
         if !durable_store_configured {
             return Err(FindingPoolLedgerError::DurableReceiptStoreMissing);
         }
-        for receipt in ledger.pending_mutation_receipts()? {
+        const DELIVERY_LEASE_MS: u64 = 60_000;
+        const MAX_RECEIPTS_PER_FLUSH: usize = 200;
+        for _ in 0..MAX_RECEIPTS_PER_FLUSH {
+            let claimed_at = crate::kernel::current_unix_timestamp_ms();
+            let mut claimed = ledger.claim_pending_mutation_receipts(
+                &self.finding_pool_outbox_worker_id,
+                claimed_at,
+                DELIVERY_LEASE_MS,
+                1,
+            )?;
+            let Some(receipt) = claimed.pop() else {
+                break;
+            };
             self.record_chio_receipt_without_settlement(&receipt)
                 .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
             ledger.acknowledge_mutation_receipt(
                 &receipt.id,
+                &self.finding_pool_outbox_worker_id,
                 crate::kernel::current_unix_timestamp_ms(),
             )?;
         }

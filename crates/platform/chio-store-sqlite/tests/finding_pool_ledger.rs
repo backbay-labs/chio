@@ -14,7 +14,8 @@ use chio_core::receipt::body::ChioReceipt;
 use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_kernel::finding_pool::{
     FindingPoolDebitAuthorization, FindingPoolDebitError, FindingPoolDebitRequest,
-    FindingPoolDebitState, FindingPoolLedgerError, FINDING_POOL_DEBIT_AUTHORIZATION_SCHEMA_V1,
+    FindingPoolDebitState, FindingPoolLedger, FindingPoolLedgerError,
+    FINDING_POOL_DEBIT_AUTHORIZATION_SCHEMA_V1,
 };
 use chio_kernel::finding_purchase::{
     FindingPurchaseContextView, FindingPurchaseVerifier, FindingStatusProofContextView,
@@ -519,6 +520,53 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
             FindingPoolLedgerError::ReplayConflict
         ))
     ));
+}
+
+#[test]
+fn sqlite_outbox_claim_serializes_independent_ledger_instances() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let database = directory.path().join("finding-pool.sqlite3");
+    let producer = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+        .test_expect("open producer ledger");
+    let fixture = fixture(100);
+    debit(&producer, &fixture, "purchase:outbox-claim", 10)
+        .test_expect("commit and project pool debit");
+    let connection = rusqlite::Connection::open(&database).test_expect("open outbox fixture");
+    assert_eq!(
+        connection
+            .execute(
+                "UPDATE finding_pool_receipt_outbox \
+                 SET acknowledged_at_unix_ms = NULL, delivery_claim_owner = NULL, \
+                     delivery_claim_expires_at_unix_ms = NULL",
+                [],
+            )
+            .test_expect("restage one pending outbox row"),
+        1
+    );
+    drop(connection);
+
+    let first = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+        .test_expect("open first consumer");
+    let second = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+        .test_expect("open second consumer");
+    let claimed = first
+        .claim_pending_mutation_receipts("worker:first", 3_000, 60_000, 1)
+        .test_expect("first consumer claims the row");
+    assert_eq!(claimed.len(), 1);
+    assert!(second
+        .claim_pending_mutation_receipts("worker:second", 3_000, 60_000, 1)
+        .test_expect("second consumer observes the live claim")
+        .is_empty());
+    assert!(second
+        .acknowledge_mutation_receipt(&claimed[0].id, "worker:second", 3_001)
+        .is_err());
+    first
+        .acknowledge_mutation_receipt(&claimed[0].id, "worker:first", 3_001)
+        .test_expect("claim owner acknowledges the projection");
+    assert!(second
+        .claim_pending_mutation_receipts("worker:second", 3_002, 60_000, 1)
+        .test_expect("acknowledged row stays out of the pending set")
+        .is_empty());
 }
 
 #[test]

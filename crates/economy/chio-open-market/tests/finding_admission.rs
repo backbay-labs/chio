@@ -1008,6 +1008,37 @@ fn finding_pheromone_pins_current_listing_to_registry_authority() {
 }
 
 #[test]
+fn finding_pheromone_bounds_listing_assertions_before_signature_verification() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let mut assertion = finding_current_listing_assertion(&listing, &web.operator);
+        assertion.body.namespace = "é".repeat(300);
+        let error = admit_and_resolve_finding_pheromone_hint(
+            &InMemoryPheromoneSubstrate::new(),
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-oversized-assertion", 125),
+            &finding_pheromone_context(&passport, &kernel),
+            &finding_pheromone_convention(),
+            AuthenticatedCurrentFindingListing::new(&listing, &assertion),
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect_err("oversized assertion rejects before its stale signature is checked");
+        assert!(matches!(
+            error,
+            FindingPheromoneError::Listing(message) if message.contains("shape is invalid")
+        ));
+    });
+}
+
+#[test]
 fn finding_pheromone_requires_authenticated_current_listing_freshness() {
     with_fiscal(|resolver| {
         let web = base_web();

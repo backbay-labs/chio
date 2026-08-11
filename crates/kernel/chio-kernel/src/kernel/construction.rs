@@ -298,7 +298,7 @@ impl ChioKernel {
             #[cfg(feature = "cognition-market-experimental")]
             finding_pool_ledger: None,
             #[cfg(feature = "cognition-market-experimental")]
-            finding_pool_outbox_flush_lock: Mutex::new(()),
+            finding_pool_outbox_worker_id: uuid::Uuid::now_v7().to_string(),
             price_oracle: None,
             runtime_admission_hook: None,
             runtime_admission_readiness_timeout: Duration::from_millis(
@@ -744,7 +744,7 @@ impl ChioKernel {
         fence: crate::admission_operation::StoreMutationFence,
     ) -> Result<(), crate::admission_operation::AdmissionOperationError> {
         #[cfg(feature = "cognition-market-experimental")]
-        if self.finding_pool_ledger.is_some() {
+        if self.finding_pool_ledger.is_some() && self.durable_admission_runtime.is_some() {
             return Err(
                 crate::admission_operation::AdmissionOperationError::FindingPoolLedgerAlreadyConfigured,
             );

@@ -21,6 +21,7 @@ pub(crate) struct RecordingLedger {
     unknown_dispatch_finalizations: Mutex<Vec<String>>,
     outbox: Mutex<Vec<ChioReceipt>>,
     acknowledged: Mutex<Vec<String>>,
+    delivery_claims: Mutex<Vec<(String, String, u64)>>,
     receipt_authority: Mutex<Option<chio_core::crypto::PublicKey>>,
     delay_pending_reads: AtomicBool,
     active_pending_reads: AtomicUsize,
@@ -33,6 +34,20 @@ impl RecordingLedger {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
+    }
+
+    fn pending_mutation_receipts(&self) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
+        let outbox = self.outbox.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test outbox lock was poisoned".to_owned())
+        })?;
+        let acknowledged = self.acknowledged.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test ack lock was poisoned".to_owned())
+        })?;
+        Ok(outbox
+            .iter()
+            .filter(|receipt| !acknowledged.contains(&receipt.id))
+            .cloned()
+            .collect())
     }
 
     fn store_attestation(
@@ -307,7 +322,16 @@ impl FindingPoolLedger for RecordingLedger {
         })
     }
 
-    fn pending_mutation_receipts(&self) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
+    fn claim_pending_mutation_receipts(
+        &self,
+        claimant_id: &str,
+        claimed_at_unix_ms: u64,
+        lease_ms: u64,
+        limit: usize,
+    ) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
+        let mut claims = self.delivery_claims.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test delivery claim lock was poisoned".to_owned())
+        })?;
         let active = self.active_pending_reads.fetch_add(1, Ordering::SeqCst) + 1;
         self.max_active_pending_reads
             .fetch_max(active, Ordering::SeqCst);
@@ -322,9 +346,22 @@ impl FindingPoolLedger for RecordingLedger {
         })?;
         let pending = outbox
             .iter()
-            .filter(|receipt| !acknowledged.contains(&receipt.id))
+            .filter(|receipt| {
+                !acknowledged.contains(&receipt.id)
+                    && !claims.iter().any(|(receipt_id, _, expires_at)| {
+                        receipt_id == &receipt.id && *expires_at > claimed_at_unix_ms
+                    })
+            })
+            .take(limit)
             .cloned()
-            .collect();
+            .collect::<Vec<_>>();
+        let claim_expires_at = claimed_at_unix_ms
+            .checked_add(lease_ms)
+            .ok_or_else(|| FindingPoolLedgerError::Receipt("test claim overflowed".to_owned()))?;
+        for receipt in &pending {
+            claims.retain(|(receipt_id, _, _)| receipt_id != &receipt.id);
+            claims.push((receipt.id.clone(), claimant_id.to_owned(), claim_expires_at));
+        }
         self.active_pending_reads.fetch_sub(1, Ordering::SeqCst);
         Ok(pending)
     }
@@ -332,6 +369,7 @@ impl FindingPoolLedger for RecordingLedger {
     fn acknowledge_mutation_receipt(
         &self,
         receipt_id: &str,
+        claimant_id: &str,
         _acknowledged_at_unix_ms: u64,
     ) -> Result<(), FindingPoolLedgerError> {
         let outbox = self.outbox.lock().map_err(|_| {
@@ -343,6 +381,17 @@ impl FindingPoolLedger for RecordingLedger {
             ));
         }
         drop(outbox);
+        let claims = self.delivery_claims.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test delivery claim lock was poisoned".to_owned())
+        })?;
+        if !claims.iter().any(|(claimed_receipt_id, owner, _)| {
+            claimed_receipt_id == receipt_id && owner == claimant_id
+        }) {
+            return Err(FindingPoolLedgerError::Receipt(
+                "test tried to acknowledge another worker's claim".to_owned(),
+            ));
+        }
+        drop(claims);
         let mut acknowledged = self.acknowledged.lock().map_err(|_| {
             FindingPoolLedgerError::Storage("test ack lock was poisoned".to_owned())
         })?;
@@ -680,15 +729,17 @@ fn pending_pool_receipt_is_not_acknowledged_without_a_durable_store() {
 #[test]
 fn concurrent_pool_outbox_flushers_project_each_receipt_once() {
     let ledger = Arc::new(RecordingLedger::default());
-    let kernel = Arc::new(kernel_with_ledger(Arc::clone(&ledger)));
-    assert!(kernel
+    let producer = kernel_with_ledger(Arc::clone(&ledger));
+    assert!(producer
         .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
         .is_ok());
     ledger.delay_pending_reads.store(true, Ordering::SeqCst);
     let barrier = Arc::new(Barrier::new(5));
     let mut handles = Vec::new();
-    for _ in 0..4 {
-        let kernel = Arc::clone(&kernel);
+    let mut kernels = Vec::new();
+    for seed in 93..97 {
+        let kernel = Arc::new(kernel_with_keys(Arc::clone(&ledger), seed, 92));
+        kernels.push(Arc::clone(&kernel));
         let ledger = Arc::clone(&ledger);
         let barrier = Arc::clone(&barrier);
         handles.push(std::thread::spawn(move || {
@@ -701,7 +752,13 @@ fn concurrent_pool_outbox_flushers_project_each_receipt_once() {
         assert!(handle.join().is_ok_and(|result| result.is_ok()));
     }
     assert_eq!(ledger.max_active_pending_reads.load(Ordering::SeqCst), 1);
-    assert_eq!(kernel.receipt_log().receipts().len(), 1);
+    assert_eq!(
+        kernels
+            .iter()
+            .map(|kernel| kernel.receipt_log().receipts().len())
+            .sum::<usize>(),
+        1
+    );
     assert!(ledger
         .pending_mutation_receipts()
         .is_ok_and(|receipts| receipts.is_empty()));

@@ -188,6 +188,39 @@ fn configured_pool_ledger_freezes_the_durable_admission_runtime() {
     );
 }
 
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn pool_ledger_allows_the_initial_durable_admission_runtime() {
+    use crate::admission_operation::AdmissionOperationError;
+    use crate::finding_pool::tests::RecordingLedger;
+
+    let mut config = make_config();
+    config.policy_hash = sha256_hex(b"pool-before-durable-runtime");
+    let mut kernel = make_kernel(config);
+    kernel
+        .set_receipt_store(Box::new(AdmissionReceiptProjectionStore::default()))
+        .expect("pool mutation receipt store");
+    kernel
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[97; 32]))
+        .expect("pool mutation receipt authority");
+    kernel
+        .set_finding_pool_ledger(std::sync::Arc::new(RecordingLedger::default()))
+        .expect("qualified finding pool ledger");
+    let fence = admission_test_fence();
+    let store = std::sync::Arc::new(TestAdmissionOperationStore::new(fence.clone()));
+    kernel
+        .set_durable_admission_store(store.clone(), store.clone(), fence)
+        .expect("initial durable runtime after the pool ledger");
+    assert_eq!(
+        kernel.set_durable_admission_store(
+            store.clone(),
+            store,
+            admission_test_fence(),
+        ),
+        Err(AdmissionOperationError::FindingPoolLedgerAlreadyConfigured)
+    );
+}
+
 #[test]
 fn nested_durable_url_elicitation_terminalizes_as_outcome_unknown() {
     let (mut kernel, request, store, _invocations) =

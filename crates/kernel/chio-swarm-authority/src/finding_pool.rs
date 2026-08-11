@@ -195,13 +195,8 @@ pub fn verify_finding_pool_allocation(
             "finding pool allocation authority must be Ed25519",
         ));
     }
-    match signed.verify_signature() {
-        Ok(true) => {}
-        Ok(false) => return Err(rejected("finding pool allocation signature is invalid")),
-        Err(error) => {
-            return Err(SwarmAuthorityError::Canonical(error.to_string()));
-        }
-    }
+    // Reject malformed attacker-controlled fields before canonical signature
+    // verification allocates and hashes the complete body.
     require_non_empty(expected_ledger_domain, "expected ledger_domain")?;
     require_non_empty(&body.ledger_domain, "ledger_domain")?;
     if body.ledger_domain != expected_ledger_domain {
@@ -235,6 +230,13 @@ pub fn verify_finding_pool_allocation(
         return Err(rejected(
             "finding pool allocation validity window is invalid",
         ));
+    }
+    match signed.verify_signature() {
+        Ok(true) => {}
+        Ok(false) => return Err(rejected("finding pool allocation signature is invalid")),
+        Err(error) => {
+            return Err(SwarmAuthorityError::Canonical(error.to_string()));
+        }
     }
     if now_unix_ms < body.issued_at_unix_ms || now_unix_ms >= body.expires_at_unix_ms {
         return Err(rejected("finding pool allocation is not live"));
@@ -310,7 +312,13 @@ fn validate_pool_projection_bounds(pool: &SwarmBudgetPool) -> Result<(), SwarmAu
 }
 
 fn require_non_empty(value: &str, field: &str) -> Result<(), SwarmAuthorityError> {
-    if value.trim().is_empty() || value.len() > 512 || value.chars().any(char::is_control) {
+    if value.is_empty()
+        || value.len() > 512
+        || !value
+            .bytes()
+            .all(|byte| byte == b' ' || byte.is_ascii_graphic())
+        || value.bytes().all(|byte| byte == b' ')
+    {
         Err(rejected(format!(
             "finding pool allocation {field} is invalid"
         )))
@@ -334,6 +342,7 @@ fn require_currency(value: &str) -> Result<(), SwarmAuthorityError> {
 
 fn parse_positive_u64_decimal(value: &str) -> Result<u64, SwarmAuthorityError> {
     if value.is_empty()
+        || value.len() > 20
         || value.starts_with('0')
         || !value.bytes().all(|byte| byte.is_ascii_digit())
     {
@@ -373,6 +382,7 @@ mod tests {
     fn allocation_identifiers_reject_whitespace_only_values() {
         assert!(require_non_empty("   ", "pool_id").is_err());
         assert!(require_non_empty("pool:\u{0}one", "pool_id").is_err());
+        assert!(require_non_empty("pool:é", "pool_id").is_err());
         assert!(require_non_empty("pool:one", "pool_id").is_ok());
     }
 
@@ -528,6 +538,18 @@ mod tests {
             &authority,
         )
         .test_expect("sign allocation");
+
+        let mut oversized = signed.clone();
+        oversized.body.nonce = "n".repeat(513);
+        let error = verify_finding_pool_allocation(
+            &oversized,
+            &pool,
+            &authority.public_key(),
+            "ledger:primary",
+            2,
+        )
+        .expect_err("oversized fields reject before the invalid signature");
+        assert!(error.to_string().contains("nonce is invalid"));
 
         assert!(verify_finding_pool_allocation(
             &signed,

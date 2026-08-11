@@ -343,6 +343,20 @@ fn validate_current_listing(
     max_freshness_age_secs: u64,
     now: u64,
 ) -> Result<(), FindingPheromoneError> {
+    let assertion_body = &assertion.body;
+    if assertion_body.schema != FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1
+        || !is_bounded_printable_identifier(&assertion_body.listing_id)
+        || !is_bounded_printable_identifier(&assertion_body.namespace)
+        || !is_bounded_printable_identifier(&assertion_body.registry_operator_id)
+        || !is_hex64(&assertion_body.listing_envelope_sha256)
+        || !is_hex64(&assertion_body.pricing_hint_envelope_sha256)
+        || assertion_body.max_age_secs == 0
+        || assertion_body.generated_at >= assertion_body.valid_until
+    {
+        return Err(FindingPheromoneError::Listing(
+            "current listing assertion shape is invalid".to_owned(),
+        ));
+    }
     match assertion.verify_signature() {
         Ok(true) => {}
         Ok(false) => {
@@ -365,9 +379,7 @@ fn validate_current_listing(
         .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
     let pricing_sha256 = signed_envelope_sha256(&listing.pricing)
         .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
-    let assertion_body = &assertion.body;
     if max_freshness_age_secs == 0
-        || assertion_body.schema != FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1
         || assertion_body.listing_id != listing.listing_id()
         || normalize_namespace(&assertion_body.namespace)
             != normalize_namespace(&listing.listing.body.namespace)
@@ -448,4 +460,13 @@ fn is_hex64(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn is_bounded_printable_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 512
+        && value
+            .bytes()
+            .all(|byte| byte == b' ' || byte.is_ascii_graphic())
+        && value.bytes().any(|byte| byte != b' ')
 }
