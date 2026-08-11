@@ -1007,6 +1007,27 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
 }
 
 #[test]
+fn observed_and_metered_findings_name_their_direct_facet_floors() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let mut draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+
+    draft.finding.evidence_class = FindingEvidenceClass::Observed;
+    let observed = draft.required_facets(&fx.profile.body);
+    assert!(observed.contains(&FindingFacetKind::ReceiptAuthenticity));
+    assert!(observed.contains(&FindingFacetKind::CheckpointMembership));
+
+    draft.finding.evidence_class = FindingEvidenceClass::Asserted;
+    draft.finding.guarantee_class = FindingGuaranteeClass::MeteredAttested;
+    let metered = draft.required_facets(&fx.profile.body);
+    assert!(metered.contains(&FindingFacetKind::ReceiptAuthenticity));
+    assert!(metered.contains(&FindingFacetKind::CheckpointMembership));
+    assert!(metered.contains(&FindingFacetKind::MeteredExposureBacking));
+    Ok(())
+}
+
+#[test]
 fn production_receipts_must_satisfy_the_profile_receipt_semantics() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);

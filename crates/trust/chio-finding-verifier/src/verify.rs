@@ -276,9 +276,17 @@ impl FindingVerifierDraft {
         if self.finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
             required.insert(FindingFacetKind::RecipeBinding);
         }
-        if self.finding.evidence_class == FindingEvidenceClass::Verified {
+        if matches!(
+            self.finding.evidence_class,
+            FindingEvidenceClass::Verified | FindingEvidenceClass::Observed
+        ) {
             required.insert(FindingFacetKind::ReceiptAuthenticity);
             required.insert(FindingFacetKind::CheckpointMembership);
+        }
+        if self.finding.guarantee_class == FindingGuaranteeClass::MeteredAttested {
+            required.insert(FindingFacetKind::ReceiptAuthenticity);
+            required.insert(FindingFacetKind::CheckpointMembership);
+            required.insert(FindingFacetKind::MeteredExposureBacking);
         }
         if self.finding.runtime_assurance_tier.is_some() {
             required.insert(FindingFacetKind::RuntimeAssuranceBacking);

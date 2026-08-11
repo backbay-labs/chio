@@ -770,9 +770,17 @@ fn require_report_facets(
     if finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
         finding_required_facets.insert(FindingFacetKind::RecipeBinding);
     }
-    if finding.evidence_class == FindingEvidenceClass::Verified {
+    if matches!(
+        finding.evidence_class,
+        FindingEvidenceClass::Verified | FindingEvidenceClass::Observed
+    ) {
         finding_required_facets.insert(FindingFacetKind::ReceiptAuthenticity);
         finding_required_facets.insert(FindingFacetKind::CheckpointMembership);
+    }
+    if finding.guarantee_class == FindingGuaranteeClass::MeteredAttested {
+        finding_required_facets.insert(FindingFacetKind::ReceiptAuthenticity);
+        finding_required_facets.insert(FindingFacetKind::CheckpointMembership);
+        finding_required_facets.insert(FindingFacetKind::MeteredExposureBacking);
     }
     if finding.runtime_assurance_tier.is_some() {
         finding_required_facets.insert(FindingFacetKind::RuntimeAssuranceBacking);
