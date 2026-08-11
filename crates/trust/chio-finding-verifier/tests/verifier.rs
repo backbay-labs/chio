@@ -648,7 +648,7 @@ fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
     FindingVerifierTrustRoots {
         governance_authority: fx.governance.public_key(),
         profile: fx.profile.clone(),
-        admitted_kernel_keys: vec![keypair(21).public_key()],
+        admitted_kernel_keys: vec![keypair(21).public_key(), keypair(12).public_key()],
         collateral_authority: keypair(4).public_key(),
         runtime_attestation_authority: None,
         appraisal_authority: None,
@@ -815,7 +815,25 @@ fn resolved_delivery_at(
     receipt_index: u32,
     checkpoint_time: u64,
 ) -> Result<ResolvedFindingDeliveryEvidence, Box<dyn Error>> {
-    let receipt = receipt(
+    resolved_delivery_with_times(
+        fx,
+        content_hash,
+        overlay,
+        receipt_index,
+        1_750_000_000 + u64::from(receipt_index),
+        checkpoint_time,
+    )
+}
+
+fn resolved_delivery_with_times(
+    fx: &Fixture,
+    content_hash: &str,
+    overlay: Option<FindingDelivery>,
+    receipt_index: u32,
+    receipt_time: u64,
+    checkpoint_time: u64,
+) -> Result<ResolvedFindingDeliveryEvidence, Box<dyn Error>> {
+    let mut receipt = receipt(
         &keypair(12),
         receipt_index,
         content_hash,
@@ -823,6 +841,11 @@ fn resolved_delivery_at(
         true,
         overlay,
     )?;
+    if receipt.timestamp != receipt_time {
+        let mut body = receipt.body();
+        body.timestamp = receipt_time;
+        receipt = ChioReceipt::sign(body, &keypair(12))?;
+    }
     let receipt_bytes = canonical_json_bytes(&receipt)?;
     let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_bytes))?;
     let prior_chain_leaf = checkpoint_chain_leaf_hash(&fx.checkpoint.body)?;
@@ -851,6 +874,15 @@ fn resolved_delivery_at(
         checkpoints,
         checkpoint_transparency,
     })
+}
+
+fn nonce_resolver_with_delivery(
+    fx: &Fixture,
+    delivery: &ResolvedFindingDeliveryEvidence,
+) -> Result<TestNonceResolver, Box<dyn Error>> {
+    let mut nonces = fx.nonce_resolver.nonces.clone();
+    nonces.push(execution_nonce(&delivery.receipt.receipt, &keypair(12))?);
+    Ok(TestNonceResolver { nonces })
 }
 
 #[test]
@@ -1002,8 +1034,11 @@ fn production_receipt_semantics_reject_a_nonce_binding_mismatch() -> TestResult 
 fn post_purchase_delivery_requires_a_finding_specific_overlay() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
+    let delivery = resolved_delivery(&fx, &fx.finding_payload_sha256, None)?;
+    let delivery_nonces = nonce_resolver_with_delivery(&fx, &delivery)?;
     let mut evidence = bundle(&fx, clone_receipts(&fx));
-    evidence.finding_delivery = Some(resolved_delivery(&fx, &fx.finding_payload_sha256, None)?);
+    evidence.finding_delivery = Some(delivery);
+    evidence.nonce_resolver = &delivery_nonces;
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let authenticity = draft
@@ -1032,8 +1067,10 @@ fn post_purchase_delivery_is_finding_bound_and_checkpointed_in_the_report() -> T
         Some(finding_delivery_overlay(&finding.finding_id)),
     )?;
     let expected_receipt_id = delivery.receipt.receipt.id.clone();
+    let delivery_nonces = nonce_resolver_with_delivery(&fx, &delivery)?;
     let mut evidence = bundle(&fx, clone_receipts(&fx));
     evidence.finding_delivery = Some(delivery);
+    evidence.nonce_resolver = &delivery_nonces;
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let checkpoint_membership = draft
@@ -1061,18 +1098,75 @@ fn post_purchase_delivery_is_finding_bound_and_checkpointed_in_the_report() -> T
 }
 
 #[test]
-fn post_purchase_delivery_rejects_a_receipt_after_report_evaluation() -> TestResult {
+fn post_purchase_delivery_requires_the_signed_execution_nonce() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
     let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
     let mut evidence = bundle(&fx, clone_receipts(&fx));
-    evidence.finding_delivery = Some(resolved_delivery_at(
+    evidence.finding_delivery = Some(resolved_delivery(
+        &fx,
+        &fx.finding_payload_sha256,
+        Some(finding_delivery_overlay(&finding.finding_id)),
+    )?);
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let authenticity = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
+        .ok_or("receipt-authenticity facet missing")?;
+    assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
+    assert!(authenticity
+        .reason
+        .contains("execution nonce evidence not supplied"));
+    Ok(())
+}
+
+#[test]
+fn post_purchase_delivery_cannot_predate_the_finding() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let delivery = resolved_delivery_with_times(
+        &fx,
+        &fx.finding_payload_sha256,
+        Some(finding_delivery_overlay(&finding.finding_id)),
+        20,
+        finding.issued_at.saturating_sub(1),
+        1_750_000_003,
+    )?;
+    let delivery_nonces = nonce_resolver_with_delivery(&fx, &delivery)?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.finding_delivery = Some(delivery);
+    evidence.nonce_resolver = &delivery_nonces;
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let authenticity = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
+        .ok_or("receipt-authenticity facet missing")?;
+    assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
+    assert!(authenticity.reason.contains("predates the Finding"));
+    Ok(())
+}
+
+#[test]
+fn post_purchase_delivery_rejects_a_receipt_after_report_evaluation() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let delivery = resolved_delivery_at(
         &fx,
         &fx.finding_payload_sha256,
         Some(finding_delivery_overlay(&finding.finding_id)),
         20,
         1_750_000_003,
-    )?);
+    )?;
+    let delivery_nonces = nonce_resolver_with_delivery(&fx, &delivery)?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.finding_delivery = Some(delivery);
+    evidence.nonce_resolver = &delivery_nonces;
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let authenticity = draft
@@ -1090,14 +1184,17 @@ fn post_purchase_delivery_rejects_a_checkpoint_after_report_evaluation() -> Test
     let fx = fixture()?;
     let trust = trust_roots(&fx);
     let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
-    let mut evidence = bundle(&fx, clone_receipts(&fx));
-    evidence.finding_delivery = Some(resolved_delivery_at(
+    let delivery = resolved_delivery_at(
         &fx,
         &fx.finding_payload_sha256,
         Some(finding_delivery_overlay(&finding.finding_id)),
         2,
         1_750_000_020,
-    )?);
+    )?;
+    let delivery_nonces = nonce_resolver_with_delivery(&fx, &delivery)?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.finding_delivery = Some(delivery);
+    evidence.nonce_resolver = &delivery_nonces;
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let membership = draft
@@ -1227,10 +1324,12 @@ fn asserted_finding_can_be_verified_from_checkpointed_delivery_alone() -> TestRe
         Some(finding_delivery_overlay(&finding.finding_id)),
     )?;
     let expected_receipt_id = delivery.receipt.receipt.id.clone();
+    let delivery_nonces = nonce_resolver_with_delivery(&fx, &delivery)?;
     let mut evidence = bundle(&fx, Vec::new());
     evidence.finding_delivery = Some(delivery);
     evidence.recipe_preimage = None;
     evidence.bond_snapshot = None;
+    evidence.nonce_resolver = &delivery_nonces;
 
     let mut trust = trust_roots(&fx);
     let mut profile = trust.profile.body.clone();
@@ -1263,12 +1362,15 @@ fn asserted_finding_can_be_verified_from_checkpointed_delivery_alone() -> TestRe
 fn post_purchase_delivery_rejects_an_overlay_for_another_finding() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
-    let mut evidence = bundle(&fx, clone_receipts(&fx));
-    evidence.finding_delivery = Some(resolved_delivery(
+    let delivery = resolved_delivery(
         &fx,
         &fx.finding_payload_sha256,
         Some(finding_delivery_overlay(&"ab".repeat(32))),
-    )?);
+    )?;
+    let delivery_nonces = nonce_resolver_with_delivery(&fx, &delivery)?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.finding_delivery = Some(delivery);
+    evidence.nonce_resolver = &delivery_nonces;
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     assert_eq!(

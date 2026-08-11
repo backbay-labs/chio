@@ -4824,7 +4824,7 @@ pub(crate) fn initialize_finding_challenge_schema(
         verify_finding_challenge_invariants(&transaction)?;
         return transaction.commit().map_err(sqlite_error);
     }
-    if matches!(on_disk, 7 | 8 | 9) {
+    if matches!(on_disk, 7..=9) {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;

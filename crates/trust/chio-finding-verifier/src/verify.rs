@@ -314,6 +314,8 @@ fn verify_finding_delivery_receipt(
     finding: &Finding,
     profile: &FindingChallengeVerifierProfile,
     evidence: &ResolvedReceiptEvidence,
+    admitted_kernel_keys: &[PublicKey],
+    nonce_resolver: &dyn FindingNonceResolver,
     evaluation_time: u64,
 ) -> Result<String, String> {
     let receipt = &evidence.receipt;
@@ -337,6 +339,12 @@ fn verify_finding_delivery_receipt(
             receipt.id
         ));
     }
+    if receipt.timestamp < finding.issued_at {
+        return Err(format!(
+            "delivery receipt {} predates the Finding",
+            receipt.id
+        ));
+    }
     let is_delivery = profile.receipt_signers.iter().any(|signer| {
         signer.role == FindingReceiptRole::Delivery
             && signer.policy.key == receipt.kernel_key
@@ -353,6 +361,18 @@ fn verify_finding_delivery_receipt(
             receipt.id
         ));
     }
+    verify_required_receipt_semantics(
+        receipt,
+        &profile.required_receipt_semantics,
+        admitted_kernel_keys,
+        nonce_resolver,
+    )
+    .map_err(|error| {
+        format!(
+            "delivery receipt {} violates required receipt semantics: {error}",
+            receipt.id
+        )
+    })?;
     let contract = receipt.delivery_contract().ok_or_else(|| {
         format!(
             "delivery receipt {} has no signed delivery contract",
@@ -587,6 +607,8 @@ pub fn verify_finding_evidence(
                 &finding,
                 profile,
                 &delivery.receipt,
+                &trust.admitted_kernel_keys,
+                bundle.nonce_resolver,
                 trust.trusted_time,
             ) {
                 Ok(receipt_id) => authenticated_delivery_receipt_id = Some(receipt_id),

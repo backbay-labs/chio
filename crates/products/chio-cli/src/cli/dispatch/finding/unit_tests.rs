@@ -3,10 +3,13 @@ use super::*;
 use super::finding_challenge::{
     load_challenge_evidence_document, prepare_challenge, FINDING_CHALLENGE_EVIDENCE_MAX_BYTES,
 };
-use super::finding_verify::{strict_finding_ingress, AcceptedFinding};
+use super::finding_verify::{
+    strict_finding_ingress, AcceptedFinding, CliFindingNonceResolver,
+};
 use crate::cli_entrypoint_support::parse_cli;
 use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
+use chio_core_types::message::{ExecutionNonce, NonceBinding, SignedExecutionNonce};
 use chio_core_types::receipt::body::{ChioReceipt, ChioReceiptBody};
 use chio_core_types::receipt::decision::{Decision, ToolCallAction};
 use chio_core_types::receipt::kinds::TrustLevel;
@@ -28,6 +31,7 @@ use chio_finding::{
 use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
 };
+use chio_finding_verifier::FindingNonceResolver;
 use wiremock::matchers::{body_string, header, method, path as path_matcher, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1196,6 +1200,103 @@ fn verify_caps_every_support_file_before_parsing() {
             "unexpected {kind} error: {error}"
         );
     }
+}
+
+fn cli_nonce_evidence() -> (ChioReceipt, SignedExecutionNonce) {
+    let kernel = Keypair::from_seed(&[91; 32]);
+    let action = ToolCallAction::from_parameters(serde_json::json!({"input": "finding"}))
+        .unwrap();
+    let nonce_id = "nonce-cli-finding-1";
+    let receipt = ChioReceipt::sign(
+        ChioReceiptBody {
+            id: String::new(),
+            timestamp: 1_750_000_010,
+            capability_id: "cap-cli-finding-1".to_string(),
+            tool_server: "finding-server".to_string(),
+            tool_name: "finding.produce".to_string(),
+            action: action.clone(),
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            content_hash: "a".repeat(64),
+            policy_hash: "b".repeat(64),
+            evidence: Vec::new(),
+            metadata: Some(serde_json::json!({
+                "budget_authority": {
+                    "guarantee_level": "single_node_atomic",
+                    "authority_profile": "authoritative_hold_event",
+                    "metering_profile": "max_cost_preauthorize_then_reconcile_actual",
+                    "hold_id": "hold-cli-finding-1",
+                    "execution_nonce_id": nonce_id,
+                    "authorize": {
+                        "event_id": "hold-cli-finding-1:authorize",
+                        "exposure_units": 1,
+                        "committed_cost_units_after": 1
+                    },
+                    "terminal": {
+                        "disposition": "reconciled",
+                        "event_id": "hold-cli-finding-1:reconcile",
+                        "exposure_units": 1,
+                        "realized_spend_units": 1,
+                        "committed_cost_units_after": 1
+                    }
+                },
+                "financial": {
+                    "grant_index": 0,
+                    "cost_charged": 1,
+                    "currency": "USD",
+                    "budget_remaining": 99,
+                    "budget_total": 100,
+                    "delegation_depth": 0,
+                    "root_budget_holder": "finding-producer",
+                    "settlement_status": "settled"
+                }
+            })),
+            trust_level: TrustLevel::Mediated,
+            tenant_id: None,
+            kernel_key: kernel.public_key(),
+            bbs_projection_version: None,
+        },
+        &kernel,
+    )
+    .unwrap();
+    let nonce = ExecutionNonce {
+        schema: chio_kernel::execution_nonce::EXECUTION_NONCE_SCHEMA.to_string(),
+        nonce_id: nonce_id.to_string(),
+        issued_at: 1_750_000_009,
+        expires_at: 1_750_000_040,
+        bound_to: NonceBinding {
+            subject_id: "finding-producer".to_string(),
+            request_id: "request-cli-finding-1".to_string(),
+            capability_id: receipt.capability_id.clone(),
+            tool_server: receipt.tool_server.clone(),
+            tool_name: receipt.tool_name.clone(),
+            parameter_hash: action.parameter_hash,
+        },
+        reserved_hold_id: Some("hold-cli-finding-1".to_string()),
+        reserving_request_id: None,
+    };
+    let signature = kernel.sign(&canonical_json_bytes(&nonce).unwrap());
+    (receipt, SignedExecutionNonce { nonce, signature })
+}
+
+#[test]
+fn verify_resolves_bounded_signed_execution_nonce_evidence() {
+    let (receipt, nonce) = cli_nonce_evidence();
+    let resolver = CliFindingNonceResolver::new(vec![nonce.clone()]).unwrap();
+    let resolved = resolver.nonce_for(&receipt).expect("resolve nonce by receipt binding");
+    assert_eq!(resolved.nonce_id(), nonce.nonce_id());
+
+    assert!(CliFindingNonceResolver::new(vec![nonce.clone(), nonce.clone()]).is_err());
+    assert!(CliFindingNonceResolver::new(vec![
+        nonce;
+        chio_finding::MAX_FINDING_EVIDENCE_RECEIPTS + 2
+    ])
+    .is_err());
 }
 
 #[test]

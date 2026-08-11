@@ -1,5 +1,6 @@
 use super::*;
 
+use std::collections::BTreeMap;
 use std::io::Read;
 
 use base64::Engine as _;
@@ -7,16 +8,21 @@ use chio_appraisal::SignedRuntimeAttestationAppraisalReport;
 use chio_core_types::capability::runtime_attestation::RuntimeAttestationEvidence;
 use chio_core_types::capability::trust_policy::AttestationTrustPolicy;
 use chio_core_types::crypto::{sha256_hex, PublicKey};
+use chio_core_types::message::SignedExecutionNonce;
+use chio_core_types::receipt::authoritative_spend::{
+    BudgetAuthorityReceiptRef, PresentedNonceView,
+};
 use chio_core_types::receipt::body::ChioReceipt;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
     Finding, FindingFacetKind, FindingFacetOutcome, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile,
+    SignedFindingChallengeVerifierProfile, MAX_FINDING_EVIDENCE_RECEIPTS,
+    MAX_FINDING_IDENTIFIER_BYTES,
 };
 use chio_finding_verifier::{
     verify_finding_evidence, FindingBondSnapshot, FindingEvidenceBundle, FindingVerifierDraft,
-    FindingVerifierTrustRoots, NoNonceEvidence, ResolvedFindingDeliveryEvidence,
+    FindingNonceResolver, FindingVerifierTrustRoots, ResolvedFindingDeliveryEvidence,
     ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot, MAX_RAW_FINDING_BYTES,
 };
 use chio_kernel::checkpoint::{
@@ -27,6 +33,7 @@ const FINDING_SCHEMA_JSON: &str =
     include_str!("../../../../../../../spec/schemas/chio-finding/v1/finding.schema.json");
 const FINDING_SCHEMA_LABEL: &str = "chio-finding/v1/finding.schema.json";
 pub(super) const FINDING_VERIFY_SUPPORT_MAX_BYTES: usize = 512 * 1024;
+const FINDING_VERIFY_MAX_EXECUTION_NONCES: usize = MAX_FINDING_EVIDENCE_RECEIPTS + 1;
 
 /// Identifies the resolution rules this surface applied, so a report
 /// evaluated here is distinguishable from one evaluated by a venue that
@@ -172,7 +179,7 @@ pub(super) fn cmd_finding_verify(
             })
         })
         .transpose()?;
-    let nonce_resolver = NoNonceEvidence;
+    let nonce_resolver = CliFindingNonceResolver::new(evidence_file.execution_nonces)?;
     let bundle = FindingEvidenceBundle {
         receipts,
         checkpoints: evidence_file.checkpoints,
@@ -343,6 +350,10 @@ struct FindingEvidenceFile {
     checkpoint_transparency: CheckpointTransparencySummary,
     #[serde(default)]
     finding_delivery: Option<FindingDeliveryEvidenceEntry>,
+    /// Kernel-signed execution nonces referenced by production and delivery
+    /// receipts through their signed budget-authority metadata.
+    #[serde(default)]
+    execution_nonces: Vec<SignedExecutionNonce>,
     #[serde(default)]
     runtime_attestation: Option<SignedExportEnvelope<RuntimeAttestationEvidence>>,
     #[serde(default)]
@@ -375,6 +386,49 @@ struct FindingDeliveryEvidenceEntry {
 struct FindingBondSnapshotEntry {
     backing: SignedFindingBondBacking,
     store_snapshot: SignedFindingBondStoreSnapshot,
+}
+
+pub(super) struct CliFindingNonceResolver {
+    nonces: BTreeMap<String, SignedExecutionNonce>,
+}
+
+impl CliFindingNonceResolver {
+    pub(super) fn new(nonces: Vec<SignedExecutionNonce>) -> Result<Self, CliError> {
+        if nonces.len() > FINDING_VERIFY_MAX_EXECUTION_NONCES {
+            return Err(CliError::cli_other_error(format!(
+                "finding evidence carries more than {FINDING_VERIFY_MAX_EXECUTION_NONCES} execution nonces"
+            )));
+        }
+        let mut by_id = BTreeMap::new();
+        for nonce in nonces {
+            let nonce_id = nonce.nonce.nonce_id.clone();
+            if nonce.nonce.schema != chio_kernel::execution_nonce::EXECUTION_NONCE_SCHEMA
+                || nonce_id.is_empty()
+                || nonce_id.len() > MAX_FINDING_IDENTIFIER_BYTES
+                || !nonce_id.bytes().all(|byte| byte.is_ascii_graphic())
+                || nonce.nonce.issued_at >= nonce.nonce.expires_at
+            {
+                return Err(CliError::cli_other_error(
+                    "finding evidence carries an invalid execution nonce".to_string(),
+                ));
+            }
+            if by_id.insert(nonce_id, nonce).is_some() {
+                return Err(CliError::cli_other_error(
+                    "finding evidence carries duplicate execution nonce ids".to_string(),
+                ));
+            }
+        }
+        Ok(Self { nonces: by_id })
+    }
+}
+
+impl FindingNonceResolver for CliFindingNonceResolver {
+    fn nonce_for(&self, receipt: &ChioReceipt) -> Option<&dyn PresentedNonceView> {
+        let nonce_id = BudgetAuthorityReceiptRef::from_receipt(receipt)?.execution_nonce_id?;
+        self.nonces
+            .get(&nonce_id)
+            .map(|nonce| nonce as &dyn PresentedNonceView)
+    }
 }
 
 impl From<FindingBondSnapshotEntry> for FindingBondSnapshot {
