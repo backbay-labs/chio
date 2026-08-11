@@ -670,6 +670,24 @@ fn qualified_pool_rejects_percent_decoded_nul_uris() {
 }
 
 #[test]
+fn qualified_pool_creates_percent_decoded_uri_parent() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let decoded_parent = directory.path().join("pool ledger");
+    let encoded_uri = format!(
+        "file:{}/pool%20ledger/pool.sqlite3?mode=rwc",
+        directory.path().display()
+    );
+
+    drop(
+        SqliteFindingPoolLedger::open_qualified(&encoded_uri, LEDGER_DOMAIN)
+            .test_expect("open qualified ledger through encoded URI"),
+    );
+
+    assert!(decoded_parent.join("pool.sqlite3").is_file());
+    assert!(!directory.path().join("pool%20ledger").exists());
+}
+
+#[test]
 fn qualified_pool_rejects_sqlite_uris_that_disable_file_locking() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("pool.sqlite3");

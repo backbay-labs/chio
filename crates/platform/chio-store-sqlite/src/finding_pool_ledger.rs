@@ -114,7 +114,7 @@ impl SqliteFindingPoolLedger {
                 "qualified finding pool ledger requires a durable SQLite path".to_string(),
             ));
         }
-        if let Some(parent) = sqlite_parent_dir_to_create(path) {
+        if let Some(parent) = qualified_sqlite_parent_dir(path, path_text)? {
             std::fs::create_dir_all(parent)
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         }
@@ -197,6 +197,33 @@ impl SqliteFindingPoolLedger {
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         value.map(|text| parse_units(&text, column)).transpose()
     }
+}
+
+fn qualified_sqlite_parent_dir(
+    path: &Path,
+    path_text: &str,
+) -> Result<Option<std::path::PathBuf>, FindingPoolLedgerError> {
+    if !path_text.starts_with("file:") {
+        return Ok(sqlite_parent_dir_to_create(path));
+    }
+    let filesystem_path = crate::sqlite_filesystem_path(path_text);
+    let encoded_filename = filesystem_path.to_str().ok_or_else(|| {
+        FindingPoolLedgerError::Storage("SQLite URI filename is not valid UTF-8".to_string())
+    })?;
+    let decoded_filename = percent_decode_uri_component(encoded_filename).ok_or_else(|| {
+        FindingPoolLedgerError::Storage(
+            "SQLite URI filename has invalid percent encoding".to_string(),
+        )
+    })?;
+    if decoded_filename.contains('\0') {
+        return Err(FindingPoolLedgerError::Storage(
+            "SQLite URI filename contains a NUL byte".to_string(),
+        ));
+    }
+    Ok(Path::new(&decoded_filename)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(Path::to_path_buf))
 }
 
 fn sqlite_uri_filename_is_empty(path: &str) -> bool {

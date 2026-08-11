@@ -1008,6 +1008,43 @@ fn finding_pheromone_pins_current_listing_to_registry_authority() {
 }
 
 #[test]
+fn finding_pheromone_rejects_non_ascii_registry_operator_policy() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let assertion = finding_current_listing_assertion(&listing, &web.operator);
+        let mut convention = finding_pheromone_convention();
+        convention.registry_operator_id = "seller-operatör".to_owned();
+
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                finding_pheromone_deposit(
+                    &web,
+                    &listing,
+                    &passport,
+                    "hint-non-ascii-registry",
+                    125,
+                ),
+                &finding_pheromone_context(&passport, &kernel),
+                &convention,
+                AuthenticatedCurrentFindingListing::new(&listing, &assertion),
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Convention("receiver policy"))
+        ));
+    });
+}
+
+#[test]
 fn finding_pheromone_bounds_listing_assertions_before_signature_verification() {
     with_fiscal(|resolver| {
         let web = base_web();

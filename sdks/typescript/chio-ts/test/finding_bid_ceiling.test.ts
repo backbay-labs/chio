@@ -70,6 +70,10 @@ test("finding_bid_ceiling rejects encodings, bounds, currency, provenance, and r
   overflow.estimate.units = "18446744073709551616";
   rejectsWith(overflow, "u64_overflow");
 
+  const oversizedDecimal = clone(first.input);
+  oversizedDecimal.estimate.units = "9".repeat(100_000);
+  rejectsWith(oversizedDecimal, "u64_overflow");
+
   const bps = clone(first.input);
   bps.policy.guaranteeClassBps = "10001";
   rejectsWith(bps, "basis_points_out_of_range");

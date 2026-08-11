@@ -77,7 +77,8 @@ def finding_bid_ceiling(input_value: FindingBidCeilingInput) -> str:
     _validate_currency(policy["currency"])
     if estimate_input["currency"] != policy["currency"]:
         _fail("currency_mismatch", "estimate and budget currencies differ")
-    if estimate_input["provenance"] not in {
+    provenance = estimate_input["provenance"]
+    if not isinstance(provenance, str) or provenance not in {
         "buyer_metering_history_v1",
         "buyer_fresh_metered_quote_v1",
     }:

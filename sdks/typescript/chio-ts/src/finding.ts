@@ -147,6 +147,9 @@ function parseU64(value: DecimalIntegerInput, field: string): bigint {
   } else {
     fail("invalid_decimal", `${field} must be a string or number`);
   }
+  if (canonical.length > 20) {
+    fail("u64_overflow", `${field} exceeds the Rust u64 boundary`);
+  }
   if (!/^(0|[1-9][0-9]*)$/.test(canonical)) {
     fail("invalid_decimal", `${field} must be a canonical unsigned decimal-string integer`);
   }

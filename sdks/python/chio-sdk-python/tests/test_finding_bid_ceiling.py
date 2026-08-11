@@ -70,6 +70,11 @@ def test_finding_bid_ceiling_rejects_arithmetic_and_binding_negatives() -> None:
     provenance["estimate"]["provenance"] = "operator_assertion_v1"
     _rejects(provenance, "provenance_unsupported")
 
+    for malformed_provenance in [[], {"source": "buyer"}]:
+        provenance = _first()
+        cast(dict[str, Any], provenance["estimate"])["provenance"] = malformed_provenance
+        _rejects(provenance, "provenance_unsupported")
+
     stale = _first()
     stale["nowUnixMs"] = stale["estimate"]["validUntilUnixMs"]
     _rejects(stale, "stale_estimate")

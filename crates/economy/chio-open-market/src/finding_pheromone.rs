@@ -262,12 +262,7 @@ fn validate_convention(
 ) -> Result<(), FindingPheromoneError> {
     if convention.treaty_id.is_empty()
         || convention.max_observation_cost_microunits == 0
-        || convention.registry_operator_id.trim().is_empty()
-        || convention.registry_operator_id.len() > 512
-        || convention
-            .registry_operator_id
-            .chars()
-            .any(char::is_control)
+        || !is_bounded_printable_identifier(&convention.registry_operator_id)
         || convention.registry_key.algorithm() != SigningAlgorithm::Ed25519
     {
         return Err(FindingPheromoneError::Convention("receiver policy"));
@@ -369,9 +364,7 @@ fn validate_current_listing(
         }
         Err(error) => return Err(FindingPheromoneError::Listing(error.to_string())),
     }
-    if registry_operator_id.trim().is_empty()
-        || registry_operator_id.len() > 512
-        || registry_operator_id.chars().any(char::is_control)
+    if !is_bounded_printable_identifier(registry_operator_id)
         || assertion.signer_key != *registry_key
     {
         return Err(FindingPheromoneError::Listing(
