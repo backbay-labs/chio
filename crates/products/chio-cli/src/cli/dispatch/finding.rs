@@ -1,5 +1,6 @@
 use super::*;
 
+use std::collections::BTreeSet;
 use std::io::Read as _;
 
 use chio_control_plane::trust_control::finding_purchase_routes::{
@@ -640,11 +641,15 @@ struct FindingStatusCliFloor {
     operator_id: String,
     rotation_policy_ref: String,
     operator_key_epoch: u64,
+    #[serde(default)]
+    operator_key: Option<chio_core_types::PublicKey>,
     operator_authorization_sha256: String,
     key_domain_nonce: u64,
     map_epoch: u64,
     epoch_id: String,
     root_hash: String,
+    #[serde(default)]
+    retracted_finding_ids: BTreeSet<String>,
 }
 
 struct FindingStatusFloorLock {
@@ -936,6 +941,11 @@ fn write_status_floor(path: &Path, floor: &FindingStatusCliFloor) -> Result<(), 
     temp_name.push(format!(".tmp-{}-{nonce}", std::process::id()));
     let temp_path = parent.join(temp_name);
     let bytes = chio_core::canonical_json_bytes(floor)?;
+    if bytes.len() > FINDING_STATUS_FLOOR_MAX_BYTES {
+        return Err(CliError::cli_other_error(
+            "finding status rollback floor exceeds its durable size bound".to_owned(),
+        ));
+    }
     let write_result = (|| -> Result<(), CliError> {
         let mut file = std::fs::OpenOptions::new()
             .write(true)
@@ -960,6 +970,7 @@ fn advance_status_floor(
     authorization_sha256: &str,
 ) -> Result<(), CliError> {
     let _lock = FindingStatusFloorLock::acquire(path)?;
+    let mut retracted_finding_ids = BTreeSet::new();
     if let Some(current) = read_status_floor(path)? {
         if current.schema != FINDING_STATUS_FLOOR_SCHEMA_V1
             || current.feed_id != status.feed_id
@@ -971,13 +982,28 @@ fn advance_status_floor(
                 "finding status rollback floor binds a different feed or operator".to_owned(),
             ));
         }
-        if authorization.operator.key_epoch < current.operator_key_epoch
-            || (authorization.operator.key_epoch == current.operator_key_epoch
-                && authorization_sha256 != current.operator_authorization_sha256)
-        {
+        if authorization.operator.key_epoch < current.operator_key_epoch {
             return Err(CliError::cli_other_error(
-                "finding status operator authorization regressed or equivocated".to_owned(),
+                "finding status operator authorization regressed".to_owned(),
             ));
+        }
+        if authorization.operator.key_epoch == current.operator_key_epoch {
+            match current.operator_key.as_ref() {
+                Some(key) if key != &authorization.operator.key => {
+                    return Err(CliError::cli_other_error(
+                        "finding status operator key equivocated within one epoch".to_owned(),
+                    ));
+                }
+                None
+                    if authorization_sha256 != current.operator_authorization_sha256 =>
+                {
+                    return Err(CliError::cli_other_error(
+                        "legacy finding status floor cannot authenticate a same-epoch authorization refresh"
+                            .to_owned(),
+                    ));
+                }
+                Some(_) | None => {}
+            }
         }
         if status.map_epoch < current.map_epoch {
             return Err(CliError::cli_other_error(
@@ -991,6 +1017,23 @@ fn advance_status_floor(
                 "finding status response equivocates at the durable rollback floor".to_owned(),
             ));
         }
+        retracted_finding_ids = current.retracted_finding_ids;
+    }
+    match status.proof_kind.as_str() {
+        "inclusion" => {
+            retracted_finding_ids.insert(status.finding_id.clone());
+        }
+        "non_inclusion" if retracted_finding_ids.contains(&status.finding_id) => {
+            return Err(CliError::cli_other_error(
+                "finding status response attempts to clear a sticky local retraction".to_owned(),
+            ));
+        }
+        "non_inclusion" => {}
+        _ => {
+            return Err(CliError::cli_other_error(
+                "finding status response names an unsupported proof kind".to_owned(),
+            ));
+        }
     }
     write_status_floor(
         path,
@@ -1000,11 +1043,13 @@ fn advance_status_floor(
             operator_id: authorization.operator.authority_id.clone(),
             rotation_policy_ref: authorization.operator.rotation_policy_ref.clone(),
             operator_key_epoch: authorization.operator.key_epoch,
+            operator_key: Some(authorization.operator.key.clone()),
             operator_authorization_sha256: authorization_sha256.to_owned(),
             key_domain_nonce: status.key_domain_nonce,
             map_epoch: status.map_epoch,
             epoch_id: status.epoch_id.clone(),
             root_hash: status.root_hash.clone(),
+            retracted_finding_ids,
         },
     )
 }
