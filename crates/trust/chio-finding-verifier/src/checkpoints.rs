@@ -68,6 +68,8 @@ pub enum CheckpointMembershipError {
         "checkpoint {0} signer is revoked and its issuance time is not independently anchored"
     )]
     SignerRevoked(u64),
+    #[error("checkpoint {0} signer authority expired before evaluation")]
+    SignerExpiredAtEvaluation(u64),
     #[error("inclusion proof references unknown checkpoint seq {0}")]
     UnknownCheckpoint(u64),
     #[error("duplicate inclusion proof for receipt seq {0}")]
@@ -293,6 +295,11 @@ fn verify_checkpoint_signer_status(
     trusted_time: u64,
     trust: Option<&FindingCheckpointSignerStatusTrust>,
 ) -> Result<(), CheckpointMembershipError> {
+    if trusted_time >= signer.valid_until {
+        return Err(CheckpointMembershipError::SignerExpiredAtEvaluation(
+            checkpoint_seq,
+        ));
+    }
     let Some(trust) = trust else {
         return Err(CheckpointMembershipError::SignerStatusUnavailable(
             checkpoint_seq,

@@ -1439,7 +1439,7 @@ fn key_rotation_advances_one_floor_and_regression_or_substitution_rejects() {
 }
 
 #[test]
-fn same_key_authorization_state_update_advances_the_floor() {
+fn same_key_authorization_state_update_is_rejected() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();
     let store = authority.finding_status_store();
@@ -1466,15 +1466,18 @@ fn same_key_authorization_state_update_advances_the_floor() {
     );
     updated.operator_authorization_sha256 =
         "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
-    store
+    let error = store
         .observe_verified_epoch(&updated)
-        .expect("same-key authenticated authorization update");
+        .expect_err("same-key authorization equivocation must fail closed");
+    assert!(error
+        .to_string()
+        .contains("authorization changed without key-epoch rotation"));
 
-    let floor = store.get_feed_floor(FEED).expect("updated floor");
-    assert_eq!(floor.map_epoch, 2);
+    let floor = store.get_feed_floor(FEED).expect("original floor");
+    assert_eq!(floor.map_epoch, 1);
     assert_eq!(floor.operator_key_epoch, 1);
     assert_eq!(floor.operator_key, "operator-key-v1");
-    assert_eq!(
+    assert_ne!(
         floor.operator_authorization_sha256,
         updated.operator_authorization_sha256
     );

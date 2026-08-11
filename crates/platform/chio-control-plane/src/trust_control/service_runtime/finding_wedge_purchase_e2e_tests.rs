@@ -12,7 +12,8 @@
 use super::super::super::*;
 use super::build_router;
 use super::finding_evidence_test_support::{
-    checkpoint_at, checkpoint_status_trust, matched_delivery_metadata, signed_nonce_resolver,
+    checkpoint_at, make_signed_finding_report as make_signed_report, matched_delivery_metadata,
+    FindingReportInputs as ReportInputs,
 };
 
 use std::collections::HashMap;
@@ -64,15 +65,11 @@ use chio_finding::{
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
     FINDING_SELLER_AUTHORIZATION_SCHEMA_V1, PURCHASE_CONTEXT_SCHEMA,
 };
-use chio_finding_verifier::{
-    sign_finding_verifier_report, verify_finding_evidence, FindingBondSnapshot,
-    FindingBondStoreSnapshot, FindingEvidenceBundle, FindingVerifierTrustRoots,
-    ResolvedReceiptEvidence, FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1,
-};
+use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
 use chio_kernel::checkpoint::{
-    build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_log_id,
-    KernelCheckpoint, ReceiptInclusionProof,
+    build_checkpoint, build_inclusion_proof, checkpoint_log_id, KernelCheckpoint,
+    ReceiptInclusionProof,
 };
 use chio_kernel::finding_purchase::{
     FINDING_PURCHASE_CONTEXT_KEY, FINDING_STATUS_PROOF_CONTEXT_KEY,
@@ -732,8 +729,15 @@ fn build_backing(
     collateral: &Keypair,
     seller: &Keypair,
     finding: &Finding,
+    schedule: &SignedOpenMarketFeeSchedule,
     digests: &BackingDigests<'_>,
 ) -> Result<SignedFindingBondBacking, AnyError> {
+    let listing_requirement = schedule
+        .body
+        .bond_requirements
+        .iter()
+        .find(|requirement| requirement.bond_class == OpenMarketBondClass::Listing)
+        .ok_or_else(|| std::io::Error::other("listing bond requirement missing"))?;
     let mut backing = FindingBondBacking {
         schema: FINDING_BOND_BACKING_SCHEMA_V1.to_string(),
         allocation_id: String::new(),
@@ -744,7 +748,7 @@ fn build_backing(
         listing_id: LISTING_ID.to_string(),
         terms_envelope_sha256: digests.terms_sha256.to_string(),
         profile_envelope_sha256: digests.profile_sha256.to_string(),
-        fee_requirement_sha256: HEX64.to_string(),
+        fee_requirement_sha256: sha256_hex(&canonical_json_bytes(listing_requirement)?),
         fee_schedule_envelope_sha256: digests.schedule_sha256.to_string(),
         bond_class: FindingBondClass::Listing,
         locked_amount: usd(LOCKED_UNITS),
@@ -826,94 +830,6 @@ fn build_pricing_hint(
             expires_at: WINDOW_EXPIRES_AT,
         },
         operator,
-    )?)
-}
-
-struct ReportInputs<'a> {
-    governance: &'a Keypair,
-    kernel: &'a Keypair,
-    profile: &'a SignedFindingChallengeVerifierProfile,
-    raw_finding: &'a str,
-    receipts: &'a [ResolvedReceiptEvidence],
-    checkpoint: &'a KernelCheckpoint,
-    recipe_bytes: &'a [u8],
-    backing: &'a SignedFindingBondBacking,
-    collateral: &'a Keypair,
-}
-
-fn make_signed_report(
-    inputs: &ReportInputs<'_>,
-    trusted_time: u64,
-) -> Result<SignedFindingVerifierReport, AnyError> {
-    let trust = FindingVerifierTrustRoots {
-        governance_authority: inputs.governance.public_key(),
-        profile: inputs.profile.clone(),
-        admitted_kernel_keys: vec![inputs.kernel.public_key()],
-        collateral_authority: inputs.collateral.public_key(),
-        runtime_attestation_authority: None,
-        appraisal_authority: None,
-        attestation_trust_policy: None,
-        status_operator_authorization: None,
-        status_freshness_policy: None,
-        checkpoint_signer_status: Some(checkpoint_status_trust(
-            inputs.profile,
-            inputs.governance,
-            trusted_time,
-        )?),
-        trusted_time,
-        trust_root_snapshot_sha256: HEX64.to_string(),
-        resolver_policy_sha256: HEX64.to_string(),
-        trusted_time_input_sha256: HEX64.to_string(),
-    };
-    let nonce_resolver = signed_nonce_resolver(inputs.receipts, inputs.kernel)?;
-    let bundle = FindingEvidenceBundle {
-        receipts: inputs
-            .receipts
-            .iter()
-            .map(|evidence| ResolvedReceiptEvidence {
-                receipt: evidence.receipt.clone(),
-                canonical_receipt_bytes: evidence.canonical_receipt_bytes.clone(),
-                inclusion_proof: evidence.inclusion_proof.clone(),
-            })
-            .collect(),
-        checkpoints: vec![inputs.checkpoint.clone()],
-        checkpoint_transparency: build_checkpoint_transparency(std::slice::from_ref(
-            inputs.checkpoint,
-        ))?,
-        finding_delivery: None,
-        recipe_preimage: Some(inputs.recipe_bytes),
-        status_proof_input: None,
-        runtime_attestation: None,
-        runtime_appraisal: None,
-        bond_snapshot: Some(FindingBondSnapshot {
-            backing: inputs.backing.clone(),
-            store_snapshot: SignedExportEnvelope::sign(
-                FindingBondStoreSnapshot {
-                    schema: FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1.to_string(),
-                    finding_id: inputs.backing.body.finding_id.clone(),
-                    allocation_id: inputs.backing.body.allocation_id.clone(),
-                    backing_envelope_sha256: sha256_hex(&canonical_json_bytes(inputs.backing)?),
-                    live: true,
-                    accepted_at: trusted_time.saturating_sub(7_200),
-                    observed_at: trusted_time,
-                },
-                inputs.collateral,
-            )?,
-        }),
-        nonce_resolver: &nonce_resolver,
-    };
-    let draft = verify_finding_evidence(inputs.raw_finding, &trust, &bundle)?;
-    if !draft.satisfies_required_facets(&trust.profile.body) {
-        return Err(Box::new(std::io::Error::other(format!(
-            "draft does not satisfy the required profile facets: {:?}",
-            draft.facets
-        ))));
-    }
-    Ok(sign_finding_verifier_report(
-        &draft,
-        &trust,
-        "chio-finding-verifier/0.1",
-        &keypair(15),
     )?)
 }
 
@@ -1123,6 +1039,7 @@ impl MarketWeb {
             &collateral,
             &operator,
             &finding,
+            &schedule,
             &BackingDigests {
                 authorization_sha256: &authorization_sha256,
                 terms_sha256: &terms_sha256,
@@ -1143,11 +1060,13 @@ impl MarketWeb {
                 governance: &governance,
                 kernel: &kernel,
                 profile: &profile,
+                finding: &finding,
                 raw_finding: &raw_finding,
                 receipts: &receipts,
                 checkpoint: &checkpoint,
                 recipe_bytes: &recipe_bytes,
                 backing: &backing,
+                fee_schedule: &schedule,
                 collateral: &collateral,
             },
             unix_timestamp_now().saturating_add(3_600),
@@ -4735,11 +4654,13 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
             governance: &keypair(1),
             kernel: &keypair(21),
             profile: &web.profile,
+            finding: &web.finding,
             raw_finding: &web.raw_finding,
             receipts: &web.receipts,
             checkpoint: &web.checkpoint,
             recipe_bytes: &web.recipe_bytes,
             backing: &second_backing,
+            fee_schedule: &web.schedule,
             collateral: &keypair(4),
         },
         unix_timestamp_now().saturating_add(3_600),

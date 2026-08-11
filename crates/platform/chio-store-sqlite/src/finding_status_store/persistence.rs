@@ -317,6 +317,13 @@ fn persist_epoch_tx(
                 "operator key changed without key-epoch rotation",
             ));
         }
+        if epoch.operator_key_epoch == floor.operator_key_epoch
+            && epoch.operator_authorization_sha256 != floor.operator_authorization_sha256
+        {
+            return Err(invariant(
+                "operator authorization changed without key-epoch rotation",
+            ));
+        }
     } else if feed_has_epochs_tx(transaction, epoch.feed_id)? {
         return Err(FindingStatusStoreError::MissingFloor {
             feed_id: epoch.feed_id.to_owned(),

@@ -1980,3 +1980,6 @@ fn regenerate_cognition_market_golden() -> TestResult {
     }
     Ok(())
 }
+
+#[path = "cognition_market/profile_expiry_regression.rs"]
+mod profile_expiry_regression;

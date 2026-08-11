@@ -299,6 +299,12 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         &trust.verifier_authority_status,
         report.body.evaluation_time,
     )?;
+    if trust.verifier_authority_status.checked_at >= trust.trusted_verifier_profile.body.expires_at
+    {
+        return Err(claim_failed(
+            "unanchored signed verifier report cannot be accepted after verifier-profile expiration",
+        ));
+    }
     if report.body.evaluation_time < trust.trusted_verifier_profile.body.issued_at
         || report.body.evaluation_time >= trust.trusted_verifier_profile.body.expires_at
     {

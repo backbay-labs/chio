@@ -51,6 +51,9 @@ use crate::cost::FindingNonceResolver;
 use crate::cost::{evaluate_metered_exposure, evaluate_settled_spend, CostFacetOutcome};
 use crate::receipts::verify_receipt_strict;
 
+mod bond;
+use bond::verify_bond_requirement;
+
 /// Size bound on the raw finding submitted to the verifier. Matches the
 /// publish surface's route-level cap so both boundaries reject the same
 /// inputs.
@@ -111,6 +114,8 @@ pub struct FindingVerifierTrustRoots {
     pub admitted_kernel_keys: Vec<PublicKey>,
     /// Collateral authority whose signature makes an allocation evidence.
     pub collateral_authority: PublicKey,
+    /// Fee-schedule authorities independently pinned by deployment policy.
+    pub fee_schedule_authorities: Vec<PublicKey>,
     /// Runtime-attestation statement signer pinned by deployment
     /// governance. The profile cannot self-authorize this role.
     pub runtime_attestation_authority: Option<PublicKey>,
@@ -167,6 +172,7 @@ pub struct ResolvedFindingDeliveryEvidence {
 pub struct FindingBondStoreSnapshot {
     pub schema: String,
     pub finding_id: String,
+    pub bond_ref: String,
     pub allocation_id: String,
     pub backing_envelope_sha256: String,
     pub live: bool,
@@ -187,6 +193,8 @@ pub struct FindingBondSnapshot {
     /// alone is a seller-supplied assertion; only the signature under the
     /// pinned authority makes it evidence.
     pub backing: SignedFindingBondBacking,
+    /// Exact authority-signed schedule carrying the referenced requirement.
+    pub fee_schedule: chio_fiscal::fee_schedule::SignedOpenMarketFeeSchedule,
     /// Signed store state for this exact backing envelope. Liveness and
     /// acceptance time are authority statements, not caller booleans.
     pub store_snapshot: SignedFindingBondStoreSnapshot,
@@ -339,6 +347,9 @@ fn verify_receipt_signer_status(
     evaluated_at: u64,
     trust: Option<&FindingCheckpointSignerStatusTrust>,
 ) -> Result<(), String> {
+    if evaluated_at >= policy.valid_until {
+        return Err("receipt signer authority expired before evaluation".to_string());
+    }
     let trust = trust.ok_or_else(|| "receipt signer status evidence not supplied".to_string())?;
     if trust.max_age_secs == 0 {
         return Err("receipt signer status freshness policy is invalid".to_string());
@@ -1265,6 +1276,16 @@ fn evaluate_bond_backing(
             None,
         );
     }
+    if let Err(reason) = verify_bond_requirement(finding, snapshot, trust) {
+        return (
+            facet(
+                FindingFacetKind::BondBacking,
+                FindingFacetOutcome::Failed,
+                reason,
+            ),
+            None,
+        );
+    }
     if store_snapshot.observed_at != trust.trusted_time {
         return (
             facet(
@@ -1664,6 +1685,7 @@ fn bundle_digest(
         attestation_trust_policy_sha256: Option<String>,
         backing_allocation_id: Option<&'a str>,
         backing_envelope_sha256: Option<String>,
+        fee_schedule_envelope_sha256: Option<String>,
         backing_store_snapshot_envelope_sha256: Option<String>,
     }
     let receipt_sha256s = bundle
@@ -1755,6 +1777,12 @@ fn bundle_digest(
         .map(|snapshot| signed_envelope_sha256(&snapshot.store_snapshot))
         .transpose()
         .map_err(|_| FindingVerifierError::Canonicalization)?;
+    let fee_schedule_envelope_sha256 = bundle
+        .bond_snapshot
+        .as_ref()
+        .map(|snapshot| signed_envelope_sha256(&snapshot.fee_schedule))
+        .transpose()
+        .map_err(|_| FindingVerifierError::Canonicalization)?;
     let status_operator_authorization_sha256 = trust
         .status_operator_authorization
         .as_ref()
@@ -1826,6 +1854,7 @@ fn bundle_digest(
             .as_ref()
             .map(|snapshot| snapshot.backing.body.allocation_id.as_str()),
         backing_envelope_sha256,
+        fee_schedule_envelope_sha256,
         backing_store_snapshot_envelope_sha256,
     };
     let bytes =

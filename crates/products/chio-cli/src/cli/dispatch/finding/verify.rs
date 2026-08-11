@@ -27,6 +27,7 @@ use chio_finding_verifier::{
 use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
 };
+use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
 
 const FINDING_SCHEMA_JSON: &str =
     include_str!("../../../../../../../spec/schemas/chio-finding/v1/finding.schema.json");
@@ -138,6 +139,7 @@ pub(super) fn cmd_finding_verify(
         profile: roots.profile,
         admitted_kernel_keys: roots.admitted_kernel_keys,
         collateral_authority: roots.collateral_authority,
+        fee_schedule_authorities: roots.fee_schedule_authorities,
         runtime_attestation_authority: roots.runtime_attestation_authority,
         appraisal_authority: roots.appraisal_authority,
         attestation_trust_policy: roots.attestation_trust_policy,
@@ -322,6 +324,8 @@ struct FindingTrustRootsFile {
     admitted_kernel_keys: Vec<PublicKey>,
     collateral_authority: PublicKey,
     #[serde(default)]
+    fee_schedule_authorities: Vec<PublicKey>,
+    #[serde(default)]
     runtime_attestation_authority: Option<PublicKey>,
     #[serde(default)]
     appraisal_authority: Option<PublicKey>,
@@ -389,6 +393,7 @@ struct FindingDeliveryEvidenceEntry {
 #[serde(deny_unknown_fields)]
 struct FindingBondSnapshotEntry {
     backing: SignedFindingBondBacking,
+    fee_schedule: SignedOpenMarketFeeSchedule,
     store_snapshot: SignedFindingBondStoreSnapshot,
 }
 
@@ -437,6 +442,7 @@ impl From<FindingBondSnapshotEntry> for FindingBondSnapshot {
     fn from(entry: FindingBondSnapshotEntry) -> Self {
         Self {
             backing: entry.backing,
+            fee_schedule: entry.fee_schedule,
             store_snapshot: entry.store_snapshot,
         }
     }

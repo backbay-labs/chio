@@ -51,6 +51,26 @@ fn revoked_checkpoint_signer_cannot_backdate_new_evidence() -> TestResult {
 }
 
 #[test]
+fn expired_checkpoint_signer_cannot_backdate_new_evidence() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    let mut profile = fx.profile.body.clone();
+    profile.checkpoint_logs[0].signer.valid_until = trust.trusted_time;
+    trust.profile = resign_profile(profile)?;
+
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    let membership = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::CheckpointMembership)
+        .ok_or("checkpoint-membership facet missing")?;
+    assert_eq!(membership.outcome, FindingFacetOutcome::Failed);
+    assert!(membership.reason.contains("expired before evaluation"));
+    Ok(())
+}
+
+#[test]
 fn resolved_nonce_envelopes_change_the_bundle_commitment() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);

@@ -3639,6 +3639,7 @@ dependencies = [
  "chio-appraisal",
  "chio-core-types",
  "chio-finding",
+ "chio-fiscal",
  "chio-kernel",
  "chio-revocation-oracle",
  "hex",

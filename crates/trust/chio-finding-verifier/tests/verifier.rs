@@ -35,9 +35,9 @@ use chio_core_types::MerkleTree;
 use chio_core_types::{canonical_json_bytes, sha256_hex};
 use chio_finding::{
     build_status_non_inclusion_proof_input, compute_allocation_id, compute_finding_id,
-    compute_profile_id, compute_status_epoch_id, sign_finding, verify_signed_verifier_report,
-    Finding, FindingAuthorityKeyPolicy, FindingAuthorityStatus, FindingBbsIssuerPolicy,
-    FindingBondBacking, FindingBondClass, FindingChallengeVerifierProfile,
+    compute_profile_id, compute_status_epoch_id, sign_finding, signed_envelope_sha256,
+    verify_signed_verifier_report, Finding, FindingAuthorityKeyPolicy, FindingAuthorityStatus,
+    FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass, FindingChallengeVerifierProfile,
     FindingCheckpointLogPolicy, FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor,
     FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome, FindingGuaranteeClass,
     FindingOutcomeClass, FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole,
@@ -56,6 +56,7 @@ use chio_finding_verifier::{
     ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot,
     FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1,
 };
+use chio_fiscal::fee_schedule::SignedOpenMarketFeeSchedule;
 use chio_kernel::checkpoint::{
     build_checkpoint, build_checkpoint_transparency, build_checkpoint_with_previous,
     build_inclusion_proof, checkpoint_chain_leaf_hash, checkpoint_log_id,
@@ -247,6 +248,8 @@ struct Fixture {
     recipe_bytes: Vec<u8>,
     finding_payload_sha256: String,
     backing: SignedExportEnvelope<FindingBondBacking>,
+    fee_schedule: SignedOpenMarketFeeSchedule,
+    fee_schedule_authority: Keypair,
     bond_store_snapshot: SignedFindingBondStoreSnapshot,
     profile: SignedExportEnvelope<FindingChallengeVerifierProfile>,
     nonce_resolver: TestNonceResolver,
@@ -349,6 +352,7 @@ fn fixture_with_runtime_assurance(
     let kernel = keypair(21);
     let verifier = keypair(15);
     let collateral = keypair(4);
+    let fee_schedule_authority = keypair(8);
     let seller = keypair(2);
 
     // Receipts first: the finding binds their recomputed ids in order.
@@ -485,6 +489,10 @@ fn fixture_with_runtime_assurance(
     let finding = sign_finding(finding, &issuer)?;
     let raw_finding = String::from_utf8(canonical_json_bytes(&finding)?)?;
 
+    let (fee_schedule, fee_requirement_sha256) =
+        bond_regressions::fixture_fee_schedule(&fee_schedule_authority)?;
+    let fee_schedule_envelope_sha256 = signed_envelope_sha256(&fee_schedule)?;
+
     let mut backing = FindingBondBacking {
         schema: FINDING_BOND_BACKING_SCHEMA_V1.to_string(),
         allocation_id: String::new(),
@@ -495,8 +503,8 @@ fn fixture_with_runtime_assurance(
         listing_id: "finding-listing-01".to_string(),
         terms_envelope_sha256: HEX64.to_string(),
         profile_envelope_sha256: profile_envelope_sha256.clone(),
-        fee_requirement_sha256: HEX64.to_string(),
-        fee_schedule_envelope_sha256: HEX64.to_string(),
+        fee_requirement_sha256,
+        fee_schedule_envelope_sha256,
         bond_class: FindingBondClass::Listing,
         locked_amount: MonetaryAmount {
             units: 500,
@@ -523,6 +531,7 @@ fn fixture_with_runtime_assurance(
         FindingBondStoreSnapshot {
             schema: FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1.to_string(),
             finding_id: finding.finding_id.clone(),
+            bond_ref: finding.bond_ref.clone(),
             allocation_id: backing.body.allocation_id.clone(),
             backing_envelope_sha256: sha256_hex(&canonical_json_bytes(&backing)?),
             live: true,
@@ -581,6 +590,8 @@ fn fixture_with_runtime_assurance(
         checkpoint_transparency,
         recipe_bytes,
         backing,
+        fee_schedule,
+        fee_schedule_authority,
         bond_store_snapshot,
         profile,
         nonce_resolver,
@@ -680,6 +691,7 @@ fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
         profile: fx.profile.clone(),
         admitted_kernel_keys: vec![keypair(21).public_key(), keypair(12).public_key()],
         collateral_authority: keypair(4).public_key(),
+        fee_schedule_authorities: vec![fx.fee_schedule_authority.public_key()],
         runtime_attestation_authority: None,
         appraisal_authority: None,
         attestation_trust_policy: None,
@@ -721,6 +733,7 @@ fn bundle<'a>(
         runtime_appraisal: None,
         bond_snapshot: Some(FindingBondSnapshot {
             backing: fx.backing.clone(),
+            fee_schedule: fx.fee_schedule.clone(),
             store_snapshot: fx.bond_store_snapshot.clone(),
         }),
         nonce_resolver: &fx.nonce_resolver,
@@ -1978,6 +1991,8 @@ fn unsigned_collateral_store_state_is_not_verified() -> TestResult {
 
 #[path = "verifier/authority_regressions.rs"]
 mod authority_regressions;
+#[path = "verifier/bond_regressions.rs"]
+mod bond_regressions;
 #[path = "verifier/checkpoint_status_regressions.rs"]
 mod checkpoint_status_regressions;
 #[path = "verifier/receipt_security_regressions.rs"]

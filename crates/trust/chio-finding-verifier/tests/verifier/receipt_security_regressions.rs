@@ -159,6 +159,61 @@ fn revoked_production_receipt_signer_is_rejected() -> TestResult {
 }
 
 #[test]
+fn production_receipt_rejects_signer_expired_at_evaluation() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    let mut profile = fx.profile.body.clone();
+    let production = profile
+        .receipt_signers
+        .iter_mut()
+        .find(|signer| signer.role == FindingReceiptRole::Production)
+        .ok_or("production signer policy missing")?;
+    production.policy.valid_until = trust.trusted_time;
+    trust.profile = resign_profile(profile)?;
+
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    let authenticity = receipt_authenticity(&draft)?;
+    assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
+    assert!(authenticity
+        .reason
+        .contains("receipt signer authority expired before evaluation"));
+    Ok(())
+}
+
+#[test]
+fn delivery_receipt_rejects_signer_expired_at_evaluation() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    let mut profile = fx.profile.body.clone();
+    let delivery_policy = profile
+        .receipt_signers
+        .iter_mut()
+        .find(|signer| signer.role == FindingReceiptRole::Delivery)
+        .ok_or("delivery signer policy missing")?;
+    delivery_policy.policy.valid_until = trust.trusted_time;
+    trust.profile = resign_profile(profile)?;
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let delivery = resolved_delivery(
+        &fx,
+        &finding.payload_sha256,
+        Some(finding_delivery_overlay(&finding.finding_id)),
+    )?;
+    let resolver = nonce_resolver_with_delivery(&fx, &delivery)?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.finding_delivery = Some(delivery);
+    evidence.nonce_resolver = &resolver;
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let authenticity = receipt_authenticity(&draft)?;
+    assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
+    assert!(authenticity
+        .reason
+        .contains("receipt signer authority expired before evaluation"));
+    Ok(())
+}
+
+#[test]
 fn missing_delivery_receipt_signer_status_is_rejected() -> TestResult {
     let fx = fixture()?;
     let mut trust = trust_roots(&fx);
