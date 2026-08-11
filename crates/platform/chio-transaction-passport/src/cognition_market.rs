@@ -392,6 +392,13 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
                 "replay recipe and signed report bind different verifier profiles",
             ));
         }
+        verify_recipe_semantics(
+            &finding,
+            &trust.trusted_verifier_profile,
+            &trust.trusted_verifier_profile_envelope_sha256,
+            recipe_bytes,
+            &recipe,
+        )?;
     }
 
     let verified_status = if let Some(status_node) = &status_node {
@@ -411,6 +418,17 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             return Err(claim_failed(
                 "status-proof attachment does not name the report Finding",
             ));
+        }
+        let (status_feed_id, status_checked_at) = status_proof_binding(&status);
+        if status_feed_id != finding.status_feed_ref
+            || status_trust.status_operator_authorization.feed_id != finding.status_feed_ref
+        {
+            return Err(claim_failed(
+                "status proof and operator authorization do not bind the Finding status feed",
+            ));
+        }
+        if status_checked_at < finding.issued_at {
+            return Err(claim_failed("status proof predates the signed Finding"));
         }
         if status_trust.status_freshness.now != report.body.evaluation_time {
             return Err(claim_failed(
@@ -740,8 +758,6 @@ fn require_report_facets(
             COGNITION_MARKET_CLAIMS[0],
             &[
                 FindingFacetKind::ArtifactIntegrity,
-                FindingFacetKind::ReceiptAuthenticity,
-                FindingFacetKind::CheckpointMembership,
                 FindingFacetKind::GuaranteeConsistency,
             ][..],
         ),
@@ -922,6 +938,62 @@ fn parse_recipe(
         .validate()
         .map_err(|error| invalid_artifact(path, error.to_string()))?;
     Ok(recipe)
+}
+
+fn verify_recipe_semantics(
+    finding: &Finding,
+    profile: &SignedFindingChallengeVerifierProfile,
+    profile_envelope_sha256: &str,
+    recipe_bytes: &[u8],
+    recipe: &FindingReplayRecipeInput,
+) -> Result<(), TransactionPassportError> {
+    let recipe_sha256 = crate::sha256_hex(recipe_bytes);
+    if finding.replay_recipe_sha256.as_deref() != Some(recipe_sha256.as_str()) {
+        return Err(claim_failed(
+            "replay recipe does not match the signed Finding commitment",
+        ));
+    }
+    if recipe.context_sha256 != finding.descriptor.context_sha256
+        || recipe.payload_sha256 != finding.payload_sha256
+    {
+        return Err(claim_failed(
+            "replay recipe does not bind the signed Finding context and payload",
+        ));
+    }
+    if recipe.verifier_profile_envelope_sha256 != profile_envelope_sha256 {
+        return Err(claim_failed(
+            "replay recipe does not bind the deployment-pinned verifier profile",
+        ));
+    }
+    if recipe_bytes.len() as u64 > profile.body.resource_caps.max_recipe_bytes
+        || recipe.resource_bounds.max_runtime_secs > profile.body.resource_caps.max_runtime_secs
+        || recipe.resource_bounds.max_memory_bytes > profile.body.resource_caps.max_memory_bytes
+        || recipe.resource_bounds.max_recipe_bytes > profile.body.resource_caps.max_recipe_bytes
+        || recipe.resource_bounds.max_evidence_receipts
+            > profile.body.resource_caps.max_evidence_receipts
+    {
+        return Err(claim_failed(
+            "replay recipe exceeds the deployment-pinned profile resource caps",
+        ));
+    }
+    if !profile
+        .body
+        .allowed_runner_manifests
+        .contains(&recipe.runner_manifest_sha256)
+        || !profile.body.allowed_predicates.contains(&recipe.predicate)
+    {
+        return Err(claim_failed(
+            "replay recipe is not allowed by the deployment-pinned verifier profile",
+        ));
+    }
+    Ok(())
+}
+
+fn status_proof_binding(proof: &FindingStatusProofInput) -> (&str, u64) {
+    match proof {
+        FindingStatusProofInput::NonInclusion(value) => (&value.feed_id, value.checked_at),
+        FindingStatusProofInput::Inclusion(value) => (&value.feed_id, value.checked_at),
+    }
 }
 
 fn require_exact_canonical_json(path: &str, bytes: &[u8]) -> Result<(), TransactionPassportError> {

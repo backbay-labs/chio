@@ -457,7 +457,7 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
     let verifier_authority_hex = verifier_authority.to_hex();
     let authorization = chio_finding::FindingStatusOperatorAuthorization {
         role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: "qualified-finding-status".to_owned(),
+        feed_id: "finding-status/test".to_owned(),
         operator: chio_finding::FindingAuthorityKeyPolicy {
             authority_id: "qualified-status-operator".to_owned(),
             key: proof_test_ok(

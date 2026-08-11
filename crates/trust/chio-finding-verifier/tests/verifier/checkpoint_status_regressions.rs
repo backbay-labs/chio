@@ -1,4 +1,36 @@
 use super::*;
+use chio_finding::FindingStatusProofInput;
+
+#[test]
+fn status_non_inclusion_proof_must_not_predate_the_finding() -> TestResult {
+    let fx = fixture()?;
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let (status_bytes, authorization, freshness) = portable_live_status_proof(&finding.finding_id)?;
+    let mut proof: FindingStatusProofInput = serde_json::from_slice(&status_bytes)?;
+    match &mut proof {
+        FindingStatusProofInput::NonInclusion(value) => {
+            value.checked_at = finding.issued_at.saturating_sub(1);
+        }
+        FindingStatusProofInput::Inclusion(_) => return Err("expected non-inclusion proof".into()),
+    }
+    let status_bytes = canonical_json_bytes(&proof)?;
+    let mut trust = trust_roots(&fx);
+    trust.trusted_time = freshness.now;
+    trust.status_operator_authorization = Some(authorization);
+    trust.status_freshness_policy = Some(freshness);
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.status_proof_input = Some(&status_bytes);
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let status = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::StatusLiveness)
+        .ok_or("status-liveness facet missing")?;
+    assert_eq!(status.outcome, FindingFacetOutcome::Failed);
+    assert!(status.reason.contains("predates the verified Finding"));
+    Ok(())
+}
 
 #[test]
 fn production_checkpoint_must_predate_the_finding() -> TestResult {
