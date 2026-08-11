@@ -310,6 +310,11 @@ fn verify_checkpoint_signer_status(
             checkpoint_seq,
         ));
     }
+    if trust.status_authority == signer.key {
+        return Err(CheckpointMembershipError::SignerStatusTrustInvalid(
+            checkpoint_seq,
+        ));
+    }
     let mut matching = trust.signed_statuses.iter().filter(|signed| {
         let status = &signed.body;
         status.status_ref == signer.revocation_status_ref
@@ -350,9 +355,17 @@ mod tests {
     use std::error::Error;
 
     use chio_core_types::crypto::{Keypair, PublicKey, Signature};
+    use chio_core_types::receipt::lineage::SignedExportEnvelope;
+    use chio_finding::{
+        FindingAuthorityKeyPolicy, FindingAuthorityStatus, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
+    };
     use chio_kernel::checkpoint::{build_checkpoint, verify_checkpoint_signature};
 
-    use super::has_strict_checkpoint_signature;
+    use crate::verify::FindingCheckpointSignerStatusTrust;
+
+    use super::{
+        has_strict_checkpoint_signature, verify_checkpoint_signer_status, CheckpointMembershipError,
+    };
 
     #[test]
     fn strict_checkpoint_signature_rejects_a_weak_ed25519_key() -> Result<(), Box<dyn Error>> {
@@ -370,6 +383,44 @@ mod tests {
 
         assert!(verify_checkpoint_signature(&checkpoint)?);
         assert!(!has_strict_checkpoint_signature(&checkpoint));
+        Ok(())
+    }
+
+    #[test]
+    fn checkpoint_status_authority_must_differ_from_signer() -> Result<(), Box<dyn Error>> {
+        let signer = Keypair::from_seed(&[31; 32]);
+        let signer_key = signer.public_key();
+        let policy = FindingAuthorityKeyPolicy {
+            authority_id: "checkpoint-signer".to_owned(),
+            key: signer_key.clone(),
+            key_epoch: 1,
+            valid_from: 1,
+            valid_until: 200,
+            rotation_policy_ref: "rotation/checkpoint-signer".to_owned(),
+            revocation_status_ref: "revocations/checkpoint-signer".to_owned(),
+        };
+        let signed_status = SignedExportEnvelope::sign(
+            FindingAuthorityStatus {
+                schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: policy.revocation_status_ref.clone(),
+                authority_id: policy.authority_id.clone(),
+                key: signer_key.clone(),
+                key_epoch: policy.key_epoch,
+                revoked_from: None,
+                observed_at: 105,
+            },
+            &signer,
+        )?;
+        let trust = FindingCheckpointSignerStatusTrust {
+            signed_statuses: vec![signed_status],
+            status_authority: signer_key,
+            max_age_secs: 60,
+        };
+
+        assert_eq!(
+            verify_checkpoint_signer_status(&policy, 7, 100, 110, Some(&trust)),
+            Err(CheckpointMembershipError::SignerStatusTrustInvalid(7))
+        );
         Ok(())
     }
 }

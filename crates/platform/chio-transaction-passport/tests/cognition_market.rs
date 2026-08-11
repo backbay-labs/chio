@@ -1528,6 +1528,24 @@ fn cognition_market_qualified_profile_rejects_an_unsupported_predicate_engine() 
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_unsupported_receipt_semantics() -> TestResult {
+    let mut bundle = build_bundle()?;
+    replace_trusted_profile(&mut bundle, |profile| {
+        profile.required_receipt_semantics = "chio.foreign_spend.v1".to_owned();
+    })?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("unsupported receipt semantics were accepted")?
+        .to_string();
+    assert!(
+        error.contains("unsupported receipt semantics"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_enforces_required_facet_floor() -> TestResult {
     let mut bundle = build_bundle()?;
     require_profile_facet(&mut bundle, FindingFacetKind::KernelAndRevocationTrust)?;
@@ -1715,6 +1733,31 @@ fn cognition_market_qualified_profile_rejects_revoked_verifier_signer() -> TestR
         .to_string();
     assert!(
         error.contains("after verifier-key revocation"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_self_signed_verifier_status() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let verifier = verifier_keypair();
+    let status = bundle
+        .trust
+        .verifier_authority_status
+        .signed_status
+        .body
+        .clone();
+    bundle.trust.verifier_authority_status.signed_status =
+        SignedExportEnvelope::sign(status, &verifier)?;
+    bundle.trust.verifier_authority_status.status_authority = verifier.public_key();
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("self-signed verifier status was accepted")?
+        .to_string();
+    assert!(
+        error.contains("must be independent from the verifier signer"),
         "unexpected error: {error}"
     );
     Ok(())

@@ -131,6 +131,10 @@ fn unsupported_profile_requirements_reject_outright() -> TestResult {
 
     let mut profile = fx.profile.body.clone();
     profile.required_receipt_semantics = "chio.unknown_spend.v1".to_owned();
+    assert_eq!(
+        validate_supported_finding_verifier_profile(&profile).err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
     profile.profile_id = compute_profile_id(&profile)?;
     let mut trust = trust_roots(&fx);
     trust.profile = SignedExportEnvelope::sign(profile, &fx.governance)?;
@@ -312,6 +316,35 @@ fn recipe_must_bind_the_finding_it_is_committed_by() -> TestResult {
         draft.facet_outcome(FindingFacetKind::RecipeBinding),
         Some(FindingFacetOutcome::Failed)
     );
+    Ok(())
+}
+
+#[test]
+fn recipe_preimage_must_fit_its_committed_size_bound() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let profile_sha256 = sha256_hex(&canonical_json_bytes(&fx.profile)?);
+    let mut bounded = recipe(HEX64, &fx.finding_payload_sha256, &profile_sha256, HEX64);
+    bounded.resource_bounds.max_recipe_bytes = 1;
+    let bounded_bytes = canonical_json_bytes(&bounded)?;
+
+    let mut finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    finding.replay_recipe_sha256 = Some(sha256_hex(&bounded_bytes));
+    finding.signature.clear();
+    finding.finding_id = compute_finding_id(&finding)?;
+    let finding = sign_finding(finding, &fx.issuer)?;
+    let raw_finding = String::from_utf8(canonical_json_bytes(&finding)?)?;
+
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.recipe_preimage = Some(&bounded_bytes);
+    let draft = verify_finding_evidence(&raw_finding, &trust, &evidence)?;
+    let binding = draft
+        .facets
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::RecipeBinding)
+        .ok_or("recipe-binding facet missing")?;
+    assert_eq!(binding.outcome, FindingFacetOutcome::Failed);
+    assert!(binding.reason.contains("committed size bound"));
     Ok(())
 }
 

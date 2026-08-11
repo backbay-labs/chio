@@ -320,6 +320,27 @@ pub(crate) const fn policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u
     instant >= policy.valid_from && instant < policy.valid_until
 }
 
+/// Reject profile features that this verifier cannot enforce before any
+/// Finding-specific evidence is evaluated.
+pub fn validate_supported_finding_verifier_profile(
+    profile: &FindingChallengeVerifierProfile,
+) -> Result<(), FindingVerifierError> {
+    if profile.required_receipt_semantics != MEDIATED_SPEND_PROFILE
+        || profile.predicate_engine != FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1
+        || profile.required_facets.iter().any(|facet| {
+            matches!(
+                facet,
+                FindingFacetKind::KernelAndRevocationTrust
+                    | FindingFacetKind::IssuerLineage
+                    | FindingFacetKind::IntentBinding
+            )
+        })
+    {
+        return Err(FindingVerifierError::ProfileInvalid);
+    }
+    Ok(())
+}
+
 fn verify_required_receipt_semantics(
     receipt: &ChioReceipt,
     required_semantics: &str,
@@ -356,6 +377,11 @@ fn verify_receipt_signer_status(
     let trust = trust.ok_or_else(|| "receipt signer status evidence not supplied".to_string())?;
     if trust.max_age_secs == 0 {
         return Err("receipt signer status freshness policy is invalid".to_string());
+    }
+    if trust.status_authority == policy.key {
+        return Err(
+            "receipt signer status authority must be independent from the signer".to_string(),
+        );
     }
     let mut matching = trust.signed_statuses.iter().filter(|signed| {
         let status = &signed.body;
@@ -558,19 +584,7 @@ pub fn verify_finding_evidence(
     // an unverified profile no facet below is meaningful.
     verify_signed_profile(&trust.profile, &trust.governance_authority)
         .map_err(|_| FindingVerifierError::ProfileInvalid)?;
-    if trust.profile.body.required_receipt_semantics != MEDIATED_SPEND_PROFILE
-        || trust.profile.body.predicate_engine != FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1
-        || trust.profile.body.required_facets.iter().any(|facet| {
-            matches!(
-                facet,
-                FindingFacetKind::KernelAndRevocationTrust
-                    | FindingFacetKind::IssuerLineage
-                    | FindingFacetKind::IntentBinding
-            )
-        })
-    {
-        return Err(FindingVerifierError::ProfileInvalid);
-    }
+    validate_supported_finding_verifier_profile(&trust.profile.body)?;
     if trust.trusted_time < trust.profile.body.issued_at
         || trust.trusted_time >= trust.profile.body.expires_at
     {
@@ -1152,6 +1166,13 @@ fn evaluate_recipe_binding(
             FindingFacetKind::RecipeBinding,
             FindingFacetOutcome::Failed,
             "recipe resource bounds exceed the profile caps",
+        );
+    }
+    if raw_preimage.len() as u64 > recipe.resource_bounds.max_recipe_bytes {
+        return facet(
+            FindingFacetKind::RecipeBinding,
+            FindingFacetOutcome::Failed,
+            "recipe preimage exceeds its committed size bound",
         );
     }
     if !profile

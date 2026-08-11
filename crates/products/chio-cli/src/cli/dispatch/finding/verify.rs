@@ -19,10 +19,10 @@ use chio_finding::{
     MAX_FINDING_IDENTIFIER_BYTES,
 };
 use chio_finding_verifier::{
-    verify_finding_evidence, FindingBondSnapshot, FindingCheckpointSignerStatusTrust,
-    FindingEvidenceBundle, FindingNonceResolver, FindingVerifierDraft, FindingVerifierTrustRoots,
-    ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot,
-    MAX_RAW_FINDING_BYTES,
+    validate_supported_finding_verifier_profile, verify_finding_evidence, FindingBondSnapshot,
+    FindingCheckpointSignerStatusTrust, FindingEvidenceBundle, FindingNonceResolver,
+    FindingVerifierDraft, FindingVerifierTrustRoots, ResolvedFindingDeliveryEvidence,
+    ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot, MAX_RAW_FINDING_BYTES,
 };
 use chio_kernel::checkpoint::{
     CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
@@ -459,6 +459,12 @@ fn load_trust_roots(path: &Path) -> Result<(FindingTrustRootsFile, String), CliE
         CliError::cli_other_error(format!("{} is not valid UTF-8: {error}", path.display()))
     })?;
     let roots: FindingTrustRootsFile = serde_json::from_str(&raw)?;
+    validate_supported_finding_verifier_profile(&roots.profile.body).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{} contains an unsupported verifier profile: {error}",
+            path.display()
+        ))
+    })?;
     let canonical = canonical_json_bytes_from_str(&raw).map_err(|error| {
         CliError::cli_other_error(format!(
             "{} is not strict canonical I-JSON: {error}",

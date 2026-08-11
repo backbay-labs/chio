@@ -49,12 +49,12 @@ use chio_finding::{
     FINDING_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
 };
 use chio_finding_verifier::{
-    sign_finding_verifier_report, verify_checkpoint_membership, verify_finding_evidence,
-    CheckpointMembershipError, FindingBondSnapshot, FindingBondStoreSnapshot,
-    FindingCheckpointSignerStatusTrust, FindingEvidenceBundle, FindingNonceResolver,
-    FindingVerifierError, FindingVerifierTrustRoots, NoNonceEvidence,
-    ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot,
-    FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1,
+    sign_finding_verifier_report, validate_supported_finding_verifier_profile,
+    verify_checkpoint_membership, verify_finding_evidence, CheckpointMembershipError,
+    FindingBondSnapshot, FindingBondStoreSnapshot, FindingCheckpointSignerStatusTrust,
+    FindingEvidenceBundle, FindingNonceResolver, FindingVerifierError, FindingVerifierTrustRoots,
+    NoNonceEvidence, ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence,
+    SignedFindingBondStoreSnapshot, FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1,
 };
 use chio_fiscal::fee_schedule::SignedOpenMarketFeeSchedule;
 use chio_kernel::checkpoint::{

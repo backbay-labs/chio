@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use chio_core_types::crypto::PublicKey;
+use chio_core_types::receipt::MEDIATED_SPEND_PROFILE;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
     signed_envelope_sha256, verify_finding, verify_signed_authority_status, verify_signed_profile,
@@ -297,6 +298,16 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "trusted verifier profile names an unsupported predicate engine",
         ));
     }
+    if trust
+        .trusted_verifier_profile
+        .body
+        .required_receipt_semantics
+        != MEDIATED_SPEND_PROFILE
+    {
+        return Err(claim_failed(
+            "trusted verifier profile names unsupported receipt semantics",
+        ));
+    }
     verify_signed_verifier_report(&report, &trust.finding_verifier_authority)
         .map_err(|error| invalid_artifact(report_node.path, error.to_string()))?;
     if report.body.verifier_key_epoch != finding_verifier_signer.key_epoch {
@@ -547,6 +558,11 @@ fn verify_verifier_authority_status(
     if trust.checked_at == 0 || trust.max_age_secs == 0 {
         return Err(claim_failed(
             "verifier authority status freshness policy is invalid",
+        ));
+    }
+    if trust.status_authority == policy.key {
+        return Err(claim_failed(
+            "verifier status authority must be independent from the verifier signer",
         ));
     }
     verify_signed_authority_status(&trust.signed_status, &trust.status_authority)
@@ -985,6 +1001,11 @@ fn verify_recipe_semantics(
     if recipe.verifier_profile_envelope_sha256 != profile_envelope_sha256 {
         return Err(claim_failed(
             "replay recipe does not bind the deployment-pinned verifier profile",
+        ));
+    }
+    if recipe_bytes.len() as u64 > recipe.resource_bounds.max_recipe_bytes {
+        return Err(claim_failed(
+            "replay recipe exceeds its committed recipe-size bound",
         ));
     }
     if recipe_bytes.len() as u64 > profile.body.resource_caps.max_recipe_bytes

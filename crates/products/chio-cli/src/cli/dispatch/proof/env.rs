@@ -262,6 +262,15 @@ pub(super) fn cognition_market_proof_trust_from_env(
             "{FINDING_VERIFIER_PROFILE_PATH_ENV} is not authorized by {FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV}: {error}"
         ))
     })?;
+    if trusted_verifier_profile
+        .body
+        .required_receipt_semantics
+        != chio_core_types::receipt::MEDIATED_SPEND_PROFILE
+    {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_PROFILE_PATH_ENV} names unsupported receipt semantics"
+        )));
+    }
     if trusted_verifier_profile.body.verifier_report_signer.key != finding_verifier_authority {
         return Err(CliError::cli_other_error(format!(
             "{FINDING_VERIFIER_PROFILE_PATH_ENV} signer key does not match {FINDING_VERIFIER_AUTHORITY_KEY_ENV}"
@@ -275,7 +284,8 @@ pub(super) fn cognition_market_proof_trust_from_env(
         required_sha256_env(FINDING_RESOLVER_POLICY_SHA256_ENV)?;
     let trusted_time_input_sha256 =
         required_sha256_env(FINDING_TRUSTED_TIME_INPUT_SHA256_ENV)?;
-    let verifier_authority_status = finding_verifier_authority_status_trust_from_env()?;
+    let verifier_authority_status =
+        finding_verifier_authority_status_trust_from_env(&finding_verifier_authority)?;
     let status_liveness_required = status_claim_selected
         || trusted_verifier_profile
             .body
@@ -350,6 +360,7 @@ fn finding_verifier_profile_from_env(
 }
 
 fn finding_verifier_authority_status_trust_from_env(
+    finding_verifier_authority: &chio_core_types::PublicKey,
 ) -> Result<
     chio_control_plane::transaction_passport::CognitionMarketVerifierAuthorityStatusTrust,
     CliError,
@@ -408,6 +419,10 @@ fn finding_verifier_authority_status_trust_from_env(
     let status_authority = status_authorities.into_iter().next().ok_or_else(|| {
         CliError::cli_other_error("Finding verifier status authority key is missing")
     })?;
+    require_independent_verifier_status_authority(
+        &status_authority,
+        finding_verifier_authority,
+    )?;
     chio_finding::verify_signed_authority_status(&signed_status, &status_authority).map_err(
         |error| {
             CliError::cli_other_error(format!(
@@ -427,6 +442,18 @@ fn finding_verifier_authority_status_trust_from_env(
             )?,
         },
     )
+}
+
+fn require_independent_verifier_status_authority(
+    status_authority: &chio_core_types::PublicKey,
+    finding_verifier_authority: &chio_core_types::PublicKey,
+) -> Result<(), CliError> {
+    if status_authority == finding_verifier_authority {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_STATUS_AUTHORITY_KEY_ENV} must differ from {FINDING_VERIFIER_AUTHORITY_KEY_ENV}"
+        )));
+    }
+    Ok(())
 }
 
 fn cognition_market_status_trust_from_env(
@@ -1132,4 +1159,19 @@ pub(super) fn swarm_trusted_witness_keys_for_bundle(
     _bundle: &chio_swarm_authority::SwarmAuthorityBundle,
 ) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
     swarm_trusted_witness_keys_from_env()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_independent_verifier_status_authority;
+
+    #[test]
+    fn verifier_status_authority_must_differ_from_verifier_signer() {
+        let signer = chio_core_types::Keypair::from_seed(&[113_u8; 32]).public_key();
+        let error = match require_independent_verifier_status_authority(&signer, &signer) {
+            Ok(()) => String::new(),
+            Err(error) => error.to_string(),
+        };
+        assert!(error.contains("must differ"), "unexpected error: {error}");
+    }
 }

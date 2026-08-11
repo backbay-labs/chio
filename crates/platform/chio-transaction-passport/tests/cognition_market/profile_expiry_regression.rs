@@ -89,6 +89,24 @@ pub(super) fn retract_report_finding(bundle: &mut QualifiedBundle) -> TestResult
 }
 
 #[test]
+fn cognition_market_recipe_bytes_must_fit_the_committed_recipe_bound() -> TestResult {
+    let mut bundle = build_bundle()?;
+    rebind_recipe_and_finding(&mut bundle, |recipe| {
+        recipe.resource_bounds.max_recipe_bytes = 1;
+    })?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("recipe larger than its committed bound was accepted")?
+        .to_string();
+    assert!(
+        error.contains("committed recipe-size bound"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_backdated_report_after_profile_expiry() -> TestResult
 {
     let mut bundle = build_bundle()?;
