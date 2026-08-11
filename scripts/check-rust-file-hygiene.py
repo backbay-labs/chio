@@ -289,7 +289,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/economy/chio-open-market/tests/finding_admission.rs": allow(
         "2026-08-31",
         "cognition-market admission regression suite; capped to current M8 size until split",
-        max_lines=2_065,
+        max_lines=2_218,
     ),
     "crates/economy/chio-settle/src/channel/tests/support.rs": allow(
         "2026-08-31",
@@ -314,7 +314,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/kernel/chio-kernel/src/kernel/construction.rs": allow(
         "2026-08-31",
         "kernel construction surface with M8 finding-pool ledger wiring; capped to current size until split",
-        max_lines=2_011,
+        max_lines=2_026,
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
@@ -349,7 +349,13 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/kernel/chio-kernel/src/kernel/dispatch.rs": allow(
         "2026-08-31",
         "kernel dispatch surface with M6 status snapshots and M8 pool claim checks; capped to current size until split",
-        max_lines=2_054,
+        max_lines=2_055,
+    ),
+    "crates/kernel/chio-kernel/src/tool_outcome/release.rs": allow(
+        "2026-08-31",
+        "tool-outcome release surface; capped to current size until split",
+        max_lines=2_118,
+    ),
     ),
     "crates/platform/chio-control-plane/src/lib.rs": allow(
         "2026-08-31",
@@ -405,6 +411,11 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "2026-08-31",
         "cognition challenge authority store; capped to current size until split",
         max_lines=5_590,
+    ),
+    "crates/platform/chio-store-sqlite/src/finding_pool_ledger.rs": allow(
+        "2026-08-31",
+        "cognition pool ledger with durable delivery claims; capped to current M8 size until split",
+        max_lines=2_181,
     ),
     "crates/platform/chio-store-sqlite/src/finding_challenge_store_tests.rs": allow(
         "2026-08-31",

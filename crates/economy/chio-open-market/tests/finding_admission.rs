@@ -1039,6 +1039,38 @@ fn finding_pheromone_bounds_listing_assertions_before_signature_verification() {
 }
 
 #[test]
+fn finding_pheromone_bounds_listing_envelopes_before_hashing() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let mut listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let assertion = finding_current_listing_assertion(&listing, &web.operator);
+        listing.listing.body.subject.actor_id = "x".repeat(513);
+
+        let error = admit_and_resolve_finding_pheromone_hint(
+            &InMemoryPheromoneSubstrate::new(),
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-oversized-listing", 125),
+            &finding_pheromone_context(&passport, &kernel),
+            &finding_pheromone_convention(),
+            AuthenticatedCurrentFindingListing::new(&listing, &assertion),
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect_err("oversized listing rejects before hashing its stale envelope");
+        assert!(matches!(
+            error,
+            FindingPheromoneError::Listing(message) if message.contains("bounded printable")
+        ));
+    });
+}
+
+#[test]
 fn finding_pheromone_requires_authenticated_current_listing_freshness() {
     with_fiscal(|resolver| {
         let web = base_web();

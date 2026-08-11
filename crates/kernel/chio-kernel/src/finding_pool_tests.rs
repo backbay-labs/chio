@@ -23,6 +23,7 @@ pub(crate) struct RecordingLedger {
     acknowledged: Mutex<Vec<String>>,
     delivery_claims: Mutex<Vec<(String, String, u64)>>,
     receipt_authority: Mutex<Option<chio_core::crypto::PublicKey>>,
+    receipt_sink_id: Mutex<Option<String>>,
     delay_pending_reads: AtomicBool,
     active_pending_reads: AtomicUsize,
     max_active_pending_reads: AtomicUsize,
@@ -406,11 +407,39 @@ impl QualifiedFindingPoolLedger for RecordingLedger {
     fn ledger_domain(&self) -> &str {
         "ledger:test-recording"
     }
+
+    fn bind_receipt_sink(&self, receipt_sink_id: &str) -> Result<(), FindingPoolLedgerError> {
+        if receipt_sink_id.is_empty() {
+            return Err(FindingPoolLedgerError::InvalidReceiptSink);
+        }
+        let mut bound = self.receipt_sink_id.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test receipt sink lock was poisoned".to_owned())
+        })?;
+        match bound.as_deref() {
+            Some(existing) if existing != receipt_sink_id => {
+                Err(FindingPoolLedgerError::ReceiptSinkMismatch)
+            }
+            Some(_) => Ok(()),
+            None => {
+                *bound = Some(receipt_sink_id.to_owned());
+                Ok(())
+            }
+        }
+    }
 }
 
-#[derive(Default)]
 struct RecordingReceiptStore {
     receipts: Mutex<Vec<ChioReceipt>>,
+    sink_id: String,
+}
+
+impl RecordingReceiptStore {
+    fn new(sink_id: String) -> Self {
+        Self {
+            receipts: Mutex::new(Vec::new()),
+            sink_id,
+        }
+    }
 }
 
 impl ReceiptStore for RecordingReceiptStore {
@@ -420,6 +449,10 @@ impl ReceiptStore for RecordingReceiptStore {
             .map_err(|_| ReceiptStoreError::Conflict("test receipt lock was poisoned".to_owned()))?
             .push(receipt.clone());
         Ok(())
+    }
+
+    fn durable_sink_id(&self) -> Option<&str> {
+        Some(&self.sink_id)
     }
 
     fn append_child_receipt(
@@ -439,10 +472,23 @@ fn kernel_with_keys(
     kernel_key_seed: u8,
     pool_authority_seed: u8,
 ) -> ChioKernel {
+    let sink_id = format!("receipt-sink:{:p}", Arc::as_ptr(&ledger));
+    kernel_with_keys_and_store(
+        ledger,
+        kernel_key_seed,
+        pool_authority_seed,
+        Arc::new(RecordingReceiptStore::new(sink_id)),
+    )
+}
+
+fn kernel_with_keys_and_store(
+    ledger: Arc<RecordingLedger>,
+    kernel_key_seed: u8,
+    pool_authority_seed: u8,
+    receipt_store: Arc<RecordingReceiptStore>,
+) -> ChioKernel {
     let mut kernel = kernel_without_receipt_store(kernel_key_seed, pool_authority_seed);
-    assert!(kernel
-        .set_receipt_store(Box::<RecordingReceiptStore>::default())
-        .is_ok());
+    assert!(kernel.set_receipt_store_handle(receipt_store).is_ok());
     assert!(kernel.set_finding_pool_ledger(ledger).is_ok());
     kernel
 }
@@ -673,7 +719,9 @@ fn configured_pool_ledger_freezes_the_ordinary_receipt_store() {
     let mut kernel = kernel_with_ledger(ledger);
 
     let error = kernel
-        .set_receipt_store(Box::<RecordingReceiptStore>::default())
+        .set_receipt_store(Box::new(RecordingReceiptStore::new(
+            "receipt-sink:replacement".to_owned(),
+        )))
         .expect_err("pool receipt history must remain on one durable store");
     assert!(error
         .to_string()
@@ -729,7 +777,14 @@ fn pending_pool_receipt_is_not_acknowledged_without_a_durable_store() {
 #[test]
 fn concurrent_pool_outbox_flushers_project_each_receipt_once() {
     let ledger = Arc::new(RecordingLedger::default());
-    let producer = kernel_with_ledger(Arc::clone(&ledger));
+    let shared_receipt_store =
+        Arc::new(RecordingReceiptStore::new("receipt-sink:shared".to_owned()));
+    let producer = kernel_with_keys_and_store(
+        Arc::clone(&ledger),
+        91,
+        92,
+        Arc::clone(&shared_receipt_store),
+    );
     assert!(producer
         .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
         .is_ok());
@@ -738,7 +793,12 @@ fn concurrent_pool_outbox_flushers_project_each_receipt_once() {
     let mut handles = Vec::new();
     let mut kernels = Vec::new();
     for seed in 93..97 {
-        let kernel = Arc::new(kernel_with_keys(Arc::clone(&ledger), seed, 92));
+        let kernel = Arc::new(kernel_with_keys_and_store(
+            Arc::clone(&ledger),
+            seed,
+            92,
+            Arc::clone(&shared_receipt_store),
+        ));
         kernels.push(Arc::clone(&kernel));
         let ledger = Arc::clone(&ledger);
         let barrier = Arc::clone(&barrier);
@@ -753,6 +813,14 @@ fn concurrent_pool_outbox_flushers_project_each_receipt_once() {
     }
     assert_eq!(ledger.max_active_pending_reads.load(Ordering::SeqCst), 1);
     assert_eq!(
+        shared_receipt_store
+            .receipts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len(),
+        1
+    );
+    assert_eq!(
         kernels
             .iter()
             .map(|kernel| kernel.receipt_log().receipts().len())
@@ -762,6 +830,21 @@ fn concurrent_pool_outbox_flushers_project_each_receipt_once() {
     assert!(ledger
         .pending_mutation_receipts()
         .is_ok_and(|receipts| receipts.is_empty()));
+}
+
+#[test]
+fn pool_ledger_rejects_a_second_durable_receipt_sink() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let first_store = Arc::new(RecordingReceiptStore::new("receipt-sink:first".to_owned()));
+    let _first = kernel_with_keys_and_store(Arc::clone(&ledger), 91, 92, first_store);
+
+    let second_store = Arc::new(RecordingReceiptStore::new("receipt-sink:second".to_owned()));
+    let mut second = kernel_without_receipt_store(93, 92);
+    assert!(second.set_receipt_store_handle(second_store).is_ok());
+    assert_eq!(
+        second.set_finding_pool_ledger(ledger),
+        Err(FindingPoolLedgerError::ReceiptSinkMismatch)
+    );
 }
 
 #[test]

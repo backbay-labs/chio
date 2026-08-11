@@ -21,6 +21,7 @@ use chio_kernel::finding_purchase::{
     FindingPurchaseContextView, FindingPurchaseVerifier, FindingStatusProofContextView,
     FindingStatusProofVerifier, VerifiedFindingPurchase, VerifiedFindingStatusProof,
 };
+use chio_kernel::receipt_store::ReceiptStore;
 use chio_kernel::{
     ChioKernel, HotPathDeadlineConfig, KernelConfig, MemoryBudgetConfig,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
@@ -45,6 +46,8 @@ struct PoolFixture {
     authority: Keypair,
     purchaser: Keypair,
     debit_signer: Keypair,
+    receipt_store: Arc<SqliteReceiptStore>,
+    _receipt_directory: Arc<tempfile::TempDir>,
 }
 
 fn fixture(amount_units: u64) -> PoolFixture {
@@ -62,6 +65,12 @@ fn fixture_for_pool(
     authority_seed: u8,
     purchaser_seed: u8,
 ) -> PoolFixture {
+    let receipt_directory =
+        Arc::new(tempfile::tempdir().test_expect("create fixture receipt directory"));
+    let receipt_store = Arc::new(
+        SqliteReceiptStore::open(receipt_directory.path().join("receipts.sqlite3"))
+            .test_expect("open fixture receipt store"),
+    );
     let authority = Keypair::from_seed(&[authority_seed; 32]);
     let purchaser = Keypair::from_seed(&[purchaser_seed; 32]);
     let pool = SwarmBudgetPool {
@@ -102,6 +111,8 @@ fn fixture_for_pool(
         authority,
         debit_signer: purchaser.clone(),
         purchaser,
+        receipt_store,
+        _receipt_directory: receipt_directory,
     }
 }
 
@@ -292,7 +303,6 @@ fn debit_at_with_policy_and_authority(
         reject_verification: reject_purchase_verification,
         reject_admission: reject_purchase_admission,
     };
-    let receipt_directory = tempfile::tempdir().test_expect("create receipt directory");
     let mut kernel = ChioKernel::new(KernelConfig {
         keypair: kernel_key,
         ca_public_keys: Vec::new(),
@@ -312,10 +322,7 @@ fn debit_at_with_policy_and_authority(
         deadlines: HotPathDeadlineConfig::default(),
     });
     kernel
-        .set_receipt_store(Box::new(
-            SqliteReceiptStore::open(receipt_directory.path().join("receipts.sqlite3"))
-                .test_expect("open durable receipt store"),
-        ))
+        .set_receipt_store_handle(fixture.receipt_store.clone())
         .test_expect("configure durable receipt store");
     kernel.set_finding_purchase_verifier(Arc::new(verifier));
     kernel.set_finding_pool_allocation_authority(allocation_authority);
@@ -514,10 +521,25 @@ fn cognition_market_authenticated_pool_restart_never_exceeds_signed_amount() {
         Some(100)
     );
 
+    let verifier_drift_replay = debit(&restarted, &fixture, replay_purchase_id, 11)
+        .test_expect("replay uses the retained signed debit request");
+    assert!(verifier_drift_replay.replayed);
+    assert_eq!(verifier_drift_replay.amount_units, 10);
+    assert_eq!(
+        verifier_drift_replay.reserved_after_units,
+        replay.reserved_after_units
+    );
+    assert_eq!(
+        restarted
+            .reserved_units(&fixture.envelope_sha256)
+            .test_expect("read reservations after verifier drift replay"),
+        Some(100)
+    );
+
     assert!(matches!(
-        debit(&restarted, &fixture, replay_purchase_id, 11),
+        debit(&restarted, &fixture, "purchase:restart-overflow", 11),
         Err(FindingPoolDebitError::Ledger(
-            FindingPoolLedgerError::ReplayConflict
+            FindingPoolLedgerError::AmountExceeded
         ))
     ));
 }
@@ -704,7 +726,9 @@ fn cognition_market_pool_receipt_authority_is_pinned_ledger_wide() {
     debit(&ledger, &first, "purchase:receipt-authority-one", 10)
         .test_expect("record the first ledger authority");
 
-    let second = fixture_for_pool(100, 10_000, "receipt-authority-two", 73, 74);
+    let mut second = fixture_for_pool(100, 10_000, "receipt-authority-two", 73, 74);
+    second.receipt_store = Arc::clone(&first.receipt_store);
+    second._receipt_directory = Arc::clone(&first._receipt_directory);
     assert!(matches!(
         debit(&ledger, &second, "purchase:receipt-authority-two", 10),
         Err(FindingPoolDebitError::Ledger(
@@ -823,7 +847,7 @@ fn cognition_market_pool_binds_one_purchaser_allocation_per_pool() {
     let first = fixture(100);
     debit(&ledger, &first, "purchase:first", 10).test_expect("first pool debit");
 
-    let mut second = fixture(100);
+    let mut second = first.clone();
     second.purchaser = Keypair::from_seed(&[75_u8; 32]);
     second.debit_signer = second.purchaser.clone();
     let mut body = second.allocation.body.clone();
@@ -1077,6 +1101,52 @@ fn cognition_market_pool_reclaims_unclaimed_reservations_at_the_claim_deadline()
 }
 
 #[test]
+fn cognition_market_pool_bounds_expired_reclamation_per_debit() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let database = directory.path().join("pool.sqlite3");
+    let ledger = SqliteFindingPoolLedger::open_qualified(&database, LEDGER_DOMAIN)
+        .test_expect("open qualified ledger");
+    let fixture = fixture_until(129, 100_000);
+    for index in 0..65_u64 {
+        debit_at(
+            &ledger,
+            &fixture,
+            &format!("purchase:expired:{index:02}"),
+            1,
+            2_000,
+        )
+        .test_expect("reserve one expiring unit");
+    }
+
+    debit_at(&ledger, &fixture, "purchase:replacement-batch", 64, 32_000)
+        .test_expect("reclaim one bounded expiration batch");
+    assert_eq!(
+        ledger
+            .reserved_units(&fixture.envelope_sha256)
+            .test_expect("read reservations after bounded reclamation"),
+        Some(65)
+    );
+
+    let connection = rusqlite::Connection::open(&database).test_expect("open ledger database");
+    let released: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM finding_pool_debits WHERE state = 'released'",
+            [],
+            |row| row.get(0),
+        )
+        .test_expect("count released reservations");
+    let reserved: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM finding_pool_debits WHERE state = 'reserved'",
+            [],
+            |row| row.get(0),
+        )
+        .test_expect("count reserved reservations");
+    assert_eq!(released, 64);
+    assert_eq!(reserved, 2);
+}
+
+#[test]
 fn cognition_market_pool_requires_live_status_before_new_debit_but_replays() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let ledger = SqliteFindingPoolLedger::open_qualified(
@@ -1198,6 +1268,22 @@ fn cognition_market_kernel_refuses_pool_ledger_replacement() {
         kernel.set_finding_pool_ledger(Arc::new(second)),
         Err(FindingPoolLedgerError::AlreadyConfigured)
     );
+}
+
+#[test]
+fn sqlite_receipt_store_identity_survives_reopen() {
+    let directory = tempfile::tempdir().test_expect("create receipt directory");
+    let path = directory.path().join("receipts.sqlite3");
+    let first = SqliteReceiptStore::open(&path).test_expect("open first receipt store");
+    let first_sink = first
+        .durable_sink_id()
+        .test_expect("read first durable sink identity")
+        .to_owned();
+    drop(first);
+
+    let reopened =
+        SqliteReceiptStore::open_existing(&path).test_expect("reopen existing receipt store");
+    assert_eq!(reopened.durable_sink_id(), Some(first_sink.as_str()));
 }
 
 #[test]

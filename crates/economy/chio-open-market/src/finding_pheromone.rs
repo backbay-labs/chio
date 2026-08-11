@@ -34,6 +34,8 @@ pub const FINDING_PHEROMONE_DECAY_HALF_LIFE_SECS: f64 = 3_600.0;
 pub const FINDING_PHEROMONE_EVAPORATION_FLOOR: f64 = 0.01;
 pub const FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1: &str =
     "chio.finding.current-listing-assertion.v1";
+const MAX_LISTING_ENVELOPE_STRING_BYTES: usize = 4 * 1_024;
+const MAX_PRICING_ENVELOPE_STRING_BYTES: usize = 2 * 1_024;
 
 /// Registry-owner assertion that one exact listing and pricing pair was
 /// current at a bounded observation time.
@@ -343,6 +345,7 @@ fn validate_current_listing(
     max_freshness_age_secs: u64,
     now: u64,
 ) -> Result<(), FindingPheromoneError> {
+    validate_listing_envelope_bounds(listing)?;
     let assertion_body = &assertion.body;
     if assertion_body.schema != FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1
         || !is_bounded_printable_identifier(&assertion_body.listing_id)
@@ -450,6 +453,87 @@ fn validate_current_listing(
     {
         return Err(FindingPheromoneError::Listing(
             "pricing hint is not bound to the current listing authority".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_listing_envelope_bounds(listing: &Listing) -> Result<(), FindingPheromoneError> {
+    fn add_field(total: &mut usize, value: &str) -> bool {
+        if !is_bounded_printable_identifier(value) {
+            return false;
+        }
+        let Some(next) = total.checked_add(value.len()) else {
+            return false;
+        };
+        *total = next;
+        true
+    }
+
+    let body = &listing.listing.body;
+    let mut listing_bytes = 0;
+    for value in [
+        body.schema.as_str(),
+        body.listing_id.as_str(),
+        body.namespace.as_str(),
+        body.namespace_ownership.namespace.as_str(),
+        body.namespace_ownership.owner_id.as_str(),
+        body.namespace_ownership.registry_url.as_str(),
+        body.subject.actor_id.as_str(),
+        body.compatibility.source_schema.as_str(),
+        body.compatibility.source_artifact_id.as_str(),
+        body.compatibility.source_artifact_sha256.as_str(),
+    ] {
+        if !add_field(&mut listing_bytes, value) {
+            return Err(FindingPheromoneError::Listing(
+                "listing envelope field is not a bounded printable identifier".to_owned(),
+            ));
+        }
+    }
+    for value in [
+        body.namespace_ownership.owner_name.as_deref(),
+        body.namespace_ownership
+            .transferred_from_owner_id
+            .as_deref(),
+        body.subject.display_name.as_deref(),
+        body.subject.metadata_url.as_deref(),
+        body.subject.resolution_url.as_deref(),
+        body.subject.homepage_url.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if !add_field(&mut listing_bytes, value) {
+            return Err(FindingPheromoneError::Listing(
+                "listing envelope optional field is not bounded printable text".to_owned(),
+            ));
+        }
+    }
+    if listing_bytes > MAX_LISTING_ENVELOPE_STRING_BYTES {
+        return Err(FindingPheromoneError::Listing(
+            "listing envelope exceeds the string-byte limit".to_owned(),
+        ));
+    }
+
+    let pricing = &listing.pricing.body;
+    let mut pricing_bytes = 0;
+    for value in [
+        pricing.schema.as_str(),
+        pricing.listing_id.as_str(),
+        pricing.namespace.as_str(),
+        pricing.provider_operator_id.as_str(),
+        pricing.capability_scope.as_str(),
+        pricing.price_per_call.currency.as_str(),
+    ] {
+        if !add_field(&mut pricing_bytes, value) {
+            return Err(FindingPheromoneError::Listing(
+                "pricing envelope field is not a bounded printable identifier".to_owned(),
+            ));
+        }
+    }
+    if pricing_bytes > MAX_PRICING_ENVELOPE_STRING_BYTES {
+        return Err(FindingPheromoneError::Listing(
+            "pricing envelope exceeds the string-byte limit".to_owned(),
         ));
     }
     Ok(())

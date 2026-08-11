@@ -417,6 +417,11 @@ fn receipt_writer_liveness_unknown_label() -> String {
 
 pub trait ReceiptStore: Send + Sync {
     fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError>;
+    /// Stable identity of the durable sink across process restarts. Features
+    /// with a single-delivery outbox must reject stores that cannot provide it.
+    fn durable_sink_id(&self) -> Option<&str> {
+        None
+    }
     fn admission_projection_capabilities(
         &self,
     ) -> crate::admission_operation::AdmissionProjectionCapabilities {

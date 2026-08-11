@@ -106,6 +106,7 @@ pub struct SqliteReceiptStore {
     pub(crate) pool: Pool<SqliteConnectionManager>,
     receipt_commit_actor: ReceiptCommitActor,
     settlement_store_binding: Option<chio_settle::SettlementStoreBinding>,
+    durable_sink_id: String,
     /// Multi-tenant receipt isolation: when true, tenant-
     /// scoped queries exclude the pre-multitenant NULL-tagged set. When
     /// false, queries with `tenant_filter = Some(id)` return rows where

@@ -27,7 +27,8 @@ use crate::{is_in_memory_sqlite_path, sqlite_parent_dir_to_create};
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS finding_pool_ledger_metadata (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-    ledger_domain TEXT NOT NULL
+    ledger_domain TEXT NOT NULL,
+    receipt_sink_id TEXT
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS finding_pool_allocations (
@@ -78,6 +79,8 @@ CREATE TABLE IF NOT EXISTS finding_pool_receipt_outbox (
     delivery_claim_expires_at_unix_ms INTEGER
 ) STRICT;
 "#;
+
+const MAX_EXPIRED_RECLAMATIONS_PER_DEBIT: usize = 64;
 
 #[derive(Clone)]
 pub struct SqliteFindingPoolLedger {
@@ -131,6 +134,12 @@ impl SqliteFindingPoolLedger {
             connection
                 .execute_batch(SCHEMA)
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+            ensure_column(
+                &connection,
+                "finding_pool_ledger_metadata",
+                "receipt_sink_id",
+                "ALTER TABLE finding_pool_ledger_metadata ADD COLUMN receipt_sink_id TEXT",
+            )?;
             bind_ledger_domain(&connection, &ledger_domain)?;
             ensure_lifecycle_columns(&connection)?;
             ensure_outbox_delivery_claim_columns(&connection)?;
@@ -1371,16 +1380,61 @@ impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {
     fn ledger_domain(&self) -> &str {
         &self.ledger_domain
     }
+
+    fn bind_receipt_sink(&self, receipt_sink_id: &str) -> Result<(), FindingPoolLedgerError> {
+        validate_receipt_sink_id(receipt_sink_id)?;
+        let mut connection = self
+            .pool
+            .get()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        transaction
+            .execute(
+                "UPDATE finding_pool_ledger_metadata SET receipt_sink_id = ?1 \
+                 WHERE singleton = 1 AND receipt_sink_id IS NULL",
+                [receipt_sink_id],
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let persisted = transaction
+            .query_row(
+                "SELECT receipt_sink_id FROM finding_pool_ledger_metadata WHERE singleton = 1",
+                [],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        if persisted.as_deref() != Some(receipt_sink_id) {
+            return Err(FindingPoolLedgerError::ReceiptSinkMismatch);
+        }
+        transaction
+            .commit()
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
+    }
 }
 
 fn validate_ledger_domain(ledger_domain: &str) -> Result<(), FindingPoolLedgerError> {
-    if ledger_domain.trim().is_empty()
+    if ledger_domain.is_empty()
         || ledger_domain.len() > 512
-        || ledger_domain.chars().any(char::is_control)
+        || !ledger_domain
+            .bytes()
+            .all(|byte| byte == b' ' || byte.is_ascii_graphic())
+        || !ledger_domain.bytes().any(|byte| byte != b' ')
     {
         Err(FindingPoolLedgerError::Storage(
             "qualified finding pool ledger domain is invalid".to_owned(),
         ))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_receipt_sink_id(receipt_sink_id: &str) -> Result<(), FindingPoolLedgerError> {
+    if receipt_sink_id.is_empty()
+        || receipt_sink_id.len() > 512
+        || !receipt_sink_id.bytes().all(|byte| byte.is_ascii_graphic())
+    {
+        Err(FindingPoolLedgerError::InvalidReceiptSink)
     } else {
         Ok(())
     }
@@ -1579,16 +1633,30 @@ fn reclaim_expired_unclaimed(
     let signed = parse_units(&signed_text, "signed_amount_units")?;
     let original_reserved = parse_units(&reserved_text, "reserved_units")?;
     let spent = parse_units(&spent_text, "spent_units")?;
+    let trusted_now_text = trusted_now_unix_ms.to_string();
+    let batch_limit = i64::try_from(MAX_EXPIRED_RECLAMATIONS_PER_DEBIT)
+        .map_err(|_| invariant("expired reservation batch limit is invalid"))?;
     let mut statement = transaction
         .prepare(
             "SELECT purchase_id, amount_units, claim_deadline_unix_ms \
              FROM finding_pool_debits \
              WHERE allocation_envelope_sha256 = ?1 AND state = 'reserved' \
-               AND claimed_at_unix_ms IS NULL ORDER BY purchase_id",
+               AND claimed_at_unix_ms IS NULL \
+               AND claim_deadline_unix_ms <> '' \
+               AND claim_deadline_unix_ms NOT GLOB '*[^0-9]*' \
+               AND (length(claim_deadline_unix_ms) < length(?2) \
+                    OR (length(claim_deadline_unix_ms) = length(?2) \
+                        AND claim_deadline_unix_ms <= ?2)) \
+             ORDER BY length(claim_deadline_unix_ms), claim_deadline_unix_ms, purchase_id \
+             LIMIT ?3",
         )
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
     let mut rows = statement
-        .query([allocation_envelope_sha256])
+        .query(params![
+            allocation_envelope_sha256,
+            trusted_now_text,
+            batch_limit
+        ])
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
     let mut expired = Vec::new();
     while let Some(row) = rows
@@ -1606,9 +1674,10 @@ fn reclaim_expired_unclaimed(
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         let amount = parse_units(&amount_text, "debit.amount_units")?;
         let deadline = parse_units(&deadline_text, "debit.claim_deadline_unix_ms")?;
-        if trusted_now_unix_ms >= deadline {
-            expired.push((purchase_id, amount));
+        if deadline > trusted_now_unix_ms {
+            return Err(invariant("expiration query returned a live reservation"));
         }
+        expired.push((purchase_id, amount));
     }
     drop(rows);
     drop(statement);
@@ -1775,7 +1844,12 @@ fn ensure_query_indexes(connection: &rusqlite::Connection) -> Result<(), Finding
              CREATE INDEX IF NOT EXISTS finding_pool_debits_expiration_reclamation \
                  ON finding_pool_debits(\
                      allocation_envelope_sha256, state, claimed_at_unix_ms, purchase_id\
-                 );",
+                 ); \
+             CREATE INDEX IF NOT EXISTS finding_pool_debits_expiration_reclamation_v2 \
+                 ON finding_pool_debits(\
+                     allocation_envelope_sha256, length(claim_deadline_unix_ms), \
+                     claim_deadline_unix_ms, purchase_id\
+                 ) WHERE state = 'reserved' AND claimed_at_unix_ms IS NULL;",
         )
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))
 }
@@ -1871,6 +1945,7 @@ mod tests {
         for index in [
             "finding_pool_receipt_outbox_pending",
             "finding_pool_debits_expiration_reclamation",
+            "finding_pool_debits_expiration_reclamation_v2",
         ] {
             let present = connection
                 .query_row(
@@ -1881,6 +1956,42 @@ mod tests {
                 .test_expect("query qualified index");
             assert!(present, "qualified schema is missing {index}");
         }
+    }
+
+    #[test]
+    fn qualified_ledger_rejects_unusable_domains() {
+        let directory = tempfile::tempdir().test_expect("create pool ledger directory");
+        for (suffix, domain) in [("unicode", "ledger:é"), ("spaces", "   ")] {
+            assert!(SqliteFindingPoolLedger::open_qualified(
+                directory.path().join(format!("{suffix}.sqlite3")),
+                domain,
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn qualified_ledger_persists_one_receipt_sink() {
+        let directory = tempfile::tempdir().test_expect("create pool ledger directory");
+        let path = directory.path().join("pool.sqlite3");
+        let ledger = SqliteFindingPoolLedger::open_qualified(&path, "ledger:test-sink")
+            .test_expect("open qualified pool ledger");
+        ledger
+            .bind_receipt_sink("receipt-sink:first")
+            .test_expect("bind first receipt sink");
+        ledger
+            .bind_receipt_sink("receipt-sink:first")
+            .test_expect("replay first receipt sink binding");
+        assert_eq!(
+            ledger.bind_receipt_sink("receipt-sink:second"),
+            Err(FindingPoolLedgerError::ReceiptSinkMismatch)
+        );
+
+        let reopened = SqliteFindingPoolLedger::open_qualified(&path, "ledger:test-sink")
+            .test_expect("reopen qualified pool ledger");
+        reopened
+            .bind_receipt_sink("receipt-sink:first")
+            .test_expect("reopen with bound receipt sink");
     }
 
     #[test]

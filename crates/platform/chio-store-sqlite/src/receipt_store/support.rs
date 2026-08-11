@@ -1,8 +1,8 @@
 use super::*;
 
 pub(crate) const RECEIPT_COST_PROJECTION_SCHEMA_VERSION: i32 = 3;
-pub(crate) const RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION: i32 =
-    RECEIPT_COST_PROJECTION_SCHEMA_VERSION;
+pub(crate) const RECEIPT_SINK_IDENTITY_SCHEMA_VERSION: i32 = 4;
+pub(crate) const RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION: i32 = RECEIPT_SINK_IDENTITY_SCHEMA_VERSION;
 pub(crate) const RECEIPT_STORE_SCHEMA_KEY: &str = "receipt";
 
 #[path = "support/checkpoint_projection.rs"]

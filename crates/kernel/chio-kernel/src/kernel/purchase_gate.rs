@@ -365,6 +365,12 @@ impl ChioKernel {
         if self.receipt_store.is_none() {
             return Err(crate::finding_pool::FindingPoolLedgerError::DurableReceiptStoreMissing);
         }
+        let receipt_sink_id = self
+            .receipt_store
+            .as_ref()
+            .and_then(|store| store.durable_sink_id())
+            .ok_or(crate::finding_pool::FindingPoolLedgerError::InvalidReceiptSink)?;
+        ledger.bind_receipt_sink(receipt_sink_id)?;
         self.ensure_finding_pool_configuration_precedes_startup_reconciliation()?;
         self.finding_pool_ledger = Some(ledger);
         Ok(())

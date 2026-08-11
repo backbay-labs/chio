@@ -137,6 +137,10 @@ pub enum FindingPoolLedgerError {
     PoolBindingConflict,
     #[error("finding pool allocation is bound to another qualified ledger domain")]
     LedgerDomainMismatch,
+    #[error("finding pool ledger is bound to another durable receipt sink")]
+    ReceiptSinkMismatch,
+    #[error("finding pool durable receipt sink identity is invalid")]
+    InvalidReceiptSink,
     #[error("finding pool purchase has no durable reservation")]
     ReservationMissing,
     #[error("finding pool reservation conflicts with its recorded terminal")]
@@ -663,6 +667,11 @@ pub trait QualifiedFindingPoolLedger: FindingPoolLedger {
     /// Stable authority-selected namespace for the one ledger deployment that
     /// may account for a signed allocation.
     fn ledger_domain(&self) -> &str;
+
+    /// Bind this ledger to the one durable ordinary receipt sink that receives
+    /// every signed mutation receipt. Reopening with the same sink is
+    /// idempotent; a different sink fails closed before any mutation can run.
+    fn bind_receipt_sink(&self, receipt_sink_id: &str) -> Result<(), FindingPoolLedgerError>;
 }
 
 impl ChioKernel {

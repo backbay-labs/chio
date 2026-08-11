@@ -112,6 +112,43 @@ fn settlement_store_binding_if_ready(
     )))
 }
 
+fn ensure_receipt_sink_identity(connection: &Connection) -> Result<String, ReceiptStoreError> {
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chio_receipt_sink_identity (\
+             singleton INTEGER PRIMARY KEY CHECK (singleton = 1), \
+             sink_id TEXT NOT NULL UNIQUE\
+         ) STRICT;",
+    )?;
+    connection.execute(
+        "INSERT OR IGNORE INTO chio_receipt_sink_identity (singleton, sink_id) VALUES (1, ?1)",
+        [uuid::Uuid::now_v7().to_string()],
+    )?;
+    load_receipt_sink_identity(connection)
+}
+
+fn load_receipt_sink_identity(connection: &Connection) -> Result<String, ReceiptStoreError> {
+    let sink_id = connection
+        .query_row(
+            "SELECT sink_id FROM chio_receipt_sink_identity WHERE singleton = 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| {
+            ReceiptStoreError::Conflict(format!(
+                "receipt database has no durable sink identity: {error}"
+            ))
+        })?;
+    let parsed = uuid::Uuid::parse_str(&sink_id).map_err(|_| {
+        ReceiptStoreError::Conflict("receipt database sink identity is invalid".to_owned())
+    })?;
+    if parsed.to_string() != sink_id {
+        return Err(ReceiptStoreError::Conflict(
+            "receipt database sink identity is not canonical".to_owned(),
+        ));
+    }
+    Ok(sink_id)
+}
+
 fn settlement_projection_schema_is_installed(
     connection: &Connection,
 ) -> Result<bool, ReceiptStoreError> {
@@ -281,6 +318,7 @@ impl SqliteReceiptStore {
             configure_sqlite_connection(&mut connection, options.pool.max_page_count)?;
             super::support::ensure_transparency_projection_guards(&connection)?;
             verify_receipt_cost_projection(&connection)?;
+            let durable_sink_id = load_receipt_sink_identity(&connection)?;
             let settlement_store_binding = settlement_store_binding_if_ready(&connection)?;
             drop(connection);
 
@@ -306,6 +344,7 @@ impl SqliteReceiptStore {
                 ),
                 pool: reader_pool,
                 settlement_store_binding,
+                durable_sink_id,
                 strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
                 incremental_verification: options.incremental_verification,
             });
@@ -1306,6 +1345,7 @@ impl SqliteReceiptStore {
         let migration =
             connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         ensure_capability_lineage_provenance_columns(&migration)?;
+        let durable_sink_id = ensure_receipt_sink_identity(&migration)?;
         crate::stamp_schema_version(
             &migration,
             RECEIPT_STORE_SCHEMA_KEY,
@@ -1340,6 +1380,7 @@ impl SqliteReceiptStore {
             ),
             pool: reader_pool,
             settlement_store_binding,
+            durable_sink_id,
             strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
             incremental_verification: options.incremental_verification,
         })

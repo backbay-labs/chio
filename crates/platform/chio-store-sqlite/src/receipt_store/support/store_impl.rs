@@ -494,6 +494,10 @@ impl ReceiptStore for SqliteReceiptStore {
         self.append_chio_receipt_returning_seq(receipt).map(|_| ())
     }
 
+    fn durable_sink_id(&self) -> Option<&str> {
+        Some(&self.durable_sink_id)
+    }
+
     fn settlement_store_binding(&self) -> Option<chio_settle::SettlementStoreBinding> {
         self.settlement_store_binding
     }
