@@ -1629,6 +1629,47 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     )
     .await?;
 
+    let now = unix_timestamp_now();
+    let mut expired_listing_state = stack.state.clone();
+    expired_listing_state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or_else(|| missing("finding market config"))?
+        .listing
+        .valid_until = now;
+    let (status, body) = send(
+        &expired_listing_state,
+        authed_post(
+            &format!("/v1/findings/{}/activate", web.finding_id),
+            web.activate_request(&web.admission, &web.schedule, &web.report)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("not live at activation"));
+    assert_nothing_admitted(&stack).await?;
+
+    let mut late_listing_state = stack.state.clone();
+    late_listing_state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or_else(|| missing("finding market config"))?
+        .listing
+        .valid_from = web.listing.body.published_at.saturating_add(1);
+    let (status, body) = send(
+        &late_listing_state,
+        authed_post(
+            &format!("/v1/findings/{}/activate", web.finding_id),
+            web.activate_request(&web.admission, &web.schedule, &web.report)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("published outside"));
+    assert_nothing_admitted(&stack).await?;
+
     // Wrong metadata binding.
     let mut wrong_metadata =
         web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;

@@ -1538,6 +1538,22 @@ fn cognition_market_qualified_profile_rejects_self_pinned_governance() -> TestRe
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_aliased_authorities() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle.trust.finding_verifier_authority = bundle.trust.profile_governance_authority.clone();
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("aliased governance and verifier authorities were accepted")?
+        .to_string();
+    assert!(
+        error.contains("governance and finding verifier authorities must be distinct"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_an_unsupported_predicate_engine() -> TestResult {
     let mut bundle = build_bundle()?;
     replace_trusted_profile(&mut bundle, |profile| {
@@ -1574,9 +1590,25 @@ fn cognition_market_qualified_profile_rejects_unsupported_receipt_semantics() ->
 }
 
 #[test]
-fn cognition_market_qualified_profile_enforces_required_facet_floor() -> TestResult {
+fn cognition_market_qualified_profile_rejects_unsupported_required_facets() -> TestResult {
     let mut bundle = build_bundle()?;
     require_profile_facet(&mut bundle, FindingFacetKind::KernelAndRevocationTrust)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("an unsupported required facet was accepted")?
+        .to_string();
+    assert!(
+        error.contains("requires unsupported verifier features"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_enforces_required_facet_floor() -> TestResult {
+    let mut bundle = build_bundle()?;
+    require_profile_facet(&mut bundle, FindingFacetKind::SettledSpendBacking)?;
     let report_bytes = bundle
         .artifacts
         .get("report.json")
@@ -1586,8 +1618,8 @@ fn cognition_market_qualified_profile_enforces_required_facet_floor() -> TestRes
     let required = report
         .facets
         .iter_mut()
-        .find(|facet| facet.facet == FindingFacetKind::KernelAndRevocationTrust)
-        .ok_or("kernel-and-revocation-trust facet missing")?;
+        .find(|facet| facet.facet == FindingFacetKind::SettledSpendBacking)
+        .ok_or("settled-spend-backing facet missing")?;
     required.outcome = FindingFacetOutcome::Unavailable;
     required.reason = "trusted profile floor was not evaluated".to_string();
     report.report_id = compute_report_id(&report)?;
@@ -1604,7 +1636,7 @@ fn cognition_market_qualified_profile_enforces_required_facet_floor() -> TestRes
         .ok_or("report below the trusted profile facet floor was accepted")?
         .to_string();
     assert!(
-        error.contains("profile requires verified facet KernelAndRevocationTrust"),
+        error.contains("profile requires verified facet SettledSpendBacking"),
         "unexpected error: {error}"
     );
     Ok(())

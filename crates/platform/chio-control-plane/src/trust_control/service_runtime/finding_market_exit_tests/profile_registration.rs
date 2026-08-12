@@ -229,13 +229,15 @@ async fn unsupported_profile_rejects_before_registration_or_activation() -> Test
     assert!(String::from_utf8_lossy(&response).contains("profile"));
     assert!(stack.store.get_recipe_blob(&unsupported_digest)?.is_none());
 
-    let error = verify_profile_for_activation(
+    let error = match verify_profile_for_activation(
         &unsupported,
         &unsupported_digest,
         &market_config(),
         unix_timestamp_now(),
-    )
-    .expect_err("unsupported profile must not activate");
+    ) {
+        Ok(_) => return Err("unsupported profile activated".into()),
+        Err(error) => error,
+    };
     assert!(error.contains("profile"), "unexpected error: {error}");
     Ok(())
 }

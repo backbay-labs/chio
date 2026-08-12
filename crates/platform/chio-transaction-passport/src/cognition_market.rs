@@ -22,6 +22,7 @@ use chio_finding::{
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
+use chio_finding_verifier::validate_supported_finding_verifier_profile;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -171,6 +172,11 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     trust: &CognitionMarketProofTrust,
     externally_verified_claims: &[String],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    if trust.profile_governance_authority == trust.finding_verifier_authority {
+        return Err(claim_failed(
+            "profile governance and finding verifier authorities must be distinct",
+        ));
+    }
     // Validate the signed root and the complete graph shape before interpreting
     // cognition-market roles. This also rejects unsupported registered schemas,
     // dangling/cyclic edges, and advisory authority edges.
@@ -320,6 +326,9 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "trusted verifier profile names unsupported receipt semantics",
         ));
     }
+    validate_supported_finding_verifier_profile(&trust.trusted_verifier_profile.body).map_err(
+        |_| claim_failed("trusted verifier profile requires unsupported verifier features"),
+    )?;
     verify_signed_verifier_report(&report, &trust.finding_verifier_authority)
         .map_err(|error| invalid_artifact(report_node.path, error.to_string()))?;
     if report.body.verifier_key_epoch != finding_verifier_signer.key_epoch {

@@ -1245,6 +1245,18 @@ pub(crate) async fn handle_activate_finding(
             "finding listing signer does not match the configured listing authority",
         );
     }
+    if !config.listing.covers(request.listing.body.published_at) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding listing was published outside the configured listing authority window",
+        );
+    }
+    if !config.listing.covers(now) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding listing authority is not live at activation",
+        );
+    }
     if request.listing.body.status != GenericListingStatus::Active {
         return plain_http_error(StatusCode::BAD_REQUEST, "finding listing is not active");
     }

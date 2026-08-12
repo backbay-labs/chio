@@ -4852,6 +4852,7 @@ version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "chio-finding",
+ "chio-finding-verifier",
  "chio-revocation-oracle",
  "chio-test-support",
  "chrono",
