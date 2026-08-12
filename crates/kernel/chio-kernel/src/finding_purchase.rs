@@ -40,6 +40,13 @@ pub const MAX_FINDING_STATUS_PROOF_B64_BYTES: usize = 196_608;
 /// witness. The local settlement rail rejects a request that carries it.
 pub const FINDING_ESCROW_WITNESS_CONTEXT_KEY: &str = "chio_finding_escrow_witness_b64";
 
+/// Receipt-metadata key carrying the durable, admission-verified purchase
+/// binding used by terminal replay after authority rotation.
+pub(crate) const FINDING_PURCHASE_REPLAY_SNAPSHOT_METADATA_KEY: &str =
+    "finding_purchase_replay_snapshot";
+pub(crate) const FINDING_PURCHASE_REPLAY_SNAPSHOT_SCHEMA: &str =
+    "chio.finding.purchase-replay-snapshot.v1";
+
 /// Inputs to purchase verification for one marked reveal request.
 pub struct FindingPurchaseContextView<'a> {
     /// The provider-signed marker on the selected grant.
@@ -60,7 +67,8 @@ pub struct FindingPurchaseContextView<'a> {
 
 /// Purchase facts recovered from the verified context, cross-checked by
 /// the kernel against the selected grant before any money movement.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VerifiedFindingPurchase {
     /// Content-addressed id of the finding being sold.
     pub finding_id: String,
@@ -93,7 +101,8 @@ pub struct VerifiedFindingPurchase {
 
 /// Deterministic facts recovered from a verified portable non-inclusion
 /// proof. Inclusion never produces this value: a retracted finding denies.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VerifiedFindingStatusProof {
     /// Governance-pinned status feed.
     pub feed_id: String,
@@ -111,6 +120,31 @@ pub struct VerifiedFindingStatusProof {
     pub root_hash: String,
     /// Trusted-time observation carried by the verified proof.
     pub non_inclusion_checked_at: u64,
+    /// Governance authorization that admitted the status-operator key.
+    pub operator_authorization_sha256: String,
+    /// External evidence for the service bond live at verification time.
+    pub service_bond_evidence_sha256: String,
+}
+
+/// Durable snapshot recorded with the authenticated raw tool return. The raw
+/// outcome and immutable request hash bind this verified result to the exact
+/// request that crossed dispatch, so terminal replay does not consult a newly
+/// rotated authority configuration.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FindingPurchaseReplaySnapshotV1 {
+    pub schema: String,
+    pub purchase: VerifiedFindingPurchase,
+}
+
+impl FindingPurchaseReplaySnapshotV1 {
+    #[must_use]
+    pub(crate) fn new(purchase: VerifiedFindingPurchase) -> Self {
+        Self {
+            schema: FINDING_PURCHASE_REPLAY_SNAPSHOT_SCHEMA.to_owned(),
+            purchase,
+        }
+    }
 }
 
 /// Inputs to deterministic portable status-proof verification.

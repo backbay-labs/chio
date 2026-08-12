@@ -189,6 +189,8 @@ fn verify_portable_at(
         proof_sha256: chio_core::sha256_hex(&proof_bytes),
         root_hash: fields.root_hash.to_owned(),
         non_inclusion_checked_at: fields.checked_at,
+        operator_authorization_sha256: operator.authorization_sha256.clone(),
+        service_bond_evidence_sha256: bond.evidence_sha256.clone(),
     };
     Ok(PortableStatusMaterial {
         proof,

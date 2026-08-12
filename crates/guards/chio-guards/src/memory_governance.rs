@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use chio_core::capability::scope::Constraint;
-use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, ToolServerOutput};
 
 use crate::action::{extract_action_checked, ToolAction};
 use crate::finding_retraction::{
@@ -332,6 +332,82 @@ impl Guard for MemoryGovernanceGuard {
                 "memory-governance dispatch revalidation denied".to_owned(),
             )),
         }
+    }
+
+    fn validate_output_before_release(
+        &self,
+        ctx: &GuardContext,
+        output: &ToolServerOutput,
+    ) -> Result<(), KernelError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let Some(binding) = &self.finding_retraction else {
+            return Ok(());
+        };
+        let action = extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments)
+            .map_err(|_| {
+                KernelError::GuardDenied(
+                    "memory-governance output validation rejected malformed input".to_owned(),
+                )
+            })?;
+        let ToolAction::MemoryRead { store, key } = action else {
+            return Ok(());
+        };
+        let key = key.ok_or_else(|| {
+            KernelError::GuardDenied(
+                "Finding memory read output requires an exact memory key".to_owned(),
+            )
+        })?;
+        if binding.resolver.resolver_id() != binding.resolver_id
+            || binding.resolver.feed_id() != binding.feed_id
+        {
+            return Err(KernelError::GuardDenied(
+                "Finding memory read resolver identity changed".to_owned(),
+            ));
+        }
+        let resolution = binding
+            .resolver
+            .resolve(FindingRetractionQuery {
+                store: &store,
+                key: &key,
+            })
+            .map_err(|error| {
+                KernelError::GuardDenied(format!(
+                    "Finding memory read output provenance rejected: {error}"
+                ))
+            })?;
+        if resolution.feed_id != binding.feed_id || resolution.value != FindingStatusValue::Live {
+            return Err(KernelError::GuardDenied(
+                "Finding memory read output is not live under the pinned feed".to_owned(),
+            ));
+        }
+        let ToolServerOutput::Value(value) = output else {
+            return Err(KernelError::GuardDenied(
+                "Finding memory read output must be one canonical value".to_owned(),
+            ));
+        };
+        let canonical = chio_core::canonical::canonical_json_bytes(value).map_err(|error| {
+            KernelError::GuardDenied(format!(
+                "Finding memory read output is not canonicalizable: {error}"
+            ))
+        })?;
+        if chio_core::crypto::sha256_hex(&canonical) != resolution.memory_content_sha256 {
+            return Err(KernelError::GuardDenied(
+                "Finding memory read output differs from verified write provenance".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn requires_exact_released_output(&self, ctx: &GuardContext) -> bool {
+        if !self.enabled || self.finding_retraction.is_none() {
+            return false;
+        }
+        matches!(
+            extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments),
+            Ok(ToolAction::MemoryRead { .. })
+        )
     }
 }
 

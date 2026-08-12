@@ -1604,10 +1604,8 @@ impl ToolServerConnection for CountingRevealServer {
     }
 }
 
-/// The buyer's own memory server: it acknowledges the write the buyer
-/// records after a settled reveal.
+/// Test memory server for Finding writes and exact-value reads.
 struct BuyerMemoryServer;
-
 #[async_trait::async_trait]
 impl ToolServerConnection for BuyerMemoryServer {
     fn server_id(&self) -> &str {
@@ -1617,13 +1615,15 @@ impl ToolServerConnection for BuyerMemoryServer {
     fn tool_names(&self) -> Vec<String> {
         vec!["memory_read".to_owned(), "memory_write".to_owned()]
     }
-
     async fn invoke(
         &self,
-        _tool_name: &str,
+        tool_name: &str,
         arguments: serde_json::Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<serde_json::Value, KernelError> {
+        if tool_name == "memory_read" {
+            return Ok(reveal_envelope(REVEAL_MEDIA_TYPE, SEALED_PAYLOAD));
+        }
         Ok(serde_json::json!({
             "written": true,
             "id": arguments.get("id").cloned().unwrap_or(serde_json::Value::Null),

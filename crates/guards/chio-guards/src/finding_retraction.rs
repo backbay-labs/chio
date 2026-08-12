@@ -37,6 +37,9 @@ pub struct VerifiedFindingDeliveryLineage {
     pub delivery_receipt_id: String,
     pub finding_id: String,
     pub status_feed_id: String,
+    /// SHA-256 of the canonical memory value committed by the authenticated
+    /// child write receipt.
+    pub memory_content_sha256: String,
 }
 
 /// Durable verified-lineage lookup used by the resolver.
@@ -95,6 +98,8 @@ pub struct FindingRetractionResolution {
     pub epoch_id: String,
     pub root_hash: String,
     pub value: FindingStatusValue,
+    /// Exact canonical content digest recovered from the authenticated write.
+    pub memory_content_sha256: String,
 }
 
 /// Synchronous resolver injected into the opt-in memory guard profile.
@@ -249,6 +254,7 @@ impl FindingRetractionResolver for VerifiedFindingRetractionResolver {
             || lineage.delivery_receipt_id.trim().is_empty()
             || lineage.finding_id.trim().is_empty()
             || lineage.status_feed_id.trim().is_empty()
+            || !is_hex64(&lineage.memory_content_sha256)
         {
             return Err(FindingRetractionResolveError::InvalidLineage(
                 "write receipt, capability, delivery receipt, or finding binding differs"
@@ -290,6 +296,7 @@ impl FindingRetractionResolver for VerifiedFindingRetractionResolver {
             epoch_id: status.epoch_id,
             root_hash: status.root_hash,
             value: status.value,
+            memory_content_sha256: lineage.memory_content_sha256,
         })
     }
 }
@@ -369,6 +376,7 @@ mod tests {
                 delivery_receipt_id: "delivery-receipt-1".to_owned(),
                 finding_id: "finding-1".to_owned(),
                 status_feed_id: lineage_feed_id.to_owned(),
+                memory_content_sha256: "c".repeat(64),
             }),
         });
         let status = Arc::new(StaticStatus {

@@ -74,6 +74,35 @@ fn verify_retained_parent_receipt(
     Ok(())
 }
 
+fn verify_retained_child_receipt(
+    child: &ChioReceipt,
+    expected_receipt_id: &str,
+    expected_capability_id: &str,
+    expected_anchor: &SessionAnchorReference,
+) -> Result<(), FindingRetractionResolveError> {
+    if child.id != expected_receipt_id
+        || child.capability_id != expected_capability_id
+        || !matches!(child.action.verify_hash(), Ok(true))
+        || !child
+            .verify_signature()
+            .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?
+    {
+        return Err(FindingRetractionResolveError::InvalidLineage(
+            "memory write child is not an authentic retained receipt".to_owned(),
+        ));
+    }
+    let child_bytes = chio_core::canonical::canonical_json_bytes(child)
+        .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?;
+    if expected_anchor.session_anchor_id != format!("receipt:{}", child.id)
+        || expected_anchor.session_anchor_hash != chio_core::crypto::sha256_hex(&child_bytes)
+    {
+        return Err(FindingRetractionResolveError::InvalidLineage(
+            "memory write child differs from the signed lineage anchor".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolver {
     fn verified_finding_parent(
         &self,
@@ -87,12 +116,6 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
         let Some(child) = child else {
             return Ok(None);
         };
-        if child.id != memory_write_receipt_id || child.capability_id != memory_write_capability_id
-        {
-            return Err(FindingRetractionResolveError::InvalidLineage(
-                "memory write receipt or capability binding differs".to_owned(),
-            ));
-        }
         let statement = self
             .receipts
             .load_retained_receipt_lineage_statement(memory_write_receipt_id)
@@ -100,6 +123,12 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
         let Some(statement) = statement else {
             return Ok(None);
         };
+        verify_retained_child_receipt(
+            &child,
+            memory_write_receipt_id,
+            memory_write_capability_id,
+            &statement.child_session_anchor,
+        )?;
         if statement.child_receipt_id != memory_write_receipt_id
             || statement.relation_kind != ReceiptLineageRelationKind::FindingMemoryWriteToDelivery
             || statement.evidence_class != ProvenanceEvidenceClass::Verified
@@ -166,12 +195,20 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
                     "M6 Finding delivery lineage has no authenticated status feed".to_owned(),
                 )
             })?;
+        let memory_content = child.action.parameters.get("content").ok_or_else(|| {
+            FindingRetractionResolveError::InvalidLineage(
+                "memory write child omits the committed content".to_owned(),
+            )
+        })?;
+        let memory_content_bytes = chio_core::canonical::canonical_json_bytes(memory_content)
+            .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?;
         Ok(Some(VerifiedFindingDeliveryLineage {
             memory_write_receipt_id: child.id,
             memory_write_capability_id: child.capability_id,
             delivery_receipt_id: parent.id,
             finding_id: delivery.finding_id,
             status_feed_id,
+            memory_content_sha256: chio_core::crypto::sha256_hex(&memory_content_bytes),
         }))
     }
 }
@@ -336,6 +373,42 @@ mod tests {
         .test_expect("fixture receipt signs")
     }
 
+    fn signed_child_receipt() -> ChioReceipt {
+        let kernel = Keypair::from_seed(&[82; 32]);
+        ChioReceipt::sign(
+            ChioReceiptBody {
+                id: "child-fixture".to_owned(),
+                timestamp: 1_750_000_001,
+                capability_id: "memory-capability-fixture".to_owned(),
+                tool_server: "memory".to_owned(),
+                tool_name: "memory_write".to_owned(),
+                action: ToolCallAction::from_parameters(serde_json::json!({
+                    "collection": "purchased-findings",
+                    "id": "f-1",
+                    "content": {"payload": "verified"}
+                }))
+                .test_expect("fixture action is canonical"),
+                decision: Some(Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
+                content_hash: chio_core::crypto::sha256_hex(b"memory-write-result"),
+                policy_hash: chio_core::crypto::sha256_hex(b"memory-policy"),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level: TrustLevel::Mediated,
+                tenant_id: None,
+                kernel_key: kernel.public_key(),
+                bbs_projection_version: None,
+            },
+            &kernel,
+        )
+        .test_expect("fixture receipt signs")
+    }
+
     fn exact_anchor(parent: &ChioReceipt) -> SessionAnchorReference {
         let canonical = chio_core::canonical::canonical_json_bytes(parent)
             .test_expect("fixture receipt canonicalizes");
@@ -361,5 +434,42 @@ mod tests {
             chio_core::crypto::sha256_hex(b"substituted-parent"),
         );
         assert!(verify_retained_parent_receipt(&parent, &parent.id, &substituted_anchor).is_err());
+    }
+
+    #[test]
+    fn retained_child_reverifies_receipt_and_exact_lineage_anchor() {
+        let child = signed_child_receipt();
+        let anchor = exact_anchor(&child);
+        assert!(
+            verify_retained_child_receipt(&child, &child.id, &child.capability_id, &anchor,)
+                .is_ok()
+        );
+
+        let mut substituted = child.clone();
+        substituted.action = ToolCallAction::from_parameters(serde_json::json!({
+            "collection": "purchased-findings",
+            "id": "f-1",
+            "content": {"payload": "substituted"}
+        }))
+        .test_expect("substituted action is canonical");
+        assert!(verify_retained_child_receipt(
+            &substituted,
+            &child.id,
+            &child.capability_id,
+            &anchor,
+        )
+        .is_err());
+
+        let wrong_anchor = SessionAnchorReference::new(
+            format!("receipt:{}", child.id),
+            chio_core::crypto::sha256_hex(b"substituted-child"),
+        );
+        assert!(verify_retained_child_receipt(
+            &child,
+            &child.id,
+            &child.capability_id,
+            &wrong_anchor,
+        )
+        .is_err());
     }
 }

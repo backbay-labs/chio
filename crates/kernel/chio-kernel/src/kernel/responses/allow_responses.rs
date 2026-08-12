@@ -410,11 +410,13 @@ impl ChioKernel {
                 )
             })?;
         let Some(()) = self.with_receipt_store(|store| {
-            let parent = store.load_chio_receipt(parent_receipt_id)?.ok_or_else(|| {
-                KernelError::Internal(
-                    "Finding delivery receipt binding is not durably available".to_owned(),
-                )
-            })?;
+            let parent = store
+                .load_retained_chio_receipt(parent_receipt_id)?
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding delivery receipt binding is not durably available".to_owned(),
+                    )
+                })?;
             if parent.id != parent_receipt_id
                 || !parent.is_allowed()
                 || !self
@@ -455,6 +457,11 @@ impl ChioKernel {
                     "Finding delivery receipt metadata is invalid: {error}"
                 ))
             })?;
+            if delivery.status_proof.is_none() {
+                return Err(KernelError::Internal(
+                    "Finding memory write requires an M6 delivery status proof".to_owned(),
+                ));
+            }
             if delivery.finding_id != key
                 || delivery.digest_check != chio_core::receipt::metadata::DeliveryResult::Matched
                 || delivery.media_type_check
@@ -584,7 +591,7 @@ impl ChioKernel {
             })?;
         let Some(()) = self.with_receipt_store(|store| {
             let parent = store
-                .load_chio_receipt(parent_receipt_id)?
+                .load_retained_chio_receipt(parent_receipt_id)?
                 .ok_or_else(|| {
                     KernelError::Internal(
                         "Finding delivery receipt binding is not durably available".to_owned(),
@@ -628,6 +635,11 @@ impl ChioKernel {
                     "Finding delivery receipt metadata is invalid: {error}"
                 ))
             })?;
+            if delivery.status_proof.is_none() {
+                return Err(KernelError::Internal(
+                    "Finding memory lineage requires an M6 delivery status proof".to_owned(),
+                ));
+            }
             if delivery.finding_id != memory_key
                 || delivery.digest_check
                     != chio_core::receipt::metadata::DeliveryResult::Matched

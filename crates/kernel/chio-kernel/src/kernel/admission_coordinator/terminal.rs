@@ -176,6 +176,9 @@ impl ChioKernel {
             verified_payee_binding,
             trusted_now_unix_ms,
         } = input;
+        self.validate_guarded_output(request, matched_grant_index, output, false)?;
+        let purchase_replay_metadata =
+            self.capture_purchase_replay_metadata(request, matched_grant_index)?;
         let runtime = self.durable_runtime()?;
         let _mutation_guard = runtime.lock_mutations()?;
         let trusted_now_unix_ms = runtime.refresh_trusted_time(trusted_now_unix_ms);
@@ -254,13 +257,16 @@ impl ChioKernel {
         let receipt_metadata_snapshot = merge_metadata_objects(
             merge_metadata_objects(
                 merge_metadata_objects(
-                    merge_metadata_objects(request_metadata, extra_receipt_metadata),
-                    receipt_attribution_metadata(
-                        &request.capability,
-                        Some(matched_grant_index_usize),
+                    merge_metadata_objects(
+                        merge_metadata_objects(request_metadata, extra_receipt_metadata),
+                        receipt_attribution_metadata(
+                            &request.capability,
+                            Some(matched_grant_index_usize),
+                        ),
                     ),
+                    memory_read_metadata,
                 ),
-                memory_read_metadata,
+                purchase_replay_metadata,
             ),
             Some(serde_json::json!({
                 "receipt_context": {
@@ -574,17 +580,16 @@ impl ChioKernel {
             .map_err(|error| KernelError::DurableAdmission(error.to_string()))?,
         )
         .map_err(tool_outcome_error)?;
-        // The purchase binding is re-derived deterministically from the
-        // frozen request: the marker and carrier are both covered by the
-        // immutable request hash revalidated above, so a divergent result
-        // here is a configuration fault, not a delivery verdict.
-        let purchase = self
-            .verify_purchase_context(selected_grant.grant, request)
-            .map_err(|reason| {
-                KernelError::DurableAdmission(format!(
-                    "purchase binding could not be re-derived: {reason}"
-                ))
-            })?;
+        // The purchase binding was verified when the authenticated raw tool
+        // return was recorded. Reuse that frozen result so a later
+        // status-operator rotation cannot strand an already-dispatched
+        // operation. The raw outcome and immutable request hash bind the
+        // snapshot to this exact request.
+        let purchase = self.restore_purchase_replay_snapshot(
+            selected_grant.grant,
+            request,
+            raw.receipt_metadata_snapshot(),
+        )?;
         let recovery = self
             .verify_recovery_context(selected_grant.grant, request)
             .map_err(|reason| {

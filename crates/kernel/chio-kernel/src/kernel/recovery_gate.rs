@@ -341,6 +341,8 @@ mod tests {
                 proof_sha256: "2".repeat(64),
                 root_hash: "3".repeat(64),
                 non_inclusion_checked_at: 1,
+                operator_authorization_sha256: "4".repeat(64),
+                service_bond_evidence_sha256: "5".repeat(64),
             })
         }
 

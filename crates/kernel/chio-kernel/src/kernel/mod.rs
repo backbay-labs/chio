@@ -14,6 +14,7 @@ mod error;
 mod kernel_drop_guard;
 mod kernel_scopes;
 mod kernel_struct;
+mod output_guard;
 mod verified_treaty;
 
 pub use construction::KernelBuildError;
@@ -599,6 +600,23 @@ pub trait Guard: Send + Sync {
     /// approval, or rate-limit token.
     fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
         Ok(())
+    }
+
+    /// Validate the exact output after the tool returns and before it can be
+    /// released or committed as a durable tool return. Stateful guards use
+    /// this seam to bind an admission decision to the value actually read.
+    fn validate_output_before_release(
+        &self,
+        _ctx: &GuardContext,
+        _output: &ToolServerOutput,
+    ) -> Result<(), KernelError> {
+        Ok(())
+    }
+
+    /// Return true when output validation binds the exact released value and
+    /// therefore must run after every configured output transform.
+    fn requires_exact_released_output(&self, _ctx: &GuardContext) -> bool {
+        false
     }
 }
 

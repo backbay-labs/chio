@@ -20,7 +20,7 @@ use chio_guards::{
     FindingRetractionResolveError, FindingRetractionResolver, FindingStatusValue,
     MemoryGovernanceConfig, MemoryGovernanceGuard,
 };
-use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
+use chio_kernel::{Guard, GuardContext, ToolCallRequest, ToolServerOutput, Verdict};
 
 fn signed_cap(kp: &Keypair, scope: &ChioScope) -> CapabilityToken {
     let body = CapabilityTokenBody {
@@ -411,6 +411,7 @@ impl FindingRetractionResolver for StubFindingResolver {
                 epoch_id: "a".repeat(64),
                 root_hash: "b".repeat(64),
                 value,
+                memory_content_sha256: "c".repeat(64),
             })
     }
 }
@@ -508,6 +509,7 @@ fn finding_quarantine_denies_unavailable_state_and_resolver_substitution() {
 
 struct MutableFindingResolver {
     value: Mutex<FindingStatusValue>,
+    memory_content_sha256: Mutex<String>,
 }
 
 impl FindingRetractionResolver for MutableFindingResolver {
@@ -535,6 +537,13 @@ impl FindingRetractionResolver for MutableFindingResolver {
             epoch_id: "a".repeat(64),
             root_hash: "b".repeat(64),
             value,
+            memory_content_sha256: self
+                .memory_content_sha256
+                .lock()
+                .map_err(|_| {
+                    FindingRetractionResolveError::StatusUnavailable("poisoned".to_owned())
+                })?
+                .clone(),
         })
     }
 }
@@ -543,6 +552,7 @@ impl FindingRetractionResolver for MutableFindingResolver {
 fn finding_quarantine_rechecks_status_immediately_before_dispatch() {
     let resolver = Arc::new(MutableFindingResolver {
         value: Mutex::new(FindingStatusValue::Live),
+        memory_content_sha256: Mutex::new("c".repeat(64)),
     });
     let guard = MemoryGovernanceGuard::with_config_and_retraction_resolver(
         finding_quarantine_config(),
@@ -574,4 +584,57 @@ fn finding_quarantine_rechecks_status_immediately_before_dispatch() {
         guard.revalidate_before_dispatch(&ctx),
         Err(chio_kernel::KernelError::GuardDenied(_))
     ));
+}
+
+#[test]
+fn finding_quarantine_binds_the_released_value_to_latest_write_provenance() {
+    let admitted_value = serde_json::json!({"payload": "admitted"});
+    let admitted_bytes = chio_core::canonical::canonical_json_bytes(&admitted_value)
+        .expect("canonical admitted value");
+    let resolver = Arc::new(MutableFindingResolver {
+        value: Mutex::new(FindingStatusValue::Live),
+        memory_content_sha256: Mutex::new(chio_core::crypto::sha256_hex(&admitted_bytes)),
+    });
+    let guard = MemoryGovernanceGuard::with_config_and_retraction_resolver(
+        finding_quarantine_config(),
+        resolver.clone(),
+    )
+    .expect("build finding quarantine guard");
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let (request, agent_id, server_id) = make_request_in_scope(
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory", "id": "key-1"}),
+    );
+    let ctx = GuardContext {
+        request: &request,
+        scope: &scope,
+        agent_id: &agent_id,
+        server_id: &server_id,
+        session_filesystem_roots: None,
+        matched_grant_index: None,
+    };
+
+    assert!(guard
+        .validate_output_before_release(&ctx, &ToolServerOutput::Value(admitted_value.clone()),)
+        .is_ok());
+    assert!(guard
+        .validate_output_before_release(
+            &ctx,
+            &ToolServerOutput::Value(serde_json::json!({"payload": "substituted"})),
+        )
+        .is_err());
+
+    let overwritten = serde_json::json!({"payload": "newer-write"});
+    let overwritten_bytes = chio_core::canonical::canonical_json_bytes(&overwritten)
+        .expect("canonical overwritten value");
+    *resolver
+        .memory_content_sha256
+        .lock()
+        .expect("content digest lock") = chio_core::crypto::sha256_hex(&overwritten_bytes);
+    assert!(guard
+        .validate_output_before_release(&ctx, &ToolServerOutput::Value(admitted_value))
+        .is_err());
 }

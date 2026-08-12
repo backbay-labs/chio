@@ -6793,6 +6793,7 @@ fn finding_challenge_final_penalty_uses_the_rotated_authority_window() -> TestRe
     let coordinator = FindingChallengeCoordinator::new(
         case.deployment.challenges.clone(),
         case.deployment.purchases.clone(),
+        case.deployment.status.clone(),
         &rotated_config,
         keypair(31),
         keypair(32),
