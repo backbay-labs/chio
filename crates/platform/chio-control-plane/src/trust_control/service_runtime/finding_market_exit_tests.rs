@@ -1695,6 +1695,39 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     )
     .await?;
 
+    // Venue authority is deployment-pinned across both the admission's
+    // issuance instant and the venue's trusted activation clock.
+    let mut before_venue_window =
+        web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+    before_venue_window.issued_at = ISSUED_AT.saturating_sub(1);
+    let before_venue_window = sign_admission(before_venue_window, &web.venue)?;
+    assert_activation_rejected(
+        &stack,
+        web.activate_request(&before_venue_window, &web.schedule, &web.report)?,
+        "venue authority is not live",
+    )
+    .await?;
+
+    let mut expired_venue_state = stack.state.clone();
+    expired_venue_state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or_else(|| missing("finding market config"))?
+        .venue
+        .valid_until = unix_timestamp_now();
+    let (status, body) = send(
+        &expired_venue_state,
+        authed_post(
+            &format!("/v1/findings/{}/activate", web.finding_id),
+            web.activate_request(&web.admission, &web.schedule, &web.report)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("venue authority is not live"));
+    assert_nothing_admitted(&stack).await?;
+
     // Report-before-backing order (D14): a bond-verified report evaluated
     // before the allocation was accepted rejects.
     let stale_report_body = web.admission_body(
@@ -2005,7 +2038,7 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     assert_eq!(
         stack
             .store
-            .paid_through_epoch(&web.finding_id, LISTING_ID)?,
+            .paid_through_epoch(&web.finding_id, LISTING_ID, &web.schedule_sha256)?,
         Some(0)
     );
     Ok(())
@@ -2453,7 +2486,11 @@ async fn unpaid_epoch_drops_the_marker_until_renewal() -> TestResult {
     );
     let paid_through = stack
         .store
-        .paid_through_epoch(&stack.web.finding_id, LISTING_ID)?
+        .paid_through_epoch(
+            &stack.web.finding_id,
+            LISTING_ID,
+            &stack.web.schedule_sha256,
+        )?
         .ok_or_else(|| missing("paid-through epoch after renewal"))?;
     assert!(paid_through >= 1);
     Ok(())
@@ -2494,9 +2531,11 @@ async fn expired_admission_loses_the_marker() -> TestResult {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(String::from_utf8_lossy(&body).contains("not live"));
     assert_eq!(
-        stack
-            .store
-            .paid_through_epoch(&stack.web.finding_id, LISTING_ID)?,
+        stack.store.paid_through_epoch(
+            &stack.web.finding_id,
+            LISTING_ID,
+            &stack.web.schedule_sha256,
+        )?,
         Some(0)
     );
     Ok(())

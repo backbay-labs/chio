@@ -713,7 +713,7 @@ fn paid_through_epoch_stops_at_gaps() {
     assert_eq!(
         fixture
             .store
-            .paid_through_epoch(&finding_id, LISTING_ID)
+            .paid_through_epoch(&finding_id, LISTING_ID, &hex64('5'))
             .expect("empty listing"),
         None
     );
@@ -736,10 +736,18 @@ fn paid_through_epoch_stops_at_gaps() {
     assert_eq!(
         fixture
             .store
-            .paid_through_epoch(&finding_id, LISTING_ID)
+            .paid_through_epoch(&finding_id, LISTING_ID, &hex64('5'))
             .expect("gapped listing"),
         Some(1),
         "the gap at epoch 2 stops the contiguous count"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .paid_through_epoch(&finding_id, LISTING_ID, &hex64('6'))
+            .expect("different schedule"),
+        None,
+        "payments from a superseded fee schedule must not fund the active terms"
     );
     // A listing whose first reconciled epoch is 1 has not paid epoch 0.
     let other_finding = hex64('b');
@@ -749,7 +757,7 @@ fn paid_through_epoch_stops_at_gaps() {
     assert_eq!(
         fixture
             .store
-            .paid_through_epoch(&other_finding, LISTING_ID)
+            .paid_through_epoch(&other_finding, LISTING_ID, &hex64('5'))
             .expect("epoch zero unpaid"),
         None
     );
@@ -1026,6 +1034,10 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
          guarantees the prior row moved to superseded"
     );
     assert_eq!(superseding.envelope_json, second_envelope);
+    assert_eq!(
+        superseding.activated_at, NOW,
+        "supersession must preserve the original participation epoch origin"
+    );
     let old_allocation = fixture
         .store
         .get_allocation(&backing.allocation_id)

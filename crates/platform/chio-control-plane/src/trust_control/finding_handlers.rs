@@ -317,6 +317,9 @@ fn verify_profile_registration_authority(
     {
         return Err("governance authority status does not bind the deployment pin".to_owned());
     }
+    if status.observed_at < request.profile.body.issued_at {
+        return Err("governance authority status predates profile issuance".to_owned());
+    }
     if status.observed_at > now
         || now.saturating_sub(status.observed_at) > VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS
     {
@@ -573,7 +576,11 @@ fn current_admission_view(
     let admission: SignedFindingAdmission = serde_json::from_str(&snapshot.envelope_json).ok()?;
     let current_epoch = live_admission_epoch(store, &snapshot, &admission, now)?;
     let paid_through = store
-        .paid_through_epoch(finding_id, &snapshot.listing_id)
+        .paid_through_epoch(
+            finding_id,
+            &snapshot.listing_id,
+            &admission.body.fee_schedule_envelope_sha256,
+        )
         .ok()
         .flatten()?;
     if paid_through < current_epoch {
@@ -1030,6 +1037,12 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::BAD_REQUEST, "admission names another finding");
     }
     let now = unix_timestamp_now();
+    if !config.venue.covers(admission.issued_at) || !config.venue.covers(now) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding venue authority is not live for admission activation",
+        );
+    }
     let admission_json = match chio_core::canonical_json_bytes(&request.admission)
         .map_err(|_| ())
         .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ()))
@@ -1700,7 +1713,11 @@ pub(crate) async fn handle_finding_participation(
             "fee schedule does not match the admitted binding",
         );
     }
-    let paid_through = match store.paid_through_epoch(&finding_id, &snapshot.listing_id) {
+    let paid_through = match store.paid_through_epoch(
+        &finding_id,
+        &snapshot.listing_id,
+        &admission.body.fee_schedule_envelope_sha256,
+    ) {
         Ok(Some(epoch)) => epoch,
         Ok(None) => {
             return plain_http_error(StatusCode::BAD_REQUEST, "no reconciled participation epoch")

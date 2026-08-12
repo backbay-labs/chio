@@ -248,6 +248,8 @@ pub struct FindingAdmissionSnapshot {
     pub envelope_json: String,
     pub envelope_sha256: String,
     pub expires_at: u64,
+    /// Stable participation epoch origin for this finding and listing.
+    /// Superseding admissions preserve it so renewal cannot reset the clock.
     pub activated_at: u64,
     pub backing_allocation_id: String,
     pub allocation_state: FindingAllocationState,
@@ -923,15 +925,17 @@ impl SqliteFindingMarketStore {
     }
 
     /// Highest participation epoch reconciled contiguously from epoch 0
-    /// for one finding listing; a gap stops the count. `None` means epoch
-    /// 0 itself is unpaid.
+    /// for one finding listing and fee schedule; a gap stops the count.
+    /// `None` means epoch 0 itself is unpaid.
     pub fn paid_through_epoch(
         &self,
         finding_id: &str,
         listing_id: &str,
+        fee_schedule_envelope_sha256: &str,
     ) -> Result<Option<u64>, FindingMarketStoreError> {
         require_hex64(finding_id, "finding_id")?;
         require_non_empty(listing_id, "listing_id")?;
+        require_hex64(fee_schedule_envelope_sha256, "fee_schedule_envelope_sha256")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
         let mut statement = transaction
@@ -939,13 +943,17 @@ impl SqliteFindingMarketStore {
                 r#"
                 SELECT DISTINCT epoch_index FROM fee_events
                 WHERE finding_id = ?1 AND listing_id = ?2
+                  AND fee_schedule_envelope_sha256 = ?3
                   AND event_kind = 'participation_epoch' AND state = 'reconciled'
                 ORDER BY epoch_index ASC
                 "#,
             )
             .map_err(sqlite_error)?;
         let epochs = statement
-            .query_map(params![finding_id, listing_id], |row| row.get::<_, i64>(0))
+            .query_map(
+                params![finding_id, listing_id, fee_schedule_envelope_sha256],
+                |row| row.get::<_, i64>(0),
+            )
             .map_err(sqlite_error)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(sqlite_error)?;
@@ -1153,6 +1161,19 @@ impl SqliteFindingMarketStore {
                 "admission id is already bound to different bytes".to_owned(),
             ));
         }
+        let participation_epoch_origin = transaction
+            .query_row(
+                r#"
+                SELECT MIN(activated_at) FROM admissions
+                WHERE finding_id = ?1 AND listing_id = ?2
+                "#,
+                params![&admission.finding_id, &admission.listing_id],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .map_err(sqlite_error)?
+            .map(|stored| stored_u64(stored, "activated_at"))
+            .transpose()?
+            .unwrap_or(activated_at);
         transaction
             .execute(
                 r#"
@@ -1179,7 +1200,7 @@ impl SqliteFindingMarketStore {
                     &envelope_sha256,
                     admission_envelope_json,
                     sqlite_i64(admission.expires_at, "expires_at")?,
-                    sqlite_i64(activated_at, "activated_at")?,
+                    sqlite_i64(participation_epoch_origin, "activated_at")?,
                 ],
             )
             .map_err(sqlite_error)?;

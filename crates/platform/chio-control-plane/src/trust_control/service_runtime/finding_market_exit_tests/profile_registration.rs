@@ -91,6 +91,22 @@ async fn profile_registration_requires_live_unrevoked_governance() -> TestResult
     .await?;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(String::from_utf8_lossy(&body).contains("revoked at registration"));
+
+    let mut newly_issued = profile.body;
+    newly_issued.issued_at = now;
+    newly_issued.profile_id = String::new();
+    newly_issued.profile_id = compute_profile_id(&newly_issued)?;
+    let newly_issued = SignedExportEnvelope::sign(newly_issued, &keypair(1))?;
+    let (status, body) = send(
+        &stack.state,
+        authed_post(
+            "/v1/findings/profiles",
+            profile_registration_raw(&newly_issued, now.saturating_sub(1), None)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("predates profile issuance"));
     assert!(stack
         .store
         .get_recipe_blob(&stack.web.profile_sha256)?

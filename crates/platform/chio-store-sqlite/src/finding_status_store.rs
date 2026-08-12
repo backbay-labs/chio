@@ -12,7 +12,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chio_core::{canonical_json_bytes, sha256_hex, StoreMutationFence};
+use chio_core::{sha256_hex, StoreMutationFence};
 use chio_finding::FindingStatusProofInput;
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use chio_transaction_passport::{
@@ -1525,43 +1525,37 @@ impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
                 proof.finding_id.as_str(),
                 FindingStatusProofKind::Inclusion,
                 proof.checked_at,
-                Some(canonical_json_bytes(&proof.status).map_err(|error| error.to_string())?),
+                Some(b"retracted".to_vec()),
                 Some(proof.retraction_intent_sha256.as_str()),
             ),
         };
-        self.advance_epoch(&FindingStatusEpochAdvance {
-            epoch: VerifiedFindingStatusEpochInput {
-                feed_id: &epoch.feed_id,
-                operator_id: &epoch.operator_id,
-                key_domain_nonce: epoch.key_domain_nonce,
-                map_epoch: epoch.map_epoch,
-                epoch_id: &epoch.status_epoch_id,
-                root_hash: &epoch.root_hash,
-                signed_epoch_bytes: observation.signed_epoch_bytes,
-                operator_key: &epoch.operator_key.to_hex(),
-                operator_key_epoch: epoch.operator_key_epoch,
-                operator_authorization_sha256: observation.operator_authorization_sha256,
-                generated_at: epoch.generated_at,
-                valid_until: epoch.valid_until,
-                recorded_at: observation.recorded_at,
-            },
-            leaves: &[],
-            proofs: &[VerifiedFindingStatusProofInput {
-                feed_id,
-                operator_id: &epoch.operator_id,
-                key_domain_nonce,
-                map_epoch,
-                epoch_id,
-                root_hash,
-                finding_id,
-                kind,
-                proof_bytes: observation.proof_bytes,
-                status_value_bytes: status_value_bytes.as_deref(),
-                retraction_intent_sha256,
-                checked_at,
-                valid_until: epoch.valid_until,
-                recorded_at: observation.recorded_at,
-            }],
+        let current_epoch = self
+            .get_current_epoch(feed_id)
+            .map_err(|error| error.to_string())?;
+        if current_epoch.signed_epoch_bytes != observation.signed_epoch_bytes
+            || current_epoch.operator_authorization_sha256
+                != observation.operator_authorization_sha256
+        {
+            return Err(
+                "imported finding status point proof does not bind the exact durable feed floor"
+                    .to_owned(),
+            );
+        }
+        self.record_verified_proof(&VerifiedFindingStatusProofInput {
+            feed_id,
+            operator_id: &epoch.operator_id,
+            key_domain_nonce,
+            map_epoch,
+            epoch_id,
+            root_hash,
+            finding_id,
+            kind,
+            proof_bytes: observation.proof_bytes,
+            status_value_bytes: status_value_bytes.as_deref(),
+            retraction_intent_sha256,
+            checked_at,
+            valid_until: epoch.valid_until,
+            recorded_at: observation.recorded_at,
         })
         .map_err(|error| error.to_string())?;
 
