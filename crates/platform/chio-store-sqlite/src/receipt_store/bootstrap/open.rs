@@ -546,8 +546,9 @@ impl SqliteReceiptStore {
                 receipt_commit_actor: ReceiptCommitActor::start(
                     writer_pool,
                     options.incremental_verification,
-                    rollback_anchor,
+                    rollback_anchor.clone(),
                 ),
+                rollback_anchor,
                 pool: reader_pool,
                 settlement_store_binding,
                 durable_sink_id,
@@ -1586,8 +1587,9 @@ impl SqliteReceiptStore {
             receipt_commit_actor: ReceiptCommitActor::start(
                 writer_pool,
                 options.incremental_verification,
-                rollback_anchor,
+                rollback_anchor.clone(),
             ),
+            rollback_anchor,
             pool: reader_pool,
             settlement_store_binding,
             durable_sink_id,

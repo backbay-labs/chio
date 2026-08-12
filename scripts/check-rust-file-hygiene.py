@@ -223,13 +223,18 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store.rs": allow(
         "2026-08-31",
-        "receipt store hot-path module after batch-bounded rework; capped to current size until split",
-        max_lines=5_458,
+        "receipt store hot-path module with anchored writer-routed appends and qualified read verification; capped to current size until split",
+        max_lines=5_748,
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs": allow(
         "2026-08-31",
         "receipt retention regression suite; capped to current size until split",
         max_lines=4_668,
+    ),
+    "crates/platform/chio-store-sqlite/src/receipt_store/tests/verified_head.rs": allow(
+        "2026-08-31",
+        "receipt verified-head regression suite with live qualified rollback coverage; capped to current size until split",
+        max_lines=2_017,
     ),
     "crates/trust/chio-federation-transport-iroh/src/lanes/pheromone.rs": allow(
         "2026-08-31",
@@ -289,7 +294,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/economy/chio-open-market/tests/finding_admission.rs": allow(
         "2026-08-31",
         "cognition-market admission regression suite; capped to current M8 size until split",
-        max_lines=2_367,
+        max_lines=2_383,
     ),
     "crates/economy/chio-settle/src/channel/tests/support.rs": allow(
         "2026-08-31",
@@ -308,8 +313,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs": allow(
         "2026-08-31",
-        "durable terminal coordinator with M6 status-release and recovery snapshots; capped to current size until split",
-        max_lines=2_418,
+        "durable terminal coordinator with M6 status-release and recovery snapshots plus M8 signed outcome projection; capped to current size until split",
+        max_lines=2_425,
     ),
     "crates/kernel/chio-kernel/src/kernel/construction.rs": allow(
         "2026-08-31",

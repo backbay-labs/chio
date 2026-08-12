@@ -1,6 +1,50 @@
 use super::super::*;
 use super::support::*;
 
+#[test]
+fn qualified_reader_and_reopen_reject_live_rollback_after_writer_routed_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = tempfile::tempdir()?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("qualified-writer-routed.sqlite3");
+    let snapshot = directory.path().join("before-child.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    store.flush_receipt_writes()?;
+    let checkpoint = rusqlite::Connection::open(&database)?;
+    checkpoint.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(checkpoint);
+    std::fs::copy(&database, &snapshot)?;
+
+    let child = sample_child_receipt_with_id_and_timestamp("anchored-child", 2);
+    store.append_child_receipt(&child)?;
+    store.flush_receipt_writes()?;
+    assert_eq!(store.max_child_receipt_seq()?, 1);
+    let checkpoint = rusqlite::Connection::open(&database)?;
+    checkpoint.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(checkpoint);
+
+    std::fs::copy(&snapshot, &database)?;
+    let read_error = store
+        .max_child_receipt_seq()
+        .err()
+        .ok_or("live rollback must fail a qualified receipt read")?;
+    assert!(
+        matches!(read_error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
+        "unexpected live rollback error: {read_error}"
+    );
+    drop(store);
+    assert!(matches!(
+        SqliteReceiptStore::open_existing_for_finding_pool(&database, anchor_directory.path()),
+        Err(ReceiptStoreError::Conflict(message)) if message.contains("rollback protection")
+    ));
+    Ok(())
+}
+
 fn open_seeded_store(
     prefix: &str,
     receipts: usize,

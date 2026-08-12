@@ -6,7 +6,9 @@ use chio_core_types::{PublicKey, Signature};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::substrate::{PairBucketKey, PassportCapKey, ScarcityBucketKey};
+use crate::substrate::{
+    DepositNonceKey, PairBucketKey, PassportCapKey, PheromoneNonceState, ScarcityBucketKey,
+};
 use crate::{
     agent_passport_jwk_thumbprint, agent_passport_key_hash, scarcity_admissions_for_deposit,
     scarcity_policy_sha256, CostCommitmentPolicy, ObservationCostVerificationMode,
@@ -172,7 +174,8 @@ pub(crate) fn deposit_signature_body(body: &PheromoneDepositBody) -> PheromoneDe
 
 pub(crate) fn commit_admission_state(
     deposit: &PheromoneDeposit,
-    seen_nonces: &Mutex<BTreeSet<(String, String, String)>>,
+    nonce_state: &Mutex<PheromoneNonceState>,
+    reservation: Option<&DepositNonceKey>,
     context: &PheromoneValidationContext,
     scarcity_buckets: &Mutex<BTreeMap<ScarcityBucketKey, u64>>,
     pair_counts: &Mutex<BTreeMap<PairBucketKey, u64>>,
@@ -185,11 +188,26 @@ pub(crate) fn commit_admission_state(
         deposit.body.nonce.clone(),
     );
 
-    let mut seen = seen_nonces.lock()?;
-    if seen.contains(&nonce_key) {
+    let mut nonce_state = nonce_state.lock()?;
+    if nonce_state.seen.contains(&nonce_key) {
         return Err(PheromoneError::ReplayWindowExceeded(
             deposit.body.nonce.clone(),
         ));
+    }
+    match reservation {
+        Some(reserved_key)
+            if reserved_key == &nonce_key && nonce_state.reserved.contains(reserved_key) => {}
+        Some(_) => {
+            return Err(PheromoneError::ReplayWindowExceeded(
+                deposit.body.nonce.clone(),
+            ));
+        }
+        None if nonce_state.reserved.contains(&nonce_key) => {
+            return Err(PheromoneError::ReplayWindowExceeded(
+                deposit.body.nonce.clone(),
+            ));
+        }
+        None => {}
     }
     let mut buckets = scarcity_buckets.lock()?;
     let mut counts = pair_counts.lock()?;
@@ -233,7 +251,10 @@ pub(crate) fn commit_admission_state(
         }
     }
 
-    seen.insert(nonce_key);
+    nonce_state.seen.insert(nonce_key);
+    if let Some(reserved_key) = reservation {
+        nonce_state.reserved.remove(reserved_key);
+    }
     for admission in &admissions {
         let scarcity_key = scarcity_bucket_key(admission);
         let count = buckets.get(&scarcity_key).copied().unwrap_or(0);

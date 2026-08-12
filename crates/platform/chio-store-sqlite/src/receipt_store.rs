@@ -105,6 +105,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 pub struct SqliteReceiptStore {
     pub(crate) pool: Pool<SqliteConnectionManager>,
     receipt_commit_actor: ReceiptCommitActor,
+    rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
     settlement_store_binding: Option<chio_settle::SettlementStoreBinding>,
     durable_sink_id: Option<String>,
     /// Multi-tenant receipt isolation: when true, tenant-
@@ -498,11 +499,30 @@ type WriterResponder = Box<dyn FnOnce(Result<(), ReceiptStoreError>) -> bool + S
 /// returns a [`WriterResponder`] so the ACTOR controls when the caller's result
 /// is sent: the response is withheld until the post-write head resync outcome
 /// is known.
-type WriterClosure = Box<
-    dyn FnOnce(Result<&mut SqliteStoreConnection, ReceiptStoreError>) -> WriterResponder
+type MetadataWriterClosure = Box<
+    dyn FnOnce(Result<&mut Connection, ReceiptStoreError>) -> (WriterResponder, bool)
         + Send
         + 'static,
 >;
+type ReceiptWriterClosure = Box<
+    dyn FnOnce(Result<&rusqlite::Transaction<'_>, ReceiptStoreError>) -> (WriterResponder, bool)
+        + Send
+        + 'static,
+>;
+
+enum WriterClosure {
+    Metadata(MetadataWriterClosure),
+    Receipt(ReceiptWriterClosure),
+}
+
+impl WriterClosure {
+    fn reject(self, error: ReceiptStoreError) -> (WriterResponder, bool) {
+        match self {
+            Self::Metadata(job) => job(Err(error)),
+            Self::Receipt(job) => job(Err(error)),
+        }
+    }
+}
 
 enum ReceiptCommitCommand {
     Append(Box<ReceiptCommitRequest>),
@@ -595,6 +615,7 @@ impl ReceiptCommitActor {
         // still-open channel; the caller's sender stays valid across restarts. The
         // pool and health handle are cheap to clone (an Arc bump each) per attempt.
         let mut checkpoint_signer = None;
+        let actor_rollback_anchor = rollback_anchor.clone();
         let supervisor = SupervisedThread::spawn(config, move |_shutdown| {
             let _ = actor_thread_id.set(thread::current().id());
             receipt_commit_actor_loop(
@@ -602,7 +623,7 @@ impl ReceiptCommitActor {
                 &receiver,
                 Arc::clone(&actor_health),
                 incremental_verification,
-                rollback_anchor.clone(),
+                actor_rollback_anchor.clone(),
                 &mut checkpoint_signer,
             )
         });
@@ -915,30 +936,33 @@ impl WriterHandle {
     /// session anchors) that do not insert receipt rows.
     pub(crate) fn run_write<T, F>(&self, job: F) -> Result<T, ReceiptStoreError>
     where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        F: FnOnce(&mut Connection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        self.run_write_kind(job, false, false)
+        self.run_write_kind(job, false)
     }
 
     /// Run one receipt-appending write job (child receipts,
     /// authorization-consuming appends). These insert `claim_receipt_log_entries`
     /// rows via the projection triggers, so the non-incremental fallback
-    /// pre-check runs the full claim-log validation (fail-closed).
+    /// pre-check runs the full claim-log validation (fail-closed). The closure
+    /// receives the actor-owned transaction and must not commit independently;
+    /// qualified stores advance the database generation and external rollback
+    /// anchor around that same transaction.
     pub(crate) fn run_write_receipt<T, F>(&self, job: F) -> Result<T, ReceiptStoreError>
     where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        self.run_write_kind(job, true, false)
+        self.run_receipt_write_kind(job, false)
     }
 
     fn run_critical_receipt_write<T, F>(&self, job: F) -> Result<T, ReceiptStoreError>
     where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        self.run_write_kind(job, true, true)
+        self.run_receipt_write_kind(job, true)
     }
 
     /// Bounded variant of [`run_write_receipt`]: identical up to the response
@@ -954,10 +978,10 @@ impl WriterHandle {
         timeout: Duration,
     ) -> Result<T, ReceiptStoreError>
     where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        self.run_write_kind_with_timeout(job, true, false, timeout)
+        self.run_receipt_write_kind_with_timeout(job, false, timeout)
     }
 
     /// Bounded variant of a critical receipt write. Transaction failures retain
@@ -969,10 +993,10 @@ impl WriterHandle {
         timeout: Duration,
     ) -> Result<T, ReceiptStoreError>
     where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        self.run_write_kind_with_timeout(job, true, true, timeout)
+        self.run_receipt_write_kind_with_timeout(job, true, timeout)
     }
 
     /// Bounded variant of [`run_write`]: a metadata-only write (capability
@@ -986,91 +1010,103 @@ impl WriterHandle {
         timeout: Duration,
     ) -> Result<T, ReceiptStoreError>
     where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        F: FnOnce(&mut Connection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        self.run_write_kind_with_timeout(job, false, false, timeout)
+        self.run_write_kind_with_timeout(job, false, timeout)
     }
 
     fn run_write_kind_with_timeout<T, F>(
         &self,
         job: F,
-        appends_receipts: bool,
         fail_closed_on_error: bool,
         timeout: Duration,
     ) -> Result<T, ReceiptStoreError>
     where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        F: FnOnce(&mut Connection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
         let (result, timeout_tracker) =
-            self.enqueue_write_job(job, appends_receipts, fail_closed_on_error)?;
-        match result.recv_timeout(timeout) {
-            Ok(outcome) => outcome,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                timeout_tracker.note_timeout(RECEIPT_WRITE_TIMEOUT_MARKER);
-                Err(receipt_actor_write_timeout_error(timeout))
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                atomic_saturating_sub(&self.health.inflight, 1);
-                self.health.failed_total.fetch_add(1, Ordering::SeqCst);
-                // Record the writer death so the next liveness sample reports the
-                // writer Dead. The classifier keys the Dead verdict on the
-                // "unavailable" marker, so without setting it a disconnected
-                // writer with `inflight` compensated and `failed_total` matching
-                // `accepted_total` would sample as Healthy and admit a tool side
-                // effect before receipt persistence fails.
-                self.health.note_writer_unavailable();
-                Err(self.worker.writer_dead_error())
-            }
-        }
+            self.enqueue_metadata_write_job(job, fail_closed_on_error)?;
+        self.wait_for_write(result, timeout_tracker, Some(timeout))
     }
 
     fn run_write_kind<T, F>(
         &self,
         job: F,
-        appends_receipts: bool,
         fail_closed_on_error: bool,
     ) -> Result<T, ReceiptStoreError>
     where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        F: FnOnce(&mut Connection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
-        let (result, _timeout_tracker) =
-            self.enqueue_write_job(job, appends_receipts, fail_closed_on_error)?;
-        match result.recv() {
-            Ok(outcome) => outcome,
-            Err(_) => {
-                // Accepted-then-lost: the actor took the command but exited
-                // before delivering a response (actor death; job panics are
-                // caught and answered above). The job-completion decrement (the
-                // `WriterInflightGuard` in the actor's `Write` arm) may never
-                // have run - the command could have been
-                // lost while still queued, before the arm was entered - so undo
-                // the speculative pre-send increment and record the failure,
-                // mirroring the append path's recv-Err handling, so
-                // writer.inflight does not report a permanently-stuck write. If
-                // the actor instead died mid-arm and the guard already fired,
-                // `atomic_saturating_sub` keeps this compensating release from
-                // underflowing.
-                atomic_saturating_sub(&self.health.inflight, 1);
-                self.health.failed_total.fetch_add(1, Ordering::SeqCst);
-                // Record the writer death so the next liveness sample reports the
-                // writer Dead rather than Healthy (see the bounded-write arm).
-                self.health.note_writer_unavailable();
-                Err(self.worker.writer_dead_error())
-            }
+        let (result, timeout_tracker) =
+            self.enqueue_metadata_write_job(job, fail_closed_on_error)?;
+        self.wait_for_write(result, timeout_tracker, None)
+    }
+
+    fn run_receipt_write_kind_with_timeout<T, F>(
+        &self,
+        job: F,
+        fail_closed_on_error: bool,
+        timeout: Duration,
+    ) -> Result<T, ReceiptStoreError>
+    where
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        let (result, timeout_tracker) =
+            self.enqueue_receipt_write_job(job, fail_closed_on_error)?;
+        self.wait_for_write(result, timeout_tracker, Some(timeout))
+    }
+
+    fn run_receipt_write_kind<T, F>(
+        &self,
+        job: F,
+        fail_closed_on_error: bool,
+    ) -> Result<T, ReceiptStoreError>
+    where
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        let (result, timeout_tracker) =
+            self.enqueue_receipt_write_job(job, fail_closed_on_error)?;
+        self.wait_for_write(result, timeout_tracker, None)
+    }
+
+    fn wait_for_write<T>(
+        &self,
+        result: mpsc::Receiver<Result<T, ReceiptStoreError>>,
+        timeout_tracker: WriterCommandTimeout,
+        timeout: Option<Duration>,
+    ) -> Result<T, ReceiptStoreError> {
+        let received = match timeout {
+            Some(timeout) => match result.recv_timeout(timeout) {
+                Ok(outcome) => return outcome,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    timeout_tracker.note_timeout(RECEIPT_WRITE_TIMEOUT_MARKER);
+                    return Err(receipt_actor_write_timeout_error(timeout));
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => None,
+            },
+            None => result.recv().ok(),
+        };
+        if let Some(outcome) = received {
+            return outcome;
         }
+        atomic_saturating_sub(&self.health.inflight, 1);
+        self.health.failed_total.fetch_add(1, Ordering::SeqCst);
+        self.health.note_writer_unavailable();
+        Err(self.worker.writer_dead_error())
     }
 
     /// Box a write job, speculatively account it as in-flight, and enqueue it on
     /// the commit actor. Returns the response receiver on a successful enqueue;
     /// the caller decides how long to wait. A `Full`/`Disconnected` send undoes
     /// the speculative `inflight` increment before returning (fail-closed).
-    fn enqueue_write_job<T, F>(
+    fn enqueue_metadata_write_job<T, F>(
         &self,
         job: F,
-        appends_receipts: bool,
         fail_closed_on_error: bool,
     ) -> Result<
         (
@@ -1080,13 +1116,13 @@ impl WriterHandle {
         ReceiptStoreError,
     >
     where
-        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        F: FnOnce(&mut Connection) -> Result<T, ReceiptStoreError> + Send + 'static,
         T: Send + 'static,
     {
         let (response, result) = mpsc::sync_channel(1);
         let (completion, timeout_tracker) = writer_command_tracker(&self.health);
         let writer_health = Arc::clone(&self.health);
-        let boxed: WriterClosure = Box::new(move |connection| {
+        let boxed = WriterClosure::Metadata(Box::new(move |connection| {
             let outcome = match connection {
                 // Panic isolation: `job` is one of the many rerouted write
                 // families (lineage, liability,
@@ -1103,6 +1139,7 @@ impl WriterHandle {
                 }
                 Err(error) => Err(error),
             };
+            let succeeded = outcome.is_ok();
             // Defer the send: the actor calls this
             // responder with the post-write head resync outcome. A resync
             // failure overrides a committed job's `Ok` with the resync error; a
@@ -1132,8 +1169,94 @@ impl WriterHandle {
                     let _ = response.send(final_outcome);
                     committed
                 });
-            responder
-        });
+            (responder, succeeded)
+        }));
+        self.enqueue_boxed_write_job(
+            boxed,
+            false,
+            fail_closed_on_error,
+            completion,
+            result,
+            timeout_tracker,
+        )
+    }
+
+    fn enqueue_receipt_write_job<T, F>(
+        &self,
+        job: F,
+        fail_closed_on_error: bool,
+    ) -> Result<
+        (
+            mpsc::Receiver<Result<T, ReceiptStoreError>>,
+            WriterCommandTimeout,
+        ),
+        ReceiptStoreError,
+    >
+    where
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        let (response, result) = mpsc::sync_channel(1);
+        let (completion, timeout_tracker) = writer_command_tracker(&self.health);
+        let writer_health = Arc::clone(&self.health);
+        let boxed = WriterClosure::Receipt(Box::new(move |connection| {
+            let outcome = match connection {
+                Ok(connection) => {
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job(connection)))
+                        .unwrap_or_else(|payload| Err(receipt_writer_job_panic_error(&payload)))
+                }
+                Err(error) => Err(error),
+            };
+            let succeeded = outcome.is_ok();
+            let responder: WriterResponder =
+                Box::new(move |resync: Result<(), ReceiptStoreError>| {
+                    let final_outcome = match (outcome, resync) {
+                        (job_outcome, Ok(())) => job_outcome,
+                        (Err(job_error), Err(_)) => Err(job_error),
+                        (Ok(_), Err(resync_error)) => Err(resync_error),
+                    };
+                    if fail_closed_on_error {
+                        if let Err(error) = &final_outcome {
+                            if let Ok(mut last_error) = writer_health.last_error.lock() {
+                                *last_error = Some(error.to_string());
+                            }
+                            writer_health
+                                .critical_write_poisoned
+                                .store(true, Ordering::SeqCst);
+                            writer_health.set_head_poisoned(true);
+                        }
+                    }
+                    let committed = final_outcome.is_ok();
+                    let _ = response.send(final_outcome);
+                    committed
+                });
+            (responder, succeeded)
+        }));
+        self.enqueue_boxed_write_job(
+            boxed,
+            true,
+            fail_closed_on_error,
+            completion,
+            result,
+            timeout_tracker,
+        )
+    }
+
+    fn enqueue_boxed_write_job<T>(
+        &self,
+        boxed: WriterClosure,
+        appends_receipts: bool,
+        fail_closed_on_error: bool,
+        completion: WriterCommandCompletion,
+        result: mpsc::Receiver<Result<T, ReceiptStoreError>>,
+        timeout_tracker: WriterCommandTimeout,
+    ) -> Result<
+        (
+            mpsc::Receiver<Result<T, ReceiptStoreError>>,
+            WriterCommandTimeout,
+        ),
+        ReceiptStoreError,
+    > {
         // Pre-send increment: same race-avoidance invariant as
         // `ReceiptCommitActor::append` (see the comment at the `inflight`
         // increment in `append`). The actor decrements unconditionally on
@@ -1221,6 +1344,12 @@ enum WriterHeadState {
     /// Seeding or resync failed: every write is rejected with Conflict until
     /// `chio receipt audit --repair` reseeds (fail-closed).
     Poisoned(String),
+}
+
+#[derive(Clone, Copy)]
+struct ReceiptWriterQualification<'a> {
+    incremental_verification: bool,
+    rollback_anchor: Option<&'a crate::rollback_generation::RollbackGenerationAnchor>,
 }
 
 fn poisoned_head_error(message: &str) -> ReceiptStoreError {
@@ -1417,7 +1546,10 @@ fn receipt_commit_actor_loop(
                     if let Some(outcome) = handle_non_append_command(
                         &pool,
                         &mut head_state,
-                        incremental_verification,
+                        ReceiptWriterQualification {
+                            incremental_verification,
+                            rollback_anchor: rollback_anchor.as_deref(),
+                        },
                         &health,
                         checkpoint_signer,
                         &mut pending_flush_error,
@@ -1438,7 +1570,10 @@ fn receipt_commit_actor_loop(
                 if let Some(outcome) = handle_non_append_command(
                     &pool,
                     &mut head_state,
-                    incremental_verification,
+                    ReceiptWriterQualification {
+                        incremental_verification,
+                        rollback_anchor: rollback_anchor.as_deref(),
+                    },
                     &health,
                     checkpoint_signer,
                     &mut pending_flush_error,
@@ -1455,12 +1590,16 @@ fn receipt_commit_actor_loop(
 fn handle_non_append_command(
     pool: &Pool<SqliteConnectionManager>,
     head_state: &mut WriterHeadState,
-    incremental_verification: bool,
+    qualification: ReceiptWriterQualification<'_>,
     health: &ReceiptCommitWriterHealth,
     checkpoint_signer: &mut Option<BackgroundCheckpointSigner>,
     pending_flush_error: &mut Option<ReceiptStoreError>,
     command: ReceiptCommitCommand,
 ) -> Option<SupervisedOutcome> {
+    let ReceiptWriterQualification {
+        incremental_verification,
+        rollback_anchor,
+    } = qualification;
     match command {
         ReceiptCommitCommand::Write {
             job,
@@ -1492,7 +1631,7 @@ fn handle_non_append_command(
                     // No write ran (no connection), so there is no resync to
                     // gate on: send the pool error now (`Ok(())` = nothing to
                     // override). Count the failed outcome.
-                    let respond = job(Err(ReceiptStoreError::Pool(error.to_string())));
+                    let (respond, _) = job.reject(ReceiptStoreError::Pool(error.to_string()));
                     // Decrement before the response reaches the caller.
                     drop(inflight_guard);
                     let committed = respond(Ok(()));
@@ -1506,7 +1645,7 @@ fn handle_non_append_command(
             };
             match head_state {
                 WriterHeadState::Poisoned(message) => {
-                    let respond = job(Err(poisoned_head_error(message)));
+                    let (respond, _) = job.reject(poisoned_head_error(message));
                     // Decrement before the response reaches the caller.
                     drop(inflight_guard);
                     let committed = respond(Ok(()));
@@ -1548,7 +1687,7 @@ fn handle_non_append_command(
                         })
                     };
                     if let Err(error) = pre_check {
-                        let respond = job(Err(error));
+                        let (respond, _) = job.reject(error);
                         // Decrement before the response reaches the caller.
                         drop(inflight_guard);
                         let committed = respond(Ok(()));
@@ -1569,7 +1708,51 @@ fn handle_non_append_command(
                     // `resync_head_after_write` confirms the head. A committed
                     // write whose resync then fails receives the resync error,
                     // not a stale `Ok`.
-                    let respond = job(Ok(&mut connection));
+                    let (respond, write_state) = if appends_receipts {
+                        execute_anchored_receipt_write(
+                            &mut connection,
+                            head,
+                            incremental_verification,
+                            rollback_anchor,
+                            job,
+                        )
+                    } else {
+                        let (respond, succeeded) = match job {
+                            WriterClosure::Metadata(job) => job(Ok(&mut connection)),
+                            WriterClosure::Receipt(job) => job(Err(ReceiptStoreError::Conflict(
+                                "receipt writer job kind mismatch".to_string(),
+                            ))),
+                        };
+                        let state = if succeeded {
+                            ReceiptWriterJobState::Committed
+                        } else {
+                            ReceiptWriterJobState::Failed
+                        };
+                        (respond, state)
+                    };
+                    if matches!(write_state, ReceiptWriterJobState::Failed) {
+                        drop(inflight_guard);
+                        let committed = respond(Ok(()));
+                        record_write_job_outcome(health, committed);
+                        completion.complete();
+                        if fail_closed_on_error && !committed {
+                            poison_head_from_writer_error(head_state, health);
+                        }
+                        return None;
+                    }
+                    if let ReceiptWriterJobState::CommitFailed(error) = write_state {
+                        if let Ok(mut last_error) = health.last_error.lock() {
+                            *last_error = Some(error.to_string());
+                        }
+                        let poison_message = error.to_string();
+                        drop(inflight_guard);
+                        let committed = respond(Err(error));
+                        record_write_job_outcome(health, committed);
+                        completion.complete();
+                        health.set_head_poisoned(true);
+                        *head_state = WriterHeadState::Poisoned(poison_message);
+                        return None;
+                    }
                     // Post-resync: absorb whatever the closure committed
                     // (claim-log rows via projection triggers, checkpoint
                     // rows via the manual path) so the next append's
@@ -3145,6 +3328,103 @@ fn receipt_batch_error_results(
         .collect()
 }
 
+enum ReceiptWriterJobState {
+    Failed,
+    Committed,
+    CommitFailed(ReceiptStoreError),
+}
+
+fn execute_anchored_receipt_write(
+    connection: &mut Connection,
+    head: &mut VerifiedHead,
+    incremental_verification: bool,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
+    job: WriterClosure,
+) -> (WriterResponder, ReceiptWriterJobState) {
+    let tx = match connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+        Ok(tx) => tx,
+        Err(error) => {
+            let (respond, _) = job.reject(ReceiptStoreError::Sqlite(error));
+            return (respond, ReceiptWriterJobState::Failed);
+        }
+    };
+    let pre_check = if incremental_verification {
+        verify_head_against_latest_checkpoint(&tx, head)
+            .and_then(|()| validate_writer_adopted_claim_log_baseline(&tx, head, true))
+    } else {
+        verify_latest_checkpoint_integrity(&tx)
+            .and_then(|()| validate_claim_receipt_log_entries(&tx))
+    };
+    let generation = match pre_check.and_then(|()| {
+        rollback_anchor
+            .map(|anchor| {
+                let generation = load_receipt_rollback_generation(&tx)?;
+                anchor.verify(generation).map_err(|error| {
+                    ReceiptStoreError::Conflict(format!(
+                        "receipt rollback protection failed: {error}"
+                    ))
+                })?;
+                Ok::<_, ReceiptStoreError>(generation)
+            })
+            .transpose()
+    }) {
+        Ok(generation) => generation,
+        Err(error) => {
+            let (respond, _) = job.reject(error);
+            return (respond, ReceiptWriterJobState::Failed);
+        }
+    };
+    let (respond, succeeded) = match job {
+        WriterClosure::Receipt(job) => job(Ok(&tx)),
+        WriterClosure::Metadata(job) => job(Err(ReceiptStoreError::Conflict(
+            "metadata writer job kind mismatch".to_string(),
+        ))),
+    };
+    if !succeeded {
+        return (respond, ReceiptWriterJobState::Failed);
+    }
+    let commit = match (rollback_anchor, generation) {
+        (Some(anchor), Some(generation)) => {
+            let next = match generation.checked_add(1) {
+                Some(next) => next,
+                None => {
+                    return (
+                        respond,
+                        ReceiptWriterJobState::CommitFailed(ReceiptStoreError::Conflict(
+                            "receipt rollback generation overflowed".to_string(),
+                        )),
+                    );
+                }
+            };
+            match tx.execute(
+                "UPDATE chio_receipt_sink_generation SET store_generation = ?1 \
+                 WHERE singleton = 1 AND store_generation = ?2",
+                params![next.to_string(), generation.to_string()],
+            ) {
+                Ok(1) => anchor
+                    .advance_while(generation, next, || {
+                        tx.commit()
+                            .map_err(|error| format!("SQLite commit failed: {error}"))
+                    })
+                    .map_err(|error| {
+                        ReceiptStoreError::Conflict(format!(
+                            "receipt rollback protection failed: {error}"
+                        ))
+                    }),
+                Ok(_) => Err(ReceiptStoreError::Conflict(
+                    "receipt rollback generation compare-and-set failed".to_string(),
+                )),
+                Err(error) => Err(ReceiptStoreError::Sqlite(error)),
+            }
+        }
+        _ => tx.commit().map_err(ReceiptStoreError::Sqlite),
+    };
+    match commit {
+        Ok(()) => (respond, ReceiptWriterJobState::Committed),
+        Err(error) => (respond, ReceiptWriterJobState::CommitFailed(error)),
+    }
+}
+
 fn receipt_store_error_snapshot(error: &ReceiptStoreError) -> ReceiptStoreError {
     match error {
         ReceiptStoreError::Sqlite(error) => {
@@ -3359,9 +3639,22 @@ impl SqliteReceiptStore {
     /// reader pool is asserted read-only by
     /// `reader_pool_never_begins_a_write_transaction` in tests.
     pub(crate) fn connection(&self) -> Result<SqliteStoreConnection, ReceiptStoreError> {
-        self.pool
+        let connection = self
+            .pool
             .get()
-            .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
+            .map_err(|error| ReceiptStoreError::Pool(error.to_string()))?;
+        if let Some(anchor) = self.rollback_anchor.as_deref() {
+            anchor
+                .verify_while(|| {
+                    load_receipt_rollback_generation(&connection).map_err(|error| error.to_string())
+                })
+                .map_err(|error| {
+                    ReceiptStoreError::Conflict(format!(
+                        "receipt rollback protection failed: {error}"
+                    ))
+                })?;
+        }
+        Ok(connection)
     }
 
     #[cfg(test)]
@@ -3546,12 +3839,9 @@ impl SqliteReceiptStore {
         let consumption = consumption.clone();
         self.writer_handle().run_write_receipt(move |connection| {
             ensure_checkpoint_transparency_guards(connection)?;
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            consume_authorization_receipt_tx(&tx, &consumption)?;
-            append_chio_receipt_tx(&tx, &receipt, &raw_json)?;
-            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt.id)?;
-            tx.commit()?;
+            consume_authorization_receipt_tx(connection, &consumption)?;
+            append_chio_receipt_tx(connection, &receipt, &raw_json)?;
+            ensure_receipt_lineage_statement_for_receipt_id_tx(connection, &receipt.id)?;
             Ok(())
         })
     }
@@ -5063,9 +5353,9 @@ mod receipt_commit_actor_tests {
                 assert!(appends_receipts);
                 assert!(fail_closed_on_error);
                 health.note_channel_dequeue();
-                let respond = job(Err(ReceiptStoreError::Conflict(
+                let (respond, _) = job.reject(ReceiptStoreError::Conflict(
                     "late critical write failure".to_string(),
-                )));
+                ));
                 atomic_saturating_sub(&health.inflight, 1);
                 let committed = respond(Ok(()));
                 assert!(!committed);

@@ -7,7 +7,7 @@ use rusqlite::types::Type;
 use rusqlite::{params, OptionalExtension, Row};
 
 use crate::receipt_store::support::sqlite_i64;
-use crate::receipt_store::{SqliteReceiptStore, SqliteStoreConnection};
+use crate::receipt_store::SqliteReceiptStore;
 
 pub(crate) fn snapshot_from_row(row: &Row<'_>) -> rusqlite::Result<CapabilitySnapshot> {
     snapshot_from_row_with_boundary(row, true)
@@ -340,7 +340,7 @@ impl SqliteReceiptStore {
             signed_capability: Some(signed_capability.clone()),
         })?;
         let parent_capability_id = parent_capability_id.map(ToString::to_string);
-        let job = move |connection: &mut SqliteStoreConnection| {
+        let job = move |connection: &mut rusqlite::Connection| {
             let transaction =
                 connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             // Resolve the parent's delegation depth on the writer connection,

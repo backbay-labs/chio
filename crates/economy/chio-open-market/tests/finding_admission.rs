@@ -1546,9 +1546,10 @@ fn finding_pheromone_rejects_wrong_scope_replay_and_over_cost() {
         ));
 
         let over_cost = finding_pheromone_deposit(&web, &listing, &passport, "hint-over-cost", 126);
+        let over_cost_substrate = InMemoryPheromoneSubstrate::new();
         assert!(matches!(
             admit_and_resolve_finding_pheromone_hint(
-                &InMemoryPheromoneSubstrate::new(),
+                &over_cost_substrate,
                 over_cost,
                 &context,
                 &convention,
@@ -1561,6 +1562,21 @@ fn finding_pheromone_rejects_wrong_scope_replay_and_over_cost() {
             ),
             Err(FindingPheromoneError::ObservationCostExceeded)
         ));
+        let corrected_cost =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-over-cost", 125);
+        admit_and_resolve_finding_pheromone_hint(
+            &over_cost_substrate,
+            corrected_cost,
+            &context,
+            &convention,
+            AuthenticatedCurrentFindingListing::new(
+                &listing,
+                &finding_current_listing_assertion(&listing, &web.operator),
+            ),
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect("failed resolution releases its nonce reservation");
 
         let replay = finding_pheromone_deposit(&web, &listing, &passport, "hint-replay", 125);
         let substrate = InMemoryPheromoneSubstrate::new();

@@ -172,50 +172,63 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
     // substantially larger signed listing and admission bundle. The final
     // substrate call repeats this validation inside its atomic commit.
     validate_deposit_for_admission(&deposit, pheromone_context)?;
-    substrate.preflight_deposit_nonce(&deposit)?;
-    validate_convention(&deposit, pheromone_context, convention)?;
-    validate_admission_envelope_bounds(current_admission)?;
-    let now = pheromone_context.now_unix_ms / 1_000;
-    validate_current_listing(
-        current_listing,
-        current_listing_assertion,
-        &convention.registry_operator_id,
-        &convention.registry_key,
-        convention.max_listing_freshness_age_secs,
-        now,
-    )?;
-    let mut current_admission_context = admission_context.clone();
-    current_admission_context.now = now;
-    current_admission_context.constituent_expiry_bounds.listing =
-        current_listing.listing.body.expires_at.unwrap_or(u64::MAX);
-    current_admission_context
-        .constituent_expiry_bounds
-        .pricing_hint = current_listing.pricing.body.expires_at;
-    let verified_admission =
-        verify_finding_admission(current_admission, &current_admission_context)?;
-    let listing_sha256 = signed_envelope_sha256(&current_listing.listing)
-        .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
-    let pricing_sha256 = signed_envelope_sha256(&current_listing.pricing)
-        .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
-    let admission_sha256 = signed_envelope_sha256(current_admission)
-        .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
-    if indicator.finding_id != verified_admission.finding_id()
-        || indicator.listing_id != current_listing.listing_id()
-        || indicator.listing_id != verified_admission.listing_id()
-        || indicator.listing_envelope_sha256 != listing_sha256
-        || indicator.admission_envelope_sha256 != admission_sha256
-        || indicator.capability_scope != verified_admission.capability_scope()
-        || current_admission.body.schema != FINDING_ADMISSION_SCHEMA_V1
-        || current_admission.body.listing_envelope_sha256 != listing_sha256
-        || current_admission.body.pricing_hint_envelope_sha256 != pricing_sha256
-    {
-        return Err(FindingPheromoneError::CurrentBindingMismatch);
+    let reservation = substrate.preflight_deposit_nonce(&deposit)?;
+    let resolved = (|| {
+        validate_convention(&deposit, pheromone_context, convention)?;
+        validate_admission_envelope_bounds(current_admission)?;
+        let now = pheromone_context.now_unix_ms / 1_000;
+        validate_current_listing(
+            current_listing,
+            current_listing_assertion,
+            &convention.registry_operator_id,
+            &convention.registry_key,
+            convention.max_listing_freshness_age_secs,
+            now,
+        )?;
+        let mut current_admission_context = admission_context.clone();
+        current_admission_context.now = now;
+        current_admission_context.constituent_expiry_bounds.listing =
+            current_listing.listing.body.expires_at.unwrap_or(u64::MAX);
+        current_admission_context
+            .constituent_expiry_bounds
+            .pricing_hint = current_listing.pricing.body.expires_at;
+        let verified_admission =
+            verify_finding_admission(current_admission, &current_admission_context)?;
+        let listing_sha256 = signed_envelope_sha256(&current_listing.listing)
+            .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
+        let pricing_sha256 = signed_envelope_sha256(&current_listing.pricing)
+            .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
+        let admission_sha256 = signed_envelope_sha256(current_admission)
+            .map_err(|error| FindingPheromoneError::Listing(error.to_string()))?;
+        if indicator.finding_id != verified_admission.finding_id()
+            || indicator.listing_id != current_listing.listing_id()
+            || indicator.listing_id != verified_admission.listing_id()
+            || indicator.listing_envelope_sha256 != listing_sha256
+            || indicator.admission_envelope_sha256 != admission_sha256
+            || indicator.capability_scope != verified_admission.capability_scope()
+            || current_admission.body.schema != FINDING_ADMISSION_SCHEMA_V1
+            || current_admission.body.listing_envelope_sha256 != listing_sha256
+            || current_admission.body.pricing_hint_envelope_sha256 != pricing_sha256
+        {
+            return Err(FindingPheromoneError::CurrentBindingMismatch);
+        }
+        Ok(ResolvedFindingPheromoneHint {
+            indicator,
+            admission: verified_admission,
+        })
+    })();
+    let resolved = match resolved {
+        Ok(resolved) => resolved,
+        Err(error) => {
+            substrate.release_deposit_nonce(&reservation)?;
+            return Err(error);
+        }
+    };
+    if let Err(error) = substrate.deposit_reserved(deposit, pheromone_context, &reservation) {
+        substrate.release_deposit_nonce(&reservation)?;
+        return Err(error.into());
     }
-    substrate.deposit(deposit, pheromone_context)?;
-    Ok(ResolvedFindingPheromoneHint {
-        indicator,
-        admission: verified_admission,
-    })
+    Ok(resolved)
 }
 
 fn validate_admission_envelope_bounds(
