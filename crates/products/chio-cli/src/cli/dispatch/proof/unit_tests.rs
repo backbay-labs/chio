@@ -475,14 +475,12 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         revoked_from: None,
     };
     let authorization_path = tempdir.path().join("status-operator-authorization.json");
+    let authorization_bytes = proof_test_ok(
+        chio_core_types::canonical_json_bytes(&authorization),
+        "serialize status authorization",
+    );
     proof_test_ok(
-        std::fs::write(
-            &authorization_path,
-            proof_test_ok(
-                chio_core_types::canonical_json_bytes(&authorization),
-                "serialize status authorization",
-            ),
-        ),
+        std::fs::write(&authorization_path, &authorization_bytes),
         "write status authorization",
     );
     let authority_database = tempdir.path().join("status-authority.db");
@@ -516,6 +514,66 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         ),
         "provision status authority store",
     );
+    let status_proof_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join(
+            "fixtures/proof-room/finding/cognition-market-qualified-profile/attachments/status-proof-input.json",
+        );
+    let status_proof_bytes = proof_test_ok(
+        std::fs::read(&status_proof_path),
+        "read status proof fixture",
+    );
+    let status_proof = proof_test_ok(
+        chio_finding::parse_status_proof_input(&status_proof_bytes),
+        "parse status proof fixture",
+    );
+    let signed_epoch_b64 = match &status_proof {
+        chio_finding::FindingStatusProofInput::NonInclusion(proof) => {
+            &proof.signed_status_epoch_b64
+        }
+        chio_finding::FindingStatusProofInput::Inclusion(_) => {
+            panic!("qualified status proof fixture must be non-inclusion")
+        }
+    };
+    let signed_epoch = proof_test_ok(
+        chio_finding::decode_signed_status_epoch_b64(signed_epoch_b64),
+        "decode signed status epoch fixture",
+    );
+    let signed_epoch_bytes = proof_test_ok(
+        chio_core_types::canonical_json_bytes(&signed_epoch),
+        "serialize signed status epoch fixture",
+    );
+    let operator_key = signed_epoch.body.operator_key.to_hex();
+    let authorization_sha256 = chio_core_types::crypto::sha256_hex(&authorization_bytes);
+    {
+        let authority = proof_test_ok(
+            chio_store_sqlite::SqliteAuthorityStore::open_serving(
+                &authority_database,
+                &authority_lock_root,
+            ),
+            "open status authority store",
+        );
+        proof_test_ok(
+            authority.finding_status_store().observe_verified_epoch(
+                &chio_store_sqlite::VerifiedFindingStatusEpochInput {
+                    feed_id: &signed_epoch.body.feed_id,
+                    operator_id: &signed_epoch.body.operator_id,
+                    key_domain_nonce: signed_epoch.body.key_domain_nonce,
+                    map_epoch: signed_epoch.body.map_epoch,
+                    epoch_id: &signed_epoch.body.status_epoch_id,
+                    root_hash: &signed_epoch.body.root_hash,
+                    signed_epoch_bytes: &signed_epoch_bytes,
+                    operator_key: &operator_key,
+                    operator_key_epoch: signed_epoch.body.operator_key_epoch,
+                    operator_authorization_sha256: &authorization_sha256,
+                    generated_at: signed_epoch.body.generated_at,
+                    valid_until: signed_epoch.body.valid_until,
+                    recorded_at: 1_784_880_030,
+                },
+            ),
+            "seed authenticated status floor",
+        );
+    }
     let _env = TestEnvGuard::set(&[
         (
             "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY",
