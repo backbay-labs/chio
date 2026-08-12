@@ -48,6 +48,12 @@ def test_finding_bid_ceiling_accepts_decimal_strings_above_2_pow_53() -> None:
     )
 
 
+def test_finding_bid_ceiling_rejects_integer_inputs_above_2_pow_53() -> None:
+    input_value = _first()
+    input_value["estimate"]["units"] = 9_007_199_254_740_993
+    _rejects(input_value, "invalid_decimal")
+
+
 def test_finding_bid_ceiling_rejects_arithmetic_and_binding_negatives() -> None:
     for encoding in ["", "01", "+1", "-1", "1.0", "NaN", 1.5, True]:
         input_value = _first()

@@ -428,6 +428,18 @@ impl FindingPoolLedger for RecordingLedger {
         }
         Ok(())
     }
+
+    fn has_pending_mutation_receipts(&self) -> Result<bool, FindingPoolLedgerError> {
+        let outbox = self.outbox.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test outbox lock was poisoned".to_owned())
+        })?;
+        let acknowledged = self.acknowledged.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage("test ack lock was poisoned".to_owned())
+        })?;
+        Ok(outbox
+            .iter()
+            .any(|receipt| !acknowledged.contains(&receipt.id)))
+    }
 }
 
 impl QualifiedFindingPoolLedger for RecordingLedger {
@@ -721,6 +733,32 @@ fn pool_allocation_authority_rejects_non_ed25519_and_weak_keys_at_configuration(
 }
 
 #[test]
+fn pool_receipt_authority_validation_rejects_invalid_keys() {
+    let mut p256_bytes = [0_u8; 65];
+    p256_bytes[0] = 0x04;
+    let p256 = PublicKey::from_p256_sec1(&p256_bytes)
+        .unwrap_or_else(|error| panic!("construct P-256 test key: {error}"));
+    assert_eq!(
+        crate::kernel::validate_finding_pool_receipt_authority(&p256),
+        Err(FindingPoolLedgerError::InvalidReceiptAuthority)
+    );
+
+    let weak =
+        PublicKey::from_hex("0100000000000000000000000000000000000000000000000000000000000000")
+            .unwrap_or_else(|error| panic!("construct weak Ed25519 test key: {error}"));
+    assert_eq!(
+        crate::kernel::validate_finding_pool_receipt_authority(&weak),
+        Err(FindingPoolLedgerError::InvalidReceiptAuthority)
+    );
+
+    let valid = Keypair::from_seed(&[94; 32]).public_key();
+    assert_eq!(
+        crate::kernel::validate_finding_pool_receipt_authority(&valid),
+        Ok(())
+    );
+}
+
+#[test]
 fn delivery_capture_finalizes_the_configured_pool_reservation() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
@@ -768,6 +806,27 @@ fn dispatch_claims_the_configured_pool_reservation() {
         FindingPoolMutationKind::Claim
     );
     assert!(kernel.receipt_log().is_empty());
+}
+
+#[test]
+fn startup_reconciliation_does_not_complete_behind_an_active_outbox_lease() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let kernel = kernel_with_ledger(Arc::clone(&ledger));
+    assert!(kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .is_ok());
+    let now = crate::kernel::current_unix_timestamp_ms();
+    let claimed = ledger
+        .claim_pending_mutation_receipts("worker:crashed", now, 60_000, 1)
+        .unwrap_or_else(|error| panic!("claim pending receipt: {error}"));
+    assert_eq!(claimed.len(), 1);
+
+    assert!(kernel
+        .reconcile_finding_pool_mutation_receipts()
+        .is_err_and(|error| error.to_string().contains("still leased")));
+    assert!(ledger
+        .pending_mutation_receipts()
+        .is_ok_and(|receipts| receipts.len() == 1));
 }
 
 #[test]

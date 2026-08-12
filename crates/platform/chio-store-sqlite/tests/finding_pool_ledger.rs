@@ -645,6 +645,45 @@ fn sqlite_outbox_claim_serializes_independent_ledger_instances() {
 }
 
 #[test]
+fn sqlite_outbox_restart_reclaims_a_prior_epoch_after_clock_rollback() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let database = directory.path().join("finding-pool.sqlite3");
+    let domain = ledger_domain();
+    let producer = open_qualified(&database, &domain).test_expect("open producer ledger");
+    let fixture = fixture(100, &producer);
+    debit(&producer, &fixture, "purchase:outbox-restart", 10)
+        .test_expect("commit and project pool debit");
+    let connection = rusqlite::Connection::open(&database).test_expect("open outbox fixture");
+    let epoch = connection
+        .query_row(
+            "SELECT outbox_lease_epoch FROM finding_pool_ledger_metadata WHERE singleton = 1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .test_expect("read producer lease epoch");
+    assert_eq!(
+        connection
+            .execute(
+                "UPDATE finding_pool_receipt_outbox \
+                 SET acknowledged_at_unix_ms = NULL, delivery_claim_owner = 'worker:crashed', \
+                     delivery_claim_expires_at_unix_ms = 9000000000000000, \
+                     delivery_claim_epoch = ?1",
+                [epoch],
+            )
+            .test_expect("stage prior-epoch lease"),
+        1
+    );
+    drop(connection);
+    drop(producer);
+
+    let restarted = open_qualified(&database, &domain).test_expect("restart ledger");
+    let claimed = restarted
+        .claim_pending_mutation_receipts("worker:replacement", 1, 60_000, 1)
+        .test_expect("new epoch reclaims prior lease despite wall-clock rollback");
+    assert_eq!(claimed.len(), 1);
+}
+
+#[test]
 fn cognition_market_pool_ledger_persists_its_authority_selected_domain() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
     let database = directory.path().join("finding-pool.sqlite3");

@@ -12,6 +12,7 @@ FindingEstimateProvenance = Literal[
 ]
 
 _U64_MAX = 18_446_744_073_709_551_615
+_JAVASCRIPT_SAFE_INTEGER_MAX = 9_007_199_254_740_991
 _BPS = 10_000
 _BPS_DENOMINATOR = _BPS * _BPS * _BPS
 _DECIMAL = re.compile(r"^(0|[1-9][0-9]*)$")
@@ -149,6 +150,11 @@ def _parse_u64(value: DecimalIntegerInput, field: str) -> int:
     if isinstance(value, int):
         if value < 0:
             _fail("invalid_decimal", f"{field} must be nonnegative")
+        if value > _JAVASCRIPT_SAFE_INTEGER_MAX:
+            _fail(
+                "invalid_decimal",
+                f"{field} integer input must be JavaScript-safe; use a decimal string",
+            )
         parsed = value
     elif isinstance(value, str):
         if len(value) > 20:

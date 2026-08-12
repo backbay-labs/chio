@@ -36,6 +36,9 @@ pub const FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1: &str =
     "chio.finding.current-listing-assertion.v1";
 const MAX_LISTING_ENVELOPE_STRING_BYTES: usize = 4 * 1_024;
 const MAX_PRICING_ENVELOPE_STRING_BYTES: usize = 2 * 1_024;
+const MAX_ADMISSION_ENVELOPE_STRING_BYTES: usize = 64 * 1_024;
+const MAX_ADMISSION_ENVELOPE_FIELD_BYTES: usize = 4 * 1_024;
+const MAX_ADMISSION_FEE_TERMINALS: usize = 256;
 const MAX_FINDING_CARRIER_STRING_BYTES: usize = 4 * 1_024;
 const MAX_FINDING_CARRIER_AGGREGATE_BYTES: usize = 64 * 1_024;
 const MAX_FINDING_CARRIER_JSON_NODES: usize = 512;
@@ -131,6 +134,8 @@ pub enum FindingPheromoneError {
     Listing(String),
     #[error("current finding admission rejected: {0}")]
     Admission(#[from] FindingAdmissionError),
+    #[error("current finding admission envelope exceeds receiver bounds")]
+    AdmissionEnvelopeMalformed,
     #[error("finding pheromone points at a different current listing or admission")]
     CurrentBindingMismatch,
 }
@@ -168,6 +173,7 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
     // substrate call repeats this validation inside its atomic commit.
     validate_deposit_for_admission(&deposit, pheromone_context)?;
     validate_convention(&deposit, pheromone_context, convention)?;
+    validate_admission_envelope_bounds(current_admission)?;
     let now = pheromone_context.now_unix_ms / 1_000;
     validate_current_listing(
         current_listing,
@@ -209,6 +215,89 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
         indicator,
         admission: verified_admission,
     })
+}
+
+fn validate_admission_envelope_bounds(
+    admission: &SignedFindingAdmission,
+) -> Result<(), FindingPheromoneError> {
+    fn add(total: &mut usize, value: &str) -> bool {
+        if value.len() > MAX_ADMISSION_ENVELOPE_FIELD_BYTES {
+            return false;
+        }
+        let Some(next) = total.checked_add(value.len()) else {
+            return false;
+        };
+        if next > MAX_ADMISSION_ENVELOPE_STRING_BYTES {
+            return false;
+        }
+        *total = next;
+        true
+    }
+
+    let body = &admission.body;
+    if body.fee_terminals.len() > MAX_ADMISSION_FEE_TERMINALS {
+        return Err(FindingPheromoneError::AdmissionEnvelopeMalformed);
+    }
+    let mut total = 0_usize;
+    for value in [
+        body.schema.as_str(),
+        body.admission_id.as_str(),
+        body.venue_id.as_str(),
+        body.finding_id.as_str(),
+        body.finding_artifact_sha256.as_str(),
+        body.seller_authorization_envelope_sha256.as_str(),
+        body.listing_id.as_str(),
+        body.listing_envelope_sha256.as_str(),
+        body.server_id.as_str(),
+        body.metadata_url.as_str(),
+        body.pricing_hint_envelope_sha256.as_str(),
+        body.capability_scope.as_str(),
+        body.publisher_operator_id.as_str(),
+        body.payee_destination.as_str(),
+        body.fee_schedule_envelope_sha256.as_str(),
+        body.verifier_report_id.as_str(),
+        body.verifier_report_envelope_sha256.as_str(),
+        body.terms_envelope_sha256.as_str(),
+        body.profile_envelope_sha256.as_str(),
+        body.backing_allocation_id.as_str(),
+        body.backing_envelope_sha256.as_str(),
+        body.audit_pool.principal_id.as_str(),
+        body.audit_pool.rail_destination.as_str(),
+        body.audit_pool.currency.as_str(),
+        body.challenge_administration_pool.principal_id.as_str(),
+        body.challenge_administration_pool.rail_destination.as_str(),
+        body.challenge_administration_pool.currency.as_str(),
+        body.community_fund_destination.as_str(),
+        body.status_feed_operator_ref.as_str(),
+        body.purchase_authority.authority_id.as_str(),
+        body.purchase_authority.rotation_policy_ref.as_str(),
+        body.purchase_authority.revocation_status_ref.as_str(),
+        body.failed_delivery_authority.authority_id.as_str(),
+        body.failed_delivery_authority.rotation_policy_ref.as_str(),
+        body.failed_delivery_authority
+            .revocation_status_ref
+            .as_str(),
+    ] {
+        if !add(&mut total, value) {
+            return Err(FindingPheromoneError::AdmissionEnvelopeMalformed);
+        }
+    }
+    for terminal in &body.fee_terminals {
+        for value in [
+            terminal.fee_schedule_envelope_sha256.as_str(),
+            terminal.payer.as_str(),
+            terminal.amount.currency.as_str(),
+            terminal.pool_principal_id.as_str(),
+            terminal.rail_destination.as_str(),
+            terminal.instruction_sha256.as_str(),
+            terminal.observation_sha256.as_str(),
+        ] {
+            if !add(&mut total, value) {
+                return Err(FindingPheromoneError::AdmissionEnvelopeMalformed);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_finding_carrier(deposit: &PheromoneDeposit) -> Result<(), FindingPheromoneError> {

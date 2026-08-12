@@ -32,6 +32,40 @@ fn finding_pheromone_positive_hint_re_resolves_current_listing_without_purchase_
 }
 
 #[test]
+fn finding_pheromone_bounds_admission_envelopes_before_verification() {
+    with_fiscal(|resolver| {
+        let mut web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let assertion = finding_current_listing_assertion(&listing, &web.operator);
+        let deposit =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-oversized-admission", 125);
+        web.admission.body.venue_id = "x".repeat(1_000_000);
+
+        let error = admit_and_resolve_finding_pheromone_hint(
+            &InMemoryPheromoneSubstrate::new(),
+            deposit,
+            &finding_pheromone_context(&passport, &kernel),
+            &finding_pheromone_convention(),
+            AuthenticatedCurrentFindingListing::new(&listing, &assertion),
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect_err("oversized admission rejects before signature verification");
+        assert!(matches!(
+            error,
+            FindingPheromoneError::AdmissionEnvelopeMalformed
+        ));
+    });
+}
+
+#[test]
 fn finding_pheromone_rejects_oversized_indicator_before_authenticated_resolution() {
     with_fiscal(|resolver| {
         let web = base_web();

@@ -27,11 +27,16 @@ use rusqlite::{params, OptionalExtension};
 use crate::{is_in_memory_sqlite_path, sqlite_parent_dir_to_create};
 
 mod expiration;
+mod outbox;
 mod qualification;
 mod schema;
 
 use crate::rollback_generation::RollbackGenerationAnchor;
 use expiration::expired_unclaimed_reservations;
+use outbox::{
+    acknowledge_mutation_receipt, advance_outbox_lease_epoch, claim_pending_mutation_receipts,
+    has_pending_mutation_receipts, OutboxLeaseClock,
+};
 use qualification::{
     acquire_domain_lease, bind_ledger_store, bind_receipt_authority, bind_receipt_configuration,
     bind_rollback_anchor, canonical_receipt_authority_json, open_rollback_anchor,
@@ -50,7 +55,8 @@ CREATE TABLE IF NOT EXISTS finding_pool_ledger_metadata (
     receipt_sink_id TEXT,
     receipt_authority_json TEXT,
     ledger_store_binding_sha256 TEXT,
-    store_generation TEXT NOT NULL DEFAULT '0'
+    store_generation TEXT NOT NULL DEFAULT '0',
+    outbox_lease_epoch INTEGER NOT NULL DEFAULT 0
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS finding_pool_allocations (
@@ -100,6 +106,7 @@ CREATE TABLE IF NOT EXISTS finding_pool_receipt_outbox (
     acknowledged_at_unix_ms TEXT,
     delivery_claim_owner TEXT,
     delivery_claim_expires_at_unix_ms INTEGER,
+    delivery_claim_epoch INTEGER,
     delivery_sequence INTEGER
 ) STRICT;
 "#;
@@ -113,6 +120,7 @@ pub struct SqliteFindingPoolLedger {
     ledger_store_binding_sha256: String,
     database_identity: QualifiedDatabaseIdentity,
     rollback_anchor: Arc<RollbackGenerationAnchor>,
+    outbox_lease_clock: Arc<OutboxLeaseClock>,
     _domain_lease: Arc<FindingPoolDomainLease>,
 }
 
@@ -169,6 +177,7 @@ impl SqliteFindingPoolLedger {
             store_identity,
         )?;
         let ledger_store_binding_sha256;
+        let outbox_lease_epoch;
         {
             let mut connection = pool
                 .get()
@@ -202,6 +211,13 @@ impl SqliteFindingPoolLedger {
                 "ALTER TABLE finding_pool_ledger_metadata \
                  ADD COLUMN store_generation TEXT NOT NULL DEFAULT '0'",
             )?;
+            ensure_column(
+                &connection,
+                "finding_pool_ledger_metadata",
+                "outbox_lease_epoch",
+                "ALTER TABLE finding_pool_ledger_metadata \
+                 ADD COLUMN outbox_lease_epoch INTEGER NOT NULL DEFAULT 0",
+            )?;
             bind_ledger_domain(&connection, &ledger_domain)?;
             bind_rollback_anchor(&connection, &rollback_anchor)?;
             ledger_store_binding_sha256 = bind_ledger_store(
@@ -213,6 +229,8 @@ impl SqliteFindingPoolLedger {
             )?;
             ensure_lifecycle_columns(&connection)?;
             ensure_outbox_delivery_claim_columns(&connection)?;
+            outbox_lease_epoch = domain_lease
+                .initialize_outbox_lease_epoch(|| advance_outbox_lease_epoch(&connection))?;
             ensure_query_indexes(&connection)?;
             verify_qualified_connection(&connection)?;
             connection
@@ -229,6 +247,7 @@ impl SqliteFindingPoolLedger {
             ledger_store_binding_sha256,
             database_identity,
             rollback_anchor,
+            outbox_lease_clock: Arc::new(OutboxLeaseClock::new(outbox_lease_epoch)),
             _domain_lease: domain_lease,
         })
     }
@@ -1200,91 +1219,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         lease_ms: u64,
         limit: usize,
     ) -> Result<Vec<ChioReceipt>, FindingPoolLedgerError> {
-        if claimant_id.is_empty() || claimant_id.len() > 128 || lease_ms == 0 || limit == 0 {
-            return Err(FindingPoolLedgerError::Receipt(
-                "mutation receipt delivery claim is invalid".to_owned(),
-            ));
-        }
-        let claimed_at = i64::try_from(claimed_at_unix_ms).map_err(|_| {
-            FindingPoolLedgerError::Receipt("mutation receipt claim time is invalid".to_owned())
-        })?;
-        let claim_expires = claimed_at_unix_ms
-            .checked_add(lease_ms)
-            .and_then(|value| i64::try_from(value).ok())
-            .ok_or_else(|| {
-                FindingPoolLedgerError::Receipt(
-                    "mutation receipt delivery lease overflowed".to_owned(),
-                )
-            })?;
-        let limit = i64::try_from(limit).map_err(|_| {
-            FindingPoolLedgerError::Receipt("mutation receipt claim limit is invalid".to_owned())
-        })?;
-        let mut connection = self.connection()?;
-        let transaction = self.transaction(&mut connection)?;
-        let mut statement = transaction
-            .prepare(
-                "SELECT receipt_id, signed_receipt_json \
-                 FROM finding_pool_receipt_outbox \
-                 WHERE acknowledged_at_unix_ms IS NULL \
-                   AND (delivery_claim_expires_at_unix_ms IS NULL \
-                        OR delivery_claim_expires_at_unix_ms <= ?1) \
-                 ORDER BY delivery_sequence LIMIT ?2",
-            )
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let mut rows = statement
-            .query(params![claimed_at, limit])
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let mut receipts = Vec::new();
-        while let Some(row) = rows
-            .next()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
-        {
-            let receipt_id = row
-                .get::<_, String>(0)
-                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-            let receipt_json = row
-                .get::<_, String>(1)
-                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-            let receipt: ChioReceipt = serde_json::from_str(&receipt_json)
-                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
-            if receipt.id != receipt_id {
-                return Err(FindingPoolLedgerError::Receipt(
-                    "stored receipt id does not match its signed body".to_string(),
-                ));
-            }
-            let signature_valid = receipt
-                .verify_signature()
-                .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?;
-            if !signature_valid {
-                return Err(FindingPoolLedgerError::Receipt(
-                    "stored mutation receipt signature is invalid".to_string(),
-                ));
-            }
-            receipts.push(receipt);
-        }
-        drop(rows);
-        drop(statement);
-        for receipt in &receipts {
-            let changed = transaction
-                .execute(
-                    "UPDATE finding_pool_receipt_outbox \
-                     SET delivery_claim_owner = ?2, delivery_claim_expires_at_unix_ms = ?3 \
-                     WHERE receipt_id = ?1 AND acknowledged_at_unix_ms IS NULL \
-                       AND (delivery_claim_expires_at_unix_ms IS NULL \
-                            OR delivery_claim_expires_at_unix_ms <= ?4)",
-                    params![receipt.id, claimant_id, claim_expires, claimed_at],
-                )
-                .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-            if changed != 1 {
-                return Err(FindingPoolLedgerError::Receipt(
-                    "mutation receipt delivery claim lost its compare-and-set".to_owned(),
-                ));
-            }
-        }
-        transaction
-            .commit()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        Ok(receipts)
+        claim_pending_mutation_receipts(self, claimant_id, claimed_at_unix_ms, lease_ms, limit)
     }
 
     fn acknowledge_mutation_receipt(
@@ -1293,53 +1228,11 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         claimant_id: &str,
         acknowledged_at_unix_ms: u64,
     ) -> Result<(), FindingPoolLedgerError> {
-        let mut connection = self.connection()?;
-        let transaction = self.transaction(&mut connection)?;
-        let changed = transaction
-            .execute(
-                "UPDATE finding_pool_receipt_outbox \
-                 SET acknowledged_at_unix_ms = ?2 \
-                 WHERE receipt_id = ?1 AND acknowledged_at_unix_ms IS NULL \
-                   AND delivery_claim_owner = ?3",
-                params![receipt_id, acknowledged_at_unix_ms.to_string(), claimant_id],
-            )
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        if changed == 1 {
-            transaction.commit()?;
-            return Ok(());
-        }
-        let state = transaction
-            .query_row(
-                "SELECT acknowledged_at_unix_ms, delivery_claim_owner \
-                 FROM finding_pool_receipt_outbox WHERE receipt_id = ?1",
-                [receipt_id],
-                |row| {
-                    Ok((
-                        row.get::<_, Option<String>>(0)?,
-                        row.get::<_, Option<String>>(1)?,
-                    ))
-                },
-            )
-            .optional()
-            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
-        let result = match state {
-            Some((Some(_), _)) => Ok(()),
-            Some((None, owner)) if owner.as_deref() != Some(claimant_id) => {
-                Err(FindingPoolLedgerError::Receipt(
-                    "cannot acknowledge a mutation receipt claimed by another worker".to_owned(),
-                ))
-            }
-            Some((None, _)) => Err(FindingPoolLedgerError::Receipt(
-                "mutation receipt acknowledgment compare-and-set failed".to_owned(),
-            )),
-            None => Err(FindingPoolLedgerError::Receipt(
-                "cannot acknowledge an unknown mutation receipt".to_owned(),
-            )),
-        };
-        if result.is_ok() {
-            transaction.commit()?;
-        }
-        result
+        acknowledge_mutation_receipt(self, receipt_id, claimant_id, acknowledged_at_unix_ms)
+    }
+
+    fn has_pending_mutation_receipts(&self) -> Result<bool, FindingPoolLedgerError> {
+        has_pending_mutation_receipts(self)
     }
 }
 
@@ -1886,6 +1779,13 @@ mod tests {
         path: impl AsRef<Path>,
         ledger_domain: impl Into<String>,
     ) -> Result<SqliteFindingPoolLedger, FindingPoolLedgerError> {
+        let path = path.as_ref();
+        #[cfg(unix)]
+        if let Some(parent) = path.parent() {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
+                .test_expect("secure pool ledger parent");
+        }
         let identity = Ed25519Backend::new(Keypair::from_seed(&[70_u8; 32]));
         SqliteFindingPoolLedger::open_qualified(
             path,
@@ -1922,13 +1822,16 @@ mod tests {
                  SELECT receipt_id, signed_receipt_json \
                  FROM finding_pool_receipt_outbox \
                  WHERE acknowledged_at_unix_ms IS NULL \
-                   AND (delivery_claim_expires_at_unix_ms IS NULL \
-                        OR delivery_claim_expires_at_unix_ms <= ?1) \
-                 ORDER BY delivery_sequence LIMIT ?2",
+                   AND (delivery_claim_epoch IS NULL \
+                        OR delivery_claim_epoch < ?1 \
+                        OR (delivery_claim_epoch = ?1 \
+                            AND (delivery_claim_expires_at_unix_ms IS NULL \
+                                 OR delivery_claim_expires_at_unix_ms <= ?2))) \
+                 ORDER BY delivery_sequence LIMIT ?3",
             )
             .test_expect("prepare pending outbox query plan");
         let details = plan
-            .query_map(params![1_i64, 1_i64], |row| row.get::<_, String>(3))
+            .query_map(params![1_i64, 1_i64, 1_i64], |row| row.get::<_, String>(3))
             .test_expect("query pending outbox plan")
             .collect::<Result<Vec<_>, _>>()
             .test_expect("collect pending outbox plan");
@@ -1941,6 +1844,60 @@ mod tests {
     }
 
     #[test]
+    fn outbox_lease_clock_does_not_regress_with_wall_time() {
+        let clock = OutboxLeaseClock::new(1);
+        assert_eq!(
+            clock
+                .nondecreasing_now(10_000)
+                .test_expect("initialize lease clock"),
+            10_000
+        );
+        std::thread::sleep(Duration::from_millis(3));
+        assert!(
+            clock
+                .nondecreasing_now(1)
+                .test_expect("advance lease clock across rollback")
+                > 10_000
+        );
+    }
+
+    #[test]
+    fn leased_outbox_rows_remain_observable_as_pending() {
+        let directory = tempfile::tempdir().test_expect("create pool ledger directory");
+        let ledger = open_qualified(
+            directory.path().join("pool.sqlite3"),
+            "ledger:test-active-outbox-lease",
+        )
+        .test_expect("open qualified pool ledger");
+        let connection = ledger.pool.get().test_expect("open pool ledger connection");
+        connection
+            .execute(
+                "INSERT INTO finding_pool_receipt_outbox (\
+                    receipt_id, purchase_id, allocation_envelope_sha256, mutation_kind, \
+                    signed_receipt_json, occurred_at_unix_ms, acknowledged_at_unix_ms, \
+                    delivery_claim_owner, delivery_claim_expires_at_unix_ms, \
+                    delivery_claim_epoch, delivery_sequence\
+                 ) VALUES ('receipt:leased', 'purchase:leased', ?1, 'reserve', '{}', '1', \
+                           NULL, 'worker:crashed', 100000, ?2, 1)",
+                params![
+                    "a".repeat(64),
+                    i64::try_from(ledger.outbox_lease_clock.epoch)
+                        .test_expect("lease epoch fits SQLite")
+                ],
+            )
+            .test_expect("seed leased outbox row");
+        drop(connection);
+
+        assert!(ledger
+            .claim_pending_mutation_receipts("worker:replacement", 1, 60_000, 1)
+            .test_expect("active lease produces no duplicate claim")
+            .is_empty());
+        assert!(ledger
+            .has_pending_mutation_receipts()
+            .test_expect("pending outbox state remains visible"));
+    }
+
+    #[test]
     fn qualified_ledger_rejects_unusable_domains() {
         let directory = tempfile::tempdir().test_expect("create pool ledger directory");
         for (suffix, domain) in [("unicode", "ledger:é"), ("spaces", "   ")] {
@@ -1949,6 +1906,25 @@ mod tests {
                     .is_err()
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn qualified_ledger_rejects_a_writable_parent_directory() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory = tempfile::tempdir().test_expect("create pool ledger directory");
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o777))
+            .test_expect("make pool ledger parent unsafe");
+        let identity = Ed25519Backend::new(Keypair::from_seed(&[70_u8; 32]));
+        let error = SqliteFindingPoolLedger::open_qualified(
+            directory.path().join("pool.sqlite3"),
+            "ledger:test-unsafe-parent",
+            &identity,
+            rollback_anchor_root(),
+        )
+        .test_expect_err("writable parent must not qualify");
+        assert!(error.to_string().contains("parent has unsafe ownership"));
     }
 
     #[test]

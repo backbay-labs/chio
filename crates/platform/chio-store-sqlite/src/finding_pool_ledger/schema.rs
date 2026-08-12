@@ -108,6 +108,12 @@ pub(super) fn ensure_outbox_delivery_claim_columns(
     ensure_column(
         connection,
         "finding_pool_receipt_outbox",
+        "delivery_claim_epoch",
+        "ALTER TABLE finding_pool_receipt_outbox ADD COLUMN delivery_claim_epoch INTEGER",
+    )?;
+    ensure_column(
+        connection,
+        "finding_pool_receipt_outbox",
         "delivery_sequence",
         "ALTER TABLE finding_pool_receipt_outbox ADD COLUMN delivery_sequence INTEGER",
     )?;

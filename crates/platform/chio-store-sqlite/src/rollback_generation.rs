@@ -28,6 +28,7 @@ struct GenerationRecord {
 
 struct LoadedRecord {
     record: GenerationRecord,
+    prepared_record: Option<GenerationRecord>,
     corrupt_slot: bool,
     interrupted_slot: bool,
 }
@@ -89,6 +90,8 @@ impl RollbackGenerationAnchor {
             let (store_generation, allow_seed) = load()?;
             match self.load_record()? {
                 Some(loaded) => {
+                    let loaded =
+                        self.recover_prepared_for_store_generation(loaded, store_generation)?;
                     if loaded.corrupt_slot {
                         return Err("rollback anchor contains a corrupt slot".to_string());
                     }
@@ -113,6 +116,7 @@ impl RollbackGenerationAnchor {
         })
     }
 
+    #[cfg_attr(not(feature = "cognition-market-experimental"), allow(dead_code))]
     pub(crate) fn instance_id(&self) -> Result<String, String> {
         self.with_lock(|| {
             let loaded = self
@@ -139,6 +143,7 @@ impl RollbackGenerationAnchor {
             let loaded = self
                 .load_record()?
                 .ok_or_else(|| "protected rollback generation is absent".to_string())?;
+            let loaded = self.recover_prepared_for_store_generation(loaded, store_generation)?;
             if loaded.corrupt_slot {
                 return Err("rollback anchor contains a corrupt slot".to_string());
             }
@@ -168,6 +173,7 @@ impl RollbackGenerationAnchor {
             let loaded = self
                 .load_record()?
                 .ok_or_else(|| "protected rollback generation is absent".to_string())?;
+            let loaded = self.recover_prepared_for_store_generation(loaded, expected)?;
             if loaded.corrupt_slot {
                 return Err("rollback anchor contains a corrupt slot".to_string());
             }
@@ -175,12 +181,13 @@ impl RollbackGenerationAnchor {
             if loaded.record.store_generation != expected {
                 return Err("rollback generation compare-and-advance failed".to_string());
             }
-            self.write_next(
+            let prepared = self.prepare_next(
                 loaded.record.record_generation,
                 next,
                 &loaded.record.anchor_instance_id,
             )?;
-            operation()
+            operation()?;
+            self.commit_prepared(&prepared)
         })
     }
 
@@ -211,6 +218,20 @@ impl RollbackGenerationAnchor {
         store_generation: u64,
         anchor_instance_id: &str,
     ) -> Result<(), String> {
+        let record = self.prepare_next(
+            current_record_generation,
+            store_generation,
+            anchor_instance_id,
+        )?;
+        self.commit_prepared(&record)
+    }
+
+    fn prepare_next(
+        &self,
+        current_record_generation: u64,
+        store_generation: u64,
+        anchor_instance_id: &str,
+    ) -> Result<GenerationRecord, String> {
         let record_generation = current_record_generation
             .checked_add(1)
             .ok_or_else(|| "rollback anchor record generation overflowed".to_string())?;
@@ -249,6 +270,24 @@ impl RollbackGenerationAnchor {
         self.file
             .sync_data()
             .map_err(|error| format!("rollback anchor slot sync failed: {error}"))?;
+        self.validate_identity()?;
+        let mut persisted_slot = [0_u8; SLOT_SIZE];
+        read_exact_at(&self.file, &mut persisted_slot, offset)
+            .map_err(|error| format!("rollback anchor prepared read failed: {error}"))?;
+        if persisted_slot[..COMMIT_MARKER.len()]
+            .iter()
+            .any(|byte| *byte != 0)
+            || self.decode_slot(&persisted_slot)? != record
+        {
+            return Err("rollback anchor prepared write did not round trip".to_string());
+        }
+        Ok(record)
+    }
+
+    fn commit_prepared(&self, record: &GenerationRecord) -> Result<(), String> {
+        let slot_index = usize::try_from((record.record_generation - 1) % 2)
+            .map_err(|_| "rollback anchor slot overflowed".to_string())?;
+        let offset = slot_index * SLOT_SIZE;
         write_all_at(&self.file, COMMIT_MARKER, offset)
             .map_err(|error| format!("rollback anchor commit failed: {error}"))?;
         self.file
@@ -259,10 +298,46 @@ impl RollbackGenerationAnchor {
         let persisted = self
             .load_record()?
             .ok_or_else(|| "rollback anchor write was not durable".to_string())?;
-        if persisted.corrupt_slot || persisted.interrupted_slot || persisted.record != record {
+        if persisted.corrupt_slot || persisted.interrupted_slot || persisted.record != *record {
             return Err("rollback anchor write did not round trip".to_string());
         }
         Ok(())
+    }
+
+    fn recover_prepared_for_store_generation(
+        &self,
+        loaded: LoadedRecord,
+        store_generation: u64,
+    ) -> Result<LoadedRecord, String> {
+        if loaded.record.store_generation == store_generation {
+            return Ok(loaded);
+        }
+        let Some(prepared) = loaded.prepared_record.as_ref() else {
+            return Ok(loaded);
+        };
+        if loaded.record.record_generation.checked_add(1) != Some(prepared.record_generation)
+            || loaded.record.store_generation.checked_add(1) != Some(prepared.store_generation)
+            || prepared.scope_sha256 != loaded.record.scope_sha256
+            || prepared.anchor_instance_id != loaded.record.anchor_instance_id
+        {
+            return Err(
+                "prepared rollback anchor does not extend the committed history".to_string(),
+            );
+        }
+        if prepared.store_generation != store_generation {
+            return Ok(loaded);
+        }
+        self.commit_prepared(prepared)?;
+        let recovered = self
+            .load_record()?
+            .ok_or_else(|| "recovered rollback generation is absent".to_string())?;
+        if recovered.record.store_generation != store_generation
+            || recovered.corrupt_slot
+            || recovered.interrupted_slot
+        {
+            return Err("prepared rollback anchor recovery did not round trip".to_string());
+        }
+        Ok(recovered)
     }
 
     fn load_record(&self) -> Result<Option<LoadedRecord>, String> {
@@ -270,6 +345,7 @@ impl RollbackGenerationAnchor {
         let mut records = Vec::with_capacity(SLOT_COUNT);
         let mut corrupt_slot = false;
         let mut interrupted_slot = false;
+        let mut prepared_record = None;
         for slot_index in 0..SLOT_COUNT {
             let mut slot = [0_u8; SLOT_SIZE];
             read_exact_at(&self.file, &mut slot, slot_index * SLOT_SIZE)
@@ -278,6 +354,13 @@ impl RollbackGenerationAnchor {
             if marker.iter().all(|byte| *byte == 0) {
                 if slot[COMMIT_MARKER.len()..].iter().any(|byte| *byte != 0) {
                     interrupted_slot = true;
+                    if let Ok(record) = self.decode_slot(&slot) {
+                        if prepared_record.replace(record).is_some() {
+                            return Err(
+                                "rollback anchor contains multiple prepared slots".to_string()
+                            );
+                        }
+                    }
                 }
                 continue;
             }
@@ -310,6 +393,7 @@ impl RollbackGenerationAnchor {
         };
         Ok(Some(LoadedRecord {
             record,
+            prepared_record,
             corrupt_slot,
             interrupted_slot,
         }))
@@ -597,5 +681,51 @@ mod tests {
             })
             .is_ok());
         assert!(anchor.verify(store_generation).is_ok());
+    }
+
+    #[test]
+    fn prepared_generation_recovers_after_the_store_commit() {
+        let Ok(root) = tempfile::tempdir() else {
+            panic!("create anchor root");
+        };
+        secure_root(root.path());
+        let anchor = match RollbackGenerationAnchor::open(root.path(), b"prepared-store-commit") {
+            Ok(anchor) => anchor,
+            Err(error) => panic!("open anchor: {error}"),
+        };
+        assert!(anchor.bind_initial_while(|| Ok((0, true))).is_ok());
+        let Ok(instance_id) = anchor.instance_id() else {
+            panic!("load anchor instance id");
+        };
+        assert!(anchor.prepare_next(1, 1, &instance_id).is_ok());
+
+        assert!(anchor.verify(1).is_ok());
+        let Ok(loaded) = anchor.load_record() else {
+            panic!("load recovered anchor");
+        };
+        let Some(loaded) = loaded else {
+            panic!("recovered anchor is absent");
+        };
+        assert_eq!(loaded.record.store_generation, 1);
+        assert!(!loaded.interrupted_slot);
+    }
+
+    #[test]
+    fn failed_store_commit_leaves_the_prior_generation_usable() {
+        let Ok(root) = tempfile::tempdir() else {
+            panic!("create anchor root");
+        };
+        secure_root(root.path());
+        let anchor = match RollbackGenerationAnchor::open(root.path(), b"failed-store-commit") {
+            Ok(anchor) => anchor,
+            Err(error) => panic!("open anchor: {error}"),
+        };
+        assert!(anchor.bind_initial_while(|| Ok((0, true))).is_ok());
+        assert!(anchor
+            .advance_while(0, 1, || Err("injected SQLite commit failure".to_string()))
+            .is_err());
+        assert!(anchor.verify(0).is_ok());
+        assert!(anchor.advance_while(0, 1, || Ok(())).is_ok());
+        assert!(anchor.verify(1).is_ok());
     }
 }

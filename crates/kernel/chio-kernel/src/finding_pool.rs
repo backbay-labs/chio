@@ -694,6 +694,10 @@ pub trait FindingPoolLedger: Send + Sync {
         claimant_id: &str,
         acknowledged_at_unix_ms: u64,
     ) -> Result<(), FindingPoolLedgerError>;
+
+    /// Whether any mutation receipt still awaits durable projection, including
+    /// rows currently held by another live delivery lease.
+    fn has_pending_mutation_receipts(&self) -> Result<bool, FindingPoolLedgerError>;
 }
 
 /// Marker for an audited atomic or linearizable durable backend.
@@ -1023,6 +1027,15 @@ impl ChioKernel {
                 )
             })?;
             if drained < FINDING_POOL_OUTBOX_BATCH_LIMIT {
+                if ledger.has_pending_mutation_receipts().map_err(|error| {
+                    crate::KernelError::DurableAdmission(format!(
+                        "finding pool receipt outbox state check failed: {error}"
+                    ))
+                })? {
+                    return Err(crate::KernelError::DurableAdmission(
+                        "finding pool receipt outbox reconciliation is still leased".to_owned(),
+                    ));
+                }
                 return Ok(reconciled);
             }
         }

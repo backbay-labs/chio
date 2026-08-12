@@ -15,7 +15,27 @@ use crate::rollback_generation::RollbackGenerationAnchor;
 
 pub(super) struct FindingPoolDomainLease {
     database_identity: PathBuf,
+    outbox_lease_epoch: Mutex<Option<u64>>,
     _lock_file: File,
+}
+
+impl FindingPoolDomainLease {
+    pub(super) fn initialize_outbox_lease_epoch(
+        &self,
+        initialize: impl FnOnce() -> Result<u64, FindingPoolLedgerError>,
+    ) -> Result<u64, FindingPoolLedgerError> {
+        let mut epoch = self.outbox_lease_epoch.lock().map_err(|_| {
+            FindingPoolLedgerError::Storage(
+                "finding pool outbox lease epoch lock is poisoned".to_owned(),
+            )
+        })?;
+        if let Some(epoch) = *epoch {
+            return Ok(epoch);
+        }
+        let initialized = initialize()?;
+        *epoch = Some(initialized);
+        Ok(initialized)
+    }
 }
 
 #[derive(Clone)]
@@ -136,6 +156,19 @@ pub(super) fn prepare_database_identity(
     } else {
         PathBuf::from(path_text)
     };
+    let parent = filesystem_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let canonical_parent = std::fs::canonicalize(parent).map_err(|error| {
+        FindingPoolLedgerError::Storage(format!(
+            "qualified finding pool database parent is unavailable: {error}"
+        ))
+    })?;
+    validate_database_parent_metadata(
+        &std::fs::symlink_metadata(&canonical_parent)
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?,
+    )?;
     let mut options = OpenOptions::new();
     options.create(true).read(true).write(true);
     #[cfg(unix)]
@@ -264,6 +297,7 @@ pub(super) fn acquire_domain_lease(
     })?;
     let lease = Arc::new(FindingPoolDomainLease {
         database_identity: database_identity.to_path_buf(),
+        outbox_lease_epoch: Mutex::new(None),
         _lock_file: lock_file,
     });
     leases.insert(ledger_domain.to_owned(), Arc::downgrade(&lease));
@@ -673,10 +707,37 @@ fn validate_database_metadata(metadata: &std::fs::Metadata) -> Result<(), Findin
     Ok(())
 }
 
+#[cfg(unix)]
+fn validate_database_parent_metadata(
+    metadata: &std::fs::Metadata,
+) -> Result<(), FindingPoolLedgerError> {
+    use std::os::unix::fs::MetadataExt as _;
+
+    if !metadata.file_type().is_dir()
+        || metadata.uid() != nix::unistd::geteuid().as_raw()
+        || metadata.mode() & 0o022 != 0
+    {
+        return Err(FindingPoolLedgerError::Storage(
+            "qualified finding pool database parent has unsafe ownership or permissions"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(not(unix))]
 fn validate_database_metadata(_metadata: &std::fs::Metadata) -> Result<(), FindingPoolLedgerError> {
     Err(FindingPoolLedgerError::Storage(
         "qualified finding pool databases require Unix file identity".to_string(),
+    ))
+}
+
+#[cfg(not(unix))]
+fn validate_database_parent_metadata(
+    _metadata: &std::fs::Metadata,
+) -> Result<(), FindingPoolLedgerError> {
+    Err(FindingPoolLedgerError::Storage(
+        "qualified finding pool databases require Unix parent-directory identity".to_string(),
     ))
 }
 

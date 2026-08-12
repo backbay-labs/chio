@@ -339,6 +339,7 @@ impl ChioKernel {
         &mut self,
         authority: chio_core::crypto::Keypair,
     ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+        validate_finding_pool_receipt_authority(&authority.public_key())?;
         if self.finding_pool_receipt_authority.is_some() {
             return Err(
                 crate::finding_pool::FindingPoolLedgerError::ReceiptAuthorityAlreadyConfigured,
@@ -835,6 +836,18 @@ impl ChioKernel {
             .err()
             .inspect(|_| evaluation.denial = Some(finding_status_delivery_denial()))
     }
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) fn validate_finding_pool_receipt_authority(
+    authority: &chio_core::crypto::PublicKey,
+) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+    if authority.algorithm() != chio_core::crypto::SigningAlgorithm::Ed25519
+        || authority.is_weak_ed25519()
+    {
+        return Err(crate::finding_pool::FindingPoolLedgerError::InvalidReceiptAuthority);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
