@@ -361,7 +361,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "tool-outcome release surface; capped to current size until split",
         max_lines=2_118,
     ),
-    ),
     "crates/platform/chio-control-plane/src/lib.rs": allow(
         "2026-08-31",
         "control-plane crate root; capped to current size until split",

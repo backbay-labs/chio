@@ -1804,7 +1804,7 @@ impl ChioKernel {
         );
         #[cfg(feature = "cognition-market-experimental")]
         if let Ok(purchase) = &pool_claim {
-            verified_purchase.clone_from(purchase);
+            verified_finding_admission.purchase.clone_from(purchase);
         }
         #[cfg(feature = "cognition-market-experimental")]
         if let Err(error) = pool_claim {
