@@ -303,13 +303,13 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs": allow(
         "2026-08-31",
-        "durable terminal coordinator with signed outcome and M6 status-release projection; capped to current size until split",
-        max_lines=2_396,
+        "durable terminal coordinator with M6 status-release and recovery snapshots; capped to current size until split",
+        max_lines=2_412,
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
-        "kernel async evaluation core with M6 recovery release continuity; capped to current size until split",
-        max_lines=2_191,
+        "kernel async evaluation core with M6 dispatch-frozen recovery status; capped to current size until split",
+        max_lines=2_199,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/budget.rs": allow(
         "2026-08-31",
@@ -338,8 +338,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/dispatch.rs": allow(
         "2026-08-31",
-        "kernel dispatch surface with M6 status-proof replay checks; capped to current size until split",
-        max_lines=2_015,
+        "kernel dispatch surface with M6 purchase and recovery status snapshots; capped to current size until split",
+        max_lines=2_025,
     ),
     "crates/platform/chio-control-plane/src/lib.rs": allow(
         "2026-08-31",

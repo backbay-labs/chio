@@ -23,6 +23,8 @@ pub(crate) struct DurableToolReturnInput<'a> {
     pub(crate) pre_invocation_guard_evidence: &'a [chio_core::receipt::metadata::GuardEvidence],
     pub(crate) verified_payee_binding: Option<&'a VerifiedGovernedPayeeBinding>,
     pub(crate) verified_purchase: Option<&'a crate::finding_purchase::VerifiedFindingPurchase>,
+    pub(crate) verified_recovery:
+        Option<&'a crate::kernel::recovery_gate::VerifiedFindingRecoveryAdmission>,
     pub(crate) trusted_now_unix_ms: u64,
 }
 
@@ -176,11 +178,14 @@ impl ChioKernel {
             pre_invocation_guard_evidence,
             verified_payee_binding,
             verified_purchase,
+            verified_recovery,
             trusted_now_unix_ms,
         } = input;
         self.validate_guarded_output(request, matched_grant_index, output, false)?;
         let purchase_replay_metadata =
             self.capture_purchase_replay_metadata(request, matched_grant_index, verified_purchase)?;
+        let recovery_replay_metadata =
+            self.capture_recovery_replay_metadata(request, matched_grant_index, verified_recovery)?;
         let runtime = self.durable_runtime()?;
         let _mutation_guard = runtime.lock_mutations()?;
         let trusted_now_unix_ms = runtime.refresh_trusted_time(trusted_now_unix_ms);
@@ -270,6 +275,10 @@ impl ChioKernel {
                 ),
                 purchase_replay_metadata,
             ),
+            recovery_replay_metadata,
+        );
+        let receipt_metadata_snapshot = merge_metadata_objects(
+            receipt_metadata_snapshot,
             Some(serde_json::json!({
                 "receipt_context": {
                     "request_id": request.request_id.as_str()
@@ -503,6 +512,7 @@ struct DurableEvaluationContract {
     expected_output_digest: Option<String>,
     purchase: Option<crate::finding_purchase::VerifiedFindingPurchase>,
     recovery: Option<crate::finding_recovery::VerifiedFindingRecovery>,
+    recovery_status: Option<crate::finding_purchase::VerifiedFindingStatusProof>,
 }
 
 impl ChioKernel {
@@ -593,13 +603,14 @@ impl ChioKernel {
             request,
             raw.receipt_metadata_snapshot(),
         )?;
-        let recovery = self
-            .verify_recovery_context(selected_grant.grant, request)
-            .map_err(|reason| {
-                KernelError::DurableAdmission(format!(
-                    "recovery binding could not be re-derived: {reason}"
-                ))
-            })?;
+        let recovery_snapshot = self.restore_recovery_replay_snapshot(
+            selected_grant.grant,
+            request,
+            raw.receipt_metadata_snapshot(),
+        )?;
+        let (recovery, recovery_status) = recovery_snapshot.map_or((None, None), |admission| {
+            (Some(admission.recovery), Some(admission.status))
+        });
         Ok(DurableEvaluationContract {
             matched_grant_index,
             plan,
@@ -607,6 +618,7 @@ impl ChioKernel {
             expected_output_digest,
             purchase,
             recovery,
+            recovery_status,
         })
     }
 
@@ -624,6 +636,7 @@ impl ChioKernel {
             expected_output_digest,
             purchase,
             recovery,
+            recovery_status,
         } = self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
@@ -833,6 +846,7 @@ impl ChioKernel {
             matched_grant_index,
             request,
             recovery.as_ref(),
+            recovery_status.as_ref(),
             current_unix_timestamp_ms() / 1_000,
         )
         .map_err(|reason| {
@@ -1552,6 +1566,7 @@ impl ChioKernel {
             expected_output_digest,
             purchase,
             recovery,
+            recovery_status,
         } = self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
@@ -2180,6 +2195,7 @@ impl ChioKernel {
             matched_grant_index,
             request,
             recovery.as_ref(),
+            recovery_status.as_ref(),
             current_unix_timestamp_ms() / 1_000,
         )
         .map_err(|reason| {

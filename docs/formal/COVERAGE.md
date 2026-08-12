@@ -964,7 +964,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `0079fd3079d35fb0aed5bbf48bac439f610504faa47b45de1c3fd369714841a3`
+- Input digest: `327e5ee609d337e85124c309f07367f393cc72ec4b4e63e4590d3aef5ff0673a`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -1090,10 +1090,10 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/kernel/chio-kernel-core/src/rng.rs`: `5d3991259da3e40d0213a36def3b508494f8cfe472dcbc073da37fe10a0cca18`
 - `crates/kernel/chio-kernel-core/src/scope.rs`: `cb6f09e25d8a64ab45e536ffad302c47c0ecc56338c10bdbe5919f24f1f82840`
 - `crates/kernel/chio-kernel/src/kernel/delegation.rs`: `e1ec9d7e8101fb6afeac5e8002602e2dac4e7c363680e1b366ac1b0414ce400d`
-- `crates/kernel/chio-kernel/src/kernel/dispatch.rs`: `07698585a22fe3969257a41bb4dc034cd26fabaf6941e57f24531f1300caaebe`
+- `crates/kernel/chio-kernel/src/kernel/dispatch.rs`: `9f2cecd7aadc7a878faf499d9d59309ca2785df3691bb076a28a27432ca8a2bc`
 - `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`: `e3e4d0ee3f8712528849732a5b6d09aaf16ecd77029ec810c62447c31b1db2d6`
 - `crates/kernel/chio-kernel/src/kernel/ledger_audit.rs`: `defcb8e3b9de79e211b55fc1309609847d18e13d7df357a02a8a6f5a87aeb137`
-- `crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs`: `4867a05fa2c734eda39bbac4c76abd3b8bd3d3de28b2f6ddc92e93457c2c8c6b`
+- `crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs`: `c066cdb071521c9d8d18f424ab74731b1b8d85654ffca6e501b777a0e0348d76`
 - `crates/kernel/chio-kernel/src/kernel/responses/finalization.rs`: `19c587cbe3f92018c53f04a7ffe25acfb8e606ce4ad502e9719b819235114ec6`
 - `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs`: `63d37c5f6877b0f177c77554bc30032b623cddf2cbd5297d21a02e0dc0bfd1ea`
 - `crates/kernel/chio-kernel/src/kernel/tests/budget.rs`: `872e9d25c2506b61317ea8945becc1a6bc158d2f25b2486a3a09fba6640cad27`

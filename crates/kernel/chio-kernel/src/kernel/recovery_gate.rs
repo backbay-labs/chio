@@ -1,14 +1,17 @@
 //! First-class no-charge finding-recovery admission and receipt metadata.
 
+use base64::Engine as _;
 use chio_core::capability::scope::{Constraint, FindingRecoveryMarkerV1, ToolGrant};
 
 use crate::finding_purchase::{
-    FindingCurrentStatusContextView, FindingStatusProofContextView,
+    FindingCurrentStatusContextView, FindingStatusProofContextView, VerifiedFindingStatusProof,
     FINDING_STATUS_PROOF_CONTEXT_KEY, MAX_FINDING_STATUS_PROOF_B64_BYTES,
 };
 use crate::finding_recovery::{
-    FindingRecoveryContextView, VerifiedFindingRecovery, FINDING_RECOVERY_CONTEXT_ARGUMENT,
+    FindingRecoveryContextView, FindingRecoveryReplaySnapshotV1, VerifiedFindingRecovery,
+    FINDING_RECOVERY_CONTEXT_ARGUMENT, FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA,
 };
+use crate::request_matching::resolve_required_matching_grants;
 use crate::runtime::ToolCallRequest;
 
 use super::ChioKernel;
@@ -16,6 +19,19 @@ use super::ChioKernel;
 pub(crate) struct RecoveryMarkedGrant<'a> {
     marker: &'a FindingRecoveryMarkerV1,
     expected_output_digest: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VerifiedFindingRecoveryAdmission {
+    pub(crate) recovery: VerifiedFindingRecovery,
+    pub(crate) status: VerifiedFindingStatusProof,
+}
+
+fn is_lower_hex64(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn recovery_status_proof_view<'a>(
@@ -204,11 +220,12 @@ impl ChioKernel {
         request: &ToolCallRequest,
         now_unix_secs: u64,
     ) -> Result<Option<VerifiedFindingRecovery>, String> {
-        let Some(verified) =
+        let Some(admission) =
             self.verify_recovery_status_admission(grant, request, now_unix_secs)?
         else {
             return Ok(None);
         };
+        let verified = admission.recovery;
         let Some(marked) = recovery_marked_grant(grant)? else {
             return Err("finding recovery marker disappeared during admission".to_owned());
         };
@@ -236,7 +253,7 @@ impl ChioKernel {
         grant: &ToolGrant,
         request: &ToolCallRequest,
         now_unix_secs: u64,
-    ) -> Result<Option<VerifiedFindingRecovery>, String> {
+    ) -> Result<Option<VerifiedFindingRecoveryAdmission>, String> {
         let Some(verified) = self.verify_recovery_context(grant, request)? else {
             return Ok(None);
         };
@@ -254,7 +271,161 @@ impl ChioKernel {
         status_verifier
             .verify_status_admission(&status_view, &status, now_unix_secs)
             .map_err(|error| format!("finding recovery status admission rejected: {error}"))?;
-        Ok(Some(verified))
+        Ok(Some(VerifiedFindingRecoveryAdmission {
+            recovery: verified,
+            status,
+        }))
+    }
+
+    fn validate_recovery_replay_snapshot(
+        &self,
+        grant: &ToolGrant,
+        request: &ToolCallRequest,
+        snapshot: FindingRecoveryReplaySnapshotV1,
+    ) -> Result<Option<VerifiedFindingRecoveryAdmission>, String> {
+        if snapshot.schema != FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA {
+            return Err("durable recovery snapshot schema is unsupported".to_owned());
+        }
+        let expected = self
+            .verify_recovery_context(grant, request)?
+            .ok_or_else(|| "durable recovery snapshot has no marked grant".to_owned())?;
+        if snapshot.recovery != expected {
+            return Err("durable recovery snapshot binds different recovery facts".to_owned());
+        }
+        let status = &snapshot.status;
+        if status.feed_id != expected.expected_status_feed_id
+            || status.map_epoch == 0
+            || status.non_inclusion_checked_at == 0
+            || !is_lower_hex64(&status.status_epoch_id)
+            || !is_lower_hex64(&status.status_epoch_artifact_sha256)
+            || !is_lower_hex64(&status.proof_sha256)
+            || !is_lower_hex64(&status.root_hash)
+            || !is_lower_hex64(&status.operator_authorization_sha256)
+            || !is_lower_hex64(&status.service_bond_evidence_sha256)
+        {
+            return Err("durable recovery status snapshot is malformed".to_owned());
+        }
+        let proof_b64 = request
+            .governed_intent
+            .as_ref()
+            .and_then(|intent| intent.context.as_ref())
+            .and_then(serde_json::Value::as_object)
+            .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "durable recovery request lost its status proof".to_owned())?;
+        if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
+            return Err("durable recovery status proof exceeds the kernel size bound".to_owned());
+        }
+        let proof_bytes = base64::engine::general_purpose::STANDARD
+            .decode(proof_b64)
+            .map_err(|_| "durable recovery status proof is not valid base64".to_owned())?;
+        if chio_core::crypto::sha256_hex(&proof_bytes) != status.proof_sha256 {
+            return Err("durable recovery snapshot binds a different status proof".to_owned());
+        }
+        Ok(Some(VerifiedFindingRecoveryAdmission {
+            recovery: snapshot.recovery,
+            status: snapshot.status,
+        }))
+    }
+
+    pub(crate) fn capture_recovery_replay_metadata(
+        &self,
+        request: &ToolCallRequest,
+        matched_grant_index: usize,
+        verified_recovery: Option<&VerifiedFindingRecoveryAdmission>,
+    ) -> Result<Option<serde_json::Value>, super::KernelError> {
+        let matching_grants = resolve_required_matching_grants(
+            &request.capability,
+            &request.tool_name,
+            &request.server_id,
+            &request.arguments,
+            request.model_metadata.as_ref(),
+        )
+        .map_err(|error| super::KernelError::DurableAdmission(error.to_string()))?;
+        let selected_grant = matching_grants
+            .iter()
+            .find(|matching| matching.index == matched_grant_index)
+            .ok_or_else(|| {
+                super::KernelError::DurableAdmission(
+                    "durable tool return lost its matched grant".to_owned(),
+                )
+            })?;
+        let is_recovery = recovery_marked_grant(selected_grant.grant)
+            .map_err(super::KernelError::DurableAdmission)?
+            .is_some();
+        match (is_recovery, verified_recovery) {
+            (true, Some(admission)) => {
+                let snapshot = FindingRecoveryReplaySnapshotV1::new(
+                    admission.recovery.clone(),
+                    admission.status.clone(),
+                );
+                self.validate_recovery_replay_snapshot(
+                    selected_grant.grant,
+                    request,
+                    snapshot.clone(),
+                )
+                .map_err(|reason| {
+                    super::KernelError::DurableAdmission(format!(
+                        "recovery replay snapshot could not be captured: {reason}"
+                    ))
+                })?;
+                serde_json::to_value(snapshot)
+                    .map(|snapshot| {
+                        Some(serde_json::json!({
+                            crate::finding_recovery::FINDING_RECOVERY_REPLAY_SNAPSHOT_METADATA_KEY:
+                                snapshot
+                        }))
+                    })
+                    .map_err(|error| super::KernelError::DurableAdmission(error.to_string()))
+            }
+            (true, None) => Err(super::KernelError::DurableAdmission(
+                "M6 durable recovery return has no frozen dispatch snapshot".to_owned(),
+            )),
+            (false, Some(_)) => Err(super::KernelError::DurableAdmission(
+                "unmarked durable return carries a frozen recovery snapshot".to_owned(),
+            )),
+            (false, None) => Ok(None),
+        }
+    }
+
+    pub(crate) fn restore_recovery_replay_snapshot(
+        &self,
+        grant: &ToolGrant,
+        request: &ToolCallRequest,
+        metadata: Option<&serde_json::Value>,
+    ) -> Result<Option<VerifiedFindingRecoveryAdmission>, super::KernelError> {
+        let snapshot = metadata
+            .and_then(serde_json::Value::as_object)
+            .and_then(|metadata| {
+                metadata.get(crate::finding_recovery::FINDING_RECOVERY_REPLAY_SNAPSHOT_METADATA_KEY)
+            })
+            .cloned();
+        let is_recovery = recovery_marked_grant(grant)
+            .map_err(super::KernelError::DurableAdmission)?
+            .is_some();
+        match (is_recovery, snapshot) {
+            (true, Some(snapshot)) => {
+                let snapshot: FindingRecoveryReplaySnapshotV1 = serde_json::from_value(snapshot)
+                    .map_err(|error| {
+                        super::KernelError::DurableAdmission(format!(
+                            "durable recovery snapshot is malformed: {error}"
+                        ))
+                    })?;
+                self.validate_recovery_replay_snapshot(grant, request, snapshot)
+                    .map_err(|reason| {
+                        super::KernelError::DurableAdmission(format!(
+                            "durable recovery snapshot was rejected: {reason}"
+                        ))
+                    })
+            }
+            (true, None) => Err(super::KernelError::DurableAdmission(
+                "M6 durable recovery return has no frozen status snapshot".to_owned(),
+            )),
+            (false, Some(_)) => Err(super::KernelError::DurableAdmission(
+                "unmarked durable return carries a recovery snapshot".to_owned(),
+            )),
+            (false, None) => Ok(None),
+        }
     }
 
     /// Recheck mutable status before any durable recovery response releases
@@ -264,10 +435,15 @@ impl ChioKernel {
         matched_grant_index: usize,
         request: &ToolCallRequest,
         expected: Option<&VerifiedFindingRecovery>,
+        admitted_status: Option<&VerifiedFindingStatusProof>,
         now_unix_secs: u64,
     ) -> Result<(), String> {
-        let Some(expected) = expected else {
-            return Ok(());
+        let (Some(expected), Some(admitted_status)) = (expected, admitted_status) else {
+            return if expected.is_none() && admitted_status.is_none() {
+                Ok(())
+            } else {
+                Err("completed recovery lost its dispatch-frozen status baseline".to_owned())
+            };
         };
         let grant = request
             .capability
@@ -286,17 +462,16 @@ impl ChioKernel {
                 "finding recovery requires a configured finding status verifier".to_owned(),
             );
         };
-        let admitted_view = recovery_status_proof_view(request, &current)?;
-        let admitted = status_verifier
-            .verify_status_proof(&admitted_view)
-            .map_err(|error| format!("finding recovery status proof rejected: {error}"))?;
+        if admitted_status.feed_id != current.expected_status_feed_id {
+            return Err("completed recovery status feed changed after dispatch".to_owned());
+        }
         status_verifier
             .verify_current_status_admission(
                 &FindingCurrentStatusContextView {
                     expected_finding_id: &current.finding_id,
                     expected_feed_id: &current.expected_status_feed_id,
-                    minimum_map_epoch: admitted.map_epoch,
-                    minimum_non_inclusion_checked_at: admitted.non_inclusion_checked_at,
+                    minimum_map_epoch: admitted_status.map_epoch,
+                    minimum_non_inclusion_checked_at: admitted_status.non_inclusion_checked_at,
                 },
                 now_unix_secs,
             )
@@ -390,13 +565,16 @@ mod tests {
             &self,
             _view: &FindingStatusProofContextView<'_>,
         ) -> Result<VerifiedFindingStatusProof, String> {
+            if self.portable_deny.load(Ordering::SeqCst) {
+                return Err("finding is pending retraction under the old operator".to_owned());
+            }
             Ok(VerifiedFindingStatusProof {
                 feed_id: "feed-1".to_owned(),
                 key_domain_nonce: 1,
                 map_epoch: 1,
-                status_epoch_id: "epoch-1".to_owned(),
+                status_epoch_id: "6".repeat(64),
                 status_epoch_artifact_sha256: "1".repeat(64),
-                proof_sha256: "2".repeat(64),
+                proof_sha256: chio_core::crypto::sha256_hex(b"status-proof"),
                 root_hash: "3".repeat(64),
                 non_inclusion_checked_at: 1,
                 operator_authorization_sha256: "4".repeat(64),
@@ -530,7 +708,8 @@ mod tests {
                 call_chain: None,
                 autonomy: None,
                 context: Some(serde_json::json!({
-                    FINDING_STATUS_PROOF_CONTEXT_KEY: "status-proof"
+                    FINDING_STATUS_PROOF_CONTEXT_KEY:
+                        base64::engine::general_purpose::STANDARD.encode(b"status-proof")
                 })),
                 body: Default::default(),
             }),
@@ -560,6 +739,10 @@ mod tests {
         }));
         let request = recovery_request();
         let grant = &request.capability.scope.grants[0];
+        let admitted = kernel
+            .verify_recovery_status_admission(grant, &request, 1)
+            .expect("dispatch status snapshot")
+            .expect("recovery marker");
 
         assert!(kernel
             .verify_recovery_admission(grant, &request, 1)
@@ -580,7 +763,13 @@ mod tests {
             .expect("recovery marker remains present");
         current_deny.store(true, Ordering::SeqCst);
         let terminal_error = kernel
-            .revalidate_completed_recovery_status(0, &request, Some(&expected), 1)
+            .revalidate_completed_recovery_status(
+                0,
+                &request,
+                Some(&expected),
+                Some(&admitted.status),
+                1,
+            )
             .expect_err("a durable completed replay must recheck mutable status");
         assert!(terminal_error.contains("pending retraction"));
         assert_eq!(current_checks.load(Ordering::SeqCst), 1);
@@ -604,16 +793,36 @@ mod tests {
         }));
         let request = recovery_request();
         let grant = &request.capability.scope.grants[0];
+        let admitted = kernel
+            .verify_recovery_status_admission(grant, &request, 1)
+            .expect("dispatch status snapshot")
+            .expect("recovery marker");
         let expected = kernel
             .verify_recovery_admission(grant, &request, 1)
             .expect("initial live admission")
             .expect("recovery binding");
+        assert_eq!(admitted.recovery, expected);
+        let metadata = kernel
+            .capture_recovery_replay_metadata(&request, 0, Some(&admitted))
+            .expect("capture dispatch-frozen recovery status")
+            .expect("recovery metadata");
 
         // Model an unrelated feed advance: the frozen portable proof is now
-        // behind the floor, but the target has a fresh current-floor proof.
+        // behind the floor and no longer validates under the rotated operator,
+        // but the target has a fresh current-floor proof.
         portable_deny.store(true, Ordering::SeqCst);
+        let restored = kernel
+            .restore_recovery_replay_snapshot(grant, &request, Some(&metadata))
+            .expect("restore authenticated raw-outcome snapshot")
+            .expect("recovery snapshot");
         kernel
-            .revalidate_completed_recovery_status(0, &request, Some(&expected), 2)
+            .revalidate_completed_recovery_status(
+                0,
+                &request,
+                Some(&restored.recovery),
+                Some(&restored.status),
+                2,
+            )
             .expect("current-floor status keeps the recovery live");
 
         assert_eq!(current_checks.load(Ordering::SeqCst), 1);

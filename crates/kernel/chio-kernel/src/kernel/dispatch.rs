@@ -323,6 +323,12 @@ pub(crate) struct PreDispatchMonetaryUnwindFailure {
     pub(crate) evidence: Option<PreDispatchPaymentUnwindEvidence>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct VerifiedFindingDispatchAdmission {
+    pub(crate) purchase: Option<crate::finding_purchase::VerifiedFindingPurchase>,
+    pub(crate) recovery: Option<crate::kernel::recovery_gate::VerifiedFindingRecoveryAdmission>,
+}
+
 impl From<KernelError> for PreDispatchMonetaryUnwindFailure {
     fn from(error: KernelError) -> Self {
         Self {
@@ -677,7 +683,7 @@ impl ChioKernel {
         revalidate_all: bool,
         now_unix_secs: u64,
         now_unix_ms: u64,
-    ) -> Result<Option<crate::finding_purchase::VerifiedFindingPurchase>, KernelError> {
+    ) -> Result<VerifiedFindingDispatchAdmission, KernelError> {
         if self.is_emergency_stopped() {
             return Err(KernelError::GuardDenied(
                 EMERGENCY_STOP_DENY_REASON.to_string(),
@@ -817,13 +823,17 @@ impl ChioKernel {
                     "finding purchase dispatch revalidation failed: {reason}"
                 ))
             })?;
-        self.verify_recovery_status_admission(matched_grant, request, now_unix_secs)
+        let verified_recovery = self
+            .verify_recovery_status_admission(matched_grant, request, now_unix_secs)
             .map_err(|reason| {
                 KernelError::GuardDenied(format!(
                     "finding recovery dispatch revalidation failed: {reason}"
                 ))
             })?;
-        Ok(verified_purchase)
+        Ok(VerifiedFindingDispatchAdmission {
+            purchase: verified_purchase,
+            recovery: verified_recovery,
+        })
     }
 
     pub(crate) fn validate_parent_request_continuation(

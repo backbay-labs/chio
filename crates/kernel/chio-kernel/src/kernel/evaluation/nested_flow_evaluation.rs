@@ -1077,7 +1077,11 @@ impl ChioKernel {
             ),
             Err(error) => Err(error),
         };
-        let mut verified_purchase = final_dispatch_admission.as_ref().ok().cloned().flatten();
+        let mut verified_finding_admission = final_dispatch_admission
+            .as_ref()
+            .ok()
+            .cloned()
+            .unwrap_or_default();
         if let Err(error) = final_dispatch_admission {
             let mut reason = dispatch_admission_error_reason(&error);
             if let Err(rollback_error) = credential_reservation.rollback_before_dispatch() {
@@ -1348,8 +1352,8 @@ impl ChioKernel {
                 post_payment_now_unix_ms / 1000,
                 post_payment_now_unix_ms,
             );
-            if let Ok(purchase) = &post_payment_admission {
-                verified_purchase.clone_from(purchase);
+            if let Ok(admission) = &post_payment_admission {
+                verified_finding_admission.clone_from(admission);
             }
             if let Err(error) = post_payment_admission {
                 let reason = dispatch_admission_error_reason(&error);
@@ -1849,7 +1853,8 @@ impl ChioKernel {
                     extra_receipt_metadata: runtime_admission_metadata.clone(),
                     pre_invocation_guard_evidence: &pre_invocation_guard_evidence,
                     verified_payee_binding: verified_governed_payee_binding.as_ref(),
-                    verified_purchase: verified_purchase.as_ref(),
+                    verified_purchase: verified_finding_admission.purchase.as_ref(),
+                    verified_recovery: verified_finding_admission.recovery.as_ref(),
                     trusted_now_unix_ms: recorded_at_unix_ms,
                 },
             ) {
@@ -1889,16 +1894,19 @@ impl ChioKernel {
         {
             return self.finalize_durable_tool_return(admission, request, outcome);
         }
-        let recovery_status = self
-            .verify_recovery_context(matched_grant, request)
-            .and_then(|binding| {
-                self.revalidate_completed_recovery_status(
-                    matched_grant_index,
-                    request,
-                    binding.as_ref(),
-                    current_unix_timestamp_ms() / 1_000,
-                )
-            });
+        let recovery_status = self.revalidate_completed_recovery_status(
+            matched_grant_index,
+            request,
+            verified_finding_admission
+                .recovery
+                .as_ref()
+                .map(|admission| &admission.recovery),
+            verified_finding_admission
+                .recovery
+                .as_ref()
+                .map(|admission| &admission.status),
+            current_unix_timestamp_ms() / 1_000,
+        );
         if let Err(reason) = recovery_status {
             let reason = format!(
                 "finding recovery status changed before ordinary output finalization: {reason}"

@@ -182,6 +182,70 @@ fn floor_epoch_and_non_inclusion_survive_restart_with_exact_bytes() {
 }
 
 #[test]
+fn imported_inclusion_reconciles_a_matching_local_outbox_intent() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('4');
+    let intent_id = hex64('5');
+    let epoch_id = hex64('6');
+    let root_hash = hex64('7');
+    let intent_bytes = b"seller-signed-imported-retraction";
+    let intent_sha256 = sha256_hex(intent_bytes);
+    let current_epoch = epoch(1, &epoch_id, &root_hash, b"imported-epoch", 1);
+
+    store
+        .observe_verified_epoch(&current_epoch)
+        .expect("persist imported epoch");
+    store
+        .issue_retraction_intent(&FindingRetractionIntentInput {
+            intent_id: &intent_id,
+            feed_id: FEED,
+            operator_id: OPERATOR,
+            finding_id: &finding_id,
+            source: FindingRetractionIntentSource::Voluntary,
+            intent_bytes,
+            issued_at: NOW + 1,
+            inclusion_deadline: NOW + 500,
+            created_at: NOW + 2,
+        })
+        .expect("persist matching local intent");
+    let proof = inclusion(
+        1,
+        &epoch_id,
+        &root_hash,
+        &finding_id,
+        &intent_sha256,
+        b"imported-inclusion-proof",
+    );
+    store
+        .observe_verified_inclusion(&proof)
+        .expect("import verified inclusion");
+
+    let intent = store
+        .get_retraction_intent(&intent_id)
+        .expect("load intent")
+        .expect("intent exists");
+    assert_eq!(intent.state, FindingRetractionIntentState::Published);
+    assert_eq!(intent.published_map_epoch, Some(1));
+    let leaf = store
+        .get_leaf(FEED, &finding_id)
+        .expect("load leaf")
+        .expect("leaf exists");
+    assert_eq!(leaf.local_intent_id.as_deref(), Some(intent_id.as_str()));
+    assert!(store
+        .list_publication_candidates(
+            FEED,
+            current_epoch.operator_key,
+            current_epoch.operator_authorization_sha256,
+            NOW + 10,
+            200,
+        )
+        .expect("query publication cadence")
+        .is_empty());
+}
+
+#[test]
 fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();

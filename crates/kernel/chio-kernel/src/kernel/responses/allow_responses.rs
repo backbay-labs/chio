@@ -695,6 +695,25 @@ impl ChioKernel {
                         .to_owned(),
                 ));
             }
+            // Flush and authenticate the inherited receipt tail before the
+            // provider can mutate memory. The post-return checkpoint then has
+            // only this write's receipt to cover, so an oversized prior tail
+            // or an unavailable signer denies before the external effect.
+            let report = store.create_next_receipt_checkpoint(u64::MAX, &self.config.keypair)?;
+            if report.latest_committed_entry_seq != report.latest_checkpointed_entry_seq {
+                return Err(KernelError::Internal(
+                    "Finding memory write checkpoint preflight left an unanchored receipt tail"
+                        .to_owned(),
+                ));
+            }
+            store
+                .load_retained_chio_receipt_commitment(parent_receipt_id)?
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding delivery receipt is not covered by an authenticated checkpoint"
+                            .to_owned(),
+                    )
+                })?;
             Ok(())
         })?
         else {
