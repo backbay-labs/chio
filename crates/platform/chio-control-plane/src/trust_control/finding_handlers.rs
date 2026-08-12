@@ -317,15 +317,40 @@ fn verify_profile_registration_authority(
         return Err("verifier profile is not live at registration".to_owned());
     }
 
+    verify_profile_governance_lifecycle(
+        &request.profile,
+        &request.governance_authority_status,
+        config,
+        now,
+        "profile registration",
+    )
+}
+
+fn verify_profile_governance_lifecycle(
+    profile: &SignedFindingChallengeVerifierProfile,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    now: u64,
+    boundary: &'static str,
+) -> Result<(), String> {
+    if !config.governance_root.covers(now) {
+        return Err(format!(
+            "profile governance authority is not live at {boundary}"
+        ));
+    }
+    let governance_key = config
+        .governance_root
+        .key()
+        .map_err(|error| error.to_string())?;
     let status_key = config
         .authority_status
         .key()
         .map_err(|error| error.to_string())?;
-    verify_signed_authority_status(&request.governance_authority_status, &status_key)
+    verify_signed_authority_status(authority_status, &status_key)
         .map_err(|error| error.to_string())?;
-    let status = &request.governance_authority_status.body;
+    let status = &authority_status.body;
     if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
-        return Err("authority-status signer is not live at profile registration".to_owned());
+        return Err(format!("authority-status signer is not live at {boundary}"));
     }
     if status.status_ref != config.governance_root.revocation_status_ref
         || status.authority_id != config.governance_root.authority_id
@@ -334,7 +359,7 @@ fn verify_profile_registration_authority(
     {
         return Err("governance authority status does not bind the deployment pin".to_owned());
     }
-    if status.observed_at < request.profile.body.issued_at {
+    if status.observed_at < profile.body.issued_at {
         return Err("governance authority status predates profile issuance".to_owned());
     }
     if status.observed_at > now
@@ -343,7 +368,9 @@ fn verify_profile_registration_authority(
         return Err("governance authority status is not a fresh current reading".to_owned());
     }
     if status.revoked_from.is_some() {
-        return Err("profile governance authority is revoked at registration".to_owned());
+        return Err(format!(
+            "profile governance authority is revoked at {boundary}"
+        ));
     }
     Ok(())
 }
@@ -925,6 +952,7 @@ pub(crate) async fn handle_register_finding_collateral(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct FindingActivateRequest {
     pub admission: SignedFindingAdmission,
+    pub profile_governance_authority_status: SignedFindingAuthorityStatus,
     pub venue_authority_status: SignedFindingAuthorityStatus,
     pub listing_authority_status: SignedFindingAuthorityStatus,
     pub seller_authorization: SignedFindingSellerAuthorization,
@@ -1055,6 +1083,7 @@ pub(crate) fn verify_venue_authority_lifecycle(
 pub(crate) fn verify_profile_for_activation(
     profile: &SignedFindingChallengeVerifierProfile,
     expected_envelope_sha256: &str,
+    governance_authority_status: &SignedFindingAuthorityStatus,
     config: &FindingMarketConfig,
     now: u64,
 ) -> Result<(), String> {
@@ -1076,7 +1105,13 @@ pub(crate) fn verify_profile_for_activation(
     if now < profile.body.issued_at || now >= profile.body.expires_at {
         return Err("verifier profile is not live at activation".to_string());
     }
-    Ok(())
+    verify_profile_governance_lifecycle(
+        profile,
+        governance_authority_status,
+        config,
+        now,
+        "activation",
+    )
 }
 
 fn verify_authority_policy_matches_deployment(
@@ -1597,6 +1632,7 @@ pub(crate) async fn handle_activate_finding(
     if let Err(error) = verify_profile_for_activation(
         &profile,
         &admission.profile_envelope_sha256,
+        &request.profile_governance_authority_status,
         &config,
         authorization_now,
     ) {

@@ -172,6 +172,26 @@ fn signed_verifier_authority_status(
     )?)
 }
 
+fn signed_governance_authority_status(
+    observed_at: u64,
+    revoked_from: Option<u64>,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(1, "governance");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
 fn signed_venue_authority_status(
     observed_at: u64,
     revoked_from: Option<u64>,
@@ -1293,6 +1313,9 @@ impl MarketWeb {
     ) -> Result<String, AnyError> {
         let body = serde_json::json!({
             "admission": serde_json::to_value(admission)?,
+            "profileGovernanceAuthorityStatus": serde_json::to_value(
+                signed_governance_authority_status(unix_timestamp_now(), None)?,
+            )?,
             "venueAuthorityStatus": serde_json::to_value(signed_venue_authority_status(
                 unix_timestamp_now(),
                 None,
@@ -1663,6 +1686,17 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     // specific status and that nothing was admitted.
 
     let now = unix_timestamp_now();
+    let mut revoked_governance_request: serde_json::Value =
+        serde_json::from_str(&web.activate_request(&web.admission, &web.schedule, &web.report)?)?;
+    revoked_governance_request["profileGovernanceAuthorityStatus"] =
+        serde_json::to_value(signed_governance_authority_status(now, Some(now))?)?;
+    assert_activation_rejected(
+        &stack,
+        revoked_governance_request.to_string(),
+        "profile governance authority is revoked at activation",
+    )
+    .await?;
+
     let mut revoked_venue_request: serde_json::Value =
         serde_json::from_str(&web.activate_request(&web.admission, &web.schedule, &web.report)?)?;
     revoked_venue_request["venueAuthorityStatus"] =
@@ -2733,8 +2767,14 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
     let live_venue_status = signed_venue_authority_status(now, None)?;
     verify_venue_authority_lifecycle(&stack.web.admission, &live_venue_status, &config, now)
         .map_err(std::io::Error::other)?;
-    verify_profile_for_activation(&profile, &profile_sha256, &config, now)
-        .map_err(std::io::Error::other)?;
+    verify_profile_for_activation(
+        &profile,
+        &profile_sha256,
+        &signed_governance_authority_status(now, None)?,
+        &config,
+        now,
+    )
+    .map_err(std::io::Error::other)?;
     verify_report_authority_lifecycle(
         &stack.web.report,
         &live_status,
@@ -2750,13 +2790,27 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
         checkpoint_log_id(&stack.web.checkpoint),
         &recipe_dependencies().runner_manifest_sha256,
     )?;
-    assert!(verify_profile_for_activation(&forged, &digest_of(&forged)?, &config, now).is_err());
+    assert!(verify_profile_for_activation(
+        &forged,
+        &digest_of(&forged)?,
+        &signed_governance_authority_status(now, None)?,
+        &config,
+        now,
+    )
+    .is_err());
 
     let mut expired_body = profile.body.clone();
     expired_body.expires_at = now;
     expired_body.profile_id = compute_profile_id(&expired_body)?;
     let expired = SignedExportEnvelope::sign(expired_body, &governance)?;
-    assert!(verify_profile_for_activation(&expired, &digest_of(&expired)?, &config, now).is_err());
+    assert!(verify_profile_for_activation(
+        &expired,
+        &digest_of(&expired)?,
+        &signed_governance_authority_status(now, None)?,
+        &config,
+        now,
+    )
+    .is_err());
 
     let mut stale_pin = config.clone();
     stale_pin.verifier_report.valid_until = stack.web.report.body.evaluation_time;

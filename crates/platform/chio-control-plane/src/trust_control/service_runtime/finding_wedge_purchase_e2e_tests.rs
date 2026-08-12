@@ -259,6 +259,26 @@ fn signed_verifier_authority_status(
     )?)
 }
 
+fn signed_governance_authority_status(
+    observed_at: u64,
+    revoked_from: Option<u64>,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(1, "governance");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
 fn signed_venue_authority_status(
     observed_at: u64,
 ) -> Result<SignedFindingAuthorityStatus, AnyError> {
@@ -1339,6 +1359,9 @@ impl MarketWeb {
     fn activate_request(&self) -> Result<String, AnyError> {
         Ok(serde_json::json!({
             "admission": serde_json::to_value(&self.admission)?,
+            "profileGovernanceAuthorityStatus": serde_json::to_value(
+                signed_governance_authority_status(unix_timestamp_now(), None)?,
+            )?,
             "venueAuthorityStatus": serde_json::to_value(signed_venue_authority_status(
                 unix_timestamp_now(),
             )?)?,
@@ -3382,6 +3405,19 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
     ));
 
     let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
+    let future_checkpoint = checkpoint_at(checkpoint.clone(), now.saturating_add(1), &keypair(40))?;
+    assert!(matches!(
+        lane.coordinator.finalize_denial(
+            &lane.purchase.handshake.reservation_id,
+            &response.receipt,
+            &lane.deployment.web.admission,
+            &future_checkpoint,
+            &inclusion_proof,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::CheckpointEvidence(message))
+            if message.contains("ahead of the finalization clock")
+    ));
     let mut wrong_proof = inclusion_proof.clone();
     wrong_proof.receipt_seq = wrong_proof.receipt_seq.saturating_add(1);
     assert!(matches!(
@@ -5004,6 +5040,9 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     wait_until_unix(second_report.body.evaluation_time).await;
     let activate = serde_json::json!({
         "admission": serde_json::to_value(&second_admission)?,
+        "profileGovernanceAuthorityStatus": serde_json::to_value(
+            signed_governance_authority_status(unix_timestamp_now(), None)?,
+        )?,
         "venueAuthorityStatus": serde_json::to_value(signed_venue_authority_status(
             unix_timestamp_now(),
         )?)?,

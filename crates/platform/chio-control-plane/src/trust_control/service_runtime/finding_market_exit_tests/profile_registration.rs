@@ -232,6 +232,7 @@ async fn unsupported_profile_rejects_before_registration_or_activation() -> Test
     let error = match verify_profile_for_activation(
         &unsupported,
         &unsupported_digest,
+        &signed_governance_authority_status(unix_timestamp_now(), None)?,
         &market_config(),
         unix_timestamp_now(),
     ) {

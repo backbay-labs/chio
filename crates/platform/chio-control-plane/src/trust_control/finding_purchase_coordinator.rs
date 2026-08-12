@@ -1240,6 +1240,11 @@ impl FindingPurchaseCoordinator {
         }
         validate_checkpoint(checkpoint)
             .map_err(|error| PurchaseCoordinatorError::CheckpointEvidence(error.to_string()))?;
+        if checkpoint.body.issued_at > now {
+            return Err(PurchaseCoordinatorError::CheckpointEvidence(
+                "denial checkpoint is ahead of the finalization clock".to_owned(),
+            ));
+        }
         if !matches!(verify_checkpoint_signature(checkpoint), Ok(true))
             || checkpoint.body.kernel_key != receipt.kernel_key
             || checkpoint.body.issued_at < receipt.timestamp
