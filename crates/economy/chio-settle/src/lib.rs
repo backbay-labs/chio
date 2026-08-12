@@ -60,14 +60,17 @@ pub use evm::{
 };
 #[cfg(feature = "cognition-market-experimental")]
 pub use finding_enforcement::{
-    dispatch_finding_impairment, plan_finding_impairment, recheck_finding_bond_observation,
-    reconcile_finding_impairment, reobserve_finding_impairment, verify_finding_collateral_snapshot,
+    dispatch_finding_impairment, plan_finding_impairment,
+    plan_finding_impairment_for_reconciliation, recheck_finding_bond_observation,
+    reconcile_finding_impairment, reobserve_finding_impairment,
+    reobserve_finding_impairment_for_reconciliation, verify_finding_collateral_snapshot,
     verify_finding_enforcement, verify_finding_enforcement_for_reconciliation,
     FindingBondObservationRecheck, FindingBondObservationSource, FindingBondObservationVerdict,
     FindingEnforcementPins, FindingFinalityRequirement, FindingImpairmentAttempt,
     FindingImpairmentDestination, FindingImpairmentIntent, FindingImpairmentOutcome,
     FindingImpairmentPublishError, FindingImpairmentPublisher, FindingImpairmentQuarantine,
     FindingOperatorQualification, FindingVaultRejection, PlannedFindingImpairment,
+    PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement,
     StoredImpairmentTransaction, VerifiedFindingEnforcement,
 };
 pub use hook::{

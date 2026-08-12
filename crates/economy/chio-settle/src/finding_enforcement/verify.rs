@@ -172,6 +172,42 @@ impl VerifiedFindingEnforcement {
     }
 }
 
+/// A previously dispatched enforcement authenticated for reconciliation.
+///
+/// This capability deliberately cannot be passed to
+/// [`plan_finding_impairment`](super::plan_finding_impairment). Recovery may
+/// use an aged snapshot to reconstruct and re-observe the exact frozen call,
+/// but it cannot turn that historical observation into fresh dispatch
+/// authority.
+#[derive(Debug, Clone)]
+pub struct ReconciledFindingEnforcement {
+    verified: VerifiedFindingEnforcement,
+}
+
+impl ReconciledFindingEnforcement {
+    /// The authenticated enforcement instruction body.
+    #[must_use]
+    pub const fn enforcement(&self) -> &FindingChallengeEnforcement {
+        self.verified.enforcement()
+    }
+
+    /// Domain-keyed identity of the seller-impairment effect.
+    #[must_use]
+    pub fn seller_impair_intent_id(&self) -> &str {
+        self.verified.seller_impair_intent_id()
+    }
+
+    /// Domain-keyed identity of the enforcement-root effect.
+    #[must_use]
+    pub fn root_intent_id(&self) -> &str {
+        self.verified.root_intent_id()
+    }
+
+    pub(super) const fn verified(&self) -> &VerifiedFindingEnforcement {
+        &self.verified
+    }
+}
+
 /// Verify one enforcement instruction against the bond snapshot it binds.
 ///
 /// `trusted_now_secs` is supplied by the caller because this crate owns no
@@ -236,7 +272,7 @@ pub fn verify_finding_enforcement_for_reconciliation(
     signed_snapshot: &SignedFindingFinalizedBondSnapshot,
     pins: &FindingEnforcementPins,
     trusted_now_secs: u64,
-) -> Result<VerifiedFindingEnforcement, SettlementError> {
+) -> Result<ReconciledFindingEnforcement, SettlementError> {
     verify_finding_enforcement_inner(
         signed_enforcement,
         signed_snapshot,
@@ -244,6 +280,7 @@ pub fn verify_finding_enforcement_for_reconciliation(
         trusted_now_secs,
         false,
     )
+    .map(|verified| ReconciledFindingEnforcement { verified })
 }
 
 fn verify_finding_enforcement_inner(

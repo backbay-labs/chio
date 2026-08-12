@@ -3,7 +3,7 @@
 use chio_core::capability::scope::MonetaryAmount;
 use chio_core::web3::anchors::AnchorInclusionProof;
 
-use super::verify::VerifiedFindingEnforcement;
+use super::verify::{ReconciledFindingEnforcement, VerifiedFindingEnforcement};
 use super::{parse_chain_hash, parse_evm_address, reject};
 use crate::{
     prepare_bond_impair, scale_chio_amount_to_token_minor_units, EvmBondSnapshot,
@@ -88,6 +88,27 @@ impl PlannedFindingImpairment {
     #[must_use]
     pub const fn call(&self) -> &PreparedEvmCall {
         self.prepared.call()
+    }
+}
+
+/// A frozen impairment reconstructed solely for post-dispatch observation.
+///
+/// Its prepared call remains private to this module, so the public dispatch
+/// function cannot accept reconciliation-only authority.
+#[derive(Debug, Clone)]
+pub struct PlannedFindingImpairmentReconciliation {
+    planned: PlannedFindingImpairment,
+}
+
+impl PlannedFindingImpairmentReconciliation {
+    /// The frozen semantic intent recovered from the authenticated artifacts.
+    #[must_use]
+    pub const fn intent(&self) -> &FindingImpairmentIntent {
+        self.planned.intent()
+    }
+
+    pub(super) const fn planned(&self) -> &PlannedFindingImpairment {
+        &self.planned
     }
 }
 
@@ -189,4 +210,23 @@ pub fn plan_finding_impairment(
     };
 
     Ok(PlannedFindingImpairment { intent, prepared })
+}
+
+/// Reconstruct the exact frozen call for observation without granting
+/// dispatch authority.
+pub fn plan_finding_impairment_for_reconciliation(
+    config: &SettlementChainConfig,
+    verified: &ReconciledFindingEnforcement,
+    operator_address: &str,
+    vault_snapshot: &EvmBondSnapshot,
+    anchor_proof: &AnchorInclusionProof,
+) -> Result<PlannedFindingImpairmentReconciliation, SettlementError> {
+    plan_finding_impairment(
+        config,
+        verified.verified(),
+        operator_address,
+        vault_snapshot,
+        anchor_proof,
+    )
+    .map(|planned| PlannedFindingImpairmentReconciliation { planned })
 }

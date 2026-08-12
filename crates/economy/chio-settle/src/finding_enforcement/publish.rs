@@ -2,7 +2,9 @@
 
 use thiserror::Error;
 
-use super::plan::{FindingImpairmentIntent, PlannedFindingImpairment};
+use super::plan::{
+    FindingImpairmentIntent, PlannedFindingImpairment, PlannedFindingImpairmentReconciliation,
+};
 use super::reconcile::{
     reconcile_finding_impairment, FindingImpairmentAttempt, FindingImpairmentOutcome,
 };
@@ -86,6 +88,16 @@ pub fn reobserve_finding_impairment(
     planned: &PlannedFindingImpairment,
     publisher: &dyn FindingImpairmentPublisher,
 ) -> Result<FindingImpairmentOutcome, FindingImpairmentPublishError> {
+    let attempt = publisher.observe(planned.intent(), planned.call())?;
+    Ok(reconcile_finding_impairment(planned.intent(), &attempt))
+}
+
+/// Re-observe a reconciliation-only plan without making it dispatchable.
+pub fn reobserve_finding_impairment_for_reconciliation(
+    planned: &PlannedFindingImpairmentReconciliation,
+    publisher: &dyn FindingImpairmentPublisher,
+) -> Result<FindingImpairmentOutcome, FindingImpairmentPublishError> {
+    let planned = planned.planned();
     let attempt = publisher.observe(planned.intent(), planned.call())?;
     Ok(reconcile_finding_impairment(planned.intent(), &attempt))
 }

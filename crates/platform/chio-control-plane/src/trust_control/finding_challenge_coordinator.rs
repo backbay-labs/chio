@@ -96,12 +96,15 @@ use chio_open_market::penalty::{
     SignedOpenMarketPenalty,
 };
 use chio_settle::{
-    dispatch_finding_impairment, plan_finding_impairment, recheck_finding_bond_observation,
-    reobserve_finding_impairment, verify_finding_collateral_snapshot, verify_finding_enforcement,
+    dispatch_finding_impairment, plan_finding_impairment,
+    plan_finding_impairment_for_reconciliation, recheck_finding_bond_observation,
+    reobserve_finding_impairment, reobserve_finding_impairment_for_reconciliation,
+    verify_finding_collateral_snapshot, verify_finding_enforcement,
     verify_finding_enforcement_for_reconciliation, EvmBondSnapshot, FindingBondObservationSource,
     FindingEnforcementPins, FindingFinalityRequirement, FindingImpairmentOutcome,
     FindingImpairmentPublisher, FindingImpairmentQuarantine, PlannedFindingImpairment,
-    SettlementChainConfig, VerifiedFindingEnforcement,
+    PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement, SettlementChainConfig,
+    VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
     derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
@@ -2402,22 +2405,60 @@ impl FindingChallengeCoordinator {
             finality_requirement: self.pins.settlement_finality_requirement,
             max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
         };
-        let verified = if seller_was_confirmed {
+        if seller_was_confirmed {
             // Recovery authenticates the frozen observation but does not
             // require it to remain publication-fresh. The transaction and
             // its canonical receipt are independently re-observed below.
-            verify_finding_enforcement_for_reconciliation(enforcement, bond_snapshot, &pins, now)
-        } else {
-            verify_finding_enforcement(enforcement, bond_snapshot, &pins, now)
+            let reconciled = verify_finding_enforcement_for_reconciliation(
+                enforcement,
+                bond_snapshot,
+                &pins,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+            let planned = plan_finding_impairment_for_reconciliation(
+                settlement_config,
+                &reconciled,
+                operator_address,
+                vault_snapshot,
+                anchor_proof,
+            )
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+            let intent = self
+                .challenges
+                .get_effect_intent(&planned.intent().intent_id)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+                .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+            if intent.state != FindingEffectIntentState::Confirmed {
+                return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
+            }
+            self.require_confirmed_reconciliation_root(liability_key, &reconciled, &planned)?;
+            // Reconciliation authority exposes no dispatchable plan. It can
+            // only re-read the transaction already fenced by this confirmed
+            // intent.
+            if let Err(error) = self.require_reobserved_reconciliation(&planned, publisher, None) {
+                self.challenges
+                    .set_liability_quarantine(liability_key, true, now)
+                    .map_err(|store| {
+                        ChallengeCoordinatorError::ChallengeStore(store.to_string())
+                    })?;
+                return Err(error);
+            }
+            return self.finish_confirmed_impairment(
+                liability_key,
+                enforcement,
+                bond_snapshot,
+                now,
+            );
         }
-        .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-        if !seller_was_confirmed {
-            // Before dispatch, the snapshot's signature proves who observed
-            // the collateral, not that what they observed is still true. A
-            // reorg or operator rotation leaves the authorized amount
-            // unknown, so the chain is re-read before preparing the call.
-            self.require_qualified_observation(&verified, observations)?;
-        }
+
+        let verified = verify_finding_enforcement(enforcement, bond_snapshot, &pins, now)
+            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        // Before dispatch, the snapshot's signature proves who observed the
+        // collateral, not that what they observed is still true. A reorg or
+        // operator rotation leaves the authorized amount unknown, so the
+        // chain is re-read before preparing the call.
+        self.require_qualified_observation(&verified, observations)?;
         let planned = plan_finding_impairment(
             settlement_config,
             &verified,
@@ -4019,9 +4060,38 @@ impl FindingChallengeCoordinator {
         verified: &VerifiedFindingEnforcement,
         planned: &chio_settle::FindingImpairmentIntent,
     ) -> Result<(), ChallengeCoordinatorError> {
+        self.require_confirmed_enforcement_root_binding(
+            liability_key,
+            verified.root_intent_id(),
+            &verified.enforcement().penalty_envelope_sha256,
+            planned,
+        )
+    }
+
+    fn require_confirmed_reconciliation_root(
+        &self,
+        liability_key: &str,
+        verified: &ReconciledFindingEnforcement,
+        planned: &PlannedFindingImpairmentReconciliation,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        self.require_confirmed_enforcement_root_binding(
+            liability_key,
+            verified.root_intent_id(),
+            &verified.enforcement().penalty_envelope_sha256,
+            planned.intent(),
+        )
+    }
+
+    fn require_confirmed_enforcement_root_binding(
+        &self,
+        liability_key: &str,
+        root_intent_id: &str,
+        penalty_envelope_sha256: &str,
+        planned: &chio_settle::FindingImpairmentIntent,
+    ) -> Result<(), ChallengeCoordinatorError> {
         let root = self
             .challenges
-            .get_effect_intent(verified.root_intent_id())
+            .get_effect_intent(root_intent_id)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
             .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
         if root.kind != FindingEffectIntentKind::RootIntent
@@ -4031,13 +4101,8 @@ impl FindingChallengeCoordinator {
                 "the named root intent does not fence this liability",
             ));
         }
-        let expected = sha256_hex(
-            root_intent_commitment(
-                liability_key,
-                &verified.enforcement().penalty_envelope_sha256,
-            )
-            .as_bytes(),
-        );
+        let expected =
+            sha256_hex(root_intent_commitment(liability_key, penalty_envelope_sha256).as_bytes());
         if root.intent_digest != expected {
             return Err(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
                 "the fenced root does not commit to the penalty this enforcement pays",
@@ -4045,7 +4110,7 @@ impl FindingChallengeCoordinator {
         }
         let binding = self
             .challenges
-            .get_effect_root_binding(verified.root_intent_id())
+            .get_effect_root_binding(root_intent_id)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
             .ok_or(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
                 "the enforcement root has no prepared anchor binding",
@@ -4129,6 +4194,24 @@ impl FindingChallengeCoordinator {
     ) -> Result<(), ChallengeCoordinatorError> {
         let outcome = reobserve_finding_impairment(planned, publisher)
             .map_err(|error| ChallengeCoordinatorError::Publisher(error.to_string()))?;
+        Self::require_reobserved_impairment_outcome(outcome, expected_tx_hash)
+    }
+
+    fn require_reobserved_reconciliation(
+        &self,
+        planned: &PlannedFindingImpairmentReconciliation,
+        publisher: &dyn FindingImpairmentPublisher,
+        expected_tx_hash: Option<&str>,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let outcome = reobserve_finding_impairment_for_reconciliation(planned, publisher)
+            .map_err(|error| ChallengeCoordinatorError::Publisher(error.to_string()))?;
+        Self::require_reobserved_impairment_outcome(outcome, expected_tx_hash)
+    }
+
+    fn require_reobserved_impairment_outcome(
+        outcome: FindingImpairmentOutcome,
+        expected_tx_hash: Option<&str>,
+    ) -> Result<(), ChallengeCoordinatorError> {
         match outcome {
             FindingImpairmentOutcome::Confirmed { tx_hash }
                 if expected_tx_hash.is_none_or(|expected| expected == tx_hash) =>

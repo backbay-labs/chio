@@ -32,11 +32,13 @@ mod verify;
 mod tests;
 
 pub use plan::{
-    plan_finding_impairment, FindingImpairmentDestination, FindingImpairmentIntent,
-    PlannedFindingImpairment,
+    plan_finding_impairment, plan_finding_impairment_for_reconciliation,
+    FindingImpairmentDestination, FindingImpairmentIntent, PlannedFindingImpairment,
+    PlannedFindingImpairmentReconciliation,
 };
 pub use publish::{
-    dispatch_finding_impairment, reobserve_finding_impairment, FindingImpairmentPublishError,
+    dispatch_finding_impairment, reobserve_finding_impairment,
+    reobserve_finding_impairment_for_reconciliation, FindingImpairmentPublishError,
     FindingImpairmentPublisher,
 };
 pub use reconcile::{
@@ -48,7 +50,7 @@ pub use verify::{
     verify_finding_enforcement, verify_finding_enforcement_for_reconciliation,
     FindingBondObservationRecheck, FindingBondObservationSource, FindingBondObservationVerdict,
     FindingEnforcementPins, FindingFinalityRequirement, FindingOperatorQualification,
-    VerifiedFindingEnforcement,
+    ReconciledFindingEnforcement, VerifiedFindingEnforcement,
 };
 
 use alloy_primitives::{Address, FixedBytes, B256};

@@ -65,6 +65,10 @@ fn other_seller_keypair() -> Keypair {
     Keypair::from_seed(&[74; 32])
 }
 
+fn penalty_keypair() -> Keypair {
+    Keypair::from_seed(&[45; 32])
+}
+
 fn usd(units: u64) -> MonetaryAmount {
     MonetaryAmount {
         units,
@@ -185,7 +189,7 @@ fn enforcement_body(bond_snapshot_envelope_sha256: &str) -> FindingChallengeEnfo
             },
         ],
         penalty_authority_id: "market-penalty".to_owned(),
-        penalty_key: keypair(45).public_key(),
+        penalty_key: penalty_keypair().public_key(),
         penalty_key_epoch: 1,
         penalty_valid_from: 1,
         penalty_valid_until: 1_800_000_000,
@@ -279,6 +283,25 @@ fn planned() -> PlannedFindingImpairment {
     .test_expect("verified enforcement plans an impairment")
 }
 
+fn reconciliation_planned() -> PlannedFindingImpairmentReconciliation {
+    let (enforcement, snapshot) = default_pair();
+    let verified = verify_finding_enforcement_for_reconciliation(
+        &enforcement,
+        &snapshot,
+        &default_pins(),
+        OBSERVED_AT + MAX_SNAPSHOT_AGE_SECS + 1,
+    )
+    .test_expect("confirmed recovery authenticates its aged snapshot");
+    plan_finding_impairment_for_reconciliation(
+        &sample_config(),
+        &verified,
+        &operator_address(),
+        &vault_snapshot(),
+        &sample_anchor_proof(),
+    )
+    .test_expect("confirmed recovery reconstructs its frozen impairment")
+}
+
 fn receipt(tx_hash: &str, to_address: &str, status: bool) -> EvmTransactionReceipt {
     EvmTransactionReceipt {
         tx_hash: tx_hash.to_string(),
@@ -330,7 +353,7 @@ fn recheck_from_snapshot(verified: &VerifiedFindingEnforcement) -> FindingBondOb
     }
 }
 
-fn assert_rejected(result: Result<VerifiedFindingEnforcement, SettlementError>, needle: &str) {
+fn assert_rejected<T: std::fmt::Debug>(result: Result<T, SettlementError>, needle: &str) {
     let error = result.test_expect_err("verification should reject");
     let message = error.to_string();
     assert!(
@@ -1036,6 +1059,37 @@ struct StubPublisher {
     attempt: FindingImpairmentAttempt,
 }
 
+struct ReconciliationOnlyPublisher {
+    fenced_intent_id: String,
+    expected_call_data: String,
+    attempt: FindingImpairmentAttempt,
+}
+
+impl FindingImpairmentPublisher for ReconciliationOnlyPublisher {
+    fn publish(
+        &self,
+        _intent: &FindingImpairmentIntent,
+        _call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        Err(FindingImpairmentPublishError::Permanent(
+            "reconciliation attempted a new dispatch".to_string(),
+        ))
+    }
+
+    fn observe(
+        &self,
+        intent: &FindingImpairmentIntent,
+        call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        if intent.intent_id != self.fenced_intent_id || call.data != self.expected_call_data {
+            return Err(FindingImpairmentPublishError::Permanent(
+                "reconciliation changed the frozen impairment".to_string(),
+            ));
+        }
+        Ok(self.attempt.clone())
+    }
+}
+
 impl FindingImpairmentPublisher for StubPublisher {
     fn publish(
         &self,
@@ -1111,6 +1165,30 @@ fn the_publisher_seam_reobserves_the_frozen_call_without_dispatch() {
 
     let outcome = reobserve_finding_impairment(&planned, &publisher)
         .test_expect("a stored transaction can be re-observed");
+
+    assert_eq!(
+        outcome,
+        FindingImpairmentOutcome::Confirmed {
+            tx_hash: stored.tx_hash
+        }
+    );
+}
+
+#[test]
+fn reconciliation_authority_can_only_observe_the_frozen_call() {
+    let planned = reconciliation_planned();
+    let inner = planned.planned();
+    let stored = stored_matching(inner);
+    let publisher = ReconciliationOnlyPublisher {
+        fenced_intent_id: planned.intent().intent_id.clone(),
+        expected_call_data: inner.call().data.clone(),
+        attempt: FindingImpairmentAttempt::Observed {
+            stored: stored.clone(),
+        },
+    };
+
+    let outcome = reobserve_finding_impairment_for_reconciliation(&planned, &publisher)
+        .test_expect("reconciliation observes without dispatching");
 
     assert_eq!(
         outcome,
