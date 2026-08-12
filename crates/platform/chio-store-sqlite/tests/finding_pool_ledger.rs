@@ -1050,10 +1050,11 @@ fn cognition_market_pool_binds_one_purchaser_allocation_per_pool() {
 }
 
 #[test]
-fn cognition_market_pool_replays_after_expiry_but_rejects_new_spend() {
+fn cognition_market_pool_replays_after_expiry_and_clock_rollback_but_rejects_new_spend() {
     let directory = tempfile::tempdir().test_expect("create ledger directory");
-    let ledger = open_qualified(directory.path().join("pool.sqlite3"), ledger_domain())
-        .test_expect("open qualified ledger");
+    let database = directory.path().join("pool.sqlite3");
+    let domain = ledger_domain();
+    let ledger = open_qualified(&database, domain.clone()).test_expect("open qualified ledger");
     let fixture = fixture(100, &ledger);
     debit_at(&ledger, &fixture, "purchase:committed", 10, 9_999)
         .test_expect("commit before allocation expiry");
@@ -1063,6 +1064,15 @@ fn cognition_market_pool_replays_after_expiry_but_rejects_new_spend() {
     assert!(replay.replayed);
     assert!(matches!(
         debit_at(&ledger, &fixture, "purchase:new", 10, 10_000),
+        Err(FindingPoolDebitError::Ledger(
+            FindingPoolLedgerError::AllocationNotLive
+        ))
+    ));
+    drop(ledger);
+
+    let reopened = open_qualified(&database, domain).test_expect("reopen qualified ledger");
+    assert!(matches!(
+        debit_at(&reopened, &fixture, "purchase:clock-rollback", 10, 9_999),
         Err(FindingPoolDebitError::Ledger(
             FindingPoolLedgerError::AllocationNotLive
         ))

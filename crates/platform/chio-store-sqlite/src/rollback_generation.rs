@@ -33,6 +33,12 @@ struct LoadedRecord {
     interrupted_slot: bool,
 }
 
+enum AnchorLoadState {
+    Empty,
+    PreparedInitial(GenerationRecord),
+    Committed(LoadedRecord),
+}
+
 static PROCESS_ANCHOR_LOCKS: OnceLock<Mutex<BTreeMap<PathBuf, Weak<Mutex<()>>>>> = OnceLock::new();
 
 pub(crate) struct RollbackGenerationAnchor {
@@ -88,8 +94,8 @@ impl RollbackGenerationAnchor {
     ) -> Result<(), String> {
         self.with_lock(|| {
             let (store_generation, allow_seed) = load()?;
-            match self.load_record()? {
-                Some(loaded) => {
+            match self.load_anchor_state()? {
+                AnchorLoadState::Committed(loaded) => {
                     let loaded =
                         self.recover_prepared_for_store_generation(loaded, store_generation)?;
                     if loaded.corrupt_slot {
@@ -108,10 +114,24 @@ impl RollbackGenerationAnchor {
                     }
                     Ok(())
                 }
-                None if allow_seed && store_generation == 0 => {
+                AnchorLoadState::PreparedInitial(prepared)
+                    if allow_seed
+                        && store_generation == 0
+                        && prepared.record_generation == 1
+                        && prepared.store_generation == 0 =>
+                {
+                    self.commit_prepared(&prepared)
+                }
+                AnchorLoadState::PreparedInitial(_) => Err(
+                    "prepared initial rollback anchor does not match an empty generation-zero store"
+                        .to_string(),
+                ),
+                AnchorLoadState::Empty if allow_seed && store_generation == 0 => {
                     self.write_next(0, 0, &uuid::Uuid::now_v7().to_string())
                 }
-                None => Err("protected rollback generation is absent".to_string()),
+                AnchorLoadState::Empty => {
+                    Err("protected rollback generation is absent".to_string())
+                }
             }
         })
     }
@@ -341,6 +361,16 @@ impl RollbackGenerationAnchor {
     }
 
     fn load_record(&self) -> Result<Option<LoadedRecord>, String> {
+        match self.load_anchor_state()? {
+            AnchorLoadState::Empty => Ok(None),
+            AnchorLoadState::PreparedInitial(_) => {
+                Err("rollback anchor has no committed slot".to_string())
+            }
+            AnchorLoadState::Committed(loaded) => Ok(Some(loaded)),
+        }
+    }
+
+    fn load_anchor_state(&self) -> Result<AnchorLoadState, String> {
         self.ensure_shape()?;
         let mut records = Vec::with_capacity(SLOT_COUNT);
         let mut corrupt_slot = false;
@@ -386,12 +416,18 @@ impl RollbackGenerationAnchor {
             }
         }
         let Some(record) = records.pop() else {
-            if corrupt_slot || interrupted_slot {
+            if corrupt_slot {
                 return Err("rollback anchor has no committed slot".to_string());
             }
-            return Ok(None);
+            if let Some(prepared) = prepared_record {
+                return Ok(AnchorLoadState::PreparedInitial(prepared));
+            }
+            if interrupted_slot {
+                return Err("rollback anchor has no committed slot".to_string());
+            }
+            return Ok(AnchorLoadState::Empty);
         };
-        Ok(Some(LoadedRecord {
+        Ok(AnchorLoadState::Committed(LoadedRecord {
             record,
             prepared_record,
             corrupt_slot,
@@ -650,6 +686,38 @@ mod tests {
             panic!("load second anchor id");
         };
         assert_ne!(first_id, second_id);
+    }
+
+    #[test]
+    fn prepared_initial_generation_recovers_only_for_an_empty_store() {
+        let Ok(root) = tempfile::tempdir() else {
+            panic!("create anchor root");
+        };
+        secure_root(root.path());
+        let anchor = match RollbackGenerationAnchor::open(root.path(), b"prepared-initial") {
+            Ok(anchor) => anchor,
+            Err(error) => panic!("open anchor: {error}"),
+        };
+        let instance_id = uuid::Uuid::now_v7().to_string();
+        let Ok(prepared) = anchor.prepare_next(0, 0, &instance_id) else {
+            panic!("prepare initial generation");
+        };
+        drop(anchor);
+
+        let reopened = match RollbackGenerationAnchor::open(root.path(), b"prepared-initial") {
+            Ok(anchor) => anchor,
+            Err(error) => panic!("reopen anchor: {error}"),
+        };
+        assert!(reopened.bind_initial_while(|| Ok((0, false))).is_err());
+        assert!(reopened.bind_initial_while(|| Ok((1, false))).is_err());
+        assert!(reopened.bind_initial_while(|| Ok((0, true))).is_ok());
+        assert_eq!(reopened.instance_id().as_deref(), Ok(instance_id.as_str()));
+        let Ok(Some(loaded)) = reopened.load_record() else {
+            panic!("load recovered initial generation");
+        };
+        assert_eq!(loaded.record, prepared);
+        assert!(!loaded.corrupt_slot);
+        assert!(!loaded.interrupted_slot);
     }
 
     #[test]

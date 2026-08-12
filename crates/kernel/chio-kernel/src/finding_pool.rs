@@ -716,6 +716,14 @@ pub trait QualifiedFindingPoolLedger: FindingPoolLedger {
     /// allocation merely by reusing a deployment domain string.
     fn ledger_store_binding_sha256(&self) -> &str;
 
+    /// Persist and return a nondecreasing trusted-time floor for allocation
+    /// validity. The floor must survive ledger restart so a wall-clock rollback
+    /// cannot revive an allocation whose expiry was already observed.
+    fn advance_trusted_time_floor(
+        &self,
+        observed_unix_ms: u64,
+    ) -> Result<u64, FindingPoolLedgerError>;
+
     /// Bind this ledger to the one public key authorized to sign mutation
     /// receipts. Reopening with the same key is idempotent; a different key
     /// fails closed during installation, before any mutation can run.
@@ -765,6 +773,9 @@ impl ChioKernel {
         let ledger = self
             .finding_pool_ledger()
             .ok_or(FindingPoolDebitError::LedgerMissing)?;
+        let trusted_now_unix_ms = ledger
+            .advance_trusted_time_floor(trusted_now_unix_ms)
+            .map_err(FindingPoolDebitError::Ledger)?;
         let allocation = &request.allocation.body;
         let allocation_is_live = trusted_now_unix_ms >= allocation.issued_at_unix_ms
             && trusted_now_unix_ms < allocation.expires_at_unix_ms;

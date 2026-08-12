@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 
 use chio_core::capability::scope::MonetaryAmount;
@@ -28,6 +28,7 @@ pub(crate) struct RecordingLedger {
     fail_next_acknowledgement: AtomicBool,
     active_pending_reads: AtomicUsize,
     max_active_pending_reads: AtomicUsize,
+    trusted_time_high_water_unix_ms: AtomicU64,
 }
 
 impl RecordingLedger {
@@ -449,6 +450,16 @@ impl QualifiedFindingPoolLedger for RecordingLedger {
 
     fn ledger_store_binding_sha256(&self) -> &str {
         "abababababababababababababababababababababababababababababababab"
+    }
+
+    fn advance_trusted_time_floor(
+        &self,
+        observed_unix_ms: u64,
+    ) -> Result<u64, FindingPoolLedgerError> {
+        Ok(self
+            .trusted_time_high_water_unix_ms
+            .fetch_max(observed_unix_ms, Ordering::SeqCst)
+            .max(observed_unix_ms))
     }
 
     fn bind_receipt_authority(

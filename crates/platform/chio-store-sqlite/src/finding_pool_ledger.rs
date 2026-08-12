@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS finding_pool_ledger_metadata (
     receipt_authority_json TEXT,
     ledger_store_binding_sha256 TEXT,
     store_generation TEXT NOT NULL DEFAULT '0',
-    outbox_lease_epoch INTEGER NOT NULL DEFAULT 0
+    outbox_lease_epoch INTEGER NOT NULL DEFAULT 0,
+    trusted_time_high_water_unix_ms TEXT NOT NULL DEFAULT '0'
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS finding_pool_allocations (
@@ -217,6 +218,13 @@ impl SqliteFindingPoolLedger {
                 "outbox_lease_epoch",
                 "ALTER TABLE finding_pool_ledger_metadata \
                  ADD COLUMN outbox_lease_epoch INTEGER NOT NULL DEFAULT 0",
+            )?;
+            ensure_column(
+                &connection,
+                "finding_pool_ledger_metadata",
+                "trusted_time_high_water_unix_ms",
+                "ALTER TABLE finding_pool_ledger_metadata \
+                 ADD COLUMN trusted_time_high_water_unix_ms TEXT NOT NULL DEFAULT '0'",
             )?;
             bind_ledger_domain(&connection, &ledger_domain)?;
             bind_rollback_anchor(&connection, &rollback_anchor)?;
@@ -1370,6 +1378,47 @@ impl QualifiedFindingPoolLedger for SqliteFindingPoolLedger {
 
     fn ledger_store_binding_sha256(&self) -> &str {
         &self.ledger_store_binding_sha256
+    }
+
+    fn advance_trusted_time_floor(
+        &self,
+        observed_unix_ms: u64,
+    ) -> Result<u64, FindingPoolLedgerError> {
+        if observed_unix_ms == 0 {
+            return Err(FindingPoolLedgerError::Storage(
+                "finding pool trusted time is invalid".to_owned(),
+            ));
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.transaction(&mut connection)?;
+        let encoded = transaction
+            .query_row(
+                "SELECT trusted_time_high_water_unix_ms \
+                 FROM finding_pool_ledger_metadata WHERE singleton = 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        let current = parse_units(&encoded, "trusted_time_high_water_unix_ms")?;
+        let trusted = current.max(observed_unix_ms);
+        if trusted == current {
+            return Ok(current);
+        }
+        let changed = transaction
+            .execute(
+                "UPDATE finding_pool_ledger_metadata \
+                 SET trusted_time_high_water_unix_ms = ?1 \
+                 WHERE singleton = 1 AND trusted_time_high_water_unix_ms = ?2",
+                params![trusted.to_string(), encoded],
+            )
+            .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        if changed != 1 {
+            return Err(invariant(
+                "finding pool trusted-time compare-and-set failed",
+            ));
+        }
+        transaction.commit()?;
+        Ok(trusted)
     }
 
     fn bind_receipt_authority(&self, authority: &PublicKey) -> Result<(), FindingPoolLedgerError> {
