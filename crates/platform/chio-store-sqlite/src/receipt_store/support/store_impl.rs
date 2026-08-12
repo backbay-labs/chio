@@ -64,6 +64,39 @@ fn load_chio_receipt_row(
         .transpose()
 }
 
+fn load_chio_receipt_commitment_row(
+    connection: &Connection,
+    receipt_id: &str,
+    context: &str,
+) -> Result<Option<RetainedReceiptCommitment>, ReceiptStoreError> {
+    connection
+        .query_row(
+            "SELECT entry_seq, raw_json FROM claim_receipt_log_entries \
+             WHERE receipt_id = ?1 AND receipt_kind = 'tool_receipt'",
+            params![receipt_id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()?
+        .map(|(entry_seq, raw_json)| {
+            let entry_seq = sqlite_positive_u64(entry_seq, "claim log entry_seq")?;
+            let receipt = decode_verified_chio_receipt(&raw_json, context, Some(entry_seq))?;
+            if receipt.id != receipt_id {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "{context} id differs from the requested receipt"
+                )));
+            }
+            let canonical = chio_core::canonical::canonical_json_bytes(&receipt)
+                .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?;
+            Ok(RetainedReceiptCommitment {
+                entry_seq,
+                receipt_id: receipt.id,
+                receipt_sha256: chio_core::crypto::sha256_hex(&canonical),
+                kernel_key: receipt.kernel_key,
+            })
+        })
+        .transpose()
+}
+
 fn load_receipt_lineage_statement_row(
     connection: &Connection,
     receipt_id: &str,
@@ -507,6 +540,32 @@ impl ReceiptStore for SqliteReceiptStore {
         drop(connection);
         let archive = open_retention_archive(&archive_path)?;
         load_chio_receipt_row(&archive, receipt_id, "retained archived tool receipt")
+    }
+
+    fn load_retained_chio_receipt_commitment(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<RetainedReceiptCommitment>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        verify_latest_checkpoint_integrity(&connection)?;
+        if let Some(commitment) = load_chio_receipt_commitment_row(
+            &connection,
+            receipt_id,
+            "retained live claim-log tool receipt",
+        )? {
+            return Ok(Some(commitment));
+        }
+        drop(connection);
+        let Some(archive_path) = trusted_retention_archive_path(self)? else {
+            return Ok(None);
+        };
+        let archive = open_retention_archive(&archive_path)?;
+        load_chio_receipt_commitment_row(
+            &archive,
+            receipt_id,
+            "retained archived claim-log tool receipt",
+        )
     }
 
     fn load_child_receipt(

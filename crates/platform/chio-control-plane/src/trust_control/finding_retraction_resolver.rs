@@ -17,7 +17,7 @@ use chio_guards::finding_retraction::{
     FindingRetractionResolveError, FindingRetractionResolver, FindingStatusCache,
     FindingStatusValue, VerifiedFindingDeliveryLineage, VerifiedFindingRetractionResolver,
 };
-use chio_kernel::{MemoryProvenanceStore, ReceiptStore};
+use chio_kernel::{MemoryProvenanceStore, ReceiptStore, RetainedReceiptCommitment};
 use chio_store_sqlite::{FindingStatusDecision, FindingStatusProofKind, SqliteFindingStatusStore};
 
 use super::finding_status_verifier::verify_proof_record;
@@ -76,6 +76,7 @@ fn verify_retained_parent_receipt(
 
 fn verify_retained_child_receipt(
     child: &ChioReceipt,
+    commitment: &RetainedReceiptCommitment,
     expected_receipt_id: &str,
     expected_capability_id: &str,
     expected_anchor: &SessionAnchorReference,
@@ -93,8 +94,17 @@ fn verify_retained_child_receipt(
     }
     let child_bytes = chio_core::canonical::canonical_json_bytes(child)
         .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?;
+    let child_sha256 = chio_core::crypto::sha256_hex(&child_bytes);
+    if commitment.receipt_id != child.id
+        || commitment.receipt_sha256 != child_sha256
+        || commitment.kernel_key != child.kernel_key
+    {
+        return Err(FindingRetractionResolveError::InvalidLineage(
+            "memory write child differs from the append-only receipt commitment".to_owned(),
+        ));
+    }
     if expected_anchor.session_anchor_id != format!("receipt:{}", child.id)
-        || expected_anchor.session_anchor_hash != chio_core::crypto::sha256_hex(&child_bytes)
+        || expected_anchor.session_anchor_hash != child_sha256
     {
         return Err(FindingRetractionResolveError::InvalidLineage(
             "memory write child differs from the signed lineage anchor".to_owned(),
@@ -123,8 +133,18 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
         let Some(statement) = statement else {
             return Ok(None);
         };
+        let commitment = self
+            .receipts
+            .load_retained_chio_receipt_commitment(memory_write_receipt_id)
+            .map_err(|error| FindingRetractionResolveError::InvalidLineage(error.to_string()))?
+            .ok_or_else(|| {
+                FindingRetractionResolveError::InvalidLineage(
+                    "memory write child has no append-only receipt commitment".to_owned(),
+                )
+            })?;
         verify_retained_child_receipt(
             &child,
+            &commitment,
             memory_write_receipt_id,
             memory_write_capability_id,
             &statement.child_session_anchor,
@@ -418,6 +438,17 @@ mod tests {
         )
     }
 
+    fn exact_commitment(receipt: &ChioReceipt) -> RetainedReceiptCommitment {
+        let canonical = chio_core::canonical::canonical_json_bytes(receipt)
+            .test_expect("fixture receipt canonicalizes");
+        RetainedReceiptCommitment {
+            entry_seq: 1,
+            receipt_id: receipt.id.clone(),
+            receipt_sha256: chio_core::crypto::sha256_hex(&canonical),
+            kernel_key: receipt.kernel_key.clone(),
+        }
+    }
+
     #[test]
     fn retained_parent_reverifies_receipt_and_exact_lineage_anchor() {
         let parent = signed_parent_receipt();
@@ -440,10 +471,15 @@ mod tests {
     fn retained_child_reverifies_receipt_and_exact_lineage_anchor() {
         let child = signed_child_receipt();
         let anchor = exact_anchor(&child);
-        assert!(
-            verify_retained_child_receipt(&child, &child.id, &child.capability_id, &anchor,)
-                .is_ok()
-        );
+        let commitment = exact_commitment(&child);
+        assert!(verify_retained_child_receipt(
+            &child,
+            &commitment,
+            &child.id,
+            &child.capability_id,
+            &anchor,
+        )
+        .is_ok());
 
         let mut substituted = child.clone();
         substituted.action = ToolCallAction::from_parameters(serde_json::json!({
@@ -454,6 +490,7 @@ mod tests {
         .test_expect("substituted action is canonical");
         assert!(verify_retained_child_receipt(
             &substituted,
+            &commitment,
             &child.id,
             &child.capability_id,
             &anchor,
@@ -466,9 +503,24 @@ mod tests {
         );
         assert!(verify_retained_child_receipt(
             &child,
+            &commitment,
             &child.id,
             &child.capability_id,
             &wrong_anchor,
+        )
+        .is_err());
+
+        let substituted_commitment = RetainedReceiptCommitment {
+            receipt_sha256: chio_core::crypto::sha256_hex(b"substituted-child"),
+            kernel_key: Keypair::from_seed(&[83; 32]).public_key(),
+            ..commitment
+        };
+        assert!(verify_retained_child_receipt(
+            &child,
+            &substituted_commitment,
+            &child.id,
+            &child.capability_id,
+            &anchor,
         )
         .is_err());
     }

@@ -478,6 +478,41 @@ fn schema_v1_migration_moves_the_inclusion_window_to_finality() {
 }
 
 #[test]
+fn schema_v2_migration_recreates_conditional_proof_retention() {
+    let fixture = DurableFixture::new();
+    let connection = Connection::open(&fixture.database).expect("open authority database");
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER finding_status_proofs_no_delete;
+            CREATE TRIGGER finding_status_proofs_no_delete
+            BEFORE DELETE ON finding_status_proofs
+            BEGIN
+                SELECT RAISE(ABORT, 'finding status proof must be retained');
+            END;
+            "#,
+        )
+        .expect("restore revision two proof-retention trigger");
+    crate::stamp_schema_version(&connection, FINDING_STATUS_SCHEMA_KEY, 2)
+        .expect("stamp revision two");
+    drop(connection);
+
+    let authority = fixture.open();
+    drop(authority);
+    let connection = Connection::open(&fixture.database).expect("reopen authority database");
+    let trigger_sql: String = connection
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type = 'trigger' \
+             AND name = 'finding_status_proofs_no_delete'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("load migrated proof-retention trigger");
+    assert!(trigger_sql.contains("WHEN OLD.proof_kind <> 'non_inclusion'"));
+    assert!(trigger_sql.contains("newer.map_epoch > OLD.map_epoch"));
+}
+
+#[test]
 fn rollback_and_same_epoch_equivocation_reject_without_moving_floor() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();

@@ -4660,6 +4660,16 @@ fn retained_receipt_lookup_reads_only_from_a_trusted_archive(
         .load_retained_chio_receipt(&archived_id)?
         .ok_or("trusted archive lookup missed the archived receipt")?;
     assert_eq!(retained.id, archived_id);
+    let commitment = store
+        .load_retained_chio_receipt_commitment(&archived_id)?
+        .ok_or("trusted archive lookup missed the archived receipt commitment")?;
+    let canonical = chio_core::canonical::canonical_json_bytes(&retained)?;
+    assert_eq!(commitment.receipt_id, archived_id);
+    assert_eq!(
+        commitment.receipt_sha256,
+        chio_core::crypto::sha256_hex(&canonical)
+    );
+    assert_eq!(commitment.kernel_key, retained.kernel_key);
 
     drop(store);
     let _ = std::fs::remove_file(&path);

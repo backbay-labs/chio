@@ -1799,8 +1799,14 @@ pub(crate) fn initialize_finding_status_schema(
     if (1..=2).contains(&on_disk) {
         // Revision 3 permits authenticated revocation-state changes for the
         // same operator key and key epoch. Key substitution remains fenced.
+        // It also permits deletion of superseded non-inclusion proofs. Recreate
+        // both changed triggers because revision 1 and 2 databases retain the
+        // earlier unconditional proof-retention trigger.
         transaction
-            .execute_batch("DROP TRIGGER IF EXISTS finding_status_feed_floors_monotonic;")
+            .execute_batch(
+                "DROP TRIGGER IF EXISTS finding_status_feed_floors_monotonic;\
+                 DROP TRIGGER IF EXISTS finding_status_proofs_no_delete;",
+            )
             .map_err(sqlite_error)?;
     }
     transaction
