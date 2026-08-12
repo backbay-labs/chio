@@ -23,6 +23,7 @@ async-trait = { workspace = true }
 chio-agent-web-interop = { workspace = true }
 chio-finding = { workspace = true }
 chio-finding-challenge = { workspace = true }
+chio-finding-verifier = { workspace = true }
 chio-revocation-oracle = { workspace = true }
 chio-spec-validate = { workspace = true }
 chio-appraisal = { workspace = true }
@@ -93,7 +94,6 @@ windows-sys = { version = "0.60.2", features = [
 
 [dev-dependencies]
 chio-anchor = { workspace = true }
-chio-finding-verifier = { workspace = true }
 chio-link = { workspace = true }
 chio-store-sqlite = { workspace = true, features = ["cognition-market-test-support"] }
 chio-test-support = { workspace = true }
