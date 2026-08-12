@@ -453,8 +453,8 @@ fn finding_memory_write_rejects_a_delivery_from_another_status_feed_before_dispa
             &request,
             current_unix_timestamp(),
         )
-        .expect_err("a retracted delivery must fail current-status revalidation");
-    assert!(status_error.to_string().contains("finding is retracted"));
+        .expect_err("a different delivery feed must fail dispatch revalidation");
+    assert!(status_error.to_string().contains("quarantine resolver"));
 
     let response = kernel
         .evaluate_tool_call_blocking(&request)
@@ -465,4 +465,15 @@ fn finding_memory_write_rejects_a_delivery_from_another_status_feed_before_dispa
         .as_deref()
         .is_some_and(|reason| reason.contains("quarantine resolver")));
     assert_eq!(invocations.load(Ordering::SeqCst), 0);
+
+    kernel.set_finding_delivery_receipt_authorities(vec![make_keypair().public_key()]);
+    let authentication_error = kernel
+        .revalidate_finding_memory_write_status_before_dispatch(
+            &request,
+            current_unix_timestamp(),
+        )
+        .expect_err("dispatch revalidation must authenticate the latest retained receipt");
+    assert!(authentication_error
+        .to_string()
+        .contains("not an authentic allow receipt"));
 }

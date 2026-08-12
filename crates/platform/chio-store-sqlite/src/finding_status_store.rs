@@ -1063,10 +1063,17 @@ impl SqliteFindingStatusStore {
     pub fn list_publication_candidates(
         &self,
         feed_id: &str,
+        operator_key: &str,
+        operator_authorization_sha256: &str,
         trusted_now: u64,
         limit: usize,
     ) -> Result<Vec<FindingRetractionIntentRecord>, FindingStatusStoreError> {
         require_identifier(feed_id, "feed_id")?;
+        require_identifier_with_bound(operator_key, 4096, "operator_key")?;
+        require_hex64(
+            operator_authorization_sha256,
+            "operator_authorization_sha256",
+        )?;
         require_positive(trusted_now, "trusted_now")?;
         if limit == 0 || limit > 200 {
             return Err(invariant("intent query limit must be between 1 and 200"));
@@ -1088,16 +1095,23 @@ impl SqliteFindingStatusStore {
                     intent.state = 'dispatch_eligible'
                     OR (
                       intent.state = 'published'
-                      AND NOT EXISTS (
+                      AND EXISTS (
                         SELECT 1
                         FROM finding_status_feed_floors AS floor
-                        JOIN finding_status_proofs AS proof
-                          ON proof.feed_id = floor.feed_id
-                         AND proof.map_epoch = floor.map_epoch
-                         AND proof.finding_id = intent.finding_id
-                         AND proof.proof_kind = 'inclusion'
-                         AND proof.valid_until > ?2
                         WHERE floor.feed_id = intent.feed_id
+                          AND (
+                            floor.operator_key <> ?2
+                            OR floor.operator_authorization_sha256 <> ?3
+                            OR NOT EXISTS (
+                              SELECT 1
+                              FROM finding_status_proofs AS proof
+                              WHERE proof.feed_id = floor.feed_id
+                                AND proof.map_epoch = floor.map_epoch
+                                AND proof.finding_id = intent.finding_id
+                                AND proof.proof_kind = 'inclusion'
+                                AND proof.valid_until > ?4
+                            )
+                          )
                       )
                     )
                   )
@@ -1105,7 +1119,7 @@ impl SqliteFindingStatusStore {
                            WHEN 'dispatch_eligible' THEN 0 ELSE 1
                          END,
                          intent.created_at, intent.intent_id
-                LIMIT ?3
+                LIMIT ?5
                 "#,
             )
             .map_err(sqlite_error)?;
@@ -1113,6 +1127,8 @@ impl SqliteFindingStatusStore {
             .query_map(
                 params![
                     feed_id,
+                    operator_key,
+                    operator_authorization_sha256,
                     sqlite_i64(trusted_now, "trusted_now")?,
                     sqlite_i64(limit as u64, "limit")?,
                 ],
@@ -1136,10 +1152,17 @@ impl SqliteFindingStatusStore {
     pub fn list_non_inclusion_refresh_candidates(
         &self,
         feed_id: &str,
+        operator_key: &str,
+        operator_authorization_sha256: &str,
         trusted_now: u64,
         limit: usize,
     ) -> Result<Vec<FindingStatusProofRecord>, FindingStatusStoreError> {
         require_identifier(feed_id, "feed_id")?;
+        require_identifier_with_bound(operator_key, 4096, "operator_key")?;
+        require_hex64(
+            operator_authorization_sha256,
+            "operator_authorization_sha256",
+        )?;
         require_positive(trusted_now, "trusted_now")?;
         if limit == 0 || limit > 200 {
             return Err(invariant("proof query limit must be between 1 and 200"));
@@ -1160,14 +1183,18 @@ impl SqliteFindingStatusStore {
                 WHERE status.feed_id = p.feed_id
                   AND status.finding_id = p.finding_id
               )
-              AND NOT EXISTS (
-                SELECT 1
-                FROM finding_status_proofs AS current
-                WHERE current.feed_id = p.feed_id
-                  AND current.finding_id = p.finding_id
-                  AND current.map_epoch = floor.map_epoch
-                  AND current.proof_kind = 'non_inclusion'
-                  AND current.valid_until > ?2
+              AND (
+                floor.operator_key <> ?2
+                OR floor.operator_authorization_sha256 <> ?3
+                OR NOT EXISTS (
+                  SELECT 1
+                  FROM finding_status_proofs AS current
+                  WHERE current.feed_id = p.feed_id
+                    AND current.finding_id = p.finding_id
+                    AND current.map_epoch = floor.map_epoch
+                    AND current.proof_kind = 'non_inclusion'
+                    AND current.valid_until > ?4
+                )
               )
               AND p.map_epoch = (
                 SELECT MAX(latest.map_epoch)
@@ -1177,7 +1204,7 @@ impl SqliteFindingStatusStore {
                   AND latest.proof_kind = 'non_inclusion'
               )
             ORDER BY p.recorded_at, p.finding_id
-            LIMIT ?3
+            LIMIT ?5
             "#
         );
         let mut statement = transaction.prepare(&query).map_err(sqlite_error)?;
@@ -1185,6 +1212,8 @@ impl SqliteFindingStatusStore {
             .query_map(
                 params![
                     feed_id,
+                    operator_key,
+                    operator_authorization_sha256,
                     sqlite_i64(trusted_now, "trusted_now")?,
                     sqlite_i64(limit as u64, "limit")?,
                 ],

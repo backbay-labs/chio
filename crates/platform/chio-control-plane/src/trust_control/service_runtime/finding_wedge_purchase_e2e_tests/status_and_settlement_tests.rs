@@ -297,6 +297,8 @@ async fn finding_status_retraction() -> TestResult {
         status_gate_publisher.publish_retraction(&second_intent_id, &[], now + 1)?;
     let refresh_candidates = status_gate_store.list_publication_candidates(
         &config.status_feed_operator_ref,
+        &config.status_feed_operator.authority.key_hex,
+        &config.status_feed_operator.authorization_sha256,
         now + 1,
         200,
     )?;
@@ -314,7 +316,13 @@ async fn finding_status_retraction() -> TestResult {
         chio_store_sqlite::FindingStatusProofKind::Inclusion
     );
     assert!(!status_gate_store
-        .list_publication_candidates(&config.status_feed_operator_ref, now + 1, 200)?
+        .list_publication_candidates(
+            &config.status_feed_operator_ref,
+            &config.status_feed_operator.authority.key_hex,
+            &config.status_feed_operator.authorization_sha256,
+            now + 1,
+            200,
+        )?
         .iter()
         .any(|candidate| candidate.intent_id == intent_id));
 

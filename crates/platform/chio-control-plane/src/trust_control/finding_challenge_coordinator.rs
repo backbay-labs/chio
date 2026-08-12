@@ -1156,6 +1156,7 @@ impl FindingChallengeCoordinator {
             })
             .map_or(now, |recorded| recorded.submitted_at);
         let admission = self.resolve_admission(body, admission_validation_at)?;
+        self.require_finding_status_feed_binding(&finding, &admission)?;
         if let FindingChallengeAuthorization::VenueAudit(audit) = &body.authorization {
             self.require_audit_selection(audit, body, &admission, now)?;
         }
@@ -2176,6 +2177,7 @@ impl FindingChallengeCoordinator {
                     &slash,
                     sanction_case_id,
                     &hold.evaluation.penalty_id,
+                    governance.admission,
                     governance.local_operator_id,
                     bond_snapshot_envelope_sha256,
                     now,
@@ -5578,6 +5580,7 @@ impl FindingChallengeCoordinator {
         slash: &FindingPenaltyOutcome,
         sanction_case_id: &str,
         held_penalty_id: &str,
+        authenticated_admission: &SignedFindingAdmission,
         operator_id: &str,
         bond_snapshot_envelope_sha256: &str,
         now: u64,
@@ -5592,6 +5595,7 @@ impl FindingChallengeCoordinator {
                 "final penalty does not follow the authenticated appeal lineage".to_owned(),
             ));
         }
+        self.require_finalizing_status_feed_binding(record, authenticated_admission)?;
         let liability_key = record.liability_key.as_str();
         let outcome_envelope_sha256 = self.envelope_digest(outcome)?;
         let seller_impair_key = derive_seller_impair_intent_key(

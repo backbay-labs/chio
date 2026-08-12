@@ -249,6 +249,33 @@ impl ChioKernel {
             .map_err(|error| format!("finding recovery status admission rejected: {error}"))?;
         Ok(Some(verified))
     }
+
+    /// Recheck mutable status before any durable recovery response releases
+    /// its retained payload. This does not reserve another recovery attempt.
+    pub(crate) fn revalidate_completed_recovery_status(
+        &self,
+        matched_grant_index: usize,
+        request: &ToolCallRequest,
+        expected: Option<&VerifiedFindingRecovery>,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        let Some(expected) = expected else {
+            return Ok(());
+        };
+        let grant = request
+            .capability
+            .scope
+            .grants
+            .get(matched_grant_index)
+            .ok_or_else(|| "completed recovery grant index is out of bounds".to_owned())?;
+        let current = self
+            .verify_recovery_status_admission(grant, request, now_unix_secs)?
+            .ok_or_else(|| "completed recovery marker disappeared".to_owned())?;
+        if &current != expected {
+            return Err("completed recovery binding changed before payload release".to_owned());
+        }
+        Ok(())
+    }
 }
 
 pub(crate) fn finding_recovery_block(
@@ -497,6 +524,16 @@ mod tests {
             .verify_recovery_status_admission(grant, &request, 1)
             .expect_err("dispatch boundary must observe pending retraction");
         assert!(error.contains("pending retraction"));
+        assert_eq!(reservations.load(Ordering::SeqCst), 1);
+
+        let expected = kernel
+            .verify_recovery_context(grant, &request)
+            .expect("rederive recovery binding")
+            .expect("recovery marker remains present");
+        let terminal_error = kernel
+            .revalidate_completed_recovery_status(0, &request, Some(&expected), 1)
+            .expect_err("a durable completed replay must recheck mutable status");
+        assert!(terminal_error.contains("pending retraction"));
         assert_eq!(reservations.load(Ordering::SeqCst), 1);
     }
 

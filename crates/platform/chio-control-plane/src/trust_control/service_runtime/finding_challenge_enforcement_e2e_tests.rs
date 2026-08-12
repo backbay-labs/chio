@@ -4211,6 +4211,39 @@ fn finding_challenge_submission_rejects_noncanonical_finding_before_money_moves(
 }
 
 #[test]
+fn finding_challenge_submission_rejects_a_finding_from_another_status_feed() -> TestResult {
+    let deployment = deployment()?;
+    let mut config = market_config();
+    config.status_feed_operator_ref = "status-feed/other-venue".to_owned();
+    config
+        .status_feed_operator
+        .feed_id
+        .clone_from(&config.status_feed_operator_ref);
+    config
+        .status_feed_service_bond
+        .feed_id
+        .clone_from(&config.status_feed_operator_ref);
+    let coordinator =
+        deployment.coordinator_under(&config, FindingDisputeLockDisposition::Forfeited)?;
+    let challenge = buyer_challenge(&keypair(41))?;
+    let (_, raw) = finding_artifact()?;
+
+    let refused = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("a different configured status feed must reject the filing");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::FindingBinding("status_feed_ref")
+    ));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_venue_audit_charges_nothing_and_locks_nothing() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;

@@ -199,7 +199,13 @@ fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
         })
         .expect("persist first live proof");
     assert!(store
-        .list_non_inclusion_refresh_candidates(FEED, NOW + 10, 200)
+        .list_non_inclusion_refresh_candidates(
+            FEED,
+            epoch_one.operator_key,
+            epoch_one.operator_authorization_sha256,
+            NOW + 10,
+            200,
+        )
         .expect("fresh candidates")
         .is_empty());
 
@@ -209,7 +215,13 @@ fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
         .observe_verified_epoch(&epoch(2, &epoch_two_id, &epoch_two_root, b"epoch-two", 1))
         .expect("advance feed floor");
     let displaced = store
-        .list_non_inclusion_refresh_candidates(FEED, NOW + 10, 200)
+        .list_non_inclusion_refresh_candidates(
+            FEED,
+            epoch_one.operator_key,
+            epoch_one.operator_authorization_sha256,
+            NOW + 10,
+            200,
+        )
         .expect("displaced candidates");
     assert_eq!(displaced.len(), 1);
     assert_eq!(displaced[0].finding_id, finding_id);
@@ -247,15 +259,110 @@ fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
         )
         .is_err());
     assert!(store
-        .list_non_inclusion_refresh_candidates(FEED, NOW + 10, 200)
+        .list_non_inclusion_refresh_candidates(
+            FEED,
+            epoch_one.operator_key,
+            epoch_one.operator_authorization_sha256,
+            NOW + 10,
+            200,
+        )
         .expect("refreshed candidates")
         .is_empty());
     let expired = store
-        .list_non_inclusion_refresh_candidates(FEED, proof_two.valid_until, 200)
+        .list_non_inclusion_refresh_candidates(
+            FEED,
+            epoch_one.operator_key,
+            epoch_one.operator_authorization_sha256,
+            proof_two.valid_until,
+            200,
+        )
         .expect("expired candidates");
     assert_eq!(expired.len(), 1);
     assert_eq!(expired[0].finding_id, finding_id);
     assert_eq!(expired[0].map_epoch, 2);
+}
+
+#[test]
+fn cadence_schedules_all_proof_kinds_after_operator_authorization_changes() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let live_finding_id = hex64('1');
+    let retracted_finding_id = hex64('2');
+    let intent_id = hex64('3');
+    let epoch_id = hex64('4');
+    let root_hash = hex64('5');
+    let intent_bytes = b"seller-signed-retraction";
+    let intent_sha256 = sha256_hex(intent_bytes);
+    store
+        .issue_retraction_intent(&FindingRetractionIntentInput {
+            intent_id: &intent_id,
+            feed_id: FEED,
+            operator_id: OPERATOR,
+            finding_id: &retracted_finding_id,
+            source: FindingRetractionIntentSource::Voluntary,
+            intent_bytes,
+            issued_at: NOW + 1,
+            inclusion_deadline: NOW + 500,
+            created_at: NOW + 2,
+        })
+        .expect("persist retraction intent");
+    let signed_epoch = epoch(1, &epoch_id, &root_hash, b"epoch-one", 1);
+    let live_proof = non_inclusion(1, &epoch_id, &root_hash, &live_finding_id, b"live-proof");
+    let retracted_proof = inclusion(
+        1,
+        &epoch_id,
+        &root_hash,
+        &retracted_finding_id,
+        &intent_sha256,
+        b"retracted-proof",
+    );
+    let leaf = VerifiedFindingStatusLeafInput {
+        finding_id: &retracted_finding_id,
+        status_value_bytes: b"retracted",
+        retraction_intent_sha256: &intent_sha256,
+        local_intent_id: Some(&intent_id),
+    };
+    store
+        .advance_epoch(&FindingStatusEpochAdvance {
+            epoch: signed_epoch,
+            leaves: &[leaf],
+            proofs: &[live_proof, retracted_proof],
+        })
+        .expect("publish both proof kinds");
+
+    let publication_candidates = |operator_key: &str, authorization: &str| {
+        store
+            .list_publication_candidates(FEED, operator_key, authorization, NOW + 10, 200)
+            .expect("query publication cadence")
+    };
+    let live_candidates = |operator_key: &str, authorization: &str| {
+        store
+            .list_non_inclusion_refresh_candidates(FEED, operator_key, authorization, NOW + 10, 200)
+            .expect("query live-proof cadence")
+    };
+    assert!(publication_candidates(
+        signed_epoch.operator_key,
+        signed_epoch.operator_authorization_sha256,
+    )
+    .is_empty());
+    assert!(live_candidates(
+        signed_epoch.operator_key,
+        signed_epoch.operator_authorization_sha256,
+    )
+    .is_empty());
+
+    for (operator_key, authorization) in [
+        ("operator-key-v2", hex64('b')),
+        (signed_epoch.operator_key, hex64('c')),
+    ] {
+        let published = publication_candidates(operator_key, &authorization);
+        assert_eq!(published.len(), 1);
+        assert_eq!(published[0].intent_id, intent_id);
+        let live = live_candidates(operator_key, &authorization);
+        assert_eq!(live.len(), 1);
+        assert_eq!(live[0].finding_id, live_finding_id);
+    }
 }
 
 #[test]

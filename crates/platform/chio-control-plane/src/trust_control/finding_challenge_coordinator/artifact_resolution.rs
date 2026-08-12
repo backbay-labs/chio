@@ -1,4 +1,37 @@
 impl FindingChallengeCoordinator {
+    fn require_finding_status_feed_binding(
+        &self,
+        finding: &Finding,
+        admission: &SignedFindingAdmission,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        if finding.status_feed_ref != self.status_feed_operator_ref {
+            return Err(ChallengeCoordinatorError::FindingBinding("status_feed_ref"));
+        }
+        if admission.body.status_feed_operator_ref != finding.status_feed_ref {
+            return Err(ChallengeCoordinatorError::AdmissionBinding(
+                "status_feed_operator_ref",
+            ));
+        }
+        Ok(())
+    }
+
+    fn require_finalizing_status_feed_binding(
+        &self,
+        record: &FindingLiabilityRecord,
+        admission: &SignedFindingAdmission,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        if admission.body.finding_id != record.finding_id
+            || admission.body.listing_id != record.listing_id
+            || admission.body.backing_allocation_id != record.allocation_id
+            || admission.body.status_feed_operator_ref != self.status_feed_operator_ref
+        {
+            return Err(ChallengeCoordinatorError::AdmissionBinding(
+                "status_feed_operator_ref",
+            ));
+        }
+        Ok(())
+    }
+
     /// Resolve the finding from the exact bytes whose digest the
     /// challenge binds. A typed view handed in beside those bytes would
     /// be a different artifact with the same name, so only the bytes are

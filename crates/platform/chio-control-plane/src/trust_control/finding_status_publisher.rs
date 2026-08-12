@@ -464,7 +464,13 @@ impl FindingStatusEpochPublisher {
         let mut map = self.rebuild_map()?;
         let mut new_intents = self
             .store
-            .list_publication_candidates(&self.operator.feed_id, now, 200)
+            .list_publication_candidates(
+                &self.operator.feed_id,
+                &self.operator.authority.key_hex,
+                &self.operator.authorization_sha256,
+                now,
+                200,
+            )
             .map_err(|error| error.to_string())?
             .into_iter()
             .filter(|candidate| candidate.state == FindingRetractionIntentState::DispatchEligible)

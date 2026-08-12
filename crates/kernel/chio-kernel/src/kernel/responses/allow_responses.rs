@@ -584,6 +584,21 @@ impl ChioKernel {
         else {
             return Ok(());
         };
+        // Re-run the complete admission binding against the latest retained
+        // parent before deriving mutable status from it. The receipt store is
+        // outside the kernel trust boundary and may have changed since the
+        // earlier admission pass.
+        self.validate_finding_memory_write_admission(request)?;
+        let Some(crate::memory_provenance::MemoryActionKind::Write { key, .. }) =
+            crate::memory_provenance::classify_memory_action(
+                &request.tool_name,
+                &request.arguments,
+            )
+        else {
+            return Err(KernelError::Internal(
+                "Finding delivery lineage requires a governed memory write".to_owned(),
+            ));
+        };
         let Some((finding_id, status_proof)) = self.with_receipt_store(|store| {
             let parent = store
                 .load_retained_chio_receipt(parent_receipt_id)?
@@ -592,6 +607,21 @@ impl ChioKernel {
                         "Finding delivery receipt binding is not durably available".to_owned(),
                     )
                 })?;
+            if parent.id != parent_receipt_id
+                || !parent.is_allowed()
+                || !self
+                    .finding_delivery_receipt_authorities
+                    .contains(&parent.kernel_key)
+                || !parent.verify_signature().map_err(|error| {
+                    KernelError::Internal(format!(
+                        "Finding delivery receipt signature verification failed: {error}"
+                    ))
+                })?
+            {
+                return Err(KernelError::Internal(
+                    "Finding delivery receipt binding is not an authentic allow receipt".to_owned(),
+                ));
+            }
             let delivery: chio_core::receipt::metadata::FindingDelivery = parent
                 .metadata
                 .as_ref()
@@ -612,6 +642,20 @@ impl ChioKernel {
                         ))
                     })
                 })?;
+            delivery.validate().map_err(|error| {
+                KernelError::Internal(format!(
+                    "Finding delivery receipt metadata is invalid: {error}"
+                ))
+            })?;
+            if delivery.finding_id != key
+                || delivery.digest_check != chio_core::receipt::metadata::DeliveryResult::Matched
+                || delivery.media_type_check
+                    != chio_core::receipt::metadata::FindingMediaTypeCheck::Matched
+            {
+                return Err(KernelError::Internal(
+                    "Finding delivery receipt does not authorize this memory entry".to_owned(),
+                ));
+            }
             let status_proof = delivery.status_proof.ok_or_else(|| {
                 KernelError::Internal(
                     "Finding memory write requires an M6 delivery status proof".to_owned(),
