@@ -35,7 +35,7 @@ pub(super) fn receipt_signer_statuses(
 
 fn receipt_authenticity(draft: &FindingVerifierDraft) -> Result<&FindingFacetResult, String> {
     draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
         .ok_or_else(|| "receipt-authenticity facet missing".to_string())

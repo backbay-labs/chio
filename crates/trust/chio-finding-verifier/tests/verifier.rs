@@ -1046,7 +1046,7 @@ fn production_receipts_must_satisfy_the_profile_receipt_semantics() -> TestResul
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, receipts))?;
     let authenticity = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
         .ok_or("receipt-authenticity facet missing")?;
@@ -1069,7 +1069,7 @@ fn production_receipt_semantics_require_the_signed_execution_nonce() -> TestResu
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let authenticity = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
         .ok_or("receipt-authenticity facet missing")?;
@@ -1097,7 +1097,7 @@ fn production_receipt_semantics_reject_a_nonce_binding_mismatch() -> TestResult 
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let authenticity = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
         .ok_or("receipt-authenticity facet missing")?;
@@ -1118,7 +1118,7 @@ fn post_purchase_delivery_requires_a_finding_specific_overlay() -> TestResult {
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let authenticity = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
         .ok_or("receipt-authenticity facet missing")?;
@@ -1150,7 +1150,7 @@ fn post_purchase_delivery_is_finding_bound_and_checkpointed_in_the_report() -> T
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let checkpoint_membership = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::CheckpointMembership)
         .ok_or("checkpoint-membership facet missing")?;
@@ -1187,7 +1187,7 @@ fn post_purchase_delivery_requires_the_signed_execution_nonce() -> TestResult {
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let authenticity = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
         .ok_or("receipt-authenticity facet missing")?;
@@ -1218,7 +1218,7 @@ fn post_purchase_delivery_cannot_predate_the_finding() -> TestResult {
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let authenticity = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
         .ok_or("receipt-authenticity facet missing")?;
@@ -1246,7 +1246,7 @@ fn post_purchase_delivery_rejects_a_receipt_after_report_evaluation() -> TestRes
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let authenticity = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
         .ok_or("receipt-authenticity facet missing")?;
@@ -1274,7 +1274,7 @@ fn post_purchase_delivery_rejects_a_checkpoint_after_report_evaluation() -> Test
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let membership = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::CheckpointMembership)
         .ok_or("checkpoint-membership facet missing")?;
@@ -1296,7 +1296,7 @@ fn production_receipts_cannot_postdate_report_evaluation() -> TestResult {
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, receipts))?;
     let authenticity = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
         .ok_or("receipt-authenticity facet missing")?;
@@ -1318,7 +1318,7 @@ fn production_receipts_cannot_postdate_the_finding() -> TestResult {
 
     let draft = verify_finding_evidence(&raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
     let authenticity = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
         .ok_or("receipt-authenticity facet missing")?;
@@ -1341,7 +1341,7 @@ fn production_checkpoints_cannot_postdate_the_finding() -> TestResult {
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let membership = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::CheckpointMembership)
         .ok_or("checkpoint-membership facet missing")?;
@@ -1368,7 +1368,7 @@ fn production_receipts_cannot_postdate_their_checkpoint() -> TestResult {
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let membership = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::CheckpointMembership)
         .ok_or("checkpoint-membership facet missing")?;
@@ -1559,7 +1559,7 @@ fn portable_status_proof_rejects_a_clock_different_from_report_evaluation() -> T
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let status = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::StatusLiveness)
         .ok_or("status-liveness facet missing")?;
@@ -1588,7 +1588,7 @@ fn portable_status_proof_must_bind_the_findings_declared_feed() -> TestResult {
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let status = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::StatusLiveness)
         .ok_or("status-liveness facet missing")?;
@@ -1605,25 +1605,23 @@ fn portable_status_proof_must_bind_the_findings_declared_feed() -> TestResult {
 #[test]
 fn failed_optional_facet_denies_the_draft() -> TestResult {
     let fx = fixture()?;
-    let trust = trust_roots(&fx);
-    let mut draft =
-        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let (status_bytes, authorization, freshness) =
+        portable_live_status_proof_for_feed(&finding.finding_id, "status-feed/substituted")?;
+    let mut trust = trust_roots(&fx);
+    trust.trusted_time = freshness.now;
+    trust.status_operator_authorization = Some(authorization);
+    trust.status_freshness_policy = Some(freshness);
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.status_proof_input = Some(&status_bytes);
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     assert_eq!(
         draft.facet_outcome(FindingFacetKind::StatusLiveness),
-        Some(FindingFacetOutcome::Unavailable)
+        Some(FindingFacetOutcome::Failed)
     );
     assert!(!draft
         .required_facets(&fx.profile.body)
         .contains(&FindingFacetKind::StatusLiveness));
-
-    let status = draft
-        .facets
-        .iter_mut()
-        .find(|result| result.facet == FindingFacetKind::StatusLiveness)
-        .ok_or("status liveness facet")?;
-    status.outcome = FindingFacetOutcome::Failed;
-    status.reason = "status proof contradicted the signed snapshot".to_string();
-
     assert!(!draft.satisfies_required_facets(&fx.profile.body));
     Ok(())
 }
@@ -1994,7 +1992,7 @@ fn unsigned_collateral_store_state_is_not_verified() -> TestResult {
         .live = false;
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence_bundle)?;
     let backing = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::BondBacking)
         .ok_or("bond-backing facet missing")?;

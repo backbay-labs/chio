@@ -314,6 +314,14 @@ pub(super) fn cognition_market_proof_trust_from_env(
     } else {
         None
     };
+    if status
+        .as_ref()
+        .is_some_and(|status| status.status_freshness.now != verifier_authority_status.checked_at)
+    {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_STATUS_NOW_UNIX_SECONDS_ENV} must equal {FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT_ENV}"
+        )));
+    }
     Ok(
         chio_control_plane::transaction_passport::CognitionMarketProofTrust {
             trusted_passport_signer_keys: trusted_passport_signer_keys.to_vec(),

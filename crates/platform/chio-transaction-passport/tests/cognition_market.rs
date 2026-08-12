@@ -1878,22 +1878,16 @@ fn cognition_market_qualified_profile_rejects_backdated_report_after_key_expiry(
 }
 
 #[test]
-fn cognition_market_qualified_profile_rejects_inconsistent_status_clock() -> TestResult {
+fn cognition_market_qualified_profile_rejects_a_stale_status_clock() -> TestResult {
     let mut bundle = build_bundle()?;
-    bundle
-        .trust
-        .status
-        .as_mut()
-        .ok_or("status trust missing")?
-        .status_freshness
-        .now = CHECKED_AT - 1;
+    bundle.trust.verifier_authority_status.checked_at = CHECKED_AT + 1;
 
     let error = verify(&bundle)
         .err()
-        .ok_or("inconsistent status clock was accepted")?
+        .ok_or("status proof using an older clock was accepted")?
         .to_string();
     assert!(
-        error.contains("status freshness clock"),
+        error.contains("current trusted verification time"),
         "unexpected error: {error}"
     );
     Ok(())

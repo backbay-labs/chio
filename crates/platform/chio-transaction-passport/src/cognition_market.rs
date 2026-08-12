@@ -464,9 +464,9 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         if status_checked_at < finding.issued_at {
             return Err(claim_failed("status proof predates the signed Finding"));
         }
-        if status_trust.status_freshness.now != report.body.evaluation_time {
+        if status_trust.status_freshness.now != trust.verifier_authority_status.checked_at {
             return Err(claim_failed(
-                "status freshness clock does not match the signed report evaluation time",
+                "status freshness clock does not match the current trusted verification time",
             ));
         }
         let signed_epoch = verify_status_proof_input(

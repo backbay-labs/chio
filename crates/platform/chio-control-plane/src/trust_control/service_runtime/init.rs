@@ -87,13 +87,10 @@ async fn serve_async_inner(
         FederationAdmissionRateLimiter::from_memory_budget(&config.memory_budget),
     ));
     let cluster_progress = cluster.as_ref().map(|_| Arc::new(ClusterProgress::new()));
-    // The evidenced rail is present exactly when the finding market
-    // is configured, so activation fails closed on unconfigured venues.
-    let finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>> =
-        config.finding_market.as_ref().map(|_| {
-            Arc::new(super::super::finding_handlers::VenueLedgerRailObserver)
-                as Arc<dyn super::super::finding_handlers::FindingRailObserver>
-        });
+    // Public configuration does not provide an authoritative fee-settlement
+    // backend. Keep fee-bearing market transitions unavailable until the
+    // deployment injects a real idempotent rail adapter.
+    let finding_rail = None;
     let state = TrustServiceState {
         config,
         joint_authority_store,

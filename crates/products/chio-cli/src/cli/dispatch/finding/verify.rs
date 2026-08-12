@@ -757,8 +757,8 @@ fn emit_evidence_report(
         required_labels.push(label);
     }
 
-    let mut facet_rows = Vec::with_capacity(draft.facets.len());
-    for result in &draft.facets {
+    let mut facet_rows = Vec::with_capacity(draft.facets().len());
+    for result in draft.facets() {
         let label = facet_label(result.facet)?;
         if result.outcome == FindingFacetOutcome::Failed {
             failed.push(label.clone());
@@ -805,7 +805,7 @@ fn emit_evidence_report(
             println!("delivery_receipt:    {}", terminal_safe(receipt_id));
         }
         println!("facets:");
-        for result in &draft.facets {
+        for result in draft.facets() {
             println!(
                 "  {:<28}  {:<12}  {}",
                 terminal_safe(&facet_label(result.facet)?),

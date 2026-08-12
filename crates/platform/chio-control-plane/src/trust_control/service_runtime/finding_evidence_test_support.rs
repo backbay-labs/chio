@@ -105,7 +105,7 @@ pub(super) fn make_signed_finding_report(
     if !draft.satisfies_required_facets(&trust.profile.body) {
         return Err(std::io::Error::other(format!(
             "draft does not satisfy the required profile facets: {:?}",
-            draft.facets
+            draft.facets()
         ))
         .into());
     }

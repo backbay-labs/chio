@@ -677,6 +677,17 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
     for claim in chio_control_plane::transaction_passport::COGNITION_MARKET_CLAIMS {
         assert!(verified_claims.contains(claim), "missing claim {claim}");
     }
+    std::env::set_var("CHIO_FINDING_STATUS_NOW_UNIX_SECONDS", "1784880029");
+    let error = match verify_transaction_passport_file(&passport_path) {
+        Ok(_) => panic!("mismatched current status clocks must be rejected"),
+        Err(error) => error,
+    };
+    assert!(
+        error.to_string().contains(
+            "CHIO_FINDING_STATUS_NOW_UNIX_SECONDS must equal CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT"
+        ),
+        "unexpected status-clock error: {error}"
+    );
 }
 
 #[test]

@@ -99,7 +99,7 @@ fn bond_facet(
     draft: &chio_finding_verifier::FindingVerifierDraft,
 ) -> Result<&FindingFacetResult, String> {
     draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::BondBacking)
         .ok_or_else(|| "bond-backing facet missing".to_string())

@@ -23,7 +23,7 @@ fn status_non_inclusion_proof_must_not_predate_the_finding() -> TestResult {
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
     let status = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::StatusLiveness)
         .ok_or("status-liveness facet missing")?;
@@ -93,7 +93,7 @@ fn expired_checkpoint_signer_cannot_backdate_new_evidence() -> TestResult {
     let draft =
         verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
     let membership = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::CheckpointMembership)
         .ok_or("checkpoint-membership facet missing")?;

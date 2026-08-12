@@ -2825,6 +2825,63 @@ async fn unpaid_epoch_drops_the_marker_until_renewal() -> TestResult {
 }
 
 #[tokio::test]
+async fn fee_routes_require_an_explicit_authoritative_rail() -> TestResult {
+    let mut activation = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    activation.seed_market().await?;
+    let mut no_rail_state = activation.state.clone();
+    no_rail_state.finding_rail = None;
+    let (status, body) = send(
+        &no_rail_state,
+        authed_post(
+            &format!("/v1/findings/{}/activate", activation.web.finding_id),
+            activation.web.activate_request(
+                &activation.web.admission,
+                &activation.web.schedule,
+                &activation.web.report,
+            )?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(String::from_utf8_lossy(&body).contains("no evidenced rail observer"));
+    assert_nothing_admitted(&activation).await?;
+
+    let mut participation = provision_stack(1, ADMISSION_EXPIRES_AT)?;
+    participation.seed_market().await?;
+    let (status, body) = participation.activate().await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
+    let mut no_rail_state = participation.state.clone();
+    no_rail_state.finding_rail = None;
+    let renewal = serde_json::json!({
+        "feeSchedule": serde_json::to_value(&participation.web.schedule)?,
+    });
+    let (status, body) = send(
+        &no_rail_state,
+        authed_post(
+            &format!(
+                "/v1/findings/{}/participation",
+                participation.web.finding_id
+            ),
+            renewal.to_string(),
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(String::from_utf8_lossy(&body).contains("no evidenced rail observer"));
+    assert_eq!(
+        participation.store.paid_through_epoch(
+            &participation.web.finding_id,
+            LISTING_ID,
+            &participation.web.schedule_sha256,
+        )?,
+        Some(0)
+    );
+    assert!(participation.admission_marker().await?.is_none());
+    Ok(())
+}
+
+#[tokio::test]
 async fn activation_rejects_a_mismatched_rail_observation() -> TestResult {
     let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     stack.seed_market().await?;

@@ -233,7 +233,7 @@ pub struct FindingEvidenceBundle<'a> {
 pub struct FindingVerifierDraft {
     pub finding: Finding,
     pub finding_artifact_sha256: String,
-    pub facets: Vec<FindingFacetResult>,
+    facets: Vec<FindingFacetResult>,
     pub resolved_evidence_bundle_sha256: String,
     /// Exact raw attachment digests copied into the signed report.
     pub replay_recipe_input_sha256: Option<String>,
@@ -254,6 +254,14 @@ pub struct FindingVerifierDraft {
 }
 
 impl FindingVerifierDraft {
+    /// Canonically ordered facet results derived during evidence
+    /// verification. Callers may inspect but cannot replace or rewrite
+    /// outcomes before report signing.
+    #[must_use]
+    pub fn facets(&self) -> &[FindingFacetResult] {
+        &self.facets
+    }
+
     /// Authenticated, checkpointed post-purchase receipt derived during
     /// evidence verification. Callers may inspect but cannot replace it
     /// before report signing.

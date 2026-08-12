@@ -43,7 +43,7 @@ fn backing_cannot_be_accepted_before_its_signed_issue_time() -> TestResult {
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence_bundle)?;
     let backing = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::BondBacking)
         .ok_or("bond-backing facet missing")?;
@@ -74,7 +74,7 @@ fn bond_backing_must_bind_the_evaluated_verifier_profile() -> TestResult {
 
     let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence_bundle)?;
     let backing = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::BondBacking)
         .ok_or("bond-backing facet missing")?;
@@ -373,7 +373,7 @@ fn recipe_preimage_must_fit_its_committed_size_bound() -> TestResult {
     evidence.recipe_preimage = Some(&bounded_bytes);
     let draft = verify_finding_evidence(&raw_finding, &trust, &evidence)?;
     let binding = draft
-        .facets
+        .facets()
         .iter()
         .find(|facet| facet.facet == FindingFacetKind::RecipeBinding)
         .ok_or("recipe-binding facet missing")?;
