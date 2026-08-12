@@ -137,7 +137,7 @@ export CHIO_TRANSACTION_TRUSTED_ROOT_KEYS=<passport-root-public-key>
 export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY=<profile-governance-public-key>
 export CHIO_FINDING_VERIFIER_AUTHORITY_KEY=<finding-verifier-public-key>
 export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_PATH=<canonical-signed-authority-status.json>
-export CHIO_FINDING_VERIFIER_STATUS_AUTHORITY_KEY=<authority-status-signer-public-key>
+export CHIO_FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH=<canonical-authority-status-signer-policy.json>
 export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT=<trusted-verification-time>
 export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS=<deployment-freshness-limit>
 export CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256=<approved-profile-envelope-digest>
@@ -159,8 +159,9 @@ its report signer must equal the separately pinned verifier key. The verifier
 loads the profile's exact canonical bytes, requires their digest to match the
 out-of-band profile pin, and verifies the profile signature and lifecycle. It
 also requires a fresh signed status witness for the report signer from the
-separately pinned status authority, and rejects reports produced at or after
-the witness's effective revocation time. The report must bind the
+separately pinned status-authority policy, requires that policy to cover both
+the witness observation and the current trusted verification time, and rejects
+reports produced at or after the witness's effective revocation time. The report must bind the
 deployment-pinned trust-root snapshot, resolver policy, and trusted-time
 input. Verification fails closed when any profile floor, snapshot commitment,
 pin, authorization, durable authority store, trusted time, or freshness limit

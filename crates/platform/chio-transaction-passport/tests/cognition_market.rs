@@ -585,7 +585,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         trusted_time_input_sha256: "67".repeat(32),
         verifier_authority_status: CognitionMarketVerifierAuthorityStatusTrust {
             signed_status: verifier_authority_status,
-            status_authority: verifier_status_authority.public_key(),
+            status_authority: profile_key_policy(10, "verifier-status-authority"),
             checked_at: CHECKED_AT,
             max_age_secs: 60,
         },
@@ -1810,7 +1810,7 @@ fn cognition_market_qualified_profile_rejects_self_signed_verifier_status() -> T
         .clone();
     bundle.trust.verifier_authority_status.signed_status =
         SignedExportEnvelope::sign(status, &verifier)?;
-    bundle.trust.verifier_authority_status.status_authority = verifier.public_key();
+    bundle.trust.verifier_authority_status.status_authority.key = verifier.public_key();
 
     let error = verify(&bundle)
         .err()
@@ -1818,6 +1818,26 @@ fn cognition_market_qualified_profile_rejects_self_signed_verifier_status() -> T
         .to_string();
     assert!(
         error.contains("must be independent from the verifier signer"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_an_expired_status_authority() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle
+        .trust
+        .verifier_authority_status
+        .status_authority
+        .valid_until = CHECKED_AT;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("expired verifier status authority was accepted")?
+        .to_string();
+    assert!(
+        error.contains("not live at the current trusted verification time"),
         "unexpected error: {error}"
     );
     Ok(())

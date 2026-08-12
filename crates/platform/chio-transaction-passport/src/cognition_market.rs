@@ -87,7 +87,7 @@ pub struct CognitionMarketProofTrust {
 #[derive(Clone)]
 pub struct CognitionMarketVerifierAuthorityStatusTrust {
     pub signed_status: SignedFindingAuthorityStatus,
-    pub status_authority: PublicKey,
+    pub status_authority: FindingAuthorityKeyPolicy,
     pub checked_at: u64,
     pub max_age_secs: u64,
 }
@@ -581,14 +581,32 @@ fn verify_verifier_authority_status(
             "verifier authority status freshness policy is invalid",
         ));
     }
-    if trust.status_authority == policy.key {
+    trust
+        .status_authority
+        .validate("verifier status authority")
+        .map_err(|error| claim_failed(format!("verifier status authority is invalid: {error}")))?;
+    if trust.status_authority.key == policy.key {
         return Err(claim_failed(
             "verifier status authority must be independent from the verifier signer",
         ));
     }
-    verify_signed_authority_status(&trust.signed_status, &trust.status_authority)
+    if trust.checked_at < trust.status_authority.valid_from
+        || trust.checked_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "verifier status authority is not live at the current trusted verification time",
+        ));
+    }
+    verify_signed_authority_status(&trust.signed_status, &trust.status_authority.key)
         .map_err(|error| claim_failed(format!("verifier authority status is invalid: {error}")))?;
     let status = &trust.signed_status.body;
+    if status.observed_at < trust.status_authority.valid_from
+        || status.observed_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "verifier authority status was signed outside the status-authority lifecycle",
+        ));
+    }
     if status.status_ref != policy.revocation_status_ref
         || status.authority_id != policy.authority_id
         || status.key != policy.key

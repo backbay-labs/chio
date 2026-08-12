@@ -171,6 +171,11 @@ fn cognition_market_qualified_profile_rejects_backdated_report_after_finding_exp
     bundle.trust.verifier_authority_status.signed_status =
         SignedExportEnvelope::sign(status, &Keypair::from_seed(&[10_u8; 32]))?;
     bundle.trust.verifier_authority_status.checked_at = finding.expires_at;
+    bundle
+        .trust
+        .verifier_authority_status
+        .status_authority
+        .valid_until = finding.expires_at + 1;
 
     let error = verify(&bundle)
         .err()
