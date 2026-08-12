@@ -1,4 +1,4 @@
-ddd4c5cbe6eb409167fdd40418928041cc6795f888f992399b624403a00715db  spec/schemas/MANIFEST.sha256
+394691f6c0b0b3b2513bde38607542b2bd837656cbf6199cb29d88aa37707ec7  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json

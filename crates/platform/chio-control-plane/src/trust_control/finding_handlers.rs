@@ -19,10 +19,10 @@
 use chio_finding::{
     required_finding_facets, verify_signed_authority_status, verify_signed_bond_backing,
     verify_signed_profile, verify_signed_seller_authorization, verify_signed_verifier_report,
-    Finding, FindingFacetKind, FindingFacetOutcome, FindingFeeEvent, FindingGuaranteeClass,
-    FindingPayee, FindingReplayRecipeInput, SignedFindingAdmission, SignedFindingAuthorityStatus,
-    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
-    SignedFindingSellerAuthorization, SignedFindingVerifierReport,
+    Finding, FindingAuthorityKeyPolicy, FindingFacetKind, FindingFacetOutcome, FindingFeeEvent,
+    FindingGuaranteeClass, FindingPayee, FindingReplayRecipeInput, SignedFindingAdmission,
+    SignedFindingAuthorityStatus, SignedFindingBondBacking, SignedFindingChallengeVerifierProfile,
+    SignedFindingMarketTerms, SignedFindingSellerAuthorization, SignedFindingVerifierReport,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
 };
 use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
@@ -766,10 +766,60 @@ pub(crate) fn verify_profile_for_activation(
     Ok(())
 }
 
+fn verify_authority_policy_matches_deployment(
+    label: &str,
+    policy: &FindingAuthorityKeyPolicy,
+    pin: &FindingAuthorityPin,
+) -> Result<(), String> {
+    let key = pin.key().map_err(|error| error.to_string())?;
+    if policy.authority_id != pin.authority_id
+        || policy.key != key
+        || policy.key_epoch != pin.key_epoch
+        || policy.valid_from != pin.valid_from
+        || policy.valid_until != pin.valid_until
+        || policy.revocation_status_ref != pin.revocation_status_ref
+    {
+        return Err(format!(
+            "profile {label} authority does not match the deployment pin"
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_profile_settlement_authorities(
+    profile: &SignedFindingChallengeVerifierProfile,
+    admission: &SignedFindingAdmission,
+    config: &FindingMarketConfig,
+) -> Result<(), String> {
+    for (label, profile_policy, admission_policy, deployment_pin) in [
+        (
+            "purchase",
+            &profile.body.purchase_authority,
+            &admission.body.purchase_authority,
+            &config.purchase,
+        ),
+        (
+            "failed-delivery",
+            &profile.body.failed_delivery_authority,
+            &admission.body.failed_delivery_authority,
+            &config.failed_delivery,
+        ),
+    ] {
+        if profile_policy != admission_policy {
+            return Err(format!(
+                "profile {label} authority does not match the admission policy"
+            ));
+        }
+        verify_authority_policy_matches_deployment(label, profile_policy, deployment_pin)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn verify_report_authority_lifecycle(
     report: &SignedFindingVerifierReport,
     authority_status: &SignedFindingAuthorityStatus,
     profile: &SignedFindingChallengeVerifierProfile,
+    finding: &Finding,
     config: &FindingMarketConfig,
     now: u64,
 ) -> Result<(), String> {
@@ -784,6 +834,12 @@ pub(crate) fn verify_report_authority_lifecycle(
     }
     if !config.verifier_report.covers(now) {
         return Err("verifier report authority is not live at activation".into());
+    }
+    if instant < profile.body.issued_at || instant >= profile.body.expires_at {
+        return Err("verifier report evaluation is outside the profile lifecycle".into());
+    }
+    if instant < finding.issued_at || instant >= finding.expires_at {
+        return Err("verifier report evaluation is outside the Finding lifecycle".into());
     }
     if report.body.verifier_key_epoch != config.verifier_report.key_epoch {
         return Err("verifier report key epoch does not match the deployment pin".into());
@@ -1131,6 +1187,10 @@ pub(crate) async fn handle_activate_finding(
     {
         return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
+    if let Err(error) = verify_profile_settlement_authorities(&profile, &request.admission, &config)
+    {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
 
     // Pinned keys.
     let (venue_key, collateral_key) = match (config.venue.key(), config.collateral.key()) {
@@ -1162,6 +1222,7 @@ pub(crate) async fn handle_activate_finding(
         &request.verifier_report,
         &request.verifier_authority_status,
         &profile,
+        &finding,
         &config,
         now,
     ) {

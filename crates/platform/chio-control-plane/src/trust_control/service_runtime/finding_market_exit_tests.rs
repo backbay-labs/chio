@@ -1,12 +1,4 @@
-//! M2 exit coverage for the finding market: publish and by-id resolution
-//! of the exact bytes, bounded paginated discovery, the venue-signed
-//! admission transaction, the qualified-profile search marker, the real
-//! marketplace bid through `bid_with_finding_admission`, participation
-//! renewal, the full rejection sweep from the M2 exit definition, and the
-//! evidenced-rail fault-injection legs. Requests travel through the serve
-//! router wrapped with the service-wide hygiene layer so route body caps
-//! bind exactly as they do at the serve site.
-
+//! End-to-end finding-market exit coverage through the production router.
 use super::super::super::*;
 use super::build_router;
 use super::finding_evidence_test_support::{
@@ -81,6 +73,9 @@ use tower::ServiceExt;
 
 type AnyError = Box<dyn std::error::Error>;
 type TestResult = Result<(), AnyError>;
+
+#[path = "finding_market_exit_tests/activation_security.rs"]
+mod activation_security;
 
 const SERVICE_TOKEN: &str = "service-secret";
 const VENUE_ID: &str = "venue-wedge";
@@ -2283,8 +2278,15 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
     let live_status = signed_verifier_authority_status(now, None)?;
     verify_profile_for_activation(&profile, &profile_sha256, &config, now)
         .map_err(std::io::Error::other)?;
-    verify_report_authority_lifecycle(&stack.web.report, &live_status, &profile, &config, now)
-        .map_err(std::io::Error::other)?;
+    verify_report_authority_lifecycle(
+        &stack.web.report,
+        &live_status,
+        &profile,
+        &stack.web.finding,
+        &config,
+        now,
+    )
+    .map_err(std::io::Error::other)?;
 
     let forged = build_profile(
         &keypair(9),
@@ -2305,6 +2307,7 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
         &stack.web.report,
         &live_status,
         &profile,
+        &stack.web.finding,
         &stale_pin,
         now,
     )
@@ -2316,6 +2319,7 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
         &stack.web.report,
         &live_status,
         &profile,
+        &stack.web.finding,
         &wrong_epoch,
         now,
     )
@@ -2326,6 +2330,7 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
         &stack.web.report,
         &revoked_status,
         &profile,
+        &stack.web.finding,
         &config,
         now,
     )
@@ -2339,6 +2344,7 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
         &stack.web.report,
         &stale_status,
         &profile,
+        &stack.web.finding,
         &config,
         now,
     )
@@ -2351,6 +2357,7 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
         &stack.web.report,
         &pre_report_status,
         &profile,
+        &stack.web.finding,
         &config,
         evaluation_time,
     )
