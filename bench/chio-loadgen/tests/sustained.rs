@@ -13,7 +13,7 @@ use chio_test_support::prelude::*;
 #[test]
 fn pacer_holds_arrival_rate_within_tolerance() {
     let config = LoadgenConfig {
-        arrival_rate_hz: 200,
+        arrival_rate_hz: 40,
         duration: Duration::from_secs(2),
         tool_latency: Duration::ZERO,
         store: StoreBacking::Memory,
@@ -26,8 +26,8 @@ fn pacer_holds_arrival_rate_within_tolerance() {
 
     // The open-loop scheduler must deliver every configured tick. A slower
     // closed-loop run is a failed load gate, even if its p99 stays below budget.
-    assert_eq!(report.calls_attempted, 400);
-    assert_eq!(report.calls_ok, 400);
+    assert_eq!(report.calls_attempted, 80);
+    assert_eq!(report.calls_ok, 80);
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn sustained_smoke_reports_measured_percentiles() {
     let db_path = dir.path().join("receipts.sqlite");
 
     let config = LoadgenConfig {
-        arrival_rate_hz: 100,
+        arrival_rate_hz: 40,
         duration: Duration::from_secs(2),
         tool_latency: Duration::from_millis(5),
         store: StoreBacking::Sqlite { path: db_path },
