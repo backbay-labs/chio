@@ -885,6 +885,7 @@ struct MarketWeb {
     hint_sha256: String,
     authorization: SignedFindingSellerAuthorization,
     authorization_sha256: String,
+    receipts: Vec<ResolvedReceiptEvidence>,
     report: SignedFindingVerifierReport,
     stale_report: SignedFindingVerifierReport,
     admission: SignedFindingAdmission,
@@ -1017,10 +1018,9 @@ impl MarketWeb {
             fee_schedule: &schedule,
             collateral: &collateral,
         };
-        // The current report's evaluation time sits strictly after the
-        // wall-clock collateral acceptance the venue records at
-        // registration; the stale one sits strictly before it (the D14
-        // report-before-backing rejection input).
+        // Seed a provisional affirmative report that `seed_market` replaces
+        // from the venue's durable collateral acceptance time. The stale
+        // report remains the pre-backing rejection input.
         let now = unix_timestamp_now();
         let report = make_signed_report(&report_inputs, now.saturating_add(1))?;
         let stale_report = make_signed_report(&report_inputs, now)?;
@@ -1074,6 +1074,7 @@ impl MarketWeb {
             hint_sha256,
             authorization,
             authorization_sha256,
+            receipts,
             report,
             stale_report,
             admission,
@@ -1097,6 +1098,38 @@ impl MarketWeb {
             allocation_id: &self.allocation_id,
             backing_sha256: &self.backing_sha256,
         }
+    }
+
+    fn refresh_report_after_collateral(&mut self, evaluation_time: u64) -> Result<(), AnyError> {
+        let profile: SignedFindingChallengeVerifierProfile =
+            serde_json::from_str(&self.profile_raw)?;
+        let report = make_signed_report(
+            &ReportInputs {
+                governance: &keypair(1),
+                kernel: &keypair(21),
+                profile: &profile,
+                finding: &self.finding,
+                raw_finding: &self.raw_finding,
+                receipts: &self.receipts,
+                checkpoint: &self.checkpoint,
+                recipe_bytes: &self.recipe_bytes,
+                backing: &self.backing,
+                terms: &self.terms,
+                fee_schedule: &self.schedule,
+                collateral: &keypair(4),
+            },
+            evaluation_time,
+        )?;
+        let admission_body = self.admission_body(
+            &self.schedule_sha256,
+            &report,
+            self.admission.body.expires_at,
+        )?;
+        let admission = sign_admission(admission_body, &self.venue)?;
+        self.admission_json = canonical_string(&admission)?;
+        self.admission = admission;
+        self.report = report;
+        Ok(())
     }
 
     fn admission_body(
@@ -1190,7 +1223,7 @@ impl MarketStack {
 
     /// Register the profile, retain the recipe, publish the finding, and
     /// register its collateral allocation: everything an activation needs.
-    async fn seed_market(&self) -> TestResult {
+    async fn seed_market(&mut self) -> TestResult {
         let (status, body) = send(
             &self.state,
             authed_post(
@@ -1254,10 +1287,18 @@ impl MarketStack {
             json_body(&body)?["allocationId"],
             serde_json::json!(self.web.allocation_id)
         );
-        // The affirmative report must postdate collateral acceptance, while
-        // its live authority-status reading cannot come from the future.
-        // The fixture gives those two events adjacent seconds and waits only
-        // for the report's signed evaluation instant before activation.
+        let accepted_at = self
+            .store
+            .get_allocation(&self.web.allocation_id)?
+            .ok_or_else(|| missing("registered allocation"))?
+            .accepted_at;
+        let evaluation_time = accepted_at
+            .checked_add(1)
+            .ok_or_else(|| missing("report evaluation time overflow"))?;
+        self.web.refresh_report_after_collateral(evaluation_time)?;
+        // The affirmative report is signed only after the venue has accepted
+        // collateral. Wait until its exact evaluation instant so the current
+        // authority-status reading is never future-dated at activation.
         while unix_timestamp_now() < self.web.report.body.evaluation_time {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
@@ -1384,9 +1425,9 @@ async fn finding_publish_discover_admission() -> TestResult {
 }
 
 pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
-    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
-    let web = &stack.web;
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     stack.seed_market().await?;
+    let web = &stack.web;
 
     // Immutable by-id resolution serves the EXACT accepted bytes.
     let (status, body) = send(
@@ -1972,7 +2013,7 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
 
 #[tokio::test]
 async fn enforced_penalty_block_refuses_a_fresh_activation() -> TestResult {
-    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     stack.seed_market().await?;
     let authority = stack
         .state
@@ -1995,9 +2036,9 @@ async fn enforced_penalty_block_refuses_a_fresh_activation() -> TestResult {
 
 #[tokio::test]
 async fn noncanonical_publish_ingress_rejects() -> TestResult {
-    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
-    let web = &stack.web;
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     stack.seed_market().await?;
+    let web = &stack.web;
 
     let parsed: serde_json::Value = serde_json::from_str(&web.second_raw_finding)?;
 
@@ -2065,9 +2106,9 @@ async fn oversized_publish_body_rejects() -> TestResult {
 
 #[tokio::test]
 async fn future_issued_and_expired_findings_reject() -> TestResult {
-    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
-    let web = &stack.web;
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     stack.seed_market().await?;
+    let web = &stack.web;
     let issuer = keypair(3);
     let now = unix_timestamp_now();
 
@@ -2103,9 +2144,9 @@ async fn future_issued_and_expired_findings_reject() -> TestResult {
 
 #[tokio::test]
 async fn price_hint_ref_and_unretained_recipe_reject() -> TestResult {
-    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
-    let web = &stack.web;
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     stack.seed_market().await?;
+    let web = &stack.web;
     let issuer = keypair(3);
 
     // A finding-scoped hint reference inside the finding is a hash cycle.
@@ -2197,9 +2238,9 @@ async fn deterministic_publish_requires_every_retained_recipe_dependency_class()
 
 #[tokio::test]
 async fn wrong_issuer_signature_rejects() -> TestResult {
-    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
-    let web = &stack.web;
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     stack.seed_market().await?;
+    let web = &stack.web;
 
     // The body names the real issuer but an interloper produced the
     // signature: strict verification against the embedded issuer denies.
@@ -2232,7 +2273,7 @@ async fn wrong_issuer_signature_rejects() -> TestResult {
 
 #[tokio::test]
 async fn search_requires_filters_and_a_canonical_cursor() -> TestResult {
-    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     stack.seed_market().await?;
 
     let (status, body) = send(&stack.state, public_get("/v1/findings/search")?).await?;
@@ -2367,7 +2408,7 @@ async fn unpaid_epoch_drops_the_marker_until_renewal() -> TestResult {
     // One-second audit epochs: the epoch lapses on the wall clock right
     // after activation, so the unpaid-epoch read-time filter is
     // observable without touching the stored envelope.
-    let stack = provision_stack(1, ADMISSION_EXPIRES_AT)?;
+    let mut stack = provision_stack(1, ADMISSION_EXPIRES_AT)?;
     stack.seed_market().await?;
     let (status, body) = stack.activate().await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
@@ -2421,7 +2462,7 @@ async fn unpaid_epoch_drops_the_marker_until_renewal() -> TestResult {
 #[tokio::test]
 async fn expired_admission_loses_the_marker() -> TestResult {
     let expires_at = unix_timestamp_now() + 6;
-    let stack = provision_stack(LONG_EPOCH_SECS, expires_at)?;
+    let mut stack = provision_stack(LONG_EPOCH_SECS, expires_at)?;
     stack.seed_market().await?;
     let (status, body) = stack.activate().await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));

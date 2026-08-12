@@ -153,6 +153,7 @@ const COMMUNITY_FUND_DESTINATION: &str = "0xcccccccccccccccccccccccccccccccccccc
 const PAYOUT_DESTINATION: &str = "rail:venue-ledger:seller-42";
 const HEX64: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const ISSUED_AT: u64 = 1_700_000_000;
+const REPORT_MATURATION_SECS: u64 = 5;
 const WINDOW_EXPIRES_AT: u64 = 1_900_000_000;
 const ADMISSION_EXPIRES_AT: u64 = 1_890_000_000;
 const LONG_EPOCH_SECS: u64 = 2_592_000;
@@ -1113,7 +1114,7 @@ impl MarketWeb {
                 fee_schedule: &schedule,
                 collateral: &collateral,
             },
-            unix_timestamp_now().saturating_add(3_600),
+            unix_timestamp_now().saturating_add(REPORT_MATURATION_SECS),
         )?;
 
         let mut admission = FindingAdmission {
@@ -1357,6 +1358,12 @@ impl Deployment {
         .await?;
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
 
+        // The allocation must predate the signed report, and the report
+        // authority status must be observed no earlier than that evaluation.
+        // Let the pre-signed fixture mature before constructing the current
+        // status used at activation.
+        wait_until_unix(web.report.body.evaluation_time).await;
+
         let (status, body) = send(
             state,
             authed_post(
@@ -1385,6 +1392,13 @@ fn allocation_accepted_at(
         .ok_or_else(|| missing("allocation snapshot"))?;
     assert_eq!(allocation.state, FindingAllocationState::Consumed);
     Ok(allocation.accepted_at)
+}
+
+async fn wait_until_unix(target: u64) {
+    let remaining = target.saturating_sub(unix_timestamp_now());
+    if remaining > 0 {
+        tokio::time::sleep(std::time::Duration::from_secs(remaining)).await;
+    }
 }
 
 fn admission_witness(
@@ -3103,6 +3117,7 @@ fn buyer_memory_write(
         .as_deref()
         .unwrap_or_default()
         .contains("differs from the authenticated delivery"));
+    receipts.create_next_receipt_checkpoint(100, &buyer_kernel_keypair)?;
     Ok(())
 }
 
@@ -4725,7 +4740,7 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
             fee_schedule: &web.schedule,
             collateral: &keypair(4),
         },
-        unix_timestamp_now().saturating_add(3_600),
+        unix_timestamp_now().saturating_add(1),
     )?;
     let mut admission_body = web.admission.body.clone();
     admission_body.backing_allocation_id = second_backing.body.allocation_id.clone();
@@ -4736,6 +4751,7 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     admission_body.admission_id = compute_admission_id(&admission_body)?;
     let second_admission: SignedFindingAdmission =
         SignedExportEnvelope::sign(admission_body, &web.venue)?;
+    wait_until_unix(second_report.body.evaluation_time).await;
     let activate = serde_json::json!({
         "admission": serde_json::to_value(&second_admission)?,
         "sellerAuthorization": serde_json::to_value(&web.authorization)?,
