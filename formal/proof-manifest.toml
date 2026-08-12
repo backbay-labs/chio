@@ -610,9 +610,9 @@ model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/dispatch.rs"
 rust_symbols = ["ChioKernel::revalidate_immediately_before_dispatch"]
-normalized_sha256 = "b48fd819d945380dd294f0f9a57ae74aa66c3e3db6e2ab16aa672935a7d99944"
+normalized_sha256 = "3ab271bdf23dffe03cfe082a060d6a2e50dbeae7e5a0f62857ee83fb1596575c"
 symbol_sha256 = [
-  { symbol = "ChioKernel::revalidate_immediately_before_dispatch", sha256 = "915bcf26b30e51a1ae19bbdbcca872b14976311803ddaaf5cfb54c30f65c05d1" },
+  { symbol = "ChioKernel::revalidate_immediately_before_dispatch", sha256 = "29e95bacb77bd5e9c479da250a0f1e997333d4fee642677b0fb418adcb8ebdb8" },
 ]
 
 [[mirror]]
@@ -971,9 +971,9 @@ rust_symbols = [
   "ChioKernel::release_runtime_admission_reservations",
   "ChioKernel::mark_runtime_admission_reservations_retained_fail_closed",
 ]
-normalized_sha256 = "edb388639331e95adc79b6d3aa96b6ed91a17e173d53c63ab63864f0a57a68aa"
+normalized_sha256 = "6a265d0954e128c9658680569865ebbc00a19b60cf09ef433593dbe0c4a0dace"
 symbol_sha256 = [
-  { symbol = "ChioKernel::revalidate_immediately_before_dispatch", sha256 = "915bcf26b30e51a1ae19bbdbcca872b14976311803ddaaf5cfb54c30f65c05d1" },
+  { symbol = "ChioKernel::revalidate_immediately_before_dispatch", sha256 = "29e95bacb77bd5e9c479da250a0f1e997333d4fee642677b0fb418adcb8ebdb8" },
   { symbol = "ChioKernel::record_child_receipt", sha256 = "bc3d82e5b1d2e5b433524757e62be0d7cc20a1534746b967dc8a8f8519cbde7a" },
   { symbol = "ChioKernel::release_runtime_admission_reservations", sha256 = "97211eaf9d4fee74b100a15e7a48b03cfebdc51510407afc7397e578ec2a5a70" },
   { symbol = "ChioKernel::mark_runtime_admission_reservations_retained_fail_closed", sha256 = "e9097e16d978d4faf00ab5d131a60be98f0ac5079e80201385e33c51d1db0ff1" },
@@ -1042,9 +1042,9 @@ model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs"
 rust_symbols = ["ChioKernel::finalize_tool_output_with_metadata_and_payee_binding"]
-normalized_sha256 = "d1389fcb2e20c792385c6814e577e468346c28c6403e8fc04f7fa2a3853444d4"
+normalized_sha256 = "a0f0aa823f40e7141d695339feda2d25befd0f379a3f330ad8f7cc552dae181c"
 symbol_sha256 = [
-  { symbol = "ChioKernel::finalize_tool_output_with_metadata_and_payee_binding", sha256 = "e373a759d00863a4444eeb0e80c1262a16219d464bb53b223e50473104cd1a7a" },
+  { symbol = "ChioKernel::finalize_tool_output_with_metadata_and_payee_binding", sha256 = "12ecc55530598141dfb04e71f836fb610da684d5410d66157795750d7b677849" },
 ]
 
 [[mirror]]
