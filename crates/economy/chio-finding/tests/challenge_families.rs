@@ -1513,6 +1513,17 @@ fn enforcement_signs_and_verifies_under_the_finalization_authority() -> TestResu
         verify_signed_challenge_enforcement(&forged, &finalization_authority.public_key()),
         Err(FindingError::AuthorityMismatch("challenge_enforcement"))
     );
+
+    let mut misbound = enforcement_body()?;
+    misbound.finalization_key = keypair(45).public_key();
+    misbound.enforcement_id = compute_enforcement_id(&misbound)?;
+    let misbound = SignedExportEnvelope::sign(misbound, &finalization_authority)?;
+    assert_eq!(
+        verify_signed_challenge_enforcement(&misbound, &finalization_authority.public_key()),
+        Err(FindingError::AuthorityMismatch(
+            "challenge_enforcement.finalization_key"
+        ))
+    );
     Ok(())
 }
 

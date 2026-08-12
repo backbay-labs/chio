@@ -285,6 +285,11 @@ pub fn verify_signed_challenge_enforcement(
     pinned_finalization_authority: &PublicKey,
 ) -> Result<(), FindingError> {
     signed.body.validate()?;
+    if signed.body.finalization_key != *pinned_finalization_authority {
+        return Err(FindingError::AuthorityMismatch(
+            "challenge_enforcement.finalization_key",
+        ));
+    }
     crate::envelope::verify_pinned_envelope(
         signed,
         pinned_finalization_authority,
