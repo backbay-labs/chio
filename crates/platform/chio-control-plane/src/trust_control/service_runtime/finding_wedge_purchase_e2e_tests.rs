@@ -3171,6 +3171,47 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_denial_receipt_cannot_predate_its_reservation() -> TestResult {
+    let lane = open_lane(LaneOptions {
+        case: RevealCase::digest_mismatch(),
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let response = lane.reveal("wedge-backdated-denial-1", "nonce-backdated-denial-1")?;
+    assert_denied_with(&response, "committed output digest");
+
+    let reservation = lane
+        .coordinator
+        .resolve(&lane.purchase.handshake.reservation_id)?;
+    let mut body = response.receipt.body();
+    body.timestamp = reservation.created_at.saturating_sub(1);
+    let receipt = ChioReceipt::sign(body, &keypair(40))?;
+    let (checkpoint, inclusion_proof) = denial_checkpoint(&receipt)?;
+
+    let error = lane
+        .coordinator
+        .finalize_denial(
+            &lane.purchase.handshake.reservation_id,
+            &receipt,
+            &lane.deployment.web.admission,
+            &checkpoint,
+            &inclusion_proof,
+            unix_timestamp_now(),
+        )
+        .err()
+        .ok_or_else(|| missing("backdated denial receipt was accepted"))?;
+    assert!(
+        matches!(
+        &error,
+        PurchaseCoordinatorError::TerminalEvidence(reason)
+            if reason.contains("predates the purchase reservation")
+        ),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_media_type_mismatch_denies() -> TestResult {
     let lane = open_lane(LaneOptions {
         case: RevealCase::media_mismatch(),

@@ -928,6 +928,11 @@ impl FindingPurchaseCoordinator {
     ) -> Result<SignedFindingFailedDelivery, PurchaseCoordinatorError> {
         let reservation = self.resolve(reservation_id)?;
         self.verify_reservation_admission(&reservation, admission)?;
+        if receipt.timestamp < reservation.created_at {
+            return Err(PurchaseCoordinatorError::TerminalEvidence(
+                "denial receipt predates the purchase reservation".to_owned(),
+            ));
+        }
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Denied)?;
         let (currency, release_terminal) = match terminal.settlement {
