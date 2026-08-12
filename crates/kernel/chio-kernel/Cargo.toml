@@ -81,7 +81,7 @@ chio-link = { path = "../../economy/chio-link", default-features = false }
 chio-log-redact = { workspace = true }
 chio-metrics-spec = { workspace = true }
 chio-tool-call-fabric = { workspace = true }
-lru = "0.16.3"
+lru = "0.18.2"
 chio-settle = { workspace = true }
 arc-swap = { workspace = true }
 async-trait = { workspace = true }

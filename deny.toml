@@ -17,7 +17,7 @@ yanked = "deny"
 # unmaintained build-time/test-only transitive, an ecosystem migration that
 # needs a coordinated upstream bump, or one RSA advisory with no upstream fix.
 # rustls-webpki advisories are not ignored.
-# Last full refresh: 2026-05-05.
+# Last full refresh: 2026-08-12.
 ignore = [
     # --- unmaintained / unsound clusters: each requires a dep migration. ---
     # last-checked = 2026-05-02; bincode 1.3.3 unmaintained (RUSTSEC-2025-0141). Pulled by uniffi 0.28.x build deps;
@@ -71,6 +71,19 @@ ignore = [
     # engine, so no store is ever paired with a Module from a different engine. Clears with the
     # wasmtime 46/47 upgrade tracked for the guard runtime.
     "RUSTSEC-2026-0222",
+    # last-checked = 2026-08-12; Wasmtime 43 pulls wasm-compose 0.245.1, whose immutable
+    # data structures use the archived bitmaps, im-rc, and sized-chunks crates. These
+    # advisories report maintenance status rather than a known vulnerability. Clear all
+    # three exceptions with the tracked Wasmtime 46/47 guard-runtime migration.
+    "RUSTSEC-2026-0247",
+    "RUSTSEC-2026-0250",
+    "RUSTSEC-2026-0251",
+    # last-checked = 2026-08-12; Chio's direct caches use fixed lru 0.18.2. Alloy 1.8.3
+    # still pins lru 0.16, and moving to Alloy 2 requires a coordinated API migration.
+    # Its only pop call uses a u64 block-number key, whose Drop cannot panic, so the
+    # panic-during-key-drop precondition is unreachable. Clear this exception with the
+    # Alloy 2 migration.
+    "RUSTSEC-2026-0253",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are
