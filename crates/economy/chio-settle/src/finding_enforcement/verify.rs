@@ -100,6 +100,10 @@ impl FindingEnforcementPins {
 /// not depend on a later mutable policy reading.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingDispatchPolicy {
+    /// Independently retained lifecycle policy that assigned the penalty
+    /// signer its role. This must come from durable governance state keyed by
+    /// the presented penalty envelope, never from the enforcement itself.
+    pub penalty_authority: FindingPenaltyAuthorityPolicy,
     /// Independent authority that signs revocation-source readings for the
     /// historical penalty key named by the enforcement.
     pub authority_status_authority: PublicKey,
@@ -112,14 +116,61 @@ pub struct FindingDispatchPolicy {
     pub allowed_destinations: BTreeSet<String>,
 }
 
+/// Durable governance assignment for the penalty signer used by one
+/// dispatch. The enforcement repeats these fields for historical
+/// reproducibility, but only exact equality with this retained policy grants
+/// the key its penalty role.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FindingPenaltyAuthorityPolicy {
+    pub authority_id: String,
+    pub key: PublicKey,
+    pub key_epoch: u64,
+    pub valid_from: u64,
+    pub valid_until: u64,
+    pub revocation_status_ref: String,
+}
+
+impl FindingPenaltyAuthorityPolicy {
+    fn validate(&self) -> Result<(), SettlementError> {
+        if self.authority_id.trim().is_empty() {
+            return Err(SettlementError::InvalidInput(
+                "penalty authority id must be non-empty".to_owned(),
+            ));
+        }
+        require_signing_key(&self.key, "penalty_authority")?;
+        if self.key_epoch == 0 {
+            return Err(SettlementError::InvalidInput(
+                "penalty authority key epoch must be nonzero".to_owned(),
+            ));
+        }
+        if self.valid_until <= self.valid_from {
+            return Err(SettlementError::InvalidInput(
+                "penalty authority validity window is inverted".to_owned(),
+            ));
+        }
+        if self.revocation_status_ref.trim().is_empty() {
+            return Err(SettlementError::InvalidInput(
+                "penalty authority revocation status ref must be non-empty".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl FindingDispatchPolicy {
     /// Reject unusable status and destination policy before any artifact can
     /// inherit dispatch authority from it.
     pub fn validate(&self, pins: &FindingEnforcementPins) -> Result<(), SettlementError> {
+        self.penalty_authority.validate()?;
         require_signing_key(
             &self.authority_status_authority,
             "authority_status_authority",
         )?;
+        if self.authority_status_authority == self.penalty_authority.key {
+            return Err(SettlementError::InvalidInput(
+                "authority_status_authority and penalty_authority must be distinct keys".to_owned(),
+            ));
+        }
         for (other, label) in [
             (
                 &pins.finalization_authority,
@@ -470,6 +521,18 @@ fn verify_penalty_dispatch_authority(
     dispatch_policy: &FindingDispatchPolicy,
     trusted_now_secs: u64,
 ) -> Result<(), SettlementError> {
+    let retained = &dispatch_policy.penalty_authority;
+    if enforcement.penalty_authority_id != retained.authority_id
+        || enforcement.penalty_key != retained.key
+        || enforcement.penalty_key_epoch != retained.key_epoch
+        || enforcement.penalty_valid_from != retained.valid_from
+        || enforcement.penalty_valid_until != retained.valid_until
+        || enforcement.penalty_revocation_status_ref != retained.revocation_status_ref
+    {
+        return Err(reject(
+            "enforcement penalty authority does not match retained governance policy",
+        ));
+    }
     signed_penalty
         .body
         .validate()
@@ -499,6 +562,12 @@ fn verify_penalty_dispatch_authority(
         return Err(reject(
             "market penalty was signed outside its historical authority window",
         ));
+    }
+    if penalty
+        .expires_at
+        .is_some_and(|expires_at| expires_at <= trusted_now_secs)
+    {
+        return Err(reject("market penalty expired before dispatch"));
     }
 
     verify_signed_authority_status(

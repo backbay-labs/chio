@@ -59,7 +59,8 @@ impl FindingObservedFinality {
         match self {
             FindingObservedFinality::Finalized => Ok(()),
             FindingObservedFinality::Confirmations { depth } => {
-                require_nonzero(*depth, "observed_finality.depth")
+                require_nonzero(*depth, "observed_finality.depth")?;
+                require_i_json_u64(*depth, "observed_finality.depth")
             }
         }
     }
@@ -108,6 +109,7 @@ impl FindingFinalizedBondSnapshot {
         require_ed25519(&self.seller, "seller")?;
         require_hex64(&self.allocation_id, "allocation_id")?;
         require_nonzero(self.locked_amount, "locked_amount")?;
+        require_i_json_u64(self.locked_amount, "locked_amount")?;
         require_i_json_u64(self.held_amount, "held_amount")?;
         require_i_json_u64(self.slashed_amount, "slashed_amount")?;
         let encumbered = self
@@ -119,13 +121,16 @@ impl FindingFinalizedBondSnapshot {
         }
         require_currency(&self.currency, "currency")?;
         require_nonzero(self.block_number, "block_number")?;
+        require_i_json_u64(self.block_number, "block_number")?;
         require_chain_hash(&self.block_hash, "block_hash")?;
         require_bounded_id(&self.finality_policy, "finality_policy")?;
         self.observed_finality.validate()?;
         require_bounded_id(&self.identity_registry_record, "identity_registry_record")?;
         require_chain_hash(&self.operator_key_hash, "operator_key_hash")?;
         require_nonzero(self.operator_key_epoch, "operator_key_epoch")?;
+        require_i_json_u64(self.operator_key_epoch, "operator_key_epoch")?;
         require_nonzero(self.observed_at, "observed_at")?;
+        require_i_json_u64(self.observed_at, "observed_at")?;
         self.verify_snapshot_id()
     }
 

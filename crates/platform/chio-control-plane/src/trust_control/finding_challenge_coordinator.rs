@@ -104,8 +104,9 @@ use chio_settle::{
     verify_finding_enforcement_for_reconciliation, EvmBondSnapshot, FindingBondObservationSource,
     FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
     FindingImpairmentOutcome, FindingImpairmentPublisher, FindingImpairmentQuarantine,
-    PlannedFindingImpairment, PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement,
-    SettlementChainConfig, VerifiedFindingEnforcement,
+    FindingPenaltyAuthorityPolicy, PlannedFindingImpairment,
+    PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement, SettlementChainConfig,
+    VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
     derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
@@ -2150,7 +2151,7 @@ impl FindingChallengeCoordinator {
         if seller != &durable_seller {
             return Err(ChallengeCoordinatorError::LiabilityIdentity("seller"));
         }
-        let penalty_status = self.require_penalty_matches_enforcement(
+        let (penalty_status, penalty_authority) = self.require_penalty_matches_enforcement(
             &liability,
             old,
             &authorized.slash.penalty,
@@ -2222,6 +2223,7 @@ impl FindingChallengeCoordinator {
         };
         let dispatch_policy =
             FindingDispatchPolicy {
+                penalty_authority: settlement_penalty_authority_policy(&penalty_authority)?,
                 authority_status_authority: self.pins.authority_status.key().map_err(|_| {
                     ChallengeCoordinatorError::AuthorityPinMismatch("authority status")
                 })?,
@@ -2374,7 +2376,7 @@ impl FindingChallengeCoordinator {
             }
         }
         let finalization_authority = self.require_enforcement_signature(enforcement, now)?;
-        let penalty_status =
+        let (penalty_status, penalty_authority) =
             self.require_penalty_matches_enforcement(&liability, enforcement, penalty, now)?;
         let seller_intent_id = enforcement
             .body
@@ -2478,6 +2480,7 @@ impl FindingChallengeCoordinator {
 
         let dispatch_policy =
             FindingDispatchPolicy {
+                penalty_authority: settlement_penalty_authority_policy(&penalty_authority)?,
                 authority_status_authority: self.pins.authority_status.key().map_err(|_| {
                     ChallengeCoordinatorError::AuthorityPinMismatch("authority status")
                 })?,
@@ -4502,19 +4505,30 @@ impl FindingChallengeCoordinator {
         enforcement: &SignedFindingChallengeEnforcement,
         penalty: &SignedOpenMarketPenalty,
         now: u64,
-    ) -> Result<SignedFindingAuthorityStatus, ChallengeCoordinatorError> {
+    ) -> Result<(SignedFindingAuthorityStatus, FindingAuthorityPin), ChallengeCoordinatorError>
+    {
         penalty
             .body
             .validate()
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-        let historical_pin = FindingAuthorityPin {
-            authority_id: enforcement.body.penalty_authority_id.clone(),
-            key_hex: enforcement.body.penalty_key.to_hex(),
-            key_epoch: enforcement.body.penalty_key_epoch,
-            valid_from: enforcement.body.penalty_valid_from,
-            valid_until: enforcement.body.penalty_valid_until,
-            revocation_status_ref: enforcement.body.penalty_revocation_status_ref.clone(),
-        };
+        let digest = self.envelope_digest(penalty)?;
+        let historical_pin = self
+            .filings
+            .penalty_policy_for_penalty(&digest)
+            .ok_or(ChallengeCoordinatorError::UnknownPenaltyAuthorityPolicy)?;
+        if enforcement.body.penalty_authority_id != historical_pin.authority_id
+            || enforcement.body.penalty_key.to_hex() != historical_pin.key_hex
+            || enforcement.body.penalty_key_epoch != historical_pin.key_epoch
+            || enforcement.body.penalty_valid_from != historical_pin.valid_from
+            || enforcement.body.penalty_valid_until != historical_pin.valid_until
+            || enforcement.body.penalty_revocation_status_ref
+                != historical_pin.revocation_status_ref
+        {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "enforcement penalty authority does not match retained governance policy"
+                    .to_owned(),
+            ));
+        }
         let (historical_key, status) = self.resolve_live_role(
             &historical_pin,
             penalty.body.updated_at,
@@ -4523,7 +4537,6 @@ impl FindingChallengeCoordinator {
         )?;
         verify_pinned_envelope(penalty, &historical_key, "market penalty")
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-        let digest = self.envelope_digest(penalty)?;
         if digest != enforcement.body.penalty_envelope_sha256 {
             return Err(ChallengeCoordinatorError::Settlement(
                 "enforcement does not bind the presented penalty envelope".to_owned(),
@@ -4546,7 +4559,7 @@ impl FindingChallengeCoordinator {
                 "enforcement amount does not match the bound penalty".to_owned(),
             ));
         }
-        Ok(status)
+        Ok((status, historical_pin))
     }
 
     /// Resolve the durable operator policy that is independent of the signed
@@ -6163,6 +6176,24 @@ const fn quarantine_is_pending(reason: FindingImpairmentQuarantine) -> bool {
             | FindingImpairmentQuarantine::ReceiptNotFinalized
             | FindingImpairmentQuarantine::ReceiptReverted
     )
+}
+
+/// Convert the durable control-plane authority assignment into the settlement
+/// choke point's independent policy input. Parsing still fails closed even
+/// though the enclosing market configuration was validated at startup.
+fn settlement_penalty_authority_policy(
+    pin: &FindingAuthorityPin,
+) -> Result<FindingPenaltyAuthorityPolicy, ChallengeCoordinatorError> {
+    Ok(FindingPenaltyAuthorityPolicy {
+        authority_id: pin.authority_id.clone(),
+        key: pin
+            .key()
+            .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("penalty"))?,
+        key_epoch: pin.key_epoch,
+        valid_from: pin.valid_from,
+        valid_until: pin.valid_until,
+        revocation_status_ref: pin.revocation_status_ref.clone(),
+    })
 }
 
 /// Canonical digest of one rail instruction, matching the shipped fee

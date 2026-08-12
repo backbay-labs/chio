@@ -69,9 +69,9 @@ pub use finding_enforcement::{
     FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
     FindingImpairmentAttempt, FindingImpairmentDestination, FindingImpairmentIntent,
     FindingImpairmentOutcome, FindingImpairmentPublishError, FindingImpairmentPublisher,
-    FindingImpairmentQuarantine, FindingOperatorQualification, FindingVaultRejection,
-    PlannedFindingImpairment, PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement,
-    StoredImpairmentTransaction, VerifiedFindingEnforcement,
+    FindingImpairmentQuarantine, FindingOperatorQualification, FindingPenaltyAuthorityPolicy,
+    FindingVaultRejection, PlannedFindingImpairment, PlannedFindingImpairmentReconciliation,
+    ReconciledFindingEnforcement, StoredImpairmentTransaction, VerifiedFindingEnforcement,
 };
 pub use hook::{
     SettlementFailureClass, SettlementFailureCode, SettlementFailureCodeParseError,

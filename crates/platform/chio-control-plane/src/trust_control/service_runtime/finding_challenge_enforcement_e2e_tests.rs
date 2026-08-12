@@ -7619,6 +7619,9 @@ fn finalizing_liability_with(
     let intent_key = byte_hex64(0xc1);
     let penalty = fixture_slash_penalty()?;
     let penalty_envelope_sha256 = signed_envelope_sha256(&penalty)?;
+    deployment
+        .filings
+        .retain_penalty_policy(&penalty_envelope_sha256, &market_config().market_penalty)?;
     deployment.challenges.record_effect_intent(
         &intent_key,
         chio_store_sqlite::FindingEffectIntentKind::SellerImpair,

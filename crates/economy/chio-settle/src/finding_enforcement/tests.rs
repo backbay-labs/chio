@@ -316,6 +316,14 @@ fn default_pins() -> FindingEnforcementPins {
 
 fn default_dispatch_policy() -> FindingDispatchPolicy {
     FindingDispatchPolicy {
+        penalty_authority: FindingPenaltyAuthorityPolicy {
+            authority_id: "market-penalty".to_owned(),
+            key: penalty_keypair().public_key(),
+            key_epoch: 1,
+            valid_from: 1,
+            valid_until: 1_800_000_000,
+            revocation_status_ref: "revocations/market-penalty".to_owned(),
+        },
         authority_status_authority: status_keypair().public_key(),
         max_authority_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
         allowed_destinations: [
@@ -542,6 +550,93 @@ fn dispatch_rejects_an_unbound_or_revoked_penalty() {
         ),
         "was revoked when the penalty was signed",
     );
+}
+
+#[test]
+fn dispatch_requires_the_retained_penalty_authority_policy() {
+    let (enforcement, snapshot) = default_pair();
+    let policy = FindingDispatchPolicy {
+        penalty_authority: FindingPenaltyAuthorityPolicy {
+            authority_id: "attacker-selected-penalty".to_owned(),
+            ..default_dispatch_policy().penalty_authority
+        },
+        ..default_dispatch_policy()
+    };
+
+    assert_rejected(
+        verify_finding_enforcement(
+            &enforcement,
+            &penalty_for(&enforcement.body),
+            &penalty_status_at(&enforcement.body, TRUSTED_NOW),
+            &snapshot,
+            &default_pins(),
+            &policy,
+            TRUSTED_NOW,
+        ),
+        "does not match retained governance policy",
+    );
+}
+
+#[test]
+fn dispatch_rejects_a_penalty_that_expired_while_finalizing() {
+    let (signed_enforcement, snapshot) = default_pair();
+    let mut penalty_body = penalty_for(&signed_enforcement.body).body;
+    penalty_body.expires_at = Some(TRUSTED_NOW);
+    let penalty = sign(penalty_body, &penalty_keypair());
+    let mut enforcement = signed_enforcement.body;
+    enforcement.penalty_envelope_sha256 =
+        signed_envelope_sha256(&penalty).test_expect("penalty digest computes");
+    enforcement.enforcement_id.clear();
+    enforcement.enforcement_id =
+        compute_enforcement_id(&enforcement).test_expect("enforcement id computes");
+    let enforcement = sign(enforcement, &finalization_keypair());
+
+    assert_rejected(
+        verify_finding_enforcement(
+            &enforcement,
+            &penalty,
+            &penalty_status_at(&enforcement.body, TRUSTED_NOW),
+            &snapshot,
+            &default_pins(),
+            &default_dispatch_policy(),
+            TRUSTED_NOW,
+        ),
+        "expired before dispatch",
+    );
+}
+
+#[test]
+fn finalized_bond_snapshot_rejects_schema_out_of_range_integers() {
+    const OUTSIDE_I_JSON: u64 = 1_u64 << 53;
+
+    let mut locked = snapshot_body();
+    locked.locked_amount = OUTSIDE_I_JSON;
+    let mut depth = snapshot_body();
+    depth.observed_finality = FindingObservedFinality::Confirmations {
+        depth: OUTSIDE_I_JSON,
+    };
+    let mut block = snapshot_body();
+    block.block_number = OUTSIDE_I_JSON;
+    let mut epoch = snapshot_body();
+    epoch.operator_key_epoch = OUTSIDE_I_JSON;
+    let mut observed = snapshot_body();
+    observed.observed_at = OUTSIDE_I_JSON;
+
+    for (snapshot, field) in [
+        (locked, "locked_amount"),
+        (depth, "observed_finality.depth"),
+        (block, "block_number"),
+        (epoch, "operator_key_epoch"),
+        (observed, "observed_at"),
+    ] {
+        let error = snapshot
+            .validate()
+            .test_expect_err("schema-out-of-range integer is rejected");
+        assert!(
+            error.to_string().contains(field),
+            "expected {field} rejection, got {error}"
+        );
+    }
 }
 
 #[test]
