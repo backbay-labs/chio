@@ -75,7 +75,12 @@ async fn finding_status_retraction() -> TestResult {
     assert_eq!(delivered.verdict, Verdict::Allow, "{:?}", delivered.reason);
     let delivery = finding_delivery_block(&delivered)?;
     assert!(delivery.status_proof.is_some());
-    buyer_memory_write(&lane.deployment, &delivered.receipt, &lane.buyer)?;
+    buyer_memory_write(
+        &lane.deployment,
+        &delivered.receipt,
+        &lane.buyer,
+        status_store.clone(),
+    )?;
 
     let provenance: Arc<dyn chio_kernel::MemoryProvenanceStore> =
         Arc::new(chio_store_sqlite::SqliteMemoryProvenanceStore::open(
@@ -342,6 +347,30 @@ async fn finding_status_retraction() -> TestResult {
     );
 
     publisher.publish_retraction(&intent_id, &[], now)?;
+    let delivery_status = delivery
+        .status_proof
+        .as_ref()
+        .ok_or_else(|| missing("delivery status proof"))?;
+    let current_status_verifier = MarketFindingStatusVerifier::new(
+        config.status_feed_operator.clone(),
+        config.status_feed_service_bond.clone(),
+        config.status_max_epoch_age_secs,
+        status_store.clone(),
+    )?;
+    let write_status_error = match chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_current_status_admission(
+        &current_status_verifier,
+        &chio_kernel::finding_purchase::FindingCurrentStatusContextView {
+            expected_finding_id: &lane.deployment.web.finding_id,
+            expected_feed_id: &delivery_status.feed_id,
+            minimum_map_epoch: delivery_status.map_epoch,
+            minimum_non_inclusion_checked_at: delivery_status.non_inclusion_checked_at,
+        },
+        now,
+    ) {
+        Ok(()) => return Err(missing("retracted Finding memory-write denial")),
+        Err(error) => error,
+    };
+    assert!(write_status_error.contains("retracted"));
     let resolved = resolver.resolve(chio_guards::finding_retraction::FindingRetractionQuery {
         store: "purchased-findings",
         key: &lane.deployment.web.finding_id,

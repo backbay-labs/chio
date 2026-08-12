@@ -298,6 +298,34 @@ impl Guard for RequiredFindingStatusFeedGuard {
     }
 }
 
+struct RetractedFindingStatusVerifier;
+
+impl crate::finding_purchase::FindingStatusProofVerifier for RetractedFindingStatusVerifier {
+    fn verify_status_proof(
+        &self,
+        _view: &crate::finding_purchase::FindingStatusProofContextView<'_>,
+    ) -> Result<crate::finding_purchase::VerifiedFindingStatusProof, String> {
+        Err("portable proof verification is not used by this test".to_owned())
+    }
+
+    fn verify_status_admission(
+        &self,
+        _view: &crate::finding_purchase::FindingStatusProofContextView<'_>,
+        _verified: &crate::finding_purchase::VerifiedFindingStatusProof,
+        _now_unix_secs: u64,
+    ) -> Result<(), String> {
+        Err("portable proof admission is not used by this test".to_owned())
+    }
+
+    fn verify_current_status_admission(
+        &self,
+        _view: &crate::finding_purchase::FindingCurrentStatusContextView<'_>,
+        _now_unix_secs: u64,
+    ) -> Result<(), String> {
+        Err("finding is retracted".to_owned())
+    }
+}
+
 #[test]
 fn finding_memory_write_rejects_a_delivery_from_another_status_feed_before_dispatch() {
     use chio_core::receipt::metadata::{
@@ -418,6 +446,15 @@ fn finding_memory_write_rejects_a_delivery_from_another_status_feed_before_dispa
         context: None,
         body: Default::default(),
     });
+
+    kernel.set_finding_status_proof_verifier(Arc::new(RetractedFindingStatusVerifier));
+    let status_error = kernel
+        .revalidate_finding_memory_write_status_before_dispatch(
+            &request,
+            current_unix_timestamp(),
+        )
+        .expect_err("a retracted delivery must fail current-status revalidation");
+    assert!(status_error.to_string().contains("finding is retracted"));
 
     let response = kernel
         .evaluate_tool_call_blocking(&request)

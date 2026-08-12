@@ -157,6 +157,19 @@ pub struct FindingStatusProofContextView<'a> {
     pub expected_feed_id: &'a str,
 }
 
+/// Inputs for rechecking a previously delivered Finding against the current
+/// governance-pinned status floor immediately before a derived mutation.
+pub struct FindingCurrentStatusContextView<'a> {
+    /// Finding id recovered from the authenticated delivery receipt.
+    pub expected_finding_id: &'a str,
+    /// Status feed recovered from the authenticated delivery receipt.
+    pub expected_feed_id: &'a str,
+    /// Oldest map epoch admitted by the original delivery.
+    pub minimum_map_epoch: u64,
+    /// Oldest trusted non-inclusion observation admitted by the delivery.
+    pub minimum_non_inclusion_checked_at: u64,
+}
+
 /// Injected status verifier for M6-qualified finding purchases.
 ///
 /// The deterministic half validates exact bytes, signatures, domains,
@@ -178,6 +191,17 @@ pub trait FindingStatusProofVerifier: Send + Sync {
         verified: &VerifiedFindingStatusProof,
         now_unix_secs: u64,
     ) -> Result<(), String>;
+
+    /// Recheck a previously delivered Finding against the verifier's current
+    /// authenticated floor. Implementations without a durable current-status
+    /// view fail closed.
+    fn verify_current_status_admission(
+        &self,
+        _view: &FindingCurrentStatusContextView<'_>,
+        _now_unix_secs: u64,
+    ) -> Result<(), String> {
+        Err("current finding status admission is not supported by this verifier".to_owned())
+    }
 }
 
 /// Injected purchase-context verification for marked reveals.

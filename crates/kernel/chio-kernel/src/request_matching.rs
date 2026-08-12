@@ -436,26 +436,23 @@ fn constraint_matches(
         | Constraint::SellerExact(_)
         | Constraint::MinimumRuntimeAssurance(_)
         | Constraint::MinimumAutonomyTier(_) => Ok(true),
-        // The delivery carriers are downgrade attacks when expressed as
-        // Custom keys an old kernel would match against arguments. The
-        // spelling never satisfies a grant, so only the first-class
-        // variants carry the semantics, and a grant carrying the spelling
-        // simply fails to match without condemning its sibling grants.
-        Constraint::Custom(key, _)
-            if key == "output_digest_sha256" || key == "require_finding_purchase" =>
-        {
-            Ok(false)
-        }
+        // Delivery and recovery authority must use first-class constraints.
+        // Rejecting a Custom spelling is deliberate: merely failing that
+        // grant would let an unconstrained sibling serve the same call and
+        // silently downgrade the issuer's intended boundary.
         Constraint::Custom(key, _)
             if matches!(
                 key.as_str(),
-                "require_finding_recovery" | "recovery_of_receipt_id" | "recovery_of_capability_id"
+                "output_digest_sha256"
+                    | "require_finding_purchase"
+                    | "require_finding_recovery"
+                    | "recovery_of_receipt_id"
+                    | "recovery_of_capability_id"
             ) =>
         {
-            Err(KernelError::InvalidConstraint(
-                "finding recovery must use the RequireFindingRecovery constraint, not Custom"
-                    .to_owned(),
-            ))
+            Err(KernelError::InvalidConstraint(format!(
+                "{key} must use its first-class constraint, not Custom"
+            )))
         }
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
 
@@ -650,7 +647,7 @@ mod tests {
     }
 
     #[test]
-    fn custom_delivery_spellings_never_match_and_never_poison_siblings() {
+    fn custom_delivery_spellings_reject_the_call_including_clean_siblings() {
         let issuer = Keypair::generate();
         let grant = |constraints: Vec<Constraint>| ToolGrant {
             server_id: "srv".to_string(),
@@ -665,6 +662,7 @@ mod tests {
         for (key, value) in [
             ("output_digest_sha256", "aa"),
             ("require_finding_purchase", "finding-1"),
+            ("require_finding_recovery", "finding-1"),
         ] {
             let capability = CapabilityToken::sign(
                 CapabilityTokenBody {
@@ -690,15 +688,12 @@ mod tests {
                 key.to_string(),
                 serde_json::Value::String(value.to_string()),
             )]));
-            let matches = resolve_matching_grants(&capability, "tool", "srv", &arguments, None)
-                .expect("a custom delivery spelling must not fail the whole candidate set");
-            assert_eq!(
-                matches
-                    .iter()
-                    .map(|matching| matching.index)
-                    .collect::<Vec<_>>(),
-                vec![1],
-                "only the unconstrained sibling may match for {key}"
+            assert!(
+                matches!(
+                    resolve_matching_grants(&capability, "tool", "srv", &arguments, None),
+                    Err(KernelError::InvalidConstraint(_))
+                ),
+                "a custom {key} spelling must reject the call before a clean sibling can serve it"
             );
 
             let capability = capability_with_constraints(vec![Constraint::Custom(
@@ -706,9 +701,11 @@ mod tests {
                 value.to_string(),
             )]);
             assert!(
-                !capability_matches_request(&capability, "tool", "srv", &arguments)
-                    .expect("the spelling must fail its own grant, not the evaluation"),
-                "a {key} custom spelling must never satisfy a grant"
+                matches!(
+                    capability_matches_request(&capability, "tool", "srv", &arguments),
+                    Err(KernelError::InvalidConstraint(_))
+                ),
+                "a {key} custom spelling must be rejected"
             );
         }
     }

@@ -116,6 +116,7 @@ use chio_open_market::recovery::{
 use chio_store_sqlite::finding_market_store::FindingAllocationState;
 use chio_store_sqlite::{
     FindingPurchaseEncumbranceState, FindingPurchaseReservationState, FindingPurchaseSlotState,
+    SqliteFindingStatusStore,
 };
 use tower::ServiceExt;
 
@@ -2635,6 +2636,24 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
     let invocations = Arc::new(AtomicU64::new(0));
     let kernel_keypair = keypair(40);
     let buyer = keypair(31);
+    let status_authority = deployment.open()?;
+    let status_config = market_config();
+    let status_publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            status_authority.finding_status_store(),
+            status_config.status_feed_operator.clone(),
+            status_config.status_feed_service_bond.clone(),
+            keypair(36),
+            status_config.status_max_epoch_age_secs,
+        )?;
+    let live_status = status_publisher.publish_non_inclusion(
+        &deployment.web.finding_id,
+        &[],
+        unix_timestamp_now(),
+    )?;
+    let live_status_proof_b64 = STANDARD.encode(&live_status.proof_bytes);
+    drop(status_publisher);
+    drop(status_authority);
 
     // Epoch one: everything runs against one open serving store.
     let (reveal, delivery_receipt, purchase) = {
@@ -2731,7 +2750,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
             calls: &calls,
             invocations: &invocations,
             install_verifier: true,
-            install_status_verifier: false,
+            install_status_verifier: true,
         })?;
         let request = reveal_request(&RevealRequestInputs {
             request_id: "wedge-reveal-1",
@@ -2739,7 +2758,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
             buyer: &buyer,
             finding_id: &deployment.web.finding_id,
             context_b64: Some(&purchase.context_b64),
-            status_proof_b64: None,
+            status_proof_b64: Some(&live_status_proof_b64),
             nonce: "wedge-reveal-nonce-1",
         })?;
         let response = kernel.evaluate_tool_call_blocking(&request)?;
@@ -2801,7 +2820,12 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
 
         // The buyer records the payload it just bought, under a governed
         // memory write whose lineage names the delivery receipt.
-        buyer_memory_write(&deployment, &response.receipt, &buyer)?;
+        buyer_memory_write(
+            &deployment,
+            &response.receipt,
+            &buyer,
+            authority.finding_status_store(),
+        )?;
 
         let delivery_receipt = response.receipt.clone();
         (response, delivery_receipt, purchase)
@@ -2818,7 +2842,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
         calls: &calls,
         invocations: &invocations,
         install_verifier: true,
-        install_status_verifier: false,
+        install_status_verifier: true,
     })?;
     let request = reveal_request(&RevealRequestInputs {
         request_id: "wedge-reveal-1",
@@ -2826,7 +2850,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
         buyer: &buyer,
         finding_id: &deployment.web.finding_id,
         context_b64: Some(&purchase.context_b64),
-        status_proof_b64: None,
+        status_proof_b64: Some(&live_status_proof_b64),
         nonce: "wedge-reveal-nonce-2",
     })?;
     let replay = recovered.evaluate_tool_call_blocking(&request)?;
@@ -2858,16 +2882,25 @@ fn buyer_memory_write(
     deployment: &Deployment,
     delivery_receipt: &ChioReceipt,
     buyer: &Keypair,
+    status_store: SqliteFindingStatusStore,
 ) -> TestResult {
     let receipts = Arc::new(chio_store_sqlite::SqliteReceiptStore::open(
         &deployment.receipt_db,
     )?);
     receipts.append_chio_receipt(delivery_receipt)?;
+    receipts.create_next_receipt_checkpoint(u64::MAX, &keypair(40))?;
     let buyer_kernel_keypair = keypair(41);
     let mut config = kernel_config(buyer_kernel_keypair.clone(), Vec::new());
     config.checkpoint_batch_size = 0;
     let mut kernel = ChioKernel::new(config);
     kernel.set_receipt_store_handle(receipts.clone())?;
+    let status_config = market_config();
+    kernel.set_finding_status_proof_verifier(Arc::new(MarketFindingStatusVerifier::new(
+        status_config.status_feed_operator,
+        status_config.status_feed_service_bond,
+        status_config.status_max_epoch_age_secs,
+        status_store,
+    )?));
     let provenance = Arc::new(chio_store_sqlite::SqliteMemoryProvenanceStore::open(
         &deployment.memory_provenance_db,
     )?);
@@ -2950,6 +2983,9 @@ fn buyer_memory_write(
         .is_some());
 
     let store: &dyn ReceiptStore = receipts.as_ref();
+    assert!(store
+        .load_retained_chio_receipt_commitment(&write.receipt.id)?
+        .is_some());
     let statement = store
         .load_receipt_lineage_statement(&write.receipt.id)?
         .ok_or_else(|| missing("kernel-persisted Finding memory lineage statement"))?;

@@ -807,6 +807,9 @@ impl ChioKernel {
                 }
             }
         }
+        if !reserve_for_caller_preflight {
+            self.revalidate_finding_memory_write_status_before_dispatch(request, now_unix_secs)?;
+        }
         let verified_purchase = self
             .verify_purchase_admission(matched_grant, request, now_unix_secs)
             .map_err(|reason| {

@@ -570,6 +570,97 @@ impl ChioKernel {
         Ok(())
     }
 
+    /// Recheck a bound delivery against the current authenticated Finding
+    /// status floor immediately before the memory mutation crosses dispatch.
+    pub(crate) fn revalidate_finding_memory_write_status_before_dispatch(
+        &self,
+        request: &ToolCallRequest,
+        now_unix_secs: u64,
+    ) -> Result<(), KernelError> {
+        let Some(parent_receipt_id) = request
+            .arguments
+            .get(crate::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT)
+            .and_then(serde_json::Value::as_str)
+        else {
+            return Ok(());
+        };
+        let Some((finding_id, status_proof)) = self.with_receipt_store(|store| {
+            let parent = store
+                .load_retained_chio_receipt(parent_receipt_id)?
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding delivery receipt binding is not durably available".to_owned(),
+                    )
+                })?;
+            let delivery: chio_core::receipt::metadata::FindingDelivery = parent
+                .metadata
+                .as_ref()
+                .and_then(|metadata| {
+                    metadata.get(chio_core::receipt::metadata::FINDING_DELIVERY_METADATA_KEY)
+                })
+                .cloned()
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding delivery receipt binding has no typed delivery metadata"
+                            .to_owned(),
+                    )
+                })
+                .and_then(|value| {
+                    serde_json::from_value(value).map_err(|error| {
+                        KernelError::Internal(format!(
+                            "Finding delivery receipt metadata is malformed: {error}"
+                        ))
+                    })
+                })?;
+            let status_proof = delivery.status_proof.ok_or_else(|| {
+                KernelError::Internal(
+                    "Finding memory write requires an M6 delivery status proof".to_owned(),
+                )
+            })?;
+            Ok((delivery.finding_id, status_proof))
+        })?
+        else {
+            return Err(KernelError::Internal(
+                "Finding delivery lineage requires a durable receipt store".to_owned(),
+            ));
+        };
+        let verifier = self.finding_status_proof_verifier.as_ref().ok_or_else(|| {
+            KernelError::GuardDenied(
+                "Finding memory write requires a configured finding status verifier".to_owned(),
+            )
+        })?;
+        verifier
+            .verify_current_status_admission(
+                &crate::finding_purchase::FindingCurrentStatusContextView {
+                    expected_finding_id: &finding_id,
+                    expected_feed_id: &status_proof.feed_id,
+                    minimum_map_epoch: status_proof.map_epoch,
+                    minimum_non_inclusion_checked_at: status_proof.non_inclusion_checked_at,
+                },
+                now_unix_secs,
+            )
+            .map_err(|error| {
+                KernelError::GuardDenied(format!(
+                    "Finding memory write status revalidation failed: {error}"
+                ))
+            })?;
+        let Some(()) = self.with_receipt_store(|store| {
+            if !store.supports_kernel_signed_checkpoints() {
+                return Err(KernelError::Internal(
+                    "Finding memory write requires kernel-signed receipt checkpoint support"
+                        .to_owned(),
+                ));
+            }
+            Ok(())
+        })?
+        else {
+            return Err(KernelError::Internal(
+                "Finding delivery lineage requires a durable receipt store".to_owned(),
+            ));
+        };
+        Ok(())
+    }
+
     /// Append a provenance entry for a governed memory write once the allow
     /// receipt is signed. Fails closed on chain-store errors.
     pub(crate) fn append_memory_provenance_for_write(
@@ -842,6 +933,15 @@ impl ChioKernel {
                     ))
                 })?,
             )?;
+            store.create_next_receipt_checkpoint(u64::MAX, &self.config.keypair)?;
+            store
+                .load_retained_chio_receipt_commitment(&child.id)?
+                .ok_or_else(|| {
+                    KernelError::Internal(
+                        "Finding memory write receipt is not covered by an authenticated checkpoint"
+                            .to_owned(),
+                    )
+                })?;
             Ok(())
         })? else {
             return Err(KernelError::Internal(

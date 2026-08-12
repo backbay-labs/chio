@@ -15,7 +15,8 @@ use chio_finding::{
     SignedFindingStatusEpoch,
 };
 use chio_kernel::finding_purchase::{
-    FindingStatusProofContextView, FindingStatusProofVerifier, VerifiedFindingStatusProof,
+    FindingCurrentStatusContextView, FindingStatusProofContextView, FindingStatusProofVerifier,
+    VerifiedFindingStatusProof,
 };
 use chio_store_sqlite::{
     FindingStatusDecision, FindingStatusEpochRecord, FindingStatusProofKind,
@@ -360,6 +361,36 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
             }
             FindingStatusDecision::Retracted(_) => Err("finding is retracted".to_owned()),
         }
+    }
+
+    fn verify_current_status_admission(
+        &self,
+        view: &FindingCurrentStatusContextView<'_>,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        let record = self
+            .store
+            .get_latest_proof(view.expected_feed_id, view.expected_finding_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                "current finding status proof is unavailable at the authoritative floor".to_owned()
+            })?;
+        let proof_b64 = STANDARD.encode(&record.proof_bytes);
+        let proof_view = FindingStatusProofContextView {
+            proof_b64: &proof_b64,
+            expected_finding_id: view.expected_finding_id,
+            expected_feed_id: view.expected_feed_id,
+        };
+        let verified = self.verify_status_proof(&proof_view)?;
+        if verified.map_epoch < view.minimum_map_epoch
+            || verified.non_inclusion_checked_at < view.minimum_non_inclusion_checked_at
+        {
+            return Err(
+                "current finding status proof regresses behind the authenticated delivery"
+                    .to_owned(),
+            );
+        }
+        self.verify_status_admission(&proof_view, &verified, now_unix_secs)
     }
 }
 

@@ -309,7 +309,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
         "kernel async evaluation core with M5 terminal continuity; capped to current size until split",
-        max_lines=2_157,
+        max_lines=2_165,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/budget.rs": allow(
         "2026-08-31",
@@ -339,7 +339,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/kernel/chio-kernel/src/kernel/dispatch.rs": allow(
         "2026-08-31",
         "kernel dispatch surface with M6 status-proof replay checks; capped to current size until split",
-        max_lines=2_011,
+        max_lines=2_015,
     ),
     "crates/platform/chio-control-plane/src/lib.rs": allow(
         "2026-08-31",
