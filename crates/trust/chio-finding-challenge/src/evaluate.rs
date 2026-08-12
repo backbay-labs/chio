@@ -9,9 +9,9 @@
 use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_finding::{
     ensure_challenge_class_compatibility, signed_envelope_sha256, verify_finding,
-    verify_signed_challenge, verify_signed_profile, Finding, FindingAuthorityKeyPolicy,
-    FindingChallenge, FindingChallengeAuthorization, FindingChallengeEvidence,
-    FindingChallengeVerifierProfile, SignedFindingAuthorityStatus,
+    verify_signed_authority_status, verify_signed_challenge, verify_signed_profile, Finding,
+    FindingAuthorityKeyPolicy, FindingChallenge, FindingChallengeAuthorization,
+    FindingChallengeEvidence, FindingChallengeVerifierProfile, SignedFindingAuthorityStatus,
 };
 use chio_finding_verifier::MAX_RAW_FINDING_BYTES;
 
@@ -22,6 +22,7 @@ use crate::input::{
     FindingChallengeClassEvidence, FindingChallengeEvaluation, FindingChallengeEvaluationInput,
     FindingChallengeInadmissible, FindingRetainedAuthorityPolicy,
 };
+use crate::receipts::MAX_AUTHORITY_STATUS_AGE_SECS;
 use crate::replay_contradiction::evaluate_replay_contradiction;
 
 /// The class-independent facts every branch reads, established once.
@@ -87,6 +88,9 @@ fn adjudicate(
         || input.profile.body.issued_at >= governance_policy.valid_until
     {
         return Err(FindingChallengeInadmissible::RetainedGovernancePolicyNotLiveAtProfileIssuance);
+    }
+    if !governance_status_establishes_profile_issuance(input, governance_policy) {
+        return Err(FindingChallengeInadmissible::RetainedGovernanceStatusNotEstablished);
     }
     let profile_envelope_sha256 = signed_envelope_sha256(input.profile)
         .map_err(FindingChallengeInadmissible::ProfileRejected)?;
@@ -192,4 +196,30 @@ fn adjudicate(
         _ => return Err(FindingChallengeInadmissible::ClassEvidenceMismatch),
     };
     Ok(FindingChallengeEvaluation::Adjudicated(adjudication))
+}
+
+fn governance_status_establishes_profile_issuance(
+    input: &FindingChallengeEvaluationInput<'_>,
+    policy: FindingRetainedAuthorityPolicy<'_>,
+) -> bool {
+    if input.profile.body.issued_at > input.evaluated_at
+        || verify_signed_authority_status(
+            input.governance_authority_status,
+            input.pinned_authority_status_key,
+        )
+        .is_err()
+    {
+        return false;
+    }
+    let status = &input.governance_authority_status.body;
+    status.status_ref == policy.revocation_status_ref
+        && status.authority_id == policy.authority_id
+        && status.key == *policy.key
+        && status.key_epoch == policy.key_epoch
+        && status.observed_at >= input.profile.body.issued_at
+        && status.observed_at <= input.evaluated_at
+        && input.evaluated_at.saturating_sub(status.observed_at) <= MAX_AUTHORITY_STATUS_AGE_SECS
+        && status
+            .revoked_from
+            .is_none_or(|revoked_from| revoked_from > input.profile.body.issued_at)
 }

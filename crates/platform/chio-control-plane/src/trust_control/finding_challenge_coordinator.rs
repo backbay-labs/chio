@@ -1315,10 +1315,9 @@ impl FindingChallengeCoordinator {
         let listing_requirement = Self::listing_bond_requirement(&schedule)?;
         let terms = self.resolve_market_terms(body)?;
         Self::require_signed_base_stake(&terms, request.collateral)?;
-        // Funding is still the admission ticket to evaluator work. The
-        // lifecycle transition itself waits until the pure evaluator has
-        // produced an adjudication, so an immutable refusal cannot strand
-        // the funded filing in `evaluating`.
+        // Funding admits evaluator work, but the lifecycle transition waits
+        // for adjudication so an immutable refusal cannot strand the funded
+        // filing in `evaluating`.
         self.require_funded_filing(&body.challenge_id, request.now)?;
         let audit_authority = match &body.authorization {
             FindingChallengeAuthorization::VenueAudit(audit) => {
@@ -1349,7 +1348,7 @@ impl FindingChallengeCoordinator {
             .filings
             .governance_policy_for_profile(&profile_envelope_sha256)
             .ok_or(ChallengeCoordinatorError::UnknownProfileGovernancePolicy)?;
-        let governance_authority = self.require_live_role(
+        let (governance_authority, governance_authority_status) = self.resolve_live_role(
             &profile_governance_policy,
             request.profile.body.issued_at,
             request.now,
@@ -1375,6 +1374,7 @@ impl FindingChallengeCoordinator {
             profile: request.profile,
             governance_authority: &governance_authority,
             pinned_governance_policy,
+            governance_authority_status: &governance_authority_status,
             pinned_admission_profile_envelope_sha256: &admission.body.profile_envelope_sha256,
             pinned_purchase_authority: &admission.body.purchase_authority,
             pinned_failed_delivery_authority: &admission.body.failed_delivery_authority,
@@ -1396,12 +1396,12 @@ impl FindingChallengeCoordinator {
         {
             return Ok(None);
         }
-
         let challenge_envelope_sha256 = self.envelope_digest(request.challenge)?;
         let evidence_bundle_digest = self.evidence_bundle_digest(
             body,
             request.evidence,
             purchase_authority_status.as_ref(),
+            &governance_authority_status,
         )?;
         let attempt = self
             .challenges
@@ -5889,18 +5889,17 @@ impl FindingChallengeCoordinator {
             evaluation,
         })
     }
-
-    /// The evidence-bundle commitment an outcome binds: the exact
-    /// evidence branch the challenge selected, domain separated.
+    /// Evidence-bundle commitment over the exact selected branch and inputs.
     pub(crate) fn evidence_bundle_digest(
         &self,
         challenge: &FindingChallenge,
         evidence: &FindingChallengeClassEvidence<'_>,
         purchase_authority_status: Option<&SignedFindingAuthorityStatus>,
+        governance_authority_status: &SignedFindingAuthorityStatus,
     ) -> Result<String, ChallengeCoordinatorError> {
         let bytes = chio_core::canonical_json_bytes(&challenge.evidence)
             .map_err(|_| ChallengeCoordinatorError::Canonical)?;
-        let (branch, supplemental_digests) = match evidence {
+        let (branch, mut supplemental_digests) = match evidence {
             FindingChallengeClassEvidence::EvidenceInvalid(resolved) => {
                 let mut digests = vec![
                     self.envelope_digest(resolved.purchase_record)?,
@@ -5959,6 +5958,7 @@ impl FindingChallengeCoordinator {
                 ("replay_contradiction", digests)
             }
         };
+        supplemental_digests.insert(0, self.envelope_digest(governance_authority_status)?);
         let resolved_bytes = self.canonical_bytes(&(branch, supplemental_digests))?;
         let mut preimage = Vec::with_capacity(
             EVIDENCE_BUNDLE_DOMAIN.len() + 1 + bytes.len() + 1 + resolved_bytes.len(),

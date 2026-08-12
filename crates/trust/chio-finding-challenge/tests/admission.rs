@@ -163,6 +163,7 @@ fn the_raw_finding_must_be_its_own_canonical_serialization() -> TestResult {
         profile: &world.profile,
         governance_authority: &world.governance_key,
         pinned_governance_policy: world.retained_governance_policy(),
+        governance_authority_status: &world.governance_authority_status,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_failed_delivery_authority: &world.profile.body.failed_delivery_authority,
@@ -193,6 +194,7 @@ fn a_self_consistent_retired_profile_cannot_replace_the_admitted_profile() -> Te
         profile: &other_profile,
         governance_authority: &world.governance_key,
         pinned_governance_policy: world.retained_governance_policy(),
+        governance_authority_status: &world.governance_authority_status,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_failed_delivery_authority: &world.profile.body.failed_delivery_authority,
@@ -222,6 +224,7 @@ fn the_profile_must_verify_under_the_pinned_governance_root() -> TestResult {
         profile: &world.profile,
         governance_authority: &interloper,
         pinned_governance_policy: world.retained_governance_policy(),
+        governance_authority_status: &world.governance_authority_status,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_failed_delivery_authority: &world.profile.body.failed_delivery_authority,
@@ -281,6 +284,23 @@ fn the_profile_requires_its_matching_live_retained_governance_policy() -> TestRe
 }
 
 #[test]
+fn the_profile_requires_governance_status_covering_issuance() -> TestResult {
+    let world = world()?;
+    let case = digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let revoked =
+        world.status_for_policy(&world.governance_policy, Some(world.profile.body.issued_at))?;
+    let mut input = world.input(&case.challenge, &evidence);
+    input.governance_authority_status = &revoked;
+    let evaluation = evaluate_finding_challenge(&input);
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::RetainedGovernanceStatusNotEstablished,
+    )?;
+    Ok(())
+}
+
+#[test]
 fn the_profile_body_must_name_the_pinned_governance_root() -> TestResult {
     let world = world()?;
     let case = digest_case(&world, &DenyShape::seller_origin())?;
@@ -294,6 +314,7 @@ fn the_profile_body_must_name_the_pinned_governance_root() -> TestResult {
         profile: &profile,
         governance_authority: &world.governance_key,
         pinned_governance_policy: world.retained_governance_policy(),
+        governance_authority_status: &world.governance_authority_status,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_failed_delivery_authority: &world.profile.body.failed_delivery_authority,
@@ -326,6 +347,7 @@ fn a_venue_audit_must_verify_under_the_pinned_audit_authority() -> TestResult {
         profile: &world.profile,
         governance_authority: &world.governance_key,
         pinned_governance_policy: world.retained_governance_policy(),
+        governance_authority_status: &world.governance_authority_status,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_failed_delivery_authority: &world.profile.body.failed_delivery_authority,
@@ -357,6 +379,7 @@ fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
         profile: &world.profile,
         governance_authority: &world.governance_key,
         pinned_governance_policy: world.retained_governance_policy(),
+        governance_authority_status: &world.governance_authority_status,
         pinned_admission_profile_envelope_sha256: &world.profile_envelope_sha256,
         pinned_purchase_authority: &world.profile.body.purchase_authority,
         pinned_failed_delivery_authority: &world.profile.body.failed_delivery_authority,
@@ -418,11 +441,11 @@ fn standing_uses_the_exact_admission_purchase_authority_after_rotation() -> Test
         .ok_or("the admission-pinned purchase authority establishes standing")?;
     assert_eq!(
         adjudication.reason(),
-        FindingChallengeReason::EvidenceKeyRevocationNotEstablished
+        FindingChallengeReason::ChallengedEvidenceValid
     );
     assert_eq!(
         adjudication.verdict(),
-        chio_finding::FindingChallengeVerdict::Indeterminate
+        chio_finding::FindingChallengeVerdict::Rejected
     );
     Ok(())
 }

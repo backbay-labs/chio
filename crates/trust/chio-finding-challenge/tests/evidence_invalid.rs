@@ -375,10 +375,10 @@ fn one_unestablished_revocation_outweighs_an_established_one() -> TestResult {
     Ok(())
 }
 
-/// A statement about some other key cannot establish the challenged key's
-/// non-revocation status.
+/// A statement about another key does not override the challenged key's
+/// independently authenticated non-revocation status.
 #[test]
-fn a_revocation_of_another_key_leaves_the_challenged_key_unestablished() -> TestResult {
+fn a_revocation_of_another_key_does_not_affect_the_challenged_key() -> TestResult {
     let world = world()?;
     let revoked = vec![world.revocation(
         &world.replay_kernel.public_key(),
@@ -390,14 +390,8 @@ fn a_revocation_of_another_key_leaves_the_challenged_key_unestablished() -> Test
     let evidence = case.evidence(&proofs);
     let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
 
-    let adjudication = expect_reason(
-        &evaluation,
-        FindingChallengeReason::EvidenceKeyRevocationNotEstablished,
-    )?;
-    assert_eq!(
-        adjudication.verdict(),
-        FindingChallengeVerdict::Indeterminate
-    );
+    let adjudication = expect_reason(&evaluation, FindingChallengeReason::ChallengedEvidenceValid)?;
+    assert_eq!(adjudication.verdict(), FindingChallengeVerdict::Rejected);
     Ok(())
 }
 

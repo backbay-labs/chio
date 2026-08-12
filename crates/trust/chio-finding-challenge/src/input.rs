@@ -41,6 +41,10 @@ pub struct FindingChallengeEvaluationInput<'a> {
     /// the profile. Revocation statements count only while this policy was
     /// live at the statement's recording time.
     pub pinned_governance_policy: FindingRetainedAuthorityPolicy<'a>,
+    /// Authenticated lifecycle reading for the retained governance key.
+    /// The reading must bind the exact retained policy and establish that the
+    /// key was live when the profile was issued.
+    pub governance_authority_status: &'a SignedFindingAuthorityStatus,
     /// Profile digest pinned by the exact retained, authenticated admission.
     /// This is independent of the caller-controlled challenge and profile.
     pub pinned_admission_profile_envelope_sha256: &'a str,
@@ -176,6 +180,8 @@ pub enum FindingChallengeInadmissible {
     RetainedGovernancePolicyInvalid,
     #[error("retained governance policy was not live when the profile was issued")]
     RetainedGovernancePolicyNotLiveAtProfileIssuance,
+    #[error("retained governance status does not establish the profile signer at issuance")]
+    RetainedGovernanceStatusNotEstablished,
     #[error("challenge names a verifier profile other than the one supplied")]
     ProfileBindingMismatch,
     #[error("verifier profile is not the one retained by the authenticated admission")]

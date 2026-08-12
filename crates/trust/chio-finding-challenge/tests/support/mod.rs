@@ -577,6 +577,7 @@ impl World {
             profile: &self.profile,
             governance_authority: &self.governance_key,
             pinned_governance_policy: self.retained_governance_policy(),
+            governance_authority_status: &self.governance_authority_status,
             pinned_admission_profile_envelope_sha256: &self.profile_envelope_sha256,
             pinned_purchase_authority: &self.profile.body.purchase_authority,
             pinned_failed_delivery_authority: &self.profile.body.failed_delivery_authority,
