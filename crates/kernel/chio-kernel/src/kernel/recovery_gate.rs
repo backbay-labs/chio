@@ -27,6 +27,15 @@ pub(crate) struct VerifiedFindingRecoveryAdmission {
     pub(crate) status: VerifiedFindingStatusProof,
 }
 
+#[derive(serde::Serialize)]
+struct FindingRecoveryRequestBinding<'a> {
+    schema: &'static str,
+    selected_grant: &'a ToolGrant,
+    request: &'a ToolCallRequest,
+}
+
+const FINDING_RECOVERY_REQUEST_BINDING_SCHEMA: &str = "chio.finding.recovery-request-binding.v1";
+
 fn is_lower_hex64(value: &str) -> bool {
     value.len() == 64
         && value
@@ -147,6 +156,64 @@ fn validate_recovery_capability_profile(
         || !capability.delegation_chain.is_empty()
     {
         return Err("finding recovery requires an undelegated, single-grant capability".to_owned());
+    }
+    Ok(())
+}
+
+fn recovery_request_binding_sha256(
+    grant: &ToolGrant,
+    request: &ToolCallRequest,
+) -> Result<String, String> {
+    let bytes = crate::canonical_json_bytes(&FindingRecoveryRequestBinding {
+        schema: FINDING_RECOVERY_REQUEST_BINDING_SCHEMA,
+        selected_grant: grant,
+        request,
+    })
+    .map_err(|error| format!("finding recovery request binding is not canonical: {error}"))?;
+    Ok(chio_core::crypto::sha256_hex(&bytes))
+}
+
+fn validate_frozen_recovery_binding(
+    grant: &ToolGrant,
+    request: &ToolCallRequest,
+    expected: &VerifiedFindingRecovery,
+) -> Result<(), String> {
+    validate_recovery_capability_profile(&request.capability)?;
+    let Some(marked) = recovery_marked_grant(grant)? else {
+        return Err("durable recovery snapshot has no marked grant".to_owned());
+    };
+    let arguments = request
+        .arguments
+        .as_object()
+        .ok_or_else(|| "finding recovery requires a top-level argument object".to_owned())?;
+    let finding_id = arguments
+        .get("finding_id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "finding recovery requires a top-level finding_id".to_owned())?;
+    if finding_id != marked.marker.finding_id {
+        return Err("finding recovery targets a different finding".to_owned());
+    }
+    let context_b64 = arguments
+        .get(FINDING_RECOVERY_CONTEXT_ARGUMENT)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "finding recovery requires its evidence carrier".to_owned())?;
+    if context_b64.is_empty() {
+        return Err("finding recovery evidence carrier is empty".to_owned());
+    }
+    if expected.recovery_id != marked.marker.recovery_id
+        || expected.finding_id != marked.marker.finding_id
+        || expected.listing_id != marked.marker.listing_id
+        || expected.original_capability_id != marked.marker.original_capability_id
+        || expected.original_delivery_receipt_id != marked.marker.original_delivery_receipt_id
+        || expected.purchase_key != marked.marker.purchase_key
+    {
+        return Err("durable recovery snapshot does not match its signed marker".to_owned());
+    }
+    if expected.payload_sha256 != marked.expected_output_digest {
+        return Err("durable recovery snapshot commits a different payload digest".to_owned());
+    }
+    if expected.original_subject_key_hex != request.capability.subject.to_hex() {
+        return Err("durable recovery snapshot binds a different original subject".to_owned());
     }
     Ok(())
 }
@@ -286,14 +353,17 @@ impl ChioKernel {
         if snapshot.schema != FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA {
             return Err("durable recovery snapshot schema is unsupported".to_owned());
         }
-        let expected = self
-            .verify_recovery_context(grant, request)?
-            .ok_or_else(|| "durable recovery snapshot has no marked grant".to_owned())?;
-        if snapshot.recovery != expected {
-            return Err("durable recovery snapshot binds different recovery facts".to_owned());
+        if !self.post_invocation_pipeline.is_empty() {
+            return Err("finding recovery requires an empty post-invocation pipeline".to_owned());
         }
+        if !is_lower_hex64(&snapshot.request_binding_sha256)
+            || snapshot.request_binding_sha256 != recovery_request_binding_sha256(grant, request)?
+        {
+            return Err("durable recovery snapshot binds a different request or grant".to_owned());
+        }
+        validate_frozen_recovery_binding(grant, request, &snapshot.recovery)?;
         let status = &snapshot.status;
-        if status.feed_id != expected.expected_status_feed_id
+        if status.feed_id != snapshot.recovery.expected_status_feed_id
             || status.map_epoch == 0
             || status.non_inclusion_checked_at == 0
             || !is_lower_hex64(&status.status_epoch_id)
@@ -356,6 +426,8 @@ impl ChioKernel {
         match (is_recovery, verified_recovery) {
             (true, Some(admission)) => {
                 let snapshot = FindingRecoveryReplaySnapshotV1::new(
+                    recovery_request_binding_sha256(selected_grant.grant, request)
+                        .map_err(super::KernelError::DurableAdmission)?,
                     admission.recovery.clone(),
                     admission.status.clone(),
                 );
@@ -451,25 +523,23 @@ impl ChioKernel {
             .grants
             .get(matched_grant_index)
             .ok_or_else(|| "completed recovery grant index is out of bounds".to_owned())?;
-        let current = self
-            .verify_recovery_context(grant, request)?
-            .ok_or_else(|| "completed recovery marker disappeared".to_owned())?;
-        if &current != expected {
-            return Err("completed recovery binding changed before payload release".to_owned());
+        if !self.post_invocation_pipeline.is_empty() {
+            return Err("finding recovery requires an empty post-invocation pipeline".to_owned());
         }
+        validate_frozen_recovery_binding(grant, request, expected)?;
         let Some(status_verifier) = self.finding_status_proof_verifier.as_ref() else {
             return Err(
                 "finding recovery requires a configured finding status verifier".to_owned(),
             );
         };
-        if admitted_status.feed_id != current.expected_status_feed_id {
+        if admitted_status.feed_id != expected.expected_status_feed_id {
             return Err("completed recovery status feed changed after dispatch".to_owned());
         }
         status_verifier
             .verify_current_status_admission(
                 &FindingCurrentStatusContextView {
-                    expected_finding_id: &current.finding_id,
-                    expected_feed_id: &current.expected_status_feed_id,
+                    expected_finding_id: &expected.finding_id,
+                    expected_feed_id: &expected.expected_status_feed_id,
                     minimum_map_epoch: admitted_status.map_epoch,
                     minimum_non_inclusion_checked_at: admitted_status.non_inclusion_checked_at,
                 },
@@ -513,6 +583,7 @@ mod tests {
 
     struct TestRecoveryVerifier {
         reservations: Arc<AtomicU64>,
+        deny_verification: Arc<AtomicBool>,
     }
 
     impl FindingRecoveryVerifier for TestRecoveryVerifier {
@@ -520,6 +591,9 @@ mod tests {
             &self,
             view: &FindingRecoveryContextView<'_>,
         ) -> Result<VerifiedFindingRecovery, String> {
+            if self.deny_verification.load(Ordering::SeqCst) {
+                return Err("historical recovery authority has rotated".to_owned());
+            }
             Ok(VerifiedFindingRecovery {
                 recovery_id: view.marker.recovery_id.clone(),
                 finding_id: view.marker.finding_id.clone(),
@@ -728,9 +802,11 @@ mod tests {
         let current_deny = Arc::new(AtomicBool::new(false));
         let current_checks = Arc::new(AtomicU64::new(0));
         let reservations = Arc::new(AtomicU64::new(0));
+        let deny_verification = Arc::new(AtomicBool::new(false));
         let mut kernel = kernel();
         kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
             reservations: Arc::clone(&reservations),
+            deny_verification,
         }));
         kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
             portable_deny: Arc::clone(&portable_deny),
@@ -782,9 +858,11 @@ mod tests {
         let current_deny = Arc::new(AtomicBool::new(false));
         let current_checks = Arc::new(AtomicU64::new(0));
         let reservations = Arc::new(AtomicU64::new(0));
+        let deny_verification = Arc::new(AtomicBool::new(false));
         let mut kernel = kernel();
         kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
             reservations: Arc::clone(&reservations),
+            deny_verification: Arc::clone(&deny_verification),
         }));
         kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
             portable_deny: Arc::clone(&portable_deny),
@@ -811,6 +889,16 @@ mod tests {
         // behind the floor and no longer validates under the rotated operator,
         // but the target has a fresh current-floor proof.
         portable_deny.store(true, Ordering::SeqCst);
+        deny_verification.store(true, Ordering::SeqCst);
+        let mut changed_request = request.clone();
+        changed_request.arguments["unexpected"] = serde_json::json!(true);
+        let changed_grant = &changed_request.capability.scope.grants[0];
+        let changed_error = kernel
+            .restore_recovery_replay_snapshot(changed_grant, &changed_request, Some(&metadata))
+            .expect_err("a changed durable request must not inherit the frozen facts");
+        assert!(changed_error
+            .to_string()
+            .contains("different request or grant"));
         let restored = kernel
             .restore_recovery_replay_snapshot(grant, &request, Some(&metadata))
             .expect("restore authenticated raw-outcome snapshot")

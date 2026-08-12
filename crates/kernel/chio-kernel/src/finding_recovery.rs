@@ -53,6 +53,10 @@ pub(crate) const FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA: &str =
 #[serde(deny_unknown_fields)]
 pub(crate) struct FindingRecoveryReplaySnapshotV1 {
     pub(crate) schema: String,
+    /// Canonical digest of the exact durable request and selected grant that
+    /// produced these verified facts. Replay can therefore reject mutation
+    /// without re-authenticating historical evidence under rotated keys.
+    pub(crate) request_binding_sha256: String,
     pub(crate) recovery: VerifiedFindingRecovery,
     pub(crate) status: crate::finding_purchase::VerifiedFindingStatusProof,
 }
@@ -60,11 +64,13 @@ pub(crate) struct FindingRecoveryReplaySnapshotV1 {
 impl FindingRecoveryReplaySnapshotV1 {
     #[must_use]
     pub(crate) fn new(
+        request_binding_sha256: String,
         recovery: VerifiedFindingRecovery,
         status: crate::finding_purchase::VerifiedFindingStatusProof,
     ) -> Self {
         Self {
             schema: FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA.to_owned(),
+            request_binding_sha256,
             recovery,
             status,
         }
