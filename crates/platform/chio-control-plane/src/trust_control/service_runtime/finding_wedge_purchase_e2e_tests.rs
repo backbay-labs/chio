@@ -1004,8 +1004,8 @@ impl MarketWeb {
         let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
         let checkpoint = build_checkpoint(
             1,
-            100,
-            101,
+            1,
+            2,
             &[first_bytes.clone(), second_bytes.clone()],
             &kernel,
         )?;
@@ -1015,12 +1015,12 @@ impl MarketWeb {
             ResolvedReceiptEvidence {
                 receipt: first.clone(),
                 canonical_receipt_bytes: first_bytes,
-                inclusion_proof: build_inclusion_proof(&tree, 0, 1, 100)?,
+                inclusion_proof: build_inclusion_proof(&tree, 0, 1, 1)?,
             },
             ResolvedReceiptEvidence {
                 receipt: second.clone(),
                 canonical_receipt_bytes: second_bytes,
-                inclusion_proof: build_inclusion_proof(&tree, 1, 1, 101)?,
+                inclusion_proof: build_inclusion_proof(&tree, 1, 1, 2)?,
             },
         ];
 
@@ -2830,7 +2830,8 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
         .get_reservation(&lane.purchase.handshake.reservation_id)?
         .ok_or_else(|| missing("settled reservation"))?;
     assert_eq!(reservation.state, FindingPurchaseReservationState::Consumed);
-    assert_eq!(record.body.recorded_at, reservation.created_at);
+    assert_eq!(record.body.recorded_at, response.receipt.timestamp);
+    assert!(record.body.recorded_at >= reservation.created_at);
     assert!(
         lane.deployment
             .web
@@ -2842,7 +2843,7 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
     );
     assert!(
         record.body.recorded_at
-            <= lane
+            < lane
                 .deployment
                 .web
                 .admission
@@ -2860,7 +2861,7 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
     assert_eq!(encumbrance.state, FindingPurchaseEncumbranceState::Retained);
     assert_eq!(
         encumbrance.retention_expires_at,
-        Some(reservation.created_at + LIABILITY_RETENTION_SECS)
+        Some(record.body.recorded_at + LIABILITY_RETENTION_SECS)
     );
     assert_eq!(
         purchase_store.list_payout_destinations(&lane.deployment.web.allocation_id)?,

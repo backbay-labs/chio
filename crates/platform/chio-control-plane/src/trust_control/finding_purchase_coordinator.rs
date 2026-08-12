@@ -561,7 +561,7 @@ impl FindingPurchaseCoordinator {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
             }
             if reservation.created_at < policy.valid_from
-                || reservation.created_at > policy.valid_until
+                || reservation.created_at >= policy.valid_until
             {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
@@ -764,6 +764,19 @@ impl FindingPurchaseCoordinator {
         self.verify_reservation_admission(&reservation, admission)?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Delivered)?;
+        if receipt.timestamp < reservation.created_at {
+            return Err(PurchaseCoordinatorError::TerminalEvidence(
+                "delivery receipt predates the purchase reservation".to_owned(),
+            ));
+        }
+        let purchase_policy = &admission.body.purchase_authority;
+        if receipt.timestamp < purchase_policy.valid_from
+            || receipt.timestamp >= purchase_policy.valid_until
+        {
+            return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+                "purchase",
+            ));
+        }
         let SettlementDispositionV1::Capture { amount } = terminal.settlement else {
             return Err(PurchaseCoordinatorError::TerminalEvidence(
                 "Allow terminal did not durably capture the purchase".to_owned(),
@@ -816,8 +829,8 @@ impl FindingPurchaseCoordinator {
                     "liability retention horizon overflowed".to_owned(),
                 )
             })?;
-        let retention_expires_at = reservation
-            .created_at
+        let retention_expires_at = receipt
+            .timestamp
             .checked_add(liability_horizon_secs)
             .ok_or_else(|| {
                 PurchaseCoordinatorError::SellerBacking(
@@ -867,13 +880,10 @@ impl FindingPurchaseCoordinator {
             delivery_receipt_id: delivery_receipt_id.clone(),
             payment_reference: reservation.authoritative_payment_operation_id.clone(),
             payout_destination: payout_destination.clone(),
-            // The record's instant is the reservation instant, a durable
-            // fact fixed when the funds were committed. The store compares
-            // retained bytes against a retry's bytes, so a finalize clock
-            // inside the body would turn an honest crash-retry into an
-            // unresolvable conflict; the reservation instant replays
-            // byte-identically and does not move however long delivery took.
-            recorded_at: reservation.created_at,
+            // The signed receipt fixes the settlement instant. It replays
+            // byte-identically across crash recovery while binding standing
+            // to the purchase authority lifecycle when capture completed.
+            recorded_at: receipt.timestamp,
         };
         // The store retains these bytes forever and the close is one-shot,
         // so a body that fails its own validator must never be signed: it

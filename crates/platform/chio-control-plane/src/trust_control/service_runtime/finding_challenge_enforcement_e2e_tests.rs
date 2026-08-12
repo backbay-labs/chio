@@ -9567,7 +9567,10 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
                     NOW + 2,
                 ))
                 .expect_err("a revoked venue cannot authorize its admission"),
-            ChallengeCoordinatorError::AuthorityLifecycle { role: "venue", .. }
+            ChallengeCoordinatorError::AuthorityLifecycle {
+                role: "historical venue",
+                ..
+            }
         ));
     }
 
@@ -9584,13 +9587,19 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
             revoked
                 .submit(&challenge, &raw, NOW)
                 .expect_err("a revoked audit authority files no audit"),
-            ChallengeCoordinatorError::AuthorityLifecycle { role: "audit", .. }
+            ChallengeCoordinatorError::AuthorityLifecycle {
+                role: "historical audit",
+                ..
+            }
         ));
     }
 
     // Governance and penalty authorities both fail before a liability is
     // opened or sales are blocked.
-    for (authority, role) in [("governance", "governance"), ("market-penalty", "penalty")] {
+    for (authority, role) in [
+        ("governance", "historical governance case"),
+        ("market-penalty", "penalty"),
+    ] {
         let deployment = deployment()?;
         let live = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
         let ready = ready_to_uphold(&deployment, &live)?;
@@ -9633,8 +9642,10 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
         let live = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
         let ready = ready_to_uphold(&deployment, &live)?;
         let governance = governance()?;
-        let revoked = deployment
-            .coordinator_with_revoked_role("purchase", FindingDisputeLockDisposition::Forfeited)?;
+        let revoked = deployment.coordinator_with_revoked_role(
+            "authority-purchase",
+            FindingDisputeLockDisposition::Forfeited,
+        )?;
         let stake = usd(300);
         let required = usd(5_000);
         assert!(matches!(
@@ -9654,7 +9665,7 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
                 )
                 .expect_err("a revoked purchase authority contributes no claim"),
             ChallengeCoordinatorError::AuthorityLifecycle {
-                role: "purchase",
+                role: "retained purchase",
                 ..
             }
         ));
@@ -9833,8 +9844,10 @@ fn finding_challenge_purchase_standing_requires_retention_and_live_authority() -
             50,
             NOW,
         )?;
-        let coordinator = deployment
-            .coordinator_with_revoked_role("purchase", FindingDisputeLockDisposition::Forfeited)?;
+        let coordinator = deployment.coordinator_with_revoked_role(
+            "authority-purchase",
+            FindingDisputeLockDisposition::Forfeited,
+        )?;
         let challenged = challenged_finding()?;
         let case = evidence_invalid_case(
             &challenged,
