@@ -23,9 +23,11 @@ impl ChioKernel {
                 && !self.post_invocation_pipeline.is_empty()
                 && guard.requires_exact_released_output(&context)
             {
-                return Err(KernelError::GuardDenied(
-                    "exact output binding requires post-invocation validation".to_owned(),
-                ));
+                // The raw durable return is not the release boundary when a
+                // frozen transform plan exists. Persist it, then validate this
+                // guard against the replayed post-transform value before any
+                // terminal receipt or response is produced.
+                continue;
             }
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 guard.validate_output_before_release(&context, output)

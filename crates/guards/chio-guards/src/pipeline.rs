@@ -6,7 +6,7 @@
 //! pipeline allow the request.
 
 use chio_core::receipt::metadata::GuardEvidence;
-use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, ToolServerOutput, Verdict};
 
 /// A pipeline of guards evaluated in registration order.
 ///
@@ -124,6 +124,23 @@ impl Guard for GuardPipeline {
         }
         Ok(())
     }
+
+    fn validate_output_before_release(
+        &self,
+        ctx: &GuardContext,
+        output: &ToolServerOutput,
+    ) -> Result<(), KernelError> {
+        for guard in &self.guards {
+            guard.validate_output_before_release(ctx, output)?;
+        }
+        Ok(())
+    }
+
+    fn requires_exact_released_output(&self, ctx: &GuardContext) -> bool {
+        self.guards
+            .iter()
+            .any(|guard| guard.requires_exact_released_output(ctx))
+    }
 }
 
 #[cfg(test)]
@@ -180,6 +197,34 @@ mod tests {
         fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
             self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(())
+        }
+    }
+
+    struct OutputValidationGuard {
+        calls: std::sync::Arc<std::sync::atomic::AtomicU64>,
+        exact: bool,
+    }
+
+    impl Guard for OutputValidationGuard {
+        fn name(&self) -> &str {
+            "output-validation"
+        }
+
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::allow())
+        }
+
+        fn validate_output_before_release(
+            &self,
+            _ctx: &GuardContext,
+            _output: &ToolServerOutput,
+        ) -> Result<(), KernelError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn requires_exact_released_output(&self, _ctx: &GuardContext) -> bool {
+            self.exact
         }
     }
 
@@ -342,6 +387,38 @@ mod tests {
         assert!(pipeline.revalidate_required_before_dispatch(&ctx).is_ok());
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert!(pipeline.revalidate_before_dispatch(&ctx).is_ok());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn pipeline_forwards_exact_output_validation_to_children() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let mut pipeline = GuardPipeline::new();
+        pipeline.add(Box::new(OutputValidationGuard {
+            calls: std::sync::Arc::clone(&calls),
+            exact: true,
+        }));
+        pipeline.add(Box::new(OutputValidationGuard {
+            calls: std::sync::Arc::clone(&calls),
+            exact: false,
+        }));
+
+        let (request, scope, agent_id, server_id) = make_ctx();
+        let ctx = GuardContext {
+            request: &request,
+            scope: &scope,
+            agent_id: &agent_id,
+            server_id: &server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: Some(0),
+        };
+        assert!(pipeline.requires_exact_released_output(&ctx));
+        assert!(pipeline
+            .validate_output_before_release(
+                &ctx,
+                &ToolServerOutput::Value(serde_json::json!({"value": "exact"})),
+            )
+            .is_ok());
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 }

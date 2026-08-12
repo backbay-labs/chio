@@ -467,6 +467,7 @@ impl ChioKernel {
                     .to_owned(),
             ));
         }
+        self.validate_guarded_output(request, matched_grant_index, &handling.output, true)?;
         let (output, transformed_incomplete_reason) =
             Self::terminal_tool_call_output(handling.output);
         let incomplete_reason = materialized_incomplete_reason.or(transformed_incomplete_reason);

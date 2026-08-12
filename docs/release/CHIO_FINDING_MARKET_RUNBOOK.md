@@ -58,9 +58,13 @@ Each cadence run performs this order:
 3. Insert every eligible key in one transactional sparse-map update.
 4. Advance `map_epoch` exactly once, sign the complete status epoch, and store
    its exact canonical bytes before making it current.
-5. Generate and verify the portable inclusion proof for each inserted key,
-   then mint current-floor non-inclusion proofs for every live refresh
-   candidate before the cadence completes.
+5. After the final floor advance, query
+   `list_non_inclusion_refresh_candidates` again. Merge and deduplicate that
+   result with the pre-advance batch, then generate and verify the portable
+   inclusion proof for each inserted key and mint current-floor non-inclusion
+   proofs for every resulting live refresh candidate before the cadence
+   completes. The post-advance query is mandatory because the new epoch can
+   displace proofs that were current when step 1 ran.
 6. Record the signed epoch and proof against each outbox item, then clear its
    pending marker exactly once.
 7. Leave failed items retryable. Quarantine conflicting identities or
