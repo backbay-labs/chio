@@ -12,7 +12,7 @@ use chio_finding::{
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeEvaluation, FindingChallengeEvaluationInput,
     FindingChallengeInadmissible, FindingChallengeReason, FindingChallengeReasonClass,
-    FindingIngressError,
+    FindingIngressError, FindingRetainedAuthorityPolicy,
 };
 
 use support::{
@@ -237,6 +237,46 @@ fn the_profile_must_verify_under_the_pinned_governance_root() -> TestResult {
         ) => {}
         other => panic!("expected the profile to be rejected, got {other:?}"),
     }
+    Ok(())
+}
+
+#[test]
+fn the_profile_requires_its_matching_live_retained_governance_policy() -> TestResult {
+    let world = world()?;
+    let case = digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let foreign_key = keypair(9).public_key();
+    let foreign_policy = FindingRetainedAuthorityPolicy {
+        authority_id: world.governance_policy.authority_id.as_str(),
+        key: &foreign_key,
+        key_epoch: world.governance_policy.key_epoch,
+        valid_from: world.governance_policy.valid_from,
+        valid_until: world.governance_policy.valid_until,
+        revocation_status_ref: world.governance_policy.revocation_status_ref.as_str(),
+    };
+    let mut input = world.input(&case.challenge, &evidence);
+    input.pinned_governance_policy = foreign_policy;
+    let evaluation = evaluate_finding_challenge(&input);
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::RetainedGovernancePolicyInvalid,
+    )?;
+
+    let postdated_policy = FindingRetainedAuthorityPolicy {
+        authority_id: world.governance_policy.authority_id.as_str(),
+        key: &world.governance_policy.key,
+        key_epoch: world.governance_policy.key_epoch,
+        valid_from: world.profile.body.issued_at.saturating_add(1),
+        valid_until: world.governance_policy.valid_until,
+        revocation_status_ref: world.governance_policy.revocation_status_ref.as_str(),
+    };
+    let mut input = world.input(&case.challenge, &evidence);
+    input.pinned_governance_policy = postdated_policy;
+    let evaluation = evaluate_finding_challenge(&input);
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::RetainedGovernancePolicyNotLiveAtProfileIssuance,
+    )?;
     Ok(())
 }
 

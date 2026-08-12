@@ -172,6 +172,10 @@ pub enum FindingChallengeInadmissible {
     ChallengeRejected(FindingError),
     #[error("verifier profile rejected: {0}")]
     ProfileRejected(FindingError),
+    #[error("retained governance policy does not match the profile signer")]
+    RetainedGovernancePolicyInvalid,
+    #[error("retained governance policy was not live when the profile was issued")]
+    RetainedGovernancePolicyNotLiveAtProfileIssuance,
     #[error("challenge names a verifier profile other than the one supplied")]
     ProfileBindingMismatch,
     #[error("verifier profile is not the one retained by the authenticated admission")]

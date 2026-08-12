@@ -525,5 +525,10 @@ pub fn verify_signed_challenge_outcome(
     pinned_evaluator_authority: &PublicKey,
 ) -> Result<(), FindingError> {
     signed.body.validate()?;
+    if signed.body.evaluator_key != *pinned_evaluator_authority {
+        return Err(FindingError::AuthorityMismatch(
+            "challenge_outcome.evaluator_key",
+        ));
+    }
     crate::envelope::verify_pinned_envelope(signed, pinned_evaluator_authority, "challenge_outcome")
 }

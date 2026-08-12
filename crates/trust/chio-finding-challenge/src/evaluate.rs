@@ -72,6 +72,22 @@ fn adjudicate(
     // no role key below means anything.
     verify_signed_profile(input.profile, input.governance_authority)
         .map_err(FindingChallengeInadmissible::ProfileRejected)?;
+    let governance_policy = input.pinned_governance_policy;
+    if governance_policy.key != input.governance_authority
+        || governance_policy.authority_id.trim().is_empty()
+        || governance_policy.authority_id.trim() != governance_policy.authority_id
+        || governance_policy.key_epoch == 0
+        || governance_policy.valid_until <= governance_policy.valid_from
+        || governance_policy.revocation_status_ref.trim().is_empty()
+        || governance_policy.revocation_status_ref.trim() != governance_policy.revocation_status_ref
+    {
+        return Err(FindingChallengeInadmissible::RetainedGovernancePolicyInvalid);
+    }
+    if input.profile.body.issued_at < governance_policy.valid_from
+        || input.profile.body.issued_at >= governance_policy.valid_until
+    {
+        return Err(FindingChallengeInadmissible::RetainedGovernancePolicyNotLiveAtProfileIssuance);
+    }
     let profile_envelope_sha256 = signed_envelope_sha256(input.profile)
         .map_err(FindingChallengeInadmissible::ProfileRejected)?;
     if profile_envelope_sha256 != input.pinned_admission_profile_envelope_sha256 {

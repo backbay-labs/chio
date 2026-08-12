@@ -1,9 +1,4 @@
-//! Behavioral and schema coverage for the challenge and audit families: the
-//! class-gated challenge, its signed outcome and enforcement instruction,
-//! the finalized bond snapshot, the audit epoch and report, the unsigned
-//! replay observation preimage, and the open-market penalty envelope this
-//! lane registers. Cross-artifact adjudication belongs to the evaluator and
-//! is covered there.
+//! Behavioral and schema coverage for the challenge and audit artifact families.
 
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -1314,11 +1309,16 @@ fn outcome_signs_and_verifies_under_its_pinned_evaluator() -> TestResult {
 
     let signed = SignedExportEnvelope::sign(outcome.clone(), &evaluator)?;
     (verify_signed_challenge_outcome(&signed, &evaluator.public_key()))?;
+    let mut misattributed = outcome.clone();
+    misattributed.evaluator_key = interloper.public_key();
+    misattributed.outcome_id = derive_outcome_id(&misattributed)?;
+    let misattributed = SignedExportEnvelope::sign(misattributed, &evaluator)?;
     assert_eq!(
-        verify_signed_challenge_outcome(&signed, &interloper.public_key()),
-        Err(FindingError::AuthorityMismatch("challenge_outcome"))
+        verify_signed_challenge_outcome(&misattributed, &evaluator.public_key()),
+        Err(FindingError::AuthorityMismatch(
+            "challenge_outcome.evaluator_key"
+        ))
     );
-
     let forged = SignedExportEnvelope::sign(outcome, &interloper)?;
     assert_eq!(
         verify_signed_challenge_outcome(&forged, &evaluator.public_key()),

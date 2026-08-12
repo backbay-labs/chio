@@ -1667,16 +1667,20 @@ capture but MUST NOT exceed it, and both amounts MUST share one currency.
 
 The failed-delivery-authority-signed terminal for a reveal denied before any
 value moved. It binds the buyer, the exact finding, listing, and
-accepted-bid envelope digest, the reservation, purchase intent, and
-authoritative payment operation, the exact hold attempt and its release
-terminal (`released` or `cancelled_before_authorization`; unknown terminals
-reject), both halves of the deny evidence (receipt identifier and digest,
-checkpoint reference and digest), the currency, and the record time. Its
-`realized_spend_units` MUST be zero and its `payout_eligible` MUST be false;
-both are encoded rather than implied so a spend on this path is a
-schema-level rejection rather than a reconciliation surprise. Silence is not
-evidence: without this signed terminal a released hold is indistinguishable
-from a captured one.
+accepted-bid envelope digest, the exact venue-admission envelope digest, the
+seller-backing envelope digest retained by that admission, the reservation,
+purchase intent, and authoritative payment operation, the exact hold attempt
+and its release terminal (`released` or `cancelled_before_authorization`;
+unknown terminals reject), both halves of the deny evidence (receipt
+identifier and digest, checkpoint reference and digest), the currency, and
+the record time. The venue-admission digest MUST equal the admission retained
+by the reservation, and the seller-backing digest MUST equal that admission's
+`backing_envelope_sha256`; challenge evaluation MUST cross-check both digests
+against the challenged admission and backing. Its `realized_spend_units` MUST
+be zero and its `payout_eligible` MUST be false; both are encoded rather than
+implied so a spend on this path is a schema-level rejection rather than a
+reconciliation surprise. Silence is not evidence: without this signed
+terminal a released hold is indistinguishable from a captured one.
 
 #### 6.4.7.12 `chio.finding.challenge.v1`
 
