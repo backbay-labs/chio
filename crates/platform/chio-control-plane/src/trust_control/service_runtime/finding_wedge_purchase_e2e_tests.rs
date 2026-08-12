@@ -3212,6 +3212,56 @@ async fn wedge_purchase_denial_receipt_cannot_predate_its_reservation() -> TestR
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_denial_cannot_outlive_its_authority_bound_reservation() -> TestResult {
+    let lane = open_lane(LaneOptions {
+        case: RevealCase::digest_mismatch(),
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let response = lane.reveal("wedge-expired-denial-1", "nonce-expired-denial-1")?;
+    assert_denied_with(&response, "committed output digest");
+    let reservation = lane
+        .coordinator
+        .resolve(&lane.purchase.handshake.reservation_id)?;
+    assert!(
+        reservation.expires_at
+            <= lane
+                .deployment
+                .web
+                .admission
+                .body
+                .failed_delivery_authority
+                .valid_until
+    );
+
+    let mut body = response.receipt.body();
+    body.timestamp = reservation.expires_at;
+    let receipt = ChioReceipt::sign(body, &keypair(40))?;
+    let (checkpoint, inclusion_proof) = denial_checkpoint(&receipt)?;
+    let error = lane
+        .coordinator
+        .finalize_denial(
+            &lane.purchase.handshake.reservation_id,
+            &receipt,
+            &lane.deployment.web.admission,
+            &checkpoint,
+            &inclusion_proof,
+            reservation.expires_at,
+        )
+        .err()
+        .ok_or_else(|| missing("denial after the authority-bound reservation was accepted"))?;
+    assert!(
+        matches!(
+            &error,
+            PurchaseCoordinatorError::TerminalEvidence(reason)
+                if reason.contains("outside the reservation settlement window")
+        ),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_delivery_cannot_outlive_its_authority_bound_reservation() -> TestResult {
     let lane = open_lane(LaneOptions::standard()).await?;
     let response = lane.reveal("wedge-expired-delivery-1", "nonce-expired-delivery-1")?;
