@@ -35,18 +35,19 @@ use chio_core_types::MerkleTree;
 use chio_core_types::{canonical_json_bytes, sha256_hex};
 use chio_finding::{
     build_status_non_inclusion_proof_input, compute_allocation_id, compute_finding_id,
-    compute_profile_id, compute_status_epoch_id, sign_finding, signed_envelope_sha256,
-    verify_signed_verifier_report, Finding, FindingAuthorityKeyPolicy, FindingAuthorityStatus,
-    FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass, FindingChallengeVerifierProfile,
-    FindingCheckpointLogPolicy, FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor,
-    FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome, FindingGuaranteeClass,
-    FindingOutcomeClass, FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole,
-    FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput,
-    FindingResourceCaps, FindingStatusEpoch, FindingStatusFreshnessPolicy,
-    FindingStatusOperatorAuthorization, FindingStatusOperatorRole, SignedFindingAuthorityStatus,
-    SignedFindingMarketTerms, FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
-    FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
-    FINDING_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
+    compute_profile_id, compute_status_epoch_id, required_finding_facets, sign_finding,
+    signed_envelope_sha256, verify_signed_verifier_report, Finding, FindingAuthorityKeyPolicy,
+    FindingAuthorityStatus, FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass,
+    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
+    FindingCollateralVault, FindingDescriptor, FindingEvidenceClass, FindingFacetKind,
+    FindingFacetOutcome, FindingGuaranteeClass, FindingOutcomeClass, FindingPredicate,
+    FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase,
+    FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps, FindingStatusEpoch,
+    FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusOperatorRole,
+    SignedFindingAuthorityStatus, SignedFindingMarketTerms, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
+    FINDING_BOND_BACKING_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
+    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1,
+    FINDING_STATUS_SIGNATURE_DOMAIN,
 };
 use chio_finding_verifier::{
     sign_finding_verifier_report, validate_supported_finding_verifier_profile,
@@ -1004,7 +1005,7 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
     assert!(draft.satisfies_required_facets(&fx.profile.body));
     assert!(draft.finding_delivery_receipt_id().is_none());
     assert_eq!(
-        draft.backing_allocation_id.as_deref(),
+        draft.backing_allocation_id(),
         Some(fx.backing.body.allocation_id.as_str())
     );
 
@@ -1018,17 +1019,18 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
 fn observed_and_metered_findings_name_their_direct_facet_floors() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
-    let mut draft =
+    let draft =
         verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
 
-    draft.finding.evidence_class = FindingEvidenceClass::Observed;
-    let observed = draft.required_facets(&fx.profile.body);
+    let mut finding = draft.finding().clone();
+    finding.evidence_class = FindingEvidenceClass::Observed;
+    let observed = required_finding_facets(&finding, &fx.profile.body);
     assert!(observed.contains(&FindingFacetKind::ReceiptAuthenticity));
     assert!(observed.contains(&FindingFacetKind::CheckpointMembership));
 
-    draft.finding.evidence_class = FindingEvidenceClass::Asserted;
-    draft.finding.guarantee_class = FindingGuaranteeClass::MeteredAttested;
-    let metered = draft.required_facets(&fx.profile.body);
+    finding.evidence_class = FindingEvidenceClass::Asserted;
+    finding.guarantee_class = FindingGuaranteeClass::MeteredAttested;
+    let metered = required_finding_facets(&finding, &fx.profile.body);
     assert!(metered.contains(&FindingFacetKind::ReceiptAuthenticity));
     assert!(metered.contains(&FindingFacetKind::CheckpointMembership));
     assert!(metered.contains(&FindingFacetKind::MeteredExposureBacking));
@@ -1476,11 +1478,11 @@ fn portable_status_proof_verifies_and_is_pinned_into_signed_report() -> TestResu
         Some(FindingFacetOutcome::Verified)
     );
     assert_eq!(
-        draft.replay_recipe_input_sha256.as_deref(),
+        draft.replay_recipe_input_sha256(),
         Some(sha256_hex(&fx.recipe_bytes).as_str())
     );
     assert_eq!(
-        draft.status_proof_input_sha256.as_deref(),
+        draft.status_proof_input_sha256(),
         Some(sha256_hex(&status_bytes).as_str())
     );
 
@@ -1488,12 +1490,12 @@ fn portable_status_proof_verifies_and_is_pinned_into_signed_report() -> TestResu
         sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.verifier)?;
     verify_signed_verifier_report(&signed, &fx.verifier.public_key())?;
     assert_eq!(
-        signed.body.replay_recipe_input_sha256,
-        draft.replay_recipe_input_sha256
+        signed.body.replay_recipe_input_sha256.as_deref(),
+        draft.replay_recipe_input_sha256()
     );
     assert_eq!(
-        signed.body.status_proof_input_sha256,
-        draft.status_proof_input_sha256
+        signed.body.status_proof_input_sha256.as_deref(),
+        draft.status_proof_input_sha256()
     );
     Ok(())
 }
@@ -1530,8 +1532,8 @@ fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> T
         Some(FindingFacetOutcome::Verified)
     );
     assert_ne!(
-        baseline.resolved_evidence_bundle_sha256,
-        authorization_changed.resolved_evidence_bundle_sha256
+        baseline.resolved_evidence_bundle_sha256(),
+        authorization_changed.resolved_evidence_bundle_sha256()
     );
 
     let mut freshness_trust = trust_roots(&fx);
@@ -1548,8 +1550,8 @@ fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> T
         Some(FindingFacetOutcome::Verified)
     );
     assert_ne!(
-        baseline.resolved_evidence_bundle_sha256,
-        freshness_changed.resolved_evidence_bundle_sha256
+        baseline.resolved_evidence_bundle_sha256(),
+        freshness_changed.resolved_evidence_bundle_sha256()
     );
     Ok(())
 }
@@ -1681,8 +1683,8 @@ fn resolved_bundle_commitment_includes_assurance_artifacts_pins_and_policy() -> 
         Some(FindingFacetOutcome::Verified)
     );
     assert_ne!(
-        baseline.resolved_evidence_bundle_sha256,
-        alternate.resolved_evidence_bundle_sha256
+        baseline.resolved_evidence_bundle_sha256(),
+        alternate.resolved_evidence_bundle_sha256()
     );
 
     let mut policy_trust = runtime_trust_roots(&fx);
@@ -1700,8 +1702,8 @@ fn resolved_bundle_commitment_includes_assurance_artifacts_pins_and_policy() -> 
         Some(FindingFacetOutcome::Verified)
     );
     assert_ne!(
-        baseline.resolved_evidence_bundle_sha256,
-        policy_changed.resolved_evidence_bundle_sha256
+        baseline.resolved_evidence_bundle_sha256(),
+        policy_changed.resolved_evidence_bundle_sha256()
     );
 
     let mut appraisal_evidence = runtime_bundle(&fx);
@@ -1718,8 +1720,8 @@ fn resolved_bundle_commitment_includes_assurance_artifacts_pins_and_policy() -> 
         Some(FindingFacetOutcome::Verified)
     );
     assert_ne!(
-        baseline.resolved_evidence_bundle_sha256,
-        appraisal_changed.resolved_evidence_bundle_sha256
+        baseline.resolved_evidence_bundle_sha256(),
+        appraisal_changed.resolved_evidence_bundle_sha256()
     );
     Ok(())
 }
@@ -1981,7 +1983,7 @@ fn missing_bond_snapshot_is_unavailable_and_denies() -> TestResult {
         draft.facet_outcome(FindingFacetKind::BondBacking),
         Some(FindingFacetOutcome::Unavailable)
     );
-    assert!(draft.backing_allocation_id.is_none());
+    assert!(draft.backing_allocation_id().is_none());
     assert!(!draft.satisfies_required_facets(&fx.profile.body));
     Ok(())
 }
@@ -2006,7 +2008,7 @@ fn unsigned_collateral_store_state_is_not_verified() -> TestResult {
         .ok_or("bond-backing facet missing")?;
     assert_eq!(backing.outcome, FindingFacetOutcome::Failed);
     assert!(backing.reason.contains("store snapshot rejected"));
-    assert!(draft.backing_allocation_id.is_none());
+    assert!(draft.backing_allocation_id().is_none());
     Ok(())
 }
 

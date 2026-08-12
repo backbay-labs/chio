@@ -482,12 +482,17 @@ pub(super) fn advance_status_floor_locked(
     trusted_now: u64,
 ) -> Result<(), CliError> {
     advance_trusted_time_locked(path, trusted_now)?;
-    if let Some(state) = read_status_floor_state(path)? {
-        let (current, legacy_retractions) = match state {
-            FindingStatusCliFloorState::V1(floor) => floor.into_v2(trusted_now),
-            FindingStatusCliFloorState::V2(floor) => (floor, BTreeSet::new()),
-        };
-        if current.feed_id != status.feed_id
+    let (current, legacy_retractions) = match read_status_floor_state(path)? {
+        Some(FindingStatusCliFloorState::V1(floor)) => {
+            let (floor, retractions) = floor.into_v2(trusted_now);
+            (Some(floor), retractions)
+        }
+        Some(FindingStatusCliFloorState::V2(floor)) => (Some(floor), BTreeSet::new()),
+        None => (None, BTreeSet::new()),
+    };
+    if let Some(current) = current.as_ref() {
+        if current.schema != FINDING_STATUS_FLOOR_SCHEMA_V2
+            || current.feed_id != status.feed_id
             || current.operator_id != authorization.operator.authority_id
             || current.rotation_policy_ref != authorization.operator.rotation_policy_ref
             || current.key_domain_nonce != status.key_domain_nonce
@@ -517,6 +522,23 @@ pub(super) fn advance_status_floor_locked(
                 Some(_) | None => {}
             }
         }
+    }
+
+    let is_durably_retracted = read_status_retraction(path, status, authorization)?;
+    if !status.is_retracted && is_durably_retracted {
+        return Err(CliError::cli_other_error(
+            "finding status response attempts to revive a durably retracted Finding".to_owned(),
+        ));
+    }
+    if status.is_retracted && !is_durably_retracted {
+        // Retain an authenticated retraction even when its epoch is below the
+        // global floor. The floor must still reject the rollback and remain
+        // unchanged, but a later higher-epoch non-inclusion must not revive
+        // this Finding.
+        persist_status_retraction(path, status, authorization)?;
+    }
+
+    if let Some(current) = current.as_ref() {
         if status.map_epoch < current.map_epoch {
             return Err(CliError::cli_other_error(
                 "finding status response is below the durable rollback floor".to_owned(),
@@ -562,18 +584,6 @@ pub(super) fn advance_status_floor_locked(
                 authorization,
             )?;
         }
-    }
-
-    let is_durably_retracted = read_status_retraction(path, status, authorization)?;
-    if !status.is_retracted && is_durably_retracted {
-        return Err(CliError::cli_other_error(
-            "finding status response attempts to revive a durably retracted Finding".to_owned(),
-        ));
-    }
-    if status.is_retracted && !is_durably_retracted {
-        // Write the immutable tombstone first. If the process stops before the
-        // epoch floor is replaced, the next observation still fails closed.
-        persist_status_retraction(path, status, authorization)?;
     }
 
     write_status_floor(

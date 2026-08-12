@@ -2973,7 +2973,7 @@ fn governing_keypair() -> Keypair {
 /// The pinned fee-schedule operator. It is deliberately not the
 /// governance root: a schedule authenticates against its own roster.
 fn fee_schedule_keypair() -> Keypair {
-    keypair(24)
+    keypair(39)
 }
 
 fn governance() -> Result<Governance, AnyError> {

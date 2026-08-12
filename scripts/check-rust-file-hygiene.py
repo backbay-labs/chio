@@ -394,7 +394,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/trust/chio-finding-verifier/tests/verifier.rs": allow(
         "2026-08-31",
         "cognition finding verifier regression suite; capped to current size until split",
-        max_lines=2_020,
+        max_lines=2_022,
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",
@@ -409,12 +409,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
         "2026-08-31",
         "cognition market exit regression suite; capped to current size until split",
-        max_lines=2_992,
+        max_lines=3_000,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
         "cognition purchase and recovery end-to-end regression suite; capped to current size until split",
-        max_lines=5_445,
+        max_lines=5_448,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",

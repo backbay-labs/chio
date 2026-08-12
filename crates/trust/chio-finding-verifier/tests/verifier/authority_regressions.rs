@@ -17,7 +17,7 @@ fn backing_accepted_at_or_after_evaluation_is_not_verified() -> TestResult {
         draft.facet_outcome(FindingFacetKind::BondBacking),
         Some(FindingFacetOutcome::Failed)
     );
-    assert!(draft.backing_allocation_id.is_none());
+    assert!(draft.backing_allocation_id().is_none());
     assert!(!draft.satisfies_required_facets(&fx.profile.body));
     Ok(())
 }
@@ -49,7 +49,7 @@ fn backing_cannot_be_accepted_before_its_signed_issue_time() -> TestResult {
         .ok_or("bond-backing facet missing")?;
     assert_eq!(backing.outcome, FindingFacetOutcome::Failed);
     assert!(backing.reason.contains("before its signed issue time"));
-    assert!(draft.backing_allocation_id.is_none());
+    assert!(draft.backing_allocation_id().is_none());
     Ok(())
 }
 
@@ -84,7 +84,7 @@ fn bond_backing_must_bind_the_evaluated_verifier_profile() -> TestResult {
         "unexpected reason: {}",
         backing.reason
     );
-    assert!(draft.backing_allocation_id.is_none());
+    assert!(draft.backing_allocation_id().is_none());
     Ok(())
 }
 
@@ -406,7 +406,7 @@ fn backing_signed_by_an_unpinned_authority_is_not_bond_evidence() -> TestResult 
         draft.facet_outcome(FindingFacetKind::BondBacking),
         Some(FindingFacetOutcome::Failed)
     );
-    assert!(draft.backing_allocation_id.is_none());
+    assert!(draft.backing_allocation_id().is_none());
     assert!(!draft.satisfies_required_facets(&fx.profile.body));
     Ok(())
 }

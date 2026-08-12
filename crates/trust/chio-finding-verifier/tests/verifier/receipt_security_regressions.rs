@@ -126,8 +126,8 @@ fn delivery_nonce_envelope_changes_the_bundle_commitment() -> TestResult {
         Some(FindingFacetOutcome::Verified)
     );
     assert_ne!(
-        baseline.resolved_evidence_bundle_sha256,
-        changed.resolved_evidence_bundle_sha256
+        baseline.resolved_evidence_bundle_sha256(),
+        changed.resolved_evidence_bundle_sha256()
     );
     Ok(())
 }

@@ -774,11 +774,11 @@ fn emit_evidence_report(
     if json_output {
         let report = serde_json::json!({
             "finding_id": accepted.finding.finding_id,
-            "artifact_sha256": draft.finding_artifact_sha256,
+            "artifact_sha256": draft.finding_artifact_sha256(),
             "mode": "evidence",
-            "evaluation_time": draft.evaluation_time,
-            "resolved_evidence_bundle_sha256": draft.resolved_evidence_bundle_sha256,
-            "backing_allocation_id": draft.backing_allocation_id,
+            "evaluation_time": draft.evaluation_time(),
+            "resolved_evidence_bundle_sha256": draft.resolved_evidence_bundle_sha256(),
+            "backing_allocation_id": draft.backing_allocation_id(),
             "finding_delivery_receipt_id": draft.finding_delivery_receipt_id(),
             "facets": facet_rows,
             "required_facets": required_labels,
@@ -793,13 +793,13 @@ fn emit_evidence_report(
         );
         println!(
             "artifact_sha256:     {}",
-            terminal_safe(&draft.finding_artifact_sha256)
+            terminal_safe(draft.finding_artifact_sha256())
         );
         println!("mode:                evidence");
-        println!("evaluation_time:     {}", draft.evaluation_time);
+        println!("evaluation_time:     {}", draft.evaluation_time());
         println!(
             "evidence_bundle:     {}",
-            terminal_safe(&draft.resolved_evidence_bundle_sha256)
+            terminal_safe(draft.resolved_evidence_bundle_sha256())
         );
         if let Some(receipt_id) = draft.finding_delivery_receipt_id() {
             println!("delivery_receipt:    {}", terminal_safe(receipt_id));
@@ -1012,17 +1012,46 @@ mod tests {
         let (proof_bytes, authorization, freshness) = authenticated_inclusion_fixture()?;
         let dir = tempfile::tempdir()?;
         let floor_path = dir.path().join("status-floor.json");
-        assert!(persist_authenticated_status_retraction(
+        let proof = chio_finding::parse_status_proof_input(&proof_bytes)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let epoch = chio_finding::verify_status_proof_input(
+            &proof,
+            &authorization,
+            freshness,
+        )
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization)?);
+        write_status_floor(
+            &floor_path,
+            &FindingStatusCliFloor {
+                schema: TEST_FINDING_STATUS_FLOOR_SCHEMA.to_string(),
+                feed_id: epoch.body.feed_id.clone(),
+                operator_id: epoch.body.operator_id.clone(),
+                rotation_policy_ref: authorization.operator.rotation_policy_ref.clone(),
+                operator_key_epoch: epoch.body.operator_key_epoch,
+                operator_key: Some(authorization.operator.key.clone()),
+                operator_authorization_sha256: authorization_sha256.clone(),
+                key_domain_nonce: epoch.body.key_domain_nonce,
+                map_epoch: epoch.body.map_epoch.saturating_add(1),
+                epoch_id: "a".repeat(64),
+                root_hash: "b".repeat(64),
+            },
+        )?;
+
+        let rollback = persist_authenticated_status_retraction(
             &floor_path,
             &proof_bytes,
             &authorization,
             freshness,
             RETRACTED_FINDING_ID,
             &authorization.feed_id,
-        )?);
+        )
+        .err()
+        .ok_or_else(|| CliError::cli_other_error("retraction rollback was accepted".to_string()))?;
+        assert!(rollback
+            .to_string()
+            .contains("below the durable rollback floor"));
 
-        let proof = chio_finding::parse_status_proof_input(&proof_bytes)
-            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         let map_epoch = match proof {
             chio_finding::FindingStatusProofInput::Inclusion(inclusion) => inclusion.map_epoch,
             chio_finding::FindingStatusProofInput::NonInclusion(_) => {
@@ -1031,7 +1060,6 @@ mod tests {
                 ));
             }
         };
-        let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization)?);
         let error = advance_status_floor(
             &floor_path,
             &FindingStatusFloorObservation {

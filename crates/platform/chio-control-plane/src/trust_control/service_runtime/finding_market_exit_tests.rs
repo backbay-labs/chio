@@ -950,6 +950,7 @@ fn sign_admission(
 /// receipts, a real checkpoint, and every digest bound exactly.
 struct MarketWeb {
     operator: Keypair,
+    fee_schedule_operator: Keypair,
     venue: Keypair,
     finding: Finding,
     finding_id: String,
@@ -987,6 +988,7 @@ struct MarketWeb {
 impl MarketWeb {
     fn build(audit_epoch_length_secs: u64, admission_expires_at: u64) -> Result<Self, AnyError> {
         let operator = keypair(24);
+        let fee_schedule_operator = keypair(39);
         let governance = keypair(1);
         let seller = keypair(2);
         let issuer = keypair(3);
@@ -1062,7 +1064,7 @@ impl MarketWeb {
         let second_raw_finding = canonical_string(&second_finding)?;
         let second_finding_id = second_finding.finding_id.clone();
 
-        let schedule = build_schedule(&operator, REQUIREMENT_UNITS, true, "USD")?;
+        let schedule = build_schedule(&fee_schedule_operator, REQUIREMENT_UNITS, true, "USD")?;
         let schedule_sha256 = signed_fee_schedule_digest(&schedule)?;
         let terms = build_terms(
             &seller,
@@ -1139,6 +1141,7 @@ impl MarketWeb {
 
         Ok(MarketWeb {
             operator,
+            fee_schedule_operator,
             venue,
             finding_id: finding.finding_id.clone(),
             finding,
@@ -1944,15 +1947,20 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     // each through the admission verifier's sizing gate.
     for (schedule, fragment) in [
         (
-            build_schedule(&web.operator, STAKE_UNITS + EXPOSURE_UNITS - 1, true, "USD")?,
+            build_schedule(
+                &web.fee_schedule_operator,
+                STAKE_UNITS + EXPOSURE_UNITS - 1,
+                true,
+                "USD",
+            )?,
             "below base_finding_stake",
         ),
         (
-            build_schedule(&web.operator, REQUIREMENT_UNITS, false, "USD")?,
+            build_schedule(&web.fee_schedule_operator, REQUIREMENT_UNITS, false, "USD")?,
             "not slashable",
         ),
         (
-            build_schedule(&web.operator, REQUIREMENT_UNITS, true, "EUR")?,
+            build_schedule(&web.fee_schedule_operator, REQUIREMENT_UNITS, true, "EUR")?,
             "currencies must all match",
         ),
     ] {
@@ -2237,7 +2245,7 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         .ok_or_else(|| missing("allocation snapshot after activation"))?;
     let venue_key = keypair(6).public_key();
     let collateral_key = keypair(4).public_key();
-    let trusted_signers = vec![web.operator.public_key()];
+    let trusted_signers = vec![web.fee_schedule_operator.public_key()];
     let context = FindingAdmissionContext {
         venue_authority: &venue_key,
         venue_id: VENUE_ID,

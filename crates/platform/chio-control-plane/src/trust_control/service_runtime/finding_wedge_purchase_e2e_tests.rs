@@ -443,7 +443,7 @@ fn market_config() -> FindingMarketConfig {
             evidence_sha256: sha256_hex(b"status-bond-venue-wedge"),
         },
         status_max_epoch_age_secs: 300,
-        fee_schedule_operator_keys: vec![keypair(24).public_key().to_hex()],
+        fee_schedule_operator_keys: vec![keypair(39).public_key().to_hex()],
     }
 }
 
@@ -1078,6 +1078,7 @@ impl RevealCase {
 
 struct MarketWeb {
     operator: Keypair,
+    fee_schedule_operator: Keypair,
     venue: Keypair,
     finding: Finding,
     finding_id: String,
@@ -1110,6 +1111,7 @@ impl MarketWeb {
         // listing authorizes is the same principal the seller authorization
         // names, which is what the reveal-time verifier requires.
         let operator = keypair(24);
+        let fee_schedule_operator = keypair(39);
         let governance = keypair(1);
         let issuer = keypair(3);
         let collateral = keypair(4);
@@ -1179,7 +1181,7 @@ impl MarketWeb {
         let raw_finding = canonical_string(&finding)?;
         let artifact_sha256 = sha256_hex(raw_finding.as_bytes());
 
-        let schedule = build_schedule(&operator)?;
+        let schedule = build_schedule(&fee_schedule_operator)?;
         let schedule_sha256 = signed_fee_schedule_digest(&schedule)?;
         let terms = build_terms(&operator, &finding, &artifact_sha256, &profile_sha256)?;
         let terms_sha256 = digest_of(&terms)?;
@@ -1286,6 +1288,7 @@ impl MarketWeb {
 
         Ok(MarketWeb {
             operator,
+            fee_schedule_operator,
             venue,
             finding_id: finding.finding_id.clone(),
             finding,
@@ -1519,7 +1522,7 @@ fn admission_witness(
 ) -> Result<VerifiedFindingAdmission, AnyError> {
     let venue_key = web.venue.public_key();
     let collateral_key = keypair(4).public_key();
-    let trusted_signers = vec![web.operator.public_key()];
+    let trusted_signers = vec![web.fee_schedule_operator.public_key()];
     let context = FindingAdmissionContext {
         venue_authority: &venue_key,
         venue_id: VENUE_ID,

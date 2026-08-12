@@ -51,6 +51,7 @@ use crate::cost::{evaluate_metered_exposure, evaluate_settled_spend, CostFacetOu
 use crate::receipts::verify_receipt_strict;
 
 mod bond;
+mod draft;
 use bond::verify_bond_requirement;
 
 /// Size bound on the raw finding submitted to the verifier. Matches the
@@ -233,13 +234,13 @@ pub struct FindingEvidenceBundle<'a> {
 /// The draft the venue turns into a signed report: the parsed finding,
 /// the 13 facets in canonical order, and the evaluation metadata.
 pub struct FindingVerifierDraft {
-    pub finding: Finding,
-    pub finding_artifact_sha256: String,
+    finding: Finding,
+    finding_artifact_sha256: String,
     facets: Vec<FindingFacetResult>,
-    pub resolved_evidence_bundle_sha256: String,
+    resolved_evidence_bundle_sha256: String,
     /// Exact raw attachment digests copied into the signed report.
-    pub replay_recipe_input_sha256: Option<String>,
-    pub status_proof_input_sha256: Option<String>,
+    replay_recipe_input_sha256: Option<String>,
+    status_proof_input_sha256: Option<String>,
     /// Authenticated, checkpointed post-purchase receipt for this Finding.
     /// Absent for ordinary pre-sale admission reports.
     finding_delivery_receipt_id: Option<String>,
@@ -250,61 +251,9 @@ pub struct FindingVerifierDraft {
     trust_root_snapshot_sha256: String,
     resolver_policy_sha256: String,
     trusted_time_input_sha256: String,
-    pub evaluation_time: u64,
+    evaluation_time: u64,
     /// Allocation id carried to the report when bond backing verified.
-    pub backing_allocation_id: Option<String>,
-}
-
-impl FindingVerifierDraft {
-    /// Canonically ordered facet results derived during evidence
-    /// verification. Callers may inspect but cannot replace or rewrite
-    /// outcomes before report signing.
-    #[must_use]
-    pub fn facets(&self) -> &[FindingFacetResult] {
-        &self.facets
-    }
-
-    /// Authenticated, checkpointed post-purchase receipt derived during
-    /// evidence verification. Callers may inspect but cannot replace it
-    /// before report signing.
-    #[must_use]
-    pub fn finding_delivery_receipt_id(&self) -> Option<&str> {
-        self.finding_delivery_receipt_id.as_deref()
-    }
-
-    /// Outcome for one facet kind.
-    pub fn facet_outcome(&self, kind: FindingFacetKind) -> Option<FindingFacetOutcome> {
-        self.facets
-            .iter()
-            .find(|result| result.facet == kind)
-            .map(|result| result.outcome)
-    }
-
-    /// The facets this finding REQUIRES to be exactly verified: the
-    /// profile's floor plus every claim the artifact makes. Nothing here
-    /// waives a facet the profile lists.
-    pub fn required_facets(
-        &self,
-        profile: &FindingChallengeVerifierProfile,
-    ) -> Vec<FindingFacetKind> {
-        required_finding_facets(&self.finding, profile)
-    }
-
-    /// True when no facet failed and every required facet is exactly
-    /// `verified`. `Failed` records a check that ran and contradicted its
-    /// evidence, so it denies even when the profile did not require that
-    /// facet. Optional `asserted` and `unavailable` results remain visible
-    /// without being upgraded to verified.
-    pub fn satisfies_required_facets(&self, profile: &FindingChallengeVerifierProfile) -> bool {
-        !self
-            .facets
-            .iter()
-            .any(|result| result.outcome == FindingFacetOutcome::Failed)
-            && self
-                .required_facets(profile)
-                .into_iter()
-                .all(|kind| self.facet_outcome(kind) == Some(FindingFacetOutcome::Verified))
-    }
+    backing_allocation_id: Option<String>,
 }
 
 fn facet(
