@@ -1394,7 +1394,7 @@ mod tests {
         let first = publisher.publish_non_inclusion(&sha256_hex(b"first"), &[], NOW)?;
 
         let mut refreshed_operator = operator;
-        refreshed_operator.revoked_from = Some(NOW + 500);
+        refreshed_operator.revoked_from = Some(NOW + 1_000);
         refreshed_operator.authorization_sha256 = sha256_hex(b"refreshed-status-authorization");
         let refreshed = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
             store.clone(),

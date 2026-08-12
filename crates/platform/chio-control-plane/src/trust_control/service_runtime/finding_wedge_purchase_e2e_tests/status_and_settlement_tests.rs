@@ -13,7 +13,11 @@ fn assert_denied_with(response: &ToolCallResponse, fragment: &str) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn finding_purchase_without_status_verifier_denies_before_effects() -> TestResult {
-    let lane = open_lane(LaneOptions::standard()).await?;
+    let lane = open_lane(LaneOptions {
+        install_status_verifier: false,
+        ..LaneOptions::standard()
+    })
+    .await?;
     let denied = lane.reveal("m6-missing-status-verifier", "m6-missing-status-nonce")?;
     assert_denied_with(&denied, "configured finding status verifier");
     assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 0);
@@ -178,10 +182,11 @@ async fn finding_status_retraction() -> TestResult {
             keypair(36),
             config.status_max_epoch_age_secs,
         )?;
+    let status_gate_now = unix_timestamp_now();
     let status_gate_live = status_gate_publisher.publish_non_inclusion(
         &status_lane.deployment.web.finding_id,
         &[],
-        now,
+        status_gate_now,
     )?;
     let status_gate_live_b64 = STANDARD.encode(&status_gate_live.proof_bytes);
 
@@ -220,7 +225,8 @@ async fn finding_status_retraction() -> TestResult {
     let hook_operator_id = config.status_feed_operator.authority.authority_id.clone();
     let hook_finding_id = lane.deployment.web.finding_id.clone();
     let hook_intent_bytes = intent_bytes.clone();
-    let inclusion_deadline = intent.inclusion_deadline;
+    let inclusion_deadline =
+        status_gate_now + config.status_feed_service_bond.inclusion_sla_secs;
     status_lane
         .kernel
         .set_payment_adapter(Box::new(ReversibleHoldAdapter {
@@ -234,9 +240,9 @@ async fn finding_status_retraction() -> TestResult {
                         finding_id: &hook_finding_id,
                         source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
                         intent_bytes: &hook_intent_bytes,
-                        issued_at: now,
+                        issued_at: status_gate_now,
                         inclusion_deadline,
-                        created_at: now,
+                        created_at: status_gate_now,
                     })
                     .map(|_| ())
                     .map_err(|error| error.to_string())
@@ -254,9 +260,11 @@ async fn finding_status_retraction() -> TestResult {
     assert_eq!(status_lane.calls.releases.load(Ordering::SeqCst), 1);
     assert_eq!(status_lane.invocations.load(Ordering::SeqCst), 0);
 
-    let included = status_gate_publisher.publish_retraction(&intent_id, &[], now)?;
+    let included =
+        status_gate_publisher.publish_retraction(&intent_id, &[], status_gate_now)?;
     let included_b64 = STANDARD.encode(&included.proof_bytes);
-    let duplicate = status_gate_publisher.publish_retraction(&intent_id, &[], now)?;
+    let duplicate =
+        status_gate_publisher.publish_retraction(&intent_id, &[], status_gate_now)?;
     assert_eq!(duplicate.proof_sha256, included.proof_sha256);
     let retracted = status_lane.reveal_with_status(
         &status_lane.purchase,
@@ -288,18 +296,19 @@ async fn finding_status_retraction() -> TestResult {
             finding_id: &second_finding_id,
             source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
             intent_bytes: &second_intent_bytes,
-            issued_at: now,
-            inclusion_deadline: now + config.status_feed_service_bond.inclusion_sla_secs,
-            created_at: now,
+            issued_at: status_gate_now,
+            inclusion_deadline: status_gate_now
+                + config.status_feed_service_bond.inclusion_sla_secs,
+            created_at: status_gate_now,
         },
     )?;
     let second_included =
-        status_gate_publisher.publish_retraction(&second_intent_id, &[], now + 1)?;
+        status_gate_publisher.publish_retraction(&second_intent_id, &[], status_gate_now + 1)?;
     let refresh_candidates = status_gate_store.list_publication_candidates(
         &config.status_feed_operator_ref,
         &config.status_feed_operator.authority.key_hex,
         &config.status_feed_operator.authorization_sha256,
-        now + 1,
+        status_gate_now + 1,
         200,
     )?;
     assert!(refresh_candidates
@@ -309,7 +318,7 @@ async fn finding_status_retraction() -> TestResult {
         .get_latest_proof(&config.status_feed_operator_ref, &lane.deployment.web.finding_id)?
         .is_none());
     let refreshed_included =
-        status_gate_publisher.publish_retraction(&intent_id, &[], now + 1)?;
+        status_gate_publisher.publish_retraction(&intent_id, &[], status_gate_now + 1)?;
     assert_eq!(refreshed_included.map_epoch, second_included.map_epoch);
     assert_eq!(
         refreshed_included.kind,

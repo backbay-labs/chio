@@ -1748,6 +1748,24 @@ fn build_reveal_kernel(inputs: &RevealKernelInputs<'_>) -> Result<ChioKernel, An
     Ok(kernel)
 }
 
+fn publish_live_status_proof_b64(
+    authority: &SqliteAuthorityStore,
+    finding_id: &str,
+    now: u64,
+) -> Result<String, AnyError> {
+    let config = market_config();
+    let publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            authority.finding_status_store(),
+            config.status_feed_operator,
+            config.status_feed_service_bond,
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    let live = publisher.publish_non_inclusion(finding_id, &[], now)?;
+    Ok(STANDARD.encode(&live.proof_bytes))
+}
+
 fn coordinator(authority: &SqliteAuthorityStore) -> Result<FindingPurchaseCoordinator, AnyError> {
     Ok(FindingPurchaseCoordinator::new(
         authority.finding_purchase_store(),
@@ -2116,6 +2134,7 @@ struct Lane {
     witness: VerifiedFindingAdmission,
     purchase: ReadyPurchase,
     buyer: Keypair,
+    status_proof_b64: Option<String>,
 }
 
 struct LaneOptions {
@@ -2131,7 +2150,7 @@ impl LaneOptions {
             case: RevealCase::honest(),
             rail: Rail::ReversibleHold,
             install_verifier: true,
-            install_status_verifier: false,
+            install_status_verifier: true,
         }
     }
 }
@@ -2149,6 +2168,15 @@ async fn open_lane(options: LaneOptions) -> Result<Lane, AnyError> {
     deployment.seed_and_activate(&state).await?;
     let accepted_at = allocation_accepted_at(&authority, &deployment.web)?;
     let witness = admission_witness(&deployment.web, accepted_at)?;
+    let status_proof_b64 = if options.install_status_verifier {
+        Some(publish_live_status_proof_b64(
+            &authority,
+            &deployment.web.finding_id,
+            unix_timestamp_now(),
+        )?)
+    } else {
+        None
+    };
 
     let calls = Arc::new(PaymentCalls::default());
     let invocations = Arc::new(AtomicU64::new(0));
@@ -2178,6 +2206,7 @@ async fn open_lane(options: LaneOptions) -> Result<Lane, AnyError> {
         witness,
         purchase,
         buyer,
+        status_proof_b64,
     })
 }
 
@@ -2189,7 +2218,7 @@ impl Lane {
             buyer: &self.buyer,
             finding_id: &self.deployment.web.finding_id,
             context_b64: Some(&self.purchase.context_b64),
-            status_proof_b64: None,
+            status_proof_b64: self.status_proof_b64.as_deref(),
             nonce,
         })?;
         Ok(self.kernel.evaluate_tool_call_blocking(&request)?)
@@ -2229,6 +2258,7 @@ struct RoutedPurchaseExecutor {
     attempts: Arc<AtomicU64>,
     exchange_now: u64,
     now: Arc<AtomicU64>,
+    status_proof_b64: String,
 }
 
 impl RoutedPurchaseExecutor {
@@ -2382,7 +2412,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                 buyer: &self.buyer,
                 finding_id: &self.web.finding_id,
                 context_b64: Some(&context_b64),
-                status_proof_b64: None,
+                status_proof_b64: Some(&self.status_proof_b64),
                 nonce: &request.request_id,
             },
             self.exchange_now,
@@ -2396,7 +2426,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
             calls: &self.calls,
             invocations: &self.invocations,
             install_verifier: true,
-            install_status_verifier: false,
+            install_status_verifier: true,
         })
         .map_err(Self::execution_error)?;
         let response = kernel
@@ -2555,6 +2585,8 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
     let invocations = Arc::new(AtomicU64::new(0));
     let attempts = Arc::new(AtomicU64::new(0));
     let purchase_clock = Arc::new(AtomicU64::new(fixed_now));
+    let status_proof_b64 =
+        publish_live_status_proof_b64(&authority, &deployment.web.finding_id, fixed_now)?;
     state.finding_purchase_executor = Some(Arc::new(RoutedPurchaseExecutor {
         authority: authority.clone(),
         web: deployment.web,
@@ -2566,6 +2598,7 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
         attempts: attempts.clone(),
         exchange_now: fixed_now,
         now: purchase_clock.clone(),
+        status_proof_b64,
     }));
 
     let (status, first_body) = send(&state, authed_post(&path, request_body.clone())?).await?;
@@ -3151,6 +3184,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         witness,
         purchase,
         buyer,
+        status_proof_b64,
     } = lane;
     drop((state, coordinator, kernel, witness, authority));
     let authority = deployment.open()?;
@@ -3162,7 +3196,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         calls: &calls,
         invocations: &invocations,
         install_verifier: true,
-        install_status_verifier: false,
+        install_status_verifier: true,
     })?;
     let request = reveal_request(&RevealRequestInputs {
         request_id: "wedge-digest-mismatch-1",
@@ -3170,7 +3204,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         buyer: &buyer,
         finding_id: &deployment.web.finding_id,
         context_b64: Some(&purchase.context_b64),
-        status_proof_b64: None,
+        status_proof_b64: status_proof_b64.as_deref(),
         nonce: "nonce-digest-2",
     })?;
     let replay = recovered.evaluate_tool_call_blocking(&request)?;
@@ -3349,7 +3383,7 @@ async fn wedge_purchase_without_governed_context_denies_before_dispatch() -> Tes
         buyer: &lane.buyer,
         finding_id: &lane.deployment.web.finding_id,
         context_b64: None,
-        status_proof_b64: None,
+        status_proof_b64: lane.status_proof_b64.as_deref(),
         nonce: "nonce-no-context-1",
     })?;
     let response = lane.kernel.evaluate_tool_call_blocking(&request)?;
@@ -3369,7 +3403,7 @@ async fn wedge_purchase_wrong_finding_argument_is_out_of_scope() -> TestResult {
         buyer: &lane.buyer,
         finding_id: &"f".repeat(64),
         context_b64: Some(&lane.purchase.context_b64),
-        status_proof_b64: None,
+        status_proof_b64: lane.status_proof_b64.as_deref(),
         nonce: "nonce-wrong-argument-1",
     })?;
     let response = lane.kernel.evaluate_tool_call_blocking(&request)?;
@@ -4561,7 +4595,7 @@ async fn wedge_purchase_rejects_a_resigned_bid_envelope() -> TestResult {
         buyer: &lane.buyer,
         finding_id: &lane.deployment.web.finding_id,
         context_b64: Some(&substituted_context),
-        status_proof_b64: None,
+        status_proof_b64: lane.status_proof_b64.as_deref(),
         nonce: "nonce-resigned-bid-1",
     })?;
     let response = lane.kernel.evaluate_tool_call_blocking(&request)?;
@@ -4736,7 +4770,7 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
         buyer: &second_buyer,
         finding_id: &web.finding_id,
         context_b64: Some(&stale_carrier),
-        status_proof_b64: None,
+        status_proof_b64: lane.status_proof_b64.as_deref(),
         nonce: "nonce-superseded-substitution-1",
     })?;
     let substituted = lane.kernel.evaluate_tool_call_blocking(&request)?;
@@ -4779,14 +4813,11 @@ async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> T
         Err(PurchaseCoordinatorError::TerminalEvidence(_))
     ));
 
-    // The refusal preserved the pre-payment payout admission, left the
-    // purchase slot reserved, and wrote no terminal record.
+    // The refusal did not promote the buyer destination, left the purchase
+    // slot reserved, and wrote no terminal record.
     assert_eq!(
         purchase_store.list_payout_destinations(&allocation_id)?,
-        vec![
-            (0_u8, COMMUNITY_FUND_DESTINATION.to_string()),
-            (1_u8, BUYER_PAYOUT.to_string()),
-        ]
+        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
     );
     let slot = purchase_store
         .get_slot(&reservation_id)?
@@ -4938,13 +4969,11 @@ async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestRe
         Err(PurchaseCoordinatorError::TerminalEvidence(_))
     ));
 
-    // Neither refusal moved the purchase beyond its pre-payment admission.
+    // Neither refusal promoted the buyer destination or moved the purchase
+    // beyond its pre-payment admission.
     assert_eq!(
         purchase_store.list_payout_destinations(&allocation_id)?,
-        vec![
-            (0_u8, COMMUNITY_FUND_DESTINATION.to_string()),
-            (1_u8, BUYER_PAYOUT.to_string()),
-        ]
+        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
     );
     let slot = purchase_store
         .get_slot(&reservation_id)?

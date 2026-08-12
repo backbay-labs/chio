@@ -1965,7 +1965,7 @@ fn digest_mismatch_case(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
     let delivery_policy = challenged
         .profile
@@ -2207,7 +2207,7 @@ fn evidence_invalid_case(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
     Ok(EvidenceInvalidCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
@@ -2400,7 +2400,7 @@ fn replay_case(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
     Ok(ReplayCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
@@ -5110,7 +5110,8 @@ fn finding_challenge_filing_terms_must_be_the_ones_the_signed_schedule_prices() 
         ChallengeCoordinatorError::DisputeTerms("fee_schedule_envelope_sha256")
     ));
 
-    // A schedule this venue never published resolves to nothing at all.
+    // Even when both monetary artifacts agree on a substitute schedule,
+    // the admission-pinned schedule remains authoritative.
     let challenge = buyer_challenge_with(&buyer, |submission| {
         submission.dispute_fee_terminal.fee_schedule_envelope_sha256 = hex64('5');
         submission.dispute_lock_ref.fee_schedule_envelope_sha256 = hex64('5');
@@ -5118,10 +5119,13 @@ fn finding_challenge_filing_terms_must_be_the_ones_the_signed_schedule_prices() 
     let error = coordinator
         .submit(&challenge, &raw, NOW)
         .expect_err("an unresolvable schedule digest must not be admitted");
-    assert!(matches!(
-        error,
-        ChallengeCoordinatorError::UnknownFeeSchedule
-    ));
+    assert!(
+        matches!(
+            &error,
+            ChallengeCoordinatorError::DisputeTerms("fee_schedule_envelope_sha256")
+        ),
+        "{error:?}"
+    );
 
     assert!(
         deployment.rail.charges().is_empty(),
@@ -5828,7 +5832,13 @@ fn finding_challenge_a_bad_signature_under_the_pinned_case_key_blocks_nothing() 
             NOW + 2,
         )
         .expect_err("a forged governance case opens no liability");
-    assert!(matches!(refused, ChallengeCoordinatorError::PenaltyMint(_)));
+    assert!(
+        matches!(
+            &refused,
+            ChallengeCoordinatorError::UnknownGovernanceCasePolicy
+        ),
+        "{refused:?}"
+    );
     assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
     assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
@@ -6211,7 +6221,8 @@ fn finding_challenge_the_payout_never_seals_inside_the_claim_window() -> TestRes
     let signed = market_terms(CLAIM_WINDOW)?;
     let deployment = deployment_publishing_terms(std::slice::from_ref(&signed))?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
-    let governance = governance()?;
+    let mut governance = governance()?;
+    governance.admission = signed_admission(&deployment.allocation_id, &signed)?;
     let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 50, NOW)?;
     let ready =
         ready_to_uphold_with_terms_and_penalty(&deployment, &coordinator, &signed, 100, "USD")?;
@@ -6238,10 +6249,11 @@ fn finding_challenge_the_payout_never_seals_inside_the_claim_window() -> TestRes
     // Adjudication lands and the liability blocks the listing, but the
     // call that opens the window cannot also close it.
     let opened_at = NOW + 2;
-    assert!(matches!(
-        uphold_at(&signed, opened_at),
-        Err(ChallengeCoordinatorError::ClaimWindowOpen)
-    ));
+    let opened = uphold_at(&signed, opened_at);
+    assert!(
+        matches!(&opened, Err(ChallengeCoordinatorError::ClaimWindowOpen)),
+        "{opened:?}"
+    );
     let head = deployment
         .challenges
         .get_liability(&derive_liability_key(
@@ -8348,34 +8360,23 @@ fn finding_challenge_an_observer_cannot_weaken_deployment_finality() -> TestResu
     snapshot_body.snapshot_id = compute_snapshot_id(&snapshot_body)?;
     let snapshot = SignedExportEnvelope::sign(snapshot_body, &keypair(34))?;
 
-    let mut enforcement_body = case.enforcement.body.clone();
-    enforcement_body.bond_snapshot_envelope_sha256 = signed_envelope_sha256(&snapshot)?;
-    enforcement_body.enforcement_id = String::new();
-    enforcement_body.enforcement_id = compute_enforcement_id(&enforcement_body)?;
-    let enforcement = SignedExportEnvelope::sign(enforcement_body, &keypair(32))?;
-
     let refused = case
         .coordinator
-        .finalize(
-            &case.liability_key,
-            &enforcement,
-            &case.penalty,
+        .refresh_finalizing_enforcement(
+            &case.authorized()?,
             &snapshot,
             &case.seller,
-            &settlement_config()?,
-            &settlement_config()?.operator_address,
-            &evm_vault_snapshot(),
-            &enforcement_anchor_proof(&enforcement)?,
-            &ScriptedObservations::qualified(),
-            &UnreachablePublisher,
             SETTLEMENT_NOW,
         )
         .expect_err("the observer cannot choose a shallower finality policy");
-    assert!(matches!(
-        refused,
-        ChallengeCoordinatorError::Settlement(detail)
-            if detail.contains("does not match the pinned finality requirement")
-    ));
+    assert!(
+        matches!(
+            &refused,
+            ChallengeCoordinatorError::Settlement(detail)
+                if detail.contains("does not match the pinned finality requirement")
+        ),
+        "{refused:?}"
+    );
     assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
     assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
     Ok(())
@@ -8726,25 +8727,7 @@ fn finding_challenge_a_snapshot_from_an_expired_observer_key_authorizes_nothing(
 #[test]
 fn finding_challenge_rotated_snapshot_cannot_replace_a_bound_enforcement_root() -> TestResult {
     let case = finalizing_liability()?;
-    let authorized = AuthorizedImpairment {
-        enforcement: case.enforcement.clone(),
-        enforcement_envelope_sha256: signed_envelope_sha256(&case.enforcement)?,
-        slash: case.slash.clone(),
-        effect_intent_keys: vec![
-            (
-                FindingEffectIntentKind::SellerImpair,
-                case.intent_key.clone(),
-            ),
-            (
-                FindingEffectIntentKind::RootIntent,
-                enforcement_root_intent_key(),
-            ),
-            (
-                FindingEffectIntentKind::Retraction,
-                case.retraction_key.clone(),
-            ),
-        ],
-    };
+    let authorized = case.authorized()?;
     let mut body = case.snapshot.body.clone();
     body.operator_key_epoch = PINNED_KEY_EPOCH + 1;
     body.snapshot_id = String::new();
@@ -9644,7 +9627,7 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
 }
 
 #[test]
-fn finding_challenge_governance_charter_must_be_issued_inside_the_pinned_window() -> TestResult {
+fn finding_challenge_governance_charter_uses_its_retained_pinned_window() -> TestResult {
     let deployment = deployment()?;
     let live = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let ready = ready_to_uphold(&deployment, &live)?;
@@ -9656,7 +9639,7 @@ fn finding_challenge_governance_charter_must_be_issued_inside_the_pinned_window(
     let stake = usd(300);
     let required = usd(5_000);
 
-    let refused = coordinator
+    let retry = coordinator
         .uphold(
             &ready.challenge_id,
             &ready.challenge,
@@ -9670,16 +9653,13 @@ fn finding_challenge_governance_charter_must_be_issued_inside_the_pinned_window(
             &governance.sanction_case,
             NOW + 2,
         )
-        .expect_err("a same-key charter predating the configured lifecycle opens no liability");
-    assert!(matches!(
-        refused,
-        ChallengeCoordinatorError::AuthorityLifecycle {
-            role: "governance charter",
-            ..
-        }
-    ));
-    assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+        .expect_err("the first uphold opens the claim window without sealing it");
+    assert!(
+        matches!(&retry, ChallengeCoordinatorError::ClaimWindowOpen),
+        "{retry:?}"
+    );
+    assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 1);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
