@@ -26,12 +26,13 @@ use chio_core::receipt::metadata::{
 };
 use chio_finding::{
     compute_failed_delivery_id, derive_purchase_key, validate_evm_payout_destination,
-    verify_finding, verify_signed_bond_backing, verify_signed_seller_authorization, Finding,
-    FindingAuthorityKeyPolicy, FindingFailedDelivery, FindingHoldReleaseTerminal,
-    FindingPurchaseRecord, SignedFindingAdmission, SignedFindingBondBacking,
-    SignedFindingFailedDelivery, SignedFindingMarketTerms, SignedFindingPurchaseRecord,
-    SignedFindingSellerAuthorization, FINDING_FAILED_DELIVERY_SCHEMA_V1,
-    FINDING_PURCHASE_RECORD_SCHEMA_V1,
+    verify_finding, verify_signed_authority_status, verify_signed_bond_backing,
+    verify_signed_failed_delivery, verify_signed_purchase_record,
+    verify_signed_seller_authorization, Finding, FindingAuthorityKeyPolicy, FindingFailedDelivery,
+    FindingHoldReleaseTerminal, FindingPurchaseRecord, SignedFindingAdmission,
+    SignedFindingBondBacking, SignedFindingFailedDelivery, SignedFindingMarketTerms,
+    SignedFindingPurchaseRecord, SignedFindingSellerAuthorization,
+    FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
 };
 use chio_kernel::admission_operation::{
     AdmissionOperationState, AdmissionOperationStore, AdmissionReceiptMetadataV1,
@@ -56,6 +57,7 @@ use chio_store_sqlite::{
     SqliteToolOutcomeStore,
 };
 
+use super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::finding_purchase_verifier::{PurchaseReservationReader, ReservationExpectation};
 
 /// Domain separator for the deterministic reservation identity.
@@ -63,6 +65,10 @@ const RESERVATION_DOMAIN: &str = "chio.finding.reservation.v1";
 
 /// Domain separator for the deterministic encumbrance identity.
 const ENCUMBRANCE_DOMAIN: &str = "chio.finding.encumbrance.v1";
+
+/// Maximum age of an independently signed revocation reading used to
+/// authorize a new terminal signature.
+const TERMINAL_AUTHORITY_STATUS_MAX_AGE_SECS: u64 = 3_600;
 
 fn authority_policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u64) -> bool {
     instant >= policy.valid_from && instant < policy.valid_until
@@ -142,6 +148,11 @@ pub enum PurchaseCoordinatorError {
     DeclaredAuthorityMismatch(&'static str),
     #[error("admission-declared {0} authority window does not cover the reservation instant")]
     DeclaredAuthorityWindow(&'static str),
+    #[error("admission-declared {role} authority lifecycle rejected terminal closure: {reason}")]
+    AuthorityLifecycle {
+        role: &'static str,
+        reason: &'static str,
+    },
     #[error(
         "admission-declared failed-delivery authority window does not cover the denial terminal"
     )]
@@ -192,6 +203,8 @@ pub struct FindingPurchaseCoordinator {
     outcomes: SqliteToolOutcomeStore,
     purchase_authority: Keypair,
     failed_delivery_authority: Keypair,
+    authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+    authority_status_key: PublicKey,
     venue_authority: PublicKey,
     venue_id: String,
 }
@@ -211,6 +224,8 @@ impl FindingPurchaseCoordinator {
         purchase_pin: &PublicKey,
         failed_delivery_authority: Keypair,
         failed_delivery_pin: &PublicKey,
+        authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+        authority_status_pin: &PublicKey,
         venue_pin: &PublicKey,
         venue_id: &str,
     ) -> Result<Self, PurchaseCoordinatorError> {
@@ -232,9 +247,69 @@ impl FindingPurchaseCoordinator {
             outcomes,
             purchase_authority,
             failed_delivery_authority,
+            authority_status,
+            authority_status_key: authority_status_pin.clone(),
             venue_authority: venue_pin.clone(),
             venue_id: venue_id.to_owned(),
         })
+    }
+
+    fn require_live_terminal_authority(
+        &self,
+        policy: &FindingAuthorityKeyPolicy,
+        signing_key: &PublicKey,
+        terminal_at: u64,
+        now: u64,
+        role: &'static str,
+    ) -> Result<(), PurchaseCoordinatorError> {
+        let reject = |reason| PurchaseCoordinatorError::AuthorityLifecycle { role, reason };
+        if policy.key != *signing_key {
+            return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
+        }
+        if !authority_policy_covers(policy, terminal_at) || !authority_policy_covers(policy, now) {
+            return Err(reject("configured authority window is not live"));
+        }
+        let signed = self
+            .authority_status
+            .resolve(
+                &super::service_types::FindingAuthorityPin {
+                    authority_id: policy.authority_id.clone(),
+                    key_hex: policy.key.to_hex(),
+                    key_epoch: policy.key_epoch,
+                    valid_from: policy.valid_from,
+                    valid_until: policy.valid_until,
+                    revocation_status_ref: policy.revocation_status_ref.clone(),
+                },
+                now,
+            )
+            .map_err(|_| reject("revocation source could not be resolved"))?;
+        verify_signed_authority_status(&signed, &self.authority_status_key)
+            .map_err(|_| reject("revocation status signature is invalid"))?;
+        let status = &signed.body;
+        if status.status_ref != policy.revocation_status_ref
+            || status.authority_id != policy.authority_id
+            || status.key != policy.key
+            || status.key_epoch != policy.key_epoch
+        {
+            return Err(reject(
+                "revocation status does not bind the admitted policy",
+            ));
+        }
+        if status.observed_at < terminal_at
+            || status.observed_at > now
+            || now.saturating_sub(status.observed_at) > TERMINAL_AUTHORITY_STATUS_MAX_AGE_SECS
+        {
+            return Err(reject(
+                "revocation status is not a fresh post-terminal reading",
+            ));
+        }
+        if status
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from <= now)
+        {
+            return Err(reject("authority is revoked at finalization"));
+        }
+        Ok(())
     }
 
     /// Reserve funds and seller exposure for one accepted ask, then sign
@@ -982,6 +1057,38 @@ impl FindingPurchaseCoordinator {
         record
             .validate()
             .map_err(|error| PurchaseCoordinatorError::ArtifactValidation(error.to_string()))?;
+        if reservation.state == FindingPurchaseReservationState::Consumed {
+            let retained = self
+                .store
+                .get_purchase_record(&record.purchase_key)
+                .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
+                .ok_or_else(|| {
+                    PurchaseCoordinatorError::Store(
+                        "consumed reservation lost its purchase record".to_owned(),
+                    )
+                })?;
+            let signed: SignedFindingPurchaseRecord = serde_json::from_slice(&retained.record_json)
+                .map_err(|_| {
+                    PurchaseCoordinatorError::Store(
+                        "retained purchase record failed deserialization".to_owned(),
+                    )
+                })?;
+            verify_signed_purchase_record(&signed, &admission.body.purchase_authority.key)
+                .map_err(|error| PurchaseCoordinatorError::ArtifactValidation(error.to_string()))?;
+            if signed.body != record {
+                return Err(PurchaseCoordinatorError::Store(
+                    "retained purchase record conflicts with replay inputs".to_owned(),
+                ));
+            }
+            return Ok(signed);
+        }
+        self.require_live_terminal_authority(
+            &admission.body.purchase_authority,
+            &self.purchase_authority.public_key(),
+            receipt.timestamp,
+            now,
+            "purchase",
+        )?;
         let signed = SignedFindingPurchaseRecord::sign(record, &self.purchase_authority)
             .map_err(|_| PurchaseCoordinatorError::Signing)?;
         let record_json =
@@ -1128,6 +1235,38 @@ impl FindingPurchaseCoordinator {
         artifact
             .validate()
             .map_err(|error| PurchaseCoordinatorError::ArtifactValidation(error.to_string()))?;
+        if reservation.state == FindingPurchaseReservationState::Released {
+            if let Some(retained) = self
+                .store
+                .get_failed_delivery_record(&artifact.failed_delivery_id)
+                .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
+            {
+                let signed: SignedFindingFailedDelivery =
+                    serde_json::from_slice(&retained.record_json).map_err(|_| {
+                        PurchaseCoordinatorError::Store(
+                            "retained failed-delivery record failed deserialization".to_owned(),
+                        )
+                    })?;
+                verify_signed_failed_delivery(
+                    &signed,
+                    &admission.body.failed_delivery_authority.key,
+                )
+                .map_err(|error| PurchaseCoordinatorError::ArtifactValidation(error.to_string()))?;
+                if signed.body != artifact {
+                    return Err(PurchaseCoordinatorError::Store(
+                        "retained failed-delivery record conflicts with replay inputs".to_owned(),
+                    ));
+                }
+                return Ok(signed);
+            }
+        }
+        self.require_live_terminal_authority(
+            &admission.body.failed_delivery_authority,
+            &self.failed_delivery_authority.public_key(),
+            receipt.timestamp,
+            now,
+            "failed-delivery",
+        )?;
         let signed = SignedFindingFailedDelivery::sign(artifact, &self.failed_delivery_authority)
             .map_err(|_| PurchaseCoordinatorError::Signing)?;
         let record_json =

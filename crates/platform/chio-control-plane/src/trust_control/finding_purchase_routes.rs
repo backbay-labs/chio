@@ -25,8 +25,9 @@ use chio_core::crypto::{sha256_hex, PublicKey};
 use chio_core::receipt::body::ChioReceipt;
 use chio_core::receipt::decision::Decision;
 use chio_finding::{
-    verify_signed_failed_delivery, verify_signed_purchase_record, Finding,
-    FindingHoldReleaseTerminal, SignedFindingFailedDelivery, SignedFindingPurchaseRecord,
+    verify_signed_admission, verify_signed_failed_delivery, verify_signed_purchase_record, Finding,
+    FindingHoldReleaseTerminal, SignedFindingAdmission, SignedFindingFailedDelivery,
+    SignedFindingPurchaseRecord,
 };
 use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
@@ -341,11 +342,10 @@ impl FindingPurchaseResult {
         &self,
         request: &FindingPurchaseRequest,
         finding: &Finding,
-        purchase_authority: &PublicKey,
-        failed_delivery_authority: &PublicKey,
+        admission: &SignedFindingAdmission,
     ) -> Result<(), String> {
         self.validate_shape(request)?;
-        if finding.finding_id != self.finding_id {
+        if finding.finding_id != self.finding_id || admission.body.finding_id != self.finding_id {
             return Err("purchase result names a different finding artifact".to_owned());
         }
         match self.verdict {
@@ -373,7 +373,18 @@ impl FindingPurchaseResult {
                     .purchase_record
                     .as_ref()
                     .ok_or_else(|| "captured purchase omitted its purchase record".to_owned())?;
-                verify_signed_purchase_record(record, purchase_authority)
+                if record.body.venue_admission_envelope_sha256
+                    != chio_core::canonical_json_bytes(admission)
+                        .map(|bytes| sha256_hex(&bytes))
+                        .map_err(|_| "retained admission canonicalization failed".to_owned())?
+                    || record.body.recorded_at < admission.body.purchase_authority.valid_from
+                    || record.body.recorded_at >= admission.body.purchase_authority.valid_until
+                {
+                    return Err(
+                        "purchase record is outside its retained admission policy".to_owned()
+                    );
+                }
+                verify_signed_purchase_record(record, &admission.body.purchase_authority.key)
                     .map_err(|_| "purchase record authority verification failed".to_owned())?;
                 if record.body.finding_id != self.finding_id
                     || record.body.purchase_intent_id != self.purchase_intent_id
@@ -392,8 +403,24 @@ impl FindingPurchaseResult {
                 let failed = self.failed_delivery.as_ref().ok_or_else(|| {
                     "released purchase omitted failed-delivery evidence".to_owned()
                 })?;
-                verify_signed_failed_delivery(failed, failed_delivery_authority)
-                    .map_err(|_| "failed-delivery authority verification failed".to_owned())?;
+                if failed.body.venue_admission_envelope_sha256
+                    != chio_core::canonical_json_bytes(admission)
+                        .map(|bytes| sha256_hex(&bytes))
+                        .map_err(|_| "retained admission canonicalization failed".to_owned())?
+                    || failed.body.recorded_at < admission.body.failed_delivery_authority.valid_from
+                    || failed.body.recorded_at
+                        >= admission.body.failed_delivery_authority.valid_until
+                {
+                    return Err(
+                        "failed-delivery terminal is outside its retained admission policy"
+                            .to_owned(),
+                    );
+                }
+                verify_signed_failed_delivery(
+                    failed,
+                    &admission.body.failed_delivery_authority.key,
+                )
+                .map_err(|_| "failed-delivery authority verification failed".to_owned())?;
                 let receipt_sha256 = chio_core::canonical_json_bytes(&self.delivery_receipt)
                     .map(|bytes| sha256_hex(&bytes))
                     .map_err(|_| "delivery receipt canonicalization failed".to_owned())?;
@@ -663,13 +690,13 @@ pub(crate) async fn handle_purchase_finding(
             "purchase path and body name different findings",
         );
     }
-    let Some(config) = state.config.finding_market.as_ref() else {
+    if state.config.finding_market.is_none() {
         return purchase_error(
             StatusCode::CONFLICT,
             "finding_market_unconfigured",
             "finding market is not configured",
         );
-    };
+    }
     let Some(authority) = state.joint_authority_store.as_ref() else {
         return purchase_error(
             StatusCode::CONFLICT,
@@ -745,33 +772,53 @@ pub(crate) async fn handle_purchase_finding(
             )
         }
     };
-    let purchase_authority = match config.purchase.key() {
-        Ok(key) => key,
-        Err(_) => {
+    let admission_digest = match result.verdict {
+        FindingPurchaseVerdict::Allow => result
+            .purchase_record
+            .as_ref()
+            .map(|record| record.body.venue_admission_envelope_sha256.as_str()),
+        FindingPurchaseVerdict::Deny => result
+            .failed_delivery
+            .as_ref()
+            .map(|failed| failed.body.venue_admission_envelope_sha256.as_str()),
+    };
+    let Some(admission_digest) = admission_digest else {
+        return purchase_error(
+            StatusCode::BAD_GATEWAY,
+            "purchase_terminal_invalid",
+            "purchase executor returned an invalid terminal",
+        );
+    };
+    let admission_json = match store.get_admission_by_envelope_sha256(admission_digest) {
+        Ok(Some(json)) => json,
+        Ok(None) | Err(_) => {
             return purchase_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "purchase_authority_invalid",
-                "configured purchase authority is invalid",
+                StatusCode::BAD_GATEWAY,
+                "purchase_terminal_invalid",
+                "purchase executor returned an invalid terminal",
             )
         }
     };
-    let failed_delivery_authority = match config.failed_delivery.key() {
-        Ok(key) => key,
+    let admission: SignedFindingAdmission = match serde_json::from_str(&admission_json) {
+        Ok(admission) => admission,
         Err(_) => {
             return purchase_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed_delivery_authority_invalid",
-                "configured failed-delivery authority is invalid",
+                StatusCode::BAD_GATEWAY,
+                "purchase_terminal_invalid",
+                "purchase executor returned an invalid terminal",
             )
         }
     };
+    if verify_signed_admission(&admission, &admission.body.venue, &admission.body.venue_id).is_err()
+    {
+        return purchase_error(
+            StatusCode::BAD_GATEWAY,
+            "purchase_terminal_invalid",
+            "purchase executor returned an invalid terminal",
+        );
+    }
     if result
-        .validate_authorized(
-            &request,
-            &finding,
-            &purchase_authority,
-            &failed_delivery_authority,
-        )
+        .validate_authorized(&request, &finding, &admission)
         .is_err()
     {
         return purchase_error(

@@ -926,6 +926,7 @@ pub(crate) async fn handle_register_finding_collateral(
 pub(crate) struct FindingActivateRequest {
     pub admission: SignedFindingAdmission,
     pub venue_authority_status: SignedFindingAuthorityStatus,
+    pub listing_authority_status: SignedFindingAuthorityStatus,
     pub seller_authorization: SignedFindingSellerAuthorization,
     pub terms: SignedFindingMarketTerms,
     pub backing: SignedFindingBondBacking,
@@ -934,6 +935,44 @@ pub(crate) struct FindingActivateRequest {
     pub verifier_authority_status: SignedFindingAuthorityStatus,
     pub listing: SignedGenericListing,
     pub pricing_hint: chio_open_market::listing::SignedListingPricingHint,
+}
+
+fn verify_listing_authority_lifecycle(
+    listing: &SignedGenericListing,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<(), String> {
+    let listing_key = config.listing.key().map_err(|error| error.to_string())?;
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live at activation".into());
+    }
+    if status.status_ref != config.listing.revocation_status_ref
+        || status.authority_id != config.listing.authority_id
+        || status.key != listing_key
+        || status.key_epoch != config.listing.key_epoch
+    {
+        return Err("listing authority status does not bind the deployment pin".into());
+    }
+    if status.observed_at < listing.body.published_at {
+        return Err("listing authority status predates the listing".into());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("listing authority status is not a fresh current reading".into());
+    }
+    if status.revoked_from.is_some() {
+        return Err("listing authority is revoked at activation".into());
+    }
+    Ok(())
 }
 
 pub(crate) fn verify_venue_authority_lifecycle(
@@ -1149,20 +1188,6 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::BAD_REQUEST, "admission names another finding");
     }
     let now = unix_timestamp_now();
-    if !config.venue.covers(admission.issued_at) || !config.venue.covers(now) {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "finding venue authority is not live for admission activation",
-        );
-    }
-    if let Err(error) = verify_venue_authority_lifecycle(
-        &request.admission,
-        &request.venue_authority_status,
-        &config,
-        now,
-    ) {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error);
-    }
     let admission_json = match chio_core::canonical_json_bytes(&request.admission)
         .map_err(|_| ())
         .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ()))
@@ -1176,7 +1201,7 @@ pub(crate) async fn handle_activate_finding(
     // A prepared retry owns the consumed allocation named by these exact
     // bytes. An activated retry is already complete, including when a
     // later admission superseded it.
-    let activation_attempt_state = match store.get_activation_attempt(&admission.admission_id) {
+    let activation_attempt = match store.get_activation_attempt(&admission.admission_id) {
         Ok(Some(attempt)) => {
             if attempt.envelope_json != admission_json {
                 return plain_http_error(
@@ -1184,16 +1209,19 @@ pub(crate) async fn handle_activate_finding(
                     "admission id is already bound to different activation bytes",
                 );
             }
-            Some(attempt.state)
+            Some(attempt)
         }
         Ok(None) => None,
         Err(error) => {
             return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
         }
     };
-    let prepared_replay = activation_attempt_state == Some(FindingActivationAttemptState::Prepared);
-    let mut completed_replay =
-        activation_attempt_state == Some(FindingActivationAttemptState::Activated);
+    let prepared_replay = activation_attempt
+        .as_ref()
+        .is_some_and(|attempt| attempt.state == FindingActivationAttemptState::Prepared);
+    let mut completed_replay = activation_attempt
+        .as_ref()
+        .is_some_and(|attempt| attempt.state == FindingActivationAttemptState::Activated);
 
     // Exact-replay short circuit: a retry of an already committed
     // activation must return the stored outcome instead of re-verifying
@@ -1214,6 +1242,44 @@ pub(crate) async fn handle_activate_finding(
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 
+    if completed_replay {
+        if let Err(error) = purchase_store.register_community_fund_destination(
+            &admission.backing_allocation_id,
+            &admission.community_fund_destination,
+            now,
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+        }
+        return Json(serde_json::json!({
+            "admissionId": admission.admission_id,
+            "outcome": "ExactReplay",
+        }))
+        .into_response();
+    }
+
+    // Preparing the exact admission durably records the authorization
+    // decision before any fee can move. An exact retry reuses that bounded
+    // instant for constituent lifecycle validation so a later rotation or
+    // expiry cannot strand a reconciled charge and consumed allocation.
+    let authorization_now = activation_attempt
+        .as_ref()
+        .filter(|attempt| attempt.state == FindingActivationAttemptState::Prepared)
+        .map_or(now, |attempt| attempt.prepared_at);
+    if !config.venue.covers(admission.issued_at) || !config.venue.covers(authorization_now) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding venue authority is not live for admission activation",
+        );
+    }
+    if let Err(error) = verify_venue_authority_lifecycle(
+        &request.admission,
+        &request.venue_authority_status,
+        &config,
+        authorization_now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
+
     let purchase_store = match state.joint_authority_store.as_ref() {
         Some(authority) => authority.finding_purchase_store(),
         None => {
@@ -1225,10 +1291,15 @@ pub(crate) async fn handle_activate_finding(
     };
     match purchase_store.sales_blocked(&admission.listing_id) {
         Ok(true) => {
-            return plain_http_error(
-                StatusCode::BAD_REQUEST,
-                "listing admission is blocked by an enforced penalty",
-            )
+            if prepared_replay {
+                // The durable prepare owns the pre-fee block decision. The
+                // activated listing will still be blocked from new sales.
+            } else {
+                return plain_http_error(
+                    StatusCode::BAD_REQUEST,
+                    "listing admission is blocked by an enforced penalty",
+                );
+            }
         }
         Ok(false) => {}
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
@@ -1293,7 +1364,7 @@ pub(crate) async fn handle_activate_finding(
             "finding listing signer does not match the configured listing authority",
         );
     }
-    if request.listing.body.published_at > now {
+    if request.listing.body.published_at > authorization_now {
         return plain_http_error(
             StatusCode::BAD_REQUEST,
             "finding listing was published after the activation clock",
@@ -1305,28 +1376,22 @@ pub(crate) async fn handle_activate_finding(
             "finding listing was published outside the configured listing authority window",
         );
     }
-    if !config.listing.covers(now) {
+    if !config.listing.covers(authorization_now) {
         return plain_http_error(
             StatusCode::BAD_REQUEST,
             "finding listing authority is not live at activation",
         );
     }
+    if let Err(error) = verify_listing_authority_lifecycle(
+        &request.listing,
+        &request.listing_authority_status,
+        &config,
+        authorization_now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
     if request.listing.body.status != GenericListingStatus::Active {
         return plain_http_error(StatusCode::BAD_REQUEST, "finding listing is not active");
-    }
-    if completed_replay {
-        if let Err(error) = purchase_store.register_community_fund_destination(
-            &admission.backing_allocation_id,
-            &admission.community_fund_destination,
-            now,
-        ) {
-            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
-        }
-        return Json(serde_json::json!({
-            "admissionId": admission.admission_id,
-            "outcome": "ExactReplay",
-        }))
-        .into_response();
     }
     let hint_digest = match canonical_digest_of(&request.pricing_hint) {
         Ok(digest) => digest,
@@ -1344,7 +1409,7 @@ pub(crate) async fn handle_activate_finding(
     if !matches!(request.pricing_hint.verify_signature(), Ok(true)) {
         return plain_http_error(StatusCode::BAD_REQUEST, "pricing hint signature is invalid");
     }
-    if !request.pricing_hint.body.is_live_at(now) {
+    if !request.pricing_hint.body.is_live_at(authorization_now) {
         return plain_http_error(
             StatusCode::BAD_REQUEST,
             "pricing hint is not live at activation",
@@ -1430,7 +1495,8 @@ pub(crate) async fn handle_activate_finding(
             "seller authorization names a different listing",
         );
     }
-    if authorization.issued_at > now || authorization.expires_at <= now {
+    if authorization.issued_at > authorization_now || authorization.expires_at <= authorization_now
+    {
         return plain_http_error(StatusCode::BAD_REQUEST, "seller authorization is not live");
     }
     if let FindingPayee::Beneficiary { destination, .. } = &authorization.payee {
@@ -1475,9 +1541,12 @@ pub(crate) async fn handle_activate_finding(
                 )
             }
         };
-    if let Err(error) =
-        verify_profile_for_activation(&profile, &admission.profile_envelope_sha256, &config, now)
-    {
+    if let Err(error) = verify_profile_for_activation(
+        &profile,
+        &admission.profile_envelope_sha256,
+        &config,
+        authorization_now,
+    ) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     if let Err(error) = verify_profile_settlement_authorities(&profile, &request.admission, &config)
@@ -1517,7 +1586,7 @@ pub(crate) async fn handle_activate_finding(
         &profile,
         &finding,
         &config,
-        now,
+        authorization_now,
     ) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
@@ -1530,7 +1599,7 @@ pub(crate) async fn handle_activate_finding(
     let admission_context = FindingAdmissionContext {
         venue_authority: &venue_key,
         venue_id: &config.venue_id,
-        now,
+        now: authorization_now,
         fee_schedule: &request.fee_schedule,
         fee_schedule_gate: gate,
         trusted_local_operator_signers: &trusted_signers,

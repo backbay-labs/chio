@@ -192,6 +192,26 @@ fn signed_venue_authority_status(
     )?)
 }
 
+fn signed_listing_authority_status(
+    observed_at: u64,
+    revoked_from: Option<u64>,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = listing_authority_pin();
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
 fn signed_collateral_authority_status(
     observed_at: u64,
     revoked_from: Option<u64>,
@@ -1255,6 +1275,10 @@ impl MarketWeb {
                 unix_timestamp_now(),
                 None,
             )?)?,
+            "listingAuthorityStatus": serde_json::to_value(signed_listing_authority_status(
+                unix_timestamp_now(),
+                None,
+            )?)?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
             "terms": serde_json::to_value(&self.terms)?,
             "backing": serde_json::to_value(&self.backing)?,
@@ -1618,6 +1642,17 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         &stack,
         revoked_venue_request.to_string(),
         "venue authority is revoked at activation",
+    )
+    .await?;
+
+    let mut revoked_listing_request: serde_json::Value =
+        serde_json::from_str(&web.activate_request(&web.admission, &web.schedule, &web.report)?)?;
+    revoked_listing_request["listingAuthorityStatus"] =
+        serde_json::to_value(signed_listing_authority_status(now, Some(now))?)?;
+    assert_activation_rejected(
+        &stack,
+        revoked_listing_request.to_string(),
+        "listing authority is revoked at activation",
     )
     .await?;
 
@@ -2004,12 +2039,13 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
 
     // Fault injection, first leg: the rail refuses to settle. The charge
     // stays durable and failed, and nothing is admitted.
+    let activation_request = web.activate_request(&web.admission, &web.schedule, &web.report)?;
     let failing = stack.failing_rail_state();
     let (status, body) = send(
         &failing,
         authed_post(
             &format!("/v1/findings/{}/activate", web.finding_id),
-            web.activate_request(&web.admission, &web.schedule, &web.report)?,
+            activation_request.clone(),
         )?,
     )
     .await?;
@@ -2040,8 +2076,29 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     assert_eq!(attempt.envelope_json, web.admission_json);
 
     // Second leg: the SAME activation request retries against the working
-    // rail and reconciles without double-charging.
-    let (status, body) = stack.activate().await?;
+    // rail after its venue pin expires. The durable prepare retains the
+    // bounded authorization decision, so the attempt can reconcile without
+    // double-charging or stranding its consumed allocation.
+    let mut retry_state = stack.state.clone();
+    retry_state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or_else(|| missing("finding market config"))?
+        .venue
+        .valid_until = attempt.prepared_at.saturating_add(1);
+    let rollover = attempt.prepared_at.saturating_add(1);
+    while unix_timestamp_now() < rollover {
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    let (status, body) = send(
+        &retry_state,
+        authed_post(
+            &format!("/v1/findings/{}/activate", web.finding_id),
+            activation_request,
+        )?,
+    )
+    .await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     assert_eq!(json_body(&body)?["outcome"], serde_json::json!("Activated"));
     let purchase_store = stack

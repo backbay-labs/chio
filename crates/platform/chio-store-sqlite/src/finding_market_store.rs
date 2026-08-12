@@ -1109,8 +1109,6 @@ impl SqliteFindingMarketStore {
         admission: &FindingAdmission,
         activated_at: u64,
     ) -> Result<FindingActivationOutcome, FindingMarketStoreError> {
-        let envelope_sha256 =
-            validate_activation_envelope(admission_envelope_json, admission, activated_at)?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         let attempt = load_activation_attempt_tx(&transaction, &admission.admission_id)?
@@ -1119,6 +1117,12 @@ impl SqliteFindingMarketStore {
                     "activation was not durably prepared before fee settlement".to_owned(),
                 )
             })?;
+        // Preparation is the durable authorization boundary before any fee
+        // dispatch. Exact retries may finish after a constituent expires or
+        // rotates, so validate the envelope at that retained instant while
+        // recording the real completion time below.
+        let envelope_sha256 =
+            validate_activation_envelope(admission_envelope_json, admission, attempt.prepared_at)?;
         if attempt.envelope_json != admission_envelope_json
             || attempt.envelope_sha256 != envelope_sha256
         {
@@ -1332,6 +1336,37 @@ impl SqliteFindingMarketStore {
             backing_allocation_id,
             allocation_state: allocation.state,
         }))
+    }
+
+    /// Resolve exact retained admission bytes by their canonical envelope
+    /// digest. Historical purchase replay uses this content address rather
+    /// than the deployment's current authority pins, which may have rotated
+    /// after the sale completed.
+    pub fn get_admission_by_envelope_sha256(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<String>, FindingMarketStoreError> {
+        require_hex64(envelope_sha256, "admission_envelope_sha256")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let envelope_json = transaction
+            .query_row(
+                "SELECT admission_envelope_json FROM admissions WHERE admission_envelope_sha256 = ?1 LIMIT 1",
+                [envelope_sha256],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        if let Some(envelope_json) = envelope_json {
+            verify_stored_digest(
+                envelope_json.as_bytes(),
+                envelope_sha256,
+                "admission envelope",
+            )?;
+            Ok(Some(envelope_json))
+        } else {
+            Ok(None)
+        }
     }
 }
 

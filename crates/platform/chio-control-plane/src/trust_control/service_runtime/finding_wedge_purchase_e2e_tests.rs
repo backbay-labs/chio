@@ -123,6 +123,7 @@ use chio_store_sqlite::{
 };
 use tower::ServiceExt;
 
+use crate::trust_control::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use crate::trust_control::finding_purchase_coordinator::{
     derive_reservation_id, CoordinatorReservationReader, FindingPurchaseCoordinator,
     PurchaseCoordinatorError,
@@ -273,6 +274,68 @@ fn signed_venue_authority_status(
         },
         &keypair(37),
     )?)
+}
+
+fn signed_listing_authority_status(
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = listing_authority_pin();
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+struct TestTerminalAuthorityStatusResolver {
+    revoked_authority_id: Option<String>,
+}
+
+impl TestTerminalAuthorityStatusResolver {
+    fn live() -> Self {
+        Self {
+            revoked_authority_id: None,
+        }
+    }
+
+    fn revoked(authority_id: &str) -> Self {
+        Self {
+            revoked_authority_id: Some(authority_id.to_owned()),
+        }
+    }
+}
+
+impl FindingAuthorityStatusResolver for TestTerminalAuthorityStatusResolver {
+    fn resolve(
+        &self,
+        pin: &FindingAuthorityPin,
+        now: u64,
+    ) -> Result<SignedFindingAuthorityStatus, String> {
+        let key = pin.key().map_err(|error| error.to_string())?;
+        SignedExportEnvelope::sign(
+            FindingAuthorityStatus {
+                schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: pin.revocation_status_ref.clone(),
+                authority_id: pin.authority_id.clone(),
+                key,
+                key_epoch: pin.key_epoch,
+                revoked_from: (self.revoked_authority_id.as_deref()
+                    == Some(pin.authority_id.as_str()))
+                .then_some(now),
+                observed_at: now,
+            },
+            &keypair(37),
+        )
+        .map_err(|error| error.to_string())
+    }
 }
 
 fn collateral_registration_raw(
@@ -1256,6 +1319,9 @@ impl MarketWeb {
             "venueAuthorityStatus": serde_json::to_value(signed_venue_authority_status(
                 unix_timestamp_now(),
             )?)?,
+            "listingAuthorityStatus": serde_json::to_value(signed_listing_authority_status(
+                unix_timestamp_now(),
+            )?)?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
             "terms": serde_json::to_value(&self.terms)?,
             "backing": serde_json::to_value(&self.backing)?,
@@ -1831,6 +1897,16 @@ fn publish_live_status_proof_b64(
 }
 
 fn coordinator(authority: &SqliteAuthorityStore) -> Result<FindingPurchaseCoordinator, AnyError> {
+    coordinator_with_status(
+        authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+    )
+}
+
+fn coordinator_with_status(
+    authority: &SqliteAuthorityStore,
+    authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+) -> Result<FindingPurchaseCoordinator, AnyError> {
     Ok(FindingPurchaseCoordinator::new(
         authority.finding_purchase_store(),
         authority.finding_market_store(),
@@ -1840,6 +1916,8 @@ fn coordinator(authority: &SqliteAuthorityStore) -> Result<FindingPurchaseCoordi
         &keypair(16).public_key(),
         keypair(17),
         &keypair(17).public_key(),
+        authority_status,
+        &keypair(37).public_key(),
         &keypair(6).public_key(),
         VENUE_ID,
     )?)
@@ -2773,7 +2851,16 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
 
     // The identical public request rebuilds the same signed exchange, replays
     // the durable kernel terminal, and returns byte-identical result JSON even
-    // after the ask, Finding, admission, and purchase authority have expired.
+    // after the ask, Finding, admission, and admitted purchase authority have
+    // expired and the deployment has rotated to another purchase key. Route
+    // verification resolves the old key from the retained admission.
+    let rotated_purchase = state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or_else(|| missing("finding market config"))?;
+    rotated_purchase.purchase.key_hex = keypair(18).public_key().to_hex();
+    rotated_purchase.purchase.key_epoch = 2;
     purchase_clock.store(replay_now, Ordering::SeqCst);
     let (status, replay_body) = send(&state, authed_post(&path, request_body)?).await?;
     assert_eq!(status, StatusCode::OK);
@@ -4348,6 +4435,8 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         &keypair(18).public_key(),
         keypair(17),
         &keypair(17).public_key(),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &keypair(37).public_key(),
         &keypair(6).public_key(),
         VENUE_ID,
     )?;
@@ -4378,6 +4467,8 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         &keypair(16).public_key(),
         keypair(19),
         &keypair(19).public_key(),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &keypair(37).public_key(),
         &keypair(6).public_key(),
         VENUE_ID,
     )?;
@@ -4845,6 +4936,9 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
         "venueAuthorityStatus": serde_json::to_value(signed_venue_authority_status(
             unix_timestamp_now(),
         )?)?,
+        "listingAuthorityStatus": serde_json::to_value(signed_listing_authority_status(
+            unix_timestamp_now(),
+        )?)?,
         "sellerAuthorization": serde_json::to_value(&web.authorization)?,
         "terms": serde_json::to_value(&web.terms)?,
         "backing": serde_json::to_value(&second_backing)?,
@@ -4967,6 +5061,73 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     assert_eq!(lane.invocations.load(Ordering::SeqCst), 0);
     assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 0);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);
+    Ok(())
+}
+
+/// Terminal selection and realized spend come from the durable kernel
+/// verdict and outcome, never from coordinator-call parameters.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_terminal_closure_requires_live_authority_status() -> TestResult {
+    let delivered = open_lane(LaneOptions::standard()).await?;
+    let delivered_response = delivered.reveal("wedge-revoked-purchase-1", "nonce-revoked-1")?;
+    assert_eq!(delivered_response.verdict, Verdict::Allow);
+    let now = unix_timestamp_now();
+    delivered
+        .authority
+        .finding_purchase_store()
+        .register_community_fund_destination(
+            &delivered.deployment.web.allocation_id,
+            COMMUNITY_FUND_DESTINATION,
+            now,
+        )?;
+    let revoked_purchase = coordinator_with_status(
+        &delivered.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::revoked(
+            "authority-purchase",
+        )),
+    )?;
+    assert!(matches!(
+        revoked_purchase.finalize_delivery(
+            &delivered.purchase.handshake.reservation_id,
+            &delivered_response.receipt,
+            &delivered.deployment.web.admission,
+            &delivered.deployment.web.backing,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "purchase",
+            reason: "authority is revoked at finalization",
+        })
+    ));
+
+    let denied = open_lane(LaneOptions {
+        case: RevealCase::digest_mismatch(),
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let denied_response = denied.reveal("wedge-revoked-denial-1", "nonce-revoked-2")?;
+    assert_eq!(denied_response.verdict, Verdict::Deny);
+    let (checkpoint, inclusion_proof) = denial_checkpoint(&denied_response.receipt)?;
+    let revoked_failed_delivery = coordinator_with_status(
+        &denied.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::revoked(
+            "authority-failed-delivery",
+        )),
+    )?;
+    assert!(matches!(
+        revoked_failed_delivery.finalize_denial(
+            &denied.purchase.handshake.reservation_id,
+            &denied_response.receipt,
+            &denied.deployment.web.admission,
+            &checkpoint,
+            &inclusion_proof,
+            unix_timestamp_now(),
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "failed-delivery",
+            reason: "authority is revoked at finalization",
+        })
+    ));
     Ok(())
 }
 
