@@ -779,7 +779,7 @@ fn emit_evidence_report(
             "evaluation_time": draft.evaluation_time,
             "resolved_evidence_bundle_sha256": draft.resolved_evidence_bundle_sha256,
             "backing_allocation_id": draft.backing_allocation_id,
-            "finding_delivery_receipt_id": draft.finding_delivery_receipt_id,
+            "finding_delivery_receipt_id": draft.finding_delivery_receipt_id(),
             "facets": facet_rows,
             "required_facets": required_labels,
             "unverified_required_facets": unverified,
@@ -801,7 +801,7 @@ fn emit_evidence_report(
             "evidence_bundle:     {}",
             terminal_safe(&draft.resolved_evidence_bundle_sha256)
         );
-        if let Some(receipt_id) = draft.finding_delivery_receipt_id.as_deref() {
+        if let Some(receipt_id) = draft.finding_delivery_receipt_id() {
             println!("delivery_receipt:    {}", terminal_safe(receipt_id));
         }
         println!("facets:");

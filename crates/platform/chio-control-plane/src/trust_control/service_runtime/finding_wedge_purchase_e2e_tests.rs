@@ -1907,6 +1907,18 @@ fn coordinator_with_status(
     authority: &SqliteAuthorityStore,
     authority_status: Arc<dyn FindingAuthorityStatusResolver>,
 ) -> Result<FindingPurchaseCoordinator, AnyError> {
+    coordinator_with_status_pin(
+        authority,
+        authority_status,
+        &authority_pin(37, "authority-status"),
+    )
+}
+
+fn coordinator_with_status_pin(
+    authority: &SqliteAuthorityStore,
+    authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+    authority_status_pin: &FindingAuthorityPin,
+) -> Result<FindingPurchaseCoordinator, AnyError> {
     Ok(FindingPurchaseCoordinator::new(
         authority.finding_purchase_store(),
         authority.finding_market_store(),
@@ -1917,7 +1929,7 @@ fn coordinator_with_status(
         keypair(17),
         &keypair(17).public_key(),
         authority_status,
-        &keypair(37).public_key(),
+        authority_status_pin,
         &keypair(6).public_key(),
         VENUE_ID,
     )?)
@@ -4436,7 +4448,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         keypair(17),
         &keypair(17).public_key(),
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
-        &keypair(37).public_key(),
+        &authority_pin(37, "authority-status"),
         &keypair(6).public_key(),
         VENUE_ID,
     )?;
@@ -4468,7 +4480,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         keypair(19),
         &keypair(19).public_key(),
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
-        &keypair(37).public_key(),
+        &authority_pin(37, "authority-status"),
         &keypair(6).public_key(),
         VENUE_ID,
     )?;
@@ -4487,6 +4499,31 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
             "failed-delivery"
         ))
     ));
+
+    // A direct consumer cannot let either terminal signer certify its own
+    // authority status.
+    for aliased_status_pin in [
+        authority_pin(16, "purchase-as-status"),
+        authority_pin(17, "failed-delivery-as-status"),
+    ] {
+        assert!(matches!(
+            FindingPurchaseCoordinator::new(
+                purchase_store.clone(),
+                fixture.authority.finding_market_store(),
+                fixture.authority.admission_operation_store(),
+                fixture.authority.tool_outcome_store(),
+                keypair(16),
+                &keypair(16).public_key(),
+                keypair(17),
+                &keypair(17).public_key(),
+                Arc::new(TestTerminalAuthorityStatusResolver::live()),
+                &aliased_status_pin,
+                &keypair(6).public_key(),
+                VENUE_ID,
+            ),
+            Err(PurchaseCoordinatorError::AuthorityStatusPin)
+        ));
+    }
 
     // A venue-signed admission whose declared purchase window has lapsed
     // by the reservation instant.
@@ -5097,6 +5134,26 @@ async fn wedge_purchase_terminal_closure_requires_live_authority_status() -> Tes
         Err(PurchaseCoordinatorError::AuthorityLifecycle {
             role: "purchase",
             reason: "authority is revoked at finalization",
+        })
+    ));
+    let mut expired_status_pin = authority_pin(37, "authority-status");
+    expired_status_pin.valid_until = now;
+    let expired_status = coordinator_with_status_pin(
+        &delivered.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &expired_status_pin,
+    )?;
+    assert!(matches!(
+        expired_status.finalize_delivery(
+            &delivered.purchase.handshake.reservation_id,
+            &delivered_response.receipt,
+            &delivered.deployment.web.admission,
+            &delivered.deployment.web.backing,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "purchase",
+            reason: "authority-status signer window is not live",
         })
     ));
 

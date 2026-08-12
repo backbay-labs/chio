@@ -59,6 +59,7 @@ use chio_store_sqlite::{
 
 use super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::finding_purchase_verifier::{PurchaseReservationReader, ReservationExpectation};
+use super::service_types::FindingAuthorityPin;
 
 /// Domain separator for the deterministic reservation identity.
 const RESERVATION_DOMAIN: &str = "chio.finding.reservation.v1";
@@ -120,6 +121,8 @@ pub fn derive_reservation_id(ask_digest: &str, payer_hex: &str) -> String {
 pub enum PurchaseCoordinatorError {
     #[error("purchase authority key does not match the configured pin")]
     AuthorityPinMismatch,
+    #[error("authority-status pin is invalid or aliases a terminal signing authority")]
+    AuthorityStatusPin,
     #[error("venue authority pin must be named and distinct from the signing authorities")]
     VenuePin,
     #[error("reserve request signature does not verify under the buyer key")]
@@ -204,7 +207,7 @@ pub struct FindingPurchaseCoordinator {
     purchase_authority: Keypair,
     failed_delivery_authority: Keypair,
     authority_status: Arc<dyn FindingAuthorityStatusResolver>,
-    authority_status_key: PublicKey,
+    authority_status_pin: FindingAuthorityPin,
     venue_authority: PublicKey,
     venue_id: String,
 }
@@ -225,7 +228,7 @@ impl FindingPurchaseCoordinator {
         failed_delivery_authority: Keypair,
         failed_delivery_pin: &PublicKey,
         authority_status: Arc<dyn FindingAuthorityStatusResolver>,
-        authority_status_pin: &PublicKey,
+        authority_status_pin: &FindingAuthorityPin,
         venue_pin: &PublicKey,
         venue_id: &str,
     ) -> Result<Self, PurchaseCoordinatorError> {
@@ -233,6 +236,14 @@ impl FindingPurchaseCoordinator {
             || failed_delivery_authority.public_key() != *failed_delivery_pin
         {
             return Err(PurchaseCoordinatorError::AuthorityPinMismatch);
+        }
+        let authority_status_key = authority_status_pin
+            .validate("authority-status")
+            .map_err(|_| PurchaseCoordinatorError::AuthorityStatusPin)?;
+        if authority_status_key == purchase_authority.public_key()
+            || authority_status_key == failed_delivery_authority.public_key()
+        {
+            return Err(PurchaseCoordinatorError::AuthorityStatusPin);
         }
         if venue_id.is_empty()
             || *venue_pin == purchase_authority.public_key()
@@ -248,7 +259,7 @@ impl FindingPurchaseCoordinator {
             purchase_authority,
             failed_delivery_authority,
             authority_status,
-            authority_status_key: authority_status_pin.clone(),
+            authority_status_pin: authority_status_pin.clone(),
             venue_authority: venue_pin.clone(),
             venue_id: venue_id.to_owned(),
         })
@@ -263,6 +274,9 @@ impl FindingPurchaseCoordinator {
         role: &'static str,
     ) -> Result<(), PurchaseCoordinatorError> {
         let reject = |reason| PurchaseCoordinatorError::AuthorityLifecycle { role, reason };
+        if !self.authority_status_pin.covers(now) {
+            return Err(reject("authority-status signer window is not live"));
+        }
         if policy.key != *signing_key {
             return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
         }
@@ -283,9 +297,18 @@ impl FindingPurchaseCoordinator {
                 now,
             )
             .map_err(|_| reject("revocation source could not be resolved"))?;
-        verify_signed_authority_status(&signed, &self.authority_status_key)
+        let authority_status_key = self
+            .authority_status_pin
+            .key()
+            .map_err(|_| reject("authority-status signer key is invalid"))?;
+        verify_signed_authority_status(&signed, &authority_status_key)
             .map_err(|_| reject("revocation status signature is invalid"))?;
         let status = &signed.body;
+        if !self.authority_status_pin.covers(status.observed_at) {
+            return Err(reject(
+                "revocation status was signed outside the authority-status window",
+            ));
+        }
         if status.status_ref != policy.revocation_status_ref
             || status.authority_id != policy.authority_id
             || status.key != policy.key

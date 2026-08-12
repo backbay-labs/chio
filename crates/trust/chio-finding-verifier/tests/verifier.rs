@@ -994,7 +994,7 @@ fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
         assert_eq!(draft.facet_outcome(kind), Some(expected), "facet {kind:?}");
     }
     assert!(draft.satisfies_required_facets(&fx.profile.body));
-    assert!(draft.finding_delivery_receipt_id.is_none());
+    assert!(draft.finding_delivery_receipt_id().is_none());
     assert_eq!(
         draft.backing_allocation_id.as_deref(),
         Some(fx.backing.body.allocation_id.as_str())
@@ -1161,7 +1161,7 @@ fn post_purchase_delivery_is_finding_bound_and_checkpointed_in_the_report() -> T
         checkpoint_membership.reason
     );
     assert_eq!(
-        draft.finding_delivery_receipt_id.as_deref(),
+        draft.finding_delivery_receipt_id(),
         Some(expected_receipt_id.as_str())
     );
     let report =
@@ -1421,7 +1421,7 @@ fn delivery_alone_does_not_verify_production_evidence_facets() -> TestResult {
         Some(FindingFacetOutcome::Verified)
     );
     assert_eq!(
-        draft.finding_delivery_receipt_id.as_deref(),
+        draft.finding_delivery_receipt_id(),
         Some(expected_receipt_id.as_str())
     );
     Ok(())
@@ -1446,7 +1446,7 @@ fn post_purchase_delivery_rejects_an_overlay_for_another_finding() -> TestResult
         draft.facet_outcome(FindingFacetKind::ReceiptAuthenticity),
         Some(FindingFacetOutcome::Failed)
     );
-    assert!(draft.finding_delivery_receipt_id.is_none());
+    assert!(draft.finding_delivery_receipt_id().is_none());
     Ok(())
 }
 

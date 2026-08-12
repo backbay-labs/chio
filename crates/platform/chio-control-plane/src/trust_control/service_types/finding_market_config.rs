@@ -46,7 +46,7 @@ pub struct FindingAuthorityPin {
 }
 
 impl FindingAuthorityPin {
-    fn validate(&self, label: &str) -> Result<PublicKey, CliError> {
+    pub(crate) fn validate(&self, label: &str) -> Result<PublicKey, CliError> {
         if self.authority_id.trim().is_empty() {
             return Err(CliError::cli_other_error(format!(
                 "finding-market {label} authority id must be non-empty"

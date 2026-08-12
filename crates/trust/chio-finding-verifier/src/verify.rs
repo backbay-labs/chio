@@ -240,7 +240,7 @@ pub struct FindingVerifierDraft {
     pub status_proof_input_sha256: Option<String>,
     /// Authenticated, checkpointed post-purchase receipt for this Finding.
     /// Absent for ordinary pre-sale admission reports.
-    pub finding_delivery_receipt_id: Option<String>,
+    finding_delivery_receipt_id: Option<String>,
     /// Exact governance-signed verifier profile used for facet evaluation.
     /// Kept private so callers cannot relabel an evaluated draft before
     /// report signing.
@@ -254,6 +254,14 @@ pub struct FindingVerifierDraft {
 }
 
 impl FindingVerifierDraft {
+    /// Authenticated, checkpointed post-purchase receipt derived during
+    /// evidence verification. Callers may inspect but cannot replace it
+    /// before report signing.
+    #[must_use]
+    pub fn finding_delivery_receipt_id(&self) -> Option<&str> {
+        self.finding_delivery_receipt_id.as_deref()
+    }
+
     /// Outcome for one facet kind.
     pub fn facet_outcome(&self, kind: FindingFacetKind) -> Option<FindingFacetOutcome> {
         self.facets
