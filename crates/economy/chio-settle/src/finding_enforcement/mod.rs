@@ -1,11 +1,11 @@
 //! Finding-specific settlement choke point.
 //!
-//! Two signed artifacts carry the whole authorization for impairing one
-//! seller allocation: the venue finalization authority's enforcement
-//! instruction and the settlement observer's finalized bond snapshot. This
-//! module verifies that pair against externally pinned role keys, freezes
-//! the exact call the enforcement authorizes, and reconciles what the chain
-//! reports back.
+//! Dispatch authority is the conjunction of the venue finalization
+//! authority's enforcement instruction, its exact historical market penalty
+//! and revocation-status witness, the settlement observer's finalized bond
+//! snapshot, and operator-pinned destination policy. This module verifies
+//! those inputs, freezes the exact call they authorize, and reconciles what
+//! the chain reports back.
 //!
 //! Three properties hold everywhere in here:
 //!
@@ -49,8 +49,8 @@ pub use verify::{
     recheck_finding_bond_observation, verify_finding_collateral_snapshot,
     verify_finding_enforcement, verify_finding_enforcement_for_reconciliation,
     FindingBondObservationRecheck, FindingBondObservationSource, FindingBondObservationVerdict,
-    FindingEnforcementPins, FindingFinalityRequirement, FindingOperatorQualification,
-    ReconciledFindingEnforcement, VerifiedFindingEnforcement,
+    FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
+    FindingOperatorQualification, ReconciledFindingEnforcement, VerifiedFindingEnforcement,
 };
 
 use alloy_primitives::{Address, FixedBytes, B256};

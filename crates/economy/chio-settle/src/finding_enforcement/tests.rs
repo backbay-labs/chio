@@ -7,11 +7,18 @@ use chio_core::crypto::Keypair;
 use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
-    compute_enforcement_id, compute_snapshot_id, signed_envelope_sha256,
+    compute_enforcement_id, compute_snapshot_id, signed_envelope_sha256, FindingAuthorityStatus,
     FindingChallengeEnforcement, FindingEffectIntentBinding, FindingEffectIntentKind,
     FindingEnforcementDestination, FindingFinalizedBondSnapshot, FindingObservedFinality,
-    FindingVaultReference, SignedFindingChallengeEnforcement, SignedFindingFinalizedBondSnapshot,
+    FindingVaultReference, SignedFindingAuthorityStatus, SignedFindingChallengeEnforcement,
+    SignedFindingFinalizedBondSnapshot, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
     FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1, FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1,
+};
+use chio_open_market::evidence::{OpenMarketEvidenceKind, OpenMarketEvidenceReference};
+use chio_open_market::fee_schedule::OpenMarketBondClass;
+use chio_open_market::penalty::{
+    OpenMarketAbuseClass, OpenMarketPenaltyAction, OpenMarketPenaltyArtifact,
+    OpenMarketPenaltyState, SignedOpenMarketPenalty, OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA,
 };
 use chio_web3_bindings::IChioBondVault;
 use serde::Serialize;
@@ -67,6 +74,10 @@ fn other_seller_keypair() -> Keypair {
 
 fn penalty_keypair() -> Keypair {
     Keypair::from_seed(&[45; 32])
+}
+
+fn status_keypair() -> Keypair {
+    Keypair::from_seed(&[76; 32])
 }
 
 fn usd(units: u64) -> MonetaryAmount {
@@ -204,6 +215,59 @@ fn enforcement_body(bond_snapshot_envelope_sha256: &str) -> FindingChallengeEnfo
     }
 }
 
+fn penalty_for(enforcement: &FindingChallengeEnforcement) -> SignedOpenMarketPenalty {
+    sign(
+        OpenMarketPenaltyArtifact {
+            schema: OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA.to_string(),
+            penalty_id: "penalty-42".to_string(),
+            fee_schedule_id: "fees-42".to_string(),
+            charter_id: "charter-42".to_string(),
+            case_id: "case-42".to_string(),
+            governing_operator_id: "operator-42".to_string(),
+            namespace: "cognition-market".to_string(),
+            listing_id: enforcement.listing_id.clone(),
+            activation_id: None,
+            subject_operator_id: Some("seller-42".to_string()),
+            abuse_class: OpenMarketAbuseClass::UnverifiableListingBehavior,
+            bond_class: OpenMarketBondClass::Listing,
+            action: OpenMarketPenaltyAction::SlashBond,
+            state: OpenMarketPenaltyState::Enforced,
+            penalty_amount: enforcement.amount.clone(),
+            opened_at: 100,
+            updated_at: 100,
+            expires_at: None,
+            evidence_refs: vec![OpenMarketEvidenceReference {
+                kind: OpenMarketEvidenceKind::GovernanceCase,
+                reference_id: "case-42".to_string(),
+                uri: None,
+                sha256: None,
+            }],
+            supersedes_penalty_id: None,
+            issued_by: "market-penalty".to_string(),
+            note: None,
+        },
+        &penalty_keypair(),
+    )
+}
+
+fn penalty_status_at(
+    enforcement: &FindingChallengeEnforcement,
+    observed_at: u64,
+) -> SignedFindingAuthorityStatus {
+    sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: enforcement.penalty_revocation_status_ref.clone(),
+            authority_id: enforcement.penalty_authority_id.clone(),
+            key: enforcement.penalty_key.clone(),
+            key_epoch: enforcement.penalty_key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &status_keypair(),
+    )
+}
+
 /// Sign a snapshot, bind an enforcement to that exact envelope, apply the
 /// case-specific mutation, then re-derive the content-addressed id so every
 /// negative case differs only in the field under test.
@@ -220,6 +284,9 @@ fn pair_from(
     let digest = signed_envelope_sha256(&signed_snapshot).test_expect("snapshot envelope digest");
     let mut enforcement = enforcement_body(&digest);
     mutate(&mut enforcement);
+    let penalty = penalty_for(&enforcement);
+    enforcement.penalty_envelope_sha256 =
+        signed_envelope_sha256(&penalty).test_expect("penalty envelope digest");
     enforcement.enforcement_id =
         compute_enforcement_id(&enforcement).test_expect("enforcement id computes");
     (sign(enforcement, enforcement_signer), signed_snapshot)
@@ -247,9 +314,41 @@ fn default_pins() -> FindingEnforcementPins {
     }
 }
 
+fn default_dispatch_policy() -> FindingDispatchPolicy {
+    FindingDispatchPolicy {
+        authority_status_authority: status_keypair().public_key(),
+        max_authority_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
+        allowed_destinations: [
+            BUYER_DESTINATION.to_string(),
+            COMMUNITY_FUND_DESTINATION.to_string(),
+        ]
+        .into_iter()
+        .collect(),
+    }
+}
+
+fn verify_pair(
+    enforcement: &SignedFindingChallengeEnforcement,
+    snapshot: &SignedFindingFinalizedBondSnapshot,
+    pins: &FindingEnforcementPins,
+    trusted_now_secs: u64,
+) -> Result<VerifiedFindingEnforcement, SettlementError> {
+    let penalty = penalty_for(&enforcement.body);
+    let status = penalty_status_at(&enforcement.body, trusted_now_secs);
+    verify_finding_enforcement(
+        enforcement,
+        &penalty,
+        &status,
+        snapshot,
+        pins,
+        &default_dispatch_policy(),
+        trusted_now_secs,
+    )
+}
+
 fn verify_default() -> Result<VerifiedFindingEnforcement, SettlementError> {
     let (enforcement, snapshot) = default_pair();
-    verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW)
+    verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW)
 }
 
 fn verified() -> VerifiedFindingEnforcement {
@@ -380,6 +479,72 @@ fn verify_finding_enforcement_accepts_a_matching_pair() {
 }
 
 #[test]
+fn dispatch_rejects_a_destination_outside_operator_policy() {
+    let (enforcement, snapshot) = default_pair();
+    let policy = FindingDispatchPolicy {
+        allowed_destinations: [COMMUNITY_FUND_DESTINATION.to_string()]
+            .into_iter()
+            .collect(),
+        ..default_dispatch_policy()
+    };
+
+    assert_rejected(
+        verify_finding_enforcement(
+            &enforcement,
+            &penalty_for(&enforcement.body),
+            &penalty_status_at(&enforcement.body, TRUSTED_NOW),
+            &snapshot,
+            &default_pins(),
+            &policy,
+            TRUSTED_NOW,
+        ),
+        "not operator-allowlisted",
+    );
+}
+
+#[test]
+fn dispatch_rejects_an_unbound_or_revoked_penalty() {
+    let (enforcement, snapshot) = default_pair();
+    let pins = default_pins();
+    let mut unbound_body = penalty_for(&enforcement.body).body;
+    unbound_body.penalty_id = "penalty-substitute".to_string();
+    let unbound = sign(unbound_body, &penalty_keypair());
+    let live_status = penalty_status_at(&enforcement.body, TRUSTED_NOW);
+    assert_rejected(
+        verify_finding_enforcement(
+            &enforcement,
+            &unbound,
+            &live_status,
+            &snapshot,
+            &pins,
+            &default_dispatch_policy(),
+            TRUSTED_NOW,
+        ),
+        "does not bind the presented penalty",
+    );
+
+    let revoked_status = sign(
+        FindingAuthorityStatus {
+            revoked_from: Some(100),
+            ..live_status.body
+        },
+        &status_keypair(),
+    );
+    assert_rejected(
+        verify_finding_enforcement(
+            &enforcement,
+            &penalty_for(&enforcement.body),
+            &revoked_status,
+            &snapshot,
+            &pins,
+            &default_dispatch_policy(),
+            TRUSTED_NOW,
+        ),
+        "was revoked when the penalty was signed",
+    );
+}
+
+#[test]
 fn role_substitution_is_rejected_in_both_directions() {
     let pins = default_pins();
 
@@ -390,7 +555,7 @@ fn role_substitution_is_rejected_in_both_directions() {
         |_| {},
     );
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &pins, TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &pins, TRUSTED_NOW),
         "challenge enforcement rejected",
     );
 
@@ -401,7 +566,7 @@ fn role_substitution_is_rejected_in_both_directions() {
         |_| {},
     );
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &pins, TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &pins, TRUSTED_NOW),
         "finalized bond snapshot rejected",
     );
 }
@@ -435,7 +600,7 @@ fn pins_reject_one_key_reused_across_two_roles() {
     let (enforcement, snapshot) = default_pair();
     for (pins, needle) in cases {
         assert_rejected(
-            verify_finding_enforcement(&enforcement, &snapshot, &pins, TRUSTED_NOW),
+            verify_pair(&enforcement, &snapshot, &pins, TRUSTED_NOW),
             needle,
         );
     }
@@ -450,7 +615,7 @@ fn pins_reject_a_zero_observation_age_bound() {
     let (enforcement, snapshot) = default_pair();
 
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &pins, TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &pins, TRUSTED_NOW),
         "max_snapshot_age_secs must be nonzero",
     );
 }
@@ -464,7 +629,7 @@ fn pins_reject_a_zero_confirmation_requirement() {
     let (enforcement, snapshot) = default_pair();
 
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &pins, TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &pins, TRUSTED_NOW),
         "confirmation depth must be nonzero",
     );
 }
@@ -480,7 +645,7 @@ fn a_snapshot_the_enforcement_does_not_bind_is_rejected() {
     let (_, snapshot) = default_pair();
 
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
         "does not bind the presented snapshot",
     );
 }
@@ -503,7 +668,7 @@ fn a_vault_mismatch_is_rejected() {
             |enforcement| mutate(&mut enforcement.vault),
         );
         assert_rejected(
-            verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+            verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
             "vault does not match the enforcement vault",
         );
     }
@@ -519,7 +684,7 @@ fn an_allocation_mismatch_is_rejected() {
     );
 
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
         "allocation_id does not match",
     );
 }
@@ -533,7 +698,7 @@ fn a_seller_outside_the_pinned_liability_head_is_rejected() {
         pair_from(body, &observer_keypair(), &finalization_keypair(), |_| {});
 
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
         "seller does not match the pinned seller",
     );
 }
@@ -570,7 +735,7 @@ fn observed_finality_that_misses_its_policy_is_rejected() {
             ..default_pins()
         };
         assert_rejected(
-            verify_finding_enforcement(&enforcement, &snapshot, &pins, TRUSTED_NOW),
+            verify_pair(&enforcement, &snapshot, &pins, TRUSTED_NOW),
             "observed finality does not satisfy",
         );
     }
@@ -586,7 +751,7 @@ fn an_observer_cannot_choose_a_shallower_finality_policy() {
         pair_from(body, &observer_keypair(), &finalization_keypair(), |_| {});
 
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
         "does not match the pinned finality requirement",
     );
 }
@@ -599,9 +764,8 @@ fn a_finality_policy_outside_the_closed_vocabulary_is_rejected() {
         body.snapshot_id = compute_snapshot_id(&body).test_expect("snapshot id computes");
         let (enforcement, snapshot) =
             pair_from(body, &observer_keypair(), &finalization_keypair(), |_| {});
-        let error =
-            verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW)
-                .test_expect_err("unknown finality policy should reject");
+        let error = verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW)
+            .test_expect_err("unknown finality policy should reject");
         assert!(
             error.to_string().contains("finality policy"),
             "unexpected rejection for `{policy}`: {error}"
@@ -622,7 +786,7 @@ fn a_deterministic_policy_and_observation_verify() {
         finality_requirement: FindingFinalityRequirement::Deterministic,
         ..default_pins()
     };
-    verify_finding_enforcement(&enforcement, &snapshot, &pins, TRUSTED_NOW)
+    verify_pair(&enforcement, &snapshot, &pins, TRUSTED_NOW)
         .test_expect("deterministic finality verifies");
 }
 
@@ -640,7 +804,7 @@ fn an_amount_above_the_live_collateral_is_rejected() {
     );
 
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
         "exceeds the live allocated collateral",
     );
 }
@@ -660,7 +824,7 @@ fn a_currency_outside_the_snapshot_currency_is_rejected() {
     );
 
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
         "currency does not match the bond snapshot currency",
     );
 }
@@ -675,7 +839,7 @@ fn destinations_that_do_not_sum_to_the_amount_are_rejected() {
     );
 
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+        verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
         "destinations",
     );
 }
@@ -686,7 +850,7 @@ fn a_stale_or_future_dated_snapshot_is_rejected() {
     let pins = default_pins();
 
     assert_rejected(
-        verify_finding_enforcement(
+        verify_pair(
             &enforcement,
             &snapshot,
             &pins,
@@ -695,10 +859,10 @@ fn a_stale_or_future_dated_snapshot_is_rejected() {
         "older than the configured maximum observation age",
     );
     assert_rejected(
-        verify_finding_enforcement(&enforcement, &snapshot, &pins, OBSERVED_AT - 1),
+        verify_pair(&enforcement, &snapshot, &pins, OBSERVED_AT - 1),
         "observed after the trusted current time",
     );
-    verify_finding_enforcement(
+    verify_pair(
         &enforcement,
         &snapshot,
         &pins,

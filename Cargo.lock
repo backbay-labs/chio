@@ -4587,6 +4587,7 @@ dependencies = [
  "chio-finding",
  "chio-kernel",
  "chio-link",
+ "chio-open-market",
  "chio-spec-validate",
  "chio-test-support",
  "chio-web3",

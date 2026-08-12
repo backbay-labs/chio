@@ -120,11 +120,9 @@ impl PlannedFindingImpairmentReconciliation {
 /// the contract read bounds the call.
 ///
 /// The ordered destinations are already part of the verified enforcement.
-/// Its finalization authority signs a distribution derived from authenticated
-/// purchase records and the admission-pinned community fund. Rechecking those
-/// immutable destinations against a mutable settlement allowlist could strand
-/// value that the market already accepted, so the planner preserves the signed
-/// instruction instead of applying a second authorization source.
+/// Constructing that capability checked every address against the operator
+/// policy supplied independently of the signed instruction, so the planner
+/// can preserve the exact authorized ordering without accepting new input.
 pub fn plan_finding_impairment(
     config: &SettlementChainConfig,
     verified: &VerifiedFindingEnforcement,

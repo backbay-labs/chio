@@ -66,11 +66,11 @@ pub use finding_enforcement::{
     reobserve_finding_impairment_for_reconciliation, verify_finding_collateral_snapshot,
     verify_finding_enforcement, verify_finding_enforcement_for_reconciliation,
     FindingBondObservationRecheck, FindingBondObservationSource, FindingBondObservationVerdict,
-    FindingEnforcementPins, FindingFinalityRequirement, FindingImpairmentAttempt,
-    FindingImpairmentDestination, FindingImpairmentIntent, FindingImpairmentOutcome,
-    FindingImpairmentPublishError, FindingImpairmentPublisher, FindingImpairmentQuarantine,
-    FindingOperatorQualification, FindingVaultRejection, PlannedFindingImpairment,
-    PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement,
+    FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
+    FindingImpairmentAttempt, FindingImpairmentDestination, FindingImpairmentIntent,
+    FindingImpairmentOutcome, FindingImpairmentPublishError, FindingImpairmentPublisher,
+    FindingImpairmentQuarantine, FindingOperatorQualification, FindingVaultRejection,
+    PlannedFindingImpairment, PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement,
     StoredImpairmentTransaction, VerifiedFindingEnforcement,
 };
 pub use hook::{

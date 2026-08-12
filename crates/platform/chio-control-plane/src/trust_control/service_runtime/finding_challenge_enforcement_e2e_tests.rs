@@ -7583,6 +7583,16 @@ fn finalizing_liability_with(
         NOW + 2 + CLAIM_WINDOW_SECS,
         NOW + 2,
     )?;
+    deployment.purchases.register_community_fund_destination(
+        &byte_hex64(0xa1),
+        EVM_COMMUNITY_FUND,
+        NOW + 2,
+    )?;
+    deployment.purchases.admit_payout_destination(
+        &byte_hex64(0xa1),
+        EVM_BUYER_DESTINATION,
+        NOW + 2,
+    )?;
     // The sanction the impairment settles under. Dispatch requires it to
     // still be the live case head, exactly as the coordinator records it
     // when it upholds a liability.
@@ -8829,6 +8839,47 @@ fn finding_challenge_a_snapshot_from_an_expired_observer_key_authorizes_nothing(
         ChallengeCoordinatorError::SettlementObserverLifecycle(_)
     ));
     assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_observer_and_vault_operator_epochs_rotate_independently() -> TestResult {
+    let case = finalizing_liability()?;
+    let authorized = AuthorizedImpairment {
+        enforcement: case.enforcement.clone(),
+        enforcement_envelope_sha256: signed_envelope_sha256(&case.enforcement)?,
+        slash: case.slash.clone(),
+        effect_intent_keys: vec![
+            (
+                FindingEffectIntentKind::SellerImpair,
+                case.intent_key.clone(),
+            ),
+            (
+                FindingEffectIntentKind::RootIntent,
+                enforcement_root_intent_key(),
+            ),
+            (
+                FindingEffectIntentKind::Retraction,
+                case.retraction_key.clone(),
+            ),
+        ],
+    };
+    let mut body = case.snapshot.body.clone();
+    body.operator_key_epoch = PINNED_KEY_EPOCH + 1;
+    body.snapshot_id = String::new();
+    body.snapshot_id = compute_snapshot_id(&body)?;
+    let independently_rotated = SignedExportEnvelope::sign(body, &keypair(34))?;
+
+    let refreshed = case.coordinator.refresh_finalizing_enforcement(
+        &authorized,
+        &independently_rotated,
+        &case.seller,
+        SETTLEMENT_NOW + 1,
+    )?;
+    assert_eq!(
+        refreshed.enforcement.body.bond_snapshot_envelope_sha256,
+        signed_envelope_sha256(&independently_rotated)?
+    );
     Ok(())
 }
 

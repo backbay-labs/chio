@@ -131,6 +131,8 @@ pub enum PurchaseCoordinatorError {
     AmountMismatch,
     #[error("realized spend exceeds the accepted price")]
     RealizedSpendAboveAcceptedPrice,
+    #[error("reservation settlement window is empty or unrepresentable")]
+    ReservationWindow,
     #[error("durable kernel terminal evidence rejected: {0}")]
     TerminalEvidence(String),
     #[error("deny checkpoint evidence rejected: {0}")]
@@ -470,6 +472,19 @@ impl FindingPurchaseCoordinator {
         let bid_envelope_sha256 = canonical_json_bytes(bid)
             .map(|bytes| sha256_hex(&bytes))
             .map_err(|_| PurchaseCoordinatorError::Canonical)?;
+        let requested_expiry = now
+            .checked_add(reservation_ttl_secs)
+            .ok_or(PurchaseCoordinatorError::ReservationWindow)?;
+        let expires_at = requested_expiry
+            .min(ask.body.expires_at)
+            .min(ask.body.token_offer.expires_at)
+            .min(admission.body.expires_at)
+            .min(admission.body.purchase_authority.valid_until)
+            .min(admission.body.failed_delivery_authority.valid_until)
+            .min(authorization.expires_at);
+        if expires_at <= now {
+            return Err(PurchaseCoordinatorError::ReservationWindow);
+        }
         let input = FindingPurchaseReservationInput {
             reservation_id: &reservation_id,
             purchase_intent_id: &derive_purchase_intent_id(&reservation_id),
@@ -484,7 +499,7 @@ impl FindingPurchaseCoordinator {
             admission_envelope_sha256: &admission_envelope_sha256,
             amount_units: ask.body.quoted_price.units,
             currency: &ask.body.quoted_price.currency,
-            expires_at: now.saturating_add(reservation_ttl_secs),
+            expires_at,
             encumbrance_id: &encumbrance_id,
             allocation_id: &admission.body.backing_allocation_id,
             maximum_sale_exposure_units,
@@ -747,6 +762,24 @@ impl FindingPurchaseCoordinator {
         })
     }
 
+    fn verify_terminal_chronology(
+        reservation: &FindingPurchaseReservationRecord,
+        receipt: &ChioReceipt,
+        terminal: &'static str,
+    ) -> Result<(), PurchaseCoordinatorError> {
+        if receipt.timestamp < reservation.created_at {
+            return Err(PurchaseCoordinatorError::TerminalEvidence(format!(
+                "{terminal} receipt predates the purchase reservation"
+            )));
+        }
+        if receipt.timestamp >= reservation.expires_at {
+            return Err(PurchaseCoordinatorError::TerminalEvidence(format!(
+                "{terminal} receipt is outside the reservation settlement window"
+            )));
+        }
+        Ok(())
+    }
+
     /// Close the purchase only after a durable kernel Allow whose resolved
     /// outcome captured funds. Every record fact comes from the durable
     /// reservation, signed receipt, venue admission, or admission-bound
@@ -762,13 +795,9 @@ impl FindingPurchaseCoordinator {
     ) -> Result<SignedFindingPurchaseRecord, PurchaseCoordinatorError> {
         let reservation = self.resolve(reservation_id)?;
         self.verify_reservation_admission(&reservation, admission)?;
+        Self::verify_terminal_chronology(&reservation, receipt, "delivery")?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Delivered)?;
-        if receipt.timestamp < reservation.created_at {
-            return Err(PurchaseCoordinatorError::TerminalEvidence(
-                "delivery receipt predates the purchase reservation".to_owned(),
-            ));
-        }
         let purchase_policy = &admission.body.purchase_authority;
         if receipt.timestamp < purchase_policy.valid_from
             || receipt.timestamp >= purchase_policy.valid_until
@@ -928,11 +957,7 @@ impl FindingPurchaseCoordinator {
     ) -> Result<SignedFindingFailedDelivery, PurchaseCoordinatorError> {
         let reservation = self.resolve(reservation_id)?;
         self.verify_reservation_admission(&reservation, admission)?;
-        if receipt.timestamp < reservation.created_at {
-            return Err(PurchaseCoordinatorError::TerminalEvidence(
-                "denial receipt predates the purchase reservation".to_owned(),
-            ));
-        }
+        Self::verify_terminal_chronology(&reservation, receipt, "denial")?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Denied)?;
         let (currency, release_terminal) = match terminal.settlement {

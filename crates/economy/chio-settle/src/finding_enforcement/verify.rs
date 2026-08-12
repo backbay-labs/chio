@@ -1,14 +1,20 @@
-//! Fail-closed verification of the finding enforcement pair.
+//! Fail-closed verification of finding enforcement authority.
+
+use std::collections::BTreeSet;
 
 use chio_core::crypto::{PublicKey, SigningAlgorithm};
 use chio_finding::{
-    signed_envelope_sha256, verify_signed_challenge_enforcement,
-    verify_signed_finalized_bond_snapshot, FindingChallengeEnforcement, FindingEffectIntentKind,
-    FindingFinalizedBondSnapshot, FindingObservedFinality, SignedFindingChallengeEnforcement,
-    SignedFindingFinalizedBondSnapshot,
+    signed_envelope_sha256, verify_pinned_envelope, verify_signed_authority_status,
+    verify_signed_challenge_enforcement, verify_signed_finalized_bond_snapshot,
+    FindingChallengeEnforcement, FindingEffectIntentKind, FindingFinalizedBondSnapshot,
+    FindingObservedFinality, SignedFindingAuthorityStatus, SignedFindingChallengeEnforcement,
+    SignedFindingFinalizedBondSnapshot, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
+};
+use chio_open_market::penalty::{
+    OpenMarketPenaltyAction, OpenMarketPenaltyState, SignedOpenMarketPenalty,
 };
 
-use super::reject;
+use super::{parse_evm_address, reject};
 use crate::SettlementError;
 
 /// Finality policy naming deterministic chain finality.
@@ -85,6 +91,71 @@ impl FindingEnforcementPins {
             ));
         }
         self.finality_requirement.validate()?;
+        Ok(())
+    }
+}
+
+/// Independently pinned policy required only when an enforcement can create a
+/// new dispatch. Reconciliation carries no such authority and therefore does
+/// not depend on a later mutable policy reading.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FindingDispatchPolicy {
+    /// Independent authority that signs revocation-source readings for the
+    /// historical penalty key named by the enforcement.
+    pub authority_status_authority: PublicKey,
+    /// Oldest authenticated penalty-authority status reading this choke point
+    /// accepts, in seconds.
+    pub max_authority_status_age_secs: u64,
+    /// Operator policy for destinations that may receive impaired collateral.
+    /// The coordinator derives this set from durable payout admissions rather
+    /// than from the enforcement being verified.
+    pub allowed_destinations: BTreeSet<String>,
+}
+
+impl FindingDispatchPolicy {
+    /// Reject unusable status and destination policy before any artifact can
+    /// inherit dispatch authority from it.
+    pub fn validate(&self, pins: &FindingEnforcementPins) -> Result<(), SettlementError> {
+        require_signing_key(
+            &self.authority_status_authority,
+            "authority_status_authority",
+        )?;
+        for (other, label) in [
+            (
+                &pins.finalization_authority,
+                "authority_status_authority and finalization_authority",
+            ),
+            (
+                &pins.settlement_observer,
+                "authority_status_authority and settlement_observer",
+            ),
+            (&pins.seller, "authority_status_authority and seller"),
+        ] {
+            if &self.authority_status_authority == other {
+                return Err(SettlementError::InvalidInput(format!(
+                    "{label} must be distinct keys"
+                )));
+            }
+        }
+        if self.max_authority_status_age_secs == 0 {
+            return Err(SettlementError::InvalidInput(
+                "max_authority_status_age_secs must be nonzero".to_string(),
+            ));
+        }
+        if self.allowed_destinations.is_empty() {
+            return Err(SettlementError::InvalidInput(
+                "allowed_destinations must not be empty".to_string(),
+            ));
+        }
+        let mut normalized_destinations = BTreeSet::new();
+        for destination in &self.allowed_destinations {
+            let parsed = parse_evm_address(destination, "allowed_destinations")?;
+            if !normalized_destinations.insert(parsed) {
+                return Err(SettlementError::InvalidInput(
+                    "allowed_destinations contains the same address more than once".to_string(),
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -208,16 +279,20 @@ impl ReconciledFindingEnforcement {
     }
 }
 
-/// Verify one enforcement instruction against the bond snapshot it binds.
+/// Verify one enforcement instruction against its penalty, historical
+/// lifecycle witness, destination policy, and bound bond snapshot.
 ///
 /// `trusted_now_secs` is supplied by the caller because this crate owns no
 /// clock. It must come from the coordinator's trusted time source, not from
-/// either artifact: a snapshot that dated itself would otherwise certify its
-/// own freshness.
+/// any artifact: a snapshot or status witness that dated itself would
+/// otherwise certify its own freshness.
 pub fn verify_finding_enforcement(
     signed_enforcement: &SignedFindingChallengeEnforcement,
+    signed_penalty: &SignedOpenMarketPenalty,
+    penalty_authority_status: &SignedFindingAuthorityStatus,
     signed_snapshot: &SignedFindingFinalizedBondSnapshot,
     pins: &FindingEnforcementPins,
+    dispatch_policy: &FindingDispatchPolicy,
     trusted_now_secs: u64,
 ) -> Result<VerifiedFindingEnforcement, SettlementError> {
     verify_finding_enforcement_inner(
@@ -226,6 +301,7 @@ pub fn verify_finding_enforcement(
         pins,
         trusted_now_secs,
         true,
+        Some((signed_penalty, penalty_authority_status, dispatch_policy)),
     )
 }
 
@@ -279,6 +355,7 @@ pub fn verify_finding_enforcement_for_reconciliation(
         pins,
         trusted_now_secs,
         false,
+        None,
     )
     .map(|verified| ReconciledFindingEnforcement { verified })
 }
@@ -289,6 +366,11 @@ fn verify_finding_enforcement_inner(
     pins: &FindingEnforcementPins,
     trusted_now_secs: u64,
     require_fresh_snapshot: bool,
+    penalty_evidence: Option<(
+        &SignedOpenMarketPenalty,
+        &SignedFindingAuthorityStatus,
+        &FindingDispatchPolicy,
+    )>,
 ) -> Result<VerifiedFindingEnforcement, SettlementError> {
     pins.validate()?;
 
@@ -299,6 +381,18 @@ fn verify_finding_enforcement_inner(
 
     let enforcement = &signed_enforcement.body;
     let snapshot = &signed_snapshot.body;
+
+    if let Some((signed_penalty, penalty_authority_status, dispatch_policy)) = penalty_evidence {
+        dispatch_policy.validate(pins)?;
+        verify_penalty_dispatch_authority(
+            enforcement,
+            signed_penalty,
+            penalty_authority_status,
+            dispatch_policy,
+            trusted_now_secs,
+        )?;
+        ensure_destinations_allowed(enforcement, &dispatch_policy.allowed_destinations)?;
+    }
 
     let bond_snapshot_envelope_sha256 = signed_envelope_sha256(signed_snapshot)
         .map_err(|error| reject(format!("bond snapshot envelope digest failed: {error}")))?;
@@ -365,6 +459,109 @@ fn verify_finding_enforcement_inner(
         root_intent_id,
         finality_requirement: pins.finality_requirement,
     })
+}
+
+/// Authenticate the exact penalty and historical authority lifecycle that
+/// make an enforcement dispatchable.
+fn verify_penalty_dispatch_authority(
+    enforcement: &FindingChallengeEnforcement,
+    signed_penalty: &SignedOpenMarketPenalty,
+    penalty_authority_status: &SignedFindingAuthorityStatus,
+    dispatch_policy: &FindingDispatchPolicy,
+    trusted_now_secs: u64,
+) -> Result<(), SettlementError> {
+    signed_penalty
+        .body
+        .validate()
+        .map_err(|error| reject(format!("market penalty rejected: {error}")))?;
+    verify_pinned_envelope(signed_penalty, &enforcement.penalty_key, "market penalty")
+        .map_err(|error| reject(format!("market penalty rejected: {error}")))?;
+    let penalty_digest = signed_envelope_sha256(signed_penalty)
+        .map_err(|error| reject(format!("market penalty envelope digest failed: {error}")))?;
+    if penalty_digest != enforcement.penalty_envelope_sha256 {
+        return Err(reject(
+            "enforcement penalty_envelope_sha256 does not bind the presented penalty",
+        ));
+    }
+    let penalty = &signed_penalty.body;
+    if penalty.listing_id != enforcement.listing_id
+        || penalty.action != OpenMarketPenaltyAction::SlashBond
+        || penalty.state != OpenMarketPenaltyState::Enforced
+        || penalty.penalty_amount != enforcement.amount
+    {
+        return Err(reject(
+            "presented penalty does not authorize this enforcement",
+        ));
+    }
+    if penalty.updated_at < enforcement.penalty_valid_from
+        || penalty.updated_at >= enforcement.penalty_valid_until
+    {
+        return Err(reject(
+            "market penalty was signed outside its historical authority window",
+        ));
+    }
+
+    verify_signed_authority_status(
+        penalty_authority_status,
+        &dispatch_policy.authority_status_authority,
+    )
+    .map_err(|error| reject(format!("penalty authority status rejected: {error}")))?;
+    let status = &penalty_authority_status.body;
+    if status.schema != FINDING_AUTHORITY_STATUS_SCHEMA_V1
+        || status.status_ref != enforcement.penalty_revocation_status_ref
+        || status.authority_id != enforcement.penalty_authority_id
+        || status.key != enforcement.penalty_key
+        || status.key_epoch != enforcement.penalty_key_epoch
+    {
+        return Err(reject(
+            "penalty authority status does not bind the historical policy",
+        ));
+    }
+    if status.observed_at < penalty.updated_at || status.observed_at > trusted_now_secs {
+        return Err(reject(
+            "penalty authority status is not a post-action trusted-time reading",
+        ));
+    }
+    if trusted_now_secs.saturating_sub(status.observed_at)
+        > dispatch_policy.max_authority_status_age_secs
+    {
+        return Err(reject(
+            "penalty authority status is older than the configured maximum age",
+        ));
+    }
+    if status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= penalty.updated_at)
+    {
+        return Err(reject(
+            "penalty authority was revoked when the penalty was signed",
+        ));
+    }
+    Ok(())
+}
+
+/// Apply the independently derived operator policy to every destination that
+/// the verified enforcement would send to the vault.
+fn ensure_destinations_allowed(
+    enforcement: &FindingChallengeEnforcement,
+    allowed_destinations: &BTreeSet<String>,
+) -> Result<(), SettlementError> {
+    let allowed = allowed_destinations
+        .iter()
+        .map(|destination| parse_evm_address(destination, "allowed_destinations"))
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    for destination in &enforcement.destinations {
+        let parsed = parse_evm_address(
+            &destination.destination,
+            "finding impairment enforcement destination",
+        )?;
+        if !allowed.contains(&parsed) {
+            return Err(reject(
+                "finding impairment enforcement destination is not operator-allowlisted",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The single intent id an enforcement binds for one effect kind.

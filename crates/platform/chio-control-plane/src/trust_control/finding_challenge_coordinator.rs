@@ -44,6 +44,7 @@
 //!
 //! Compiled only under the `cognition-market-experimental` feature.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use chio_core::canonical::{canonical_json_bytes, canonical_json_bytes_from_str};
@@ -101,10 +102,10 @@ use chio_settle::{
     reobserve_finding_impairment, reobserve_finding_impairment_for_reconciliation,
     verify_finding_collateral_snapshot, verify_finding_enforcement,
     verify_finding_enforcement_for_reconciliation, EvmBondSnapshot, FindingBondObservationSource,
-    FindingEnforcementPins, FindingFinalityRequirement, FindingImpairmentOutcome,
-    FindingImpairmentPublisher, FindingImpairmentQuarantine, PlannedFindingImpairment,
-    PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement, SettlementChainConfig,
-    VerifiedFindingEnforcement,
+    FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
+    FindingImpairmentOutcome, FindingImpairmentPublisher, FindingImpairmentQuarantine,
+    PlannedFindingImpairment, PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement,
+    SettlementChainConfig, VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
     derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
@@ -2149,7 +2150,12 @@ impl FindingChallengeCoordinator {
         if seller != &durable_seller {
             return Err(ChallengeCoordinatorError::LiabilityIdentity("seller"));
         }
-        self.require_penalty_matches_enforcement(&liability, old, &authorized.slash.penalty, now)?;
+        let penalty_status = self.require_penalty_matches_enforcement(
+            &liability,
+            old,
+            &authorized.slash.penalty,
+            now,
+        )?;
         let seller_intent_id = old
             .body
             .effect_intents
@@ -2214,8 +2220,25 @@ impl FindingChallengeCoordinator {
             finality_requirement: self.pins.settlement_finality_requirement,
             max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
         };
-        verify_finding_enforcement(&refreshed, bond_snapshot, &pins, now)
-            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        let dispatch_policy =
+            FindingDispatchPolicy {
+                authority_status_authority: self.pins.authority_status.key().map_err(|_| {
+                    ChallengeCoordinatorError::AuthorityPinMismatch("authority status")
+                })?,
+                max_authority_status_age_secs: MAX_REVOCATION_STATUS_AGE_SECS,
+                allowed_destinations: self
+                    .settlement_destination_allowlist(&liability.allocation_id)?,
+            };
+        verify_finding_enforcement(
+            &refreshed,
+            &authorized.slash.penalty,
+            &penalty_status,
+            bond_snapshot,
+            &pins,
+            &dispatch_policy,
+            now,
+        )
+        .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
         let refreshed_authorization = AuthorizedImpairment {
             enforcement_envelope_sha256: self.envelope_digest(&refreshed)?,
             enforcement: refreshed,
@@ -2351,7 +2374,8 @@ impl FindingChallengeCoordinator {
             }
         }
         let finalization_authority = self.require_enforcement_signature(enforcement, now)?;
-        self.require_penalty_matches_enforcement(&liability, enforcement, penalty, now)?;
+        let penalty_status =
+            self.require_penalty_matches_enforcement(&liability, enforcement, penalty, now)?;
         let seller_intent_id = enforcement
             .body
             .effect_intents
@@ -2452,8 +2476,25 @@ impl FindingChallengeCoordinator {
             );
         }
 
-        let verified = verify_finding_enforcement(enforcement, bond_snapshot, &pins, now)
-            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        let dispatch_policy =
+            FindingDispatchPolicy {
+                authority_status_authority: self.pins.authority_status.key().map_err(|_| {
+                    ChallengeCoordinatorError::AuthorityPinMismatch("authority status")
+                })?,
+                max_authority_status_age_secs: MAX_REVOCATION_STATUS_AGE_SECS,
+                allowed_destinations: self
+                    .settlement_destination_allowlist(&liability.allocation_id)?,
+            };
+        let verified = verify_finding_enforcement(
+            enforcement,
+            penalty,
+            &penalty_status,
+            bond_snapshot,
+            &pins,
+            &dispatch_policy,
+            now,
+        )
+        .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
         // Before dispatch, the snapshot's signature proves who observed the
         // collateral, not that what they observed is still true. A reorg or
         // operator rotation leaves the authorized amount unknown, so the
@@ -3260,11 +3301,9 @@ impl FindingChallengeCoordinator {
                 }
                 other => other,
             })?;
-        if snapshot.body.operator_key_epoch != pin.key_epoch {
-            return Err(ChallengeCoordinatorError::SettlementObserverLifecycle(
-                "snapshot names another key epoch",
-            ));
-        }
+        // `operator_key_epoch` belongs to the independently re-read on-chain
+        // vault operator. The envelope signer is authenticated by `pin`; the
+        // chain observation validates its own operator identity and epoch.
         Ok(())
     }
 
@@ -4463,7 +4502,7 @@ impl FindingChallengeCoordinator {
         enforcement: &SignedFindingChallengeEnforcement,
         penalty: &SignedOpenMarketPenalty,
         now: u64,
-    ) -> Result<(), ChallengeCoordinatorError> {
+    ) -> Result<SignedFindingAuthorityStatus, ChallengeCoordinatorError> {
         penalty
             .body
             .validate()
@@ -4476,7 +4515,7 @@ impl FindingChallengeCoordinator {
             valid_until: enforcement.body.penalty_valid_until,
             revocation_status_ref: enforcement.body.penalty_revocation_status_ref.clone(),
         };
-        let historical_key = self.require_live_role(
+        let (historical_key, status) = self.resolve_live_role(
             &historical_pin,
             penalty.body.updated_at,
             now,
@@ -4507,7 +4546,29 @@ impl FindingChallengeCoordinator {
                 "enforcement amount does not match the bound penalty".to_owned(),
             ));
         }
-        Ok(())
+        Ok(status)
+    }
+
+    /// Resolve the durable operator policy that is independent of the signed
+    /// enforcement. Buyer destinations and the community fund were admitted
+    /// before finalization and are immutable for one collateral allocation.
+    fn settlement_destination_allowlist(
+        &self,
+        allocation_id: &str,
+    ) -> Result<BTreeSet<String>, ChallengeCoordinatorError> {
+        let destinations = self
+            .purchases
+            .list_payout_destinations(allocation_id)
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?
+            .into_iter()
+            .map(|(_, destination)| destination)
+            .collect::<BTreeSet<_>>();
+        if destinations.is_empty() {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "settlement destination allowlist is empty".to_owned(),
+            ));
+        }
+        Ok(destinations)
     }
 
     /// Require the presented outcome to be the exact upheld adjudication
