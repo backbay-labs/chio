@@ -64,7 +64,9 @@ pub const MAX_RAW_FINDING_BYTES: usize = 256 * 1024;
 pub const FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1: &str = "chio.finding.bond-store-snapshot.v1";
 
 /// Fresh, independently authenticated revocation standing for every
-/// receipt or checkpoint signer a verifier may accept during this evaluation.
+/// receipt, checkpoint, runtime-attestation, or appraisal signer a verifier
+/// may accept during this evaluation. The historical type name is retained
+/// for input compatibility.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct FindingCheckpointSignerStatusTrust {
@@ -118,12 +120,12 @@ pub struct FindingVerifierTrustRoots {
     pub collateral_authority: PublicKey,
     /// Fee-schedule authorities independently pinned by deployment policy.
     pub fee_schedule_authorities: Vec<PublicKey>,
-    /// Runtime-attestation statement signer pinned by deployment
-    /// governance. The profile cannot self-authorize this role.
-    pub runtime_attestation_authority: Option<PublicKey>,
-    /// Appraisal report signer pinned independently from the attestation
-    /// statement signer.
-    pub appraisal_authority: Option<PublicKey>,
+    /// Runtime-attestation statement signer and lifecycle pinned by
+    /// deployment governance. The profile cannot self-authorize this role.
+    pub runtime_attestation_authority: Option<FindingAuthorityKeyPolicy>,
+    /// Appraisal report signer and lifecycle pinned independently from the
+    /// attestation statement signer.
+    pub appraisal_authority: Option<FindingAuthorityKeyPolicy>,
     /// Local rules that map signed attestation evidence to an effective
     /// assurance tier. An absent or empty policy never accepts the raw
     /// seller-carried tier.
@@ -327,32 +329,43 @@ fn verify_required_receipt_semantics(
     Ok(())
 }
 
-fn verify_receipt_signer_status(
+fn verify_authority_status(
     policy: &FindingAuthorityKeyPolicy,
     acted_at: u64,
     evaluated_at: u64,
     trust: Option<&FindingCheckpointSignerStatusTrust>,
+    subject: &'static str,
 ) -> Result<(), String> {
-    if evaluated_at >= policy.valid_until {
-        return Err("receipt signer authority expired before evaluation".to_string());
+    policy
+        .validate(subject)
+        .map_err(|_| format!("{subject} policy is invalid"))?;
+    if !policy_covers(policy, acted_at) {
+        return Err(format!(
+            "{subject} was not live when the evidence was signed"
+        ));
     }
-    let trust = trust.ok_or_else(|| "receipt signer status evidence not supplied".to_string())?;
+    if !policy_covers(policy, evaluated_at) {
+        return Err(format!("{subject} authority expired before evaluation"));
+    }
+    let trust = trust.ok_or_else(|| format!("{subject} status evidence not supplied"))?;
     if trust.max_age_secs == 0 {
-        return Err("receipt signer status freshness policy is invalid".to_string());
+        return Err(format!("{subject} status freshness policy is invalid"));
     }
     trust
         .status_authority
-        .validate("receipt signer status authority")
-        .map_err(|_| "receipt signer status authority policy is invalid".to_string())?;
+        .validate("evidence signer status authority")
+        .map_err(|_| format!("{subject} status authority policy is invalid"))?;
     if evaluated_at < trust.status_authority.valid_from
         || evaluated_at >= trust.status_authority.valid_until
     {
-        return Err("receipt signer status authority is not live at evaluation".to_string());
+        return Err(format!(
+            "{subject} status authority is not live at evaluation"
+        ));
     }
     if trust.status_authority.key == policy.key {
-        return Err(
-            "receipt signer status authority must be independent from the signer".to_string(),
-        );
+        return Err(format!(
+            "{subject} status authority must be independent from the signer"
+        ));
     }
     let mut matching = trust.signed_statuses.iter().filter(|signed| {
         let status = &signed.body;
@@ -363,33 +376,42 @@ fn verify_receipt_signer_status(
     });
     let signed_status = matching
         .next()
-        .ok_or_else(|| "receipt signer status evidence not supplied".to_string())?;
+        .ok_or_else(|| format!("{subject} status evidence not supplied"))?;
     if matching.next().is_some() {
-        return Err("duplicate receipt signer status evidence".to_string());
+        return Err(format!("duplicate {subject} status evidence"));
     }
     verify_signed_authority_status(signed_status, &trust.status_authority.key)
-        .map_err(|_| "receipt signer status signature is invalid".to_string())?;
+        .map_err(|_| format!("{subject} status signature is invalid"))?;
     let status = &signed_status.body;
     if status.observed_at < trust.status_authority.valid_from
         || status.observed_at >= trust.status_authority.valid_until
     {
-        return Err(
-            "receipt signer status was signed outside the status-authority lifecycle".to_string(),
-        );
+        return Err(format!(
+            "{subject} status was signed outside the status-authority lifecycle"
+        ));
     }
     if status.observed_at < acted_at
         || status.observed_at > evaluated_at
         || evaluated_at.saturating_sub(status.observed_at) > trust.max_age_secs
     {
-        return Err("receipt signer status evidence is stale".to_string());
+        return Err(format!("{subject} status evidence is stale"));
     }
     // A receipt timestamp is signer-controlled. Without an authenticated
     // pre-revocation publication anchor at this stage, a revoked signer could
     // create a new backdated receipt, so any observed revocation denies it.
     if status.revoked_from.is_some() {
-        return Err("receipt signer is revoked".to_string());
+        return Err(format!("{subject} is revoked"));
     }
     Ok(())
+}
+
+fn verify_receipt_signer_status(
+    policy: &FindingAuthorityKeyPolicy,
+    acted_at: u64,
+    evaluated_at: u64,
+    trust: Option<&FindingCheckpointSignerStatusTrust>,
+) -> Result<(), String> {
+    verify_authority_status(policy, acted_at, evaluated_at, trust, "receipt signer")
 }
 
 fn verify_finding_delivery_receipt(
@@ -576,7 +598,7 @@ pub fn verify_finding_evidence(
             trust.runtime_attestation_authority.as_ref(),
             trust.appraisal_authority.as_ref(),
         ),
-        (Some(attestation), Some(appraisal)) if attestation == appraisal
+        (Some(attestation), Some(appraisal)) if attestation.key == appraisal.key
     ) {
         return Err(FindingVerifierError::AliasedRuntimeAssuranceAuthorities);
     }
@@ -1436,16 +1458,45 @@ fn evaluate_runtime_assurance(
             "local attestation trust policy has no rules",
         );
     }
-    if let Err(error) =
-        verify_pinned_envelope(attestation, attestation_authority, "runtime_attestation")
-    {
+    if let Err(error) = verify_authority_status(
+        attestation_authority,
+        attestation.body.issued_at,
+        trust.trusted_time,
+        trust.checkpoint_signer_status.as_ref(),
+        "runtime-attestation authority",
+    ) {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Failed,
+            error,
+        );
+    }
+    if let Err(error) = verify_authority_status(
+        appraisal_authority,
+        appraisal.body.generated_at,
+        trust.trusted_time,
+        trust.checkpoint_signer_status.as_ref(),
+        "runtime-appraisal authority",
+    ) {
+        return facet(
+            FindingFacetKind::RuntimeAssuranceBacking,
+            FindingFacetOutcome::Failed,
+            error,
+        );
+    }
+    if let Err(error) = verify_pinned_envelope(
+        attestation,
+        &attestation_authority.key,
+        "runtime_attestation",
+    ) {
         return facet(
             FindingFacetKind::RuntimeAssuranceBacking,
             FindingFacetOutcome::Failed,
             format!("runtime-attestation envelope rejected: {error}"),
         );
     }
-    if let Err(error) = verify_pinned_envelope(appraisal, appraisal_authority, "runtime_appraisal")
+    if let Err(error) =
+        verify_pinned_envelope(appraisal, &appraisal_authority.key, "runtime_appraisal")
     {
         return facet(
             FindingFacetKind::RuntimeAssuranceBacking,
@@ -1693,8 +1744,8 @@ fn bundle_digest(
         status_freshness_policy_sha256: Option<String>,
         runtime_attestation_sha256: Option<String>,
         runtime_appraisal_sha256: Option<String>,
-        runtime_attestation_authority: Option<String>,
-        appraisal_authority: Option<String>,
+        runtime_attestation_authority_policy_sha256: Option<String>,
+        appraisal_authority_policy_sha256: Option<String>,
         attestation_trust_policy_sha256: Option<String>,
         backing_allocation_id: Option<&'a str>,
         backing_envelope_sha256: Option<String>,
@@ -1853,11 +1904,20 @@ fn bundle_digest(
             .map(signed_envelope_sha256)
             .transpose()
             .map_err(|_| FindingVerifierError::Canonicalization)?,
-        runtime_attestation_authority: trust
+        runtime_attestation_authority_policy_sha256: trust
             .runtime_attestation_authority
             .as_ref()
-            .map(PublicKey::to_hex),
-        appraisal_authority: trust.appraisal_authority.as_ref().map(PublicKey::to_hex),
+            .map(canonical_json_bytes)
+            .transpose()
+            .map_err(|_| FindingVerifierError::Canonicalization)?
+            .map(|bytes| sha256_hex(&bytes)),
+        appraisal_authority_policy_sha256: trust
+            .appraisal_authority
+            .as_ref()
+            .map(canonical_json_bytes)
+            .transpose()
+            .map_err(|_| FindingVerifierError::Canonicalization)?
+            .map(|bytes| sha256_hex(&bytes)),
         attestation_trust_policy_sha256: trust
             .attestation_trust_policy
             .as_ref()

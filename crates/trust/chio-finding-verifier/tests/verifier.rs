@@ -611,9 +611,47 @@ struct RuntimeFixture {
     fixture: Fixture,
     attestation_authority: Keypair,
     appraisal_authority: Keypair,
+    attestation_authority_policy: FindingAuthorityKeyPolicy,
+    appraisal_authority_policy: FindingAuthorityKeyPolicy,
+    attestation_authority_status: SignedFindingAuthorityStatus,
+    appraisal_authority_status: SignedFindingAuthorityStatus,
     policy: AttestationTrustPolicy,
     attestation: SignedExportEnvelope<RuntimeAttestationEvidence>,
     appraisal: SignedRuntimeAttestationAppraisalReport,
+}
+
+fn runtime_authority_policy(
+    key: chio_core_types::crypto::PublicKey,
+    label: &str,
+) -> FindingAuthorityKeyPolicy {
+    FindingAuthorityKeyPolicy {
+        authority_id: format!("runtime-{label}"),
+        key,
+        key_epoch: 1,
+        valid_from: 1_740_000_000,
+        valid_until: 1_800_000_000,
+        rotation_policy_ref: format!("rotation/runtime-{label}"),
+        revocation_status_ref: format!("revocations/runtime-{label}"),
+    }
+}
+
+fn runtime_authority_status(
+    policy: &FindingAuthorityKeyPolicy,
+    status_authority: &Keypair,
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, Box<dyn Error>> {
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: policy.revocation_status_ref.clone(),
+            authority_id: policy.authority_id.clone(),
+            key: policy.key.clone(),
+            key_epoch: policy.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        status_authority,
+    )?)
 }
 
 fn runtime_fixture(effective_tier: RuntimeAssuranceTier) -> Result<RuntimeFixture, Box<dyn Error>> {
@@ -656,6 +694,20 @@ fn runtime_fixture(effective_tier: RuntimeAssuranceTier) -> Result<RuntimeFixtur
         workload_identity: verified.workload_identity().cloned(),
     };
     let fixture = fixture_with_runtime_assurance(Some(effective_tier), Some(&runtime_metadata))?;
+    let attestation_authority_policy =
+        runtime_authority_policy(attestation_authority.public_key(), "attestation");
+    let appraisal_authority_policy =
+        runtime_authority_policy(appraisal_authority.public_key(), "appraisal");
+    let attestation_authority_status = runtime_authority_status(
+        &attestation_authority_policy,
+        &fixture.checkpoint_status_authority,
+        1_750_000_010,
+    )?;
+    let appraisal_authority_status = runtime_authority_status(
+        &appraisal_authority_policy,
+        &fixture.checkpoint_status_authority,
+        1_750_000_010,
+    )?;
     let attestation = SignedExportEnvelope::sign(evidence, &attestation_authority)?;
     let appraisal = SignedExportEnvelope::sign(
         RuntimeAttestationAppraisalReport {
@@ -670,6 +722,10 @@ fn runtime_fixture(effective_tier: RuntimeAssuranceTier) -> Result<RuntimeFixtur
         fixture,
         attestation_authority,
         appraisal_authority,
+        attestation_authority_policy,
+        appraisal_authority_policy,
+        attestation_authority_status,
+        appraisal_authority_status,
         policy,
         attestation,
         appraisal,
@@ -678,9 +734,15 @@ fn runtime_fixture(effective_tier: RuntimeAssuranceTier) -> Result<RuntimeFixtur
 
 fn runtime_trust_roots(fx: &RuntimeFixture) -> FindingVerifierTrustRoots {
     let mut trust = trust_roots(&fx.fixture);
-    trust.runtime_attestation_authority = Some(fx.attestation_authority.public_key());
-    trust.appraisal_authority = Some(fx.appraisal_authority.public_key());
+    trust.runtime_attestation_authority = Some(fx.attestation_authority_policy.clone());
+    trust.appraisal_authority = Some(fx.appraisal_authority_policy.clone());
     trust.attestation_trust_policy = Some(fx.policy.clone());
+    if let Some(status_trust) = trust.checkpoint_signer_status.as_mut() {
+        status_trust.signed_statuses.extend([
+            fx.attestation_authority_status.clone(),
+            fx.appraisal_authority_status.clone(),
+        ]);
+    }
     trust
 }
 
@@ -1666,8 +1728,22 @@ fn resolved_bundle_commitment_includes_assurance_artifacts_pins_and_policy() -> 
 
     let alternate_attestation_authority = keypair(33);
     let mut alternate_trust = runtime_trust_roots(&fx);
-    alternate_trust.runtime_attestation_authority =
-        Some(alternate_attestation_authority.public_key());
+    let alternate_attestation_policy = runtime_authority_policy(
+        alternate_attestation_authority.public_key(),
+        "alternate-attestation",
+    );
+    alternate_trust.runtime_attestation_authority = Some(alternate_attestation_policy.clone());
+    let alternate_trusted_time = alternate_trust.trusted_time;
+    alternate_trust
+        .checkpoint_signer_status
+        .as_mut()
+        .ok_or("missing signer-status trust")?
+        .signed_statuses
+        .push(runtime_authority_status(
+            &alternate_attestation_policy,
+            &fx.fixture.checkpoint_status_authority,
+            alternate_trusted_time,
+        )?);
     let mut alternate_evidence = runtime_bundle(&fx);
     alternate_evidence.runtime_attestation = Some(SignedExportEnvelope::sign(
         fx.attestation.body.clone(),

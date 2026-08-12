@@ -326,9 +326,9 @@ struct FindingTrustRootsFile {
     #[serde(default)]
     fee_schedule_authorities: Vec<PublicKey>,
     #[serde(default)]
-    runtime_attestation_authority: Option<PublicKey>,
+    runtime_attestation_authority: Option<chio_finding::FindingAuthorityKeyPolicy>,
     #[serde(default)]
-    appraisal_authority: Option<PublicKey>,
+    appraisal_authority: Option<chio_finding::FindingAuthorityKeyPolicy>,
     #[serde(default)]
     attestation_trust_policy: Option<AttestationTrustPolicy>,
     #[serde(default)]
@@ -847,6 +847,9 @@ fn evidence_report_result(unverified: &[String], failed: &[String]) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::status_floor::{
+        write_status_floor, FindingStatusCliFloor, TEST_FINDING_STATUS_FLOOR_SCHEMA,
+    };
 
     const QUALIFIED_STATUS_PROOF: &[u8] = include_bytes!(
         "../../../../../../../fixtures/proof-room/finding/cognition-market-qualified-profile/attachments/status-proof-input.json"

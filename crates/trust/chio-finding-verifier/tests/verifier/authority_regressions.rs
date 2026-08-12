@@ -182,6 +182,56 @@ fn runtime_attestation_and_appraisal_authorities_must_be_distinct() -> TestResul
 }
 
 #[test]
+fn runtime_assurance_requires_live_unrevoked_authority_standing() -> TestResult {
+    let fx = runtime_fixture(RuntimeAssuranceTier::Verified)?;
+
+    for authority_id in [
+        fx.attestation_authority_policy.authority_id.as_str(),
+        fx.appraisal_authority_policy.authority_id.as_str(),
+    ] {
+        let mut trust = runtime_trust_roots(&fx);
+        let trusted_time = trust.trusted_time;
+        let status = trust
+            .checkpoint_signer_status
+            .as_mut()
+            .ok_or("missing signer-status trust")?
+            .signed_statuses
+            .iter_mut()
+            .find(|status| status.body.authority_id == authority_id)
+            .ok_or("runtime authority status missing")?;
+        status.body.revoked_from = Some(trusted_time);
+        *status = SignedExportEnvelope::sign(
+            status.body.clone(),
+            &fx.fixture.checkpoint_status_authority,
+        )?;
+
+        let draft = verify_finding_evidence(&fx.fixture.raw_finding, &trust, &runtime_bundle(&fx))?;
+        let assurance = draft
+            .facets()
+            .iter()
+            .find(|facet| facet.facet == FindingFacetKind::RuntimeAssuranceBacking)
+            .ok_or("runtime-assurance facet missing")?;
+        assert_eq!(assurance.outcome, FindingFacetOutcome::Failed);
+        assert!(assurance.reason.contains("is revoked"));
+        assert!(!draft.satisfies_required_facets(&fx.fixture.profile.body));
+    }
+
+    let mut expired = runtime_trust_roots(&fx);
+    let trusted_time = expired.trusted_time;
+    expired
+        .runtime_attestation_authority
+        .as_mut()
+        .ok_or("runtime-attestation policy missing")?
+        .valid_until = trusted_time;
+    let draft = verify_finding_evidence(&fx.fixture.raw_finding, &expired, &runtime_bundle(&fx))?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::RuntimeAssuranceBacking),
+        Some(FindingFacetOutcome::Failed)
+    );
+    Ok(())
+}
+
+#[test]
 fn unsupported_profile_requirements_reject_outright() -> TestResult {
     let fx = fixture()?;
 

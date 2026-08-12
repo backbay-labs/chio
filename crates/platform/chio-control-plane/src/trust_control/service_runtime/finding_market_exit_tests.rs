@@ -36,7 +36,7 @@ use chio_finding::{
     FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
     FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
-    FINDING_SELLER_AUTHORIZATION_SCHEMA_V1,
+    FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1, FINDING_SELLER_AUTHORIZATION_SCHEMA_V1,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
@@ -205,6 +205,25 @@ fn signed_listing_authority_status(
             authority_id: pin.authority_id,
             key,
             key_epoch: pin.key_epoch,
+            revoked_from,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+fn signed_seller_authorization_status(
+    authorization: &SignedFindingSellerAuthorization,
+    observed_at: u64,
+    revoked_from: Option<u64>,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: authorization.body.revocation_status_ref.clone(),
+            authority_id: authorization.body.authorization_id.clone(),
+            key: authorization.body.issuer.clone(),
+            key_epoch: FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
             revoked_from,
             observed_at,
         },
@@ -1283,6 +1302,13 @@ impl MarketWeb {
                 None,
             )?)?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
+            "sellerAuthorizationStatus": serde_json::to_value(
+                signed_seller_authorization_status(
+                    &self.authorization,
+                    unix_timestamp_now(),
+                    None,
+                )?,
+            )?,
             "terms": serde_json::to_value(&self.terms)?,
             "backing": serde_json::to_value(&self.backing)?,
             "feeSchedule": serde_json::to_value(schedule)?,
@@ -1656,6 +1682,44 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         &stack,
         revoked_listing_request.to_string(),
         "listing authority is revoked at activation",
+    )
+    .await?;
+
+    let mut revoked_authorization_request: serde_json::Value =
+        serde_json::from_str(&web.activate_request(&web.admission, &web.schedule, &web.report)?)?;
+    revoked_authorization_request["sellerAuthorizationStatus"] = serde_json::to_value(
+        signed_seller_authorization_status(&web.authorization, now, Some(now))?,
+    )?;
+    assert_activation_rejected(
+        &stack,
+        revoked_authorization_request.to_string(),
+        "seller authorization is revoked at activation",
+    )
+    .await?;
+
+    let mut wrong_server_authorization_body = web.authorization.body.clone();
+    wrong_server_authorization_body.provider_server_id = "other-server.example".to_string();
+    wrong_server_authorization_body.authorization_id =
+        compute_authorization_id(&wrong_server_authorization_body)?;
+    let wrong_server_authorization =
+        SignedExportEnvelope::sign(wrong_server_authorization_body, &keypair(3))?;
+    let mut wrong_server_admission =
+        web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+    wrong_server_admission.seller_authorization_envelope_sha256 =
+        digest_of(&wrong_server_authorization)?;
+    let wrong_server_admission = sign_admission(wrong_server_admission, &web.venue)?;
+    let mut wrong_server_request: serde_json::Value = serde_json::from_str(
+        &web.activate_request(&wrong_server_admission, &web.schedule, &web.report)?,
+    )?;
+    wrong_server_request["sellerAuthorization"] =
+        serde_json::to_value(&wrong_server_authorization)?;
+    wrong_server_request["sellerAuthorizationStatus"] = serde_json::to_value(
+        signed_seller_authorization_status(&wrong_server_authorization, now, None)?,
+    )?;
+    assert_activation_rejected(
+        &stack,
+        wrong_server_request.to_string(),
+        "seller authorization provider server does not match the admission",
     )
     .await?;
 

@@ -1,4 +1,5 @@
 use super::*;
+use super::super::status_floor::FindingStatusCliFloorV1;
 
 fn authorization() -> chio_finding::FindingStatusOperatorAuthorization {
     chio_finding::FindingStatusOperatorAuthorization {
@@ -30,6 +31,7 @@ fn response(proof_kind: &str) -> FindingStatusProofResponse {
         proof_input_b64: String::new(),
         signed_epoch_sha256: "4".repeat(64),
         signed_epoch_b64: String::new(),
+        service_bond_evidence_sha256: "9".repeat(64),
         checked_at: 1_800_000_000,
         valid_until: 1_800_000_300,
     }
@@ -133,6 +135,66 @@ fn status_floor_keeps_retractions_sticky_per_finding() {
 }
 
 #[test]
+fn status_floor_migrates_v1_epoch_and_sticky_retractions() {
+    let dir = tempfile::tempdir().unwrap();
+    let floor_path = dir.path().join("status-floor.json");
+    let authorization = authorization();
+    let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
+    let legacy = FindingStatusCliFloorV1 {
+        schema: "chio.finding.status-cli-floor.v1".to_owned(),
+        feed_id: authorization.feed_id.clone(),
+        operator_id: authorization.operator.authority_id.clone(),
+        rotation_policy_ref: authorization.operator.rotation_policy_ref.clone(),
+        operator_key_epoch: authorization.operator.key_epoch,
+        operator_key: Some(authorization.operator.key.clone()),
+        operator_authorization_sha256: authorization_sha256.clone(),
+        key_domain_nonce: 3_318_287_169_837_494,
+        map_epoch: 8,
+        epoch_id: "1".repeat(64),
+        root_hash: "2".repeat(64),
+        retracted_finding_ids: std::iter::once(GOLDEN_FINDING_ID.to_owned()).collect(),
+    };
+    std::fs::write(&floor_path, canonical_json_bytes(&legacy).unwrap()).unwrap();
+
+    let mut status = response("non_inclusion");
+    status.map_epoch = 9;
+    status.epoch_id = "3".repeat(64);
+    status.root_hash = "4".repeat(64);
+    status.finding_id = "f".repeat(64);
+    advance_status_floor(
+        &floor_path,
+        &status.floor_observation(),
+        &authorization,
+        &authorization_sha256,
+    )
+    .unwrap();
+
+    let migrated = read_status_floor(&floor_path).unwrap().unwrap();
+    assert_eq!(migrated.schema, "chio.finding.status-cli-floor.v2");
+    assert_eq!(migrated.map_epoch, 9);
+    assert_eq!(
+        std::fs::read_dir(dir.path().join("status-floor.json.retractions"))
+            .unwrap()
+            .count(),
+        1
+    );
+
+    status.map_epoch = 10;
+    status.epoch_id = "7".repeat(64);
+    status.root_hash = "8".repeat(64);
+    status.finding_id = GOLDEN_FINDING_ID.to_owned();
+    assert!(advance_status_floor(
+        &floor_path,
+        &status.floor_observation(),
+        &authorization,
+        &authorization_sha256,
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("durably retracted"));
+}
+
+#[test]
 fn status_floor_partitions_retractions_without_growing_the_epoch_document() {
     let dir = tempfile::tempdir().unwrap();
     let floor_path = dir.path().join("status-floor.json");
@@ -190,13 +252,34 @@ fn status_rejects_oversized_encoded_proof_before_decoding() {
         &authorization.feed_id,
         GOLDEN_FINDING_ID,
         &authorization,
-        &"9".repeat(64),
+        &status.service_bond_evidence_sha256,
         300,
         status.checked_at,
     )
     .unwrap_err()
     .to_string();
     assert!(error.contains("oversized"), "unexpected error: {error}");
+}
+
+#[test]
+fn status_rejects_a_projected_digest_that_does_not_hash_the_proof_bytes() {
+    use base64::Engine as _;
+
+    let authorization = authorization();
+    let mut status = response("non_inclusion");
+    status.proof_input_b64 = base64::engine::general_purpose::STANDARD.encode(b"{}");
+
+    let error = verify_status_projection(
+        &status,
+        &authorization.feed_id,
+        GOLDEN_FINDING_ID,
+        &authorization,
+        &status.service_bond_evidence_sha256,
+        300,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("proof digest"), "unexpected error: {error}");
 }
 
 #[test]
@@ -217,4 +300,50 @@ fn status_operator_authorization_is_loaded_out_of_band_and_feed_pinned() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("different feed"), "unexpected error: {error}");
+}
+
+#[test]
+fn status_service_bond_is_canonical_operator_bound_and_current() {
+    let dir = tempfile::tempdir().unwrap();
+    let authorization = authorization();
+    let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
+    let bond = chio_control_plane::trust_control::FindingStatusServiceBond {
+        bond_id: "status-bond-01".to_owned(),
+        feed_id: authorization.feed_id.clone(),
+        operator_id: authorization.operator.authority_id.clone(),
+        locked_units: 1_000,
+        currency: "USD".to_owned(),
+        valid_from: 1_799_999_000,
+        valid_until: 1_800_010_000,
+        inclusion_sla_secs: 600,
+        missed_inclusion_slash_units: 100,
+        equivocation_slash_units: 1_000,
+        evidence_sha256: "a".repeat(64),
+    };
+    let path = write_temp(
+        &dir,
+        "status-bond.json",
+        &canonical_json_string(&bond).unwrap(),
+    );
+    assert_eq!(
+        load_status_service_bond(
+            &path,
+            &authorization.feed_id,
+            &authorization,
+            &authorization_sha256,
+            1_800_000_000,
+        )
+        .unwrap(),
+        bond
+    );
+    let error = load_status_service_bond(
+        &path,
+        &authorization.feed_id,
+        &authorization,
+        &authorization_sha256,
+        bond.valid_until,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("not current"), "unexpected error: {error}");
 }

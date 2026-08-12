@@ -64,7 +64,8 @@ use chio_finding::{
     FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
     FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1,
     FINDING_RECOVERY_CONTEXT_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
-    FINDING_SELLER_AUTHORIZATION_SCHEMA_V1, PURCHASE_CONTEXT_SCHEMA,
+    FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1, FINDING_SELLER_AUTHORIZATION_SCHEMA_V1,
+    PURCHASE_CONTEXT_SCHEMA,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
@@ -288,6 +289,24 @@ fn signed_listing_authority_status(
             authority_id: pin.authority_id,
             key,
             key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+fn signed_seller_authorization_status(
+    authorization: &SignedFindingSellerAuthorization,
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: authorization.body.revocation_status_ref.clone(),
+            authority_id: authorization.body.authorization_id.clone(),
+            key: authorization.body.issuer.clone(),
+            key_epoch: FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
             revoked_from: None,
             observed_at,
         },
@@ -1326,6 +1345,12 @@ impl MarketWeb {
                 unix_timestamp_now(),
             )?)?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
+            "sellerAuthorizationStatus": serde_json::to_value(
+                signed_seller_authorization_status(
+                    &self.authorization,
+                    unix_timestamp_now(),
+                )?,
+            )?,
             "terms": serde_json::to_value(&self.terms)?,
             "backing": serde_json::to_value(&self.backing)?,
             "feeSchedule": serde_json::to_value(&self.schedule)?,
@@ -3437,7 +3462,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         witness,
         purchase,
         buyer,
-        status_proof_b64,
+        status_proof_b64: _,
     } = lane;
     drop((state, coordinator, kernel, witness, authority));
     let authority = deployment.open()?;
@@ -4980,6 +5005,9 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
             unix_timestamp_now(),
         )?)?,
         "sellerAuthorization": serde_json::to_value(&web.authorization)?,
+        "sellerAuthorizationStatus": serde_json::to_value(
+            signed_seller_authorization_status(&web.authorization, unix_timestamp_now())?,
+        )?,
         "terms": serde_json::to_value(&web.terms)?,
         "backing": serde_json::to_value(&second_backing)?,
         "feeSchedule": serde_json::to_value(&web.schedule)?,

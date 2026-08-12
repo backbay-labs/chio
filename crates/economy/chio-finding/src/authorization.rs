@@ -17,6 +17,10 @@ use crate::validate::{require_bounded_id, require_hex64, require_window, Finding
 pub const FINDING_SELLER_AUTHORIZATION_SCHEMA_V1: &str =
     chio_core_types::CHIO_FINDING_SELLER_AUTHORIZATION_V1_SCHEMA;
 
+/// Seller-authorization v1 carries one issuer key and therefore has one
+/// implicit key epoch for its independently authenticated status reading.
+pub const FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1: u64 = 1;
+
 /// Where sale proceeds go. Either a direct rail-tagged beneficiary
 /// destination or a provider-signed payee mapping committed by envelope
 /// digest.

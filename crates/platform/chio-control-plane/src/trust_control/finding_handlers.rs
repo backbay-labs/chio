@@ -23,7 +23,7 @@ use chio_finding::{
     FindingGuaranteeClass, FindingPayee, FindingReplayRecipeInput, SignedFindingAdmission,
     SignedFindingAuthorityStatus, SignedFindingBondBacking, SignedFindingChallengeVerifierProfile,
     SignedFindingMarketTerms, SignedFindingSellerAuthorization, SignedFindingVerifierReport,
-    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
 };
 use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
 use chio_open_market::finding_admission::{
@@ -928,6 +928,7 @@ pub(crate) struct FindingActivateRequest {
     pub venue_authority_status: SignedFindingAuthorityStatus,
     pub listing_authority_status: SignedFindingAuthorityStatus,
     pub seller_authorization: SignedFindingSellerAuthorization,
+    pub seller_authorization_status: SignedFindingAuthorityStatus,
     pub terms: SignedFindingMarketTerms,
     pub backing: SignedFindingBondBacking,
     pub fee_schedule: SignedOpenMarketFeeSchedule,
@@ -935,6 +936,44 @@ pub(crate) struct FindingActivateRequest {
     pub verifier_authority_status: SignedFindingAuthorityStatus,
     pub listing: SignedGenericListing,
     pub pricing_hint: chio_open_market::listing::SignedListingPricingHint,
+}
+
+fn verify_seller_authorization_lifecycle(
+    authorization: &SignedFindingSellerAuthorization,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<(), String> {
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live at activation".into());
+    }
+    let authorization = &authorization.body;
+    if status.status_ref != authorization.revocation_status_ref
+        || status.authority_id != authorization.authorization_id
+        || status.key != authorization.issuer
+        || status.key_epoch != FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1
+    {
+        return Err("seller authorization status does not bind the exact authorization".into());
+    }
+    if status.observed_at < authorization.issued_at {
+        return Err("seller authorization status predates the authorization".into());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("seller authorization status is not a fresh current reading".into());
+    }
+    if status.revoked_from.is_some() {
+        return Err("seller authorization is revoked at activation".into());
+    }
+    Ok(())
 }
 
 fn verify_listing_authority_lifecycle(
@@ -1498,6 +1537,20 @@ pub(crate) async fn handle_activate_finding(
     if authorization.issued_at > authorization_now || authorization.expires_at <= authorization_now
     {
         return plain_http_error(StatusCode::BAD_REQUEST, "seller authorization is not live");
+    }
+    if authorization.provider_server_id != admission.server_id {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "seller authorization provider server does not match the admission",
+        );
+    }
+    if let Err(error) = verify_seller_authorization_lifecycle(
+        &request.seller_authorization,
+        &request.seller_authorization_status,
+        &config,
+        authorization_now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     if let FindingPayee::Beneficiary { destination, .. } = &authorization.payee {
         if destination != &admission.payee_destination {
