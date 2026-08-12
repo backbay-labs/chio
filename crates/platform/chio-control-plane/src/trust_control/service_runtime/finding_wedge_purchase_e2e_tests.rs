@@ -2548,12 +2548,13 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| Self::execution_error("reveal payload missing"))?
             .to_owned();
+        let finalized_at = unix_timestamp_now();
         self.authority
             .finding_purchase_store()
             .register_community_fund_destination(
                 &self.web.allocation_id,
                 COMMUNITY_FUND_DESTINATION,
-                now,
+                finalized_at,
             )
             .map_err(Self::execution_error)?;
         let record = coordinator
@@ -2562,7 +2563,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                 &response.receipt,
                 &self.web.admission,
                 &self.web.backing,
-                now,
+                finalized_at,
             )
             .map_err(Self::execution_error)?;
         Ok(FindingPurchaseResult {
@@ -3192,6 +3193,22 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
             .ok_or_else(|| missing("purchase reservation"))?
             .created_at
     };
+    let mut future_body = response.receipt.body();
+    future_body.timestamp = now.saturating_add(1);
+    let future_receipt = ChioReceipt::sign(future_body, &keypair(40))?;
+    let (future_checkpoint, future_proof) = denial_checkpoint(&future_receipt)?;
+    assert!(matches!(
+        lane.coordinator.finalize_denial(
+            &lane.purchase.handshake.reservation_id,
+            &future_receipt,
+            &lane.deployment.web.admission,
+            &future_checkpoint,
+            &future_proof,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::TerminalEvidence(message))
+            if message.contains("ahead of the finalization clock")
+    ));
     let mut backdated_body = response.receipt.body();
     backdated_body.timestamp = reservation_created_at.saturating_sub(1);
     let backdated_receipt = ChioReceipt::sign(backdated_body, &keypair(40))?;
@@ -3686,20 +3703,21 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
     )?;
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
+    let finalized_at = unix_timestamp_now();
 
     lane.authority
         .finding_purchase_store()
         .register_community_fund_destination(
             &lane.deployment.web.allocation_id,
             COMMUNITY_FUND_DESTINATION,
-            now,
+            finalized_at,
         )?;
     let purchase_record = lane.coordinator.finalize_delivery(
         &lane.purchase.handshake.reservation_id,
         &response.receipt,
         &lane.deployment.web.admission,
         &lane.deployment.web.backing,
-        now,
+        finalized_at,
     )?;
     let recovery_id = derive_finding_recovery_id(
         &lane.purchase.capability.id,
@@ -4944,6 +4962,21 @@ async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> T
         COMMUNITY_FUND_DESTINATION,
         now,
     )?;
+
+    let mut future_body = response.receipt.body();
+    future_body.timestamp = now.saturating_add(1);
+    let future_receipt = ChioReceipt::sign(future_body, &keypair(40))?;
+    assert!(matches!(
+        lane.coordinator.finalize_delivery(
+            &reservation_id,
+            &future_receipt,
+            &lane.deployment.web.admission,
+            &lane.deployment.web.backing,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::TerminalEvidence(message))
+            if message.contains("ahead of the finalization clock")
+    ));
 
     let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
     let refused = lane.coordinator.finalize_denial(

@@ -3494,7 +3494,7 @@ impl FindingChallengeCoordinator {
         now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
         let pin = &self.pins.settlement_observer;
-        self.require_live_role(pin, snapshot.body.observed_at, now, "settlement observer")
+        self.require_current_role(pin, snapshot.body.observed_at, now, "settlement observer")
             .map_err(|error| match error {
                 ChallengeCoordinatorError::AuthorityLifecycle { reason, .. } => {
                     ChallengeCoordinatorError::SettlementObserverLifecycle(reason)
@@ -3505,6 +3505,33 @@ impl FindingChallengeCoordinator {
         // vault operator. The envelope signer is authenticated by `pin`; the
         // chain observation validates its own operator identity and epoch.
         Ok(())
+    }
+
+    /// Authenticate a newly consumed live input or newly signed output at
+    /// both its declared action time and the current venue clock. Historical
+    /// artifacts continue to use `require_live_role`; this stronger boundary
+    /// prevents a retired key from backdating new unanchored evidence or
+    /// signing a new artifact under its former lifecycle.
+    fn require_current_role(
+        &self,
+        pin: &FindingAuthorityPin,
+        acted_at: u64,
+        now: u64,
+        role: &'static str,
+    ) -> Result<PublicKey, ChallengeCoordinatorError> {
+        let (key, status) = self.resolve_live_role(pin, acted_at, now, role)?;
+        let reject = |reason| ChallengeCoordinatorError::AuthorityLifecycle { role, reason };
+        if !pin.covers(now) {
+            return Err(reject("authority pin is not live at the venue clock"));
+        }
+        if status
+            .body
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from <= now)
+        {
+            return Err(reject("key is revoked at the venue clock"));
+        }
+        Ok(key)
     }
 
     /// Authenticate one role's exact lifecycle policy against the
@@ -5981,7 +6008,7 @@ impl FindingChallengeCoordinator {
         issued_at: u64,
         now: u64,
     ) -> Result<FindingPenaltyOutcome, ChallengeCoordinatorError> {
-        self.require_live_role(&self.penalty_pin, issued_at, now, "penalty")?;
+        self.require_current_role(&self.penalty_pin, issued_at, now, "penalty")?;
         let penalty_key = self.penalty_authority.public_key();
         let mut trusted = self.require_pinned_governance(governance, case, prior_penalty, now)?;
         let outcome_envelope_sha256 = self.envelope_digest(outcome)?;

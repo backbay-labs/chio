@@ -6952,6 +6952,56 @@ fn finding_challenge_final_penalty_uses_the_rotated_authority_window() -> TestRe
 }
 
 #[test]
+fn finding_challenge_final_penalty_requires_current_authority_standing() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    let deadline = case
+        .deployment
+        .challenges
+        .get_liability(&case.upheld.liability_key)?
+        .and_then(|liability| liability.appeal_deadline)
+        .ok_or("the upheld liability carries an appeal deadline")?;
+    let config = market_config();
+    let coordinator = case.deployment.coordinator_under_with_status(
+        &config,
+        Arc::new(TestAuthorityStatusResolver {
+            revoked_authority: Some(config.market_penalty.authority_id.clone()),
+            revoked_from_override: Some(deadline.saturating_add(5)),
+            ..TestAuthorityStatusResolver::live()
+        }),
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+    let refused = coordinator.resolve_appeal(
+        &case.upheld.liability_key,
+        &case.outcome,
+        &identity,
+        Some(&case.upheld.sealed),
+        &case.governance.context(),
+        &AppealDisposition::Final {
+            sanction_case: &case.governance.sanction_case,
+        },
+        &case.upheld.sanction_case_id,
+        &case.upheld.hold,
+        &hex64('7'),
+        deadline.saturating_add(10),
+    );
+    assert!(matches!(
+        refused,
+        Err(ChallengeCoordinatorError::AuthorityLifecycle {
+            role: "penalty",
+            ..
+        })
+    ));
+    let liability = case
+        .deployment
+        .challenges
+        .get_liability(&case.upheld.liability_key)?
+        .ok_or("the refused finality keeps its liability")?;
+    assert_eq!(liability.state, FindingLiabilityState::PendingAppeal);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_appeal_finality_uses_the_sanctions_retained_governance_policy() -> TestResult {
     let case = upheld_liability()?;
     let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
@@ -8720,7 +8770,7 @@ fn finding_challenge_an_enforcement_naming_another_vault_never_reaches_the_publi
 fn finding_challenge_a_snapshot_from_an_expired_observer_key_authorizes_nothing() -> TestResult {
     let case = finalizing_liability()?;
     let mut config = market_config();
-    config.settlement_observer.valid_until = case.snapshot.body.observed_at;
+    config.settlement_observer.valid_until = case.snapshot.body.observed_at.saturating_add(1);
     let coordinator = case
         .deployment
         .coordinator_under(&config, FindingDisputeLockDisposition::Forfeited)?;
@@ -8744,6 +8794,36 @@ fn finding_challenge_a_snapshot_from_an_expired_observer_key_authorizes_nothing(
     assert!(matches!(
         refused,
         ChallengeCoordinatorError::SettlementObserverLifecycle(_)
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+
+    let config = market_config();
+    let revoked = case.deployment.coordinator_under_with_status(
+        &config,
+        Arc::new(TestAuthorityStatusResolver {
+            revoked_authority: Some(config.settlement_observer.authority_id.clone()),
+            revoked_from_override: Some(case.snapshot.body.observed_at.saturating_add(1)),
+            ..TestAuthorityStatusResolver::live()
+        }),
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+    let refused = revoked.finalize(
+        &case.liability_key,
+        &case.enforcement,
+        &case.penalty,
+        &case.snapshot,
+        &case.seller,
+        &settlement_config()?,
+        &settlement_config()?.operator_address,
+        &evm_vault_snapshot(),
+        &anchor_proof()?,
+        &ScriptedObservations::qualified(),
+        &UnreachablePublisher,
+        SETTLEMENT_NOW,
+    );
+    assert!(matches!(
+        refused,
+        Err(ChallengeCoordinatorError::SettlementObserverLifecycle(_))
     ));
     assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
     Ok(())

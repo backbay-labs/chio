@@ -1760,6 +1760,25 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     .await?;
 
     let now = unix_timestamp_now();
+    let mut future_listing_body = web.listing.body.clone();
+    future_listing_body.published_at = now.saturating_add(60);
+    let future_listing = SignedGenericListing::sign(future_listing_body, &web.operator)?;
+    let mut future_listing_admission =
+        web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+    future_listing_admission.listing_envelope_sha256 = digest_of(&future_listing)?;
+    let future_listing_admission = sign_admission(future_listing_admission, &web.venue)?;
+    assert_activation_rejected(
+        &stack,
+        web.activate_request_with_listing(
+            &future_listing_admission,
+            &web.schedule,
+            &web.report,
+            &future_listing,
+        )?,
+        "published after the activation clock",
+    )
+    .await?;
+
     let mut expired_listing_state = stack.state.clone();
     expired_listing_state
         .config
@@ -2697,6 +2716,36 @@ async fn unpaid_epoch_drops_the_marker_until_renewal() -> TestResult {
         )?
         .ok_or_else(|| missing("paid-through epoch after renewal"))?;
     assert!(paid_through >= 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn activation_rejects_a_mismatched_rail_observation() -> TestResult {
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    stack.seed_market().await?;
+    let mut mismatched_state = stack.state.clone();
+    mismatched_state.finding_rail = Some(Arc::new(MismatchedRail));
+    let (status, body) = send(
+        &mismatched_state,
+        authed_post(
+            &format!("/v1/findings/{}/activate", stack.web.finding_id),
+            stack.web.activate_request(
+                &stack.web.admission,
+                &stack.web.schedule,
+                &stack.web.report,
+            )?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert!(String::from_utf8_lossy(&body).contains("does not reconcile"));
+    let publication_event = stack
+        .store
+        .get_fee_event(&stack.publication_fee_key())?
+        .ok_or_else(|| missing("publication fee intent after rail mismatch"))?;
+    assert_eq!(publication_event.state, FindingFeeState::Failed);
+    assert!(publication_event.observation_sha256.is_none());
+    assert_not_admitted_with_allocation(&stack, FindingAllocationState::Consumed).await?;
     Ok(())
 }
 

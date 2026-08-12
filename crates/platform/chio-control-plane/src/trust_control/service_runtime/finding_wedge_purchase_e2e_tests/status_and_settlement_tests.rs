@@ -1017,19 +1017,20 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
         "nonce-settle-1",
     )?;
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
+    let finalized_at = unix_timestamp_now();
 
     let purchase_store = lane.authority.finding_purchase_store();
     purchase_store.register_community_fund_destination(
         &lane.deployment.web.allocation_id,
         COMMUNITY_FUND_DESTINATION,
-        now,
+        finalized_at,
     )?;
     let record = lane.coordinator.finalize_delivery(
         &lane.purchase.handshake.reservation_id,
         &response.receipt,
         &lane.deployment.web.admission,
         &lane.deployment.web.backing,
-        now,
+        finalized_at,
     )?;
     verify_signed_purchase_record(&record, &keypair(16).public_key())?;
     assert_eq!(

@@ -1246,6 +1246,12 @@ pub(crate) async fn handle_activate_finding(
             "finding listing signer does not match the configured listing authority",
         );
     }
+    if request.listing.body.published_at > now {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding listing was published after the activation clock",
+        );
+    }
     if !config.listing.covers(request.listing.body.published_at) {
         return plain_http_error(
             StatusCode::BAD_REQUEST,
@@ -1724,6 +1730,17 @@ pub(crate) async fn handle_activate_finding(
                 );
             }
         };
+        if !super::finding_challenge_coordinator::rail_observation_matches(
+            &charge.instruction,
+            &charge.instruction_sha256,
+            &observation,
+        ) {
+            let _ = store.mark_fee_failed(&charge.idempotency_key);
+            return plain_http_error(
+                StatusCode::BAD_GATEWAY,
+                "rail observation does not reconcile to the dispatched instruction",
+            );
+        }
         let observation_sha256 = match canonical_digest_of(&observation) {
             Ok(digest) => digest,
             Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),

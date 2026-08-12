@@ -821,6 +821,11 @@ impl FindingPurchaseCoordinator {
     ) -> Result<SignedFindingPurchaseRecord, PurchaseCoordinatorError> {
         let reservation = self.resolve(reservation_id)?;
         self.verify_reservation_admission(&reservation, admission)?;
+        if receipt.timestamp > now {
+            return Err(PurchaseCoordinatorError::TerminalEvidence(
+                "delivery receipt is ahead of the finalization clock".to_owned(),
+            ));
+        }
         Self::verify_terminal_chronology(&reservation, receipt, "delivery")?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Delivered)?;
@@ -976,6 +981,11 @@ impl FindingPurchaseCoordinator {
     ) -> Result<SignedFindingFailedDelivery, PurchaseCoordinatorError> {
         let reservation = self.resolve(reservation_id)?;
         self.verify_reservation_admission(&reservation, admission)?;
+        if receipt.timestamp > now {
+            return Err(PurchaseCoordinatorError::TerminalEvidence(
+                "denial receipt is ahead of the finalization clock".to_owned(),
+            ));
+        }
         Self::verify_terminal_chronology(&reservation, receipt, "denial")?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Denied)?;
