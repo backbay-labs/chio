@@ -172,6 +172,8 @@ fn signed_verifier_authority_status(
     )?)
 }
 
+include!("finding_market_exit_tests/profile_registration.rs");
+
 fn audit_pool_binding() -> FindingPoolBinding {
     FindingPoolBinding {
         principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
@@ -1191,7 +1193,10 @@ impl MarketStack {
     async fn seed_market(&self) -> TestResult {
         let (status, body) = send(
             &self.state,
-            authed_post("/v1/findings/profiles", self.web.profile_raw.clone())?,
+            authed_post(
+                "/v1/findings/profiles",
+                profile_registration_raw_from_profile_bytes(&self.web.profile_raw)?,
+            )?,
         )
         .await?;
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
@@ -2140,7 +2145,10 @@ async fn deterministic_publish_requires_every_retained_recipe_dependency_class()
 
         let (status, body) = send(
             &stack.state,
-            authed_post("/v1/findings/profiles", web.profile_raw.clone())?,
+            authed_post(
+                "/v1/findings/profiles",
+                profile_registration_raw_from_profile_bytes(&web.profile_raw)?,
+            )?,
         )
         .await?;
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
@@ -2231,30 +2239,6 @@ async fn search_requires_filters_and_a_canonical_cursor() -> TestResult {
     )
     .await?;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    Ok(())
-}
-
-#[tokio::test]
-async fn profile_not_signed_by_governance_rejects() -> TestResult {
-    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
-    let interloper = keypair(9);
-    let checkpoint_id = checkpoint_log_id(&stack.web.checkpoint);
-    let forged_profile = build_profile(
-        &interloper,
-        checkpoint_id,
-        &recipe_dependencies().runner_manifest_sha256,
-    )?;
-    let (status, body) = send(
-        &stack.state,
-        authed_post("/v1/findings/profiles", canonical_string(&forged_profile)?)?,
-    )
-    .await?;
-    assert_eq!(
-        status,
-        StatusCode::BAD_REQUEST,
-        "{}",
-        String::from_utf8_lossy(&body)
-    );
     Ok(())
 }
 
@@ -2366,35 +2350,6 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
     assert!(
         error.contains("predates the report evaluation"),
         "unexpected error: {error}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-async fn profile_body_authority_must_match_governance() -> TestResult {
-    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
-    let governance = keypair(1);
-    let interloper = keypair(9);
-    let checkpoint_id = checkpoint_log_id(&stack.web.checkpoint);
-    let profile = build_profile(
-        &interloper,
-        checkpoint_id,
-        &recipe_dependencies().runner_manifest_sha256,
-    )?;
-    let mismatched_profile = SignedExportEnvelope::sign(profile.body, &governance)?;
-    let (status, body) = send(
-        &stack.state,
-        authed_post(
-            "/v1/findings/profiles",
-            canonical_string(&mismatched_profile)?,
-        )?,
-    )
-    .await?;
-    assert_eq!(
-        status,
-        StatusCode::BAD_REQUEST,
-        "{}",
-        String::from_utf8_lossy(&body)
     );
     Ok(())
 }

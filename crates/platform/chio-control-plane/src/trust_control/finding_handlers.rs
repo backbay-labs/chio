@@ -63,6 +63,13 @@ const PROFILE_SCHEMA_JSON: &str = include_str!(
     "../../../../../spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json"
 );
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FindingProfileRegistrationRequest {
+    profile: SignedFindingChallengeVerifierProfile,
+    governance_authority_status: SignedFindingAuthorityStatus,
+}
+
 /// Deterministic instruction the venue-ledger rail settles. Its canonical
 /// digest is the instruction commitment the admission's fee terminal
 /// binds.
@@ -219,6 +226,106 @@ pub(super) fn strict_artifact_ingress<T: serde::de::DeserializeOwned + serde::Se
         ));
     }
     Ok((strict_bytes, typed))
+}
+
+fn strict_profile_registration_ingress(
+    raw: &str,
+) -> Result<(Vec<u8>, FindingProfileRegistrationRequest), Response> {
+    if raw.len() > FINDING_DEPENDENCY_MAX_BODY_BYTES {
+        return Err(plain_http_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "profile registration exceeds the ingress size bound",
+        ));
+    }
+    let strict_request_bytes =
+        chio_core::canonical::canonical_json_bytes_from_str(raw).map_err(|_| {
+            plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "profile registration is not strict canonical I-JSON",
+            )
+        })?;
+    if strict_request_bytes.as_slice() != raw.as_bytes() {
+        return Err(plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "profile registration bytes are not the canonical serialization",
+        ));
+    }
+    let request: FindingProfileRegistrationRequest = serde_json::from_str(raw).map_err(|_| {
+        plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "profile registration failed typed deserialization",
+        )
+    })?;
+    let typed_bytes = chio_core::canonical_json_bytes(&request).map_err(|_| {
+        plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "profile registration failed canonicalization",
+        )
+    })?;
+    if typed_bytes != strict_request_bytes {
+        return Err(plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "typed profile registration drifts from the accepted bytes",
+        ));
+    }
+    let profile_bytes = chio_core::canonical_json_bytes(&request.profile).map_err(|_| {
+        plain_http_error(StatusCode::BAD_REQUEST, "profile failed canonicalization")
+    })?;
+    let profile_raw = std::str::from_utf8(&profile_bytes).map_err(|_| {
+        plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "profile canonical bytes are not UTF-8",
+        )
+    })?;
+    let (profile_bytes, _) = strict_artifact_ingress::<SignedFindingChallengeVerifierProfile>(
+        profile_raw,
+        FINDING_DEPENDENCY_MAX_BODY_BYTES,
+        PROFILE_SCHEMA_JSON,
+        "chio-finding/v1/challenge-verifier-profile.schema.json",
+    )?;
+    Ok((profile_bytes, request))
+}
+
+fn verify_profile_registration_authority(
+    request: &FindingProfileRegistrationRequest,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<(), String> {
+    if !config.governance_root.covers(now) {
+        return Err("profile governance authority is not live at registration".to_owned());
+    }
+    let governance_key = config
+        .governance_root
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_profile(&request.profile, &governance_key).map_err(|error| error.to_string())?;
+
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(&request.governance_authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &request.governance_authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live at profile registration".to_owned());
+    }
+    if status.status_ref != config.governance_root.revocation_status_ref
+        || status.authority_id != config.governance_root.authority_id
+        || status.key != governance_key
+        || status.key_epoch != config.governance_root.key_epoch
+    {
+        return Err("governance authority status does not bind the deployment pin".to_owned());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("governance authority status is not a fresh current reading".to_owned());
+    }
+    if status.revoked_from.is_some() {
+        return Err("profile governance authority is revoked at registration".to_owned());
+    }
+    Ok(())
 }
 
 /// Re-load the exact recipe committed by a deterministic-replay Finding
@@ -646,29 +753,18 @@ pub(crate) async fn handle_register_finding_profile(
         Ok(context) => context,
         Err(response) => return response,
     };
-    let (strict_bytes, profile) =
-        match strict_artifact_ingress::<SignedFindingChallengeVerifierProfile>(
-            &raw,
-            FINDING_DEPENDENCY_MAX_BODY_BYTES,
-            PROFILE_SCHEMA_JSON,
-            "chio-finding/v1/challenge-verifier-profile.schema.json",
-        ) {
-            Ok(accepted) => accepted,
-            Err(response) => return response,
-        };
-    let governance_key = match config.governance_root.key() {
-        Ok(key) => key,
-        Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-        }
+    let (profile_bytes, request) = match strict_profile_registration_ingress(&raw) {
+        Ok(accepted) => accepted,
+        Err(response) => return response,
     };
-    if let Err(error) = verify_signed_profile(&profile, &governance_key) {
+    let now = unix_timestamp_now();
+    if let Err(error) = verify_profile_registration_authority(&request, &config, now) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
     }
-    let digest = chio_core::sha256_hex(&strict_bytes);
-    match store.put_recipe_blob(&digest, &strict_bytes, unix_timestamp_now()) {
+    let digest = chio_core::sha256_hex(&profile_bytes);
+    match store.put_recipe_blob(&digest, &profile_bytes, now) {
         Ok(_) => Json(serde_json::json!({
-            "profileId": profile.body.profile_id,
+            "profileId": request.profile.body.profile_id,
             "envelopeSha256": digest,
         }))
         .into_response(),

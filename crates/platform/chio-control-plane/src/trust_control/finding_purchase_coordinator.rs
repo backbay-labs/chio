@@ -67,6 +67,16 @@ fn authority_policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u64) -> 
     instant >= policy.valid_from && instant < policy.valid_until
 }
 
+fn require_failed_delivery_terminal_window(
+    policy: &FindingAuthorityKeyPolicy,
+    recorded_at: u64,
+) -> Result<(), PurchaseCoordinatorError> {
+    if !authority_policy_covers(policy, recorded_at) {
+        return Err(PurchaseCoordinatorError::FailedDeliveryAuthorityWindow);
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExpectedPurchaseTerminal {
     Delivered,
@@ -117,6 +127,10 @@ pub enum PurchaseCoordinatorError {
     DeclaredAuthorityMismatch(&'static str),
     #[error("admission-declared {0} authority window does not cover the reservation instant")]
     DeclaredAuthorityWindow(&'static str),
+    #[error(
+        "admission-declared failed-delivery authority window does not cover the denial terminal"
+    )]
+    FailedDeliveryAuthorityWindow,
     #[error("seller authorization envelope rejected: {0}")]
     SellerAuthorization(String),
     #[error("seller authorization is not the admission-bound envelope for this sale")]
@@ -960,6 +974,10 @@ impl FindingPurchaseCoordinator {
         Self::verify_terminal_chronology(&reservation, receipt, "denial")?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Denied)?;
+        require_failed_delivery_terminal_window(
+            &admission.body.failed_delivery_authority,
+            receipt.timestamp,
+        )?;
         let (currency, release_terminal) = match terminal.settlement {
             SettlementDispositionV1::ContractualZeroCharge { currency } => {
                 (currency, FindingHoldReleaseTerminal::Released)
@@ -1167,5 +1185,29 @@ impl PurchaseReservationReader for CoordinatorReservationReader {
             )
             .map(|_| ())
             .map_err(|error| error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_delivery_terminal_must_precede_the_authority_boundary() {
+        let policy = FindingAuthorityKeyPolicy {
+            authority_id: "failed-delivery".to_owned(),
+            key: chio_core::crypto::Keypair::from_seed(&[17_u8; 32]).public_key(),
+            key_epoch: 1,
+            valid_from: 100,
+            valid_until: 200,
+            rotation_policy_ref: "rotation-policy-v1".to_owned(),
+            revocation_status_ref: "revocations/failed-delivery".to_owned(),
+        };
+
+        assert!(require_failed_delivery_terminal_window(&policy, 199).is_ok());
+        assert!(matches!(
+            require_failed_delivery_terminal_window(&policy, 200),
+            Err(PurchaseCoordinatorError::FailedDeliveryAuthorityWindow)
+        ));
     }
 }

@@ -222,6 +222,28 @@ fn optional_u64_from_env(env_name: &str) -> Result<Option<u64>, CliError> {
     }
 }
 
+fn require_independent_profile_authorities(
+    governance: &chio_core_types::PublicKey,
+    verifier: &chio_core_types::PublicKey,
+) -> Result<(), CliError> {
+    if governance == verifier {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV} must differ from {FINDING_VERIFIER_AUTHORITY_KEY_ENV}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_cli_finding_verifier_profile(
+    profile: &chio_finding::FindingChallengeVerifierProfile,
+) -> Result<(), CliError> {
+    chio_finding_verifier::validate_supported_finding_verifier_profile(profile).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_PROFILE_PATH_ENV} requires unsupported verifier behavior: {error}"
+        ))
+    })
+}
+
 pub(super) fn cognition_market_proof_trust_from_env(
     trusted_passport_signer_keys: &[chio_core_types::PublicKey],
     trusted_checkpoint_signer_keys: &[chio_core_types::PublicKey],
@@ -252,6 +274,10 @@ pub(super) fn cognition_market_proof_trust_from_env(
         .into_iter()
         .next()
         .ok_or_else(|| CliError::cli_other_error("Finding verifier authority key is missing"))?;
+    require_independent_profile_authorities(
+        &profile_governance_authority,
+        &finding_verifier_authority,
+    )?;
     let trusted_verifier_profile = finding_verifier_profile_from_env()?;
     chio_finding::verify_signed_profile(
         &trusted_verifier_profile,
@@ -262,15 +288,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
             "{FINDING_VERIFIER_PROFILE_PATH_ENV} is not authorized by {FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV}: {error}"
         ))
     })?;
-    if trusted_verifier_profile
-        .body
-        .required_receipt_semantics
-        != chio_core_types::receipt::MEDIATED_SPEND_PROFILE
-    {
-        return Err(CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_PROFILE_PATH_ENV} names unsupported receipt semantics"
-        )));
-    }
+    validate_cli_finding_verifier_profile(&trusted_verifier_profile.body)?;
     if trusted_verifier_profile.body.verifier_report_signer.key != finding_verifier_authority {
         return Err(CliError::cli_other_error(format!(
             "{FINDING_VERIFIER_PROFILE_PATH_ENV} signer key does not match {FINDING_VERIFIER_AUTHORITY_KEY_ENV}"
@@ -1163,7 +1181,10 @@ pub(super) fn swarm_trusted_witness_keys_for_bundle(
 
 #[cfg(test)]
 mod tests {
-    use super::require_independent_verifier_status_authority;
+    use super::{
+        require_independent_profile_authorities, require_independent_verifier_status_authority,
+        validate_cli_finding_verifier_profile,
+    };
 
     #[test]
     fn verifier_status_authority_must_differ_from_verifier_signer() {
@@ -1173,5 +1194,33 @@ mod tests {
             Err(error) => error.to_string(),
         };
         assert!(error.contains("must differ"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn profile_governance_must_differ_from_verifier_signer() {
+        let signer = chio_core_types::Keypair::from_seed(&[114_u8; 32]).public_key();
+        let error = require_independent_profile_authorities(&signer, &signer)
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default();
+        assert!(error.contains("must differ"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn proof_environment_rejects_unsupported_required_profile_facets() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../../../fixtures/proof-room/finding/cognition-market-qualified-profile/deployment/verifier-profile.json",
+        );
+        let bytes = std::fs::read(path).unwrap_or_default();
+        let mut profile: chio_finding::SignedFindingChallengeVerifierProfile =
+            serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+                panic!("parse qualified verifier profile fixture: {error}")
+            });
+        profile
+            .body
+            .required_facets
+            .push(chio_finding::FindingFacetKind::IntentBinding);
+
+        assert!(validate_cli_finding_verifier_profile(&profile.body).is_err());
     }
 }

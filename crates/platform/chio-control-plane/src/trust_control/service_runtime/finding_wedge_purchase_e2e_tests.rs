@@ -255,6 +255,29 @@ fn signed_verifier_authority_status(
     )?)
 }
 
+fn profile_registration_raw(
+    profile: &SignedFindingChallengeVerifierProfile,
+) -> Result<String, AnyError> {
+    let pin = authority_pin(1, "governance");
+    let governance_key = pin.key()?;
+    let status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key: governance_key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at: unix_timestamp_now(),
+        },
+        &keypair(37),
+    )?;
+    canonical_string(&serde_json::json!({
+        "profile": serde_json::to_value(profile)?,
+        "governanceAuthorityStatus": serde_json::to_value(status)?,
+    }))
+}
+
 fn market_config() -> FindingMarketConfig {
     FindingMarketConfig {
         venue_id: VENUE_ID.to_string(),
@@ -1284,7 +1307,10 @@ impl Deployment {
         let web = &self.web;
         let (status, body) = send(
             state,
-            authed_post("/v1/findings/profiles", web.profile_raw.clone())?,
+            authed_post(
+                "/v1/findings/profiles",
+                profile_registration_raw(&web.profile)?,
+            )?,
         )
         .await?;
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));

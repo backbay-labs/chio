@@ -1489,7 +1489,7 @@ mod dispatch;
 pub mod evaluator;
 #[path = "purchase_gate.rs"]
 mod purchase_gate;
-#[cfg(all(test, feature = "cognition-market-experimental"))]
+#[cfg(test)]
 pub(crate) use purchase_gate::validate_finding_pool_receipt_authority;
 mod recovery_gate;
 mod responses;

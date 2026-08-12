@@ -833,7 +833,6 @@ impl ChioKernel {
     }
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 pub(crate) fn validate_finding_pool_receipt_authority(
     authority: &chio_core::crypto::PublicKey,
 ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
