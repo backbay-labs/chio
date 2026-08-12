@@ -65,6 +65,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBe
 use thiserror::Error;
 
 use crate::admission_operation_store::verify_active_owner;
+use crate::finding_status_store::{status_for_purchase_tx, FindingStatusDecision};
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
@@ -535,6 +536,27 @@ impl SqliteFindingPurchaseStore {
         &self,
         input: &FindingPurchaseReservationInput<'_>,
     ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+        self.open_reservation_inner(input, None)
+    }
+
+    /// Open a reservation only while the Finding has fresh current-floor
+    /// non-inclusion evidence. The status decision and financial mutation
+    /// share this immediate transaction, so a concurrent retraction either
+    /// commits first and denies the sale or commits after this reservation.
+    pub fn open_live_reservation(
+        &self,
+        input: &FindingPurchaseReservationInput<'_>,
+        status_feed_id: &str,
+        trusted_now: u64,
+    ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+        self.open_reservation_inner(input, Some((status_feed_id, trusted_now)))
+    }
+
+    fn open_reservation_inner(
+        &self,
+        input: &FindingPurchaseReservationInput<'_>,
+        status_gate: Option<(&str, u64)>,
+    ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
         validate_reservation_input(input)?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
@@ -549,6 +571,26 @@ impl SqliteFindingPurchaseStore {
             return Err(FindingPurchaseStoreError::Conflict(
                 "reservation id is already bound to different purchase parameters".to_owned(),
             ));
+        }
+        if let Some((feed_id, trusted_now)) = status_gate {
+            match status_for_purchase_tx(&transaction, feed_id, input.finding_id, trusted_now)
+                .map_err(|error| {
+                    FindingPurchaseStoreError::Conflict(format!(
+                        "finding is not verified live for reservation: {error}"
+                    ))
+                })? {
+                FindingStatusDecision::VerifiedLive(_) => {}
+                FindingStatusDecision::Pending(_) => {
+                    return Err(FindingPurchaseStoreError::Conflict(
+                        "finding retraction publication is pending".to_owned(),
+                    ));
+                }
+                FindingStatusDecision::Retracted(_) => {
+                    return Err(FindingPurchaseStoreError::Conflict(
+                        "finding is retracted".to_owned(),
+                    ));
+                }
+            }
         }
         assert_participation_paid(&transaction, input)?;
         reject_bound_identifier(

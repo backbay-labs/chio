@@ -33,6 +33,7 @@ use chio_finding::{
     SignedFindingBondBacking, SignedFindingFailedDelivery, SignedFindingMarketTerms,
     SignedFindingPurchaseRecord, SignedFindingSellerAuthorization,
     FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
+    FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
 };
 use chio_kernel::admission_operation::{
     AdmissionOperationState, AdmissionOperationStore, AdmissionReceiptMetadataV1,
@@ -166,6 +167,8 @@ pub enum PurchaseCoordinatorError {
     SellerAuthorizationBinding,
     #[error("seller authorization is not live at the supplied clock")]
     SellerAuthorizationWindow,
+    #[error("seller authorization lifecycle rejected the reservation: {0}")]
+    SellerAuthorizationLifecycle(&'static str),
     #[error("ask signer is neither the finding issuer nor the authorized seller")]
     AskMinterUnauthorized,
     #[error("the admission-bound finding artifact is unavailable or invalid: {0}")]
@@ -331,6 +334,64 @@ impl FindingPurchaseCoordinator {
             .is_some_and(|revoked_from| revoked_from <= now)
         {
             return Err(reject("authority is revoked at finalization"));
+        }
+        Ok(())
+    }
+
+    fn require_live_seller_authorization(
+        &self,
+        authorization: &SignedFindingSellerAuthorization,
+        now: u64,
+    ) -> Result<(), PurchaseCoordinatorError> {
+        let reject = PurchaseCoordinatorError::SellerAuthorizationLifecycle;
+        if !self.authority_status_pin.covers(now) {
+            return Err(reject("authority-status signer window is not live"));
+        }
+        let body = &authorization.body;
+        let pin = FindingAuthorityPin {
+            authority_id: body.authorization_id.clone(),
+            key_hex: body.issuer.to_hex(),
+            key_epoch: FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
+            valid_from: body.issued_at,
+            valid_until: body.expires_at,
+            revocation_status_ref: body.revocation_status_ref.clone(),
+        };
+        let signed = self
+            .authority_status
+            .resolve(&pin, now)
+            .map_err(|_| reject("revocation source could not be resolved"))?;
+        let status_key = self
+            .authority_status_pin
+            .key()
+            .map_err(|_| reject("authority-status signer key is invalid"))?;
+        verify_signed_authority_status(&signed, &status_key)
+            .map_err(|_| reject("revocation status signature is invalid"))?;
+        let status = &signed.body;
+        if !self.authority_status_pin.covers(status.observed_at) {
+            return Err(reject(
+                "revocation status was signed outside the authority-status window",
+            ));
+        }
+        if status.status_ref != body.revocation_status_ref
+            || status.authority_id != body.authorization_id
+            || status.key != body.issuer
+            || status.key_epoch != FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1
+        {
+            return Err(reject(
+                "revocation status does not bind the seller authorization",
+            ));
+        }
+        if status.observed_at < body.issued_at
+            || status.observed_at > now
+            || now.saturating_sub(status.observed_at) > TERMINAL_AUTHORITY_STATUS_MAX_AGE_SECS
+        {
+            return Err(reject("revocation status is not a fresh current reading"));
+        }
+        if status
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from <= now)
+        {
+            return Err(reject("seller authorization is revoked"));
         }
         Ok(())
     }
@@ -558,6 +619,7 @@ impl FindingPurchaseCoordinator {
         if now < authorization.issued_at || now >= authorization.expires_at {
             return Err(PurchaseCoordinatorError::SellerAuthorizationWindow);
         }
+        self.require_live_seller_authorization(seller_authorization, now)?;
         if ask.signer_key != authorization.issuer && ask.signer_key != authorization.seller {
             return Err(PurchaseCoordinatorError::AskMinterUnauthorized);
         }
@@ -670,7 +732,7 @@ impl FindingPurchaseCoordinator {
             created_at: now,
         };
         self.store
-            .open_reservation(&input)
+            .open_live_reservation(&input, &finding.status_feed_ref, now)
             .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
         let receipt = ReservationReceipt {
             schema: RESERVATION_RECEIPT_SCHEMA.to_owned(),

@@ -132,7 +132,8 @@ use crate::trust_control::finding_purchase_coordinator::{
 use crate::trust_control::finding_purchase_routes::{
     FindingPurchaseExecutionError, FindingPurchaseExecutor, FindingPurchaseRequest,
     FindingPurchaseResult, FindingPurchaseSettlementTerminal, FindingPurchaseVerdict,
-    FindingPurchasedOutput, FINDING_PURCHASE_MAX_BODY_BYTES, FINDING_PURCHASE_RESULT_SCHEMA,
+    FindingPurchasedOutput, FINDING_PURCHASE_MAX_BODY_BYTES, FINDING_PURCHASE_MAX_OUTPUT_BYTES,
+    FINDING_PURCHASE_RESULT_SCHEMA,
 };
 use crate::trust_control::finding_purchase_verifier::MarketFindingPurchaseVerifier;
 use crate::trust_control::finding_recovery_verifier::MarketFindingRecoveryVerifier;
@@ -1514,6 +1515,11 @@ impl Deployment {
         .await?;
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         assert_eq!(json_body(&body)?["outcome"], serde_json::json!("Activated"));
+        let authority = state
+            .joint_authority_store
+            .as_ref()
+            .ok_or_else(|| missing("joint authority store after activation"))?;
+        publish_live_status_proof_b64(authority, &web.finding_id, unix_timestamp_now())?;
         Ok(())
     }
 }
@@ -5217,6 +5223,128 @@ async fn wedge_purchase_terminal_closure_requires_live_authority_status() -> Tes
         })
     ));
     Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reservation_rechecks_seller_authorization_status() -> TestResult {
+    let lane = open_lane(LaneOptions::standard()).await?;
+    let now = unix_timestamp_now();
+    lane.coordinator
+        .release(&lane.purchase.handshake.reservation_id, now)?;
+
+    let buyer = keypair(32);
+    let exchange = handshake(
+        &lane.deployment.web,
+        &lane.witness,
+        &buyer,
+        OTHER_BUYER_PAYOUT,
+        "finding-purchase-token-revoked-seller",
+    )?;
+    let revoked = coordinator_with_status(
+        &lane.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::revoked(
+            &lane.deployment.web.authorization.body.authorization_id,
+        )),
+    )?;
+    assert!(matches!(
+        revoked.reserve(
+            &exchange.bid,
+            &exchange.ask,
+            &exchange.buyer_signature_hex,
+            &lane.deployment.web.admission,
+            &lane.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::SellerAuthorizationLifecycle(
+            "seller authorization is revoked"
+        ))
+    ));
+    assert!(lane
+        .authority
+        .finding_purchase_store()
+        .get_reservation(&exchange.reservation_id)?
+        .is_none());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reservation_atomically_rejects_retracted_finding() -> TestResult {
+    let lane = open_lane(LaneOptions::standard()).await?;
+    let now = unix_timestamp_now();
+    lane.coordinator
+        .release(&lane.purchase.handshake.reservation_id, now)?;
+
+    let config = market_config();
+    let status_store = lane.authority.finding_status_store();
+    let intent_id = sha256_hex(b"reservation-gate-retraction-intent");
+    let intent_bytes = canonical_json_bytes(&serde_json::json!({
+        "finding_id": lane.deployment.web.finding_id,
+        "reason": "reservation_gate_regression",
+        "schema": "chio.finding.voluntary-retraction.v1",
+    }))?;
+    status_store.issue_retraction_intent(&chio_store_sqlite::FindingRetractionIntentInput {
+        intent_id: &intent_id,
+        feed_id: &config.status_feed_operator_ref,
+        operator_id: &config.status_feed_operator.authority.authority_id,
+        finding_id: &lane.deployment.web.finding_id,
+        source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
+        intent_bytes: &intent_bytes,
+        issued_at: now,
+        inclusion_deadline: now.saturating_add(config.status_feed_service_bond.inclusion_sla_secs),
+        created_at: now,
+    })?;
+    let publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            status_store,
+            config.status_feed_operator,
+            config.status_feed_service_bond,
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    publisher.publish_retraction(&intent_id, &[], now)?;
+
+    let buyer = keypair(32);
+    let exchange = handshake(
+        &lane.deployment.web,
+        &lane.witness,
+        &buyer,
+        OTHER_BUYER_PAYOUT,
+        "finding-purchase-token-retracted",
+    )?;
+    let error = lane
+        .coordinator
+        .reserve(
+            &exchange.bid,
+            &exchange.ask,
+            &exchange.buyer_signature_hex,
+            &lane.deployment.web.admission,
+            &lane.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        )
+        .err()
+        .ok_or("retracted finding opened a reservation")?;
+    assert!(matches!(
+        error,
+        PurchaseCoordinatorError::Store(ref message) if message.contains("finding is retracted")
+    ));
+    assert!(lane
+        .authority
+        .finding_purchase_store()
+        .get_reservation(&exchange.reservation_id)?
+        .is_none());
+    Ok(())
+}
+
+#[test]
+fn public_purchase_output_bound_cannot_reject_a_kernel_captured_output() {
+    assert_eq!(
+        FINDING_PURCHASE_MAX_OUTPUT_BYTES,
+        chio_kernel::tool_outcome::MAX_RAW_INVOCATION_OUTCOME_BYTES
+    );
 }
 
 /// Terminal selection and realized spend come from the durable kernel

@@ -46,8 +46,13 @@ pub const FINDING_PURCHASE_ERROR_SCHEMA: &str = "chio.finding.purchase-error.v1"
 
 /// Maximum canonical request size accepted at the public route.
 pub const FINDING_PURCHASE_MAX_BODY_BYTES: usize = 16 * 1024;
-/// Maximum decoded purchased payload returned through this route.
-pub const FINDING_PURCHASE_MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
+/// Maximum decoded purchased payload returned through this route. This is
+/// intentionally no smaller than the kernel's pre-settlement raw-outcome
+/// ceiling. Any output large enough to violate this route bound is therefore
+/// denied by the kernel before capture, so a captured terminal remains
+/// returnable on its first response and every idempotent replay.
+pub const FINDING_PURCHASE_MAX_OUTPUT_BYTES: usize =
+    chio_kernel::tool_outcome::MAX_RAW_INVOCATION_OUTCOME_BYTES;
 /// Maximum canonical terminal response size, including base64 expansion and
 /// signed settlement evidence.
 pub const FINDING_PURCHASE_MAX_RESULT_BYTES: usize =

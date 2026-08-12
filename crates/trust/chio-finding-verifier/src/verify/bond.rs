@@ -3,6 +3,30 @@ use chio_fiscal::fee_schedule::{OpenMarketBondClass, OpenMarketBondRequirement};
 
 use super::*;
 
+pub(super) fn collateral_authority_failure(
+    snapshot: &FindingBondSnapshot,
+    trust: &FindingVerifierTrustRoots,
+) -> Option<(FindingFacetResult, Option<String>)> {
+    verify_authority_status(
+        &trust.collateral_authority,
+        snapshot.backing.body.issued_at,
+        trust.trusted_time,
+        trust.checkpoint_signer_status.as_ref(),
+        "collateral authority",
+    )
+    .err()
+    .map(|error| {
+        (
+            facet(
+                FindingFacetKind::BondBacking,
+                FindingFacetOutcome::Failed,
+                error,
+            ),
+            None,
+        )
+    })
+}
+
 pub(super) fn verify_bond_requirement(
     finding: &Finding,
     snapshot: &FindingBondSnapshot,

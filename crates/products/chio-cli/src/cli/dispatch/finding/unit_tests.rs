@@ -1331,7 +1331,15 @@ fn golden_trust_roots() -> String {
         "governance_authority": GOLDEN_GOVERNANCE_AUTHORITY,
         "profile": profile,
         "admitted_kernel_keys": [GOLDEN_PRODUCTION_SIGNER],
-        "collateral_authority": GOLDEN_PRODUCTION_SIGNER,
+        "collateral_authority": {
+            "authority_id": "collateral-authority",
+            "key": GOLDEN_PRODUCTION_SIGNER,
+            "key_epoch": 1,
+            "valid_from": 1_700_000_000_u64,
+            "valid_until": 1_900_000_000_u64,
+            "rotation_policy_ref": "rotation/collateral-authority",
+            "revocation_status_ref": "revocations/collateral-authority"
+        },
         "trusted_time": 1_784_880_000_u64,
     }))
     .unwrap()

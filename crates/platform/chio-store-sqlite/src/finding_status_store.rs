@@ -1076,40 +1076,9 @@ impl SqliteFindingStatusStore {
         require_positive(trusted_now, "trusted_now")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
-        ensure_feed_registered_tx(&transaction, feed_id)?;
-
-        if let Some(status) = load_status_tx(&transaction, feed_id, finding_id)? {
-            transaction.commit().map_err(sqlite_error)?;
-            return Ok(match status.state {
-                FindingStickyStatus::Pending => FindingStatusDecision::Pending(status),
-                FindingStickyStatus::Retracted => FindingStatusDecision::Retracted(status),
-            });
-        }
-
-        let floor = load_floor_tx(&transaction, feed_id)?.ok_or_else(|| {
-            FindingStatusStoreError::MissingFloor {
-                feed_id: feed_id.to_owned(),
-            }
-        })?;
-        let proof = load_proof_tx(&transaction, feed_id, finding_id, floor.map_epoch)?.ok_or_else(
-            || FindingStatusStoreError::MissingState {
-                finding_id: finding_id.to_owned(),
-            },
-        )?;
-        if proof.kind != FindingStatusProofKind::NonInclusion {
-            return Err(invariant(
-                "inclusion proof exists without the required sticky retracted state",
-            ));
-        }
-        verify_proof_record_at_floor(&proof, &floor)?;
-        if trusted_now < proof.checked_at || trusted_now >= proof.valid_until {
-            return Err(FindingStatusStoreError::StaleProof {
-                finding_id: finding_id.to_owned(),
-                trusted_now,
-            });
-        }
+        let decision = status_for_purchase_tx(&transaction, feed_id, finding_id, trusted_now)?;
         transaction.commit().map_err(sqlite_error)?;
-        Ok(FindingStatusDecision::VerifiedLive(proof))
+        Ok(decision)
     }
 
     /// Load a local retraction intent by id.
@@ -1582,6 +1551,54 @@ impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
             FindingStatusDecision::Retracted(_) => Err("finding is retracted".to_owned()),
         }
     }
+}
+
+/// Resolve one purchase-time status decision inside a caller-owned SQLite
+/// transaction. Purchase reservation uses this sibling-store seam so the
+/// fresh non-inclusion decision and the new financial reservation commit
+/// atomically under the same authority lock.
+pub(crate) fn status_for_purchase_tx(
+    transaction: &Transaction<'_>,
+    feed_id: &str,
+    finding_id: &str,
+    trusted_now: u64,
+) -> Result<FindingStatusDecision, FindingStatusStoreError> {
+    require_identifier(feed_id, "feed_id")?;
+    require_hex64(finding_id, "finding_id")?;
+    require_positive(trusted_now, "trusted_now")?;
+    ensure_feed_registered_tx(transaction, feed_id)?;
+
+    if let Some(status) = load_status_tx(transaction, feed_id, finding_id)? {
+        return Ok(match status.state {
+            FindingStickyStatus::Pending => FindingStatusDecision::Pending(status),
+            FindingStickyStatus::Retracted => FindingStatusDecision::Retracted(status),
+        });
+    }
+
+    let floor = load_floor_tx(transaction, feed_id)?.ok_or_else(|| {
+        FindingStatusStoreError::MissingFloor {
+            feed_id: feed_id.to_owned(),
+        }
+    })?;
+    let proof =
+        load_proof_tx(transaction, feed_id, finding_id, floor.map_epoch)?.ok_or_else(|| {
+            FindingStatusStoreError::MissingState {
+                finding_id: finding_id.to_owned(),
+            }
+        })?;
+    if proof.kind != FindingStatusProofKind::NonInclusion {
+        return Err(invariant(
+            "inclusion proof exists without the required sticky retracted state",
+        ));
+    }
+    verify_proof_record_at_floor(&proof, &floor)?;
+    if trusted_now < proof.checked_at || trusted_now >= proof.valid_until {
+        return Err(FindingStatusStoreError::StaleProof {
+            finding_id: finding_id.to_owned(),
+            trusted_now,
+        });
+    }
+    Ok(FindingStatusDecision::VerifiedLive(proof))
 }
 
 include!("finding_status_store/persistence.rs");

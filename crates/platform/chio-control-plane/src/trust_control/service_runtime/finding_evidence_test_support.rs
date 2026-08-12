@@ -40,22 +40,43 @@ pub(super) fn make_signed_finding_report(
     inputs: &FindingReportInputs<'_>,
     trusted_time: u64,
 ) -> Result<SignedFindingVerifierReport, Box<dyn std::error::Error>> {
+    let collateral_authority = FindingAuthorityKeyPolicy {
+        authority_id: "authority-collateral".to_owned(),
+        key: inputs.collateral.public_key(),
+        key_epoch: 1,
+        valid_from: inputs.backing.body.issued_at,
+        valid_until: inputs.backing.body.expires_at,
+        rotation_policy_ref: "rotation/collateral-authority".to_owned(),
+        revocation_status_ref: "revocations/collateral-authority".to_owned(),
+    };
+    let mut signer_status =
+        checkpoint_status_trust(inputs.profile, inputs.governance, trusted_time)?;
+    signer_status
+        .signed_statuses
+        .push(SignedExportEnvelope::sign(
+            FindingAuthorityStatus {
+                schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: collateral_authority.revocation_status_ref.clone(),
+                authority_id: collateral_authority.authority_id.clone(),
+                key: collateral_authority.key.clone(),
+                key_epoch: collateral_authority.key_epoch,
+                revoked_from: None,
+                observed_at: trusted_time,
+            },
+            inputs.governance,
+        )?);
     let trust = FindingVerifierTrustRoots {
         governance_authority: inputs.governance.public_key(),
         profile: inputs.profile.clone(),
         admitted_kernel_keys: vec![inputs.kernel.public_key()],
-        collateral_authority: inputs.collateral.public_key(),
+        collateral_authority,
         fee_schedule_authorities: vec![inputs.fee_schedule.signer_key.clone()],
         runtime_attestation_authority: None,
         appraisal_authority: None,
         attestation_trust_policy: None,
         status_operator_authorization: None,
         status_freshness_policy: None,
-        checkpoint_signer_status: Some(checkpoint_status_trust(
-            inputs.profile,
-            inputs.governance,
-            trusted_time,
-        )?),
+        checkpoint_signer_status: Some(signer_status),
         trusted_time,
         trust_root_snapshot_sha256: hex64(),
         resolver_policy_sha256: hex64(),

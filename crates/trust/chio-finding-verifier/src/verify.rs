@@ -52,7 +52,7 @@ use crate::receipts::verify_receipt_strict;
 
 mod bond;
 mod draft;
-use bond::verify_bond_requirement;
+use bond::{collateral_authority_failure, verify_bond_requirement};
 
 /// Size bound on the raw finding submitted to the verifier. Matches the
 /// publish surface's route-level cap so both boundaries reject the same
@@ -116,8 +116,8 @@ pub struct FindingVerifierTrustRoots {
     pub profile: SignedFindingChallengeVerifierProfile,
     /// Kernel keys admitted for authoritative-spend accounting.
     pub admitted_kernel_keys: Vec<PublicKey>,
-    /// Collateral authority whose signature makes an allocation evidence.
-    pub collateral_authority: PublicKey,
+    /// Collateral signer and lifecycle policy required for allocation evidence.
+    pub collateral_authority: FindingAuthorityKeyPolicy,
     /// Fee-schedule authorities independently pinned by deployment policy.
     pub fee_schedule_authorities: Vec<PublicKey>,
     /// Runtime-attestation statement signer and lifecycle pinned by
@@ -1228,9 +1228,14 @@ fn evaluate_bond_backing(
             None,
         );
     };
+    if let Some(failure) = collateral_authority_failure(snapshot, trust) {
+        return failure;
+    }
     // The allocation is evidence only under the externally pinned
     // collateral authority; an unsigned body is a seller claim.
-    if let Err(error) = verify_signed_bond_backing(&snapshot.backing, &trust.collateral_authority) {
+    if let Err(error) =
+        verify_signed_bond_backing(&snapshot.backing, &trust.collateral_authority.key)
+    {
         return (
             facet(
                 FindingFacetKind::BondBacking,
@@ -1253,7 +1258,7 @@ fn evaluate_bond_backing(
     }
     if let Err(error) = verify_pinned_envelope(
         &snapshot.store_snapshot,
-        &trust.collateral_authority,
+        &trust.collateral_authority.key,
         "bond_store_snapshot",
     ) {
         return (
@@ -1716,8 +1721,7 @@ fn bundle_digest(
     trust: &FindingVerifierTrustRoots,
 ) -> Result<String, FindingVerifierError> {
     // Content commitment over the resolved inputs: receipt bytes,
-    // checkpoints, recipe preimage, and backing envelope digest inputs,
-    // in deterministic order.
+    // checkpoints, recipe preimage, and backing envelope digest inputs.
     #[derive(serde::Serialize)]
     struct BundleCommitment<'a> {
         receipt_sha256s: Vec<String>,
@@ -1747,6 +1751,7 @@ fn bundle_digest(
         runtime_attestation_authority_policy_sha256: Option<String>,
         appraisal_authority_policy_sha256: Option<String>,
         attestation_trust_policy_sha256: Option<String>,
+        collateral_authority_policy_sha256: String,
         backing_allocation_id: Option<&'a str>,
         backing_envelope_sha256: Option<String>,
         fee_schedule_envelope_sha256: Option<String>,
@@ -1925,6 +1930,9 @@ fn bundle_digest(
             .transpose()
             .map_err(|_| FindingVerifierError::Canonicalization)?
             .map(|bytes| sha256_hex(&bytes)),
+        collateral_authority_policy_sha256: canonical_json_bytes(&trust.collateral_authority)
+            .map_err(|_| FindingVerifierError::Canonicalization)
+            .map(|bytes| sha256_hex(&bytes))?,
         backing_allocation_id: bundle
             .bond_snapshot
             .as_ref()

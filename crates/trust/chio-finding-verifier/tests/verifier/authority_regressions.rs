@@ -54,6 +54,46 @@ fn backing_cannot_be_accepted_before_its_signed_issue_time() -> TestResult {
 }
 
 #[test]
+fn bond_backing_requires_live_unrevoked_collateral_authority_standing() -> TestResult {
+    let fx = fixture()?;
+
+    let mut revoked = trust_roots(&fx);
+    let trusted_time = revoked.trusted_time;
+    let collateral_authority_id = revoked.collateral_authority.authority_id.clone();
+    let status = revoked
+        .checkpoint_signer_status
+        .as_mut()
+        .ok_or("missing signer-status trust")?
+        .signed_statuses
+        .iter_mut()
+        .find(|status| status.body.authority_id == collateral_authority_id)
+        .ok_or("collateral authority status missing")?;
+    status.body.revoked_from = Some(trusted_time);
+    *status = SignedExportEnvelope::sign(status.body.clone(), &fx.checkpoint_status_authority)?;
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &revoked, &bundle(&fx, clone_receipts(&fx)))?;
+    let backing = draft
+        .facets()
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::BondBacking)
+        .ok_or("bond-backing facet missing")?;
+    assert_eq!(backing.outcome, FindingFacetOutcome::Failed);
+    assert!(backing.reason.contains("is revoked"));
+    assert!(draft.backing_allocation_id().is_none());
+
+    let mut expired = trust_roots(&fx);
+    expired.collateral_authority.valid_until = expired.trusted_time;
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &expired, &bundle(&fx, clone_receipts(&fx)))?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::BondBacking),
+        Some(FindingFacetOutcome::Failed)
+    );
+    assert!(draft.backing_allocation_id().is_none());
+    Ok(())
+}
+
+#[test]
 fn bond_backing_must_bind_the_evaluated_verifier_profile() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
@@ -393,7 +433,7 @@ fn report_signing_copies_the_trust_commitments_used_for_evaluation() -> TestResu
     )?;
 
     let mut signing_trust = trust_roots(&fx);
-    signing_trust.collateral_authority = keypair(44).public_key();
+    signing_trust.collateral_authority.key = keypair(44).public_key();
     signing_trust.trust_root_snapshot_sha256 = "4".repeat(64);
     signing_trust.resolver_policy_sha256 = "5".repeat(64);
     signing_trust.trusted_time_input_sha256 = "6".repeat(64);
@@ -475,7 +515,7 @@ fn recipe_preimage_must_fit_its_committed_size_bound() -> TestResult {
 fn backing_signed_by_an_unpinned_authority_is_not_bond_evidence() -> TestResult {
     let fx = fixture()?;
     let mut trust = trust_roots(&fx);
-    trust.collateral_authority = keypair(9).public_key();
+    trust.collateral_authority.key = keypair(9).public_key();
     let draft =
         verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
     assert_eq!(

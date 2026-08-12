@@ -322,7 +322,7 @@ struct FindingTrustRootsFile {
     governance_authority: PublicKey,
     profile: SignedFindingChallengeVerifierProfile,
     admitted_kernel_keys: Vec<PublicKey>,
-    collateral_authority: PublicKey,
+    collateral_authority: chio_finding::FindingAuthorityKeyPolicy,
     #[serde(default)]
     fee_schedule_authorities: Vec<PublicKey>,
     #[serde(default)]

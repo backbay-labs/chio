@@ -393,8 +393,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/trust/chio-finding-verifier/tests/verifier.rs": allow(
         "2026-08-31",
-        "cognition finding verifier regression suite with runtime-authority lifecycle coverage; capped to current size until split",
-        max_lines=2_098,
+        "cognition finding verifier regression suite with runtime and collateral authority lifecycle coverage; capped until split",
+        max_lines=2_116,
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",
@@ -413,8 +413,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
-        "cognition purchase and recovery end-to-end regression suite with promoted activation status input; capped to current size until split",
-        max_lines=5_476,
+        "cognition purchase and recovery end-to-end regression suite with reservation-time status lifecycle coverage; capped until split",
+        max_lines=5_604,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",
@@ -458,8 +458,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-store-sqlite/src/finding_purchase_store.rs": allow(
         "2026-08-31",
-        "cognition purchase and recovery authority store; capped to current size until split",
-        max_lines=3_283,
+        "cognition purchase and recovery authority store with atomic finding-status reservation gate; capped until split",
+        max_lines=3_325,
     ),
     "crates/platform/chio-store-sqlite/src/finding_purchase_store_tests.rs": allow(
         "2026-08-31",
