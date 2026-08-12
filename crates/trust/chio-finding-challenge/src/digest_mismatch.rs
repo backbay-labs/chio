@@ -90,6 +90,20 @@ pub(crate) fn evaluate_digest_mismatch(
             "listing_id",
         ));
     }
+    if terminal.venue_admission_envelope_sha256 != context.challenge.venue_admission_envelope_sha256
+    {
+        return Err(FindingChallengeInadmissible::StandingBindingMismatch(
+            "venue_admission_envelope_sha256",
+        ));
+    }
+    if terminal.seller_backing_envelope_sha256 != context.challenge.backing_envelope_sha256 {
+        return Err(FindingChallengeInadmissible::StandingBindingMismatch(
+            "seller_backing_envelope_sha256",
+        ));
+    }
+    if terminal.recorded_at < evidence.deny_receipt.receipt.timestamp {
+        return Err(FindingChallengeInadmissible::FailedDeliveryAuthorityNotEstablished);
+    }
     if let Some(challenger) = context.challenger {
         if terminal.buyer != *challenger {
             return Err(FindingChallengeInadmissible::StandingBindingMismatch(

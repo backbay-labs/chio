@@ -498,11 +498,14 @@ impl PublishedArtifacts {
     fn publish_round(
         mut self,
         round: &FindingAuditRound,
+        audit_policy: FindingAuthorityPin,
         witness_policy: FindingAuthorityPin,
         governance_policy: FindingAuthorityPin,
     ) -> Result<Self, AnyError> {
         let epoch_digest = signed_envelope_sha256(&round.epoch)?;
         let authorization_digest = signed_envelope_sha256(&round.authorization)?;
+        self.audit_policies
+            .insert(epoch_digest.clone(), audit_policy);
         self.audit_witness_policies
             .insert(epoch_digest.clone(), witness_policy);
         self.audit_governance_policies
@@ -569,11 +572,6 @@ impl PublishedArtifacts {
             .map_err(|_| "governance-policy index lock is poisoned")?
             .insert(signed_envelope_sha256(artifact)?, governance_policy);
         Ok(())
-    }
-
-    fn publish_audit_policy(mut self, policy: FindingAuthorityPin) -> Self {
-        self.audit_policies.insert(policy.key_hex.clone(), policy);
-        self
     }
 }
 
@@ -666,8 +664,8 @@ impl FindingFilingResolver for PublishedArtifacts {
         }
     }
 
-    fn audit_policy_for_key(&self, key: &PublicKey) -> Option<FindingAuthorityPin> {
-        self.audit_policies.get(&key.to_hex()).cloned()
+    fn audit_policy_for_epoch(&self, epoch_envelope_sha256: &str) -> Option<FindingAuthorityPin> {
+        self.audit_policies.get(epoch_envelope_sha256).cloned()
     }
 
     fn randomness_witness_policy_for_epoch(
@@ -776,11 +774,13 @@ fn deployment_publishing_terms_and_rounds(
         .publish_schedule(&published_fee_schedule()?)?
         .publish_round(
             &published_audit_round()?,
+            config.audit_authority.clone(),
             config.audit_randomness_witness.clone(),
             config.governance_root.clone(),
         )?
         .publish_round(
             &unrelated_audit_round()?,
+            config.audit_authority.clone(),
             config.audit_randomness_witness.clone(),
             config.governance_root.clone(),
         )?
@@ -802,14 +802,14 @@ fn deployment_publishing_terms_and_rounds(
         .publish_governance_policy(
             &retained_governance.appeal_case,
             config.governance_root.clone(),
-        )?
-        .publish_audit_policy(config.audit_authority.clone());
+        )?;
     for terms in extra_terms {
         filings = filings.publish_terms(terms)?;
     }
     for round in extra_rounds {
         filings = filings.publish_round(
             round,
+            config.audit_authority.clone(),
             config.audit_randomness_witness.clone(),
             config.governance_root.clone(),
         )?;
@@ -1822,6 +1822,8 @@ fn digest_mismatch_case(
         finding_id: challenged.finding.finding_id.clone(),
         listing_id: LISTING_ID.to_string(),
         accepted_bid_envelope_sha256: hex64('c'),
+        venue_admission_envelope_sha256: admitted_admission_digest()?,
+        seller_backing_envelope_sha256: hex64('6'),
         reservation_id: DENY_RESERVATION_ID.to_string(),
         purchase_intent_id: DENY_INTENT_ID.to_string(),
         authoritative_payment_operation_id: DENY_PAYMENT_ID.to_string(),
@@ -9488,6 +9490,45 @@ fn finding_challenge_submit_resolves_the_rounds_historical_role_policies() -> Te
         submitted.write,
         FindingChallengeWriteOutcome::Inserted,
         "a retained round remains fileable under its authenticated signer and policies after rotation"
+    );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_audit_policy_is_retained_by_exact_round() -> TestResult {
+    let original_round = published_audit_round()?;
+    let renewed_round = unrelated_audit_round()?;
+    let config = market_config();
+    let original_policy = config.audit_authority.clone();
+    let mut renewed_policy = original_policy.clone();
+    renewed_policy.key_epoch += 1;
+    renewed_policy.valid_from = NOW + 1;
+    renewed_policy.valid_until += 1;
+    renewed_policy.revocation_status_ref = "status:audit-authority-renewed".to_string();
+
+    let filings = PublishedArtifacts::default()
+        .publish_round(
+            &original_round,
+            original_policy.clone(),
+            config.audit_randomness_witness.clone(),
+            config.governance_root.clone(),
+        )?
+        .publish_round(
+            &renewed_round,
+            renewed_policy.clone(),
+            config.audit_randomness_witness,
+            config.governance_root,
+        )?;
+    let original_digest = signed_envelope_sha256(&original_round.epoch)?;
+    let renewed_digest = signed_envelope_sha256(&renewed_round.epoch)?;
+
+    assert_eq!(
+        filings.audit_policy_for_epoch(&original_digest),
+        Some(original_policy)
+    );
+    assert_eq!(
+        filings.audit_policy_for_epoch(&renewed_digest),
+        Some(renewed_policy)
     );
     Ok(())
 }

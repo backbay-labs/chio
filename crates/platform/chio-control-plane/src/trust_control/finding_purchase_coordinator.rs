@@ -988,6 +988,8 @@ impl FindingPurchaseCoordinator {
             finding_id: reservation.finding_id.clone(),
             listing_id: reservation.listing_id.clone(),
             accepted_bid_envelope_sha256: accepted_bid_envelope_sha256.clone(),
+            venue_admission_envelope_sha256: reservation.admission_envelope_sha256.clone(),
+            seller_backing_envelope_sha256: admission.body.backing_envelope_sha256.clone(),
             reservation_id: reservation.reservation_id.clone(),
             purchase_intent_id: reservation.purchase_intent_id.clone(),
             authoritative_payment_operation_id: reservation
@@ -1002,10 +1004,10 @@ impl FindingPurchaseCoordinator {
             realized_spend_units: 0,
             currency: reservation.currency.clone(),
             payout_eligible: false,
-            // The reservation instant, not the close clock: the terminal id
-            // is content-addressed over this body, so a clock here would
-            // give every crash-retry a different identity for one denial.
-            recorded_at: reservation.created_at,
+            // The authenticated denial receipt fixes the closure instant, so
+            // crash retries reproduce one content-addressed terminal while
+            // the authority remains accountable through the denial time.
+            recorded_at: receipt.timestamp,
         };
         artifact.failed_delivery_id = compute_failed_delivery_id(&artifact)
             .map_err(|_| PurchaseCoordinatorError::Canonical)?;

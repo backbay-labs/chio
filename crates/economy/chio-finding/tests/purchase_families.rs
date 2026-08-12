@@ -134,6 +134,8 @@ fn failed_delivery_body(buyer: &Keypair) -> Result<FindingFailedDelivery, Findin
         finding_id: HEX64.to_string(),
         listing_id: "finding-listing-01".to_string(),
         accepted_bid_envelope_sha256: HEX64.to_string(),
+        venue_admission_envelope_sha256: HEX64_ALT.to_string(),
+        seller_backing_envelope_sha256: HEX64.to_string(),
         reservation_id: "reservation-42".to_string(),
         purchase_intent_id: "purchase-intent-42".to_string(),
         authoritative_payment_operation_id: "payment-operation-42".to_string(),

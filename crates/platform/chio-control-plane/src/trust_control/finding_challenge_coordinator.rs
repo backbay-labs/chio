@@ -596,9 +596,10 @@ pub trait FindingFilingResolver: Send + Sync {
         policy: &FindingAuthorityPin,
     ) -> Result<(), String>;
 
-    /// A governance-published historical audit-authority policy, resolved
-    /// independently of the challenge envelope that names its signer.
-    fn audit_policy_for_key(&self, key: &PublicKey) -> Option<FindingAuthorityPin>;
+    /// The retained audit-authority policy that authenticated this exact
+    /// audit epoch. Reusing a signer key for a renewed lifecycle policy must
+    /// not replace the policy of an in-flight historical round.
+    fn audit_policy_for_epoch(&self, epoch_envelope_sha256: &str) -> Option<FindingAuthorityPin>;
 
     /// The retained randomness-witness policy that authenticated this exact
     /// audit epoch. An in-flight round remains verifiable across witness-key
@@ -1017,7 +1018,7 @@ impl FindingChallengeCoordinator {
                 }
                 let historical_policy = self
                     .filings
-                    .audit_policy_for_key(&round.epoch.signer_key)
+                    .audit_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
                     .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
                 self.require_live_role(&historical_policy, body.filed_at, now, "historical audit")?
             }
@@ -1319,25 +1320,24 @@ impl FindingChallengeCoordinator {
         // produced an adjudication, so an immutable refusal cannot strand
         // the funded filing in `evaluating`.
         self.require_funded_filing(&body.challenge_id, request.now)?;
-        let audit_authority = if matches!(
-            &body.authorization,
-            FindingChallengeAuthorization::VenueAudit(_)
-        ) {
-            let historical_policy = self
-                .filings
-                .audit_policy_for_key(&request.challenge.signer_key)
-                .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
-            self.require_live_role(
-                &historical_policy,
-                body.filed_at,
-                request.now,
-                "historical audit",
-            )?
-        } else {
-            self.pins
+        let audit_authority = match &body.authorization {
+            FindingChallengeAuthorization::VenueAudit(audit) => {
+                let historical_policy = self
+                    .filings
+                    .audit_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
+                    .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
+                self.require_live_role(
+                    &historical_policy,
+                    body.filed_at,
+                    request.now,
+                    "historical audit",
+                )?
+            }
+            FindingChallengeAuthorization::BuyerSubmission(_) => self
+                .pins
                 .audit_authority
                 .key()
-                .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("audit"))?
+                .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("audit"))?,
         };
         let profile_envelope_sha256 = self.envelope_digest(request.profile)?;
         if profile_envelope_sha256 != admission.body.profile_envelope_sha256 {
@@ -1695,25 +1695,24 @@ impl FindingChallengeCoordinator {
         if challenge_envelope_sha256 != recorded_challenge.challenge_envelope_sha256 {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
         }
-        let audit_authority = if matches!(
-            &signed_challenge.body.authorization,
-            FindingChallengeAuthorization::VenueAudit(_)
-        ) {
-            let historical_policy = self
-                .filings
-                .audit_policy_for_key(&signed_challenge.signer_key)
-                .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
-            self.require_live_role(
-                &historical_policy,
-                signed_challenge.body.filed_at,
-                now,
-                "historical audit",
-            )?
-        } else {
-            self.pins
+        let audit_authority = match &signed_challenge.body.authorization {
+            FindingChallengeAuthorization::VenueAudit(audit) => {
+                let historical_policy = self
+                    .filings
+                    .audit_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
+                    .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
+                self.require_live_role(
+                    &historical_policy,
+                    signed_challenge.body.filed_at,
+                    now,
+                    "historical audit",
+                )?
+            }
+            FindingChallengeAuthorization::BuyerSubmission(_) => self
+                .pins
                 .audit_authority
                 .key()
-                .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("audit"))?
+                .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("audit"))?,
         };
         verify_signed_challenge(signed_challenge, &audit_authority)
             .map_err(|error| ChallengeCoordinatorError::ChallengeEnvelope(error.to_string()))?;
@@ -2750,6 +2749,8 @@ impl FindingChallengeCoordinator {
             || retained.reservation_id != terminal.reservation_id
             || retained.record_sha256 != self.envelope_digest(evidence.failed_delivery)?
             || terminal.accepted_bid_envelope_sha256 != reservation.bid_envelope_sha256
+            || terminal.venue_admission_envelope_sha256 != reservation.admission_envelope_sha256
+            || terminal.seller_backing_envelope_sha256 != admission.body.backing_envelope_sha256
             || terminal.purchase_intent_id != reservation.purchase_intent_id
             || terminal.authoritative_payment_operation_id
                 != reservation.authoritative_payment_operation_id
@@ -3335,7 +3336,7 @@ impl FindingChallengeCoordinator {
         }
         let historical_policy = self
             .filings
-            .audit_policy_for_key(&round.epoch.signer_key)
+            .audit_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
             .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
         let audit_authority = self.require_live_role(
             &historical_policy,

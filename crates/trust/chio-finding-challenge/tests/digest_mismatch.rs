@@ -127,6 +127,51 @@ fn stale_failed_delivery_status_cannot_establish_standing() -> TestResult {
 }
 
 #[test]
+fn failed_delivery_must_not_predate_its_denial_receipt() -> TestResult {
+    let world = world()?;
+    let mut case = digest_case(&world, &DenyShape::seller_origin())?;
+    let before_denial = case.deny_receipt.receipt.timestamp.saturating_sub(1);
+    case.rewrite_failed_delivery(&world, |terminal| {
+        terminal.recorded_at = before_denial;
+    })?;
+    let evidence = case.evidence();
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::FailedDeliveryAuthorityNotEstablished,
+    )
+}
+
+#[test]
+fn failed_delivery_must_bind_the_challenged_admission_and_backing() -> TestResult {
+    let world = world()?;
+    let mut foreign_admission = digest_case(&world, &DenyShape::seller_origin())?;
+    foreign_admission.rewrite_failed_delivery(&world, |terminal| {
+        terminal.venue_admission_envelope_sha256 = HEX64_THIRD.to_string();
+    })?;
+    let evidence = foreign_admission.evidence();
+    let evaluation =
+        evaluate_finding_challenge(&world.input(&foreign_admission.challenge, &evidence));
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingBindingMismatch("venue_admission_envelope_sha256"),
+    )?;
+
+    let mut foreign_backing = digest_case(&world, &DenyShape::seller_origin())?;
+    foreign_backing.rewrite_failed_delivery(&world, |terminal| {
+        terminal.seller_backing_envelope_sha256 = HEX64_THIRD.to_string();
+    })?;
+    let evidence = foreign_backing.evidence();
+    let evaluation =
+        evaluate_finding_challenge(&world.input(&foreign_backing.challenge, &evidence));
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingBindingMismatch("seller_backing_envelope_sha256"),
+    )
+}
+
+#[test]
 fn revoked_delivery_receipt_key_cannot_establish_a_mismatch() -> TestResult {
     let world = world()?;
     let mut case = digest_case(&world, &DenyShape::seller_origin())?;

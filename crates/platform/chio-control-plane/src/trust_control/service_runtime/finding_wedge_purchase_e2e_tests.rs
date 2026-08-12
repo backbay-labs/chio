@@ -48,13 +48,13 @@ use chio_core::sha256_hex;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
     compute_profile_id, compute_terms_id, derive_finding_recovery_id, derive_purchase_key,
-    sign_finding, verify_signed_failed_delivery, verify_signed_purchase_record, Finding,
-    FindingAdmission, FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
-    FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
-    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
-    FindingCollateralVault, FindingDescriptor, FindingEvidenceClass, FindingFacetKind,
-    FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass, FindingMarketTerms,
-    FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
+    sign_finding, signed_envelope_sha256, verify_signed_failed_delivery,
+    verify_signed_purchase_record, Finding, FindingAdmission, FindingAuthorityKeyPolicy,
+    FindingBackingRequirement, FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass,
+    FindingChallengeBondLimit, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
+    FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor, FindingEvidenceClass,
+    FindingFacetKind, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
+    FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
     FindingPurchaseContext, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
     FindingRecipePhase, FindingRecipePhaseKind, FindingRecoveryContext, FindingReplayRecipeInput,
     FindingResourceCaps, FindingSellerAuthorization, SignedFindingAdmission,
@@ -3087,7 +3087,15 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
             .get_reservation(&lane.purchase.handshake.reservation_id)?
             .ok_or_else(|| missing("denied reservation"))?;
         assert_eq!(reservation.state, FindingPurchaseReservationState::Released);
-        assert_eq!(failed.body.recorded_at, reservation.created_at);
+        assert_eq!(failed.body.recorded_at, response.receipt.timestamp);
+        assert_eq!(
+            failed.body.venue_admission_envelope_sha256,
+            signed_envelope_sha256(&lane.deployment.web.admission)?
+        );
+        assert_eq!(
+            failed.body.seller_backing_envelope_sha256,
+            lane.deployment.web.admission.body.backing_envelope_sha256
+        );
         assert!(
             lane.deployment
                 .web

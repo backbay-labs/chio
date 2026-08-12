@@ -861,6 +861,46 @@ impl DigestCase {
             checkpoint_transparency: &self.checkpoint_transparency,
         })
     }
+
+    pub fn rewrite_failed_delivery(
+        &mut self,
+        world: &World,
+        rewrite: impl FnOnce(&mut FindingFailedDelivery),
+    ) -> Built<()> {
+        let mut body = self.failed_delivery.body.clone();
+        rewrite(&mut body);
+        body.failed_delivery_id = compute_failed_delivery_id(&body)?;
+        self.failed_delivery = SignedExportEnvelope::sign(body, &world.failed_delivery_authority)?;
+        let envelope_sha256 = signed_envelope_sha256(&self.failed_delivery)?;
+        let FindingChallengeEvidence::DigestMismatch {
+            failed_delivery_envelope_sha256,
+            ..
+        } = &mut self.challenge.body.evidence
+        else {
+            return Err("digest case must contain digest-mismatch evidence".into());
+        };
+        *failed_delivery_envelope_sha256 = envelope_sha256.clone();
+        if let FindingChallengeAuthorization::BuyerSubmission(submission) =
+            &mut self.challenge.body.authorization
+        {
+            let FindingChallengeStanding::FailedDelivery {
+                failed_delivery_id,
+                failed_delivery_envelope_sha256,
+            } = &mut submission.standing
+            else {
+                return Err("digest case must carry failed-delivery standing".into());
+            };
+            *failed_delivery_id = self.failed_delivery.body.failed_delivery_id.clone();
+            *failed_delivery_envelope_sha256 = envelope_sha256;
+        }
+        self.challenge.body.challenge_id = compute_challenge_id(&self.challenge.body)?;
+        let signer = match &self.challenge.body.authorization {
+            FindingChallengeAuthorization::BuyerSubmission(_) => &world.buyer,
+            FindingChallengeAuthorization::VenueAudit(_) => &world.audit_authority,
+        };
+        self.challenge = SignedExportEnvelope::sign(self.challenge.body.clone(), signer)?;
+        Ok(())
+    }
 }
 
 pub fn digest_case(world: &World, shape: &DenyShape) -> Built<DigestCase> {
@@ -939,6 +979,8 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
         finding_id: world.finding.finding_id.clone(),
         listing_id: LISTING_ID.to_string(),
         accepted_bid_envelope_sha256: HEX64_THIRD.to_string(),
+        venue_admission_envelope_sha256: HEX64.to_string(),
+        seller_backing_envelope_sha256: HEX64_ALT.to_string(),
         reservation_id: RESERVATION_ID.to_string(),
         purchase_intent_id: PURCHASE_INTENT_ID.to_string(),
         authoritative_payment_operation_id: PAYMENT_OPERATION_ID.to_string(),
