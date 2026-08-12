@@ -1577,20 +1577,22 @@ fn finding_pheromone_rejects_wrong_scope_replay_and_over_cost() {
             &web.context(resolver),
         )
         .test_expect("first hint admission");
+        let mut invalid_replay_assertion =
+            finding_current_listing_assertion(&listing, &web.operator);
+        invalid_replay_assertion.body.namespace = "invalid.replayed.namespace".to_owned();
         assert!(matches!(
             admit_and_resolve_finding_pheromone_hint(
                 &substrate,
                 replay,
                 &context,
                 &convention,
-                AuthenticatedCurrentFindingListing::new(
-                    &listing,
-                    &finding_current_listing_assertion(&listing, &web.operator),
-                ),
+                AuthenticatedCurrentFindingListing::new(&listing, &invalid_replay_assertion),
                 &web.admission,
                 &web.context(resolver),
             ),
-            Err(FindingPheromoneError::Deposit(_))
+            Err(FindingPheromoneError::Deposit(
+                chio_pheromone::PheromoneError::ReplayWindowExceeded(nonce)
+            )) if nonce == "hint-replay"
         ));
     });
 }

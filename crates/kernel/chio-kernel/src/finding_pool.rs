@@ -1069,6 +1069,7 @@ impl ChioKernel {
         let durable_admission_operation_id = durable_admission_operation_id
             .filter(|operation_id| !operation_id.is_empty())
             .ok_or(FindingPoolLedgerError::DurableAdmissionRequired)?;
+        let trusted_now_unix_ms = ledger.advance_trusted_time_floor(trusted_now_unix_ms)?;
         let claim = AuthorizedFindingPoolClaim {
             purchase_id: purchase.purchase_intent_id.clone(),
             finding_id: purchase.finding_id.clone(),

@@ -289,7 +289,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/economy/chio-open-market/tests/finding_admission.rs": allow(
         "2026-08-31",
         "cognition-market admission regression suite; capped to current M8 size until split",
-        max_lines=2_365,
+        max_lines=2_367,
     ),
     "crates/economy/chio-settle/src/channel/tests/support.rs": allow(
         "2026-08-31",
@@ -415,7 +415,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/finding_pool_ledger.rs": allow(
         "2026-08-31",
         "cognition pool ledger with durable delivery claims; capped to current M8 size until split",
-        max_lines=2_217,
+        max_lines=2_242,
     ),
     "crates/platform/chio-store-sqlite/src/finding_challenge_store_tests.rs": allow(
         "2026-08-31",

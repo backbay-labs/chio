@@ -192,11 +192,11 @@ fn qualify_receipt_sink(
     let Some(rollback_anchor_root) = rollback_anchor_root else {
         return Ok((None, None));
     };
-    let durable_sink_id = durable_receipt_sink_binding(path, internal_sink_id)?;
+    let file_sink_binding = durable_receipt_sink_binding(path, internal_sink_id)?;
     ensure_receipt_rollback_generation(connection)?;
     let mut scope = Vec::new();
     append_receipt_sink_binding_part(&mut scope, b"chio.receipt-store.rollback-generation.v1");
-    append_receipt_sink_binding_part(&mut scope, durable_sink_id.as_bytes());
+    append_receipt_sink_binding_part(&mut scope, file_sink_binding.as_bytes());
     let anchor =
         crate::rollback_generation::RollbackGenerationAnchor::open(rollback_anchor_root, &scope)
             .map(Arc::new)
@@ -214,7 +214,22 @@ fn qualify_receipt_sink(
         .map_err(|error| {
             ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
         })?;
+    let anchor_instance_id = anchor.instance_id().map_err(|error| {
+        ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+    })?;
+    let durable_sink_id = anchored_receipt_sink_binding(&file_sink_binding, &anchor_instance_id);
     Ok((Some(durable_sink_id), Some(anchor)))
+}
+
+fn anchored_receipt_sink_binding(file_sink_binding: &str, anchor_instance_id: &str) -> String {
+    let mut material = Vec::new();
+    append_receipt_sink_binding_part(
+        &mut material,
+        b"chio.receipt-store.anchored-durable-sink-binding.v1",
+    );
+    append_receipt_sink_binding_part(&mut material, file_sink_binding.as_bytes());
+    append_receipt_sink_binding_part(&mut material, anchor_instance_id.as_bytes());
+    sha256_hex(&material)
 }
 
 fn durable_receipt_sink_file_binding(

@@ -9,6 +9,11 @@ use crate::{
 };
 
 pub trait PheromoneSubstrate {
+    /// Atomically reject a nonce that this substrate has already admitted.
+    /// The final deposit still repeats this check with scarcity accounting so
+    /// concurrent candidates cannot both commit.
+    fn preflight_deposit_nonce(&self, deposit: &PheromoneDeposit) -> Result<(), PheromoneError>;
+
     fn deposit(
         &self,
         deposit: PheromoneDeposit,
@@ -52,6 +57,20 @@ impl InMemoryPheromoneSubstrate {
 }
 
 impl PheromoneSubstrate for InMemoryPheromoneSubstrate {
+    fn preflight_deposit_nonce(&self, deposit: &PheromoneDeposit) -> Result<(), PheromoneError> {
+        let nonce_key = (
+            deposit.body.kernel_id.clone(),
+            deposit.body.agent_passport_key_hash.clone(),
+            deposit.body.nonce.clone(),
+        );
+        if self.seen_nonces.lock()?.contains(&nonce_key) {
+            return Err(PheromoneError::ReplayWindowExceeded(
+                deposit.body.nonce.clone(),
+            ));
+        }
+        Ok(())
+    }
+
     fn deposit(
         &self,
         deposit: PheromoneDeposit,

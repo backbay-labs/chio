@@ -172,6 +172,7 @@ pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
     // substantially larger signed listing and admission bundle. The final
     // substrate call repeats this validation inside its atomic commit.
     validate_deposit_for_admission(&deposit, pheromone_context)?;
+    substrate.preflight_deposit_nonce(&deposit)?;
     validate_convention(&deposit, pheromone_context, convention)?;
     validate_admission_envelope_bounds(current_admission)?;
     let now = pheromone_context.now_unix_ms / 1_000;

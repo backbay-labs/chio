@@ -820,6 +820,20 @@ fn dispatch_claims_the_configured_pool_reservation() {
 }
 
 #[test]
+fn dispatch_claim_uses_the_persisted_nondecreasing_time_floor() {
+    let ledger = Arc::new(RecordingLedger::default());
+    assert_eq!(ledger.advance_trusted_time_floor(50_000), Ok(50_000));
+    let kernel = kernel_with_ledger(Arc::clone(&ledger));
+    assert!(kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .is_ok());
+    let Ok(claims) = ledger.claims.lock() else {
+        panic!("test claim lock was poisoned");
+    };
+    assert_eq!(claims.as_slice(), &[("purchase:test".to_owned(), 50_000)]);
+}
+
+#[test]
 fn startup_reconciliation_does_not_complete_behind_an_active_outbox_lease() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));

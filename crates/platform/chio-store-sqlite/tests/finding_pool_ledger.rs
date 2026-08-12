@@ -1533,6 +1533,28 @@ fn sqlite_receipt_store_identity_survives_reopen() {
 }
 
 #[test]
+fn independent_receipt_anchors_produce_distinct_sink_identities() {
+    let directory = tempfile::tempdir().test_expect("create receipt directory");
+    let first_anchor = tempfile::tempdir().test_expect("create first anchor directory");
+    let second_anchor = tempfile::tempdir().test_expect("create second anchor directory");
+    let path = directory.path().join("receipts.sqlite3");
+    let first = SqliteReceiptStore::open_for_finding_pool(&path, first_anchor.path())
+        .test_expect("open receipt store with first anchor");
+    let first_sink = first
+        .durable_sink_id()
+        .test_expect("read first anchored sink identity")
+        .to_owned();
+    drop(first);
+
+    let second = SqliteReceiptStore::open_existing_for_finding_pool(&path, second_anchor.path())
+        .test_expect("open empty receipt clone with an independent anchor");
+    let second_sink = second
+        .durable_sink_id()
+        .test_expect("read second anchored sink identity");
+    assert_ne!(first_sink, second_sink);
+}
+
+#[test]
 fn cloned_receipt_database_cannot_reuse_the_ledger_sink_binding() {
     let directory = tempfile::tempdir().test_expect("create store directory");
     let receipt_path = directory.path().join("receipts.sqlite3");
