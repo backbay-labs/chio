@@ -334,6 +334,38 @@ impl Guard for MemoryGovernanceGuard {
         }
     }
 
+    fn required_finding_status_feed_id(
+        &self,
+        ctx: &GuardContext,
+    ) -> Result<Option<String>, KernelError> {
+        if !self.enabled
+            || ctx
+                .request
+                .arguments
+                .get(chio_kernel::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT)
+                .is_none()
+        {
+            return Ok(None);
+        }
+        let Some(binding) = &self.finding_retraction else {
+            return Ok(None);
+        };
+        if !matches!(
+            extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments),
+            Ok(ToolAction::MemoryWrite { .. })
+        ) {
+            return Ok(None);
+        }
+        if binding.resolver.resolver_id() != binding.resolver_id
+            || binding.resolver.feed_id() != binding.feed_id
+        {
+            return Err(KernelError::GuardDenied(
+                "Finding memory write resolver identity changed".to_owned(),
+            ));
+        }
+        Ok(Some(binding.feed_id.clone()))
+    }
+
     fn validate_output_before_release(
         &self,
         ctx: &GuardContext,

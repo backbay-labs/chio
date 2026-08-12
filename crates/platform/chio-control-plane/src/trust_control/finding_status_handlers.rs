@@ -1199,6 +1199,42 @@ mod tests {
     }
 
     #[test]
+    fn portable_proof_survives_a_valid_replacement_bond_window(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (operator, bond) = config();
+        let (_temp, authority) = provision_authority()?;
+        let store = authority.finding_status_store();
+        let publisher = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store.clone(),
+            operator.clone(),
+            bond.clone(),
+            operator_key(),
+            300,
+        )?;
+        let finding_id = sha256_hex(b"replacement-bond-finding");
+        let published = publisher.publish_non_inclusion(&finding_id, &[], NOW)?;
+        let mut replacement_bond = bond;
+        replacement_bond.valid_from = NOW + 1;
+        replacement_bond.evidence_sha256 = sha256_hex(b"replacement-status-bond");
+        let verifier = super::super::finding_status_verifier::MarketFindingStatusVerifier::new(
+            operator,
+            replacement_bond,
+            300,
+            store,
+        )?;
+        let proof_b64 = STANDARD.encode(&published.proof_bytes);
+        let view = FindingStatusProofContextView {
+            proof_b64: &proof_b64,
+            expected_finding_id: &finding_id,
+            expected_feed_id: FEED_ID,
+        };
+
+        let verified = verifier.verify_status_proof(&view)?;
+        verifier.verify_status_admission(&view, &verified, NOW + 1)?;
+        Ok(())
+    }
+
+    #[test]
     fn root_projection_rejects_stale_or_substituted_epoch_authority(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (operator, bond) = config();

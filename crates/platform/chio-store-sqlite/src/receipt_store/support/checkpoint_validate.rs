@@ -431,6 +431,33 @@ pub(crate) fn trusted_retention_watermark(
     if raw == 0 {
         return Ok(0);
     }
+    let Some(archive_path) = latest_watermark_archive_path(connection)? else {
+        return Ok(0);
+    };
+    let flags =
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    let Ok(mut archive) = rusqlite::Connection::open_with_flags(archive_path, flags) else {
+        return Ok(0);
+    };
+    if retention_archive_connection_is_trusted(connection, &mut archive, raw)? {
+        Ok(raw)
+    } else {
+        Ok(0)
+    }
+}
+
+/// Verify the exact already-open archive connection against the immutable live
+/// watermark ledger. Callers that serve retained evidence keep this connection
+/// open for the subsequent query so a path replacement cannot swap the
+/// authenticated archive for different bytes.
+pub(crate) fn retention_archive_connection_is_trusted(
+    connection: &Connection,
+    archive: &mut Connection,
+    raw: u64,
+) -> Result<bool, ReceiptStoreError> {
+    if raw == 0 {
+        return Ok(false);
+    }
     let raw_i64 = sqlite_i64(raw, "retention watermark")?;
     let boundary_matches: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM kernel_checkpoints WHERE batch_end_seq = ?1)",
@@ -438,7 +465,7 @@ pub(crate) fn trusted_retention_watermark(
         |row| row.get(0),
     )?;
     if !boundary_matches {
-        return Ok(0);
+        return Ok(false);
     }
     let live_prefix_present: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM claim_receipt_log_entries WHERE entry_seq <= ?1)",
@@ -446,52 +473,17 @@ pub(crate) fn trusted_retention_watermark(
         |row| row.get(0),
     )?;
     if live_prefix_present {
-        return Ok(0);
-    }
-    if !archived_prefix_is_backed(connection, raw_i64)? {
-        return Ok(0);
-    }
-    Ok(raw)
-}
-
-/// True only when the archive named by the current watermark ledger row holds
-/// byte-identical checkpoint rows and co-archived claim-log rows that fully
-/// validate every checkpoint covered by `watermark`.
-///
-/// A count or Merkle-root match is not proof: an attacker can sign an authentic
-/// receipt root with a different checkpoint key. For each covered checkpoint,
-/// this requires exact live/archive checkpoint-row identity and then performs
-/// full checkpoint validation against the archived receipts, including receipt
-/// signatures, signer-key binding, range continuity, and Merkle reconstruction.
-/// This is the deep re-verification the watermark exemption promises to serve
-/// from the archive; it is bounded to the archived rows and runs on the
-/// open/health path, never per append.
-///
-/// Opens the archive read-only on its own connection (never ATTACHing onto the
-/// caller's). Any missing, unreadable, short, non-contiguous,
-/// identity-divergent, signer-divergent, or root-divergent archive returns false
-/// so the caller falls back to full verification, which then rejects the store
-/// because the live prefix was deleted (fail-closed).
-fn archived_prefix_is_backed(
-    connection: &Connection,
-    watermark: i64,
-) -> Result<bool, ReceiptStoreError> {
-    let Some(archive_path) = latest_watermark_archive_path(connection)? else {
         return Ok(false);
-    };
-    archive_path_backs_prefix(
-        connection,
-        &archive_path,
-        sqlite_u64(watermark, "watermark")?,
-    )
+    }
+    archive_connection_backs_prefix(connection, archive, raw)
 }
 
 /// True only when the archive at `archive_path` holds byte-identical checkpoint
 /// rows and co-archived claim-log rows that fully validate every checkpoint
 /// covered by `watermark`.
 ///
-/// The watermark-trust reader (`archived_prefix_is_backed`) resolves the path
-/// from the ledger, but the rotation and repair paths must vet a SPECIFIC
+/// The watermark-trust reader resolves the path from the ledger, but the
+/// rotation and repair paths must vet a SPECIFIC
 /// archive before advancing or sealing a watermark over it: a subsequent
 /// rotation must confirm the ledger archive still backs the committed prefix
 /// before extending it, and a repair must confirm the supplied (or ledger)
@@ -517,6 +509,14 @@ pub(crate) fn archive_path_backs_prefix(
     let Ok(mut archive) = rusqlite::Connection::open_with_flags(archive_path, flags) else {
         return Ok(false);
     };
+    archive_connection_backs_prefix(connection, &mut archive, watermark)
+}
+
+fn archive_connection_backs_prefix(
+    connection: &Connection,
+    archive: &mut Connection,
+    watermark: u64,
+) -> Result<bool, ReceiptStoreError> {
     let covered: Vec<PersistedCheckpointRow> = load_all_persisted_checkpoint_rows(connection)?
         .into_iter()
         .filter(|row| row.batch_end_seq <= watermark)

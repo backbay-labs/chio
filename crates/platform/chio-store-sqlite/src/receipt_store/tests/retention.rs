@@ -168,6 +168,43 @@ fn store_with_archived_first_checkpoint(
     Ok(store)
 }
 
+#[cfg(unix)]
+#[test]
+fn retained_lookup_queries_the_archive_connection_that_was_authenticated(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::receipt_store::support::load_retained_chio_receipt_after_archive_trust_for_test;
+
+    let path = unique_db_path("retained-lookup-open-archive");
+    let archive = unique_db_path("retained-lookup-open-archive-data");
+    let replacement = unique_db_path("retained-lookup-open-archive-replacement");
+    let displaced = unique_db_path("retained-lookup-open-archive-displaced");
+    let archive_path = archive.to_str().ok_or("archive path is not valid utf-8")?;
+    let keypair = super::support::receipt_test_keypair();
+    let store = store_with_archived_first_checkpoint(&path, archive_path, &keypair)?;
+    let archived_receipt =
+        super::support::sample_receipt_with_keypair_and_timestamp("ce-aged-0", 1, 100, &keypair);
+    drop(rusqlite::Connection::open(&replacement)?);
+
+    let loaded = load_retained_chio_receipt_after_archive_trust_for_test(
+        &store,
+        &archived_receipt.id,
+        || {
+            std::fs::rename(&archive, &displaced)?;
+            std::fs::rename(&replacement, &archive)?;
+            Ok(())
+        },
+    )?
+    .ok_or("the held authenticated archive connection lost its receipt")?;
+    assert_eq!(loaded.id, archived_receipt.id);
+    assert_eq!(loaded.signature, archived_receipt.signature);
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&archive);
+    let _ = std::fs::remove_file(&replacement);
+    let _ = std::fs::remove_file(&displaced);
+    Ok(())
+}
+
 #[test]
 fn retention_preserves_exact_cost_projection() -> Result<(), Box<dyn std::error::Error>> {
     let path = unique_db_path("cost-projection-retention");

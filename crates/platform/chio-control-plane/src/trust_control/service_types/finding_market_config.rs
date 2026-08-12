@@ -175,6 +175,17 @@ impl FindingStatusOperatorPin {
                 "finding-market status operator role is invalid".to_string(),
             ));
         }
+        if !self
+            .authority
+            .authority_id
+            .bytes()
+            .all(|byte| byte == b' ' || byte.is_ascii_graphic())
+        {
+            return Err(CliError::cli_other_error(
+                "finding-market status operator authority id is not a portable wire identifier"
+                    .to_string(),
+            ));
+        }
         if self.rotation_policy_ref.trim().is_empty()
             || self.rotation_policy_ref.trim() != self.rotation_policy_ref
         {
@@ -678,6 +689,10 @@ mod status_feed_config_tests {
         let mut oversized_authority_id = operator();
         oversized_authority_id.authority.authority_id = "a".repeat(513);
         assert!(oversized_authority_id.validate().is_err());
+
+        let mut nonportable_authority_id = operator();
+        nonportable_authority_id.authority.authority_id = "status-opérator".to_string();
+        assert!(nonportable_authority_id.validate().is_err());
 
         let mut oversized_rotation_ref = operator();
         oversized_rotation_ref.rotation_policy_ref = "r".repeat(513);

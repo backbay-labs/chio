@@ -22,6 +22,7 @@ pub(crate) struct DurableToolReturnInput<'a> {
     pub(crate) extra_receipt_metadata: Option<serde_json::Value>,
     pub(crate) pre_invocation_guard_evidence: &'a [chio_core::receipt::metadata::GuardEvidence],
     pub(crate) verified_payee_binding: Option<&'a VerifiedGovernedPayeeBinding>,
+    pub(crate) verified_purchase: Option<&'a crate::finding_purchase::VerifiedFindingPurchase>,
     pub(crate) trusted_now_unix_ms: u64,
 }
 
@@ -174,11 +175,12 @@ impl ChioKernel {
             extra_receipt_metadata,
             pre_invocation_guard_evidence,
             verified_payee_binding,
+            verified_purchase,
             trusted_now_unix_ms,
         } = input;
         self.validate_guarded_output(request, matched_grant_index, output, false)?;
         let purchase_replay_metadata =
-            self.capture_purchase_replay_metadata(request, matched_grant_index)?;
+            self.capture_purchase_replay_metadata(request, matched_grant_index, verified_purchase)?;
         let runtime = self.durable_runtime()?;
         let _mutation_guard = runtime.lock_mutations()?;
         let trusted_now_unix_ms = runtime.refresh_trusted_time(trusted_now_unix_ms);

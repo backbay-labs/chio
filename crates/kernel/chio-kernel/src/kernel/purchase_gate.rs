@@ -459,6 +459,7 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
         matched_grant_index: usize,
+        verified_purchase: Option<&VerifiedFindingPurchase>,
     ) -> Result<Option<serde_json::Value>, KernelError> {
         let matching_grants = resolve_required_matching_grants(
             &request.capability,
@@ -476,23 +477,39 @@ impl ChioKernel {
                     "durable tool return lost its matched grant".to_owned(),
                 )
             })?;
-        self.verify_purchase_context(selected_grant.grant, request)
-            .map_err(|reason| {
-                KernelError::DurableAdmission(format!(
-                    "purchase replay snapshot could not be captured: {reason}"
-                ))
-            })?
-            .map(|purchase| {
-                serde_json::to_value(FindingPurchaseReplaySnapshotV1::new(purchase))
+        let is_purchase = purchase_marked_grant(selected_grant.grant)
+            .map_err(KernelError::DurableAdmission)?
+            .is_some();
+        match (is_purchase, verified_purchase) {
+            (true, Some(purchase)) => {
+                let snapshot = FindingPurchaseReplaySnapshotV1::new(purchase.clone());
+                self.validate_purchase_replay_snapshot(
+                    selected_grant.grant,
+                    request,
+                    snapshot.clone(),
+                )
+                .map_err(|reason| {
+                    KernelError::DurableAdmission(format!(
+                        "purchase replay snapshot could not be captured: {reason}"
+                    ))
+                })?;
+                serde_json::to_value(snapshot)
                     .map(|snapshot| {
-                        serde_json::json!({
+                        Some(serde_json::json!({
                             crate::finding_purchase::FINDING_PURCHASE_REPLAY_SNAPSHOT_METADATA_KEY:
                                 snapshot
-                        })
+                        }))
                     })
                     .map_err(|error| KernelError::DurableAdmission(error.to_string()))
-            })
-            .transpose()
+            }
+            (true, None) => Err(KernelError::DurableAdmission(
+                "M6 durable purchase return has no frozen dispatch snapshot".to_owned(),
+            )),
+            (false, Some(_)) => Err(KernelError::DurableAdmission(
+                "unmarked durable return carries a frozen purchase snapshot".to_owned(),
+            )),
+            (false, None) => Ok(None),
+        }
     }
 
     pub(crate) fn restore_purchase_replay_snapshot(
@@ -780,6 +797,13 @@ mod tests {
             .expect("frozen historical authority remains replayable")
             .expect("purchase snapshot remains present");
         assert_eq!(recovered, frozen_purchase);
+        let captured = kernel
+            .capture_purchase_replay_metadata(&request, 0, Some(&frozen_purchase))
+            .expect("the dispatch-frozen purchase remains recordable")
+            .expect("the durable return carries a purchase snapshot");
+        assert!(captured
+            .get(crate::finding_purchase::FINDING_PURCHASE_REPLAY_SNAPSHOT_METADATA_KEY)
+            .is_some());
         assert_eq!(rotated.calls.load(Ordering::SeqCst), 0);
     }
 

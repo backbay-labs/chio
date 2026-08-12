@@ -143,8 +143,11 @@ fn verify_portable_at(
     view: &FindingStatusProofContextView<'_>,
     now: u64,
     require_non_inclusion: bool,
+    require_current_liveness: bool,
 ) -> Result<PortableStatusMaterial, String> {
-    require_live_operator_and_bond(operator, bond, &operator.feed_id, now)?;
+    if require_current_liveness {
+        require_live_operator_and_bond(operator, bond, &operator.feed_id, now)?;
+    }
     let proof_bytes = STANDARD
         .decode(view.proof_b64)
         .map_err(|_| "finding status proof carrier is not valid base64".to_owned())?;
@@ -242,6 +245,7 @@ impl MarketFindingStatusVerifier {
         &self,
         view: &FindingStatusProofContextView<'_>,
         now: u64,
+        require_current_liveness: bool,
     ) -> Result<PortableStatusMaterial, String> {
         verify_portable_at(
             &self.operator,
@@ -250,6 +254,7 @@ impl MarketFindingStatusVerifier {
             view,
             now,
             true,
+            require_current_liveness,
         )
     }
 }
@@ -264,7 +269,7 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
             .map_err(|_| "finding status proof carrier is not valid base64".to_owned())?;
         let proof = parse_status_proof_input(&proof_bytes).map_err(|error| error.to_string())?;
         let checked_at = proof_fields(&proof).checked_at;
-        Ok(self.verify_at(view, checked_at)?.verified)
+        Ok(self.verify_at(view, checked_at, false)?.verified)
     }
 
     fn verify_status_admission(
@@ -273,7 +278,7 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
         verified: &VerifiedFindingStatusProof,
         now_unix_secs: u64,
     ) -> Result<(), String> {
-        let material = self.verify_at(view, now_unix_secs)?;
+        let material = self.verify_at(view, now_unix_secs, true)?;
         if &material.verified != verified {
             return Err("finding status proof changed between verification phases".to_owned());
         }
@@ -411,6 +416,7 @@ pub(crate) fn verify_proof_record(
         },
         now,
         false,
+        true,
     )?;
     let fields = proof_fields(&material.proof);
     let inclusion_fields_match = match &material.proof {

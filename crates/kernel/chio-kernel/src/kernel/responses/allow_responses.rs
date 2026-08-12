@@ -401,6 +401,40 @@ impl ChioKernel {
                 "Finding memory write requires a memory provenance store".to_owned(),
             ));
         }
+        let guard_context = GuardContext {
+            request,
+            scope: &request.capability.scope,
+            agent_id: &request.agent_id,
+            server_id: &request.server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+        let mut required_status_feed: Option<String> = None;
+        for guard in self.guards.iter() {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                guard.required_finding_status_feed_id(&guard_context)
+            }));
+            let feed_id = match result {
+                Ok(result) => result?,
+                Err(_) => {
+                    return Err(KernelError::GuardDenied(
+                        "Finding memory guard feed requirement panicked (fail-closed)".to_owned(),
+                    ));
+                }
+            };
+            let Some(feed_id) = feed_id else {
+                continue;
+            };
+            if required_status_feed
+                .as_deref()
+                .is_some_and(|required| required != feed_id)
+            {
+                return Err(KernelError::GuardDenied(
+                    "Finding memory guards require different status feeds".to_owned(),
+                ));
+            }
+            required_status_feed = Some(feed_id);
+        }
         let parent_receipt_id = binding
             .as_str()
             .filter(|value| !value.trim().is_empty())
@@ -457,9 +491,18 @@ impl ChioKernel {
                     "Finding delivery receipt metadata is invalid: {error}"
                 ))
             })?;
-            if delivery.status_proof.is_none() {
-                return Err(KernelError::Internal(
+            let status_proof = delivery.status_proof.as_ref().ok_or_else(|| {
+                KernelError::Internal(
                     "Finding memory write requires an M6 delivery status proof".to_owned(),
+                )
+            })?;
+            if required_status_feed
+                .as_deref()
+                .is_some_and(|required| status_proof.feed_id != required)
+            {
+                return Err(KernelError::Internal(
+                    "Finding delivery status feed differs from the installed quarantine resolver"
+                        .to_owned(),
                 ));
             }
             if delivery.finding_id != key

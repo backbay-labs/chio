@@ -125,6 +125,28 @@ impl Guard for GuardPipeline {
         Ok(())
     }
 
+    fn required_finding_status_feed_id(
+        &self,
+        ctx: &GuardContext,
+    ) -> Result<Option<String>, KernelError> {
+        let mut required_feed: Option<String> = None;
+        for guard in &self.guards {
+            let Some(feed_id) = guard.required_finding_status_feed_id(ctx)? else {
+                continue;
+            };
+            if required_feed
+                .as_deref()
+                .is_some_and(|required| required != feed_id)
+            {
+                return Err(KernelError::GuardDenied(
+                    "Finding memory guards require different status feeds".to_owned(),
+                ));
+            }
+            required_feed = Some(feed_id);
+        }
+        Ok(required_feed)
+    }
+
     fn validate_output_before_release(
         &self,
         ctx: &GuardContext,

@@ -677,7 +677,7 @@ impl ChioKernel {
         revalidate_all: bool,
         now_unix_secs: u64,
         now_unix_ms: u64,
-    ) -> Result<(), KernelError> {
+    ) -> Result<Option<crate::finding_purchase::VerifiedFindingPurchase>, KernelError> {
         if self.is_emergency_stopped() {
             return Err(KernelError::GuardDenied(
                 EMERGENCY_STOP_DENY_REASON.to_string(),
@@ -807,7 +807,8 @@ impl ChioKernel {
                 }
             }
         }
-        self.verify_purchase_admission(matched_grant, request, now_unix_secs)
+        let verified_purchase = self
+            .verify_purchase_admission(matched_grant, request, now_unix_secs)
             .map_err(|reason| {
                 KernelError::GuardDenied(format!(
                     "finding purchase dispatch revalidation failed: {reason}"
@@ -819,7 +820,7 @@ impl ChioKernel {
                     "finding recovery dispatch revalidation failed: {reason}"
                 ))
             })?;
-        Ok(())
+        Ok(verified_purchase)
     }
 
     pub(crate) fn validate_parent_request_continuation(

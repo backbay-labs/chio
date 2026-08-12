@@ -602,6 +602,17 @@ pub trait Guard: Send + Sync {
         Ok(())
     }
 
+    /// Name the authenticated Finding status feed that must authorize a
+    /// governed memory write. The kernel checks this against the delivery
+    /// receipt before invoking the tool so a write cannot enter a quarantine
+    /// domain whose resolver will later reject it.
+    fn required_finding_status_feed_id(
+        &self,
+        _ctx: &GuardContext,
+    ) -> Result<Option<String>, KernelError> {
+        Ok(None)
+    }
+
     /// Validate the exact output after the tool returns and before it can be
     /// released or committed as a durable tool return. Stateful guards use
     /// this seam to bind an admission decision to the value actually read.

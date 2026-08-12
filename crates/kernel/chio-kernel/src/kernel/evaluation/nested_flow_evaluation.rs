@@ -1077,6 +1077,7 @@ impl ChioKernel {
             ),
             Err(error) => Err(error),
         };
+        let mut verified_purchase = final_dispatch_admission.as_ref().ok().cloned().flatten();
         if let Err(error) = final_dispatch_admission {
             let mut reason = dispatch_admission_error_reason(&error);
             if let Err(rollback_error) = credential_reservation.rollback_before_dispatch() {
@@ -1332,7 +1333,7 @@ impl ChioKernel {
 
         if payment_authorization.is_some() {
             let post_payment_now_unix_ms = current_unix_timestamp_ms();
-            if let Err(error) = self.revalidate_immediately_before_dispatch(
+            let post_payment_admission = self.revalidate_immediately_before_dispatch(
                 request,
                 dpop_required,
                 matched_grant,
@@ -1346,7 +1347,11 @@ impl ChioKernel {
                 force_dispatch_revalidation,
                 post_payment_now_unix_ms / 1000,
                 post_payment_now_unix_ms,
-            ) {
+            );
+            if let Ok(purchase) = &post_payment_admission {
+                verified_purchase.clone_from(purchase);
+            }
+            if let Err(error) = post_payment_admission {
                 let reason = dispatch_admission_error_reason(&error);
                 warn!(request_id = %request.request_id, reason = %redacted!(&reason), "post-payment dispatch revalidation denied (nested flow)");
                 return self.with_pre_invocation_guard_evidence(
@@ -1844,6 +1849,7 @@ impl ChioKernel {
                     extra_receipt_metadata: runtime_admission_metadata.clone(),
                     pre_invocation_guard_evidence: &pre_invocation_guard_evidence,
                     verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                    verified_purchase: verified_purchase.as_ref(),
                     trusted_now_unix_ms: recorded_at_unix_ms,
                 },
             ) {
