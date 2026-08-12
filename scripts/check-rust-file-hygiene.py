@@ -298,13 +298,13 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/admission_operation/projection.rs": allow(
         "2026-08-31",
-        "durable admission projection surface with authoritative outcome bindings; capped to current size until split",
-        max_lines=2_151,
+        "durable admission projection surface with M6 current-status denial binding; capped to current size until split",
+        max_lines=2_154,
     ),
     "crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs": allow(
         "2026-08-31",
-        "durable terminal coordinator with signed outcome projection; capped to current size until split",
-        max_lines=2_376,
+        "durable terminal coordinator with signed outcome and M6 status-release projection; capped to current size until split",
+        max_lines=2_396,
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
@@ -433,8 +433,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/products/chio-cli/src/cli/dispatch/finding/unit_tests.rs": allow(
         "2026-08-31",
-        "cognition-market CLI regression suite; capped to current size until split",
-        max_lines=2_323,
+        "cognition-market CLI regression suite with status trust-input migration coverage; capped to current size until split",
+        max_lines=2_523,
     ),
     "crates/platform/chio-store-sqlite/src/serving_owner/tests.rs": allow(
         "2026-08-31",

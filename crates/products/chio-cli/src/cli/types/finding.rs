@@ -86,6 +86,9 @@ pub(crate) enum FindingCommands {
         /// Governance-pinned status operator authorization (strict canonical JSON).
         #[arg(long)]
         operator_authorization: PathBuf,
+        /// Governance-pinned current status service bond (strict canonical JSON).
+        #[arg(long)]
+        service_bond: PathBuf,
         /// Durable rollback floor; retain its sibling `.retractions` directory.
         #[arg(long)]
         rollback_floor: PathBuf,

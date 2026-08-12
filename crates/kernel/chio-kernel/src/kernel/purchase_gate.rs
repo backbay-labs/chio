@@ -8,10 +8,10 @@ use chio_core::capability::scope::{
 use serde::Deserialize;
 
 use crate::finding_purchase::{
-    FindingPurchaseContextView, FindingPurchaseReplaySnapshotV1, FindingStatusProofContextView,
-    VerifiedFindingPurchase, FINDING_ESCROW_WITNESS_CONTEXT_KEY, FINDING_PURCHASE_CONTEXT_KEY,
-    FINDING_PURCHASE_REPLAY_SNAPSHOT_SCHEMA, FINDING_STATUS_PROOF_CONTEXT_KEY,
-    MAX_FINDING_STATUS_PROOF_B64_BYTES,
+    FindingCurrentStatusContextView, FindingPurchaseContextView, FindingPurchaseReplaySnapshotV1,
+    FindingStatusProofContextView, VerifiedFindingPurchase, FINDING_ESCROW_WITNESS_CONTEXT_KEY,
+    FINDING_PURCHASE_CONTEXT_KEY, FINDING_PURCHASE_REPLAY_SNAPSHOT_SCHEMA,
+    FINDING_STATUS_PROOF_CONTEXT_KEY, MAX_FINDING_STATUS_PROOF_B64_BYTES,
 };
 use crate::request_matching::resolve_required_matching_grants;
 use crate::runtime::ToolCallRequest;
@@ -71,6 +71,14 @@ pub(crate) struct DeliveryDenial {
     pub(crate) reason: crate::admission_operation::DeliveryDenialReason,
     pub(crate) message: &'static str,
     pub(crate) guard: &'static str,
+}
+
+pub(crate) fn finding_status_delivery_denial() -> DeliveryDenial {
+    DeliveryDenial {
+        reason: crate::admission_operation::DeliveryDenialReason::FindingStatusChanged,
+        message: "finding status changed before durable output release",
+        guard: "finding_status",
+    }
 }
 
 /// The complete delivery verdict for one resolved output, shared by the
@@ -626,6 +634,38 @@ impl ChioKernel {
         }
         Ok(Some(verified))
     }
+
+    /// Recheck the purchased Finding against the current authenticated feed
+    /// floor before a durable terminal captures payment or releases output.
+    pub(crate) fn revalidate_completed_purchase_status(
+        &self,
+        purchase: Option<&VerifiedFindingPurchase>,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        let Some(purchase) = purchase else {
+            return Ok(());
+        };
+        let status = purchase.status_proof.as_ref().ok_or_else(|| {
+            "completed purchase has no admission-verified status binding".to_owned()
+        })?;
+        if status.feed_id != purchase.expected_status_feed_id {
+            return Err("completed purchase status feed changed after admission".to_owned());
+        }
+        let verifier = self.finding_status_proof_verifier.as_ref().ok_or_else(|| {
+            "finding status verifier disappeared before terminalization".to_owned()
+        })?;
+        verifier
+            .verify_current_status_admission(
+                &FindingCurrentStatusContextView {
+                    expected_finding_id: &purchase.finding_id,
+                    expected_feed_id: &purchase.expected_status_feed_id,
+                    minimum_map_epoch: status.map_epoch,
+                    minimum_non_inclusion_checked_at: status.non_inclusion_checked_at,
+                },
+                now_unix_secs,
+            )
+            .map_err(|error| format!("completed purchase status admission rejected: {error}"))
+    }
 }
 
 #[cfg(test)]
@@ -666,6 +706,15 @@ mod tests {
         ) -> Result<(), String> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Err("the prior status operator is no longer current".to_owned())
+        }
+
+        fn verify_current_status_admission(
+            &self,
+            _view: &FindingCurrentStatusContextView<'_>,
+            _now_unix_secs: u64,
+        ) -> Result<(), String> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err("finding is pending retraction".to_owned())
         }
     }
 
@@ -805,6 +854,11 @@ mod tests {
             .get(crate::finding_purchase::FINDING_PURCHASE_REPLAY_SNAPSHOT_METADATA_KEY)
             .is_some());
         assert_eq!(rotated.calls.load(Ordering::SeqCst), 0);
+        let error = kernel
+            .revalidate_completed_purchase_status(Some(&frozen_purchase), 1_800_000_000)
+            .expect_err("terminal release must consult the current status floor");
+        assert!(error.contains("pending retraction"));
+        assert_eq!(rotated.calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]

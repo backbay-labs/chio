@@ -92,13 +92,16 @@ chio finding status \
   --id <finding-id> \
   --feed <governance-pinned-feed-id> \
   --operator-authorization <governance-pinned-authorization.json> \
+  --service-bond <governance-pinned-current-service-bond.json> \
   --rollback-floor <durable-status-floor.json> \
   --max-epoch-age-secs <deployment-freshness-limit>
 ```
 
 The command fetches the current proof from the configured control-plane URL,
 verifies the proof and embedded signed epoch against the out-of-band operator
-authorization, applies the configured freshness limit, cross-checks the
+authorization, requires a canonical current service bond bound to that exact
+feed and operator, requires the served projection to name that bond's exact
+evidence digest, applies the configured freshness limit, cross-checks the
 response projection, atomically advances the caller-selected durable rollback
 floor, and prints the verified status. Reuse the same rollback-floor path for
 every query against that feed and stable operator identity. Sticky per-finding
@@ -106,6 +109,12 @@ retractions are stored under the sibling `<rollback-floor>.retractions/`
 directory, which must be retained and backed up with the floor file. A
 transport, canonicalization, signature, lifecycle, digest, feed, finding,
 epoch, or sparse-path failure exits nonzero.
+
+The first verified observation against a version-one rollback floor migrates
+its epoch tuple to version two and writes every retained retraction id into the
+sibling tombstone directory while holding the floor lock. Tombstones are
+written before the version-two floor replacement, so an interrupted migration
+fails closed and resumes idempotently on the next verified observation.
 
 At minimum, monitoring checks:
 

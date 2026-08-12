@@ -111,6 +111,7 @@ struct FindingStatusProofResponse {
     proof_input_b64: String,
     signed_epoch_sha256: String,
     signed_epoch_b64: String,
+    service_bond_evidence_sha256: String,
     checked_at: u64,
     valid_until: u64,
 }
@@ -584,6 +585,7 @@ pub(crate) async fn handle_get_finding_status_proof(
         proof_input_b64: STANDARD.encode(proof.proof_bytes),
         signed_epoch_sha256: proof.signed_epoch_sha256,
         signed_epoch_b64: STANDARD.encode(proof.signed_epoch_bytes),
+        service_bond_evidence_sha256: config.status_feed_service_bond.evidence_sha256,
         checked_at: proof.checked_at,
         valid_until: proof.valid_until,
     })

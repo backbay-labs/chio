@@ -645,13 +645,23 @@ impl ChioKernel {
         // Reproduce the delivery verdict deterministically so the replay
         // byte-matches the persisted receipt, whether it was an Allow or a
         // delivery-denial Deny.
-        let delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
+        let mut delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
             expected_output_digest.as_deref(),
             &receipt_content.content_hash,
             matches!(output, ToolCallOutput::Value(_)),
             &receipt_content.canonical_content,
             purchase.as_ref(),
         );
+        if delivery_evaluation.denial.is_none() {
+            if let Err(reason) = self.revalidate_completed_purchase_status(
+                purchase.as_ref(),
+                current_unix_timestamp_ms() / 1_000,
+            ) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase replay output withheld");
+                delivery_evaluation.denial =
+                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
+            }
+        }
         let receipt_visible_content = receipt_visible_delivery_content(
             &receipt_content,
             delivery_evaluation.digest_mismatched,
@@ -1578,13 +1588,23 @@ impl ChioKernel {
                 "purchase-marked delivery requires the frozen identity output plan".to_owned(),
             ));
         }
-        let delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
+        let mut delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
             expected_output_digest.as_deref(),
             resolved_output_digest.as_str(),
             matches!(output, ToolCallOutput::Value(_)),
             &receipt_content.canonical_content,
             purchase.as_ref(),
         );
+        if delivery_evaluation.denial.is_none() {
+            if let Err(reason) = self.revalidate_completed_purchase_status(
+                purchase.as_ref(),
+                current_unix_timestamp_ms() / 1_000,
+            ) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase terminal output withheld");
+                delivery_evaluation.denial =
+                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
+            }
+        }
         let delivery_denied = delivery_evaluation.denial.is_some();
         let projected_terminal_state = if delivery_denied {
             AdmissionOperationState::DeniedAfterDelivery

@@ -1305,6 +1305,9 @@ pub enum DeliveryDenialReason {
     /// The reveal envelope advertised a different media type than the
     /// signed finding.
     MediaTypeMismatch,
+    /// The purchased Finding was no longer live at the terminal release
+    /// boundary after the provider returned.
+    FindingStatusChanged,
 }
 
 #[derive(Debug, Clone, Serialize)]

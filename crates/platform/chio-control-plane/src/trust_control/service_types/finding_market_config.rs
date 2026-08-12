@@ -286,7 +286,8 @@ pub(crate) fn require_status_feed_through(
 
 /// Live service bond that makes missed inclusion and equivocation objective
 /// slash conditions for a status-feed operator.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct FindingStatusServiceBond {
     pub bond_id: String,
     pub feed_id: String,
@@ -303,7 +304,9 @@ pub struct FindingStatusServiceBond {
 }
 
 impl FindingStatusServiceBond {
-    pub(crate) fn validate(&self, operator: &FindingStatusOperatorPin) -> Result<(), CliError> {
+    /// Validate the exact deployment-pinned bond against its operator
+    /// authorization and objective slash conditions.
+    pub fn validate(&self, operator: &FindingStatusOperatorPin) -> Result<(), CliError> {
         if self.bond_id.trim().is_empty() || self.bond_id.trim() != self.bond_id {
             return Err(CliError::cli_other_error(
                 "finding-market status service bond id is invalid".to_string(),

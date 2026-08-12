@@ -1248,6 +1248,17 @@ fn validate_denied_receipt_reason_and_delivery_metadata(
                         && finding.media_type_check == FindingMediaTypeCheck::Mismatched
                 })
         }
+        DeliveryDenialReason::FindingStatusChanged => {
+            guard == "finding_status"
+                && decision_reason == "finding status changed before durable output release"
+                && delivery.result == DeliveryResult::Matched
+                && delivery.expected_digest == delivery.observed_digest
+                && finding.as_ref().is_some_and(|finding| {
+                    finding.digest_check == DeliveryResult::Matched
+                        && finding.media_type_check == FindingMediaTypeCheck::Matched
+                        && finding.status_proof.is_some()
+                })
+        }
     };
     if !valid {
         return Err(mismatch());

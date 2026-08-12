@@ -1,9 +1,11 @@
 use super::CliError;
 
+use std::collections::BTreeSet;
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 
 const FINDING_STATUS_FLOOR_MAX_BYTES: usize = 16 * 1024;
+const FINDING_STATUS_FLOOR_SCHEMA_V1: &str = "chio.finding.status-cli-floor.v1";
 const FINDING_STATUS_FLOOR_SCHEMA_V2: &str = "chio.finding.status-cli-floor.v2";
 const FINDING_STATUS_RETRACTION_MAX_BYTES: usize = 4 * 1024;
 const FINDING_STATUS_RETRACTION_SCHEMA_V1: &str = "chio.finding.status-cli-retraction.v1";
@@ -23,6 +25,51 @@ pub(super) struct FindingStatusCliFloor {
     pub(super) map_epoch: u64,
     pub(super) epoch_id: String,
     pub(super) root_hash: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct FindingStatusCliFloorV1 {
+    pub(super) schema: String,
+    pub(super) feed_id: String,
+    pub(super) operator_id: String,
+    pub(super) rotation_policy_ref: String,
+    pub(super) operator_key_epoch: u64,
+    #[serde(default)]
+    pub(super) operator_key: Option<chio_core_types::PublicKey>,
+    pub(super) operator_authorization_sha256: String,
+    pub(super) key_domain_nonce: u64,
+    pub(super) map_epoch: u64,
+    pub(super) epoch_id: String,
+    pub(super) root_hash: String,
+    #[serde(default)]
+    pub(super) retracted_finding_ids: BTreeSet<String>,
+}
+
+enum FindingStatusCliFloorState {
+    V1(FindingStatusCliFloorV1),
+    V2(FindingStatusCliFloor),
+}
+
+impl FindingStatusCliFloorV1 {
+    fn into_v2(self) -> (FindingStatusCliFloor, BTreeSet<String>) {
+        (
+            FindingStatusCliFloor {
+                schema: FINDING_STATUS_FLOOR_SCHEMA_V2.to_owned(),
+                feed_id: self.feed_id,
+                operator_id: self.operator_id,
+                rotation_policy_ref: self.rotation_policy_ref,
+                operator_key_epoch: self.operator_key_epoch,
+                operator_key: self.operator_key,
+                operator_authorization_sha256: self.operator_authorization_sha256,
+                key_domain_nonce: self.key_domain_nonce,
+                map_epoch: self.map_epoch,
+                epoch_id: self.epoch_id,
+                root_hash: self.root_hash,
+            },
+            self.retracted_finding_ids,
+        )
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -172,7 +219,9 @@ fn write_canonical_state<T: serde::Serialize>(
     write_result
 }
 
-pub(super) fn read_status_floor(path: &Path) -> Result<Option<FindingStatusCliFloor>, CliError> {
+fn read_status_floor_state(
+    path: &Path,
+) -> Result<Option<FindingStatusCliFloorState>, CliError> {
     let Some(bytes) = read_canonical_state(
         path,
         FINDING_STATUS_FLOOR_MAX_BYTES,
@@ -181,7 +230,35 @@ pub(super) fn read_status_floor(path: &Path) -> Result<Option<FindingStatusCliFl
     else {
         return Ok(None);
     };
-    Ok(Some(serde_json::from_slice(&bytes)?))
+    let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+    let schema = value
+        .get("schema")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            CliError::cli_other_error("finding status rollback floor has no schema".to_owned())
+        })?;
+    match schema {
+        FINDING_STATUS_FLOOR_SCHEMA_V1 => Ok(Some(FindingStatusCliFloorState::V1(
+            serde_json::from_value(value)?,
+        ))),
+        FINDING_STATUS_FLOOR_SCHEMA_V2 => Ok(Some(FindingStatusCliFloorState::V2(
+            serde_json::from_value(value)?,
+        ))),
+        _ => Err(CliError::cli_other_error(
+            "finding status rollback floor schema is unsupported".to_owned(),
+        )),
+    }
+}
+
+#[cfg(test)]
+pub(super) fn read_status_floor(path: &Path) -> Result<Option<FindingStatusCliFloor>, CliError> {
+    match read_status_floor_state(path)? {
+        Some(FindingStatusCliFloorState::V2(floor)) => Ok(Some(floor)),
+        Some(FindingStatusCliFloorState::V1(_)) => Err(CliError::cli_other_error(
+            "finding status v1 rollback floor requires a verified migration".to_owned(),
+        )),
+        None => Ok(None),
+    }
 }
 
 pub(super) fn write_status_floor(
@@ -311,9 +388,12 @@ pub(super) fn advance_status_floor(
     authorization_sha256: &str,
 ) -> Result<(), CliError> {
     let _lock = FindingStatusFloorLock::acquire(path)?;
-    if let Some(current) = read_status_floor(path)? {
-        if current.schema != FINDING_STATUS_FLOOR_SCHEMA_V2
-            || current.feed_id != status.feed_id
+    if let Some(state) = read_status_floor_state(path)? {
+        let (current, legacy_retractions) = match state {
+            FindingStatusCliFloorState::V1(floor) => floor.into_v2(),
+            FindingStatusCliFloorState::V2(floor) => (floor, BTreeSet::new()),
+        };
+        if current.feed_id != status.feed_id
             || current.operator_id != authorization.operator.authority_id
             || current.rotation_policy_ref != authorization.operator.rotation_policy_ref
             || current.key_domain_nonce != status.key_domain_nonce
@@ -354,6 +434,31 @@ pub(super) fn advance_status_floor(
             return Err(CliError::cli_other_error(
                 "finding status response equivocates at the durable rollback floor".to_owned(),
             ));
+        }
+        for finding_id in &legacy_retractions {
+            if finding_id.len() != 64
+                || !finding_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            {
+                return Err(CliError::cli_other_error(
+                    "finding status v1 rollback floor contains an invalid retraction id"
+                        .to_owned(),
+                ));
+            }
+            persist_status_retraction(
+                path,
+                &FindingStatusFloorObservation {
+                    feed_id: &current.feed_id,
+                    key_domain_nonce: current.key_domain_nonce,
+                    map_epoch: current.map_epoch,
+                    epoch_id: &current.epoch_id,
+                    root_hash: &current.root_hash,
+                    finding_id,
+                    is_retracted: true,
+                },
+                authorization,
+            )?;
         }
     }
 
