@@ -313,6 +313,7 @@ pub fn validate_supported_finding_verifier_profile(
 ) -> Result<(), FindingVerifierError> {
     if profile.required_receipt_semantics != MEDIATED_SPEND_PROFILE
         || profile.predicate_engine != FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1
+        || profile.verifier_report_signer.key == profile.governance_authority
         || profile.required_facets.iter().any(|facet| {
             matches!(
                 facet,
@@ -1884,6 +1885,7 @@ pub fn sign_finding_verifier_report(
     verifier_keypair: &Keypair,
 ) -> Result<SignedFindingVerifierReport, FindingVerifierError> {
     let profile = &trust.profile.body;
+    validate_supported_finding_verifier_profile(profile)?;
     let profile_envelope_bytes =
         canonical_json_bytes(&trust.profile).map_err(|_| FindingVerifierError::Canonicalization)?;
     let profile_envelope_sha256 = sha256_hex(&profile_envelope_bytes);

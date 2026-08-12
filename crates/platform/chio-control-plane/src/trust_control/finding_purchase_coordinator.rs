@@ -29,8 +29,9 @@ use chio_finding::{
     verify_finding, verify_signed_bond_backing, verify_signed_seller_authorization, Finding,
     FindingAuthorityKeyPolicy, FindingFailedDelivery, FindingHoldReleaseTerminal,
     FindingPurchaseRecord, SignedFindingAdmission, SignedFindingBondBacking,
-    SignedFindingFailedDelivery, SignedFindingPurchaseRecord, SignedFindingSellerAuthorization,
-    FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
+    SignedFindingFailedDelivery, SignedFindingMarketTerms, SignedFindingPurchaseRecord,
+    SignedFindingSellerAuthorization, FINDING_FAILED_DELIVERY_SCHEMA_V1,
+    FINDING_PURCHASE_RECORD_SCHEMA_V1,
 };
 use chio_kernel::admission_operation::{
     AdmissionOperationState, AdmissionOperationStore, AdmissionReceiptMetadataV1,
@@ -135,6 +136,8 @@ pub enum PurchaseCoordinatorError {
     AdmissionMismatch,
     #[error("venue admission is not the current admission for this finding")]
     AdmissionNotCurrent,
+    #[error("finding participation binding rejected: {0}")]
+    ParticipationBinding(String),
     #[error("admission-declared {0} authority is not the coordinator signing key")]
     DeclaredAuthorityMismatch(&'static str),
     #[error("admission-declared {0} authority window does not cover the reservation instant")]
@@ -376,6 +379,39 @@ impl FindingPurchaseCoordinator {
         if current.envelope_sha256 != admission_envelope_sha256 {
             return Err(PurchaseCoordinatorError::AdmissionNotCurrent);
         }
+        if now < current.activated_at {
+            return Err(PurchaseCoordinatorError::ParticipationBinding(
+                "reservation clock predates admission activation".to_owned(),
+            ));
+        }
+        let terms_bytes = self
+            .admissions
+            .get_recipe_blob(&admission.body.terms_envelope_sha256)
+            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
+            .ok_or_else(|| {
+                PurchaseCoordinatorError::ParticipationBinding(
+                    "admission-bound terms are not retained".to_owned(),
+                )
+            })?;
+        let terms: SignedFindingMarketTerms =
+            serde_json::from_slice(&terms_bytes).map_err(|_| {
+                PurchaseCoordinatorError::ParticipationBinding(
+                    "admission-bound terms are malformed".to_owned(),
+                )
+            })?;
+        terms
+            .body
+            .validate()
+            .map_err(|error| PurchaseCoordinatorError::ParticipationBinding(error.to_string()))?;
+        if terms.body.finding_id != admission.body.finding_id
+            || terms.body.listing_id != admission.body.listing_id
+        {
+            return Err(PurchaseCoordinatorError::ParticipationBinding(
+                "admission-bound terms name another sale".to_owned(),
+            ));
+        }
+        let participation_epoch =
+            now.saturating_sub(current.activated_at) / terms.body.audit_epoch_length_secs;
         // The ask mints the delivery grant and prices the sale against the
         // seller's collateral, so its signer must be a principal the
         // finding issuer authorized for exactly this sale surface. The
@@ -525,6 +561,8 @@ impl FindingPurchaseCoordinator {
             bid_envelope_sha256: &bid_envelope_sha256,
             ask_digest: &ask_digest,
             admission_envelope_sha256: &admission_envelope_sha256,
+            fee_schedule_envelope_sha256: &admission.body.fee_schedule_envelope_sha256,
+            participation_epoch,
             amount_units: ask.body.quoted_price.units,
             currency: &ask.body.quoted_price.currency,
             expires_at,

@@ -146,6 +146,28 @@ fn install_active_admission(
             ],
         )
         .expect("insert active admission");
+    let fee_schedule_envelope_sha256 = hex64('5');
+    transaction
+        .execute(
+            r#"
+            INSERT OR IGNORE INTO fee_events (
+                idempotency_key, fee_schedule_envelope_sha256, event_kind,
+                epoch_index, finding_id, listing_id, payer, amount_units,
+                currency, pool_principal_id, rail_destination,
+                instruction_sha256, observation_sha256, state
+            ) VALUES (?1, ?2, 'participation_epoch', 0, ?3, ?4, 'seller', 1,
+                      'USD', 'pool:audit', 'rail:audit', ?5, ?6, 'reconciled')
+            "#,
+            params![
+                format!("{fee_schedule_envelope_sha256}:participation_epoch:0:{finding_id}:{listing_id}"),
+                &fee_schedule_envelope_sha256,
+                &finding_id,
+                listing_id,
+                hex64('8'),
+                hex64('9'),
+            ],
+        )
+        .expect("insert paid participation epoch");
     store
         .commit_write(transaction)
         .expect("commit admission seed");
@@ -246,6 +268,7 @@ struct Purchase {
     bid_envelope_sha256: String,
     ask_digest: String,
     admission_envelope_sha256: String,
+    fee_schedule_envelope_sha256: String,
     amount_units: u64,
     expires_at: u64,
 }
@@ -263,6 +286,7 @@ impl Purchase {
             bid_envelope_sha256: chio_core::sha256_hex(format!("bid-{tag}").as_bytes()),
             ask_digest: chio_core::sha256_hex(format!("ask-{tag}").as_bytes()),
             admission_envelope_sha256: hex64('c'),
+            fee_schedule_envelope_sha256: hex64('5'),
             amount_units,
             expires_at: EXPIRES_AT,
         }
@@ -286,6 +310,8 @@ impl Purchase {
             bid_envelope_sha256: &self.bid_envelope_sha256,
             ask_digest: &self.ask_digest,
             admission_envelope_sha256: &self.admission_envelope_sha256,
+            fee_schedule_envelope_sha256: &self.fee_schedule_envelope_sha256,
+            participation_epoch: 0,
             amount_units: self.amount_units,
             currency: "USD",
             expires_at: self.expires_at,
@@ -615,6 +641,24 @@ fn open_reservation_requires_a_matching_active_admission() {
         .store
         .get_encumbrance(&missing.reservation_id)
         .expect("missing-admission encumbrance lookup")
+        .is_none());
+    assert_eq!(outstanding_exposure(&fixture, NOW), 0);
+}
+
+#[test]
+fn open_reservation_requires_contiguous_payment_through_the_current_epoch() {
+    let fixture = fixture();
+    let purchase = Purchase::new("unpaid-participation", LISTING_ID, 10);
+    let mut input = purchase.input(&fixture.allocation_id);
+    input.participation_epoch = 1;
+    assert!(matches!(
+        fixture.store.open_reservation(&input),
+        Err(FindingPurchaseStoreError::ParticipationUnpaid(1))
+    ));
+    assert!(fixture
+        .store
+        .get_reservation(&purchase.reservation_id)
+        .expect("unpaid reservation lookup")
         .is_none());
     assert_eq!(outstanding_exposure(&fixture, NOW), 0);
 }

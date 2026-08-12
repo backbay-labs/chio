@@ -256,6 +256,25 @@ fn signed_verifier_authority_status(
     )?)
 }
 
+fn signed_venue_authority_status(
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(6, "venue");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
 fn collateral_registration_raw(
     backing: &SignedFindingBondBacking,
     observed_at: u64,
@@ -1234,6 +1253,9 @@ impl MarketWeb {
     fn activate_request(&self) -> Result<String, AnyError> {
         Ok(serde_json::json!({
             "admission": serde_json::to_value(&self.admission)?,
+            "venueAuthorityStatus": serde_json::to_value(signed_venue_authority_status(
+                unix_timestamp_now(),
+            )?)?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
             "terms": serde_json::to_value(&self.terms)?,
             "backing": serde_json::to_value(&self.backing)?,
@@ -4820,6 +4842,9 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     wait_until_unix(second_report.body.evaluation_time).await;
     let activate = serde_json::json!({
         "admission": serde_json::to_value(&second_admission)?,
+        "venueAuthorityStatus": serde_json::to_value(signed_venue_authority_status(
+            unix_timestamp_now(),
+        )?)?,
         "sellerAuthorization": serde_json::to_value(&web.authorization)?,
         "terms": serde_json::to_value(&web.terms)?,
         "backing": serde_json::to_value(&second_backing)?,

@@ -925,6 +925,7 @@ pub(crate) async fn handle_register_finding_collateral(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct FindingActivateRequest {
     pub admission: SignedFindingAdmission,
+    pub venue_authority_status: SignedFindingAuthorityStatus,
     pub seller_authorization: SignedFindingSellerAuthorization,
     pub terms: SignedFindingMarketTerms,
     pub backing: SignedFindingBondBacking,
@@ -933,6 +934,44 @@ pub(crate) struct FindingActivateRequest {
     pub verifier_authority_status: SignedFindingAuthorityStatus,
     pub listing: SignedGenericListing,
     pub pricing_hint: chio_open_market::listing::SignedListingPricingHint,
+}
+
+pub(crate) fn verify_venue_authority_lifecycle(
+    admission: &SignedFindingAdmission,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<(), String> {
+    let venue_key = config.venue.key().map_err(|error| error.to_string())?;
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live at activation".into());
+    }
+    if status.status_ref != config.venue.revocation_status_ref
+        || status.authority_id != config.venue.authority_id
+        || status.key != venue_key
+        || status.key_epoch != config.venue.key_epoch
+    {
+        return Err("venue authority status does not bind the deployment pin".into());
+    }
+    if status.observed_at < admission.body.issued_at {
+        return Err("venue authority status predates the admission".into());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("venue authority status is not a fresh current reading".into());
+    }
+    if status.revoked_from.is_some() {
+        return Err("venue authority is revoked at activation".into());
+    }
+    Ok(())
 }
 
 pub(crate) fn verify_profile_for_activation(
@@ -1115,6 +1154,14 @@ pub(crate) async fn handle_activate_finding(
             StatusCode::BAD_REQUEST,
             "finding venue authority is not live for admission activation",
         );
+    }
+    if let Err(error) = verify_venue_authority_lifecycle(
+        &request.admission,
+        &request.venue_authority_status,
+        &config,
+        now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     let admission_json = match chio_core::canonical_json_bytes(&request.admission)
         .map_err(|_| ())

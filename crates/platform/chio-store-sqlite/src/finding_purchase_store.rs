@@ -162,6 +162,8 @@ pub enum FindingPurchaseStoreError {
     DestinationSlotsExhausted(String),
     #[error("new purchases are blocked on listing {0}")]
     SalesBlocked(String),
+    #[error("finding participation is not paid through epoch {0}")]
+    ParticipationUnpaid(u64),
     #[error("finding purchase commit outcome is unknown: {0}")]
     OutcomeUnknown(String),
 }
@@ -223,6 +225,12 @@ pub struct FindingPurchaseReservationInput<'a> {
     pub bid_envelope_sha256: &'a str,
     pub ask_digest: &'a str,
     pub admission_envelope_sha256: &'a str,
+    /// Fee schedule bound by the verified current admission.
+    pub fee_schedule_envelope_sha256: &'a str,
+    /// Participation epoch derived from the retained admitted terms at
+    /// `created_at`. The store requires every epoch through this one to be
+    /// reconciled in the same transaction that opens the reservation.
+    pub participation_epoch: u64,
     pub amount_units: u64,
     pub currency: &'a str,
     pub expires_at: u64,
@@ -431,6 +439,7 @@ impl SqliteFindingPurchaseStore {
     /// Seed the sibling admission table for cross-store unit tests whose
     /// subject is purchase or challenge transactionality, not activation.
     #[cfg(any(test, feature = "cognition-market-test-support"))]
+    #[allow(clippy::too_many_arguments)]
     pub fn install_active_admission_for_tests(
         &self,
         finding_id: &str,
@@ -438,6 +447,7 @@ impl SqliteFindingPurchaseStore {
         listing_id: &str,
         admission_id: &str,
         admission_envelope_sha256: &str,
+        fee_schedule_envelope_sha256: &str,
         activated_at: u64,
     ) -> Result<(), FindingPurchaseStoreError> {
         let mut connection = self.connection()?;
@@ -465,6 +475,29 @@ impl SqliteFindingPurchaseStore {
                     admission_envelope_sha256,
                     1_900_000_000_i64,
                     sqlite_i64(activated_at, "activated_at")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        transaction
+            .execute(
+                r#"
+                INSERT OR IGNORE INTO fee_events (
+                    idempotency_key, fee_schedule_envelope_sha256, event_kind,
+                    epoch_index, finding_id, listing_id, payer, amount_units,
+                    currency, pool_principal_id, rail_destination,
+                    instruction_sha256, observation_sha256, state
+                ) VALUES (?1, ?2, 'participation_epoch', 0, ?3, ?4, 'seller', 1,
+                          'USD', 'pool:audit', 'rail:audit', ?5, ?6, 'reconciled')
+                "#,
+                params![
+                    format!(
+                        "{fee_schedule_envelope_sha256}:participation_epoch:0:{finding_id}:{listing_id}"
+                    ),
+                    fee_schedule_envelope_sha256,
+                    finding_id,
+                    listing_id,
+                    "8".repeat(64),
+                    "9".repeat(64),
                 ],
             )
             .map_err(sqlite_error)?;
@@ -517,6 +550,7 @@ impl SqliteFindingPurchaseStore {
                 "reservation id is already bound to different purchase parameters".to_owned(),
             ));
         }
+        assert_participation_paid(&transaction, input)?;
         reject_bound_identifier(
             &transaction,
             "SELECT reservation_id FROM purchase_reservations WHERE purchase_intent_id = ?1",
@@ -2332,6 +2366,52 @@ fn assert_active_admission(
     Ok(())
 }
 
+/// Require the verified admission's participation fees to be reconciled
+/// contiguously through the epoch containing this reservation's trusted
+/// creation clock. The check shares the reservation's immediate transaction,
+/// so an unpaid sale cannot open durable exposure or payout capacity.
+fn assert_participation_paid(
+    transaction: &Transaction<'_>,
+    input: &FindingPurchaseReservationInput<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let mut statement = transaction
+        .prepare(
+            r#"
+            SELECT DISTINCT epoch_index FROM fee_events
+            WHERE finding_id = ?1 AND listing_id = ?2
+              AND fee_schedule_envelope_sha256 = ?3
+              AND event_kind = 'participation_epoch' AND state = 'reconciled'
+              AND epoch_index <= ?4
+            ORDER BY epoch_index ASC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let mut rows = statement
+        .query(params![
+            input.finding_id,
+            input.listing_id,
+            input.fee_schedule_envelope_sha256,
+            sqlite_i64(input.participation_epoch, "participation_epoch")?,
+        ])
+        .map_err(sqlite_error)?;
+    let mut expected = 0_u64;
+    while let Some(row) = rows.next().map_err(sqlite_error)? {
+        let epoch = stored_u64(row.get::<_, i64>(0).map_err(sqlite_error)?, "epoch_index")?;
+        if epoch != expected {
+            break;
+        }
+        if epoch == input.participation_epoch {
+            return Ok(());
+        }
+        expected = expected
+            .checked_add(1)
+            .ok_or_else(|| invariant("participation epoch overflowed u64"))?;
+    }
+    Err(FindingPurchaseStoreError::ParticipationUnpaid(
+        input.participation_epoch,
+    ))
+}
+
 /// Reject a natural key already bound to a different reservation. The
 /// unique indexes make this unreachable as a silent overwrite; catching it
 /// here turns a constraint abort into a typed conflict.
@@ -2538,6 +2618,11 @@ fn validate_reservation_input(
     require_hex64(input.bid_envelope_sha256, "bid_envelope_sha256")?;
     require_hex64(input.ask_digest, "ask_digest")?;
     require_hex64(input.admission_envelope_sha256, "admission_envelope_sha256")?;
+    require_hex64(
+        input.fee_schedule_envelope_sha256,
+        "fee_schedule_envelope_sha256",
+    )?;
+    let _ = sqlite_i64(input.participation_epoch, "participation_epoch")?;
     require_hex64(input.allocation_id, "allocation_id")?;
     require_currency(input.currency)?;
     if input.amount_units == 0 {

@@ -172,6 +172,26 @@ fn signed_verifier_authority_status(
     )?)
 }
 
+fn signed_venue_authority_status(
+    observed_at: u64,
+    revoked_from: Option<u64>,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(6, "venue");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
 fn signed_collateral_authority_status(
     observed_at: u64,
     revoked_from: Option<u64>,
@@ -1231,6 +1251,10 @@ impl MarketWeb {
     ) -> Result<String, AnyError> {
         let body = serde_json::json!({
             "admission": serde_json::to_value(admission)?,
+            "venueAuthorityStatus": serde_json::to_value(signed_venue_authority_status(
+                unix_timestamp_now(),
+                None,
+            )?)?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
             "terms": serde_json::to_value(&self.terms)?,
             "backing": serde_json::to_value(&self.backing)?,
@@ -1584,6 +1608,18 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
 
     // Rejection sweep over the activation surface. Every leg asserts the
     // specific status and that nothing was admitted.
+
+    let now = unix_timestamp_now();
+    let mut revoked_venue_request: serde_json::Value =
+        serde_json::from_str(&web.activate_request(&web.admission, &web.schedule, &web.report)?)?;
+    revoked_venue_request["venueAuthorityStatus"] =
+        serde_json::to_value(signed_venue_authority_status(now, Some(now))?)?;
+    assert_activation_rejected(
+        &stack,
+        revoked_venue_request.to_string(),
+        "venue authority is revoked at activation",
+    )
+    .await?;
 
     // Wrong pricing-hint binding.
     let mut wrong_hint =
@@ -2565,6 +2601,9 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
         .evaluation_time
         .saturating_add(FINDING_AUTHORITY_STATUS_MAX_AGE_SECS + 1);
     let live_status = signed_verifier_authority_status(now, None)?;
+    let live_venue_status = signed_venue_authority_status(now, None)?;
+    verify_venue_authority_lifecycle(&stack.web.admission, &live_venue_status, &config, now)
+        .map_err(std::io::Error::other)?;
     verify_profile_for_activation(&profile, &profile_sha256, &config, now)
         .map_err(std::io::Error::other)?;
     verify_report_authority_lifecycle(
@@ -2620,6 +2659,15 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
         &revoked_status,
         &profile,
         &stack.web.finding,
+        &config,
+        now,
+    )
+    .is_err());
+
+    let revoked_venue_status = signed_venue_authority_status(now, Some(now))?;
+    assert!(verify_venue_authority_lifecycle(
+        &stack.web.admission,
+        &revoked_venue_status,
         &config,
         now,
     )

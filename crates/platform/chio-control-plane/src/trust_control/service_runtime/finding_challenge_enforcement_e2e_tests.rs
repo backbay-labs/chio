@@ -837,6 +837,7 @@ struct Deployment {
     status: chio_store_sqlite::SqliteFindingStatusStore,
     allocation_id: String,
     admission_envelope_sha256: String,
+    fee_schedule_envelope_sha256: String,
     rail: Arc<RecordingRail>,
     filings: Arc<PublishedArtifacts>,
 }
@@ -893,12 +894,14 @@ fn deployment_publishing_terms_and_rounds(
     };
     let admission = signed_admission(&allocation_id, &terms)?;
     let admission_envelope_sha256 = signed_envelope_sha256(&admission)?;
+    let fee_schedule_envelope_sha256 = admission.body.fee_schedule_envelope_sha256.clone();
     purchases.install_active_admission_for_tests(
         &admission.body.finding_id,
         &allocation_id,
         LISTING_ID,
         &admission.body.admission_id,
         &admission_envelope_sha256,
+        &fee_schedule_envelope_sha256,
         NOW,
     )?;
     let config = market_config();
@@ -958,6 +961,7 @@ fn deployment_publishing_terms_and_rounds(
         status,
         allocation_id,
         admission_envelope_sha256,
+        fee_schedule_envelope_sha256,
         rail: Arc::new(RecordingRail::default()),
         filings: Arc::new(filings),
     })
@@ -1052,6 +1056,7 @@ impl Deployment {
             status,
             allocation_id,
             admission_envelope_sha256,
+            fee_schedule_envelope_sha256,
             rail,
             filings,
         } = self;
@@ -1078,6 +1083,7 @@ impl Deployment {
             status,
             allocation_id,
             admission_envelope_sha256,
+            fee_schedule_envelope_sha256,
             rail,
             filings,
         })
@@ -2056,6 +2062,8 @@ fn digest_mismatch_case(
             bid_envelope_sha256: &hex64('c'),
             ask_digest: &digest("deny-ask"),
             admission_envelope_sha256: &deployment.admission_envelope_sha256,
+            fee_schedule_envelope_sha256: &deployment.fee_schedule_envelope_sha256,
+            participation_epoch: 0,
             amount_units: 100,
             currency: "USD",
             expires_at: NOW + 3_600,
@@ -2832,6 +2840,8 @@ fn settle_purchase_with(
             bid_envelope_sha256: &bid,
             ask_digest: &ask_digest,
             admission_envelope_sha256: &deployment.admission_envelope_sha256,
+            fee_schedule_envelope_sha256: &deployment.fee_schedule_envelope_sha256,
+            participation_epoch: 0,
             amount_units: 100,
             currency: "USD",
             expires_at: now + 3_600,
@@ -11190,6 +11200,8 @@ fn finding_challenge_an_expired_reservation_neither_wedges_nor_inflates_the_clai
             bid_envelope_sha256: &digest("bid-abandoned"),
             ask_digest: &digest("ask-abandoned"),
             admission_envelope_sha256: &deployment.admission_envelope_sha256,
+            fee_schedule_envelope_sha256: &deployment.fee_schedule_envelope_sha256,
+            participation_epoch: 0,
             amount_units: 100,
             currency: "USD",
             expires_at: NOW + 5,

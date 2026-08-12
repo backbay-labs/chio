@@ -64,6 +64,7 @@ fn fixture() -> Fixture {
             LISTING_ID,
             &hex64('d'),
             &hex64('c'),
+            &hex64('5'),
             NOW,
         )
         .expect("install active admission");
@@ -733,6 +734,8 @@ fn reserve_slot(fixture: &Fixture, tag: &str, listing_id: &str, allocation_id: &
             bid_envelope_sha256: &bid,
             ask_digest: &ask,
             admission_envelope_sha256: &admission,
+            fee_schedule_envelope_sha256: &hex64('5'),
+            participation_epoch: 0,
             amount_units: 10,
             currency: "USD",
             expires_at: NOW + 3_600,
@@ -2149,6 +2152,8 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
             bid_envelope_sha256: &digest("bid-gamma"),
             ask_digest: &digest("ask-gamma"),
             admission_envelope_sha256: &hex64('c'),
+            fee_schedule_envelope_sha256: &hex64('5'),
+            participation_epoch: 0,
             amount_units: 10,
             currency: "USD",
             expires_at: NOW + 3_600,

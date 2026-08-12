@@ -109,6 +109,40 @@ fn unpinned_profile_or_empty_kernel_keys_reject_outright() -> TestResult {
 }
 
 #[test]
+fn governance_and_report_signing_keys_must_be_distinct() -> TestResult {
+    let fx = fixture()?;
+    let trusted = trust_roots(&fx);
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trusted, &bundle(&fx, clone_receipts(&fx)))?;
+
+    let mut profile = fx.profile.body.clone();
+    profile.verifier_report_signer.key = fx.governance.public_key();
+    profile.profile_id = compute_profile_id(&profile)?;
+    assert_eq!(
+        validate_supported_finding_verifier_profile(&profile).err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
+
+    let mut aliased = trust_roots(&fx);
+    aliased.profile = SignedExportEnvelope::sign(profile, &fx.governance)?;
+    assert_eq!(
+        verify_finding_evidence(&fx.raw_finding, &aliased, &bundle(&fx, clone_receipts(&fx))).err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
+    assert_eq!(
+        sign_finding_verifier_report(
+            &draft,
+            &aliased,
+            "chio-finding-verifier/0.1",
+            &fx.governance,
+        )
+        .err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
+    Ok(())
+}
+
+#[test]
 fn unsupported_profile_requirements_reject_outright() -> TestResult {
     let fx = fixture()?;
 
