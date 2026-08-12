@@ -143,6 +143,19 @@ fn governance_and_report_signing_keys_must_be_distinct() -> TestResult {
 }
 
 #[test]
+fn runtime_attestation_and_appraisal_authorities_must_be_distinct() -> TestResult {
+    let fx = runtime_fixture(RuntimeAssuranceTier::Verified)?;
+    let mut trust = runtime_trust_roots(&fx);
+    trust.appraisal_authority = trust.runtime_attestation_authority.clone();
+
+    assert_eq!(
+        verify_finding_evidence(&fx.fixture.raw_finding, &trust, &runtime_bundle(&fx),).err(),
+        Some(FindingVerifierError::AliasedRuntimeAssuranceAuthorities)
+    );
+    Ok(())
+}
+
+#[test]
 fn unsupported_profile_requirements_reject_outright() -> TestResult {
     let fx = fixture()?;
 

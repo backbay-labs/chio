@@ -394,7 +394,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/trust/chio-finding-verifier/tests/verifier.rs": allow(
         "2026-08-31",
         "cognition finding verifier regression suite; capped to current size until split",
-        max_lines=2_014,
+        max_lines=2_020,
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",

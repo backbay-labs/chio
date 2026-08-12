@@ -103,6 +103,33 @@ fn expired_checkpoint_signer_cannot_backdate_new_evidence() -> TestResult {
 }
 
 #[test]
+fn expired_checkpoint_status_authority_denies_receipts_and_checkpoints() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    trust
+        .checkpoint_signer_status
+        .as_mut()
+        .ok_or("checkpoint signer status trust missing")?
+        .status_authority
+        .valid_until = trust.trusted_time;
+
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    let authenticity = draft
+        .facets()
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
+        .ok_or("receipt-authenticity facet missing")?;
+    assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
+    assert!(authenticity.reason.contains("not live at evaluation"));
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::CheckpointMembership),
+        Some(FindingFacetOutcome::Failed)
+    );
+    Ok(())
+}
+
+#[test]
 fn resolved_nonce_envelopes_change_the_bundle_commitment() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);

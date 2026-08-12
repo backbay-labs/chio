@@ -310,7 +310,18 @@ fn verify_checkpoint_signer_status(
             checkpoint_seq,
         ));
     }
-    if trust.status_authority == signer.key {
+    if trust
+        .status_authority
+        .validate("checkpoint signer status authority")
+        .is_err()
+        || trusted_time < trust.status_authority.valid_from
+        || trusted_time >= trust.status_authority.valid_until
+    {
+        return Err(CheckpointMembershipError::SignerStatusTrustInvalid(
+            checkpoint_seq,
+        ));
+    }
+    if trust.status_authority.key == signer.key {
         return Err(CheckpointMembershipError::SignerStatusTrustInvalid(
             checkpoint_seq,
         ));
@@ -332,9 +343,16 @@ fn verify_checkpoint_signer_status(
             checkpoint_seq,
         ));
     }
-    verify_signed_authority_status(signed_status, &trust.status_authority)
+    verify_signed_authority_status(signed_status, &trust.status_authority.key)
         .map_err(|_| CheckpointMembershipError::SignerStatusSignatureInvalid(checkpoint_seq))?;
     let status = &signed_status.body;
+    if status.observed_at < trust.status_authority.valid_from
+        || status.observed_at >= trust.status_authority.valid_until
+    {
+        return Err(CheckpointMembershipError::SignerStatusTrustInvalid(
+            checkpoint_seq,
+        ));
+    }
     if status.observed_at < checkpoint_issued_at
         || status.observed_at > trusted_time
         || trusted_time.saturating_sub(status.observed_at) > trust.max_age_secs
@@ -413,7 +431,15 @@ mod tests {
         )?;
         let trust = FindingCheckpointSignerStatusTrust {
             signed_statuses: vec![signed_status],
-            status_authority: signer_key,
+            status_authority: FindingAuthorityKeyPolicy {
+                authority_id: "checkpoint-status".to_owned(),
+                key: signer_key,
+                key_epoch: 1,
+                valid_from: 1,
+                valid_until: 200,
+                rotation_policy_ref: "rotation/checkpoint-status".to_owned(),
+                revocation_status_ref: "revocations/checkpoint-status".to_owned(),
+            },
             max_age_secs: 60,
         };
 

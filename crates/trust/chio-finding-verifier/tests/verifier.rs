@@ -706,7 +706,15 @@ fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
             signed_statuses: std::iter::once(fx.checkpoint_signer_status.clone())
                 .chain(fx.receipt_signer_statuses.iter().cloned())
                 .collect(),
-            status_authority: fx.checkpoint_status_authority.public_key(),
+            status_authority: FindingAuthorityKeyPolicy {
+                authority_id: "checkpoint-status-authority".to_owned(),
+                key: fx.checkpoint_status_authority.public_key(),
+                key_epoch: 1,
+                valid_from: 1_749_999_000,
+                valid_until: 1_750_001_000,
+                rotation_policy_ref: "rotation/checkpoint-status-authority".to_owned(),
+                revocation_status_ref: "revocations/checkpoint-status-authority".to_owned(),
+            },
             max_age_secs: 300,
         }),
         trusted_time: 1_750_000_010,

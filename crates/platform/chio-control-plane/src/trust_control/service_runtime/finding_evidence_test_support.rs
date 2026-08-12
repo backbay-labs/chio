@@ -8,7 +8,7 @@ use chio_core::receipt::metadata::{
 };
 use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_finding::{
-    Finding, FindingAuthorityStatus, SignedFindingBondBacking,
+    Finding, FindingAuthorityKeyPolicy, FindingAuthorityStatus, SignedFindingBondBacking,
     SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms, SignedFindingVerifierReport,
     FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
@@ -178,7 +178,15 @@ pub(super) fn checkpoint_status_trust(
     }
     Ok(FindingCheckpointSignerStatusTrust {
         signed_statuses,
-        status_authority: status_authority.public_key(),
+        status_authority: FindingAuthorityKeyPolicy {
+            authority_id: "checkpoint-status-authority".to_owned(),
+            key: status_authority.public_key(),
+            key_epoch: 1,
+            valid_from: observed_at.saturating_sub(86_400),
+            valid_until: observed_at.saturating_add(86_400),
+            rotation_policy_ref: "rotation/checkpoint-status-authority".to_owned(),
+            revocation_status_ref: "revocations/checkpoint-status-authority".to_owned(),
+        },
         max_age_secs: 300,
     })
 }

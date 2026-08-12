@@ -68,7 +68,7 @@ pub const FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1: &str = "chio.finding.bond-store
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct FindingCheckpointSignerStatusTrust {
     pub signed_statuses: Vec<SignedFindingAuthorityStatus>,
-    pub status_authority: PublicKey,
+    pub status_authority: FindingAuthorityKeyPolicy,
     pub max_age_secs: u64,
 }
 
@@ -90,6 +90,8 @@ pub enum FindingVerifierError {
     FindingInactive,
     #[error("no admitted kernel keys configured")]
     NoAdmittedKernelKeys,
+    #[error("runtime attestation and appraisal authorities must be independent")]
+    AliasedRuntimeAssuranceAuthorities,
     #[error("report body construction failed canonicalization")]
     Canonicalization,
     #[error("report profile does not match the profile used for evaluation")]
@@ -381,7 +383,16 @@ fn verify_receipt_signer_status(
     if trust.max_age_secs == 0 {
         return Err("receipt signer status freshness policy is invalid".to_string());
     }
-    if trust.status_authority == policy.key {
+    trust
+        .status_authority
+        .validate("receipt signer status authority")
+        .map_err(|_| "receipt signer status authority policy is invalid".to_string())?;
+    if evaluated_at < trust.status_authority.valid_from
+        || evaluated_at >= trust.status_authority.valid_until
+    {
+        return Err("receipt signer status authority is not live at evaluation".to_string());
+    }
+    if trust.status_authority.key == policy.key {
         return Err(
             "receipt signer status authority must be independent from the signer".to_string(),
         );
@@ -399,9 +410,16 @@ fn verify_receipt_signer_status(
     if matching.next().is_some() {
         return Err("duplicate receipt signer status evidence".to_string());
     }
-    verify_signed_authority_status(signed_status, &trust.status_authority)
+    verify_signed_authority_status(signed_status, &trust.status_authority.key)
         .map_err(|_| "receipt signer status signature is invalid".to_string())?;
     let status = &signed_status.body;
+    if status.observed_at < trust.status_authority.valid_from
+        || status.observed_at >= trust.status_authority.valid_until
+    {
+        return Err(
+            "receipt signer status was signed outside the status-authority lifecycle".to_string(),
+        );
+    }
     if status.observed_at < acted_at
         || status.observed_at > evaluated_at
         || evaluated_at.saturating_sub(status.observed_at) > trust.max_age_secs
@@ -595,6 +613,15 @@ pub fn verify_finding_evidence(
     }
     if trust.admitted_kernel_keys.is_empty() {
         return Err(FindingVerifierError::NoAdmittedKernelKeys);
+    }
+    if matches!(
+        (
+            trust.runtime_attestation_authority.as_ref(),
+            trust.appraisal_authority.as_ref(),
+        ),
+        (Some(attestation), Some(appraisal)) if attestation == appraisal
+    ) {
+        return Err(FindingVerifierError::AliasedRuntimeAssuranceAuthorities);
     }
     if trust.trusted_time < finding.issued_at || trust.trusted_time >= finding.expires_at {
         return Err(FindingVerifierError::FindingInactive);
@@ -1691,7 +1718,7 @@ fn bundle_digest(
         checkpoint_sha256s: Vec<String>,
         checkpoint_transparency_sha256: String,
         checkpoint_signer_status_sha256s: Vec<String>,
-        checkpoint_status_authority: Option<String>,
+        checkpoint_status_authority_policy_sha256: Option<String>,
         checkpoint_status_max_age_secs: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         finding_delivery_execution_nonce_envelope_sha256: Option<String>,
@@ -1837,10 +1864,13 @@ fn bundle_digest(
         checkpoint_sha256s,
         checkpoint_transparency_sha256: sha256_hex(&checkpoint_transparency_bytes),
         checkpoint_signer_status_sha256s,
-        checkpoint_status_authority: trust
+        checkpoint_status_authority_policy_sha256: trust
             .checkpoint_signer_status
             .as_ref()
-            .map(|status| status.status_authority.to_hex()),
+            .map(|status| canonical_json_bytes(&status.status_authority))
+            .transpose()
+            .map_err(|_| FindingVerifierError::Canonicalization)?
+            .map(|bytes| sha256_hex(&bytes)),
         checkpoint_status_max_age_secs: trust
             .checkpoint_signer_status
             .as_ref()

@@ -173,7 +173,7 @@ fn production_receipt_rejects_self_signed_status() -> TestResult {
         .find(|signed| signed.body.authority_id == "authority-production")
         .ok_or("production signer status missing")?;
     signed_status.signature = signer.sign(&canonical_json_bytes(&signed_status.body)?);
-    status_trust.status_authority = signer.public_key();
+    status_trust.status_authority.key = signer.public_key();
 
     let draft =
         verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
