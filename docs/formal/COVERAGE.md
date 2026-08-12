@@ -936,7 +936,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `d924e941514159c501a3527aedaac85d12c69896ce0ef725faa3ede947cd224c`
+- Input digest: `d89aae2d402d9f29bcf23f1e1be4cdf2f0611f690035a3e76df375acba677f4f`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -947,7 +947,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `.dst/harnesses.toml`: `02c022579994294816ab40683c211766ef131b18a6cd13c2c5692f91fd62f1a1`
 - `.kani/harnesses.toml`: `94aad2994e9b491ad71db8d4e4acafa4573d829b5f22613d722ac1ca6e23e10c`
 - `.loom/harnesses.toml`: `07b7f087e6e7f484c16be0d7cd079def72dcc35e536e02bf241337fc915b562b`
-- `Cargo.lock`: `f88b2f25c65becc27984bb0a076a387b02ec9fbdce0e74dad7a3a442ae966617`
+- `Cargo.lock`: `3647fd81301127f2d7181d80f4d7a6eaf848b0371d306b9539f805d381a1b803`
 - `Cargo.toml`: `e079dbe6e0e695c96d1aaeecb62c42ffb525c94abc163c729b75be437c4e8ff8`
 - `audits/evidence/mutants/chio-weights/2026-05-08.json`: `452aaf5734039a489967a629ec3c6b1b9d1351e06ec1f8e76c136ae389477ca7`
 - `audits/mutation/per-crate-configs/chio-anchor.toml`: `9d5a1f0e850ddadc3e621dd67282bb36460e13d3cb6e1af06a3fc03597af8ec3`
