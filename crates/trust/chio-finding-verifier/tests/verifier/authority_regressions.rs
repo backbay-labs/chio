@@ -109,7 +109,7 @@ fn unpinned_profile_or_empty_kernel_keys_reject_outright() -> TestResult {
 }
 
 #[test]
-fn governance_and_report_signing_keys_must_be_distinct() -> TestResult {
+fn report_signing_key_must_be_distinct_from_governance_and_evidence() -> TestResult {
     let fx = fixture()?;
     let trusted = trust_roots(&fx);
     let draft =
@@ -137,6 +137,32 @@ fn governance_and_report_signing_keys_must_be_distinct() -> TestResult {
             &fx.governance,
         )
         .err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
+
+    let mut receipt_aliased = fx.profile.body.clone();
+    receipt_aliased.verifier_report_signer.key = receipt_aliased
+        .receipt_signers
+        .first()
+        .ok_or("fixture receipt signer is missing")?
+        .policy
+        .key
+        .clone();
+    assert_eq!(
+        validate_supported_finding_verifier_profile(&receipt_aliased).err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
+
+    let mut checkpoint_aliased = fx.profile.body.clone();
+    checkpoint_aliased.verifier_report_signer.key = checkpoint_aliased
+        .checkpoint_logs
+        .first()
+        .ok_or("fixture checkpoint signer is missing")?
+        .signer
+        .key
+        .clone();
+    assert_eq!(
+        validate_supported_finding_verifier_profile(&checkpoint_aliased).err(),
         Some(FindingVerifierError::ProfileInvalid)
     );
     Ok(())
