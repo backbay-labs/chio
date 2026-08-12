@@ -230,7 +230,9 @@ fn durable_receipt_sink_file_binding(
             ),
         ))
     })?;
+    let path_metadata = fs::symlink_metadata(path)?;
     let metadata = fs::metadata(&canonical_path)?;
+    validate_receipt_sink_metadata(&canonical_path, &path_metadata, &metadata)?;
     let mut material = Vec::new();
     append_receipt_sink_binding_part(&mut material, b"chio.receipt-store.durable-sink-binding.v1");
     append_receipt_sink_binding_part(&mut material, internal_sink_id.as_bytes());
@@ -242,6 +244,54 @@ fn durable_receipt_sink_file_binding(
         append_receipt_sink_binding_part(&mut material, &metadata.ino().to_be_bytes());
     }
     Ok(sha256_hex(&material))
+}
+
+#[cfg(unix)]
+fn validate_receipt_sink_metadata(
+    canonical_path: &Path,
+    path_metadata: &fs::Metadata,
+    metadata: &fs::Metadata,
+) -> Result<(), ReceiptStoreError> {
+    use std::os::unix::fs::MetadataExt as _;
+
+    if !path_metadata.file_type().is_file()
+        || !metadata.file_type().is_file()
+        || path_metadata.dev() != metadata.dev()
+        || path_metadata.ino() != metadata.ino()
+        || metadata.nlink() != 1
+        || metadata.uid() != nix::unistd::geteuid().as_raw()
+        || metadata.mode() & 0o022 != 0
+    {
+        return Err(ReceiptStoreError::Conflict(
+            "finding-pool receipt sink has unsafe ownership or permissions".to_owned(),
+        ));
+    }
+    let parent = canonical_path.parent().ok_or_else(|| {
+        ReceiptStoreError::Conflict(
+            "finding-pool receipt sink has no durable parent directory".to_owned(),
+        )
+    })?;
+    let parent_metadata = fs::symlink_metadata(parent)?;
+    if !parent_metadata.file_type().is_dir()
+        || parent_metadata.uid() != nix::unistd::geteuid().as_raw()
+        || parent_metadata.mode() & 0o022 != 0
+    {
+        return Err(ReceiptStoreError::Conflict(
+            "finding-pool receipt sink parent has unsafe ownership or permissions".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn validate_receipt_sink_metadata(
+    _canonical_path: &Path,
+    _path_metadata: &fs::Metadata,
+    _metadata: &fs::Metadata,
+) -> Result<(), ReceiptStoreError> {
+    Err(ReceiptStoreError::Conflict(
+        "finding-pool receipt sinks require Unix file identity".to_owned(),
+    ))
 }
 
 fn append_receipt_sink_binding_part(material: &mut Vec<u8>, part: &[u8]) {

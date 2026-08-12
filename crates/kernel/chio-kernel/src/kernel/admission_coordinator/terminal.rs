@@ -1591,13 +1591,7 @@ impl ChioKernel {
             "resolved_output_digest",
             receipt_content.content_hash.clone(),
         )?;
-        // Delivery contract: a grant that fixed an expected output digest
-        // is honored only if the delivered post-transform output hashes to
-        // it, and a purchase-marked delivery additionally resolves to the
-        // strict reveal envelope of the advertised media type. The
-        // comparisons run here, after the transform and before any money
-        // decision, and drive the terminal decision so the verdict
-        // participates in the existing frozen replay contract below.
+        // Evaluate the frozen delivery contract after transforms and before settlement.
         if purchase.is_some() && !plan.hook_identities.is_empty() {
             return Err(KernelError::DurableAdmission(
                 "purchase-marked delivery requires the frozen identity output plan".to_owned(),

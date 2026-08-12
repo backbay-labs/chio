@@ -484,6 +484,8 @@ impl FindingStatusProofVerifier for StaticStatusVerifier {
             proof_sha256: "d".repeat(64),
             root_hash: "e".repeat(64),
             non_inclusion_checked_at: 2,
+            operator_authorization_sha256: "f".repeat(64),
+            service_bond_evidence_sha256: "1".repeat(64),
         })
     }
 
@@ -1641,6 +1643,54 @@ fn qualified_pool_rejects_group_or_world_writable_database_files() {
                 if message.contains("unsafe ownership or permissions")
         ));
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn finding_pool_receipt_sink_rejects_unsafe_file_permissions_and_links() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    for mode in [0o620, 0o602] {
+        let directory = tempfile::tempdir().test_expect("create receipt directory");
+        let database = directory.path().join("receipts.sqlite3");
+        std::fs::File::create(&database).test_expect("create receipt database");
+        std::fs::set_permissions(&database, std::fs::Permissions::from_mode(mode))
+            .test_expect("set unsafe receipt mode");
+        assert!(matches!(
+            SqliteReceiptStore::open_for_finding_pool(&database, rollback_anchor_root()),
+            Err(chio_kernel::ReceiptStoreError::Conflict(message))
+                if message.contains("unsafe ownership or permissions")
+        ));
+    }
+
+    let directory = tempfile::tempdir().test_expect("create linked receipt directory");
+    let database = directory.path().join("receipts.sqlite3");
+    let link = directory.path().join("receipts-hardlink.sqlite3");
+    std::fs::File::create(&database).test_expect("create linked receipt database");
+    std::fs::hard_link(&database, &link).test_expect("link receipt database");
+    assert!(matches!(
+        SqliteReceiptStore::open_for_finding_pool(&database, rollback_anchor_root()),
+        Err(chio_kernel::ReceiptStoreError::Conflict(message))
+            if message.contains("unsafe ownership or permissions")
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn finding_pool_receipt_sink_rejects_a_writable_parent_directory() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let directory = tempfile::tempdir().test_expect("create receipt root");
+    let unsafe_parent = directory.path().join("unsafe-parent");
+    std::fs::create_dir(&unsafe_parent).test_expect("create unsafe receipt parent");
+    std::fs::set_permissions(&unsafe_parent, std::fs::Permissions::from_mode(0o770))
+        .test_expect("set unsafe parent permissions");
+    let database = unsafe_parent.join("receipts.sqlite3");
+    assert!(matches!(
+        SqliteReceiptStore::open_for_finding_pool(&database, rollback_anchor_root()),
+        Err(chio_kernel::ReceiptStoreError::Conflict(message))
+            if message.contains("parent has unsafe ownership or permissions")
+    ));
 }
 
 #[test]

@@ -121,9 +121,8 @@ impl SqliteFindingPoolLedger {
     ///
     /// In-memory paths are refused because restart durability is part of the
     /// hard-ceiling qualification. `store_identity` must be held outside the
-    /// SQLite database. Its live proof of possession and the canonical
-    /// database identity jointly derive the authority-visible store binding,
-    /// so a copied database cannot qualify on its own.
+    /// SQLite database. Its live proof, canonical identity, and external anchor
+    /// instance id bind it globally, so a copy cannot qualify elsewhere.
     pub fn open_qualified(
         path: impl AsRef<Path>,
         ledger_domain: impl Into<String>,
@@ -210,6 +209,7 @@ impl SqliteFindingPoolLedger {
                 &ledger_domain,
                 &database_identity,
                 store_identity,
+                &rollback_anchor,
             )?;
             ensure_lifecycle_columns(&connection)?;
             ensure_outbox_delivery_claim_columns(&connection)?;

@@ -379,8 +379,17 @@ pub(super) fn bind_ledger_store(
     ledger_domain: &str,
     database_identity: &QualifiedDatabaseIdentity,
     store_identity: &dyn SigningBackend,
+    rollback_anchor: &RollbackGenerationAnchor,
 ) -> Result<String, FindingPoolLedgerError> {
-    let expected = derive_ledger_store_binding(ledger_domain, database_identity, store_identity)?;
+    let anchor_instance_id = rollback_anchor
+        .instance_id()
+        .map_err(rollback_anchor_error)?;
+    let expected = derive_ledger_store_binding(
+        ledger_domain,
+        database_identity,
+        store_identity,
+        &anchor_instance_id,
+    )?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
@@ -437,6 +446,7 @@ fn derive_ledger_store_binding(
     ledger_domain: &str,
     database_identity: &QualifiedDatabaseIdentity,
     store_identity: &dyn SigningBackend,
+    anchor_instance_id: &str,
 ) -> Result<String, FindingPoolLedgerError> {
     let public_key = store_identity.public_key();
     if public_key.algorithm() == SigningAlgorithm::Ed25519 && public_key.is_weak_ed25519() {
@@ -465,13 +475,15 @@ fn derive_ledger_store_binding(
     }
 
     let mut binding = Sha256::new();
-    binding.update(b"chio.finding-pool.store-binding.v2");
+    binding.update(b"chio.finding-pool.store-binding.v3");
     binding.update((ledger_domain.len() as u64).to_be_bytes());
     binding.update(ledger_domain.as_bytes());
     binding.update((identity_material.len() as u64).to_be_bytes());
     binding.update(&identity_material);
     binding.update((public_key_bytes.len() as u64).to_be_bytes());
     binding.update(public_key_bytes);
+    binding.update((anchor_instance_id.len() as u64).to_be_bytes());
+    binding.update(anchor_instance_id.as_bytes());
     Ok(hex::encode(binding.finalize()))
 }
 

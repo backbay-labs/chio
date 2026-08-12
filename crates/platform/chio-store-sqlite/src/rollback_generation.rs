@@ -19,6 +19,7 @@ const MAX_PAYLOAD_BYTES: usize = SLOT_SIZE - PAYLOAD_OFFSET;
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct GenerationRecord {
+    anchor_instance_id: String,
     format: String,
     record_generation: u64,
     scope_sha256: String,
@@ -28,6 +29,7 @@ struct GenerationRecord {
 struct LoadedRecord {
     record: GenerationRecord,
     corrupt_slot: bool,
+    interrupted_slot: bool,
 }
 
 static PROCESS_ANCHOR_LOCKS: OnceLock<Mutex<BTreeMap<PathBuf, Weak<Mutex<()>>>>> = OnceLock::new();
@@ -91,14 +93,36 @@ impl RollbackGenerationAnchor {
                         return Err("rollback anchor contains a corrupt slot".to_string());
                     }
                     self.validate_record(&loaded.record)?;
+                    if loaded.interrupted_slot && loaded.record.store_generation != store_generation
+                    {
+                        return Err(
+                            "interrupted rollback anchor does not match the store generation"
+                                .to_string(),
+                        );
+                    }
                     if loaded.record.store_generation != store_generation {
                         return Err("store is behind its protected rollback generation".to_string());
                     }
                     Ok(())
                 }
-                None if allow_seed && store_generation == 0 => self.write_next(0, 0),
+                None if allow_seed && store_generation == 0 => {
+                    self.write_next(0, 0, &uuid::Uuid::now_v7().to_string())
+                }
                 None => Err("protected rollback generation is absent".to_string()),
             }
+        })
+    }
+
+    pub(crate) fn instance_id(&self) -> Result<String, String> {
+        self.with_lock(|| {
+            let loaded = self
+                .load_record()?
+                .ok_or_else(|| "protected rollback generation is absent".to_string())?;
+            if loaded.corrupt_slot {
+                return Err("rollback anchor contains a corrupt slot".to_string());
+            }
+            self.validate_record(&loaded.record)?;
+            Ok(loaded.record.anchor_instance_id)
         })
     }
 
@@ -119,6 +143,11 @@ impl RollbackGenerationAnchor {
                 return Err("rollback anchor contains a corrupt slot".to_string());
             }
             self.validate_record(&loaded.record)?;
+            if loaded.interrupted_slot && loaded.record.store_generation != store_generation {
+                return Err(
+                    "interrupted rollback anchor does not match the store generation".to_string(),
+                );
+            }
             if loaded.record.store_generation != store_generation {
                 return Err("store does not match its protected rollback generation".to_string());
             }
@@ -146,7 +175,11 @@ impl RollbackGenerationAnchor {
             if loaded.record.store_generation != expected {
                 return Err("rollback generation compare-and-advance failed".to_string());
             }
-            self.write_next(loaded.record.record_generation, next)?;
+            self.write_next(
+                loaded.record.record_generation,
+                next,
+                &loaded.record.anchor_instance_id,
+            )?;
             operation()
         })
     }
@@ -176,11 +209,13 @@ impl RollbackGenerationAnchor {
         &self,
         current_record_generation: u64,
         store_generation: u64,
+        anchor_instance_id: &str,
     ) -> Result<(), String> {
         let record_generation = current_record_generation
             .checked_add(1)
             .ok_or_else(|| "rollback anchor record generation overflowed".to_string())?;
         let record = GenerationRecord {
+            anchor_instance_id: anchor_instance_id.to_owned(),
             format: "chio.sqlite-rollback-generation.v1".to_string(),
             record_generation,
             scope_sha256: self.scope_sha256.clone(),
@@ -224,7 +259,7 @@ impl RollbackGenerationAnchor {
         let persisted = self
             .load_record()?
             .ok_or_else(|| "rollback anchor write was not durable".to_string())?;
-        if persisted.corrupt_slot || persisted.record != record {
+        if persisted.corrupt_slot || persisted.interrupted_slot || persisted.record != record {
             return Err("rollback anchor write did not round trip".to_string());
         }
         Ok(())
@@ -234,6 +269,7 @@ impl RollbackGenerationAnchor {
         self.ensure_shape()?;
         let mut records = Vec::with_capacity(SLOT_COUNT);
         let mut corrupt_slot = false;
+        let mut interrupted_slot = false;
         for slot_index in 0..SLOT_COUNT {
             let mut slot = [0_u8; SLOT_SIZE];
             read_exact_at(&self.file, &mut slot, slot_index * SLOT_SIZE)
@@ -241,7 +277,7 @@ impl RollbackGenerationAnchor {
             let marker = &slot[..COMMIT_MARKER.len()];
             if marker.iter().all(|byte| *byte == 0) {
                 if slot[COMMIT_MARKER.len()..].iter().any(|byte| *byte != 0) {
-                    corrupt_slot = true;
+                    interrupted_slot = true;
                 }
                 continue;
             }
@@ -260,14 +296,22 @@ impl RollbackGenerationAnchor {
             let current = &records[1];
             if prior.record_generation.checked_add(1) != Some(current.record_generation)
                 || current.scope_sha256 != prior.scope_sha256
+                || current.anchor_instance_id != prior.anchor_instance_id
                 || current.store_generation < prior.store_generation
             {
                 return Err("rollback anchor slots do not form one monotonic history".to_string());
             }
         }
-        Ok(records.pop().map(|record| LoadedRecord {
+        let Some(record) = records.pop() else {
+            if corrupt_slot || interrupted_slot {
+                return Err("rollback anchor has no committed slot".to_string());
+            }
+            return Ok(None);
+        };
+        Ok(Some(LoadedRecord {
             record,
             corrupt_slot,
+            interrupted_slot,
         }))
     }
 
@@ -303,9 +347,12 @@ impl RollbackGenerationAnchor {
     }
 
     fn validate_record(&self, record: &GenerationRecord) -> Result<(), String> {
+        let anchor_instance_id = uuid::Uuid::parse_str(&record.anchor_instance_id)
+            .map_err(|_| "rollback anchor instance id is invalid".to_string())?;
         if record.format != "chio.sqlite-rollback-generation.v1"
             || record.record_generation == 0
             || record.scope_sha256 != self.scope_sha256
+            || anchor_instance_id.to_string() != record.anchor_instance_id
         {
             return Err("rollback anchor record is invalid".to_string());
         }
@@ -481,4 +528,74 @@ fn io_offset(offset: usize) -> std::io::Result<u64> {
             "rollback anchor offset overflowed",
         )
     })
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    fn secure_root(path: &Path) {
+        assert!(fs::set_permissions(path, fs::Permissions::from_mode(0o700)).is_ok());
+    }
+
+    #[test]
+    fn independent_anchors_receive_distinct_global_instance_ids() {
+        let Ok(first_root) = tempfile::tempdir() else {
+            panic!("create first anchor root");
+        };
+        let Ok(second_root) = tempfile::tempdir() else {
+            panic!("create second anchor root");
+        };
+        secure_root(first_root.path());
+        secure_root(second_root.path());
+        let first = match RollbackGenerationAnchor::open(first_root.path(), b"shared-scope") {
+            Ok(anchor) => anchor,
+            Err(error) => panic!("open first anchor: {error}"),
+        };
+        let second = match RollbackGenerationAnchor::open(second_root.path(), b"shared-scope") {
+            Ok(anchor) => anchor,
+            Err(error) => panic!("open second anchor: {error}"),
+        };
+        assert!(first.bind_initial_while(|| Ok((0, true))).is_ok());
+        assert!(second.bind_initial_while(|| Ok((0, true))).is_ok());
+        let Ok(first_id) = first.instance_id() else {
+            panic!("load first anchor id");
+        };
+        let Ok(second_id) = second.instance_id() else {
+            panic!("load second anchor id");
+        };
+        assert_ne!(first_id, second_id);
+    }
+
+    #[test]
+    fn marker_cleared_inactive_slot_recovers_from_surviving_generation() {
+        let Ok(root) = tempfile::tempdir() else {
+            panic!("create anchor root");
+        };
+        secure_root(root.path());
+        let anchor = match RollbackGenerationAnchor::open(root.path(), b"interrupted-rewrite") {
+            Ok(anchor) => anchor,
+            Err(error) => panic!("open anchor: {error}"),
+        };
+        assert!(anchor.bind_initial_while(|| Ok((0, true))).is_ok());
+        let mut store_generation = 0;
+        assert!(anchor
+            .advance_while(0, 1, || {
+                store_generation = 1;
+                Ok(())
+            })
+            .is_ok());
+
+        assert!(write_all_at(&anchor.file, &[0_u8; COMMIT_MARKER.len()], 0).is_ok());
+        assert!(anchor.file.sync_data().is_ok());
+        assert!(anchor.verify(store_generation).is_ok());
+        assert!(anchor
+            .advance_while(1, 2, || {
+                store_generation = 2;
+                Ok(())
+            })
+            .is_ok());
+        assert!(anchor.verify(store_generation).is_ok());
+    }
 }
