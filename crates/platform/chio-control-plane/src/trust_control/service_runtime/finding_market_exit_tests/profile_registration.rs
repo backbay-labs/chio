@@ -92,7 +92,7 @@ async fn profile_registration_requires_live_unrevoked_governance() -> TestResult
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(String::from_utf8_lossy(&body).contains("revoked at registration"));
 
-    let mut newly_issued = profile.body;
+    let mut newly_issued = profile.body.clone();
     newly_issued.issued_at = now;
     newly_issued.profile_id = String::new();
     newly_issued.profile_id = compute_profile_id(&newly_issued)?;
@@ -107,10 +107,99 @@ async fn profile_registration_requires_live_unrevoked_governance() -> TestResult
     .await?;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(String::from_utf8_lossy(&body).contains("predates profile issuance"));
+
+    let mut expired = profile.body.clone();
+    expired.expires_at = now;
+    expired.profile_id = String::new();
+    expired.profile_id = compute_profile_id(&expired)?;
+    let expired = SignedExportEnvelope::sign(expired, &keypair(1))?;
+    let (status, body) = send(
+        &stack.state,
+        authed_post(
+            "/v1/findings/profiles",
+            profile_registration_raw(&expired, now, None)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("not live at registration"));
+
+    let mut future = profile.body.clone();
+    future.issued_at = now.saturating_add(1);
+    future.profile_id = String::new();
+    future.profile_id = compute_profile_id(&future)?;
+    let future = SignedExportEnvelope::sign(future, &keypair(1))?;
+    let (status, body) = send(
+        &stack.state,
+        authed_post(
+            "/v1/findings/profiles",
+            profile_registration_raw(&future, now, None)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("not live at registration"));
+
+    let mut late_governance_state = stack.state.clone();
+    late_governance_state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or("finding market config")?
+        .governance_root
+        .valid_from = profile.body.issued_at.saturating_add(1);
+    let (status, body) = send(
+        &late_governance_state,
+        authed_post(
+            "/v1/findings/profiles",
+            profile_registration_raw(&profile, now, None)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("outside the governance key"));
     assert!(stack
         .store
         .get_recipe_blob(&stack.web.profile_sha256)?
         .is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn collateral_registration_requires_live_unrevoked_authority() -> TestResult {
+    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let now = unix_timestamp_now();
+
+    let mut expired_state = stack.state.clone();
+    expired_state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or("finding market config")?
+        .collateral
+        .valid_until = now;
+    let (status, body) = send(
+        &expired_state,
+        authed_post(
+            "/v1/findings/collateral",
+            collateral_registration_raw(&stack.web.backing, now, None)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("not live at registration"));
+
+    let (status, body) = send(
+        &stack.state,
+        authed_post(
+            "/v1/findings/collateral",
+            collateral_registration_raw(&stack.web.backing, now, Some(now))?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("revoked at registration"));
+    assert!(stack.store.get_allocation(&stack.web.allocation_id)?.is_none());
     Ok(())
 }
 

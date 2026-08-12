@@ -172,6 +172,39 @@ fn signed_verifier_authority_status(
     )?)
 }
 
+fn signed_collateral_authority_status(
+    observed_at: u64,
+    revoked_from: Option<u64>,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(4, "collateral");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+fn collateral_registration_raw(
+    backing: &SignedFindingBondBacking,
+    observed_at: u64,
+    revoked_from: Option<u64>,
+) -> Result<String, AnyError> {
+    canonical_string(&serde_json::json!({
+        "backing": serde_json::to_value(backing)?,
+        "collateralAuthorityStatus": serde_json::to_value(
+            signed_collateral_authority_status(observed_at, revoked_from)?,
+        )?,
+    }))
+}
+
 include!("finding_market_exit_tests/profile_registration.rs");
 
 fn audit_pool_binding() -> FindingPoolBinding {
@@ -1278,7 +1311,7 @@ impl MarketStack {
             &self.state,
             authed_post(
                 "/v1/findings/collateral",
-                serde_json::to_string(&self.web.backing)?,
+                collateral_registration_raw(&self.web.backing, unix_timestamp_now(), None)?,
             )?,
         )
         .await?;
@@ -1503,7 +1536,7 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         &stack.state,
         authed_post(
             "/v1/findings/collateral",
-            serde_json::to_string(&web.backing)?,
+            collateral_registration_raw(&web.backing, unix_timestamp_now(), None)?,
         )?,
     )
     .await?;
@@ -2340,7 +2373,7 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
         .report
         .body
         .evaluation_time
-        .saturating_add(VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS + 1);
+        .saturating_add(FINDING_AUTHORITY_STATUS_MAX_AGE_SECS + 1);
     let live_status = signed_verifier_authority_status(now, None)?;
     verify_profile_for_activation(&profile, &profile_sha256, &config, now)
         .map_err(std::io::Error::other)?;
@@ -2403,7 +2436,7 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
     .is_err());
 
     let stale_status = signed_verifier_authority_status(
-        now.saturating_sub(VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS + 1),
+        now.saturating_sub(FINDING_AUTHORITY_STATUS_MAX_AGE_SECS + 1),
         None,
     )?;
     assert!(verify_report_authority_lifecycle(

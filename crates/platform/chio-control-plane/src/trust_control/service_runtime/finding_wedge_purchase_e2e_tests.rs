@@ -256,6 +256,30 @@ fn signed_verifier_authority_status(
     )?)
 }
 
+fn collateral_registration_raw(
+    backing: &SignedFindingBondBacking,
+    observed_at: u64,
+) -> Result<String, AnyError> {
+    let pin = authority_pin(4, "collateral");
+    let key = pin.key()?;
+    let status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?;
+    canonical_string(&serde_json::json!({
+        "backing": serde_json::to_value(backing)?,
+        "collateralAuthorityStatus": serde_json::to_value(status)?,
+    }))
+}
+
 fn profile_registration_raw(
     profile: &SignedFindingChallengeVerifierProfile,
 ) -> Result<String, AnyError> {
@@ -1352,7 +1376,7 @@ impl Deployment {
             state,
             authed_post(
                 "/v1/findings/collateral",
-                serde_json::to_string(&web.backing)?,
+                collateral_registration_raw(&web.backing, unix_timestamp_now())?,
             )?,
         )
         .await?;
@@ -4719,7 +4743,7 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
         &lane.state,
         authed_post(
             "/v1/findings/collateral",
-            serde_json::to_string(&second_backing)?,
+            collateral_registration_raw(&second_backing, unix_timestamp_now())?,
         )?,
     )
     .await?;

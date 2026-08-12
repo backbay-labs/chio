@@ -11,7 +11,7 @@ fn activation_rejects_reports_predating_signed_inputs() -> TestResult {
     )?;
     let config = market_config();
     let evaluation_time = stack.web.report.body.evaluation_time;
-    let now = evaluation_time.saturating_add(VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS + 1);
+    let now = evaluation_time.saturating_add(FINDING_AUTHORITY_STATUS_MAX_AGE_SECS + 1);
     let live_status = signed_verifier_authority_status(now, None)?;
 
     let mut postdated_profile_body = profile.body.clone();

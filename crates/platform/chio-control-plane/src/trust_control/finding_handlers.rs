@@ -51,9 +51,9 @@ pub(crate) const FINDING_PUBLISH_MAX_BODY_BYTES: usize = 256 * 1024;
 /// Dependency uploads (recipes, input bundles, profiles) may carry larger
 /// canonical payloads; still bounded well below the service cap.
 pub(crate) const FINDING_DEPENDENCY_MAX_BODY_BYTES: usize = 1024 * 1024;
-/// A status reading older than this cannot establish current verifier-key
-/// standing at the activation boundary.
-pub(crate) const VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS: u64 = 3_600;
+/// A status reading older than this cannot establish current authority
+/// standing at a finding-market trust boundary.
+pub(crate) const FINDING_AUTHORITY_STATUS_MAX_AGE_SECS: u64 = 3_600;
 
 const FINDING_SCHEMA_JSON: &str =
     include_str!("../../../../../spec/schemas/chio-finding/v1/finding.schema.json");
@@ -68,6 +68,13 @@ const PROFILE_SCHEMA_JSON: &str = include_str!(
 struct FindingProfileRegistrationRequest {
     profile: SignedFindingChallengeVerifierProfile,
     governance_authority_status: SignedFindingAuthorityStatus,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct FindingCollateralRegistrationRequest {
+    backing: SignedFindingBondBacking,
+    collateral_authority_status: SignedFindingAuthorityStatus,
 }
 
 /// Deterministic instruction the venue-ledger rail settles. Its canonical
@@ -299,6 +306,15 @@ fn verify_profile_registration_authority(
         .key()
         .map_err(|error| error.to_string())?;
     verify_signed_profile(&request.profile, &governance_key).map_err(|error| error.to_string())?;
+    if !config
+        .governance_root
+        .covers(request.profile.body.issued_at)
+    {
+        return Err("profile was issued outside the governance key validity window".to_owned());
+    }
+    if now < request.profile.body.issued_at || now >= request.profile.body.expires_at {
+        return Err("verifier profile is not live at registration".to_owned());
+    }
 
     let status_key = config
         .authority_status
@@ -321,7 +337,7 @@ fn verify_profile_registration_authority(
         return Err("governance authority status predates profile issuance".to_owned());
     }
     if status.observed_at > now
-        || now.saturating_sub(status.observed_at) > VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
     {
         return Err("governance authority status is not a fresh current reading".to_owned());
     }
@@ -803,7 +819,7 @@ pub(crate) async fn handle_register_finding_profile(
 pub(crate) async fn handle_register_finding_collateral(
     State(state): State<TrustServiceState>,
     headers: HeaderMap,
-    Json(backing): Json<SignedFindingBondBacking>,
+    Json(request): Json<FindingCollateralRegistrationRequest>,
 ) -> Response {
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
@@ -812,14 +828,70 @@ pub(crate) async fn handle_register_finding_collateral(
         Ok(context) => context,
         Err(response) => return response,
     };
+    let backing = &request.backing;
+    let now = unix_timestamp_now();
+    if !config.collateral.covers(backing.body.issued_at) || !config.collateral.covers(now) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding collateral authority is not live at registration",
+        );
+    }
     let collateral_key = match config.collateral.key() {
         Ok(key) => key,
         Err(error) => {
             return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
         }
     };
-    if let Err(error) = verify_signed_bond_backing(&backing, &collateral_key) {
+    if let Err(error) = verify_signed_bond_backing(backing, &collateral_key) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+    }
+    let status_key = match config.authority_status.key() {
+        Ok(key) => key,
+        Err(error) => {
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+        }
+    };
+    if let Err(error) =
+        verify_signed_authority_status(&request.collateral_authority_status, &status_key)
+    {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+    }
+    let status = &request.collateral_authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "authority-status signer is not live at collateral registration",
+        );
+    }
+    if status.status_ref != config.collateral.revocation_status_ref
+        || status.authority_id != config.collateral.authority_id
+        || status.key != collateral_key
+        || status.key_epoch != config.collateral.key_epoch
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "collateral authority status does not bind the deployment pin",
+        );
+    }
+    if status.observed_at < backing.body.issued_at {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "collateral authority status predates backing issuance",
+        );
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "collateral authority status is not a fresh current reading",
+        );
+    }
+    if status.revoked_from.is_some() {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "collateral authority is revoked at registration",
+        );
     }
     // The allocation backs a finding this venue actually serves.
     match store.get_finding_bytes(&backing.body.finding_id) {
@@ -836,7 +908,7 @@ pub(crate) async fn handle_register_finding_collateral(
             return plain_http_error(StatusCode::BAD_REQUEST, "backing failed canonicalization")
         }
     };
-    match store.register_allocation(&envelope_json, &backing.body, unix_timestamp_now()) {
+    match store.register_allocation(&envelope_json, &backing.body, now) {
         Ok(()) => Json(serde_json::json!({
             "allocationId": backing.body.allocation_id,
         }))
@@ -1003,7 +1075,7 @@ pub(crate) fn verify_report_authority_lifecycle(
         return Err("verifier authority status predates the report evaluation".into());
     }
     if status.observed_at > now
-        || now.saturating_sub(status.observed_at) > VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECS
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
     {
         return Err("verifier authority status is not a fresh current reading".into());
     }
