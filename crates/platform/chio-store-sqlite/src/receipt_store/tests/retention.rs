@@ -4676,3 +4676,47 @@ fn retained_receipt_lookup_reads_only_from_a_trusted_archive(
     let _ = std::fs::remove_file(&archive);
     Ok(())
 }
+
+#[test]
+fn retained_receipt_commitment_rejects_an_uncheckpointed_live_tail(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("retained-receipt-uncheckpointed-tail");
+    let keypair = super::support::receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    store.enable_background_checkpoints(super::support::signer(&keypair, 2))?;
+
+    let mut checkpointed_id = String::new();
+    let mut tail_id = String::new();
+    for i in 0..3u64 {
+        let receipt = super::support::sample_receipt_with_keypair(
+            &format!("retained-tail-{i}"),
+            i + 1,
+            &keypair,
+        );
+        if i == 0 {
+            checkpointed_id.clone_from(&receipt.id);
+        } else if i == 2 {
+            tail_id.clone_from(&receipt.id);
+        }
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+    assert!(store.load_checkpoint_by_seq(1)?.is_some());
+    assert!(
+        store
+            .load_retained_chio_receipt_commitment(&checkpointed_id)?
+            .is_some(),
+        "a checkpointed live commitment must remain available"
+    );
+
+    let error = store
+        .load_retained_chio_receipt_commitment(&tail_id)
+        .err()
+        .ok_or("uncheckpointed live-tail commitment was accepted")?;
+    assert!(matches!(&error, ReceiptStoreError::ReadBoundary(_)));
+    assert!(error.to_string().contains("authenticated checkpoint"));
+
+    drop(store);
+    let _ = std::fs::remove_file(&path);
+    Ok(())
+}

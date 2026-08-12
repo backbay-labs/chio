@@ -69,32 +69,43 @@ fn load_chio_receipt_commitment_row(
     receipt_id: &str,
     context: &str,
 ) -> Result<Option<RetainedReceiptCommitment>, ReceiptStoreError> {
-    connection
+    let row = connection
         .query_row(
             "SELECT entry_seq, raw_json FROM claim_receipt_log_entries \
              WHERE receipt_id = ?1 AND receipt_kind = 'tool_receipt'",
             params![receipt_id],
             |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
         )
-        .optional()?
-        .map(|(entry_seq, raw_json)| {
-            let entry_seq = sqlite_positive_u64(entry_seq, "claim log entry_seq")?;
-            let receipt = decode_verified_chio_receipt(&raw_json, context, Some(entry_seq))?;
-            if receipt.id != receipt_id {
-                return Err(ReceiptStoreError::Conflict(format!(
-                    "{context} id differs from the requested receipt"
-                )));
-            }
-            let canonical = chio_core::canonical::canonical_json_bytes(&receipt)
-                .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?;
-            Ok(RetainedReceiptCommitment {
-                entry_seq,
-                receipt_id: receipt.id,
-                receipt_sha256: chio_core::crypto::sha256_hex(&canonical),
-                kernel_key: receipt.kernel_key,
-            })
-        })
-        .transpose()
+        .optional()?;
+    let Some((entry_seq_i64, raw_json)) = row else {
+        return Ok(None);
+    };
+    let entry_seq = sqlite_positive_u64(entry_seq_i64, "claim log entry_seq")?;
+    let checkpoint_covers_entry: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM kernel_checkpoints \
+         WHERE batch_start_seq <= ?1 AND batch_end_seq >= ?1)",
+        params![entry_seq_i64],
+        |row| row.get(0),
+    )?;
+    if !checkpoint_covers_entry {
+        return Err(ReceiptStoreError::ReadBoundary(format!(
+            "{context} is not covered by an authenticated checkpoint"
+        )));
+    }
+    let receipt = decode_verified_chio_receipt(&raw_json, context, Some(entry_seq))?;
+    if receipt.id != receipt_id {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "{context} id differs from the requested receipt"
+        )));
+    }
+    let canonical = chio_core::canonical::canonical_json_bytes(&receipt)
+        .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?;
+    Ok(Some(RetainedReceiptCommitment {
+        entry_seq,
+        receipt_id: receipt.id,
+        receipt_sha256: chio_core::crypto::sha256_hex(&canonical),
+        kernel_key: receipt.kernel_key,
+    }))
 }
 
 fn load_receipt_lineage_statement_row(
