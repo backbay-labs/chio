@@ -54,11 +54,12 @@ pub use reconcile::{
     FindingVaultRejection, StoredImpairmentTransaction,
 };
 pub use verify::{
-    recheck_finding_bond_observation, verify_finding_collateral_snapshot,
-    verify_finding_enforcement, verify_finding_enforcement_for_reconciliation,
-    FindingBondObservationRecheck, FindingBondObservationSource, FindingBondObservationVerdict,
-    FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
-    FindingOperatorQualification, FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence,
+    recheck_finding_bond_observation, recheck_reconciled_finding_bond_observation,
+    verify_finding_collateral_snapshot, verify_finding_enforcement,
+    verify_finding_enforcement_for_reconciliation, FindingBondObservationRecheck,
+    FindingBondObservationSource, FindingBondObservationVerdict, FindingDispatchPolicy,
+    FindingEnforcementPins, FindingFinalityRequirement, FindingOperatorQualification,
+    FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence,
     ReconciledFindingEnforcement, VerifiedFindingEnforcement,
 };
 

@@ -291,19 +291,38 @@ impl FindingChallengeCoordinator {
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         Ok(true)
     }
+}
 
+enum RecoveryObservationAuthority<'a> {
+    Fresh(&'a VerifiedFindingEnforcement),
+    Reconciled(&'a ReconciledFindingEnforcement),
+}
+
+impl FindingChallengeCoordinator {
     /// A confirmed impairment may recover across operator rotation, but not
     /// across an inactive operator, reorg, or loss of finality for the
     /// collateral snapshot it used.
     fn require_canonical_recovery_observation(
         &self,
-        verified: &VerifiedFindingEnforcement,
+        authority: RecoveryObservationAuthority<'_>,
         observations: &dyn FindingBondObservationSource,
     ) -> Result<(), ChallengeCoordinatorError> {
-        let observed = observations
-            .observe(verified)
-            .map_err(|error| ChallengeCoordinatorError::BondObservation(error.to_string()))?;
-        let verdict = recheck_finding_bond_observation(verified, &observed);
+        let verdict = match authority {
+            RecoveryObservationAuthority::Fresh(verified) => {
+                let observed = observations.observe(verified).map_err(|error| {
+                    ChallengeCoordinatorError::BondObservation(error.to_string())
+                })?;
+                recheck_finding_bond_observation(verified, &observed)
+            }
+            RecoveryObservationAuthority::Reconciled(reconciled) => {
+                let observed = observations
+                    .observe_reconciliation(reconciled)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::BondObservation(error.to_string())
+                    })?;
+                recheck_reconciled_finding_bond_observation(reconciled, &observed)
+            }
+        };
         match verdict {
             FindingBondObservationVerdict::Qualified
             | FindingBondObservationVerdict::OperatorRotated { .. } => Ok(()),
@@ -328,7 +347,7 @@ impl FindingChallengeCoordinator {
         enforcement: &SignedFindingChallengeEnforcement,
         bond_snapshot: &SignedFindingFinalizedBondSnapshot,
         reconciliation: &ConfirmedFindingImpairmentReconciliation,
-        verified: &VerifiedFindingEnforcement,
+        observation_authority: RecoveryObservationAuthority<'_>,
         observations: &dyn FindingBondObservationSource,
         now: u64,
     ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
@@ -375,7 +394,7 @@ impl FindingChallengeCoordinator {
                 now,
             )
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-            self.require_canonical_recovery_observation(verified, observations)?;
+            self.require_canonical_recovery_observation(observation_authority, observations)?;
         }
         self
             .challenges

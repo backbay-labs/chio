@@ -99,6 +99,43 @@ async fn profile_registration_requires_live_unrevoked_governance() -> TestResult
 }
 
 #[tokio::test]
+async fn unsupported_profile_rejects_before_registration_or_activation() -> TestResult {
+    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let mut body: SignedFindingChallengeVerifierProfile =
+        serde_json::from_str(&stack.web.profile_raw)?;
+    body.body
+        .required_facets
+        .push(FindingFacetKind::KernelAndRevocationTrust);
+    body.body.profile_id = String::new();
+    body.body.profile_id = compute_profile_id(&body.body)?;
+    let unsupported = SignedExportEnvelope::sign(body.body, &keypair(1))?;
+    let unsupported_bytes = canonical_json_bytes(&unsupported)?;
+    let unsupported_digest = sha256_hex(&unsupported_bytes);
+
+    let (status, response) = send(
+        &stack.state,
+        authed_post(
+            "/v1/findings/profiles",
+            profile_registration_raw(&unsupported, unix_timestamp_now(), None)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&response).contains("profile"));
+    assert!(stack.store.get_recipe_blob(&unsupported_digest)?.is_none());
+
+    let error = verify_profile_for_activation(
+        &unsupported,
+        &unsupported_digest,
+        &market_config(),
+        unix_timestamp_now(),
+    )
+    .expect_err("unsupported profile must not activate");
+    assert!(error.contains("profile"), "unexpected error: {error}");
+    Ok(())
+}
+
+#[tokio::test]
 async fn profile_body_authority_must_match_governance() -> TestResult {
     let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     let governance = keypair(1);

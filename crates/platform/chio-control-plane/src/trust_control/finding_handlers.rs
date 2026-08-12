@@ -37,8 +37,8 @@ use chio_open_market::listing::{
 };
 use chio_store_sqlite::finding_market_store::{
     finding_fee_idempotency_key, FindingActivationAttemptState,
-    FindingActivationPreparationOutcome, FindingAllocationState, FindingFeeIntent,
-    FindingFeeIntentOutcome, FindingRecordInput, SqliteFindingMarketStore,
+    FindingActivationPreparationOutcome, FindingAdmissionSnapshot, FindingAllocationState,
+    FindingFeeIntent, FindingFeeIntentOutcome, FindingRecordInput, SqliteFindingMarketStore,
 };
 
 use super::report_validation::validate_service_auth;
@@ -570,25 +570,8 @@ fn current_admission_view(
     now: u64,
 ) -> Option<FindingSearchAdmissionView> {
     let snapshot = store.get_current_admission(finding_id).ok().flatten()?;
-    if now >= snapshot.expires_at {
-        return None;
-    }
-    // Activation dedicates the allocation in the same transaction that
-    // indexes the admission, so the healthy state for an ACTIVE admission
-    // is `Consumed` (encumbered by exactly this admission). `Expired` and
-    // `Released` mean the backing is gone; `Live` with an active
-    // admission cannot happen through the store transaction.
-    if snapshot.allocation_state != FindingAllocationState::Consumed {
-        return None;
-    }
     let admission: SignedFindingAdmission = serde_json::from_str(&snapshot.envelope_json).ok()?;
-    let terms_bytes = store
-        .get_recipe_blob(&admission.body.terms_envelope_sha256)
-        .ok()
-        .flatten()?;
-    let terms: SignedFindingMarketTerms = serde_json::from_slice(&terms_bytes).ok()?;
-    let epoch_length = terms.body.audit_epoch_length_secs.max(1);
-    let current_epoch = now.saturating_sub(snapshot.activated_at) / epoch_length;
+    let current_epoch = live_admission_epoch(store, &snapshot, &admission, now)?;
     let paid_through = store
         .paid_through_epoch(finding_id, &snapshot.listing_id)
         .ok()
@@ -601,6 +584,36 @@ fn current_admission_view(
         envelope_sha256: snapshot.envelope_sha256,
         expires_at: snapshot.expires_at,
     })
+}
+
+/// Return the current payable audit epoch only while the stored admission
+/// still owns its backing and remains inside its signed lifetime. Payment
+/// status is intentionally checked by the caller: discovery requires the
+/// epoch already paid, while renewal requires the next unpaid epoch to be due.
+fn live_admission_epoch(
+    store: &SqliteFindingMarketStore,
+    snapshot: &FindingAdmissionSnapshot,
+    admission: &SignedFindingAdmission,
+    now: u64,
+) -> Option<u64> {
+    if now >= snapshot.expires_at {
+        return None;
+    }
+    // Activation dedicates the allocation in the same transaction that
+    // indexes the admission, so the healthy state for an ACTIVE admission
+    // is `Consumed` (encumbered by exactly this admission). `Expired` and
+    // `Released` mean the backing is gone; `Live` with an active
+    // admission cannot happen through the store transaction.
+    if snapshot.allocation_state != FindingAllocationState::Consumed {
+        return None;
+    }
+    let terms_bytes = store
+        .get_recipe_blob(&admission.body.terms_envelope_sha256)
+        .ok()
+        .flatten()?;
+    let terms: SignedFindingMarketTerms = serde_json::from_slice(&terms_bytes).ok()?;
+    let epoch_length = terms.body.audit_epoch_length_secs.max(1);
+    Some(now.saturating_sub(snapshot.activated_at) / epoch_length)
 }
 
 fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> Response {
@@ -761,6 +774,11 @@ pub(crate) async fn handle_register_finding_profile(
     if let Err(error) = verify_profile_registration_authority(&request, &config, now) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
     }
+    if let Err(error) =
+        chio_finding_verifier::validate_supported_finding_verifier_profile(&request.profile.body)
+    {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+    }
     let digest = chio_core::sha256_hex(&profile_bytes);
     match store.put_recipe_blob(&digest, &profile_bytes, now) {
         Ok(_) => Json(serde_json::json!({
@@ -844,6 +862,8 @@ pub(crate) fn verify_profile_for_activation(
     now: u64,
 ) -> Result<(), String> {
     profile.body.validate().map_err(|error| error.to_string())?;
+    chio_finding_verifier::validate_supported_finding_verifier_profile(&profile.body)
+        .map_err(|error| error.to_string())?;
     let digest = canonical_digest_of(profile)?;
     if digest != expected_envelope_sha256 {
         return Err("retained profile digest does not match the admission".to_string());
@@ -1660,6 +1680,16 @@ pub(crate) async fn handle_finding_participation(
             )
         }
     };
+    let now = unix_timestamp_now();
+    let current_epoch = match live_admission_epoch(&store, &snapshot, &admission, now) {
+        Some(epoch) => epoch,
+        None => {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "admission is not live for participation renewal",
+            )
+        }
+    };
     let schedule_digest = match signed_fee_schedule_digest(&request.fee_schedule) {
         Ok(digest) => digest,
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
@@ -1681,6 +1711,12 @@ pub(crate) async fn handle_finding_participation(
         Some(epoch) => epoch,
         None => return plain_http_error(StatusCode::BAD_REQUEST, "epoch index overflow"),
     };
+    if next_epoch > current_epoch {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "participation is already paid through the current audit epoch",
+        );
+    }
     let Some(rail) = state.finding_rail.as_ref() else {
         return plain_http_error(
             StatusCode::CONFLICT,

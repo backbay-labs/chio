@@ -1187,6 +1187,16 @@ pub trait FindingBondObservationSource: Send + Sync {
         &self,
         verified: &VerifiedFindingEnforcement,
     ) -> Result<FindingBondObservationRecheck, SettlementError>;
+
+    /// Read the state behind a previously dispatched enforcement without
+    /// converting reconciliation authority back into fresh dispatch
+    /// authority.
+    fn observe_reconciliation(
+        &self,
+        reconciled: &ReconciledFindingEnforcement,
+    ) -> Result<FindingBondObservationRecheck, SettlementError> {
+        self.observe(reconciled.verified())
+    }
 }
 
 /// Recheck the observed block hash and the operator qualification behind a
@@ -1237,6 +1247,19 @@ pub fn recheck_finding_bond_observation(
         };
     }
     FindingBondObservationVerdict::Qualified
+}
+
+/// Recheck the live observation behind a previously dispatched enforcement.
+///
+/// This keeps the wrapped [`VerifiedFindingEnforcement`] private, so a caller
+/// can validate recovery without gaining a capability accepted by fresh
+/// dispatch planning.
+#[must_use]
+pub fn recheck_reconciled_finding_bond_observation(
+    reconciled: &ReconciledFindingEnforcement,
+    observed: &FindingBondObservationRecheck,
+) -> FindingBondObservationVerdict {
+    recheck_finding_bond_observation(reconciled.verified(), observed)
 }
 
 /// Normalize a chain hash for comparison: the `0x` prefix is optional in the

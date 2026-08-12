@@ -67,6 +67,18 @@ fn authority_policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u64) -> 
     instant >= policy.valid_from && instant < policy.valid_until
 }
 
+fn require_purchase_terminal_window(
+    policy: &FindingAuthorityKeyPolicy,
+    recorded_at: u64,
+) -> Result<(), PurchaseCoordinatorError> {
+    if !authority_policy_covers(policy, recorded_at) {
+        return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+            "purchase",
+        ));
+    }
+    Ok(())
+}
+
 fn require_failed_delivery_terminal_window(
     policy: &FindingAuthorityKeyPolicy,
     recorded_at: u64,
@@ -812,14 +824,7 @@ impl FindingPurchaseCoordinator {
         Self::verify_terminal_chronology(&reservation, receipt, "delivery")?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Delivered)?;
-        let purchase_policy = &admission.body.purchase_authority;
-        if receipt.timestamp < purchase_policy.valid_from
-            || receipt.timestamp >= purchase_policy.valid_until
-        {
-            return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
-                "purchase",
-            ));
-        }
+        require_purchase_terminal_window(&admission.body.purchase_authority, receipt.timestamp)?;
         let SettlementDispositionV1::Capture { amount } = terminal.settlement else {
             return Err(PurchaseCoordinatorError::TerminalEvidence(
                 "Allow terminal did not durably capture the purchase".to_owned(),
@@ -1208,6 +1213,27 @@ mod tests {
         assert!(matches!(
             require_failed_delivery_terminal_window(&policy, 200),
             Err(PurchaseCoordinatorError::FailedDeliveryAuthorityWindow)
+        ));
+    }
+
+    #[test]
+    fn purchase_terminal_must_precede_the_authority_boundary() {
+        let policy = FindingAuthorityKeyPolicy {
+            authority_id: "purchase".to_owned(),
+            key: chio_core::crypto::Keypair::from_seed(&[16_u8; 32]).public_key(),
+            key_epoch: 1,
+            valid_from: 100,
+            valid_until: 200,
+            rotation_policy_ref: "rotation-policy-v1".to_owned(),
+            revocation_status_ref: "revocations/purchase".to_owned(),
+        };
+
+        assert!(require_purchase_terminal_window(&policy, 199).is_ok());
+        assert!(matches!(
+            require_purchase_terminal_window(&policy, 200),
+            Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+                "purchase"
+            ))
         ));
     }
 }

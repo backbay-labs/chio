@@ -102,11 +102,11 @@ use chio_open_market::penalty::{
 use chio_settle::{
     dispatch_finding_impairment, plan_finding_impairment,
     plan_finding_impairment_for_reconciliation, recheck_finding_bond_observation,
-    reobserve_finding_impairment, reobserve_finding_impairment_for_reconciliation,
-    verify_finding_collateral_snapshot, verify_finding_enforcement,
-    verify_finding_enforcement_for_reconciliation, ConfirmedFindingImpairmentReconciliation,
-    EvmBondSnapshot, FindingAnchorPublisherEvidence, FindingBondObservationSource,
-    FindingBondObservationVerdict, FindingDispatchPolicy,
+    recheck_reconciled_finding_bond_observation, reobserve_finding_impairment,
+    reobserve_finding_impairment_for_reconciliation, verify_finding_collateral_snapshot,
+    verify_finding_enforcement, verify_finding_enforcement_for_reconciliation,
+    ConfirmedFindingImpairmentReconciliation, EvmBondSnapshot, FindingAnchorPublisherEvidence,
+    FindingBondObservationSource, FindingBondObservationVerdict, FindingDispatchPolicy,
     FindingEnforcementPins, FindingFinalityRequirement, FindingImpairmentOutcome,
     FindingImpairmentPublisher, FindingImpairmentQuarantine, FindingPenaltyAuthorityPolicy,
     FindingSettlementObserverEvidence, PlannedFindingImpairment,
@@ -2677,6 +2677,8 @@ impl FindingChallengeCoordinator {
                 enforcement,
                 bond_snapshot,
                 &reconciliation,
+                RecoveryObservationAuthority::Reconciled(&reconciled),
+                observations,
                 now,
             );
         }
@@ -2763,7 +2765,7 @@ impl FindingChallengeCoordinator {
                 enforcement,
                 bond_snapshot,
                 &reconciliation,
-                &verified,
+                RecoveryObservationAuthority::Fresh(&verified),
                 observations,
                 now,
             );

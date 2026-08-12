@@ -1022,7 +1022,7 @@ impl MarketWeb {
         // registration; the stale one sits strictly before it (the D14
         // report-before-backing rejection input).
         let now = unix_timestamp_now();
-        let report = make_signed_report(&report_inputs, now.saturating_add(3_600))?;
+        let report = make_signed_report(&report_inputs, now.saturating_add(1))?;
         let stale_report = make_signed_report(&report_inputs, now)?;
 
         let admission_inputs = AdmissionInputs {
@@ -1254,6 +1254,13 @@ impl MarketStack {
             json_body(&body)?["allocationId"],
             serde_json::json!(self.web.allocation_id)
         );
+        // The affirmative report must postdate collateral acceptance, while
+        // its live authority-status reading cannot come from the future.
+        // The fixture gives those two events adjacent seconds and waits only
+        // for the report's signed evaluation instant before activation.
+        while unix_timestamp_now() < self.web.report.body.evaluation_time {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
         Ok(())
     }
 
@@ -1939,7 +1946,8 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     assert_eq!(grant.tool_name, "read_finding");
     assert_eq!(grant.max_invocations, Some(1));
 
-    // Participation renewal advances the paid-through epoch.
+    // A prepaid current epoch cannot be charged again or used to buy a future
+    // epoch before that epoch is due.
     let renewal = serde_json::json!({
         "feeSchedule": serde_json::to_value(&web.schedule)?,
     });
@@ -1951,13 +1959,13 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         )?,
     )
     .await?;
-    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
-    assert_eq!(json_body(&body)?["paidThroughEpoch"], serde_json::json!(1));
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("already paid"));
     assert_eq!(
         stack
             .store
             .paid_through_epoch(&web.finding_id, LISTING_ID)?,
-        Some(1)
+        Some(0)
     );
     Ok(())
 }
@@ -2431,5 +2439,24 @@ async fn expired_admission_loses_the_marker() -> TestResult {
     )
     .await?;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    let renewal = serde_json::json!({
+        "feeSchedule": serde_json::to_value(&stack.web.schedule)?,
+    });
+    let (status, body) = send(
+        &stack.state,
+        authed_post(
+            &format!("/v1/findings/{}/participation", stack.web.finding_id),
+            renewal.to_string(),
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("not live"));
+    assert_eq!(
+        stack
+            .store
+            .paid_through_epoch(&stack.web.finding_id, LISTING_ID)?,
+        Some(0)
+    );
     Ok(())
 }
