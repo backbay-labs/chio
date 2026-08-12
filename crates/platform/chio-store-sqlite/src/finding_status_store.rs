@@ -1148,12 +1148,14 @@ impl SqliteFindingStatusStore {
 
     /// Return live findings whose retained non-inclusion proof cannot satisfy
     /// the current durable floor. This includes proofs displaced by any epoch
-    /// advance and current-floor proofs whose signed validity has expired.
+    /// advance and current-floor proofs whose signed validity or configured
+    /// maximum epoch age has expired.
     pub fn list_non_inclusion_refresh_candidates(
         &self,
         feed_id: &str,
         operator_key: &str,
         operator_authorization_sha256: &str,
+        max_epoch_age_secs: u64,
         trusted_now: u64,
         limit: usize,
     ) -> Result<Vec<FindingStatusProofRecord>, FindingStatusStoreError> {
@@ -1163,6 +1165,7 @@ impl SqliteFindingStatusStore {
             operator_authorization_sha256,
             "operator_authorization_sha256",
         )?;
+        require_positive(max_epoch_age_secs, "max_epoch_age_secs")?;
         require_positive(trusted_now, "trusted_now")?;
         if limit == 0 || limit > 200 {
             return Err(invariant("proof query limit must be between 1 and 200"));
@@ -1175,6 +1178,9 @@ impl SqliteFindingStatusStore {
             {PROOF_SELECT}
             JOIN finding_status_feed_floors AS floor
               ON floor.feed_id = p.feed_id
+            JOIN finding_status_epochs AS floor_epoch
+              ON floor_epoch.feed_id = floor.feed_id
+             AND floor_epoch.map_epoch = floor.map_epoch
             WHERE p.feed_id = ?1
               AND p.proof_kind = 'non_inclusion'
               AND NOT EXISTS (
@@ -1194,6 +1200,8 @@ impl SqliteFindingStatusStore {
                     AND current.map_epoch = floor.map_epoch
                     AND current.proof_kind = 'non_inclusion'
                     AND current.valid_until > ?4
+                    AND floor_epoch.generated_at <= ?4
+                    AND (?4 - floor_epoch.generated_at) <= ?5
                 )
               )
               AND p.map_epoch = (
@@ -1204,7 +1212,7 @@ impl SqliteFindingStatusStore {
                   AND latest.proof_kind = 'non_inclusion'
               )
             ORDER BY p.recorded_at, p.finding_id
-            LIMIT ?5
+            LIMIT ?6
             "#
         );
         let mut statement = transaction.prepare(&query).map_err(sqlite_error)?;
@@ -1215,6 +1223,7 @@ impl SqliteFindingStatusStore {
                     operator_key,
                     operator_authorization_sha256,
                     sqlite_i64(trusted_now, "trusted_now")?,
+                    sqlite_i64(max_epoch_age_secs, "max_epoch_age_secs")?,
                     sqlite_i64(limit as u64, "limit")?,
                 ],
                 raw_proof_from_row,

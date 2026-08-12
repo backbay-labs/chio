@@ -3,8 +3,8 @@
 use chio_core::capability::scope::{Constraint, FindingRecoveryMarkerV1, ToolGrant};
 
 use crate::finding_purchase::{
-    FindingStatusProofContextView, FINDING_STATUS_PROOF_CONTEXT_KEY,
-    MAX_FINDING_STATUS_PROOF_B64_BYTES,
+    FindingCurrentStatusContextView, FindingStatusProofContextView,
+    FINDING_STATUS_PROOF_CONTEXT_KEY, MAX_FINDING_STATUS_PROOF_B64_BYTES,
 };
 use crate::finding_recovery::{
     FindingRecoveryContextView, VerifiedFindingRecovery, FINDING_RECOVERY_CONTEXT_ARGUMENT,
@@ -16,6 +16,28 @@ use super::ChioKernel;
 pub(crate) struct RecoveryMarkedGrant<'a> {
     marker: &'a FindingRecoveryMarkerV1,
     expected_output_digest: &'a str,
+}
+
+fn recovery_status_proof_view<'a>(
+    request: &'a ToolCallRequest,
+    verified: &'a VerifiedFindingRecovery,
+) -> Result<FindingStatusProofContextView<'a>, String> {
+    let proof_b64 = request
+        .governed_intent
+        .as_ref()
+        .and_then(|intent| intent.context.as_ref())
+        .and_then(serde_json::Value::as_object)
+        .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "finding recovery requires a portable status proof".to_owned())?;
+    if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
+        return Err("finding status proof carrier exceeds the kernel size bound".to_owned());
+    }
+    Ok(FindingStatusProofContextView {
+        proof_b64,
+        expected_finding_id: &verified.finding_id,
+        expected_feed_id: &verified.expected_status_feed_id,
+    })
 }
 
 /// Recover and validate the closed recovery grant profile.
@@ -220,27 +242,12 @@ impl ChioKernel {
         };
         // Recovery is another delivery of the purchased bytes, so it must
         // cross the same current status floor before consuming retry quota.
-        let proof_b64 = request
-            .governed_intent
-            .as_ref()
-            .and_then(|intent| intent.context.as_ref())
-            .and_then(serde_json::Value::as_object)
-            .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| "finding recovery requires a portable status proof".to_owned())?;
-        if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
-            return Err("finding status proof carrier exceeds the kernel size bound".to_owned());
-        }
         let Some(status_verifier) = self.finding_status_proof_verifier.as_ref() else {
             return Err(
                 "finding recovery requires a configured finding status verifier".to_owned(),
             );
         };
-        let status_view = FindingStatusProofContextView {
-            proof_b64,
-            expected_finding_id: &verified.finding_id,
-            expected_feed_id: &verified.expected_status_feed_id,
-        };
+        let status_view = recovery_status_proof_view(request, &verified)?;
         let status = status_verifier
             .verify_status_proof(&status_view)
             .map_err(|error| format!("finding recovery status proof rejected: {error}"))?;
@@ -269,11 +276,33 @@ impl ChioKernel {
             .get(matched_grant_index)
             .ok_or_else(|| "completed recovery grant index is out of bounds".to_owned())?;
         let current = self
-            .verify_recovery_status_admission(grant, request, now_unix_secs)?
+            .verify_recovery_context(grant, request)?
             .ok_or_else(|| "completed recovery marker disappeared".to_owned())?;
         if &current != expected {
             return Err("completed recovery binding changed before payload release".to_owned());
         }
+        let Some(status_verifier) = self.finding_status_proof_verifier.as_ref() else {
+            return Err(
+                "finding recovery requires a configured finding status verifier".to_owned(),
+            );
+        };
+        let admitted_view = recovery_status_proof_view(request, &current)?;
+        let admitted = status_verifier
+            .verify_status_proof(&admitted_view)
+            .map_err(|error| format!("finding recovery status proof rejected: {error}"))?;
+        status_verifier
+            .verify_current_status_admission(
+                &FindingCurrentStatusContextView {
+                    expected_finding_id: &current.finding_id,
+                    expected_feed_id: &current.expected_status_feed_id,
+                    minimum_map_epoch: admitted.map_epoch,
+                    minimum_non_inclusion_checked_at: admitted.non_inclusion_checked_at,
+                },
+                now_unix_secs,
+            )
+            .map_err(|error| {
+                format!("finding recovery current status admission rejected: {error}")
+            })?;
         Ok(())
     }
 }
@@ -351,7 +380,9 @@ mod tests {
     }
 
     struct MutableStatusVerifier {
-        deny: Arc<AtomicBool>,
+        portable_deny: Arc<AtomicBool>,
+        current_deny: Arc<AtomicBool>,
+        current_checks: Arc<AtomicU64>,
     }
 
     impl FindingStatusProofVerifier for MutableStatusVerifier {
@@ -379,7 +410,20 @@ mod tests {
             _verified: &VerifiedFindingStatusProof,
             _now_unix_secs: u64,
         ) -> Result<(), String> {
-            if self.deny.load(Ordering::SeqCst) {
+            if self.portable_deny.load(Ordering::SeqCst) {
+                Err("finding is pending retraction".to_owned())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn verify_current_status_admission(
+            &self,
+            _view: &FindingCurrentStatusContextView<'_>,
+            _now_unix_secs: u64,
+        ) -> Result<(), String> {
+            self.current_checks.fetch_add(1, Ordering::SeqCst);
+            if self.current_deny.load(Ordering::SeqCst) {
                 Err("finding is pending retraction".to_owned())
             } else {
                 Ok(())
@@ -501,14 +545,18 @@ mod tests {
 
     #[test]
     fn dispatch_status_recheck_denies_without_reserving_again() {
-        let deny = Arc::new(AtomicBool::new(false));
+        let portable_deny = Arc::new(AtomicBool::new(false));
+        let current_deny = Arc::new(AtomicBool::new(false));
+        let current_checks = Arc::new(AtomicU64::new(0));
         let reservations = Arc::new(AtomicU64::new(0));
         let mut kernel = kernel();
         kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
             reservations: Arc::clone(&reservations),
         }));
         kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
-            deny: Arc::clone(&deny),
+            portable_deny: Arc::clone(&portable_deny),
+            current_deny: Arc::clone(&current_deny),
+            current_checks: Arc::clone(&current_checks),
         }));
         let request = recovery_request();
         let grant = &request.capability.scope.grants[0];
@@ -519,7 +567,7 @@ mod tests {
             .is_some());
         assert_eq!(reservations.load(Ordering::SeqCst), 1);
 
-        deny.store(true, Ordering::SeqCst);
+        portable_deny.store(true, Ordering::SeqCst);
         let error = kernel
             .verify_recovery_status_admission(grant, &request, 1)
             .expect_err("dispatch boundary must observe pending retraction");
@@ -530,10 +578,45 @@ mod tests {
             .verify_recovery_context(grant, &request)
             .expect("rederive recovery binding")
             .expect("recovery marker remains present");
+        current_deny.store(true, Ordering::SeqCst);
         let terminal_error = kernel
             .revalidate_completed_recovery_status(0, &request, Some(&expected), 1)
             .expect_err("a durable completed replay must recheck mutable status");
         assert!(terminal_error.contains("pending retraction"));
+        assert_eq!(current_checks.load(Ordering::SeqCst), 1);
+        assert_eq!(reservations.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn terminal_recovery_resolves_current_status_instead_of_reusing_the_admission_floor() {
+        let portable_deny = Arc::new(AtomicBool::new(false));
+        let current_deny = Arc::new(AtomicBool::new(false));
+        let current_checks = Arc::new(AtomicU64::new(0));
+        let reservations = Arc::new(AtomicU64::new(0));
+        let mut kernel = kernel();
+        kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
+            reservations: Arc::clone(&reservations),
+        }));
+        kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
+            portable_deny: Arc::clone(&portable_deny),
+            current_deny,
+            current_checks: Arc::clone(&current_checks),
+        }));
+        let request = recovery_request();
+        let grant = &request.capability.scope.grants[0];
+        let expected = kernel
+            .verify_recovery_admission(grant, &request, 1)
+            .expect("initial live admission")
+            .expect("recovery binding");
+
+        // Model an unrelated feed advance: the frozen portable proof is now
+        // behind the floor, but the target has a fresh current-floor proof.
+        portable_deny.store(true, Ordering::SeqCst);
+        kernel
+            .revalidate_completed_recovery_status(0, &request, Some(&expected), 2)
+            .expect("current-floor status keeps the recovery live");
+
+        assert_eq!(current_checks.load(Ordering::SeqCst), 1);
         assert_eq!(reservations.load(Ordering::SeqCst), 1);
     }
 

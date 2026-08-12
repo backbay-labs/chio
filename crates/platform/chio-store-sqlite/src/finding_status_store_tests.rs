@@ -203,11 +203,24 @@ fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
             FEED,
             epoch_one.operator_key,
             epoch_one.operator_authorization_sha256,
+            1_000,
             NOW + 10,
             200,
         )
         .expect("fresh candidates")
         .is_empty());
+    let shortened_freshness = store
+        .list_non_inclusion_refresh_candidates(
+            FEED,
+            epoch_one.operator_key,
+            epoch_one.operator_authorization_sha256,
+            5,
+            NOW + 10,
+            200,
+        )
+        .expect("shortened freshness candidates");
+    assert_eq!(shortened_freshness.len(), 1);
+    assert_eq!(shortened_freshness[0].finding_id, finding_id);
 
     let epoch_two_id = hex64('4');
     let epoch_two_root = hex64('5');
@@ -219,6 +232,7 @@ fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
             FEED,
             epoch_one.operator_key,
             epoch_one.operator_authorization_sha256,
+            1_000,
             NOW + 10,
             200,
         )
@@ -263,6 +277,7 @@ fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
             FEED,
             epoch_one.operator_key,
             epoch_one.operator_authorization_sha256,
+            1_000,
             NOW + 10,
             200,
         )
@@ -273,6 +288,7 @@ fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
             FEED,
             epoch_one.operator_key,
             epoch_one.operator_authorization_sha256,
+            1_000,
             proof_two.valid_until,
             200,
         )
@@ -338,7 +354,14 @@ fn cadence_schedules_all_proof_kinds_after_operator_authorization_changes() {
     };
     let live_candidates = |operator_key: &str, authorization: &str| {
         store
-            .list_non_inclusion_refresh_candidates(FEED, operator_key, authorization, NOW + 10, 200)
+            .list_non_inclusion_refresh_candidates(
+                FEED,
+                operator_key,
+                authorization,
+                1_000,
+                NOW + 10,
+                200,
+            )
             .expect("query live-proof cadence")
     };
     assert!(publication_candidates(

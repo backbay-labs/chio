@@ -1889,6 +1889,32 @@ impl ChioKernel {
         {
             return self.finalize_durable_tool_return(admission, request, outcome);
         }
+        let recovery_status = self
+            .verify_recovery_context(matched_grant, request)
+            .and_then(|binding| {
+                self.revalidate_completed_recovery_status(
+                    matched_grant_index,
+                    request,
+                    binding.as_ref(),
+                    current_unix_timestamp_ms() / 1_000,
+                )
+            });
+        if let Err(reason) = recovery_status {
+            let reason = format!(
+                "finding recovery status changed before ordinary output finalization: {reason}"
+            );
+            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery output withheld");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_deny_response_with_metadata_and_payee_binding(
+                    request,
+                    &reason,
+                    current_unix_timestamp_ms() / 1_000,
+                    Some(matched_grant_index),
+                    runtime_admission_metadata,
+                    verified_governed_payee_binding.as_ref(),
+                )
+            });
+        }
         self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
             self.finalize_budgeted_tool_output_with_cost_and_metadata(
                 request,

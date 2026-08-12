@@ -819,6 +819,17 @@ impl ChioKernel {
             },
             &receipt,
         )?;
+        self.revalidate_completed_recovery_status(
+            matched_grant_index,
+            request,
+            recovery.as_ref(),
+            current_unix_timestamp_ms() / 1_000,
+        )
+        .map_err(|reason| {
+            KernelError::DurableAdmission(format!(
+                "finding recovery terminal status revalidation failed: {reason}"
+            ))
+        })?;
         self.materialize_durable_admission_receipt(&receipt)?;
         self.mirror_durable_admission_receipt(&receipt)?;
         if let Some(binding) = recovery.as_ref() {
@@ -866,17 +877,6 @@ impl ChioKernel {
         {
             self.append_memory_provenance_for_write(store, key, request, &receipt)?;
         }
-        self.revalidate_completed_recovery_status(
-            matched_grant_index,
-            request,
-            recovery.as_ref(),
-            current_unix_timestamp_ms() / 1_000,
-        )
-        .map_err(|reason| {
-            KernelError::DurableAdmission(format!(
-                "finding recovery terminal status revalidation failed: {reason}"
-            ))
-        })?;
         let (verdict, reason, terminal_state) =
             if let Some(denial) = delivery_evaluation.denial.as_ref() {
                 (
@@ -2156,6 +2156,17 @@ impl ChioKernel {
         } else {
             None
         };
+        self.revalidate_completed_recovery_status(
+            matched_grant_index,
+            request,
+            recovery.as_ref(),
+            current_unix_timestamp_ms() / 1_000,
+        )
+        .map_err(|reason| {
+            KernelError::DurableAdmission(format!(
+                "finding recovery terminal status revalidation failed: {reason}"
+            ))
+        })?;
         let projected_receipt = receipt.receipt().clone();
         let (terminal, expected_terminal_state) = if let Some(denial) =
             delivery_evaluation.denial.as_ref()
@@ -2280,17 +2291,6 @@ impl ChioKernel {
         {
             self.append_memory_provenance_for_write(store, key, request, &projected_receipt)?;
         }
-        self.revalidate_completed_recovery_status(
-            matched_grant_index,
-            request,
-            recovery.as_ref(),
-            current_unix_timestamp_ms() / 1_000,
-        )
-        .map_err(|reason| {
-            KernelError::DurableAdmission(format!(
-                "finding recovery terminal status revalidation failed: {reason}"
-            ))
-        })?;
         let (verdict, reason, terminal_state, execution_nonce) =
             if let Some(denial) = delivery_evaluation.denial.as_ref() {
                 (

@@ -308,8 +308,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
-        "kernel async evaluation core with M5 terminal continuity; capped to current size until split",
-        max_lines=2_165,
+        "kernel async evaluation core with M6 recovery release continuity; capped to current size until split",
+        max_lines=2_191,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/budget.rs": allow(
         "2026-08-31",
