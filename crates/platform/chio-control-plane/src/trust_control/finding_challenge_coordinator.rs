@@ -2569,18 +2569,22 @@ impl FindingChallengeCoordinator {
             // Reconciliation authority exposes no dispatchable plan. It can
             // only re-read the transaction already fenced by this confirmed
             // intent.
-            if let Err(error) = self.require_reobserved_reconciliation(&planned, publisher, None) {
-                self.challenges
-                    .set_liability_quarantine(liability_key, true, now)
-                    .map_err(|store| {
-                        ChallengeCoordinatorError::ChallengeStore(store.to_string())
-                    })?;
-                return Err(error);
-            }
+            let tx_hash = match self.require_reobserved_reconciliation(&planned, publisher, None) {
+                Ok(tx_hash) => tx_hash,
+                Err(error) => {
+                    self.challenges
+                        .set_liability_quarantine(liability_key, true, now)
+                        .map_err(|store| {
+                            ChallengeCoordinatorError::ChallengeStore(store.to_string())
+                        })?;
+                    return Err(error);
+                }
+            };
             return self.finish_confirmed_impairment(
                 liability_key,
                 enforcement,
                 bond_snapshot,
+                &tx_hash,
                 now,
             );
         }
@@ -2667,7 +2671,6 @@ impl FindingChallengeCoordinator {
                 liability_key,
                 enforcement,
                 bond_snapshot,
-                observations,
                 &tx_hash,
                 now,
             );

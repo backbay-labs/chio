@@ -361,12 +361,33 @@ async fn finding_status_retraction() -> TestResult {
 /// fund, and closes the pending-purchase slot.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
-    let lane = open_lane(LaneOptions::standard()).await?;
-    let response = lane.reveal("wedge-settle-1", "nonce-settle-1")?;
+    let lane = open_lane(LaneOptions {
+        install_status_verifier: true,
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let config = market_config();
+    let status_store = lane.authority.finding_status_store();
+    let publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            status_store,
+            config.status_feed_operator,
+            config.status_feed_service_bond,
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    let now = unix_timestamp_now();
+    let live = publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    let live_b64 = STANDARD.encode(&live.proof_bytes);
+    let response = lane.reveal_with_status(
+        &lane.purchase,
+        &live_b64,
+        "wedge-settle-1",
+        "nonce-settle-1",
+    )?;
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
 
     let purchase_store = lane.authority.finding_purchase_store();
-    let now = unix_timestamp_now();
     purchase_store.register_community_fund_destination(
         &lane.deployment.web.allocation_id,
         COMMUNITY_FUND_DESTINATION,

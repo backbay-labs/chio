@@ -227,7 +227,6 @@ impl FindingChallengeCoordinator {
         liability_key: &str,
         enforcement: &SignedFindingChallengeEnforcement,
         bond_snapshot: &SignedFindingFinalizedBondSnapshot,
-        observations: &dyn FindingBondObservationSource,
         tx_hash: &str,
         now: u64,
     ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
@@ -262,14 +261,13 @@ impl FindingChallengeCoordinator {
                 finality_requirement: self.pins.settlement_finality_requirement,
                 max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
             };
-            let verified = verify_finding_enforcement_for_reconciliation(
+            verify_finding_enforcement_for_reconciliation(
                 enforcement,
                 bond_snapshot,
                 &pins,
                 now,
             )
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-            self.require_qualified_observation(&verified, observations)?;
             self.challenges
                 .set_liability_quarantine(liability_key, false, now)
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
