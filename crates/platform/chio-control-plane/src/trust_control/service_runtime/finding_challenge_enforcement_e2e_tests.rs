@@ -9260,6 +9260,27 @@ fn finding_challenge_an_evaluator_key_outside_its_pinned_lifecycle_signs_nothing
         ChallengeCoordinatorError::EvaluatorKeyWindow
     ));
 
+    let mut retired_status = market_config();
+    retired_status.authority_status.valid_until = at;
+    let retired_status =
+        deployment.coordinator_under(&retired_status, FindingDisputeLockDisposition::Forfeited)?;
+    let error = retired_status
+        .evaluate(&evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &collateral,
+            at,
+        ))
+        .err()
+        .ok_or("an expired status authority was accepted")?;
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::EvaluatorRevocation(
+            "status authority is outside its configured validity window"
+        )
+    ));
+
     // None of that consumed an evaluation attempt against the challenge.
     assert_eq!(
         deployment
@@ -9542,6 +9563,37 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
             ChallengeCoordinatorError::AuthorityLifecycle {
                 role: "historical audit",
                 ..
+            }
+        ));
+    }
+
+    {
+        let mut deployment = deployment()?;
+        let challenge = venue_audit_challenge()?;
+        let audit_epoch_envelope_sha256 = match &challenge.body.authorization {
+            FindingChallengeAuthorization::VenueAudit(audit) => {
+                audit.audit_epoch_envelope_sha256.clone()
+            }
+            FindingChallengeAuthorization::BuyerSubmission(_) => {
+                return Err("venue audit fixture used the buyer branch".into())
+            }
+        };
+        Arc::make_mut(&mut deployment.filings)
+            .audit_policies
+            .get_mut(&audit_epoch_envelope_sha256)
+            .ok_or("retained audit policy")?
+            .valid_until = NOW + 1;
+        let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+        let (_, raw) = finding_artifact()?;
+        let error = coordinator
+            .submit(&challenge, &raw, NOW + 1)
+            .err()
+            .ok_or("a retired historical audit key filed a new audit")?;
+        assert!(matches!(
+            error,
+            ChallengeCoordinatorError::AuthorityLifecycle {
+                role: "historical audit",
+                reason: "role action is outside the configured validity window",
             }
         ));
     }

@@ -33,7 +33,8 @@ use chio_open_market::finding_admission::{
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
-    ensure_generic_listing_signed_by_namespace_owner, GenericListingStatus, SignedGenericListing,
+    ensure_generic_listing_signed_by_namespace_owner, normalize_namespace, GenericListingStatus,
+    SignedGenericListing,
 };
 use chio_store_sqlite::finding_market_store::{
     finding_fee_idempotency_key, FindingActivationAttemptState,
@@ -1284,6 +1285,32 @@ pub(crate) async fn handle_activate_finding(
             "pricing hint envelope digest mismatch",
         );
     }
+    if let Err(error) = request.pricing_hint.body.validate() {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
+    if !matches!(request.pricing_hint.verify_signature(), Ok(true)) {
+        return plain_http_error(StatusCode::BAD_REQUEST, "pricing hint signature is invalid");
+    }
+    if !request.pricing_hint.body.is_live_at(now) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "pricing hint is not live at activation",
+        );
+    }
+    if request.pricing_hint.signer_key != listing_authority
+        || request.pricing_hint.body.listing_id != request.listing.body.listing_id
+        || normalize_namespace(&request.pricing_hint.body.namespace)
+            != normalize_namespace(&request.listing.body.namespace)
+        || request.pricing_hint.body.provider_operator_id != admission.publisher_operator_id
+        || request.pricing_hint.body.provider_operator_id
+            != request.listing.body.namespace_ownership.owner_id
+        || request.listing.body.subject.actor_id != admission.server_id
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "pricing hint identity does not match the admitted listing",
+        );
+    }
     if request.pricing_hint.body.capability_scope != admission.capability_scope {
         return plain_http_error(StatusCode::BAD_REQUEST, "pricing hint scope mismatch");
     }
@@ -1882,6 +1909,17 @@ pub(crate) async fn handle_finding_participation(
             );
         }
     };
+    if !super::finding_challenge_coordinator::rail_observation_matches(
+        &instruction,
+        &instruction_sha256,
+        &observation,
+    ) {
+        let _ = store.mark_fee_failed(&idempotency_key);
+        return plain_http_error(
+            StatusCode::BAD_GATEWAY,
+            "rail observation does not reconcile to the dispatched instruction",
+        );
+    }
     let observation_sha256 = match canonical_digest_of(&observation) {
         Ok(digest) => digest,
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),

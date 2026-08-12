@@ -1129,7 +1129,7 @@ impl FindingChallengeCoordinator {
                     .filings
                     .audit_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
                     .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
-                self.require_live_role(&historical_policy, body.filed_at, now, "historical audit")?
+                self.require_live_role(&historical_policy, now, now, "historical audit")?
             }
             FindingChallengeAuthorization::BuyerSubmission(_) => self
                 .pins
@@ -3548,7 +3548,9 @@ impl FindingChallengeCoordinator {
         verify_pinned_envelope(&signed, &status_key, "authority status")
             .map_err(|_| reject("revocation status signature is invalid"))?;
         let body = &signed.body;
-        if !self.pins.authority_status.covers(body.observed_at) {
+        if !self.pins.authority_status.covers(body.observed_at)
+            || !self.pins.authority_status.covers(now)
+        {
             return Err(reject(
                 "status authority is outside its configured validity window",
             ));
@@ -6304,7 +6306,7 @@ fn canonical_digest_of<T: serde::Serialize>(
     Ok(sha256_hex(&bytes))
 }
 
-fn rail_observation_matches(
+pub(super) fn rail_observation_matches(
     instruction: &FindingRailInstruction,
     instruction_digest: &str,
     observation: &FindingRailObservation,

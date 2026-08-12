@@ -230,6 +230,23 @@ impl FindingRailObserver for FailingRail {
     }
 }
 
+struct MismatchedRail;
+
+impl FindingRailObserver for MismatchedRail {
+    fn dispatch(
+        &self,
+        instruction: &FindingRailInstruction,
+    ) -> Result<FindingRailObservation, String> {
+        Ok(FindingRailObservation {
+            instruction_sha256: hex64('f'),
+            amount_units: instruction.amount_units,
+            currency: instruction.currency.clone(),
+            rail_destination: instruction.rail_destination.clone(),
+            rail: "venue-ledger".to_string(),
+        })
+    }
+}
+
 fn market_state(
     joint: Arc<SqliteAuthorityStore>,
     config: FindingMarketConfig,
@@ -1195,6 +1212,23 @@ impl MarketWeb {
         report: &SignedFindingVerifierReport,
         listing: &SignedGenericListing,
     ) -> Result<String, AnyError> {
+        self.activate_request_with_listing_and_pricing(
+            admission,
+            schedule,
+            report,
+            listing,
+            &self.pricing_hint,
+        )
+    }
+
+    fn activate_request_with_listing_and_pricing(
+        &self,
+        admission: &SignedFindingAdmission,
+        schedule: &SignedOpenMarketFeeSchedule,
+        report: &SignedFindingVerifierReport,
+        listing: &SignedGenericListing,
+        pricing_hint: &SignedListingPricingHint,
+    ) -> Result<String, AnyError> {
         let body = serde_json::json!({
             "admission": serde_json::to_value(admission)?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
@@ -1207,7 +1241,7 @@ impl MarketWeb {
                 None,
             )?)?,
             "listing": serde_json::to_value(listing)?,
-            "pricingHint": serde_json::to_value(&self.pricing_hint)?,
+            "pricingHint": serde_json::to_value(pricing_hint)?,
         });
         Ok(body.to_string())
     }
@@ -1560,6 +1594,102 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         &stack,
         web.activate_request(&wrong_hint, &web.schedule, &web.report)?,
         "pricing hint envelope digest mismatch",
+    )
+    .await?;
+
+    let mut tampered_pricing = web.pricing_hint.clone();
+    tampered_pricing.body.price_per_call.units =
+        tampered_pricing.body.price_per_call.units.saturating_add(1);
+    let mut tampered_pricing_admission =
+        web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+    tampered_pricing_admission.pricing_hint_envelope_sha256 = digest_of(&tampered_pricing)?;
+    let tampered_pricing_admission = sign_admission(tampered_pricing_admission, &web.venue)?;
+    assert_activation_rejected(
+        &stack,
+        web.activate_request_with_listing_and_pricing(
+            &tampered_pricing_admission,
+            &web.schedule,
+            &web.report,
+            &web.listing,
+            &tampered_pricing,
+        )?,
+        "pricing hint signature is invalid",
+    )
+    .await?;
+
+    let mut future_pricing_body = web.pricing_hint.body.clone();
+    future_pricing_body.issued_at = unix_timestamp_now().saturating_add(60);
+    let future_pricing = SignedListingPricingHint::sign(future_pricing_body, &web.operator)?;
+    let mut future_pricing_admission =
+        web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+    future_pricing_admission.pricing_hint_envelope_sha256 = digest_of(&future_pricing)?;
+    let future_pricing_admission = sign_admission(future_pricing_admission, &web.venue)?;
+    assert_activation_rejected(
+        &stack,
+        web.activate_request_with_listing_and_pricing(
+            &future_pricing_admission,
+            &web.schedule,
+            &web.report,
+            &web.listing,
+            &future_pricing,
+        )?,
+        "pricing hint is not live at activation",
+    )
+    .await?;
+
+    for pricing_body in [
+        {
+            let mut body = web.pricing_hint.body.clone();
+            body.listing_id = "another-listing".to_string();
+            body
+        },
+        {
+            let mut body = web.pricing_hint.body.clone();
+            body.namespace = "https://another-registry.example".to_string();
+            body
+        },
+        {
+            let mut body = web.pricing_hint.body.clone();
+            body.provider_operator_id = "another-operator".to_string();
+            body
+        },
+    ] {
+        let pricing = SignedListingPricingHint::sign(pricing_body, &web.operator)?;
+        let mut admission =
+            web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+        admission.pricing_hint_envelope_sha256 = digest_of(&pricing)?;
+        let admission = sign_admission(admission, &web.venue)?;
+        assert_activation_rejected(
+            &stack,
+            web.activate_request_with_listing_and_pricing(
+                &admission,
+                &web.schedule,
+                &web.report,
+                &web.listing,
+                &pricing,
+            )?,
+            "pricing hint identity does not match the admitted listing",
+        )
+        .await?;
+    }
+
+    let mut wrong_provider_body = web.listing.body.clone();
+    wrong_provider_body.subject.actor_id = "another-provider.example".to_string();
+    let wrong_provider_listing = SignedGenericListing::sign(wrong_provider_body, &web.operator)?;
+    let mut wrong_provider_admission =
+        web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+    wrong_provider_admission.listing_envelope_sha256 = digest_of(&wrong_provider_listing)?;
+    let wrong_provider_admission = sign_admission(wrong_provider_admission, &web.venue)?;
+    assert_activation_rejected(
+        &stack,
+        web.activate_request_with_listing_and_pricing(
+            &wrong_provider_admission,
+            &web.schedule,
+            &web.report,
+            &wrong_provider_listing,
+            &web.pricing_hint,
+        )?,
+        "pricing hint identity does not match the admitted listing",
     )
     .await?;
 
@@ -2567,6 +2697,41 @@ async fn unpaid_epoch_drops_the_marker_until_renewal() -> TestResult {
         )?
         .ok_or_else(|| missing("paid-through epoch after renewal"))?;
     assert!(paid_through >= 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn participation_renewal_rejects_a_mismatched_rail_observation() -> TestResult {
+    let mut stack = provision_stack(1, ADMISSION_EXPIRES_AT)?;
+    stack.seed_market().await?;
+    let (status, body) = stack.activate().await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+
+    tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
+    let mut mismatched_state = stack.state.clone();
+    mismatched_state.finding_rail = Some(Arc::new(MismatchedRail));
+    let renewal = serde_json::json!({
+        "feeSchedule": serde_json::to_value(&stack.web.schedule)?,
+    });
+    let (status, body) = send(
+        &mismatched_state,
+        authed_post(
+            &format!("/v1/findings/{}/participation", stack.web.finding_id),
+            renewal.to_string(),
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert!(String::from_utf8_lossy(&body).contains("does not reconcile"));
+    assert_eq!(
+        stack.store.paid_through_epoch(
+            &stack.web.finding_id,
+            LISTING_ID,
+            &stack.web.schedule_sha256,
+        )?,
+        Some(0)
+    );
+    assert!(stack.admission_marker().await?.is_none());
     Ok(())
 }
 
