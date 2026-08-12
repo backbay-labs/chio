@@ -125,7 +125,7 @@ async fn profile_registration_requires_live_unrevoked_governance() -> TestResult
     assert!(String::from_utf8_lossy(&body).contains("not live at registration"));
 
     let mut future = profile.body.clone();
-    future.issued_at = now.saturating_add(1);
+    future.issued_at = now.saturating_add(60);
     future.profile_id = String::new();
     future.profile_id = compute_profile_id(&future)?;
     let future = SignedExportEnvelope::sign(future, &keypair(1))?;
