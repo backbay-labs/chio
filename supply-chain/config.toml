@@ -2174,6 +2174,10 @@ criteria = "safe-to-deploy"
 version = "0.6.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.objc2-app-kit]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.objc2-core-foundation]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
@@ -3612,7 +3616,7 @@ version = "1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.webbrowser]]
-version = "1.2.1"
+version = "1.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.webpki-root-certs]]
