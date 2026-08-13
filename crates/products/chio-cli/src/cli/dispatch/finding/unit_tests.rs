@@ -625,6 +625,15 @@ fn status_floor_accepts_same_key_authorization_refresh_and_rejects_key_equivocat
     authorization.operator.valid_until = 1_950_000_000;
     let refreshed_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
     let mut refreshed_response = response;
+    assert!(advance_status_floor(
+        &floor_path,
+        &refreshed_response,
+        &authorization,
+        &refreshed_sha256,
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("did not advance"));
     refreshed_response.map_epoch = 9;
     refreshed_response.epoch_id = "5".repeat(64);
     refreshed_response.root_hash = "6".repeat(64);

@@ -449,6 +449,17 @@ impl MemoryGovernanceGuard {
         ctx: &GuardContext,
         store: &str,
     ) -> Result<GuardDecision, KernelError> {
+        if self.finding_retraction.is_some()
+            && !ctx
+                .request
+                .arguments
+                .get(chio_kernel::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT)
+                .and_then(Value::as_str)
+                .is_some_and(|receipt_id| !receipt_id.trim().is_empty())
+        {
+            return Ok(GuardDecision::deny(Vec::new()));
+        }
+
         // 1. Store allowlist (capability + guard config).
         if let Some(allow) = self.effective_store_allowlist(ctx) {
             if !allow.iter().any(|s| store_matches(s, store)) {

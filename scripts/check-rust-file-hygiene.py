@@ -434,7 +434,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-cli/src/cli/dispatch/finding/unit_tests.rs": allow(
         "2026-08-31",
         "cognition-market CLI regression suite with status trust-input migration coverage; capped to current size until split",
-        max_lines=2_523,
+        max_lines=2_534,
     ),
     "crates/platform/chio-store-sqlite/src/serving_owner/tests.rs": allow(
         "2026-08-31",

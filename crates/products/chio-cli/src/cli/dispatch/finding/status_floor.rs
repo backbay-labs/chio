@@ -435,6 +435,14 @@ pub(super) fn advance_status_floor(
                 "finding status response equivocates at the durable rollback floor".to_owned(),
             ));
         }
+        if authorization_sha256 != current.operator_authorization_sha256
+            && status.map_epoch == current.map_epoch
+        {
+            return Err(CliError::cli_other_error(
+                "finding status authorization refresh did not advance the durable map epoch"
+                    .to_owned(),
+            ));
+        }
         for finding_id in &legacy_retractions {
             if finding_id.len() != 64
                 || !finding_id

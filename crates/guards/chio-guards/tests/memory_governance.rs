@@ -478,6 +478,41 @@ fn finding_quarantine_allows_only_fresh_live_exact_key_reads() {
 }
 
 #[test]
+fn finding_quarantine_denies_writes_without_delivery_lineage() {
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let guard = finding_guard(Ok(FindingStatusValue::Live));
+    let unbound = eval_at(
+        &guard,
+        &kp,
+        &scope,
+        "vector_upsert",
+        serde_json::json!({
+            "collection": "memory",
+            "id": "key-1",
+            "content": "replacement"
+        }),
+        None,
+    );
+    assert!(matches!(unbound, Verdict::Deny));
+
+    let bound = eval_at(
+        &guard,
+        &kp,
+        &scope,
+        "vector_upsert",
+        serde_json::json!({
+            "collection": "memory",
+            "id": "key-1",
+            "content": "replacement",
+            "finding_delivery_receipt_id": "delivery-1"
+        }),
+        None,
+    );
+    assert!(matches!(bound, Verdict::Allow));
+}
+
+#[test]
 fn finding_quarantine_denies_unavailable_state_and_resolver_substitution() {
     let scope = ChioScope::default();
     let kp = Keypair::generate();

@@ -253,6 +253,53 @@ impl FindingStatusEpochPublisher {
         }
     }
 
+    /// Report whether the external cadence must publish a root-only epoch.
+    /// This is the discovery seam for finalized anchor changes: callers pass
+    /// the current canonical anchor set, and a mismatch is work even when no
+    /// retraction or point-proof freshness query returns a finding.
+    pub fn epoch_refresh_required(&self, anchor_refs: &[String], now: u64) -> Result<bool, String> {
+        let map = self.rebuild_map()?;
+        Ok(self
+            .current_epoch_for_point_proof(&map, anchor_refs, now)?
+            .is_none())
+    }
+
+    /// Publish the root-only cadence work exposed by
+    /// [`Self::epoch_refresh_required`]. Advancing the floor makes every
+    /// displaced inclusion and non-inclusion proof visible to the existing
+    /// bounded candidate queries without requiring an unrelated status event.
+    pub fn publish_epoch_refresh(
+        &self,
+        anchor_refs: &[String],
+        now: u64,
+    ) -> Result<chio_finding::SignedFindingStatusEpoch, String> {
+        let map = self.rebuild_map()?;
+        if let Some(current) = self.current_epoch_for_point_proof(&map, anchor_refs, now)? {
+            return Ok(current);
+        }
+        let signed = self.sign_epoch(&map, self.next_map_epoch()?, anchor_refs, now)?;
+        let epoch_bytes = chio_core::canonical_json_bytes(&signed).map_err(|e| e.to_string())?;
+        let operator_key = signed.body.operator_key.to_hex();
+        self.store
+            .observe_verified_epoch(&VerifiedFindingStatusEpochInput {
+                feed_id: &signed.body.feed_id,
+                operator_id: &signed.body.operator_id,
+                key_domain_nonce: signed.body.key_domain_nonce,
+                map_epoch: signed.body.map_epoch,
+                epoch_id: &signed.body.status_epoch_id,
+                root_hash: &signed.body.root_hash,
+                signed_epoch_bytes: &epoch_bytes,
+                operator_key: &operator_key,
+                operator_key_epoch: signed.body.operator_key_epoch,
+                operator_authorization_sha256: &self.operator.authorization_sha256,
+                generated_at: signed.body.generated_at,
+                valid_until: signed.body.valid_until,
+                recorded_at: now,
+            })
+            .map_err(|error| error.to_string())?;
+        Ok(signed)
+    }
+
     fn persist_point_proof(
         &self,
         signed: &chio_finding::SignedFindingStatusEpoch,

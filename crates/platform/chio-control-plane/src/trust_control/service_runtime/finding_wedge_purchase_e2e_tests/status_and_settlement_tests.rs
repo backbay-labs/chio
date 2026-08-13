@@ -335,6 +335,29 @@ async fn finding_status_retraction() -> TestResult {
         .iter()
         .any(|candidate| candidate.intent_id == intent_id));
 
+    let anchor_refresh_at = status_gate_now + 2;
+    assert!(!status_gate_publisher.epoch_refresh_required(&[], anchor_refresh_at)?);
+    let finalized_anchors = vec!["anchor://finding-status/finalized-1".to_owned()];
+    assert!(status_gate_publisher
+        .epoch_refresh_required(&finalized_anchors, anchor_refresh_at)?);
+    let prior_anchor_epoch = status_gate_store
+        .get_feed_floor(&config.status_feed_operator_ref)?
+        .map_epoch;
+    let anchored_epoch = status_gate_publisher
+        .publish_epoch_refresh(&finalized_anchors, anchor_refresh_at)?;
+    assert_eq!(anchored_epoch.body.map_epoch, prior_anchor_epoch + 1);
+    assert_eq!(anchored_epoch.body.anchor_refs, finalized_anchors);
+    assert!(status_gate_store
+        .list_publication_candidates(
+            &config.status_feed_operator_ref,
+            &config.status_feed_operator.authority.key_hex,
+            &config.status_feed_operator.authorization_sha256,
+            anchor_refresh_at,
+            200,
+        )?
+        .iter()
+        .any(|candidate| candidate.intent_id == intent_id));
+
     let mut rotated_operator = config.status_feed_operator.clone();
     rotated_operator.authority.key_hex = keypair(46).public_key().to_hex();
     rotated_operator.authority.key_epoch += 1;
