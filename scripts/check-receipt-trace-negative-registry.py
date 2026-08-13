@@ -101,12 +101,18 @@ def main() -> None:
     native_source = Path("crates/tooling/chio-conformance/src/native_suite.rs").read_text(
         encoding="utf-8"
     )
+    native_test_source = Path(
+        "crates/tooling/chio-conformance/src/native_suite/tests.rs"
+    ).read_text(encoding="utf-8")
     trace_source = Path("crates/tooling/chio-trace-validate/src/capture.rs").read_text(
         encoding="utf-8"
     )
     for symbol, source in (
         ("BlindRevocationStore", native_source),
-        ("runtime_trace_refuses_a_dropped_admission_callback", native_source),
+        (
+            "runtime_trace_refuses_a_dropped_admission_callback",
+            native_test_source,
+        ),
         ("AdmissionDroppingObserver", native_source),
         ("DuplicateReceiptTime", trace_source),
         ("DepthAboveLimit", trace_source),
