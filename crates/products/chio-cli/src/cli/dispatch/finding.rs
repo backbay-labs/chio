@@ -796,6 +796,7 @@ fn verify_status_projection(
     authorization: &chio_finding::FindingStatusOperatorAuthorization,
     expected_service_bond_evidence_sha256: &str,
     max_epoch_age_secs: u64,
+    trusted_now: u64,
 ) -> Result<(), CliError> {
     if response.feed_id != expected_feed || response.finding_id != expected_finding {
         return Err(CliError::cli_other_error(
@@ -907,15 +908,11 @@ fn verify_status_projection(
             "finding status epoch signature or response binding is invalid".to_string(),
         ));
     }
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|error| CliError::cli_other_error(format!("system clock is invalid: {error}")))?
-        .as_secs();
     let verified_epoch = chio_finding::verify_status_proof_input(
         &proof,
         authorization,
         chio_finding::FindingStatusFreshnessPolicy {
-            now,
+            now: trusted_now,
             max_epoch_age_secs,
         },
     )
@@ -985,6 +982,15 @@ fn cmd_finding_status(
         "finding status response",
     )?;
     let status: FindingStatusProofResponse = serde_json::from_str(&raw_status)?;
+    let post_fetch_now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| CliError::cli_other_error(format!("system clock is invalid: {error}")))?
+        .as_secs();
+    if !service_bond.covers(post_fetch_now) {
+        return Err(CliError::cli_other_error(
+            "finding status service bond expired while fetching the proof".to_owned(),
+        ));
+    }
     verify_status_projection(
         &status,
         feed_id,
@@ -992,6 +998,7 @@ fn cmd_finding_status(
         &authorization,
         &service_bond.evidence_sha256,
         max_epoch_age_secs,
+        post_fetch_now,
     )?;
     advance_status_floor(
         rollback_floor,
