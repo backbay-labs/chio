@@ -47,11 +47,13 @@ the configured feed.
 Each cadence run performs this order:
 
 1. Read the durable feed floor, the current canonical finalized anchor set,
-   and bounded batches from `list_publication_candidates` and
+   and bounded batches from `list_publication_candidates`,
+   `list_non_inclusion_enrollment_candidates`, and
    `list_non_inclusion_refresh_candidates`. The batches include eligible
-   pending intents, published sticky leaves whose current-floor inclusion
-   proof needs refresh, and live findings whose non-inclusion proof was
-   displaced by an epoch advance or expired.
+   pending intents, every active admitted Finding that has not received its
+   first proof, published sticky leaves whose current-floor inclusion proof
+   needs refresh, and live findings whose non-inclusion proof was displaced by
+   an epoch advance or expired.
 2. Call `epoch_refresh_required` with that finalized anchor set and the
    cadence's current trusted time. If it returns true and both bounded batches
    are empty, call `publish_epoch_refresh` with the same anchor set and a

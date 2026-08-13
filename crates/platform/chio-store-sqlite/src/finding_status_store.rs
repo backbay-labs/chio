@@ -1240,6 +1240,70 @@ impl SqliteFindingStatusStore {
         Ok(proofs)
     }
 
+    /// Return active admitted findings that have never received a status
+    /// proof for this feed. The external cadence consumes this enrollment
+    /// queue before the ordinary refresh queue so a new admission cannot
+    /// remain permanently unavailable at the proof endpoint.
+    pub fn list_non_inclusion_enrollment_candidates(
+        &self,
+        feed_id: &str,
+        trusted_now: u64,
+        limit: usize,
+    ) -> Result<Vec<String>, FindingStatusStoreError> {
+        require_identifier(feed_id, "feed_id")?;
+        require_positive(trusted_now, "trusted_now")?;
+        if limit == 0 || limit > 200 {
+            return Err(invariant(
+                "enrollment query limit must be between 1 and 200",
+            ));
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let mut statement = transaction
+            .prepare(
+                r#"
+                SELECT admission.finding_id
+                FROM admissions AS admission
+                JOIN findings AS finding
+                  ON finding.finding_id = admission.finding_id
+                WHERE admission.state = 'active'
+                  AND admission.expires_at > ?2
+                  AND finding.expires_at > ?2
+                  AND json_extract(finding.artifact_json, '$.status_feed_ref') = ?1
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM finding_status_states AS status
+                    WHERE status.feed_id = ?1
+                      AND status.finding_id = admission.finding_id
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM finding_status_proofs AS proof
+                    WHERE proof.feed_id = ?1
+                      AND proof.finding_id = admission.finding_id
+                  )
+                ORDER BY admission.activated_at, admission.finding_id
+                LIMIT ?3
+                "#,
+            )
+            .map_err(sqlite_error)?;
+        let candidates = statement
+            .query_map(
+                params![
+                    feed_id,
+                    sqlite_i64(trusted_now, "trusted_now")?,
+                    sqlite_i64(limit as u64, "limit")?,
+                ],
+                |row| row.get(0),
+            )
+            .map_err(sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sqlite_error)?;
+        drop(statement);
+        transaction.commit().map_err(sqlite_error)?;
+        Ok(candidates)
+    }
+
     /// Load one retained retracted leaf.
     pub fn get_leaf(
         &self,

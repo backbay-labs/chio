@@ -14,7 +14,7 @@ use super::build_router;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -2142,6 +2142,7 @@ struct LaneOptions {
     rail: Rail,
     install_verifier: bool,
     install_status_verifier: bool,
+    publish_status_proof: bool,
 }
 
 impl LaneOptions {
@@ -2151,6 +2152,7 @@ impl LaneOptions {
             rail: Rail::ReversibleHold,
             install_verifier: true,
             install_status_verifier: true,
+            publish_status_proof: true,
         }
     }
 }
@@ -2168,7 +2170,7 @@ async fn open_lane(options: LaneOptions) -> Result<Lane, AnyError> {
     deployment.seed_and_activate(&state).await?;
     let accepted_at = allocation_accepted_at(&authority, &deployment.web)?;
     let witness = admission_witness(&deployment.web, accepted_at)?;
-    let status_proof_b64 = if options.install_status_verifier {
+    let status_proof_b64 = if options.publish_status_proof {
         Some(publish_live_status_proof_b64(
             &authority,
             &deployment.web.finding_id,

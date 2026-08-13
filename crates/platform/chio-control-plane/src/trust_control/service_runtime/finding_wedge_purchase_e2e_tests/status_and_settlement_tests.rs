@@ -34,6 +34,41 @@ impl chio_guards::finding_retraction::FindingRetractionClock for AdvancingRetrac
     }
 }
 
+struct RetractionOnRefreshClock {
+    now: u64,
+    fired: AtomicBool,
+    store: SqliteFindingStatusStore,
+    feed_id: String,
+    operator_id: String,
+    finding_id: String,
+    intent_id: String,
+    intent_bytes: Vec<u8>,
+    inclusion_deadline: u64,
+}
+
+impl crate::trust_control::finding_status_verifier::FindingStatusAdmissionClock
+    for RetractionOnRefreshClock
+{
+    fn now_unix_secs(&self) -> Result<u64, String> {
+        if !self.fired.swap(true, Ordering::SeqCst) {
+            self.store
+                .issue_retraction_intent(&chio_store_sqlite::FindingRetractionIntentInput {
+                    intent_id: &self.intent_id,
+                    feed_id: &self.feed_id,
+                    operator_id: &self.operator_id,
+                    finding_id: &self.finding_id,
+                    source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
+                    intent_bytes: &self.intent_bytes,
+                    issued_at: self.now,
+                    inclusion_deadline: self.inclusion_deadline,
+                    created_at: self.now,
+                })
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(self.now)
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn finding_purchase_without_status_verifier_denies_before_effects() -> TestResult {
     let lane = open_lane(LaneOptions {
@@ -53,6 +88,7 @@ async fn finding_purchase_without_status_verifier_denies_before_effects() -> Tes
 async fn finding_status_retraction() -> TestResult {
     let lane = open_lane(LaneOptions {
         install_status_verifier: true,
+        publish_status_proof: false,
         ..LaneOptions::standard()
     })
     .await?;
@@ -67,7 +103,23 @@ async fn finding_status_retraction() -> TestResult {
             config.status_max_epoch_age_secs,
         )?;
     let now = unix_timestamp_now();
+    assert_eq!(
+        status_store.list_non_inclusion_enrollment_candidates(
+            &config.status_feed_operator_ref,
+            now,
+            200,
+        )?,
+        vec![lane.deployment.web.finding_id.clone()],
+        "an active admission must enroll its first non-inclusion proof"
+    );
     let live = publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    assert!(status_store
+        .list_non_inclusion_enrollment_candidates(
+            &config.status_feed_operator_ref,
+            now,
+            200,
+        )?
+        .is_empty());
     let stale_after_store_reads = now + config.status_max_epoch_age_secs + 1;
     let refreshed_verifier = MarketFindingStatusVerifier::new_with_clock(
         config.status_feed_operator.clone(),
@@ -514,6 +566,69 @@ async fn finding_status_retraction() -> TestResult {
     let guarded = holder_kernel
         .evaluate_tool_call_blocking(&memory_read_request("m6-holder-retracted-read"))?;
     assert_eq!(guarded.verdict, Verdict::Deny);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn finding_status_admission_rechecks_sticky_state_after_proof_verification() -> TestResult {
+    let lane = open_lane(LaneOptions {
+        install_status_verifier: true,
+        publish_status_proof: false,
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let config = market_config();
+    let status_store = lane.authority.finding_status_store();
+    let publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            status_store.clone(),
+            config.status_feed_operator.clone(),
+            config.status_feed_service_bond.clone(),
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    let now = unix_timestamp_now();
+    let live = publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    let live_b64 = STANDARD.encode(&live.proof_bytes);
+    let live_view = chio_kernel::finding_purchase::FindingStatusProofContextView {
+        proof_b64: &live_b64,
+        expected_finding_id: &lane.deployment.web.finding_id,
+        expected_feed_id: &config.status_feed_operator_ref,
+    };
+    let refresh_now = now + 1;
+    let intent_bytes = canonical_json_bytes(&serde_json::json!({
+        "finding_id": lane.deployment.web.finding_id,
+        "reason": "concurrent-seller-retraction",
+        "schema": "chio.finding.voluntary-retraction.v1",
+    }))?;
+    let verifier = MarketFindingStatusVerifier::new_with_clock(
+        config.status_feed_operator.clone(),
+        config.status_feed_service_bond.clone(),
+        config.status_max_epoch_age_secs,
+        status_store.clone(),
+        Arc::new(RetractionOnRefreshClock {
+            now: refresh_now,
+            fired: AtomicBool::new(false),
+            store: status_store,
+            feed_id: config.status_feed_operator_ref.clone(),
+            operator_id: config.status_feed_operator.authority.authority_id.clone(),
+            finding_id: lane.deployment.web.finding_id.clone(),
+            intent_id: sha256_hex(b"m6-concurrent-retraction-intent"),
+            intent_bytes,
+            inclusion_deadline: refresh_now
+                + config.status_feed_service_bond.inclusion_sla_secs,
+        }),
+    )?;
+    let verified =
+        chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_proof(
+            &verifier, &live_view,
+        )?;
+    let error = chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_admission(
+        &verifier, &live_view, &verified, now,
+    )
+    .err()
+    .ok_or("concurrent retraction was accepted after final proof verification")?;
+    assert!(error.contains("pending"), "unexpected rejection: {error}");
     Ok(())
 }
 

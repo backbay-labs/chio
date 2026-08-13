@@ -376,10 +376,6 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
                 recorded_at: now_unix_secs,
             })
             .map_err(|error| error.to_string())?;
-        let decision = self
-            .store
-            .status_for_purchase(fields.feed_id, fields.finding_id, now_unix_secs)
-            .map_err(|error| error.to_string())?;
         let refreshed_now = self.clock.now_unix_secs()?.max(now_unix_secs);
         let refreshed_material = self.verify_at(view, refreshed_now, true)?;
         if &refreshed_material.verified != verified {
@@ -392,6 +388,13 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
             &current_epoch,
             refreshed_now,
         )?;
+        // This is deliberately the final durable read. A retraction that
+        // commits during proof verification must replace the earlier live
+        // observation before admission returns.
+        let decision = self
+            .store
+            .status_for_purchase(fields.feed_id, fields.finding_id, refreshed_now)
+            .map_err(|error| error.to_string())?;
         match decision {
             FindingStatusDecision::VerifiedLive(record)
                 if record.proof_sha256 == verified.proof_sha256
