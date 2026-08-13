@@ -914,6 +914,7 @@ fn status_rejects_oversized_encoded_proof_before_decoding() {
         &authorization,
         &"9".repeat(64),
         300,
+        response.checked_at,
     )
     .unwrap_err()
     .to_string();
@@ -960,6 +961,7 @@ fn status_rejects_a_projected_digest_that_does_not_hash_the_proof_bytes() {
         &authorization,
         &"9".repeat(64),
         300,
+        response.checked_at,
     )
     .unwrap_err()
     .to_string();
