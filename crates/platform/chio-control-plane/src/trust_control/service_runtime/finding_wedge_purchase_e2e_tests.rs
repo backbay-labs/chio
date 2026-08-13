@@ -4355,6 +4355,27 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         canonical_json_bytes(&first)?,
         canonical_json_bytes(&second)?
     );
+    let revoked_status_operator = coordinator_with_status(
+        &authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::revoked(
+            &market_config().status_feed_operator.authority.authority_id,
+        )),
+    )?;
+    let replay_after_revocation = revoked_status_operator.reserve(
+        &exchange.bid,
+        &exchange.ask,
+        &exchange.buyer_signature_hex,
+        &deployment.web.admission,
+        &deployment.web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    assert_eq!(
+        canonical_json_bytes(&first)?,
+        canonical_json_bytes(&replay_after_revocation)?,
+        "an exact committed reservation must replay after operator revocation"
+    );
     assert_eq!(first.body.receipt_id, exchange.reservation_id);
     let stored = authority
         .finding_purchase_store()

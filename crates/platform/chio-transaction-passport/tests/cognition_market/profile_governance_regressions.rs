@@ -40,6 +40,29 @@ fn cognition_market_qualified_profile_rejects_aliased_authorities() -> TestResul
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_verifier_as_governance_status_authority() -> TestResult
+{
+    let mut bundle = build_bundle()?;
+    bundle
+        .trust
+        .profile_governance_authority_status
+        .status_authority
+        .key = bundle.trust.finding_verifier_authority.clone();
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("finding verifier was accepted as the governance-status authority")?
+        .to_string();
+    assert!(
+        error.contains(
+            "profile-governance status authority and finding verifier authority must be distinct"
+        ),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_backdated_profile_after_governance_revocation(
 ) -> TestResult {
     let mut bundle = build_bundle()?;

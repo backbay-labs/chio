@@ -270,6 +270,7 @@ fn purchase_status_gate_rejects_a_different_operator_authorization() {
         NOW + 20,
         MAX_EPOCH_AGE_SECS,
         Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+        None,
     )
     .expect_err("different operator authorization must fail closed");
     assert!(matches!(error, FindingStatusStoreError::Conflict(_)));

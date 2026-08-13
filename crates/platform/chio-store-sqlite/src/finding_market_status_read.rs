@@ -14,6 +14,7 @@ impl SqliteFindingMarketStore {
         feed_id: &str,
         finding_id: &str,
         operator_authorization_sha256: &str,
+        operator_status_observed_at: u64,
         trusted_now: u64,
         max_epoch_age_secs: u64,
     ) -> Result<(), FindingMarketStoreError> {
@@ -24,6 +25,7 @@ impl SqliteFindingMarketStore {
             feed_id,
             finding_id,
             operator_authorization_sha256,
+            operator_status_observed_at,
             trusted_now,
             max_epoch_age_secs,
         )?;

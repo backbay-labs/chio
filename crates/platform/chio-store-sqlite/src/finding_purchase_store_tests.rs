@@ -389,6 +389,7 @@ fn stale_status_epoch_atomically_blocks_purchase_reservation() {
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
         NOW,
+        NOW,
         1,
     );
     assert!(matches!(
@@ -404,6 +405,32 @@ fn stale_status_epoch_atomically_blocks_purchase_reservation() {
         .store
         .get_encumbrance(&purchase.reservation_id)
         .expect("read rejected stale-status encumbrance")
+        .is_none());
+}
+
+#[test]
+fn operator_standing_predating_status_epoch_atomically_blocks_purchase_reservation() {
+    let fixture = fixture();
+    let purchase = Purchase::new("pre-epoch-standing", LISTING_ID, 100);
+    install_live_status(&fixture, &purchase.finding_id);
+
+    let result = fixture.store.open_live_reservation(
+        &purchase.input(&fixture.allocation_id),
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW - 3,
+        NOW,
+        300,
+    );
+    assert!(matches!(
+        result,
+        Err(FindingPurchaseStoreError::Conflict(ref detail))
+            if detail.contains("standing predates")
+    ));
+    assert!(fixture
+        .store
+        .get_reservation(&purchase.reservation_id)
+        .expect("read rejected pre-epoch-standing reservation")
         .is_none());
 }
 

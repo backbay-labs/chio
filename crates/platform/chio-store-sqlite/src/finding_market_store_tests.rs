@@ -1220,6 +1220,7 @@ fn retracted_status_atomically_blocks_activation_and_participation_intents() {
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
         NOW,
+        NOW,
         300,
     );
     assert!(matches!(
@@ -1261,6 +1262,7 @@ fn retracted_status_atomically_blocks_activation_and_participation_intents() {
         &intent,
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
+        NOW,
         NOW,
         300,
     );
@@ -1311,6 +1313,7 @@ fn stale_status_epoch_atomically_blocks_activation_and_participation_intents() {
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
         NOW,
+        NOW,
         1,
     );
     assert!(matches!(
@@ -1343,6 +1346,7 @@ fn stale_status_epoch_atomically_blocks_activation_and_participation_intents() {
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
         NOW,
+        NOW,
         1,
     );
     assert!(matches!(
@@ -1355,6 +1359,72 @@ fn stale_status_epoch_atomically_blocks_activation_and_participation_intents() {
         .get_fee_event(&key)
         .expect("read rejected stale-status renewal")
         .is_none());
+}
+
+#[test]
+fn participation_fee_intent_replays_after_status_freshness_expires() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    install_status(&fixture, &finding_id, FindingStatusProofKind::NonInclusion);
+    let event = FindingFeeEvent::ParticipationEpoch { epoch_index: 1 };
+    let amount = usd(3);
+    let instruction_sha256 = hex64('8');
+    let schedule_sha256 = hex64('5');
+    let intent = FindingFeeIntent {
+        fee_schedule_envelope_sha256: &schedule_sha256,
+        event: &event,
+        finding_id: &finding_id,
+        listing_id: LISTING_ID,
+        payer: "seller-42",
+        amount: &amount,
+        pool_principal_id: "pool:audit",
+        rail_destination: "rail:venue-ledger:audit-pool",
+        instruction_sha256: &instruction_sha256,
+    };
+
+    let rejected = fixture.store.begin_live_participation_fee_intent(
+        &intent,
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW - 3,
+        NOW,
+        300,
+    );
+    assert!(matches!(
+        rejected,
+        Err(FindingMarketStoreError::Conflict(ref detail))
+            if detail.contains("standing predates")
+    ));
+
+    let inserted = fixture
+        .store
+        .begin_live_participation_fee_intent(
+            &intent,
+            STATUS_FEED,
+            STATUS_AUTHORIZATION_SHA256,
+            NOW,
+            NOW,
+            300,
+        )
+        .expect("insert fee intent while status is live");
+    assert_eq!(inserted.outcome, FindingFeeIntentOutcome::Inserted);
+    assert!(fixture
+        .store
+        .is_exact_fee_intent_replay(&intent)
+        .expect("probe exact fee replay"));
+
+    let replay = fixture
+        .store
+        .begin_live_participation_fee_intent(
+            &intent,
+            STATUS_FEED,
+            STATUS_AUTHORIZATION_SHA256,
+            NOW,
+            NOW + 500,
+            300,
+        )
+        .expect("replay fee intent after status expiry");
+    assert_eq!(replay.outcome, FindingFeeIntentOutcome::ExistingIntent);
 }
 
 #[test]
@@ -1394,6 +1464,7 @@ fn prepared_activation_replay_reuses_its_retained_live_status_decision() {
                 STATUS_FEED,
                 STATUS_AUTHORIZATION_SHA256,
                 NOW,
+                NOW,
                 300,
             )
             .expect("prepare under live status"),
@@ -1407,6 +1478,7 @@ fn prepared_activation_replay_reuses_its_retained_live_status_decision() {
                 &admission,
                 STATUS_FEED,
                 STATUS_AUTHORIZATION_SHA256,
+                NOW,
                 NOW + 500,
                 300,
             )

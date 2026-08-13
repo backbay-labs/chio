@@ -1855,6 +1855,32 @@ fn cognition_market_qualified_profile_rejects_verifier_as_status_operator() -> T
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_verifier_as_operator_status_authority() -> TestResult
+{
+    let mut bundle = build_bundle()?;
+    bundle
+        .trust
+        .status
+        .as_mut()
+        .ok_or("status trust missing")?
+        .operator_authority_status
+        .status_authority
+        .key = bundle.trust.finding_verifier_authority.clone();
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("finding verifier was accepted as the operator-status authority")?
+        .to_string();
+    assert!(
+        error.contains(
+            "status-operator standing authority and finding verifier authority must be distinct"
+        ),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_revoked_status_operator_standing() -> TestResult {
     let mut bundle = build_bundle()?;
     let status_trust = bundle.trust.status.as_mut().ok_or("status trust missing")?;

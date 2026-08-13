@@ -1,7 +1,7 @@
 use super::{
     live_admission_epoch, verify_status_operator_authority_lifecycle, FindingMarketConfig,
     FindingSearchAdmissionView, SignedFindingAdmission, SignedFindingAuthorityStatus,
-    SqliteFindingMarketStore,
+    SqliteFindingMarketStore, SqliteFindingStatusStore,
 };
 
 /// A stored admission is CURRENT only while its envelope is unexpired,
@@ -10,16 +10,21 @@ use super::{
 /// remains live under the configured feed authority.
 pub(super) fn current_admission_view(
     store: &SqliteFindingMarketStore,
+    status_store: &SqliteFindingStatusStore,
     config: &FindingMarketConfig,
     authority_status: Option<&SignedFindingAuthorityStatus>,
     finding_id: &str,
     now: u64,
 ) -> Option<FindingSearchAdmissionView> {
     let authority_status = authority_status?;
+    let status_epoch = status_store
+        .get_current_epoch(&config.status_feed_operator.feed_id)
+        .ok()?;
     verify_status_operator_authority_lifecycle(
         authority_status,
         config,
         &config.status_feed_operator.feed_id,
+        status_epoch.generated_at,
         now,
         "admission view",
     )
@@ -29,6 +34,7 @@ pub(super) fn current_admission_view(
             &config.status_feed_operator.feed_id,
             finding_id,
             &config.status_feed_operator.authorization_sha256,
+            authority_status.body.observed_at,
             now,
             config.status_max_epoch_age_secs,
         )

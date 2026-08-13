@@ -42,6 +42,7 @@ use chio_store_sqlite::finding_market_store::{
     FindingFeeIntent, FindingFeeIntentOutcome, FindingFeeState, FindingRecordInput,
     SqliteFindingMarketStore,
 };
+use chio_store_sqlite::SqliteFindingStatusStore;
 
 use super::report_validation::validate_service_auth;
 use super::*;
@@ -222,6 +223,19 @@ pub(super) fn finding_market_context(
         ));
     };
     Ok((config, store))
+}
+
+fn finding_status_store(state: &TrustServiceState) -> Result<SqliteFindingStatusStore, Response> {
+    state
+        .joint_authority_store
+        .as_ref()
+        .map(|authority| authority.finding_status_store())
+        .ok_or_else(|| {
+            plain_http_error(
+                StatusCode::CONFLICT,
+                "finding market requires the joint authority store",
+            )
+        })
 }
 
 /// The strict raw-first ingress pipeline for one registered artifact.
@@ -687,6 +701,10 @@ fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> 
         Ok(context) => context,
         Err(response) => return response,
     };
+    let status_store = match finding_status_store(state) {
+        Ok(store) => store,
+        Err(response) => return response,
+    };
     if query.topic_prefix.is_none() && query.context_sha256.is_none() {
         return plain_http_error(
             StatusCode::BAD_REQUEST,
@@ -726,6 +744,7 @@ fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> 
         .map(|row| {
             let admission = current_admission_view(
                 &store,
+                &status_store,
                 &config,
                 status_operator_authority_status.as_ref(),
                 &row.finding_id,
@@ -1025,6 +1044,7 @@ pub(super) fn verify_status_operator_authority_lifecycle(
     authority_status: &SignedFindingAuthorityStatus,
     config: &FindingMarketConfig,
     feed_id: &str,
+    status_epoch_generated_at: u64,
     now: u64,
     boundary: &str,
 ) -> Result<(), String> {
@@ -1052,6 +1072,11 @@ pub(super) fn verify_status_operator_authority_lifecycle(
         || status.key_epoch != operator.key_epoch
     {
         return Err("status operator reading does not bind the configured authority".into());
+    }
+    if status.observed_at < status_epoch_generated_at {
+        return Err(format!(
+            "status operator reading predates the retained status epoch at {boundary}"
+        ));
     }
     if status.observed_at > now
         || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
@@ -1421,10 +1446,23 @@ pub(crate) async fn handle_activate_finding(
             )
         }
     };
+    let status_epoch = match finding_status_store(&state).and_then(|store| {
+        store
+            .get_current_epoch(&finding.status_feed_ref)
+            .map_err(|error| plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()))
+    }) {
+        Ok(epoch) => epoch,
+        Err(response) => return response,
+    };
     if let Err(error) = verify_status_operator_authority_lifecycle(
         &request.status_operator_authority_status,
         &config,
         &finding.status_feed_ref,
+        if prepared_replay || completed_replay {
+            0
+        } else {
+            status_epoch.generated_at
+        },
         authorization_now,
         "activation",
     ) {
@@ -1943,6 +1981,7 @@ pub(crate) async fn handle_activate_finding(
         admission,
         &finding.status_feed_ref,
         &config.status_feed_operator.authorization_sha256,
+        request.status_operator_authority_status.body.observed_at,
         now,
         config.status_max_epoch_age_secs,
     ) {
@@ -2105,15 +2144,6 @@ pub(crate) async fn handle_finding_participation(
             )
         }
     };
-    if let Err(error) = verify_status_operator_authority_lifecycle(
-        &request.status_operator_authority_status,
-        &config,
-        &finding.status_feed_ref,
-        now,
-        "participation renewal",
-    ) {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error);
-    }
     let current_epoch = match live_admission_epoch(&store, &snapshot, &admission, now) {
         Some(epoch) => epoch,
         None => {
@@ -2195,10 +2225,35 @@ pub(crate) async fn handle_finding_participation(
         rail_destination: &config.audit_pool.rail_destination,
         instruction_sha256: &instruction_sha256,
     };
+    let exact_replay = match store.is_exact_fee_intent_replay(&intent) {
+        Ok(exact_replay) => exact_replay,
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    };
+    if !exact_replay {
+        let status_epoch = match finding_status_store(&state).and_then(|status_store| {
+            status_store
+                .get_current_epoch(&finding.status_feed_ref)
+                .map_err(|error| plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()))
+        }) {
+            Ok(epoch) => epoch,
+            Err(response) => return response,
+        };
+        if let Err(error) = verify_status_operator_authority_lifecycle(
+            &request.status_operator_authority_status,
+            &config,
+            &finding.status_feed_ref,
+            status_epoch.generated_at,
+            now,
+            "participation renewal",
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error);
+        }
+    }
     match store.begin_live_participation_fee_intent(
         &intent,
         &finding.status_feed_ref,
         &config.status_feed_operator.authorization_sha256,
+        request.status_operator_authority_status.body.observed_at,
         now,
         config.status_max_epoch_age_secs,
     ) {
@@ -2265,6 +2320,10 @@ pub(crate) async fn handle_get_finding_admission(
         Ok(context) => context,
         Err(response) => return response,
     };
+    let status_store = match finding_status_store(&state) {
+        Ok(store) => store,
+        Err(response) => return response,
+    };
     let now = unix_timestamp_now();
     let status_operator_authority_status = state
         .finding_authority_status_resolver
@@ -2276,6 +2335,7 @@ pub(crate) async fn handle_get_finding_admission(
         });
     if current_admission_view(
         &store,
+        &status_store,
         &config,
         status_operator_authority_status.as_ref(),
         &finding_id,

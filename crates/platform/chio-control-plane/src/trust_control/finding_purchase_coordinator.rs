@@ -372,7 +372,7 @@ impl FindingPurchaseCoordinator {
         reading: AuthorityStatusReading,
         now: u64,
         role: &'static str,
-    ) -> Result<(), PurchaseCoordinatorError> {
+    ) -> Result<u64, PurchaseCoordinatorError> {
         let reject = |reason| PurchaseCoordinatorError::AuthorityLifecycle { role, reason };
         if !self.authority_status_pin.covers(now) {
             return Err(reject("authority-status signer window is not live"));
@@ -457,14 +457,14 @@ impl FindingPurchaseCoordinator {
                 }
             }));
         }
-        Ok(())
+        Ok(status.observed_at)
     }
 
     fn require_live_status_operator(
         &self,
         feed_id: &str,
         now: u64,
-    ) -> Result<&str, PurchaseCoordinatorError> {
+    ) -> Result<(&str, u64), PurchaseCoordinatorError> {
         let key = self
             .status_feed_operator
             .require_live(feed_id, now)
@@ -485,14 +485,14 @@ impl FindingPurchaseCoordinator {
                 .revocation_status_ref
                 .clone(),
         };
-        self.require_live_terminal_authority(
+        let observed_at = self.require_live_terminal_authority(
             &policy,
             &key,
             AuthorityStatusReading::Current,
             now,
             "status-operator",
         )?;
-        Ok(&self.status_feed_operator.authorization_sha256)
+        Ok((&self.status_feed_operator.authorization_sha256, observed_at))
     }
 
     fn require_live_seller_authorization(
@@ -898,14 +898,22 @@ impl FindingPurchaseCoordinator {
             maximum_sale_exposure_units,
             created_at: now,
         };
-        let status_operator_authorization_sha256 = self
-            .require_live_status_operator(&finding.status_feed_ref, now)?
-            .to_owned();
+        let exact_replay = self
+            .store
+            .is_exact_reservation_replay(&input)
+            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
+        let status_operator_observed_at = if exact_replay {
+            0
+        } else {
+            self.require_live_status_operator(&finding.status_feed_ref, now)?
+                .1
+        };
         self.store
             .open_live_reservation(
                 &input,
                 &finding.status_feed_ref,
-                &status_operator_authorization_sha256,
+                &self.status_feed_operator.authorization_sha256,
+                status_operator_observed_at,
                 now,
                 self.status_max_epoch_age_secs,
             )

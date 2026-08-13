@@ -1179,6 +1179,7 @@ impl SqliteFindingStatusStore {
             trusted_now,
             max_epoch_age_secs,
             None,
+            None,
         )?;
         transaction.commit().map_err(sqlite_error)?;
         Ok(decision)
@@ -1694,6 +1695,7 @@ pub(crate) fn status_for_purchase_tx(
     trusted_now: u64,
     max_epoch_age_secs: u64,
     expected_operator_authorization_sha256: Option<&str>,
+    operator_status_observed_at: Option<u64>,
 ) -> Result<FindingStatusDecision, FindingStatusStoreError> {
     require_identifier(feed_id, "feed_id")?;
     require_hex64(finding_id, "finding_id")?;
@@ -1729,6 +1731,12 @@ pub(crate) fn status_for_purchase_tx(
     let floor_epoch = load_epoch_tx(transaction, feed_id, floor.map_epoch)?
         .ok_or_else(|| invariant("status floor points to a missing signed epoch"))?;
     verify_floor_epoch_consistency(&floor, &floor_epoch)?;
+    if operator_status_observed_at.is_some_and(|observed_at| observed_at < floor_epoch.generated_at)
+    {
+        return Err(FindingStatusStoreError::Conflict(
+            "authenticated operator standing predates the current status epoch".to_owned(),
+        ));
+    }
     if proof.kind != FindingStatusProofKind::NonInclusion {
         return Err(invariant(
             "inclusion proof exists without the required sticky retracted state",

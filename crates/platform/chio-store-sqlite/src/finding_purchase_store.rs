@@ -549,6 +549,7 @@ impl SqliteFindingPurchaseStore {
         input: &FindingPurchaseReservationInput<'_>,
         status_feed_id: &str,
         status_operator_authorization_sha256: &str,
+        status_operator_observed_at: u64,
         trusted_now: u64,
         status_max_epoch_age_secs: u64,
     ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
@@ -557,16 +558,46 @@ impl SqliteFindingPurchaseStore {
             Some((
                 status_feed_id,
                 status_operator_authorization_sha256,
+                status_operator_observed_at,
                 trusted_now,
                 status_max_epoch_age_secs,
             )),
         )
     }
 
+    /// Report whether the exact reservation and exposure are already
+    /// durable. This read-only replay probe lets an authenticated caller
+    /// recover a committed receipt without requiring current standing that
+    /// is needed only to open new financial state.
+    pub fn is_exact_reservation_replay(
+        &self,
+        input: &FindingPurchaseReservationInput<'_>,
+    ) -> Result<bool, FindingPurchaseStoreError> {
+        validate_reservation_input(input)?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let Some(existing) = load_reservation_tx(&transaction, input.reservation_id)? else {
+            if load_encumbrance_tx(&transaction, input.reservation_id)?.is_some() {
+                return Err(invariant(
+                    "exposure encumbrance exists without its reservation",
+                ));
+            }
+            return Ok(false);
+        };
+        let encumbrance = load_encumbrance_tx(&transaction, input.reservation_id)?
+            .ok_or_else(|| invariant("reservation lost its exposure encumbrance"))?;
+        if reservation_matches(&existing, input) && encumbrance_matches(&encumbrance, input) {
+            return Ok(true);
+        }
+        Err(FindingPurchaseStoreError::Conflict(
+            "reservation id is already bound to different purchase parameters".to_owned(),
+        ))
+    }
+
     fn open_reservation_inner(
         &self,
         input: &FindingPurchaseReservationInput<'_>,
-        status_gate: Option<(&str, &str, u64, u64)>,
+        status_gate: Option<(&str, &str, u64, u64, u64)>,
     ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
         validate_reservation_input(input)?;
         let mut connection = self.connection()?;
@@ -583,8 +614,13 @@ impl SqliteFindingPurchaseStore {
                 "reservation id is already bound to different purchase parameters".to_owned(),
             ));
         }
-        if let Some((feed_id, operator_authorization_sha256, trusted_now, max_epoch_age_secs)) =
-            status_gate
+        if let Some((
+            feed_id,
+            operator_authorization_sha256,
+            operator_status_observed_at,
+            trusted_now,
+            max_epoch_age_secs,
+        )) = status_gate
         {
             match status_for_purchase_tx(
                 &transaction,
@@ -593,6 +629,7 @@ impl SqliteFindingPurchaseStore {
                 trusted_now,
                 max_epoch_age_secs,
                 Some(operator_authorization_sha256),
+                Some(operator_status_observed_at),
             )
             .map_err(|error| {
                 FindingPurchaseStoreError::Conflict(format!(

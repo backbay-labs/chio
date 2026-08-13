@@ -3052,6 +3052,22 @@ fn activation_reverifies_profile_and_report_authority_lifecycle() -> TestResult 
     )
     .is_err());
 
+    let pre_epoch_operator_status = signed_status_operator_authority_status(now - 1, None)?;
+    let operator_error = verify_status_operator_authority_lifecycle(
+        &pre_epoch_operator_status,
+        &config,
+        &config.status_feed_operator.feed_id,
+        now,
+        now,
+        "activation",
+    )
+    .err()
+    .ok_or("operator standing predating the retained status epoch was accepted")?;
+    assert!(
+        operator_error.contains("predates the retained status epoch"),
+        "unexpected error: {operator_error}"
+    );
+
     let evaluation_time = stack.web.report.body.evaluation_time;
     let pre_report_status =
         signed_verifier_authority_status(evaluation_time.saturating_sub(1), None)?;

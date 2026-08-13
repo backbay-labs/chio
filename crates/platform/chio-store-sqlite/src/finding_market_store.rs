@@ -750,6 +750,7 @@ impl SqliteFindingMarketStore {
         intent: &FindingFeeIntent<'_>,
         status_feed_id: &str,
         status_operator_authorization_sha256: &str,
+        status_operator_observed_at: u64,
         trusted_now: u64,
         status_max_epoch_age_secs: u64,
     ) -> Result<FindingFeeIntentResult, FindingMarketStoreError> {
@@ -758,6 +759,7 @@ impl SqliteFindingMarketStore {
             Some((
                 status_feed_id,
                 status_operator_authorization_sha256,
+                status_operator_observed_at,
                 trusted_now,
                 status_max_epoch_age_secs,
             )),
@@ -767,7 +769,7 @@ impl SqliteFindingMarketStore {
     fn begin_fee_intent_inner(
         &self,
         intent: &FindingFeeIntent<'_>,
-        status_gate: Option<(&str, &str, u64, u64)>,
+        status_gate: Option<(&str, &str, u64, u64, u64)>,
     ) -> Result<FindingFeeIntentResult, FindingMarketStoreError> {
         require_hex64(
             intent.fee_schedule_envelope_sha256,
@@ -792,26 +794,8 @@ impl SqliteFindingMarketStore {
         let (event_kind, epoch_index) = fee_event_parts(intent.event);
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
-        if let Some((feed_id, operator_authorization_sha256, trusted_now, max_epoch_age_secs)) =
-            status_gate
-        {
-            require_verified_live_status_tx(
-                &transaction,
-                feed_id,
-                intent.finding_id,
-                operator_authorization_sha256,
-                trusted_now,
-                max_epoch_age_secs,
-            )?;
-        }
         if let Some(existing) = load_fee_event_tx(&transaction, &key)? {
-            if existing.payer == intent.payer
-                && existing.amount_units == intent.amount.units
-                && existing.currency == intent.amount.currency
-                && existing.pool_principal_id == intent.pool_principal_id
-                && existing.rail_destination == intent.rail_destination
-                && existing.instruction_sha256 == intent.instruction_sha256
-            {
+            if fee_intent_matches(&existing, intent) {
                 let outcome = match existing.state {
                     FindingFeeState::Reconciled => FindingFeeIntentOutcome::AlreadyReconciled,
                     FindingFeeState::Intent | FindingFeeState::Failed => {
@@ -826,6 +810,24 @@ impl SqliteFindingMarketStore {
             return Err(FindingMarketStoreError::Conflict(
                 "conflicting fee parameters under an existing idempotency key".to_owned(),
             ));
+        }
+        if let Some((
+            feed_id,
+            operator_authorization_sha256,
+            operator_status_observed_at,
+            trusted_now,
+            max_epoch_age_secs,
+        )) = status_gate
+        {
+            require_verified_live_status_tx(
+                &transaction,
+                feed_id,
+                intent.finding_id,
+                operator_authorization_sha256,
+                operator_status_observed_at,
+                trusted_now,
+                max_epoch_age_secs,
+            )?;
         }
         let inserted = transaction
             .execute(
@@ -974,6 +976,36 @@ impl SqliteFindingMarketStore {
         load_fee_event_tx(&transaction, idempotency_key)
     }
 
+    /// Report whether an exact participation-fee intent is already durable.
+    /// Current Finding liveness gates only creation; a caller must be able to
+    /// resume an already dispatched intent after status changes.
+    pub fn is_exact_fee_intent_replay(
+        &self,
+        intent: &FindingFeeIntent<'_>,
+    ) -> Result<bool, FindingMarketStoreError> {
+        require_hex64(
+            intent.fee_schedule_envelope_sha256,
+            "fee_schedule_envelope_sha256",
+        )?;
+        require_hex64(intent.finding_id, "finding_id")?;
+        require_hex64(intent.instruction_sha256, "instruction_sha256")?;
+        let key = finding_fee_idempotency_key(
+            intent.fee_schedule_envelope_sha256,
+            intent.event,
+            intent.finding_id,
+            intent.listing_id,
+        );
+        let Some(existing) = self.get_fee_event(&key)? else {
+            return Ok(false);
+        };
+        if fee_intent_matches(&existing, intent) {
+            return Ok(true);
+        }
+        Err(FindingMarketStoreError::Conflict(
+            "conflicting fee parameters under an existing idempotency key".to_owned(),
+        ))
+    }
+
     /// Highest participation epoch reconciled contiguously from epoch 0
     /// for one finding listing and fee schedule; a gap stops the count.
     /// `None` means epoch 0 itself is unpaid.
@@ -1041,12 +1073,14 @@ impl SqliteFindingMarketStore {
     /// envelope and matched to its durable intent in the same transaction.
     /// Another admission cannot prepare for the same finding or listing
     /// while this attempt is pending.
+    #[allow(clippy::too_many_arguments)]
     pub fn prepare_listing_activation(
         &self,
         admission_envelope_json: &str,
         admission: &FindingAdmission,
         status_feed_id: &str,
         status_operator_authorization_sha256: &str,
+        status_operator_observed_at: u64,
         prepared_at: u64,
         status_max_epoch_age_secs: u64,
     ) -> Result<FindingActivationPreparationOutcome, FindingMarketStoreError> {
@@ -1056,6 +1090,7 @@ impl SqliteFindingMarketStore {
             Some((
                 status_feed_id,
                 status_operator_authorization_sha256,
+                status_operator_observed_at,
                 prepared_at,
                 status_max_epoch_age_secs,
             )),
@@ -1077,7 +1112,7 @@ impl SqliteFindingMarketStore {
         &self,
         admission_envelope_json: &str,
         admission: &FindingAdmission,
-        status_gate: Option<(&str, &str, u64, u64)>,
+        status_gate: Option<(&str, &str, u64, u64, u64)>,
         prepared_at: u64,
     ) -> Result<FindingActivationPreparationOutcome, FindingMarketStoreError> {
         let envelope_sha256 =
@@ -1119,14 +1154,20 @@ impl SqliteFindingMarketStore {
                 "admission id is already bound to different bytes".to_owned(),
             ));
         }
-        if let Some((feed_id, operator_authorization_sha256, trusted_now, max_epoch_age_secs)) =
-            status_gate
+        if let Some((
+            feed_id,
+            operator_authorization_sha256,
+            operator_status_observed_at,
+            trusted_now,
+            max_epoch_age_secs,
+        )) = status_gate
         {
             require_verified_live_status_tx(
                 &transaction,
                 feed_id,
                 &admission.finding_id,
                 operator_authorization_sha256,
+                operator_status_observed_at,
                 trusted_now,
                 max_epoch_age_secs,
             )?;
@@ -1804,6 +1845,19 @@ fn load_fee_event_tx(
     }))
 }
 
+fn fee_intent_matches(existing: &FindingFeeEventRecord, intent: &FindingFeeIntent<'_>) -> bool {
+    existing.fee_schedule_envelope_sha256 == intent.fee_schedule_envelope_sha256
+        && existing.event == *intent.event
+        && existing.finding_id == intent.finding_id
+        && existing.listing_id == intent.listing_id
+        && existing.payer == intent.payer
+        && existing.amount_units == intent.amount.units
+        && existing.currency == intent.amount.currency
+        && existing.pool_principal_id == intent.pool_principal_id
+        && existing.rail_destination == intent.rail_destination
+        && existing.instruction_sha256 == intent.instruction_sha256
+}
+
 fn validate_activation_envelope(
     admission_envelope_json: &str,
     admission: &FindingAdmission,
@@ -2097,6 +2151,7 @@ fn require_verified_live_status_tx(
     feed_id: &str,
     finding_id: &str,
     operator_authorization_sha256: &str,
+    operator_status_observed_at: u64,
     trusted_now: u64,
     max_epoch_age_secs: u64,
 ) -> Result<(), FindingMarketStoreError> {
@@ -2107,6 +2162,7 @@ fn require_verified_live_status_tx(
         trusted_now,
         max_epoch_age_secs,
         Some(operator_authorization_sha256),
+        Some(operator_status_observed_at),
     )
     .map_err(|error| {
         FindingMarketStoreError::Conflict(format!(
