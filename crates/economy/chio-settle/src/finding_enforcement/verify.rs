@@ -106,12 +106,20 @@ pub struct FindingDispatchPolicy {
     /// signer its role. This must come from durable governance state keyed by
     /// the presented penalty envelope, never from the enforcement itself.
     pub penalty_authority: FindingPenaltyAuthorityPolicy,
+    /// Independently retained lifecycle policy that assigned the
+    /// finalization signer its role. The enforcement repeats these fields,
+    /// but cannot select the policy that authenticates them.
+    pub finalization_authority: FindingPenaltyAuthorityPolicy,
     /// Independent authority that signs revocation-source readings for the
     /// historical penalty key named by the enforcement.
     pub authority_status_authority: PublicKey,
     /// Oldest authenticated penalty-authority status reading this choke point
     /// accepts, in seconds.
     pub max_authority_status_age_secs: u64,
+    /// Durable sanction case that still governs this liability.
+    pub expected_sanction_case_id: String,
+    /// Durable hold penalty the final appeal penalty must supersede.
+    pub expected_held_penalty_id: String,
     /// Operator policy for destinations that may receive impaired collateral.
     /// The coordinator derives this set from durable payout admissions rather
     /// than from the enforcement being verified.
@@ -133,27 +141,27 @@ pub struct FindingPenaltyAuthorityPolicy {
 }
 
 impl FindingPenaltyAuthorityPolicy {
-    fn validate(&self) -> Result<(), SettlementError> {
+    fn validate(&self, role: &str) -> Result<(), SettlementError> {
         if self.authority_id.trim().is_empty() {
-            return Err(SettlementError::InvalidInput(
-                "penalty authority id must be non-empty".to_owned(),
-            ));
+            return Err(SettlementError::InvalidInput(format!(
+                "{role} authority id must be non-empty"
+            )));
         }
-        require_signing_key(&self.key, "penalty_authority")?;
+        require_signing_key(&self.key, role)?;
         if self.key_epoch == 0 {
-            return Err(SettlementError::InvalidInput(
-                "penalty authority key epoch must be nonzero".to_owned(),
-            ));
+            return Err(SettlementError::InvalidInput(format!(
+                "{role} authority key epoch must be nonzero"
+            )));
         }
         if self.valid_until <= self.valid_from {
-            return Err(SettlementError::InvalidInput(
-                "penalty authority validity window is inverted".to_owned(),
-            ));
+            return Err(SettlementError::InvalidInput(format!(
+                "{role} authority validity window is inverted"
+            )));
         }
         if self.revocation_status_ref.trim().is_empty() {
-            return Err(SettlementError::InvalidInput(
-                "penalty authority revocation status ref must be non-empty".to_owned(),
-            ));
+            return Err(SettlementError::InvalidInput(format!(
+                "{role} authority revocation status ref must be non-empty"
+            )));
         }
         Ok(())
     }
@@ -163,14 +171,24 @@ impl FindingDispatchPolicy {
     /// Reject unusable status and destination policy before any artifact can
     /// inherit dispatch authority from it.
     pub fn validate(&self, pins: &FindingEnforcementPins) -> Result<(), SettlementError> {
-        self.penalty_authority.validate()?;
+        self.penalty_authority.validate("penalty")?;
+        self.finalization_authority.validate("finalization")?;
+        if self.finalization_authority.key != pins.finalization_authority {
+            return Err(SettlementError::InvalidInput(
+                "retained finalization policy does not match the pinned finalization key"
+                    .to_owned(),
+            ));
+        }
         require_signing_key(
             &self.authority_status_authority,
             "authority_status_authority",
         )?;
-        if self.authority_status_authority == self.penalty_authority.key {
+        if self.authority_status_authority == self.penalty_authority.key
+            || self.authority_status_authority == self.finalization_authority.key
+        {
             return Err(SettlementError::InvalidInput(
-                "authority_status_authority and penalty_authority must be distinct keys".to_owned(),
+                "authority_status_authority and dispatch authorities must be distinct keys"
+                    .to_owned(),
             ));
         }
         for (other, label) in [
@@ -193,6 +211,13 @@ impl FindingDispatchPolicy {
         if self.max_authority_status_age_secs == 0 {
             return Err(SettlementError::InvalidInput(
                 "max_authority_status_age_secs must be nonzero".to_string(),
+            ));
+        }
+        if self.expected_sanction_case_id.trim().is_empty()
+            || self.expected_held_penalty_id.trim().is_empty()
+        {
+            return Err(SettlementError::InvalidInput(
+                "dispatch appeal lineage must be non-empty".to_owned(),
             ));
         }
         if self.allowed_destinations.is_empty() {
@@ -339,10 +364,12 @@ impl ReconciledFindingEnforcement {
 /// clock. It must come from the coordinator's trusted time source, not from
 /// any artifact: a snapshot or status witness that dated itself would
 /// otherwise certify its own freshness.
+#[allow(clippy::too_many_arguments)]
 pub fn verify_finding_enforcement(
     signed_enforcement: &SignedFindingChallengeEnforcement,
     signed_penalty: &SignedOpenMarketPenalty,
     penalty_authority_status: &SignedFindingAuthorityStatus,
+    finalization_authority_status: &SignedFindingAuthorityStatus,
     signed_snapshot: &SignedFindingFinalizedBondSnapshot,
     pins: &FindingEnforcementPins,
     dispatch_policy: &FindingDispatchPolicy,
@@ -354,7 +381,12 @@ pub fn verify_finding_enforcement(
         pins,
         trusted_now_secs,
         true,
-        Some((signed_penalty, penalty_authority_status, dispatch_policy)),
+        Some((
+            signed_penalty,
+            penalty_authority_status,
+            finalization_authority_status,
+            dispatch_policy,
+        )),
     )
 }
 
@@ -422,6 +454,7 @@ fn verify_finding_enforcement_inner(
     penalty_evidence: Option<(
         &SignedOpenMarketPenalty,
         &SignedFindingAuthorityStatus,
+        &SignedFindingAuthorityStatus,
         &FindingDispatchPolicy,
     )>,
 ) -> Result<VerifiedFindingEnforcement, SettlementError> {
@@ -435,8 +468,20 @@ fn verify_finding_enforcement_inner(
     let enforcement = &signed_enforcement.body;
     let snapshot = &signed_snapshot.body;
 
-    if let Some((signed_penalty, penalty_authority_status, dispatch_policy)) = penalty_evidence {
+    if let Some((
+        signed_penalty,
+        penalty_authority_status,
+        finalization_authority_status,
+        dispatch_policy,
+    )) = penalty_evidence
+    {
         dispatch_policy.validate(pins)?;
+        verify_finalization_dispatch_authority(
+            enforcement,
+            finalization_authority_status,
+            dispatch_policy,
+            trusted_now_secs,
+        )?;
         verify_penalty_dispatch_authority(
             enforcement,
             signed_penalty,
@@ -560,6 +605,14 @@ fn verify_penalty_dispatch_authority(
             "presented penalty does not authorize this enforcement",
         ));
     }
+    if penalty.case_id != dispatch_policy.expected_sanction_case_id
+        || penalty.supersedes_penalty_id.as_deref()
+            != Some(dispatch_policy.expected_held_penalty_id.as_str())
+    {
+        return Err(reject(
+            "presented penalty does not match the retained appeal lineage",
+        ));
+    }
     let [evidence] = penalty.evidence_refs.as_slice() else {
         return Err(reject(
             "finding penalty must carry exactly one challenge-outcome reference",
@@ -621,6 +674,72 @@ fn verify_penalty_dispatch_authority(
     {
         return Err(reject(
             "penalty authority was revoked when the penalty was signed",
+        ));
+    }
+    Ok(())
+}
+
+/// Authenticate the finalization signer under lifecycle policy retained
+/// independently from the enforcement it signed.
+fn verify_finalization_dispatch_authority(
+    enforcement: &FindingChallengeEnforcement,
+    finalization_authority_status: &SignedFindingAuthorityStatus,
+    dispatch_policy: &FindingDispatchPolicy,
+    trusted_now_secs: u64,
+) -> Result<(), SettlementError> {
+    let retained = &dispatch_policy.finalization_authority;
+    if enforcement.finalization_authority_id != retained.authority_id
+        || enforcement.finalization_key != retained.key
+        || enforcement.finalization_key_epoch != retained.key_epoch
+        || enforcement.finalization_valid_from != retained.valid_from
+        || enforcement.finalization_valid_until != retained.valid_until
+        || enforcement.finalization_revocation_status_ref != retained.revocation_status_ref
+    {
+        return Err(reject(
+            "enforcement finalization authority does not match retained governance policy",
+        ));
+    }
+    if enforcement.finalized_at < retained.valid_from
+        || enforcement.finalized_at >= retained.valid_until
+    {
+        return Err(reject(
+            "enforcement was signed outside its historical finalization authority window",
+        ));
+    }
+    verify_signed_authority_status(
+        finalization_authority_status,
+        &dispatch_policy.authority_status_authority,
+    )
+    .map_err(|error| reject(format!("finalization authority status rejected: {error}")))?;
+    let status = &finalization_authority_status.body;
+    if status.schema != FINDING_AUTHORITY_STATUS_SCHEMA_V1
+        || status.status_ref != retained.revocation_status_ref
+        || status.authority_id != retained.authority_id
+        || status.key != retained.key
+        || status.key_epoch != retained.key_epoch
+    {
+        return Err(reject(
+            "finalization authority status does not bind the retained historical policy",
+        ));
+    }
+    if status.observed_at < enforcement.finalized_at || status.observed_at > trusted_now_secs {
+        return Err(reject(
+            "finalization authority status is not a post-action trusted-time reading",
+        ));
+    }
+    if trusted_now_secs.saturating_sub(status.observed_at)
+        > dispatch_policy.max_authority_status_age_secs
+    {
+        return Err(reject(
+            "finalization authority status is older than the configured maximum age",
+        ));
+    }
+    if status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= enforcement.finalized_at)
+    {
+        return Err(reject(
+            "finalization authority was revoked when the enforcement was signed",
         ));
     }
     Ok(())

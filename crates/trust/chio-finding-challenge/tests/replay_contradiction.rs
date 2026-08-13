@@ -240,6 +240,41 @@ fn a_receipt_with_a_broken_action_commitment_is_indeterminate() -> TestResult {
 }
 
 #[test]
+fn a_replay_receipt_must_bind_the_committed_invocation() -> TestResult {
+    let world = world()?;
+    let shapes = [
+        ReplayShape {
+            receipt_tool_server: Some("attacker-runner".to_string()),
+            ..ReplayShape::default()
+        },
+        ReplayShape {
+            receipt_tool_name: Some("finding.replay-uncommitted".to_string()),
+            ..ReplayShape::default()
+        },
+        ReplayShape {
+            action_parameters: Some(serde_json::json!({
+                "parameters_sha256": HEX64_THIRD,
+                "phase": "candidate",
+                "replay_run_id": "attacker-run",
+            })),
+            ..ReplayShape::default()
+        },
+    ];
+
+    for shape in shapes {
+        let case = replay_case(&world, &shape)?;
+        let reproductions = case.reproductions();
+        let evidence = case.evidence(&reproductions);
+        let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+        expect_reason(
+            &evaluation,
+            FindingChallengeReason::ReplayObservationNotEstablished,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn a_denied_replay_receipt_cannot_establish_an_execution() -> TestResult {
     let world = world()?;
     let shape = ReplayShape {

@@ -127,6 +127,9 @@ use super::finding_handlers::{
 };
 use super::service_types::{FindingAuthorityPin, FindingMarketConfig};
 
+#[path = "finding_challenge_coordinator/finalization_authority.rs"]
+mod finalization_authority;
+
 /// Domain separator for the per-finding defect identity.
 const DEFECT_DOMAIN: &str = "chio.finding.defect.v1";
 
@@ -813,6 +816,9 @@ pub struct AuthorizedImpairment {
 struct RetainedAuthorizedImpairment {
     enforcement: SignedFindingChallengeEnforcement,
     slash: FindingPenaltyOutcome,
+    finalization_policy: FindingAuthorityPin,
+    sanction_case_id: String,
+    held_penalty_id: String,
 }
 
 /// The terminal one appeal resolution reached.
@@ -2100,6 +2106,8 @@ impl FindingChallengeCoordinator {
                     outcome,
                     sealed,
                     &slash,
+                    sanction_case_id,
+                    &hold.evaluation.penalty_id,
                     governance.local_operator_id,
                     bond_snapshot_envelope_sha256,
                     now,
@@ -2127,7 +2135,6 @@ impl FindingChallengeCoordinator {
         now: u64,
     ) -> Result<AuthorizedImpairment, ChallengeCoordinatorError> {
         let old = &authorized.enforcement;
-        self.require_enforcement_signature(old, now)?;
         if self.envelope_digest(old)? != authorized.enforcement_envelope_sha256 {
             return Err(ChallengeCoordinatorError::Settlement(
                 "authorized impairment digest does not match its enforcement".to_owned(),
@@ -2181,12 +2188,13 @@ impl FindingChallengeCoordinator {
                     .to_owned(),
             ));
         }
-        self.require_retained_finalizing_authorization(
+        let retained = self.require_retained_finalizing_authorization(
             &old.body.liability_key,
             old,
             &authorized.slash.penalty,
             true,
         )?;
+        self.require_enforcement_signature(old, &retained.finalization_policy, now)?;
 
         let mut body = old.body.clone();
         body.bond_snapshot_envelope_sha256 = self.envelope_digest(bond_snapshot)?;
@@ -2203,7 +2211,8 @@ impl FindingChallengeCoordinator {
             compute_enforcement_id(&body).map_err(|_| ChallengeCoordinatorError::Canonical)?;
         body.validate()
             .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
-        self.require_live_role(&self.finalization_pin, now, now, "finalization")?;
+        let (_, finalization_status) =
+            self.resolve_live_role(&self.finalization_pin, now, now, "finalization")?;
         let refreshed = SignedFindingChallengeEnforcement::sign(body, &self.finalization_authority)
             .map_err(|_| ChallengeCoordinatorError::Signing)?;
 
@@ -2221,20 +2230,25 @@ impl FindingChallengeCoordinator {
             finality_requirement: self.pins.settlement_finality_requirement,
             max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
         };
-        let dispatch_policy =
-            FindingDispatchPolicy {
-                penalty_authority: settlement_penalty_authority_policy(&penalty_authority)?,
-                authority_status_authority: self.pins.authority_status.key().map_err(|_| {
-                    ChallengeCoordinatorError::AuthorityPinMismatch("authority status")
-                })?,
-                max_authority_status_age_secs: MAX_REVOCATION_STATUS_AGE_SECS,
-                allowed_destinations: self
-                    .settlement_destination_allowlist(&liability.allocation_id)?,
-            };
+        let dispatch_policy = FindingDispatchPolicy {
+            penalty_authority: settlement_penalty_authority_policy(&penalty_authority)?,
+            finalization_authority: settlement_penalty_authority_policy(&self.finalization_pin)?,
+            authority_status_authority: self
+                .pins
+                .authority_status
+                .key()
+                .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("authority status"))?,
+            max_authority_status_age_secs: MAX_REVOCATION_STATUS_AGE_SECS,
+            expected_sanction_case_id: retained.sanction_case_id.clone(),
+            expected_held_penalty_id: retained.held_penalty_id.clone(),
+            allowed_destinations: self
+                .settlement_destination_allowlist(&liability.allocation_id)?,
+        };
         verify_finding_enforcement(
             &refreshed,
             &authorized.slash.penalty,
             &penalty_status,
+            &finalization_status,
             bond_snapshot,
             &pins,
             &dispatch_policy,
@@ -2247,15 +2261,14 @@ impl FindingChallengeCoordinator {
             slash: authorized.slash.clone(),
             effect_intent_keys: authorized.effect_intent_keys.clone(),
         };
-        let previous_retained = RetainedAuthorizedImpairment {
-            enforcement: authorized.enforcement.clone(),
-            slash: authorized.slash.clone(),
-        };
-        let previous_json = canonical_json_bytes(&previous_retained)
-            .map_err(|_| ChallengeCoordinatorError::Canonical)?;
+        let previous_json =
+            canonical_json_bytes(&retained).map_err(|_| ChallengeCoordinatorError::Canonical)?;
         let refreshed_retained = RetainedAuthorizedImpairment {
             enforcement: refreshed_authorization.enforcement.clone(),
             slash: refreshed_authorization.slash.clone(),
+            finalization_policy: self.finalization_pin.clone(),
+            sanction_case_id: retained.sanction_case_id,
+            held_penalty_id: retained.held_penalty_id,
         };
         let refreshed_json = canonical_json_bytes(&refreshed_retained)
             .map_err(|_| ChallengeCoordinatorError::Canonical)?;
@@ -2375,7 +2388,6 @@ impl FindingChallengeCoordinator {
                 return Err(ChallengeCoordinatorError::LiabilityIdentity(label));
             }
         }
-        let finalization_authority = self.require_enforcement_signature(enforcement, now)?;
         let (penalty_status, penalty_authority) =
             self.require_penalty_matches_enforcement(&liability, enforcement, penalty, now)?;
         let seller_intent_id = enforcement
@@ -2396,7 +2408,7 @@ impl FindingChallengeCoordinator {
         {
             return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
         }
-        self.require_retained_finalizing_authorization(
+        let retained = self.require_retained_finalizing_authorization(
             liability_key,
             enforcement,
             penalty,
@@ -2407,6 +2419,8 @@ impl FindingChallengeCoordinator {
                     | FindingEffectIntentState::Confirmed
             ),
         )?;
+        let (finalization_authority, finalization_status) =
+            self.require_enforcement_signature(enforcement, &retained.finalization_policy, now)?;
         let seller_was_confirmed = seller_intent.state == FindingEffectIntentState::Confirmed;
         let settlement_observer = if seller_was_confirmed {
             // The finalization authority content-bound this exact signed
@@ -2481,10 +2495,15 @@ impl FindingChallengeCoordinator {
         let dispatch_policy =
             FindingDispatchPolicy {
                 penalty_authority: settlement_penalty_authority_policy(&penalty_authority)?,
+                finalization_authority: settlement_penalty_authority_policy(
+                    &retained.finalization_policy,
+                )?,
                 authority_status_authority: self.pins.authority_status.key().map_err(|_| {
                     ChallengeCoordinatorError::AuthorityPinMismatch("authority status")
                 })?,
                 max_authority_status_age_secs: MAX_REVOCATION_STATUS_AGE_SECS,
+                expected_sanction_case_id: retained.sanction_case_id.clone(),
+                expected_held_penalty_id: retained.held_penalty_id.clone(),
                 allowed_destinations: self
                     .settlement_destination_allowlist(&liability.allocation_id)?,
             };
@@ -2492,6 +2511,7 @@ impl FindingChallengeCoordinator {
             enforcement,
             penalty,
             &penalty_status,
+            &finalization_status,
             bond_snapshot,
             &pins,
             &dispatch_policy,
@@ -2542,7 +2562,7 @@ impl FindingChallengeCoordinator {
                 now,
             );
         }
-        self.require_sanction_governs(liability_key, &penalty.body.case_id)?;
+        self.require_sanction_governs(liability_key, &retained.sanction_case_id)?;
         self.bind_enforcement_root(liability_key, &verified, planned.intent(), now)?;
         self.require_confirmed_enforcement_root(liability_key, &verified, planned.intent())?;
         self.fence_anchor_evidence(liability_key, &verified, planned.intent(), now)?;
@@ -4205,7 +4225,12 @@ impl FindingChallengeCoordinator {
                     "liability carries an invalid durable seller key".to_owned(),
                 )
             })?;
-            let finalization_authority = self.require_enforcement_signature(enforcement, now)?;
+            let (retained, _) = self.load_retained_finalizing_authorization(liability_key)?;
+            let (finalization_authority, _) = self.require_enforcement_signature(
+                enforcement,
+                &retained.finalization_policy,
+                now,
+            )?;
             let pins = FindingEnforcementPins {
                 finalization_authority,
                 settlement_observer: bond_snapshot.signer_key.clone(),
@@ -4670,39 +4695,6 @@ impl FindingChallengeCoordinator {
             })?;
         verify_signed_challenge_outcome(outcome, &evaluator)
             .map_err(|error| ChallengeCoordinatorError::OutcomeEnvelope(error.to_string()))
-    }
-
-    /// Authenticate one retained enforcement under the exact historical
-    /// finalization policy its signed body commits, then verify the envelope
-    /// under the resulting key. The externally authenticated status resolver
-    /// keeps these body fields from self-authorizing a signer.
-    fn require_enforcement_signature(
-        &self,
-        enforcement: &SignedFindingChallengeEnforcement,
-        now: u64,
-    ) -> Result<PublicKey, ChallengeCoordinatorError> {
-        enforcement
-            .body
-            .validate()
-            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-        let body = &enforcement.body;
-        let historical_pin = FindingAuthorityPin {
-            authority_id: body.finalization_authority_id.clone(),
-            key_hex: body.finalization_key.to_hex(),
-            key_epoch: body.finalization_key_epoch,
-            valid_from: body.finalization_valid_from,
-            valid_until: body.finalization_valid_until,
-            revocation_status_ref: body.finalization_revocation_status_ref.clone(),
-        };
-        let authority = self.require_live_role(
-            &historical_pin,
-            body.finalized_at,
-            now,
-            "historical finalization",
-        )?;
-        verify_pinned_envelope(enforcement, &authority, "finding challenge enforcement")
-            .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-        Ok(authority)
     }
 
     /// Charge the dispute fee to the challenge-administration pool
@@ -5457,103 +5449,6 @@ impl FindingChallengeCoordinator {
         Ok(())
     }
 
-    fn load_retained_finalizing_authorization(
-        &self,
-        liability_key: &str,
-    ) -> Result<(RetainedAuthorizedImpairment, u64), ChallengeCoordinatorError> {
-        let stored = self
-            .challenges
-            .get_finalizing_authorization(liability_key)
-            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
-            .ok_or_else(|| {
-                ChallengeCoordinatorError::ChallengeStore(
-                    "finalizing liability has no retained authorization".to_owned(),
-                )
-            })?;
-        if sha256_hex(&stored.authorization_json) != stored.authorization_sha256 {
-            return Err(ChallengeCoordinatorError::ChallengeStore(
-                "retained finalizing authorization digest mismatch".to_owned(),
-            ));
-        }
-        let retained: RetainedAuthorizedImpairment =
-            serde_json::from_slice(&stored.authorization_json).map_err(|error| {
-                ChallengeCoordinatorError::ChallengeStore(format!(
-                    "retained finalizing authorization is invalid: {error}"
-                ))
-            })?;
-        let canonical =
-            canonical_json_bytes(&retained).map_err(|_| ChallengeCoordinatorError::Canonical)?;
-        if canonical != stored.authorization_json {
-            return Err(ChallengeCoordinatorError::ChallengeStore(
-                "retained finalizing authorization is not canonical".to_owned(),
-            ));
-        }
-        Ok((retained, stored.recorded_at))
-    }
-
-    /// Bind a finalization attempt to the immutable authorization retained
-    /// with the state transition. The only permitted difference is the
-    /// coordinator's authenticated pre-dispatch snapshot refresh: every
-    /// semantic field remains byte-for-byte equal, and the configured live
-    /// finalization authority signs the new snapshot digest and timestamp.
-    fn require_retained_finalizing_authorization(
-        &self,
-        liability_key: &str,
-        enforcement: &SignedFindingChallengeEnforcement,
-        penalty: &SignedOpenMarketPenalty,
-        allow_snapshot_refresh: bool,
-    ) -> Result<(), ChallengeCoordinatorError> {
-        let (retained, _) = self.load_retained_finalizing_authorization(liability_key)?;
-        if self.envelope_digest(penalty)? != self.envelope_digest(&retained.slash.penalty)? {
-            return Err(ChallengeCoordinatorError::Settlement(
-                "presented penalty is not the retained finalizing authorization".to_owned(),
-            ));
-        }
-        if self.envelope_digest(enforcement)? == self.envelope_digest(&retained.enforcement)? {
-            return Ok(());
-        }
-        if !allow_snapshot_refresh {
-            return Err(ChallengeCoordinatorError::Settlement(
-                "presented enforcement is not the retained finalizing authorization".to_owned(),
-            ));
-        }
-
-        let retained_body = &retained.enforcement.body;
-        let body = &enforcement.body;
-        if body.bond_snapshot_envelope_sha256 == retained_body.bond_snapshot_envelope_sha256
-            || body.finalized_at <= retained_body.finalized_at
-            || body.finalization_authority_id != self.finalization_pin.authority_id
-            || body.finalization_key != self.finalization_authority.public_key()
-            || body.finalization_key_epoch != self.finalization_pin.key_epoch
-            || body.finalization_valid_from != self.finalization_pin.valid_from
-            || body.finalization_valid_until != self.finalization_pin.valid_until
-            || body.finalization_revocation_status_ref
-                != self.finalization_pin.revocation_status_ref
-        {
-            return Err(ChallengeCoordinatorError::Settlement(
-                "snapshot refresh is outside the retained authorization".to_owned(),
-            ));
-        }
-        let mut normalized = body.clone();
-        normalized.enforcement_id = retained_body.enforcement_id.clone();
-        normalized.bond_snapshot_envelope_sha256 =
-            retained_body.bond_snapshot_envelope_sha256.clone();
-        normalized.finalization_authority_id = retained_body.finalization_authority_id.clone();
-        normalized.finalization_key = retained_body.finalization_key.clone();
-        normalized.finalization_key_epoch = retained_body.finalization_key_epoch;
-        normalized.finalization_valid_from = retained_body.finalization_valid_from;
-        normalized.finalization_valid_until = retained_body.finalization_valid_until;
-        normalized.finalization_revocation_status_ref =
-            retained_body.finalization_revocation_status_ref.clone();
-        normalized.finalized_at = retained_body.finalized_at;
-        if normalized != *retained_body {
-            return Err(ChallengeCoordinatorError::Settlement(
-                "snapshot refresh changed retained enforcement semantics".to_owned(),
-            ));
-        }
-        Ok(())
-    }
-
     /// Recover the exact authorization retained atomically with a prior
     /// `pending_appeal -> finalizing` transition.
     fn recover_finalizing_authorization(
@@ -5571,7 +5466,7 @@ impl FindingChallengeCoordinator {
             .body
             .validate()
             .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
-        self.require_enforcement_signature(enforcement, now)?;
+        self.require_enforcement_signature(enforcement, &retained.finalization_policy, now)?;
         let snapshot = self
             .challenges
             .get_claim_snapshot(&record.liability_key)
@@ -5609,7 +5504,10 @@ impl FindingChallengeCoordinator {
             || enforcement.body.purchase_snapshot_digest != sealed.snapshot_digest
             || enforcement.body.deterministic_allocation_digest != sealed.allocation_digest
             || enforcement.body.seller_allocation_id != record.allocation_id
-            || retained.slash.penalty.body.case_id != sanction_case_id
+            || retained.sanction_case_id != sanction_case_id
+            || retained.slash.penalty.body.case_id != retained.sanction_case_id
+            || retained.slash.penalty.body.supersedes_penalty_id.as_deref()
+                != Some(retained.held_penalty_id.as_str())
             || retained.slash.evaluation.penalty_id != retained.slash.penalty.body.penalty_id
             || !retained.slash.evaluation.findings.is_empty()
         {
@@ -5662,12 +5560,21 @@ impl FindingChallengeCoordinator {
         outcome: &SignedFindingChallengeOutcome,
         sealed: &SealedClaimSnapshot,
         slash: &FindingPenaltyOutcome,
+        sanction_case_id: &str,
+        held_penalty_id: &str,
         operator_id: &str,
         bond_snapshot_envelope_sha256: &str,
         now: u64,
     ) -> Result<AppealResolution, ChallengeCoordinatorError> {
         if sealed.distribution.slash.units == 0 || sealed.distribution.entries.is_empty() {
             return Err(ChallengeCoordinatorError::NothingToImpair);
+        }
+        if slash.penalty.body.case_id != sanction_case_id
+            || slash.penalty.body.supersedes_penalty_id.as_deref() != Some(held_penalty_id)
+        {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "final penalty does not follow the authenticated appeal lineage".to_owned(),
+            ));
         }
         let liability_key = record.liability_key.as_str();
         let outcome_envelope_sha256 = self.envelope_digest(outcome)?;
@@ -5900,6 +5807,9 @@ impl FindingChallengeCoordinator {
         let retained = RetainedAuthorizedImpairment {
             enforcement: authorized.enforcement.clone(),
             slash: authorized.slash.clone(),
+            finalization_policy: self.finalization_pin.clone(),
+            sanction_case_id: sanction_case_id.to_owned(),
+            held_penalty_id: held_penalty_id.to_owned(),
         };
         let authorization_json =
             canonical_json_bytes(&retained).map_err(|_| ChallengeCoordinatorError::Canonical)?;

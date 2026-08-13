@@ -10,13 +10,15 @@
 
 use chio_core::crypto::{PublicKey, SigningAlgorithm};
 use chio_settle::FindingFinalityRequirement;
+use serde::{Deserialize, Serialize};
 
 use crate::CliError;
 
 const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
 
 /// One pinned authority key with its lifecycle policy.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingAuthorityPin {
     pub authority_id: String,
     /// Canonical bare lowercase Ed25519 key hex.

@@ -223,6 +223,36 @@ pub(crate) fn evaluate_replay_contradiction(
                 FindingChallengeReason::ReplayObservationNotEstablished,
             ));
         }
+        let Some(phase) = recipe
+            .phases
+            .iter()
+            .find(|phase| phase.phase == observation.phase_id)
+        else {
+            return Ok(facet.adjudication(
+                FindingReplayPredicateResult::Indeterminate,
+                FindingChallengeReason::ReplayObservationNotEstablished,
+            ));
+        };
+        let expected_action = serde_json::json!({
+            "input_bundle_sha256": phase.input_bundle_sha256,
+            "parameters_sha256": recipe.parameters_sha256,
+            "phase": phase.phase,
+            "pre_run_template_sha256": recipe.pre_run_template_sha256,
+            "recipe_sha256": facet.recipe_sha256,
+            "replay_run_id": observation.replay_run_id,
+            "runner_manifest_sha256": recipe.runner_manifest_sha256,
+            "verifier_profile_envelope_sha256": recipe.verifier_profile_envelope_sha256,
+        });
+        if recipe.verifier_profile_envelope_sha256 != context.profile_envelope_sha256
+            || receipt.tool_server != recipe.runner_server
+            || receipt.tool_name != recipe.runner_tool
+            || receipt.action.parameters != expected_action
+        {
+            return Ok(facet.adjudication(
+                FindingReplayPredicateResult::Indeterminate,
+                FindingChallengeReason::ReplayObservationNotEstablished,
+            ));
+        }
         if observation.runner_manifest_digest != recipe.runner_manifest_sha256
             || !context
                 .profile
@@ -242,19 +272,11 @@ pub(crate) fn evaluate_replay_contradiction(
                 FindingChallengeReason::ReplayObservationNotEstablished,
             ));
         }
-        let phase = recipe
-            .phases
-            .iter()
-            .find(|phase| phase.phase == observation.phase_id);
-        match phase {
-            Some(phase)
-                if phase.input_bundle_sha256 == observation.resolved_input_bundle_digest => {}
-            _ => {
-                return Ok(facet.adjudication(
-                    FindingReplayPredicateResult::Indeterminate,
-                    FindingChallengeReason::ReplayObservationNotEstablished,
-                ))
-            }
+        if phase.input_bundle_sha256 != observation.resolved_input_bundle_digest {
+            return Ok(facet.adjudication(
+                FindingReplayPredicateResult::Indeterminate,
+                FindingChallengeReason::ReplayObservationNotEstablished,
+            ));
         }
         // Only a completed phase is a fact about the claim. Every other
         // terminal is a fact about the infrastructure.

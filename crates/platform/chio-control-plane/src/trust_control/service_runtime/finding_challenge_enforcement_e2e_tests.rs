@@ -180,42 +180,33 @@ const NOW: u64 = 1_750_000_000;
 fn buyer_destination(seed: u8) -> String {
     format!("0x{seed:040x}")
 }
-/// Seller-signed claim window the shared terms carry. The lane's clock in
-/// these tests is second-granular, so the shortest window that still has
-/// two distinct instants keeps the window-opening call and the sealing
-/// call one tick apart.
+/// Seller-signed claim window. Two distinct second-granular instants keep
+/// the window-opening and sealing calls one tick apart.
 const CLAIM_WINDOW_SECS: u64 = 1;
-// The seller filing horizon is longer than the buyer's signed dispute
-// lock, so the lock expiry is the policy-derived retry cap in this fixture.
+// The shorter signed dispute lock is this fixture's retry cap.
 const RETRY_POLICY_DEADLINE: u64 = NOW + 86_400;
 const REGISTERED_EXPOSURE_CAP: u64 = 450;
-// The epoch every pinned role is issued under and where its revocation
-// status is published. An adjudication has to hold against both.
+// Every pinned role and revocation status uses this epoch.
 const PINNED_KEY_EPOCH: u64 = 1;
 const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
 const REVOCATION_STATUS_REF: &str = "revocations/finding-market";
-// What the published fee schedule charges to file a challenge and what it
-// requires the filer to stake. A filing that names anything else is not
-// priced by the schedule it binds.
+// The published challenge fee and stake. Other values are not priced by
+// the schedule.
 const DISPUTE_FEE_UNITS: u64 = 25;
 const DISPUTE_BOND_UNITS: u64 = 40;
 
-// The shared uphold fixture opens its seller-signed three-day appeal
-// window at NOW + 4. Finality is reachable only after that frozen value.
+// Appeal finality is reachable only after the seller-signed window.
 const APPEAL_FINAL_AT: u64 = NOW + 400_000;
 /// The sanction case `finalizing_liability` records as the live head.
 const FIXTURE_SANCTION_CASE_ID: &str = "case-sanction-fixture-01";
+const FIXTURE_HELD_PENALTY_ID: &str = "market-penalty-hold-fixture";
 
-// Key-role validity window every pinned authority in the governance
-// profile is issued under, and the publication instant the revocation
-// comparisons are made against.
+// Shared key-role validity window and revocation publication instant.
 const KEY_VALID_FROM: u64 = 1_600_000_000;
 const KEY_VALID_UNTIL: u64 = 1_900_000_000;
 const PUBLISHED_AT: u64 = 1_700_000_000;
 
-// Kernel log coordinates. Every checkpoint below is a real signed
-// checkpoint over real canonical receipt bytes, so the sequence numbers
-// have to line up with the batch ranges the membership verifier rechecks.
+// Kernel log coordinates must match each signed checkpoint's batch range.
 const PRODUCTION_FIRST_AT: u64 = 1_690_000_000;
 const EVIDENCE_CHECKPOINT_SEQ: u64 = 1;
 const EVIDENCE_FIRST_SEQ: u64 = 1;
@@ -6646,6 +6637,9 @@ fn finding_challenge_refreshes_snapshot_before_dispatch_or_after_retryable_failu
     let expected_retained = canonical_json_bytes(&serde_json::json!({
         "enforcement": refreshed.enforcement.clone(),
         "slash": refreshed.slash.clone(),
+        "finalizationPolicy": market_config().venue_finalization,
+        "sanctionCaseId": FIXTURE_SANCTION_CASE_ID,
+        "heldPenaltyId": FIXTURE_HELD_PENALTY_ID,
     }))?;
     assert_eq!(retained_after_refresh.authorization_json, expected_retained);
     assert_eq!(
@@ -7706,6 +7700,9 @@ fn finalizing_liability_with(
     let retained = serde_json::json!({
         "enforcement": enforcement.clone(),
         "slash": slash.clone(),
+        "finalizationPolicy": market_config().venue_finalization,
+        "sanctionCaseId": FIXTURE_SANCTION_CASE_ID,
+        "heldPenaltyId": FIXTURE_HELD_PENALTY_ID,
     });
     let authorization_json = canonical_json_bytes(&retained)?;
     let authorization_sha256 = sha256_hex(&authorization_json);
@@ -7911,11 +7908,11 @@ fn fixture_slash_penalty() -> Result<SignedOpenMarketPenalty, AnyError> {
         expires_at: Some(KEY_VALID_UNTIL),
         evidence_refs: vec![OpenMarketEvidenceReference {
             kind: OpenMarketEvidenceKind::External,
-            reference_id: "outcome-finalizing-fixture".to_string(),
+            reference_id: byte_hex64(0xb3),
             uri: None,
             sha256: Some(byte_hex64(0xb4)),
         }],
-        supersedes_penalty_id: None,
+        supersedes_penalty_id: Some(FIXTURE_HELD_PENALTY_ID.to_string()),
         issued_by: "market@chio.example".to_string(),
         note: None,
     };

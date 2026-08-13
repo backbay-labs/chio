@@ -242,7 +242,7 @@ fn penalty_for(enforcement: &FindingChallengeEnforcement) -> SignedOpenMarketPen
                 uri: None,
                 sha256: Some(enforcement.outcome_envelope_sha256.clone()),
             }],
-            supersedes_penalty_id: None,
+            supersedes_penalty_id: Some("hold-42".to_string()),
             issued_by: "market-penalty".to_string(),
             note: None,
         },
@@ -273,6 +273,24 @@ fn penalty_status_at(
             authority_id: enforcement.penalty_authority_id.clone(),
             key: enforcement.penalty_key.clone(),
             key_epoch: enforcement.penalty_key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &status_keypair(),
+    )
+}
+
+fn finalization_status_at(
+    enforcement: &FindingChallengeEnforcement,
+    observed_at: u64,
+) -> SignedFindingAuthorityStatus {
+    sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: enforcement.finalization_revocation_status_ref.clone(),
+            authority_id: enforcement.finalization_authority_id.clone(),
+            key: enforcement.finalization_key.clone(),
+            key_epoch: enforcement.finalization_key_epoch,
             revoked_from: None,
             observed_at,
         },
@@ -336,8 +354,18 @@ fn default_dispatch_policy() -> FindingDispatchPolicy {
             valid_until: 1_800_000_000,
             revocation_status_ref: "revocations/market-penalty".to_owned(),
         },
+        finalization_authority: FindingPenaltyAuthorityPolicy {
+            authority_id: "venue-finalization".to_owned(),
+            key: finalization_keypair().public_key(),
+            key_epoch: 1,
+            valid_from: 1,
+            valid_until: 1_800_000_000,
+            revocation_status_ref: "revocations/venue-finalization".to_owned(),
+        },
         authority_status_authority: status_keypair().public_key(),
         max_authority_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
+        expected_sanction_case_id: "case-42".to_owned(),
+        expected_held_penalty_id: "hold-42".to_owned(),
         allowed_destinations: [
             BUYER_DESTINATION.to_string(),
             COMMUNITY_FUND_DESTINATION.to_string(),
@@ -355,10 +383,12 @@ fn verify_pair(
 ) -> Result<VerifiedFindingEnforcement, SettlementError> {
     let penalty = penalty_for(&enforcement.body);
     let status = penalty_status_at(&enforcement.body, trusted_now_secs);
+    let finalization_status = finalization_status_at(&enforcement.body, trusted_now_secs);
     verify_finding_enforcement(
         enforcement,
         &penalty,
         &status,
+        &finalization_status,
         snapshot,
         pins,
         &default_dispatch_policy(),
@@ -513,6 +543,7 @@ fn dispatch_rejects_a_destination_outside_operator_policy() {
             &enforcement,
             &penalty_for(&enforcement.body),
             &penalty_status_at(&enforcement.body, TRUSTED_NOW),
+            &finalization_status_at(&enforcement.body, TRUSTED_NOW),
             &snapshot,
             &default_pins(),
             &policy,
@@ -535,6 +566,7 @@ fn dispatch_rejects_an_unbound_or_revoked_penalty() {
             &enforcement,
             &unbound,
             &live_status,
+            &finalization_status_at(&enforcement.body, TRUSTED_NOW),
             &snapshot,
             &pins,
             &default_dispatch_policy(),
@@ -555,6 +587,7 @@ fn dispatch_rejects_an_unbound_or_revoked_penalty() {
             &enforcement,
             &penalty_for(&enforcement.body),
             &revoked_status,
+            &finalization_status_at(&enforcement.body, TRUSTED_NOW),
             &snapshot,
             &pins,
             &default_dispatch_policy(),
@@ -579,6 +612,7 @@ fn dispatch_penalty_must_bind_the_finding_outcome() {
             &wrong_class_enforcement,
             &wrong_class,
             &penalty_status_at(&wrong_class_enforcement.body, TRUSTED_NOW),
+            &finalization_status_at(&wrong_class_enforcement.body, TRUSTED_NOW),
             &snapshot,
             &pins,
             &policy,
@@ -602,6 +636,7 @@ fn dispatch_penalty_must_bind_the_finding_outcome() {
             &wrong_reference_enforcement,
             &wrong_reference,
             &penalty_status_at(&wrong_reference_enforcement.body, TRUSTED_NOW),
+            &finalization_status_at(&wrong_reference_enforcement.body, TRUSTED_NOW),
             &snapshot,
             &pins,
             &policy,
@@ -621,6 +656,7 @@ fn dispatch_penalty_must_bind_the_finding_outcome() {
             &substituted_outcome_enforcement,
             &substituted_outcome,
             &penalty_status_at(&substituted_outcome_enforcement.body, TRUSTED_NOW),
+            &finalization_status_at(&substituted_outcome_enforcement.body, TRUSTED_NOW),
             &snapshot,
             &pins,
             &policy,
@@ -646,12 +682,96 @@ fn dispatch_requires_the_retained_penalty_authority_policy() {
             &enforcement,
             &penalty_for(&enforcement.body),
             &penalty_status_at(&enforcement.body, TRUSTED_NOW),
+            &finalization_status_at(&enforcement.body, TRUSTED_NOW),
             &snapshot,
             &default_pins(),
             &policy,
             TRUSTED_NOW,
         ),
         "does not match retained governance policy",
+    );
+}
+
+#[test]
+fn dispatch_requires_the_retained_appeal_lineage() {
+    let (baseline, snapshot) = default_pair();
+    let pins = default_pins();
+    let policy = default_dispatch_policy();
+
+    let mutations: [fn(&mut OpenMarketPenaltyArtifact); 2] = [
+        |penalty: &mut OpenMarketPenaltyArtifact| {
+            penalty.case_id = "unrelated-case".to_string();
+        },
+        |penalty: &mut OpenMarketPenaltyArtifact| {
+            penalty.supersedes_penalty_id = Some("unrelated-hold".to_string());
+        },
+    ];
+    for mutate in mutations {
+        let mut penalty_body = penalty_for(&baseline.body).body;
+        mutate(&mut penalty_body);
+        let penalty = sign(penalty_body, &penalty_keypair());
+        let enforcement = enforcement_bound_to_penalty(baseline.body.clone(), &penalty);
+        assert_rejected(
+            verify_finding_enforcement(
+                &enforcement,
+                &penalty,
+                &penalty_status_at(&enforcement.body, TRUSTED_NOW),
+                &finalization_status_at(&enforcement.body, TRUSTED_NOW),
+                &snapshot,
+                &pins,
+                &policy,
+                TRUSTED_NOW,
+            ),
+            "retained appeal lineage",
+        );
+    }
+}
+
+#[test]
+fn dispatch_requires_retained_live_finalization_authority() {
+    let (enforcement, snapshot) = default_pair();
+    let penalty = penalty_for(&enforcement.body);
+    let penalty_status = penalty_status_at(&enforcement.body, TRUSTED_NOW);
+    let policy = FindingDispatchPolicy {
+        finalization_authority: FindingPenaltyAuthorityPolicy {
+            authority_id: "attacker-selected-finalization".to_owned(),
+            ..default_dispatch_policy().finalization_authority
+        },
+        ..default_dispatch_policy()
+    };
+    assert_rejected(
+        verify_finding_enforcement(
+            &enforcement,
+            &penalty,
+            &penalty_status,
+            &finalization_status_at(&enforcement.body, TRUSTED_NOW),
+            &snapshot,
+            &default_pins(),
+            &policy,
+            TRUSTED_NOW,
+        ),
+        "retained governance policy",
+    );
+
+    let revoked_status = sign(
+        FindingAuthorityStatus {
+            revoked_from: Some(enforcement.body.finalized_at),
+            ..finalization_status_at(&enforcement.body, TRUSTED_NOW).body
+        },
+        &status_keypair(),
+    );
+    assert_rejected(
+        verify_finding_enforcement(
+            &enforcement,
+            &penalty,
+            &penalty_status,
+            &revoked_status,
+            &snapshot,
+            &default_pins(),
+            &default_dispatch_policy(),
+            TRUSTED_NOW,
+        ),
+        "finalization authority was revoked",
     );
 }
 
@@ -674,6 +794,7 @@ fn dispatch_rejects_a_penalty_that_expired_while_finalizing() {
             &enforcement,
             &penalty,
             &penalty_status_at(&enforcement.body, TRUSTED_NOW),
+            &finalization_status_at(&enforcement.body, TRUSTED_NOW),
             &snapshot,
             &default_pins(),
             &default_dispatch_policy(),
@@ -1032,7 +1153,18 @@ fn a_stale_or_future_dated_snapshot_is_rejected() {
         "older than the configured maximum observation age",
     );
     assert_rejected(
-        verify_pair(&enforcement, &snapshot, &pins, OBSERVED_AT - 1),
+        verify_pair(
+            &pair_from(
+                snapshot_body(),
+                &observer_keypair(),
+                &finalization_keypair(),
+                |body| body.finalized_at = OBSERVED_AT - 2,
+            )
+            .0,
+            &snapshot,
+            &pins,
+            OBSERVED_AT - 1,
+        ),
         "observed after the trusted current time",
     );
     verify_pair(

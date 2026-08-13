@@ -140,11 +140,34 @@ fn signed_receipt(
     content_hash: &str,
     metadata: Option<serde_json::Value>,
 ) -> Built<ChioReceipt> {
+    signed_receipt_for_server(
+        kernel,
+        timestamp,
+        "finding-server",
+        tool_name,
+        action,
+        decision,
+        content_hash,
+        metadata,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn signed_receipt_for_server(
+    kernel: &Keypair,
+    timestamp: u64,
+    tool_server: &str,
+    tool_name: &str,
+    action: ToolCallAction,
+    decision: Decision,
+    content_hash: &str,
+    metadata: Option<serde_json::Value>,
+) -> Built<ChioReceipt> {
     let body = ChioReceiptBody {
         id: String::new(),
         timestamp,
         capability_id: format!("cap-{timestamp}"),
-        tool_server: "finding-server".to_string(),
+        tool_server: tool_server.to_string(),
         tool_name: tool_name.to_string(),
         action,
         decision: Some(decision),
@@ -1409,6 +1432,12 @@ pub struct ReplayShape {
     pub break_content_commitment: bool,
     /// Sign a receipt whose action hash contradicts its own parameters.
     pub break_action_commitment: bool,
+    /// Substitute the signed receipt's mediated server.
+    pub receipt_tool_server: Option<String>,
+    /// Substitute the signed receipt's mediated tool.
+    pub receipt_tool_name: Option<String>,
+    /// Substitute a self-consistent but uncommitted invocation body.
+    pub action_parameters: Option<serde_json::Value>,
     /// Report an environment other than the one the recipe committed.
     pub environment_digest: Option<String>,
     /// Decision carried by each replay receipt.
@@ -1423,6 +1452,9 @@ impl Default for ReplayShape {
             signer: None,
             break_content_commitment: false,
             break_action_commitment: false,
+            receipt_tool_server: None,
+            receipt_tool_name: None,
+            action_parameters: None,
             environment_digest: None,
             decision: Decision::Allow,
         }
@@ -1512,17 +1544,39 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
         } else {
             sha256_hex(text.as_bytes())
         };
-        let mut action = ToolCallAction::from_parameters(serde_json::json!({
-            "replay_run_id": REPLAY_RUN_ID,
-            "phase": index,
-        }))?;
+        let phase_recipe = world
+            .recipe
+            .phases
+            .iter()
+            .find(|recipe_phase| recipe_phase.phase == phase.phase)
+            .ok_or("replay shape contains an uncommitted phase")?;
+        let action_parameters = shape.action_parameters.clone().unwrap_or_else(|| {
+            serde_json::json!({
+                "input_bundle_sha256": phase_recipe.input_bundle_sha256,
+                "parameters_sha256": world.recipe.parameters_sha256,
+                "phase": phase_recipe.phase,
+                "pre_run_template_sha256": world.recipe.pre_run_template_sha256,
+                "recipe_sha256": recipe_digest,
+                "replay_run_id": REPLAY_RUN_ID,
+                "runner_manifest_sha256": world.recipe.runner_manifest_sha256,
+                "verifier_profile_envelope_sha256": world.recipe.verifier_profile_envelope_sha256,
+            })
+        });
+        let mut action = ToolCallAction::from_parameters(action_parameters)?;
         if shape.break_action_commitment {
             action.parameter_hash = HEX64_THIRD.to_string();
         }
-        let receipt = signed_receipt(
+        let receipt = signed_receipt_for_server(
             &kernel,
             1_746_000_000 + index as u64,
-            "finding.replay",
+            shape
+                .receipt_tool_server
+                .as_deref()
+                .unwrap_or(&world.recipe.runner_server),
+            shape
+                .receipt_tool_name
+                .as_deref()
+                .unwrap_or(&world.recipe.runner_tool),
             action,
             shape.decision.clone(),
             &content_hash,
