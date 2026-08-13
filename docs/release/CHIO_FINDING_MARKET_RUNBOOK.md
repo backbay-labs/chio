@@ -46,28 +46,38 @@ the configured feed.
 
 Each cadence run performs this order:
 
-1. Read the durable feed floor and bounded batches from
-   `list_publication_candidates` and
+1. Read the durable feed floor, the current canonical finalized anchor set,
+   and bounded batches from `list_publication_candidates` and
    `list_non_inclusion_refresh_candidates`. The batches include eligible
    pending intents, published sticky leaves whose current-floor inclusion
    proof needs refresh, and live findings whose non-inclusion proof was
    displaced by an epoch advance or expired.
-2. Confirm that an enforced intent's exact seller impairment is final. A bare
+2. Call `epoch_refresh_required` with that finalized anchor set and the
+   cadence's current trusted time. If it returns true and both bounded batches
+   are empty, call `publish_epoch_refresh` with the same anchor set and a
+   freshly captured trusted time. Then re-query both candidate lists before
+   continuing. This root-only publication is mandatory when finalized anchors
+   or epoch freshness change without unrelated point work; it advances the
+   floor so displaced point proofs become visible to the ordinary refresh
+   queries.
+3. Confirm that an enforced intent's exact seller impairment is final. A bare
    outcome, bond hold, root publication, failed transaction, or ambiguous
    receipt is not eligible.
-3. Insert every eligible key in one transactional sparse-map update.
-4. Advance `map_epoch` exactly once, sign the complete status epoch, and store
-   its exact canonical bytes before making it current.
-5. After the final floor advance, query
+4. Insert every eligible key in one transactional sparse-map update.
+5. Advance `map_epoch` exactly once, bind the finalized anchor set, sign the
+   complete status epoch, and store its exact canonical bytes before making it
+   current. When point work was already present, this ordinary publication
+   also satisfies the refresh reported by `epoch_refresh_required`.
+6. After the final floor advance, query
    `list_non_inclusion_refresh_candidates` again. Merge and deduplicate that
    result with the pre-advance batch, then generate and verify the portable
    inclusion proof for each inserted key and mint current-floor non-inclusion
    proofs for every resulting live refresh candidate before the cadence
    completes. The post-advance query is mandatory because the new epoch can
    displace proofs that were current when step 1 ran.
-6. Record the signed epoch and proof against each outbox item, then clear its
+7. Record the signed epoch and proof against each outbox item, then clear its
    pending marker exactly once.
-7. Leave failed items retryable. Quarantine conflicting identities or
+8. Leave failed items retryable. Quarantine conflicting identities or
    ambiguous finality instead of rewriting them.
 
 There is no public HTTP route for advancing an epoch. HTTP surfaces serve only

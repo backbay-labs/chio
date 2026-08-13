@@ -494,8 +494,8 @@ pub(crate) async fn handle_get_finding_status_root(
     State(state): State<TrustServiceState>,
     AxumPath(feed_id): AxumPath<String>,
 ) -> Response {
-    let now = unix_timestamp_now();
-    let (config, store) = match status_context(&state, &feed_id, now) {
+    let request_started_at = unix_timestamp_now();
+    let (config, store) = match status_context(&state, &feed_id, request_started_at) {
         Ok(context) => context,
         Err(response) => return response,
     };
@@ -503,12 +503,13 @@ pub(crate) async fn handle_get_finding_status_root(
         Ok(epoch) => epoch,
         Err(error) => return status_read_error(error),
     };
+    let verification_now = unix_timestamp_now();
     if let Err(response) = require_current_epoch(
         &config.status_feed_operator,
         &config.status_feed_service_bond,
         config.status_max_epoch_age_secs,
         &epoch,
-        now,
+        verification_now,
     ) {
         return response;
     }
@@ -530,8 +531,8 @@ pub(crate) async fn handle_get_finding_status_proof(
     State(state): State<TrustServiceState>,
     AxumPath((feed_id, finding_id)): AxumPath<(String, String)>,
 ) -> Response {
-    let now = unix_timestamp_now();
-    let (config, store) = match status_context(&state, &feed_id, now) {
+    let request_started_at = unix_timestamp_now();
+    let (config, store) = match status_context(&state, &feed_id, request_started_at) {
         Ok(context) => context,
         Err(response) => return response,
     };
@@ -539,15 +540,6 @@ pub(crate) async fn handle_get_finding_status_proof(
         Ok(epoch) => epoch,
         Err(error) => return status_read_error(error),
     };
-    if let Err(response) = require_current_epoch(
-        &config.status_feed_operator,
-        &config.status_feed_service_bond,
-        config.status_max_epoch_age_secs,
-        &epoch,
-        now,
-    ) {
-        return response;
-    }
     let proof = match store.get_latest_proof(&feed_id, &finding_id) {
         Ok(Some(proof)) => proof,
         Ok(None) => {
@@ -558,6 +550,16 @@ pub(crate) async fn handle_get_finding_status_proof(
         }
         Err(error) => return status_read_error(error),
     };
+    let verification_now = unix_timestamp_now();
+    if let Err(response) = require_current_epoch(
+        &config.status_feed_operator,
+        &config.status_feed_service_bond,
+        config.status_max_epoch_age_secs,
+        &epoch,
+        verification_now,
+    ) {
+        return response;
+    }
     if let Err(response) = require_current_proof(
         &store,
         &config.status_feed_operator,
@@ -565,7 +567,7 @@ pub(crate) async fn handle_get_finding_status_proof(
         config.status_max_epoch_age_secs,
         &epoch,
         &proof,
-        now,
+        verification_now,
     ) {
         return response;
     }
