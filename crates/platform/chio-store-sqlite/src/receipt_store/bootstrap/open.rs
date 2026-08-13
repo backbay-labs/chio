@@ -482,6 +482,11 @@ impl SqliteReceiptStore {
                     "finding-pool receipt sink SQLite URI disables file locking".to_string(),
                 ));
             }
+            if crate::sqlite_uri_is_read_only(path_text) {
+                return Err(ReceiptStoreError::Conflict(
+                    "finding-pool receipt sink SQLite URI is read-only".to_string(),
+                ));
+            }
         }
         let connection_flags = if create_if_missing {
             None

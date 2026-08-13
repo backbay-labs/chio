@@ -319,6 +319,7 @@ pub struct AuthorizedFindingPoolUnknownDispatchTerminal {
 /// binding through the accessors below.
 #[derive(Debug, Clone)]
 pub struct AuthorizedFindingPoolTerminal {
+    durable_admission_operation_id: String,
     purchase_id: String,
     finding_id: String,
     listing_id: String,
@@ -337,6 +338,11 @@ pub enum FindingPoolTerminalDecision {
 }
 
 impl AuthorizedFindingPoolTerminal {
+    #[must_use]
+    pub fn durable_admission_operation_id(&self) -> &str {
+        &self.durable_admission_operation_id
+    }
+
     #[must_use]
     pub fn purchase_id(&self) -> &str {
         &self.purchase_id
@@ -988,6 +994,10 @@ impl ChioKernel {
         &self,
         ledger: &dyn QualifiedFindingPoolLedger,
     ) -> Result<usize, FindingPoolLedgerError> {
+        let _flush_guard = self
+            .finding_pool_mutation_receipt_flush_lock
+            .lock()
+            .map_err(|_| FindingPoolLedgerError::MutationReceiptFlushPoisoned)?;
         let durable_store_configured = self
             .with_receipt_store(|_| Ok(()))
             .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))?
@@ -1219,6 +1229,7 @@ impl ChioKernel {
     /// configured pool ledger are left unchanged.
     pub(crate) fn settle_finding_pool_delivery(
         &self,
+        durable_admission_operation_id: &str,
         purchase: &crate::finding_purchase::VerifiedFindingPurchase,
         disposition: &crate::tool_outcome::SettlementDispositionV1,
     ) -> Result<(), FindingPoolLedgerError> {
@@ -1232,6 +1243,7 @@ impl ChioKernel {
         let occurred_at_unix_ms =
             ledger.advance_trusted_time_floor(crate::kernel::current_unix_timestamp_ms())?;
         let terminal = AuthorizedFindingPoolTerminal {
+            durable_admission_operation_id: durable_admission_operation_id.to_owned(),
             purchase_id: purchase.purchase_intent_id.clone(),
             finding_id: purchase.finding_id.clone(),
             listing_id: purchase.listing_id.clone(),
@@ -1255,10 +1267,11 @@ impl ChioKernel {
 
     pub(crate) fn settle_finding_pool_delivery_terminal(
         &self,
+        durable_admission_operation_id: &str,
         purchase: &crate::finding_purchase::VerifiedFindingPurchase,
         disposition: &crate::tool_outcome::SettlementDispositionV1,
     ) -> Result<(), crate::KernelError> {
-        self.settle_finding_pool_delivery(purchase, disposition)
+        self.settle_finding_pool_delivery(durable_admission_operation_id, purchase, disposition)
             .map_err(|error| {
                 crate::KernelError::DurableAdmission(format!(
                     "finding pool terminal could not be committed: {error}"

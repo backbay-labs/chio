@@ -773,7 +773,11 @@ impl ChioKernel {
         }
         #[cfg(feature = "cognition-market-experimental")]
         if let Some(binding) = purchase.as_ref() {
-            self.settle_finding_pool_delivery_terminal(binding, _settlement_disposition)?;
+            self.settle_finding_pool_delivery_terminal(
+                admission.operation.binding().operation_id().as_str(),
+                binding,
+                _settlement_disposition,
+            )?;
         }
         let retained_financial_metadata = receipt
             .metadata
@@ -1912,7 +1916,11 @@ impl ChioKernel {
             .transpose()?;
         #[cfg(feature = "cognition-market-experimental")]
         if let Some(binding) = purchase.as_ref() {
-            self.settle_finding_pool_delivery_terminal(binding, &settlement_disposition)?;
+            self.settle_finding_pool_delivery_terminal(
+                admission.operation.binding().operation_id().as_str(),
+                binding,
+                &settlement_disposition,
+            )?;
         }
         let tool_outcome = runtime
             .verify_terminal_outcome(&admission.operation, &context)

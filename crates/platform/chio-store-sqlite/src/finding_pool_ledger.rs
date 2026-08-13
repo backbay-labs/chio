@@ -149,7 +149,7 @@ impl SqliteFindingPoolLedger {
             || empty_uri_filename
             || is_in_memory_sqlite_path(path_text)
             || crate::sqlite_uri_disables_locking(path_text)
-            || sqlite_uri_is_read_only(path_text)
+            || crate::sqlite_uri_is_read_only(path_text)
         {
             return Err(FindingPoolLedgerError::Storage(
                 "qualified finding pool ledger requires a durable SQLite path".to_string(),
@@ -355,31 +355,6 @@ fn sqlite_uri_filename_is_empty(path: &str) -> bool {
         return !authority_and_path.contains('/');
     }
     name.is_empty()
-}
-
-fn sqlite_uri_is_read_only(path: &str) -> bool {
-    let Some(rest) = path.strip_prefix("file:") else {
-        return false;
-    };
-    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
-    let Some((_, query)) = rest.split_once('?') else {
-        return false;
-    };
-    query.split('&').any(|pair| {
-        let (key, value) = pair.split_once('=').map_or((pair, ""), |parts| parts);
-        let (Some(key), Some(value)) = (
-            crate::percent_decode_sqlite_uri_component(key),
-            crate::percent_decode_sqlite_uri_component(value),
-        ) else {
-            return true;
-        };
-        (key.eq_ignore_ascii_case("mode") && value.eq_ignore_ascii_case("ro"))
-            || (key.eq_ignore_ascii_case("immutable")
-                && matches!(
-                    value.to_ascii_lowercase().as_str(),
-                    "1" | "on" | "true" | "yes"
-                ))
-    })
 }
 
 fn verify_qualified_connection(
@@ -1021,7 +996,8 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                         d.authoritative_payment_operation_id, d.amount_units, \
                         d.currency, d.state, d.reserved_after_units, \
                         d.spent_after_units, a.signed_amount_units, \
-                        a.reserved_units, a.spent_units \
+                        a.reserved_units, a.spent_units, \
+                        d.claimed_at_unix_ms, d.durable_admission_operation_id \
                  FROM finding_pool_debits d \
                  JOIN finding_pool_allocations a \
                    ON a.allocation_envelope_sha256 = d.allocation_envelope_sha256 \
@@ -1043,6 +1019,8 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                         row.get::<_, String>(11)?,
                         row.get::<_, String>(12)?,
                         row.get::<_, String>(13)?,
+                        row.get::<_, Option<String>>(14)?,
+                        row.get::<_, Option<String>>(15)?,
                     ))
                 },
             )
@@ -1065,6 +1043,11 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         {
             return Err(FindingPoolLedgerError::TerminalConflict);
         }
+        require_terminal_claim_binding(
+            stored.14.as_deref(),
+            stored.15.as_deref(),
+            terminal.durable_admission_operation_id(),
+        )?;
         let target = match terminal.decision() {
             FindingPoolTerminalDecision::Finalize => FindingPoolDebitState::Finalized,
             FindingPoolTerminalDecision::Release => FindingPoolDebitState::Released,
@@ -1128,12 +1111,15 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
             .execute(
                 "UPDATE finding_pool_debits \
                  SET state = ?2, reserved_after_units = ?3, spent_after_units = ?4 \
-                 WHERE purchase_id = ?1 AND state = 'reserved'",
+                 WHERE purchase_id = ?1 AND state = 'reserved' \
+                   AND claimed_at_unix_ms IS NOT NULL \
+                   AND durable_admission_operation_id = ?5",
                 params![
                     terminal.purchase_id(),
                     state_text(target),
                     reserved_after.to_string(),
                     spent_after.to_string(),
+                    terminal.durable_admission_operation_id(),
                 ],
             )
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
@@ -1729,6 +1715,19 @@ fn remaining_units(signed: u64, reserved: u64, spent: u64) -> Result<u64, Findin
         .ok_or(FindingPoolLedgerError::AmountExceeded)
 }
 
+fn require_terminal_claim_binding(
+    claimed_at_unix_ms: Option<&str>,
+    durable_admission_operation_id: Option<&str>,
+    expected_operation_id: &str,
+) -> Result<(), FindingPoolLedgerError> {
+    let claimed_at_unix_ms = claimed_at_unix_ms.ok_or(FindingPoolLedgerError::TerminalConflict)?;
+    parse_units(claimed_at_unix_ms, "debit.claimed_at_unix_ms")?;
+    if durable_admission_operation_id != Some(expected_operation_id) {
+        return Err(FindingPoolLedgerError::TerminalConflict);
+    }
+    Ok(())
+}
+
 fn invariant(message: &str) -> FindingPoolLedgerError {
     FindingPoolLedgerError::Storage(format!("finding pool ledger invariant failed: {message}"))
 }
@@ -2041,6 +2040,30 @@ mod tests {
             .list_claimed_admission_operations(Some(&second_operation), 1)
             .test_expect("read terminal claimed-operation page")
             .is_empty());
+    }
+
+    #[test]
+    fn settlement_requires_claim_bound_to_same_admission_operation() {
+        assert_eq!(
+            require_terminal_claim_binding(None, None, "operation:completed"),
+            Err(FindingPoolLedgerError::TerminalConflict)
+        );
+        assert_eq!(
+            require_terminal_claim_binding(
+                Some("1000"),
+                Some("operation:other"),
+                "operation:completed",
+            ),
+            Err(FindingPoolLedgerError::TerminalConflict)
+        );
+        assert_eq!(
+            require_terminal_claim_binding(
+                Some("1000"),
+                Some("operation:completed"),
+                "operation:completed",
+            ),
+            Ok(())
+        );
     }
 
     #[test]

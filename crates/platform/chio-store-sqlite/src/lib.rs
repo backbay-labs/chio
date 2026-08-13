@@ -239,6 +239,31 @@ pub(crate) fn sqlite_uri_disables_locking(path: &str) -> bool {
     })
 }
 
+pub(crate) fn sqlite_uri_is_read_only(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("file:") else {
+        return false;
+    };
+    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
+    let Some((_, query)) = rest.split_once('?') else {
+        return false;
+    };
+    query.split('&').any(|pair| {
+        let (key, value) = pair.split_once('=').map_or((pair, ""), |parts| parts);
+        let (Some(key), Some(value)) = (
+            percent_decode_sqlite_uri_component(key),
+            percent_decode_sqlite_uri_component(value),
+        ) else {
+            return true;
+        };
+        (key.eq_ignore_ascii_case("mode") && value.eq_ignore_ascii_case("ro"))
+            || (key.eq_ignore_ascii_case("immutable")
+                && matches!(
+                    value.to_ascii_lowercase().as_str(),
+                    "1" | "on" | "true" | "yes"
+                ))
+    })
+}
+
 const fn hex_nibble(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),

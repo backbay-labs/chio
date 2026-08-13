@@ -313,13 +313,13 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs": allow(
         "2026-08-31",
-        "durable terminal coordinator with M6 status-release and recovery snapshots plus M8 signed outcome projection; capped to current size until split",
-        max_lines=2_425,
+        "durable terminal coordinator with M6 status-release and recovery snapshots plus M8 signed outcome and pool-claim binding; capped to current size until split",
+        max_lines=2_433,
     ),
     "crates/kernel/chio-kernel/src/kernel/construction.rs": allow(
         "2026-08-31",
-        "kernel construction surface with M8 finding-pool ledger wiring; capped to current size until split",
-        max_lines=2_032,
+        "kernel construction surface with M8 finding-pool ledger and receipt-flush lock wiring; capped to current size until split",
+        max_lines=2_034,
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",

@@ -299,6 +299,8 @@ impl ChioKernel {
             finding_pool_ledger: None,
             #[cfg(feature = "cognition-market-experimental")]
             finding_pool_outbox_worker_id: uuid::Uuid::now_v7().to_string(),
+            #[cfg(feature = "cognition-market-experimental")]
+            finding_pool_mutation_receipt_flush_lock: Mutex::new(()),
             price_oracle: None,
             runtime_admission_hook: None,
             runtime_admission_readiness_timeout: Duration::from_millis(

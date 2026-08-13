@@ -591,10 +591,13 @@ pub struct ChioKernel {
     #[cfg(feature = "cognition-market-experimental")]
     pub(super) finding_pool_ledger:
         Option<Arc<dyn crate::finding_pool::QualifiedFindingPoolLedger>>,
-    /// Unique owner for durable outbox delivery claims. The claim itself is
-    /// serialized by the shared qualified ledger, not by process-local state.
+    /// Unique owner for durable outbox delivery claims.
     #[cfg(feature = "cognition-market-experimental")]
     pub(crate) finding_pool_outbox_worker_id: String,
+    /// Serializes claim, append, and acknowledgment so one kernel cannot
+    /// project later mutation receipts ahead of an earlier delivery sequence.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) finding_pool_mutation_receipt_flush_lock: Mutex<()>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
     pub(super) runtime_admission_readiness_timeout: Duration,

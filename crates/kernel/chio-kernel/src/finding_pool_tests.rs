@@ -28,6 +28,8 @@ pub(crate) struct RecordingLedger {
     fail_next_acknowledgement: AtomicBool,
     active_pending_reads: AtomicUsize,
     max_active_pending_reads: AtomicUsize,
+    active_delivery_claims: AtomicUsize,
+    max_active_delivery_claims: AtomicUsize,
     trusted_time_high_water_unix_ms: AtomicU64,
 }
 
@@ -389,6 +391,12 @@ impl FindingPoolLedger for RecordingLedger {
             claims.retain(|(receipt_id, _, _)| receipt_id != &receipt.id);
             claims.push((receipt.id.clone(), claimant_id.to_owned(), claim_expires_at));
         }
+        let active_delivery_claims = self
+            .active_delivery_claims
+            .fetch_add(pending.len(), Ordering::SeqCst)
+            .saturating_add(pending.len());
+        self.max_active_delivery_claims
+            .fetch_max(active_delivery_claims, Ordering::SeqCst);
         self.active_pending_reads.fetch_sub(1, Ordering::SeqCst);
         Ok(pending)
     }
@@ -420,6 +428,7 @@ impl FindingPoolLedger for RecordingLedger {
         }
         if self.fail_next_acknowledgement.swap(false, Ordering::SeqCst) {
             claims.retain(|(claimed_receipt_id, _, _)| claimed_receipt_id != receipt_id);
+            self.active_delivery_claims.fetch_sub(1, Ordering::SeqCst);
             return Err(FindingPoolLedgerError::Storage(
                 "injected post-projection acknowledgement failure".to_owned(),
             ));
@@ -431,6 +440,7 @@ impl FindingPoolLedger for RecordingLedger {
         if !acknowledged.iter().any(|existing| existing == receipt_id) {
             acknowledged.push(receipt_id.to_owned());
         }
+        self.active_delivery_claims.fetch_sub(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -549,6 +559,7 @@ impl QualifiedFindingPoolLedger for RecordingLedger {
 struct RecordingReceiptStore {
     receipts: Mutex<Vec<ChioReceipt>>,
     sink_id: String,
+    delay_appends: AtomicBool,
 }
 
 impl RecordingReceiptStore {
@@ -556,12 +567,16 @@ impl RecordingReceiptStore {
         Self {
             receipts: Mutex::new(Vec::new()),
             sink_id,
+            delay_appends: AtomicBool::new(false),
         }
     }
 }
 
 impl ReceiptStore for RecordingReceiptStore {
     fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        if self.delay_appends.load(Ordering::SeqCst) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         self.receipts
             .lock()
             .map_err(|_| ReceiptStoreError::Conflict("test receipt lock was poisoned".to_owned()))?
@@ -778,6 +793,7 @@ fn delivery_capture_finalizes_the_configured_pool_reservation() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     let result = kernel.settle_finding_pool_delivery(
+        "operation:test",
         &purchase(),
         &crate::tool_outcome::SettlementDispositionV1::Capture {
             amount: MonetaryAmount {
@@ -811,6 +827,7 @@ fn delivery_terminal_uses_the_persisted_nondecreasing_time_floor() {
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(kernel
         .settle_finding_pool_delivery(
+            "operation:test",
             &purchase(),
             &crate::tool_outcome::SettlementDispositionV1::Capture {
                 amount: MonetaryAmount {
@@ -1135,6 +1152,83 @@ fn concurrent_pool_outbox_flushers_project_each_receipt_once() {
         .is_ok_and(|receipts| receipts.is_empty()));
 }
 
+#[test]
+fn one_kernel_serializes_pool_outbox_claim_append_and_acknowledgement() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let receipt_store = Arc::new(RecordingReceiptStore::new(
+        "receipt-sink:ordered".to_owned(),
+    ));
+    receipt_store.delay_appends.store(true, Ordering::SeqCst);
+    let kernel = Arc::new(kernel_with_keys_and_store(
+        Arc::clone(&ledger),
+        91,
+        92,
+        Arc::clone(&receipt_store),
+    ));
+    let mutations = [("purchase:first", 1_u64), ("purchase:second", 2_u64)].map(
+        |(purchase_id, occurred_at_unix_ms)| FindingPoolMutation {
+            schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
+            kind: FindingPoolMutationKind::Reserve,
+            purchase_id: purchase_id.to_owned(),
+            tenant_id: None,
+            allocation_id: "allocation:test".to_owned(),
+            allocation_envelope_sha256: "a".repeat(64),
+            amount_units: "25".to_owned(),
+            currency: "USD".to_owned(),
+            state: FindingPoolDebitState::Reserved,
+            reserved_after_units: "25".to_owned(),
+            spent_after_units: "0".to_owned(),
+            remaining_after_units: "75".to_owned(),
+            occurred_at_unix_ms: occurred_at_unix_ms.to_string(),
+            durable_admission_operation_id: None,
+        },
+    );
+    let pending = mutations
+        .iter()
+        .map(|mutation| {
+            kernel
+                .build_finding_pool_mutation_receipt(mutation)
+                .unwrap_or_else(|error| panic!("build pending pool receipt: {error}"))
+        })
+        .collect::<Vec<_>>();
+    let expected_ids = pending
+        .iter()
+        .map(|receipt| receipt.id.clone())
+        .collect::<Vec<_>>();
+    ledger
+        .outbox
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .extend(pending);
+
+    let barrier = Arc::new(Barrier::new(3));
+    let handles = (0..2)
+        .map(|_| {
+            let kernel = Arc::clone(&kernel);
+            let ledger = Arc::clone(&ledger);
+            let barrier = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                barrier.wait();
+                kernel.flush_finding_pool_mutation_receipts(ledger.as_ref())
+            })
+        })
+        .collect::<Vec<_>>();
+    barrier.wait();
+    for handle in handles {
+        assert!(handle.join().is_ok_and(|result| result.is_ok()));
+    }
+
+    assert_eq!(ledger.max_active_delivery_claims.load(Ordering::SeqCst), 1);
+    let recorded_ids = receipt_store
+        .receipts
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .iter()
+        .map(|receipt| receipt.id.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(recorded_ids, expected_ids);
+}
+
 #[derive(Default)]
 struct CountingRuntimeTraceObserver {
     receipt_appends: AtomicUsize,
@@ -1268,6 +1362,7 @@ fn stable_pool_receipt_authority_survives_ordinary_kernel_key_rotation() {
     let rotated_kernel = kernel_with_keys(Arc::clone(&ledger), 93, 92);
     assert!(rotated_kernel
         .settle_finding_pool_delivery(
+            "operation:test",
             &purchase(),
             &crate::tool_outcome::SettlementDispositionV1::Capture {
                 amount: MonetaryAmount {
@@ -1298,6 +1393,7 @@ fn delivery_zero_charge_releases_the_configured_pool_reservation() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     let result = kernel.settle_finding_pool_delivery(
+        "operation:test",
         &purchase(),
         &crate::tool_outcome::SettlementDispositionV1::ContractualZeroCharge {
             currency: "USD".to_owned(),
@@ -1322,6 +1418,7 @@ fn pool_terminal_rejects_a_divergent_settlement_amount() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     let result = kernel.settle_finding_pool_delivery(
+        "operation:test",
         &purchase(),
         &crate::tool_outcome::SettlementDispositionV1::Capture {
             amount: MonetaryAmount {
