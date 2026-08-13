@@ -509,7 +509,7 @@ fn derive_ledger_store_binding(
     }
 
     let mut binding = Sha256::new();
-    binding.update(b"chio.finding-pool.store-binding.v3");
+    binding.update(b"chio.finding-pool.store-binding.v1");
     binding.update((ledger_domain.len() as u64).to_be_bytes());
     binding.update(ledger_domain.as_bytes());
     binding.update((identity_material.len() as u64).to_be_bytes());
