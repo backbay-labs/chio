@@ -1645,13 +1645,16 @@ mod tests {
         let first = publisher.publish_non_inclusion(&sha256_hex(b"first"), &[], NOW)?;
 
         let mut refreshed_operator = operator;
+        let rotated_key = Keypair::from_seed(&[82; 32]);
+        refreshed_operator.authority.key_hex = rotated_key.public_key().to_hex();
+        refreshed_operator.authority.key_epoch += 1;
         refreshed_operator.revoked_from = Some(NOW + 1_000);
         refreshed_operator.authorization_sha256 = sha256_hex(b"refreshed-status-authorization");
         let refreshed = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
             store.clone(),
             refreshed_operator.clone(),
             bond,
-            operator_key(),
+            rotated_key,
             300,
         )?;
         let second = refreshed.publish_non_inclusion(&sha256_hex(b"second"), &[], NOW + 1)?;

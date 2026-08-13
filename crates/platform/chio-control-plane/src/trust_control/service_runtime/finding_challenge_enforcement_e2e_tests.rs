@@ -2140,6 +2140,7 @@ struct EvidenceInvalidCase {
     checkpoint_transparency: CheckpointTransparencySummary,
     checkpoint_authority_status: SignedFindingAuthorityStatus,
     production_authority_status: SignedFindingAuthorityStatus,
+    unestablished_production_authority_status: SignedFindingAuthorityStatus,
     /// A checkpoint carrying the named identity but not the artifact the
     /// reference names, which is an unresolved input rather than a
     /// contradiction.
@@ -2157,6 +2158,17 @@ impl EvidenceInvalidCase {
             &self.unresolved_checkpoint,
             &self.unresolved_checkpoint_transparency,
         )
+    }
+
+    fn evidence_without_production_status(&self) -> FindingChallengeClassEvidence<'_> {
+        FindingChallengeClassEvidence::EvidenceInvalid(FindingEvidenceInvalidEvidence {
+            purchase_record: &self.purchase_record,
+            challenged_receipts: &self.receipts,
+            challenged_checkpoint: &self.checkpoint,
+            checkpoint_transparency: &self.checkpoint_transparency,
+            production_authority_status: &self.unestablished_production_authority_status,
+            revoked_keys: &[],
+        })
     }
 
     fn evidence_against<'a>(
@@ -2269,6 +2281,8 @@ fn evidence_invalid_case(
         },
         &keypair(37),
     )?;
+    let unestablished_production_authority_status =
+        SignedExportEnvelope::sign(production_authority_status.body.clone(), &keypair(36))?;
     Ok(EvidenceInvalidCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
         purchase_record: standing.record.clone(),
@@ -2286,6 +2300,7 @@ fn evidence_invalid_case(
         checkpoint_transparency,
         checkpoint_authority_status,
         production_authority_status,
+        unestablished_production_authority_status,
         unresolved_checkpoint,
         unresolved_checkpoint_transparency,
     })
@@ -9462,12 +9477,12 @@ fn finding_challenge_uphold_uses_the_recorded_historical_evaluator_policy() -> T
     let ready = ready_to_uphold(&deployment, &original)?;
 
     let mut rotated_config = market_config();
-    rotated_config.challenge_evaluator = authority_pin(39, "challenge-evaluator");
+    rotated_config.challenge_evaluator = authority_pin(40, "challenge-evaluator");
     rotated_config.challenge_evaluator.key_epoch = PINNED_KEY_EPOCH + 1;
     rotated_config.challenge_evaluator.valid_from = NOW + 2;
     let rotated = deployment.coordinator_under_with_evaluator_and_status(
         &rotated_config,
-        keypair(39),
+        keypair(40),
         Arc::new(TestAuthorityStatusResolver::live()),
         FindingDisputeLockDisposition::Forfeited,
     )?;
@@ -10587,7 +10602,7 @@ fn finding_challenge_a_clean_venue_audit_without_revocation_status_transfers_not
     let stake = usd(300);
     let required = usd(5_000);
     let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
-    let evidence = case.evidence();
+    let evidence = case.evidence_without_production_status();
     let evaluated = coordinator
         .evaluate(&evaluation_request(
             &case.challenge,
@@ -10694,7 +10709,7 @@ fn finding_challenge_an_indeterminate_result_closes_without_revocation_status() 
     // revocation status for the production key. The bounded retry closes
     // indeterminate and returns the buyer's lock rather than treating an
     // unknown authority fact as innocence.
-    let resolved = case.evidence();
+    let resolved = case.evidence_without_production_status();
     let second = coordinator
         .evaluate(&evaluation_request(
             &case.challenge,

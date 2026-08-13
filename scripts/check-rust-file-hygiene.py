@@ -408,8 +408,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs": allow(
         "2026-08-31",
-        "cognition challenge enforcement end-to-end regression suite with status-operator dispatch lifecycle coverage; capped to current size until split",
-        max_lines=11_410,
+        "cognition challenge enforcement end-to-end regression suite with explicit unavailable-status and authority-rotation coverage; capped to current size until split",
+        max_lines=11_425,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
         "2026-08-31",
@@ -419,7 +419,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
         "cognition purchase and recovery end-to-end regression suite with reservation, venue-authority, and activation lifecycle evidence; capped until split",
-        max_lines=5_778,
+        max_lines=5_781,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",

@@ -5501,10 +5501,13 @@ async fn wedge_purchase_reservation_atomically_rejects_retracted_finding() -> Te
         )
         .err()
         .ok_or("retracted finding opened a reservation")?;
-    assert!(matches!(
-        error,
-        PurchaseCoordinatorError::Store(ref message) if message.contains("finding is retracted")
-    ));
+    assert!(
+        matches!(
+            error,
+            PurchaseCoordinatorError::Store(ref message) if message.contains("finding is retracted")
+        ),
+        "unexpected reservation rejection: {error:?}"
+    );
     assert!(lane
         .authority
         .finding_purchase_store()
