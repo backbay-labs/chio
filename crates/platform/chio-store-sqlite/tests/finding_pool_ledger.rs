@@ -719,8 +719,10 @@ fn sqlite_outbox_claim_serializes_independent_ledger_instances() {
     let database = directory.path().join("finding-pool.sqlite3");
     let producer = open_qualified(&database, ledger_domain()).test_expect("open producer ledger");
     let fixture = fixture(100, &producer);
-    debit(&producer, &fixture, "purchase:outbox-claim", 10)
-        .test_expect("commit and project pool debit");
+    debit(&producer, &fixture, "purchase:outbox-claim:first", 10)
+        .test_expect("commit and project first pool debit");
+    debit(&producer, &fixture, "purchase:outbox-claim:second", 10)
+        .test_expect("commit and project second pool debit");
     let connection = rusqlite::Connection::open(&database).test_expect("open outbox fixture");
     assert_eq!(
         connection
@@ -730,8 +732,8 @@ fn sqlite_outbox_claim_serializes_independent_ledger_instances() {
                      delivery_claim_expires_at_unix_ms = NULL",
                 [],
             )
-            .test_expect("restage one pending outbox row"),
-        1
+            .test_expect("restage two pending outbox rows"),
+        2
     );
     drop(connection);
 
@@ -741,20 +743,24 @@ fn sqlite_outbox_claim_serializes_independent_ledger_instances() {
         .claim_pending_mutation_receipts("worker:first", 3_000, 60_000, 1)
         .test_expect("first consumer claims the row");
     assert_eq!(claimed.len(), 1);
-    assert!(second
+    let blocked = second
         .claim_pending_mutation_receipts("worker:second", 3_000, 60_000, 1)
         .test_expect("second consumer observes the live claim")
-        .is_empty());
+        .is_empty();
+    assert!(blocked, "a live head lease must block the later receipt");
     assert!(second
         .acknowledge_mutation_receipt(&claimed[0].id, "worker:second", 3_001)
         .is_err());
     first
         .acknowledge_mutation_receipt(&claimed[0].id, "worker:first", 3_001)
         .test_expect("claim owner acknowledges the projection");
-    assert!(second
+    let second_claim = second
         .claim_pending_mutation_receipts("worker:second", 3_002, 60_000, 1)
-        .test_expect("acknowledged row stays out of the pending set")
-        .is_empty());
+        .test_expect("claim the second receipt after acknowledging the head");
+    assert_eq!(second_claim.len(), 1);
+    second
+        .acknowledge_mutation_receipt(&second_claim[0].id, "worker:second", 3_003)
+        .test_expect("second consumer acknowledges the next projection");
 }
 
 #[test]
@@ -1887,6 +1893,7 @@ fn cognition_market_qualified_pool_refuses_in_memory_storage() {
         "file://localhost",
         "file://?mode=rwc",
         "file://localhost?mode=rwc",
+        "file://other-host/tmp/pool.sqlite3",
         "file:?mode=rwc",
         "file:pool?vfs=memdb",
         "file:pool?mode%3Dmemory",

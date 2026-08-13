@@ -119,15 +119,24 @@ pub(super) fn claim_pending_mutation_receipts(
     }
     let mut statement = transaction
         .prepare(
-            "SELECT receipt_id, signed_receipt_json \
-             FROM finding_pool_receipt_outbox \
-             WHERE acknowledged_at_unix_ms IS NULL \
-               AND (delivery_claim_epoch IS NULL \
-                    OR delivery_claim_epoch < ?1 \
-                    OR (delivery_claim_epoch = ?1 \
-                        AND (delivery_claim_expires_at_unix_ms IS NULL \
-                             OR delivery_claim_expires_at_unix_ms <= ?2))) \
-             ORDER BY delivery_sequence LIMIT ?3",
+            "SELECT candidate.receipt_id, candidate.signed_receipt_json \
+             FROM finding_pool_receipt_outbox AS candidate \
+             WHERE candidate.acknowledged_at_unix_ms IS NULL \
+               AND (candidate.delivery_claim_epoch IS NULL \
+                    OR candidate.delivery_claim_epoch < ?1 \
+                    OR (candidate.delivery_claim_epoch = ?1 \
+                        AND (candidate.delivery_claim_expires_at_unix_ms IS NULL \
+                             OR candidate.delivery_claim_expires_at_unix_ms <= ?2))) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM finding_pool_receipt_outbox AS predecessor \
+                   WHERE predecessor.acknowledged_at_unix_ms IS NULL \
+                     AND predecessor.delivery_sequence < candidate.delivery_sequence \
+                     AND predecessor.delivery_claim_epoch IS NOT NULL \
+                     AND (predecessor.delivery_claim_epoch > ?1 \
+                          OR (predecessor.delivery_claim_epoch = ?1 \
+                              AND predecessor.delivery_claim_expires_at_unix_ms > ?2)) \
+               ) \
+             ORDER BY candidate.delivery_sequence LIMIT ?3",
         )
         .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
     let mut rows = statement

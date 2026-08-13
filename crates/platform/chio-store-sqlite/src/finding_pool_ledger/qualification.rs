@@ -141,7 +141,7 @@ pub(super) fn prepare_database_identity(
     path_text: &str,
 ) -> Result<QualifiedDatabaseIdentity, FindingPoolLedgerError> {
     let filesystem_path = if path_text.starts_with("file:") {
-        let encoded = sqlite_uri_filename(path_text);
+        let encoded = sqlite_uri_filename(path_text)?;
         let decoded = crate::percent_decode_sqlite_uri_component(encoded).ok_or_else(|| {
             FindingPoolLedgerError::Storage(
                 "SQLite URI filename has invalid percent encoding".to_string(),
@@ -585,15 +585,24 @@ pub(super) fn canonical_receipt_authority_json(
     .map_err(|error| FindingPoolLedgerError::Receipt(error.to_string()))
 }
 
-fn sqlite_uri_filename(path: &str) -> &str {
+fn sqlite_uri_filename(path: &str) -> Result<&str, FindingPoolLedgerError> {
     let rest = path.strip_prefix("file:").unwrap_or(path);
     let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
     let name = rest.split_once('?').map_or(rest, |(name, _)| name);
     match name.strip_prefix("//") {
-        Some(authority_and_path) => authority_and_path
-            .find('/')
-            .map_or("", |path_start| &authority_and_path[path_start..]),
-        None => name,
+        Some(authority_and_path) => {
+            let path_start = authority_and_path
+                .find('/')
+                .unwrap_or(authority_and_path.len());
+            let authority = &authority_and_path[..path_start];
+            if !authority.is_empty() && !authority.eq_ignore_ascii_case("localhost") {
+                return Err(FindingPoolLedgerError::Storage(
+                    "qualified SQLite URI authority must be empty or localhost".to_owned(),
+                ));
+            }
+            Ok(&authority_and_path[path_start..])
+        }
+        None => Ok(name),
     }
 }
 

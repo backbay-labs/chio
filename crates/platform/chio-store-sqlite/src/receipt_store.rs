@@ -1527,6 +1527,7 @@ fn receipt_commit_actor_loop(
                             head,
                             checkpoint_signer,
                             &health,
+                            rollback_anchor.as_deref(),
                         ) {
                             flush_barrier_error = Some(error);
                         }
@@ -1819,6 +1820,7 @@ fn handle_non_append_command(
                                     head,
                                     checkpoint_signer,
                                     health,
+                                    rollback_anchor,
                                 );
                             }
                         }
@@ -1985,7 +1987,13 @@ fn handle_non_append_command(
             // checkpoints still build here.
             if incremental_verification {
                 if let WriterHeadState::Verified(head) = head_state {
-                    build_due_checkpoints_and_record(pool, head, checkpoint_signer, health);
+                    build_due_checkpoints_and_record(
+                        pool,
+                        head,
+                        checkpoint_signer,
+                        health,
+                        rollback_anchor,
+                    );
                 }
             }
         }
@@ -2052,7 +2060,13 @@ fn handle_non_append_command(
                     // `build_due_checkpoints_and_record` records `last_error` on a
                     // build failure and never re-poisons the freshly verified head.
                     if let WriterHeadState::Verified(head) = head_state {
-                        build_due_checkpoints_and_record(pool, head, checkpoint_signer, health);
+                        build_due_checkpoints_and_record(
+                            pool,
+                            head,
+                            checkpoint_signer,
+                            health,
+                            rollback_anchor,
+                        );
                     }
                     Ok(())
                 }
@@ -2168,6 +2182,7 @@ fn build_due_checkpoints_and_record(
     head: &mut VerifiedHead,
     checkpoint_signer: &Option<BackgroundCheckpointSigner>,
     health: &ReceiptCommitWriterHealth,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Option<ReceiptStoreError> {
     let signer = checkpoint_signer.as_ref()?;
     // Panic isolation: a panic mid-build
@@ -2175,7 +2190,7 @@ fn build_due_checkpoints_and_record(
     // A committed or peer-adopted checkpoint can advance the verified head
     // before a later panic drops its frontier. Record `last_error` and rebuild.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        build_due_checkpoints(pool, head, signer)
+        build_due_checkpoints(pool, head, signer, rollback_anchor)
     }))
     .unwrap_or_else(|payload| Err(receipt_writer_job_panic_error(&payload)));
     match result {
@@ -2204,6 +2219,7 @@ fn build_due_checkpoints(
     pool: &Pool<SqliteConnectionManager>,
     head: &mut VerifiedHead,
     signer: &BackgroundCheckpointSigner,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Result<bool, ReceiptStoreError> {
     if signer.max_batch == 0 {
         return Ok(false); // ADR-0008: batch_size 0 disables checkpointing
@@ -2226,7 +2242,8 @@ fn build_due_checkpoints(
     // append.
     verify_head_against_latest_checkpoint(&connection, head)?;
     let refreshed = head.checkpoint_seq() > checkpoint_seq_before_refresh;
-    maybe_build_checkpoint(&mut connection, head, signer).map(|advanced| refreshed || advanced)
+    maybe_build_checkpoint(&mut connection, head, signer, rollback_anchor)
+        .map(|advanced| refreshed || advanced)
 }
 
 /// Build every checkpoint the head owes: count-based ADR-0008 trigger, range
@@ -2239,6 +2256,7 @@ fn maybe_build_checkpoint(
     connection: &mut SqliteStoreConnection,
     head: &mut VerifiedHead,
     signer: &BackgroundCheckpointSigner,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Result<bool, ReceiptStoreError> {
     if signer.max_batch == 0 {
         return Ok(false);
@@ -2327,6 +2345,7 @@ fn maybe_build_checkpoint(
             head.latest_checkpoint.as_ref(),
             &chain_frontier,
             &checkpoint,
+            rollback_anchor,
         )?;
         chain_frontier = adopted_frontier;
         head.latest_checkpoint = Some(adopted);
@@ -4300,9 +4319,9 @@ impl SqliteReceiptStore {
         keypair: &Keypair,
     ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
         let keypair = keypair.clone();
+        let anchor = self.rollback_anchor.clone();
         self.writer_handle().run_write(move |connection| {
-            validate_claim_receipt_log_entries(connection)?;
-            create_next_receipt_checkpoint_atomic(connection, max_batch, &keypair)
+            create_checkpoint_anchored(connection, max_batch, &keypair, anchor.as_deref())
         })
     }
 

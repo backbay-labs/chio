@@ -30,8 +30,8 @@ pub(crate) fn validate_or_backfill_claim_receipt_log_entries(
     Ok(())
 }
 
-fn validate_or_backfill_claim_receipt_log_entries_in_transaction(
-    tx: &rusqlite::Transaction<'_>,
+pub(crate) fn validate_or_backfill_claim_receipt_log_entries_in_transaction(
+    tx: &Connection,
     repair_empty_projection: bool,
 ) -> Result<(), ReceiptStoreError> {
     let mut expected = load_tool_claim_receipt_projection_rows(tx)?;
