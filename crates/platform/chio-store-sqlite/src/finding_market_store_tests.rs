@@ -1705,13 +1705,13 @@ fn schema_v2_upgrade_adds_expired_activation_recovery_without_replaying_admissio
             END;
             "#,
         )
-        .expect("restore v2 schema shape");
+        .expect("restore prior schema shape");
     crate::stamp_schema_version(&connection, FINDING_MARKET_SCHEMA_KEY, 2)
-        .expect("stamp v2 market schema");
+        .expect("stamp prior market schema");
     drop(connection);
 
-    let authority =
-        SqliteAuthorityStore::open_serving(&database, &lock_root).expect("upgrade v2 schema");
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)
+        .expect("upgrade prior schema revision");
     let store = authority.finding_market_store();
     assert_eq!(
         store
