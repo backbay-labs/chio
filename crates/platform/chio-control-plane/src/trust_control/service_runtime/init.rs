@@ -66,6 +66,20 @@ async fn serve_async_inner(
         }
         None => open_configured_joint_authority_store(&config)?,
     };
+    if let Some(purchase_executor) = finding_purchase_executor.as_ref() {
+        let serving_authority = joint_authority_store.as_ref().ok_or_else(|| {
+            CliError::cli_other_error(
+                "finding purchase runtime requires the configured joint authority database"
+                    .to_string(),
+            )
+        })?;
+        let serving_fence = serving_authority.mutation_fence();
+        let purchase_fence = purchase_executor.mutation_fence();
+        super::super::config_and_public::validate_finding_market_mutation_fence(
+            &serving_fence,
+            &purchase_fence,
+        )?;
+    }
     let fiscal_runtime = compose_trust_fiscal_runtime(
         joint_authority_store.as_ref(),
         config.fiscal_runtime.as_ref(),

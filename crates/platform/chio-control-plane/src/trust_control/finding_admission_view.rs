@@ -1,9 +1,69 @@
+use super::super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::{
     live_admission_epoch, verify_status_operator_authority_lifecycle,
-    verify_venue_authority_lifecycle, FindingMarketConfig, FindingSearchAdmissionView,
-    SignedFindingAdmission, SignedFindingAuthorityStatus, SqliteFindingMarketStore,
-    SqliteFindingStatusStore,
+    verify_venue_authority_lifecycle, FindingAuthorityKeyPolicy, FindingAuthorityPin,
+    FindingMarketConfig, FindingSearchAdmissionView, SignedFindingAdmission,
+    SignedFindingAuthorityStatus, SqliteFindingMarketStore, SqliteFindingStatusStore,
+    FINDING_AUTHORITY_STATUS_MAX_AGE_SECS,
 };
+
+fn terminal_authority_pin(policy: &FindingAuthorityKeyPolicy) -> FindingAuthorityPin {
+    FindingAuthorityPin {
+        authority_id: policy.authority_id.clone(),
+        key_hex: policy.key.to_hex(),
+        key_epoch: policy.key_epoch,
+        valid_from: policy.valid_from,
+        valid_until: policy.valid_until,
+        revocation_status_ref: policy.revocation_status_ref.clone(),
+    }
+}
+
+fn verify_terminal_authority_lifecycle(
+    policy: &FindingAuthorityKeyPolicy,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    admission_issued_at: u64,
+    now: u64,
+) -> Result<(), String> {
+    policy
+        .validate("admission terminal authority")
+        .map_err(|error| error.to_string())?;
+    if now < policy.valid_from || now >= policy.valid_until {
+        return Err("admission terminal authority is outside its validity window".to_owned());
+    }
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    chio_finding::verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live for the admission view".to_owned());
+    }
+    if status.status_ref != policy.revocation_status_ref
+        || status.authority_id != policy.authority_id
+        || status.key != policy.key
+        || status.key_epoch != policy.key_epoch
+    {
+        return Err("terminal authority status does not bind the admitted policy".to_owned());
+    }
+    if status.observed_at < admission_issued_at
+        || status.observed_at < policy.valid_from
+        || status.observed_at >= policy.valid_until
+        || status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("terminal authority status is not a fresh current reading".to_owned());
+    }
+    if status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= now)
+    {
+        return Err("terminal authority is revoked for the admission view".to_owned());
+    }
+    Ok(())
+}
 
 /// A stored admission is CURRENT only while its envelope is unexpired,
 /// its allocation remains consumed by the active admission, participation
@@ -13,6 +73,7 @@ pub(super) fn current_admission_view(
     store: &SqliteFindingMarketStore,
     status_store: &SqliteFindingStatusStore,
     config: &FindingMarketConfig,
+    authority_status_resolver: Option<&dyn FindingAuthorityStatusResolver>,
     status_operator_authority_status: Option<&SignedFindingAuthorityStatus>,
     venue_authority_status: Option<&SignedFindingAuthorityStatus>,
     finding_id: &str,
@@ -44,6 +105,23 @@ pub(super) fn current_admission_view(
     let snapshot = store.get_current_admission(finding_id).ok().flatten()?;
     let admission: SignedFindingAdmission = serde_json::from_str(&snapshot.envelope_json).ok()?;
     verify_venue_authority_lifecycle(&admission, venue_authority_status?, config, now).ok()?;
+    let authority_status_resolver = authority_status_resolver?;
+    for policy in [
+        &admission.body.purchase_authority,
+        &admission.body.failed_delivery_authority,
+    ] {
+        let authority_status = authority_status_resolver
+            .resolve(&terminal_authority_pin(policy), now)
+            .ok()?;
+        verify_terminal_authority_lifecycle(
+            policy,
+            &authority_status,
+            config,
+            admission.body.issued_at,
+            now,
+        )
+        .ok()?;
+    }
     let current_epoch = live_admission_epoch(store, &snapshot, &admission, now)?;
     let paid_through = store
         .paid_through_epoch(

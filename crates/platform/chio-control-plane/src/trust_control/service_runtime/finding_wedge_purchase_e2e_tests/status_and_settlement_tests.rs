@@ -1,3 +1,63 @@
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admission_views_hide_revoked_terminal_authorities() -> TestResult {
+    let deployment = provision(RevealCase::honest())?;
+    let authority = deployment.open()?;
+    let mut state = market_state(authority, market_config());
+    deployment.seed_and_activate(&state).await?;
+    let search_uri = format!("/v1/findings/search?contextSha256={HEX64}&limit=50");
+    let admission_uri = format!("/v1/findings/{}/admission", deployment.web.finding_id);
+
+    let (status, body) = send(&state, public_get(&search_uri)?).await?;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json_body(&body)?;
+    let live_row = rows["results"]
+        .as_array()
+        .ok_or_else(|| missing("search results array"))?
+        .iter()
+        .find(|row| row["findingId"] == serde_json::json!(deployment.web.finding_id))
+        .ok_or_else(|| missing("activated finding missing from search"))?;
+    assert!(live_row["admission"].is_object());
+    let (status, _) = send(&state, public_get(&admission_uri)?).await?;
+    assert_eq!(status, StatusCode::OK);
+
+    for authority_id in [
+        deployment
+            .web
+            .admission
+            .body
+            .purchase_authority
+            .authority_id
+            .clone(),
+        deployment
+            .web
+            .admission
+            .body
+            .failed_delivery_authority
+            .authority_id
+            .clone(),
+    ] {
+        state.finding_authority_status_resolver = Some(Arc::new(
+            TestTerminalAuthorityStatusResolver::revoked(&authority_id),
+        ));
+        let (status, body) = send(&state, public_get(&search_uri)?).await?;
+        assert_eq!(status, StatusCode::OK);
+        let rows = json_body(&body)?;
+        let revoked_row = rows["results"]
+            .as_array()
+            .ok_or_else(|| missing("search results array"))?
+            .iter()
+            .find(|row| row["findingId"] == serde_json::json!(deployment.web.finding_id))
+            .ok_or_else(|| missing("activated finding missing from search"))?;
+        assert!(
+            revoked_row["admission"].is_null(),
+            "revoked terminal authority {authority_id} remained discoverable"
+        );
+        let (status, _) = send(&state, public_get(&admission_uri)?).await?;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+    Ok(())
+}
+
 fn deny_reason(response: &ToolCallResponse) -> String {
     response.reason.clone().unwrap_or_default()
 }

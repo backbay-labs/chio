@@ -615,17 +615,26 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         },
         revoked_from: None,
     };
-    let authorization_path = tempdir.path().join("status-operator-authorization.json");
+    let signed_authorization = proof_test_ok(
+        chio_core_types::receipt::lineage::SignedExportEnvelope::sign(
+            authorization,
+            &chio_core_types::Keypair::from_seed(&[8_u8; 32]),
+        ),
+        "sign status authorization",
+    );
+    let authorization_path = tempdir
+        .path()
+        .join("signed-status-operator-authorization.json");
     let authorization_bytes = proof_test_ok(
-        chio_core_types::canonical_json_bytes(&authorization),
-        "serialize status authorization",
+        chio_core_types::canonical_json_bytes(&signed_authorization),
+        "serialize signed status authorization",
     );
     proof_test_ok(
         std::fs::write(&authorization_path, &authorization_bytes),
         "write status authorization",
     );
     let operator_authority_status_path =
-        status_operator_authority_status_fixture(tempdir.path(), &authorization);
+        status_operator_authority_status_fixture(tempdir.path(), &signed_authorization.body);
     let authority_database = tempdir.path().join("status-authority.db");
     let authority_lock_root = tempdir.path().join("status-authority-locks");
     proof_test_ok(
@@ -687,9 +696,7 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         "serialize signed status epoch fixture",
     );
     let operator_key = signed_epoch.body.operator_key.to_hex();
-    // The durable floor binds the governance-signed envelope, not the bare
-    // authorization body loaded separately above.
-    let authorization_sha256 = "ab".repeat(32);
+    let authorization_sha256 = chio_core_types::crypto::sha256_hex(&authorization_bytes);
     {
         let authority = proof_test_ok(
             chio_store_sqlite::SqliteAuthorityStore::open_serving(
@@ -837,6 +844,23 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         .unwrap_or_default();
     for claim in chio_control_plane::transaction_passport::COGNITION_MARKET_CLAIMS {
         assert!(verified_claims.contains(claim), "missing claim {claim}");
+    }
+    {
+        let mismatched_digest = "cd".repeat(32);
+        let _mismatched_authorization = TestEnvGuard::set(&[(
+            "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_SHA256",
+            std::ffi::OsStr::new(&mismatched_digest),
+        )]);
+        let error = match verify_transaction_passport_file(&passport_path) {
+            Ok(_) => panic!("an unrelated authorization envelope digest must be rejected"),
+            Err(error) => error,
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("does not match the signed authorization envelope"),
+            "unexpected authorization-digest error: {error}"
+        );
     }
     std::env::set_var("CHIO_FINDING_STATUS_NOW_UNIX_SECONDS", "1784880029");
     let error = match verify_transaction_passport_file(&passport_path) {

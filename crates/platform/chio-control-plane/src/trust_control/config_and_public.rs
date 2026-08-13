@@ -77,7 +77,7 @@ pub fn serve_with_finding_market_runtime(
     )
 }
 
-fn validate_finding_market_mutation_fence(
+pub(crate) fn validate_finding_market_mutation_fence(
     challenge_fence: &chio_kernel::admission_operation::StoreMutationFence,
     purchase_fence: &chio_kernel::admission_operation::StoreMutationFence,
 ) -> Result<(), CliError> {
@@ -141,9 +141,9 @@ fn serve_with_optional_finding_challenge_executor(
 
 /// Serve trust-control with an explicitly configured cognition-market
 /// purchase adapter, fee rail, and current authority-status resolver. Ordinary
-/// [`serve`] keeps the purchase route unavailable. Supplying all three keeps
-/// activation, renewal, public admission views, and purchase execution on the
-/// same configured market boundary.
+/// [`serve`] keeps the purchase route unavailable. Startup opens the configured
+/// joint authority and rejects an executor with a different active mutation
+/// fence before installing any route.
 pub fn serve_with_finding_purchase_executor(
     config: TrustServiceConfig,
     executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
@@ -177,7 +177,7 @@ mod finding_market_runtime_tests {
     }
 
     #[test]
-    fn combined_market_runtime_requires_one_serving_fence() {
+    fn market_runtimes_require_one_serving_fence() {
         let challenge = fence("store-a", "lease-a", 7);
         assert!(validate_finding_market_mutation_fence(&challenge, &challenge).is_ok());
 

@@ -361,6 +361,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
     let status = if status_liveness_required {
         Some(cognition_market_status_trust_from_env(
             &status_authority,
+            &profile_governance_authority_policy.key,
             checked_at,
             max_age_secs,
         )?)
@@ -570,6 +571,7 @@ fn require_independent_verifier_status_authority(
 
 fn cognition_market_status_trust_from_env(
     status_authority: &chio_finding::FindingAuthorityKeyPolicy,
+    governance_authority: &chio_core_types::PublicKey,
     checked_at: u64,
     max_age_secs: u64,
 ) -> Result<chio_control_plane::transaction_passport::CognitionMarketStatusTrust, CliError> {
@@ -601,15 +603,36 @@ fn cognition_market_status_trust_from_env(
             "{FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV} is not the canonical authorization serialization"
         )));
     }
-    let status_operator_authorization: chio_finding::FindingStatusOperatorAuthorization =
-        serde_json::from_slice(&authorization_bytes)?;
-    status_operator_authorization.validate().map_err(|error| {
+    let signed_status_operator_authorization: chio_core_types::receipt::lineage::SignedExportEnvelope<
+        chio_finding::FindingStatusOperatorAuthorization,
+    > = serde_json::from_slice(&authorization_bytes)?;
+    signed_status_operator_authorization
+        .body
+        .validate()
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Finding status operator authorization is invalid: {error}"
+            ))
+        })?;
+    chio_finding::verify_pinned_envelope(
+        &signed_status_operator_authorization,
+        governance_authority,
+        "status_operator_authorization",
+    )
+    .map_err(|error| {
         CliError::cli_other_error(format!(
-            "Finding status operator authorization is invalid: {error}"
+            "Finding status operator authorization envelope is invalid: {error}"
         ))
     })?;
     let status_operator_authorization_sha256 =
         required_sha256_env(FINDING_STATUS_OPERATOR_AUTHORIZATION_SHA256_ENV)?;
+    let actual_authorization_sha256 = chio_core_types::crypto::sha256_hex(&authorization_bytes);
+    if status_operator_authorization_sha256 != actual_authorization_sha256 {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_STATUS_OPERATOR_AUTHORIZATION_SHA256_ENV} does not match the signed authorization envelope"
+        )));
+    }
+    let status_operator_authorization = signed_status_operator_authorization.body;
     let operator_authority_status = finding_authority_status_trust_from_env(
         FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH_ENV,
         &status_operator_authorization.operator.key,

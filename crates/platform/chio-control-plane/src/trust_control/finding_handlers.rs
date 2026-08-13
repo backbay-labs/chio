@@ -5,16 +5,13 @@
 //! idempotent activation transaction, participation-epoch renewal, and
 //! admission serving.
 //!
-//! Ingress discipline (the reusable Finding-ingress invariant): the raw
-//! request body is size-limited at the route layer, strict-canonicalized
-//! from the raw text (rejecting duplicate keys and non-I-JSON numbers),
-//! required byte-equal to its canonical serialization, schema-validated
-//! as a parsed value from the same accepted input, typed-deserialized,
-//! required to reserialize to the same strict bytes, domain-verified, and
-//! only then persisted. Composite authenticated venue requests (activate,
-//! participation) carry already-signed envelopes whose digests are
-//! recomputed and cross-bound here; the raw-first invariant applies to
-//! the standalone artifact surfaces (publish, recipes, profiles).
+//! Ingress discipline (the reusable Finding-ingress invariant): route-bound raw
+//! input is strict-canonicalized, rejecting duplicate keys and non-I-JSON numbers.
+//! It must be byte-equal to that serialization, schema-valid, typed-deserializable,
+//! domain-verified, and byte-stable when reserialized before persistence.
+//! Composite authenticated venue requests carry signed envelopes whose digests
+//! are recomputed and cross-bound here; the raw-first invariant applies to the
+//! standalone artifact surfaces (publish, recipes, profiles).
 
 use chio_finding::{
     required_finding_facets, verify_signed_authority_status, verify_signed_bond_backing,
@@ -750,6 +747,7 @@ fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> 
                 &store,
                 &status_store,
                 &config,
+                state.finding_authority_status_resolver.as_deref(),
                 status_operator_authority_status.as_ref(),
                 venue_authority_status.as_ref(),
                 &row.finding_id,
@@ -2349,6 +2347,7 @@ pub(crate) async fn handle_get_finding_admission(
         &store,
         &status_store,
         &config,
+        state.finding_authority_status_resolver.as_deref(),
         status_operator_authority_status.as_ref(),
         venue_authority_status.as_ref(),
         &finding_id,
