@@ -983,6 +983,106 @@ impl SqliteFindingStatusStore {
         Ok(outcome)
     }
 
+    /// Preserve a verified retraction carried by a conflicting envelope at
+    /// the current map epoch. The retained floor cannot be replaced by an
+    /// equivocation, but the authenticated inclusion still permanently
+    /// denies this finding. The exact conflicting epoch and root remain on
+    /// the sticky state even though they cannot become the feed floor.
+    fn record_verified_retraction_at_conflicting_current_epoch(
+        &self,
+        proof: &VerifiedFindingStatusProofInput<'_>,
+    ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+        validate_proof_input(proof)?;
+        if proof.kind != FindingStatusProofKind::Inclusion {
+            return Err(invariant(
+                "conflicting-epoch retraction API received a non-inclusion proof",
+            ));
+        }
+        let intent_sha256 = proof
+            .retraction_intent_sha256
+            .ok_or_else(|| invariant("conflicting-epoch retraction lost its intent digest"))?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        ensure_feed_exists_tx(&transaction, proof.feed_id, proof.operator_id)?;
+        let floor = load_floor_tx(&transaction, proof.feed_id)?.ok_or_else(|| {
+            FindingStatusStoreError::MissingFloor {
+                feed_id: proof.feed_id.to_owned(),
+            }
+        })?;
+        if proof.operator_id != floor.operator_id
+            || proof.key_domain_nonce != floor.key_domain_nonce
+            || proof.map_epoch != floor.map_epoch
+        {
+            return Err(FindingStatusStoreError::Conflict(
+                "imported retraction does not bind the conflicting current feed epoch".to_owned(),
+            ));
+        }
+        let outcome = match load_status_tx(&transaction, proof.feed_id, proof.finding_id)? {
+            Some(status) if status.retraction_intent_sha256 != intent_sha256 => {
+                return Err(FindingStatusStoreError::Conflict(format!(
+                    "finding {} has a different sticky intent digest",
+                    proof.finding_id
+                )));
+            }
+            Some(status) if status.state == FindingStickyStatus::Pending => {
+                if proof.recorded_at < status.first_observed_at {
+                    return Err(invariant(
+                        "conflicting-epoch retraction predates its pending status",
+                    ));
+                }
+                transaction
+                    .execute(
+                        r#"
+                        UPDATE finding_status_states
+                        SET state = 'retracted', updated_at = ?3,
+                            retracted_map_epoch = ?4, retracted_epoch_id = ?5,
+                            retracted_root_hash = ?6
+                        WHERE feed_id = ?1 AND finding_id = ?2 AND state = 'pending'
+                        "#,
+                        params![
+                            proof.feed_id,
+                            proof.finding_id,
+                            sqlite_i64(proof.recorded_at, "recorded_at")?,
+                            sqlite_i64(proof.map_epoch, "map_epoch")?,
+                            proof.epoch_id,
+                            proof.root_hash,
+                        ],
+                    )
+                    .map_err(sqlite_error)?;
+                FindingStatusWriteOutcome::Inserted
+            }
+            Some(_) => FindingStatusWriteOutcome::ExactReplay,
+            None => {
+                transaction
+                    .execute(
+                        r#"
+                        INSERT INTO finding_status_states (
+                            feed_id, operator_id, finding_id, state,
+                            retraction_intent_sha256, first_observed_at, updated_at,
+                            retracted_map_epoch, retracted_epoch_id,
+                            retracted_root_hash
+                        ) VALUES (?1, ?2, ?3, 'retracted', ?4, ?5, ?5, ?6, ?7, ?8)
+                        "#,
+                        params![
+                            proof.feed_id,
+                            proof.operator_id,
+                            proof.finding_id,
+                            intent_sha256,
+                            sqlite_i64(proof.recorded_at, "recorded_at")?,
+                            sqlite_i64(proof.map_epoch, "map_epoch")?,
+                            proof.epoch_id,
+                            proof.root_hash,
+                        ],
+                    )
+                    .map_err(sqlite_error)?;
+                FindingStatusWriteOutcome::Inserted
+            }
+        };
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(outcome)
+    }
+
     /// Type-safe inclusion wrapper over [`Self::record_verified_proof`].
     pub fn observe_verified_inclusion(
         &self,
@@ -1558,9 +1658,14 @@ impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
             || current_epoch.operator_authorization_sha256
                 != observation.operator_authorization_sha256
         {
-            if kind == FindingStatusProofKind::Inclusion && map_epoch < current_epoch.map_epoch {
-                self.record_verified_retraction_at_retained_epoch(&verified_proof)
-                    .map_err(|error| error.to_string())?;
+            if kind == FindingStatusProofKind::Inclusion {
+                if map_epoch < current_epoch.map_epoch {
+                    self.record_verified_retraction_at_retained_epoch(&verified_proof)
+                        .map_err(|error| error.to_string())?;
+                } else if map_epoch == current_epoch.map_epoch {
+                    self.record_verified_retraction_at_conflicting_current_epoch(&verified_proof)
+                        .map_err(|error| error.to_string())?;
+                }
             }
             return Err(
                 "imported finding status point proof does not bind the exact durable feed floor"

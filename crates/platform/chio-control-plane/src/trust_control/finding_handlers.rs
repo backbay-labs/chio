@@ -79,6 +79,48 @@ pub(crate) struct FindingCollateralRegistrationRequest {
     collateral_authority_status: SignedFindingAuthorityStatus,
 }
 
+fn verify_collateral_authority_lifecycle(
+    backing: &SignedFindingBondBacking,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<PublicKey, String> {
+    if !config.collateral.covers(backing.body.issued_at) || !config.collateral.covers(now) {
+        return Err("finding collateral authority is not live".to_owned());
+    }
+    let collateral_key = config.collateral.key().map_err(|error| error.to_string())?;
+    verify_signed_bond_backing(backing, &collateral_key).map_err(|error| error.to_string())?;
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live".to_owned());
+    }
+    if status.status_ref != config.collateral.revocation_status_ref
+        || status.authority_id != config.collateral.authority_id
+        || status.key != collateral_key
+        || status.key_epoch != config.collateral.key_epoch
+    {
+        return Err("collateral authority status does not bind the deployment pin".to_owned());
+    }
+    if status.observed_at < backing.body.issued_at {
+        return Err("collateral authority status predates backing issuance".to_owned());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("collateral authority status is not a fresh current reading".to_owned());
+    }
+    if status.revoked_from.is_some() {
+        return Err("collateral authority is revoked".to_owned());
+    }
+    Ok(collateral_key)
+}
+
 /// Deterministic instruction the venue-ledger rail settles. Its canonical
 /// digest is the instruction commitment the admission's fee terminal
 /// binds.
@@ -859,68 +901,13 @@ pub(crate) async fn handle_register_finding_collateral(
     };
     let backing = &request.backing;
     let now = unix_timestamp_now();
-    if !config.collateral.covers(backing.body.issued_at) || !config.collateral.covers(now) {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "finding collateral authority is not live at registration",
-        );
-    }
-    let collateral_key = match config.collateral.key() {
-        Ok(key) => key,
-        Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-        }
-    };
-    if let Err(error) = verify_signed_bond_backing(backing, &collateral_key) {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
-    }
-    let status_key = match config.authority_status.key() {
-        Ok(key) => key,
-        Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-        }
-    };
-    if let Err(error) =
-        verify_signed_authority_status(&request.collateral_authority_status, &status_key)
-    {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
-    }
-    let status = &request.collateral_authority_status.body;
-    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "authority-status signer is not live at collateral registration",
-        );
-    }
-    if status.status_ref != config.collateral.revocation_status_ref
-        || status.authority_id != config.collateral.authority_id
-        || status.key != collateral_key
-        || status.key_epoch != config.collateral.key_epoch
-    {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "collateral authority status does not bind the deployment pin",
-        );
-    }
-    if status.observed_at < backing.body.issued_at {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "collateral authority status predates backing issuance",
-        );
-    }
-    if status.observed_at > now
-        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
-    {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "collateral authority status is not a fresh current reading",
-        );
-    }
-    if status.revoked_from.is_some() {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "collateral authority is revoked at registration",
-        );
+    if let Err(error) = verify_collateral_authority_lifecycle(
+        backing,
+        &request.collateral_authority_status,
+        &config,
+        now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     // The allocation backs a finding this venue actually serves.
     match store.get_finding_bytes(&backing.body.finding_id) {
@@ -953,6 +940,7 @@ pub(crate) async fn handle_register_finding_collateral(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct FindingActivateRequest {
     pub admission: SignedFindingAdmission,
+    pub collateral_authority_status: SignedFindingAuthorityStatus,
     pub profile_governance_authority_status: SignedFindingAuthorityStatus,
     pub venue_authority_status: SignedFindingAuthorityStatus,
     pub listing_authority_status: SignedFindingAuthorityStatus,
@@ -1605,6 +1593,15 @@ pub(crate) async fn handle_activate_finding(
         }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
+    let collateral_key = match verify_collateral_authority_lifecycle(
+        &request.backing,
+        &request.collateral_authority_status,
+        &config,
+        authorization_now,
+    ) {
+        Ok(key) => key,
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
+    };
 
     // The retained profile remains an authority-bearing dependency at
     // activation. Digest-addressed storage proves only byte identity, so
@@ -1645,9 +1642,11 @@ pub(crate) async fn handle_activate_finding(
     }
 
     // Pinned keys.
-    let (venue_key, collateral_key) = match (config.venue.key(), config.collateral.key()) {
-        (Ok(venue), Ok(collateral)) => (venue, collateral),
-        _ => return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, "pinned keys invalid"),
+    let venue_key = match config.venue.key() {
+        Ok(venue) => venue,
+        Err(_) => {
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, "pinned keys invalid")
+        }
     };
 
     // The full admission verification: venue pin, liveness, terms and

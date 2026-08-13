@@ -1349,6 +1349,9 @@ impl MarketWeb {
     ) -> Result<String, AnyError> {
         let body = serde_json::json!({
             "admission": serde_json::to_value(admission)?,
+            "collateralAuthorityStatus": serde_json::to_value(
+                signed_collateral_authority_status(unix_timestamp_now(), None)?,
+            )?,
             "profileGovernanceAuthorityStatus": serde_json::to_value(
                 signed_governance_authority_status(unix_timestamp_now(), None)?,
             )?,
@@ -1766,6 +1769,17 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         &stack,
         revoked_listing_request.to_string(),
         "listing authority is revoked at activation",
+    )
+    .await?;
+
+    let mut revoked_collateral_request: serde_json::Value =
+        serde_json::from_str(&web.activate_request(&web.admission, &web.schedule, &web.report)?)?;
+    revoked_collateral_request["collateralAuthorityStatus"] =
+        serde_json::to_value(signed_collateral_authority_status(now, Some(now))?)?;
+    assert_activation_rejected(
+        &stack,
+        revoked_collateral_request.to_string(),
+        "collateral authority is revoked",
     )
     .await?;
 

@@ -258,6 +258,19 @@ fn runtime_attestation_and_appraisal_authorities_must_be_distinct() -> TestResul
 }
 
 #[test]
+fn verifier_report_and_collateral_authorities_must_be_distinct() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    trust.collateral_authority.key = trust.profile.body.verifier_report_signer.key.clone();
+
+    assert_eq!(
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx))).err(),
+        Some(FindingVerifierError::AliasedVerifierAndCollateralAuthorities)
+    );
+    Ok(())
+}
+
+#[test]
 fn runtime_assurance_requires_live_unrevoked_authority_standing() -> TestResult {
     let fx = runtime_fixture(RuntimeAssuranceTier::Verified)?;
 

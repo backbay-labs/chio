@@ -335,6 +335,25 @@ fn signed_seller_authorization_status(
     )?)
 }
 
+fn signed_collateral_authority_status(
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(4, "collateral");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
 struct TestTerminalAuthorityStatusResolver {
     revoked_authority_id: Option<String>,
 }
@@ -382,23 +401,11 @@ fn collateral_registration_raw(
     backing: &SignedFindingBondBacking,
     observed_at: u64,
 ) -> Result<String, AnyError> {
-    let pin = authority_pin(4, "collateral");
-    let key = pin.key()?;
-    let status = SignedExportEnvelope::sign(
-        FindingAuthorityStatus {
-            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
-            status_ref: pin.revocation_status_ref,
-            authority_id: pin.authority_id,
-            key,
-            key_epoch: pin.key_epoch,
-            revoked_from: None,
-            observed_at,
-        },
-        &keypair(37),
-    )?;
     canonical_string(&serde_json::json!({
         "backing": serde_json::to_value(backing)?,
-        "collateralAuthorityStatus": serde_json::to_value(status)?,
+        "collateralAuthorityStatus": serde_json::to_value(
+            signed_collateral_authority_status(observed_at)?,
+        )?,
     }))
 }
 
@@ -1359,6 +1366,9 @@ impl MarketWeb {
     fn activate_request(&self) -> Result<String, AnyError> {
         Ok(serde_json::json!({
             "admission": serde_json::to_value(&self.admission)?,
+            "collateralAuthorityStatus": serde_json::to_value(
+                signed_collateral_authority_status(unix_timestamp_now())?,
+            )?,
             "profileGovernanceAuthorityStatus": serde_json::to_value(
                 signed_governance_authority_status(unix_timestamp_now(), None)?,
             )?,
@@ -5124,6 +5134,9 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     wait_until_unix(second_report.body.evaluation_time).await;
     let activate = serde_json::json!({
         "admission": serde_json::to_value(&second_admission)?,
+        "collateralAuthorityStatus": serde_json::to_value(
+            signed_collateral_authority_status(unix_timestamp_now())?,
+        )?,
         "profileGovernanceAuthorityStatus": serde_json::to_value(
             signed_governance_authority_status(unix_timestamp_now(), None)?,
         )?,

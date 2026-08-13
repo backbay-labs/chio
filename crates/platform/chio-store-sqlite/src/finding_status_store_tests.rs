@@ -438,6 +438,58 @@ fn retained_older_inclusion_becomes_sticky_without_lowering_the_floor() {
 }
 
 #[test]
+fn conflicting_current_epoch_inclusion_becomes_sticky_without_moving_the_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('8');
+    let intent_sha256 = hex64('9');
+    let retained_epoch_id = hex64('a');
+    let retained_root = hex64('b');
+    let conflicting_epoch_id = hex64('c');
+    let conflicting_root = hex64('d');
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &retained_epoch_id,
+            &retained_root,
+            b"retained-epoch-one",
+            1,
+        ))
+        .expect("retain current epoch");
+    let retraction = inclusion(
+        1,
+        &conflicting_epoch_id,
+        &conflicting_root,
+        &finding_id,
+        &intent_sha256,
+        b"authenticated-current-equivocation",
+    );
+    store
+        .record_verified_retraction_at_conflicting_current_epoch(&retraction)
+        .expect("retain authenticated same-epoch retraction tombstone");
+
+    let floor = store.get_feed_floor(FEED).expect("floor");
+    assert_eq!(floor.map_epoch, 1);
+    assert_eq!(floor.epoch_id, retained_epoch_id);
+    assert_eq!(floor.root_hash, retained_root);
+    let status = store
+        .status_for_purchase(FEED, &finding_id, NOW + 20)
+        .expect("sticky retraction decision");
+    let FindingStatusDecision::Retracted(status) = status else {
+        panic!("same-epoch equivocation must make retraction sticky");
+    };
+    assert_eq!(
+        status.retracted_epoch_id.as_deref(),
+        Some(conflicting_epoch_id.as_str())
+    );
+    assert_eq!(
+        status.retracted_root_hash.as_deref(),
+        Some(conflicting_root.as_str())
+    );
+}
+
+#[test]
 fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();

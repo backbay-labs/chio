@@ -2202,6 +2202,12 @@ impl FindingChallengeCoordinator {
                 if record.state != FindingLiabilityState::PendingAppeal {
                     return Err(ChallengeCoordinatorError::LiabilityState("pending_appeal"));
                 }
+                self.require_current_role(
+                    &self.status_feed_operator.authority,
+                    now,
+                    now,
+                    "status feed operator",
+                )?;
                 self.require_live_role(&self.finalization_pin, now, now, "finalization")?;
                 self.require_appeal_window_closed(&record, sanction_case, sanction_case_id, now)?;
                 let penalty_issued_at = record
@@ -2771,6 +2777,12 @@ impl FindingChallengeCoordinator {
             );
         }
         self.require_sanction_governs(liability_key, &retained.sanction_case_id)?;
+        self.require_current_role(
+            &self.status_feed_operator.authority,
+            now,
+            now,
+            "status feed operator",
+        )?;
         self.bind_enforcement_root(liability_key, &verified, planned.intent(), now)?;
         self.require_confirmed_enforcement_root(liability_key, &verified, planned.intent())?;
         self.fence_anchor_evidence(liability_key, &verified, planned.intent(), now)?;

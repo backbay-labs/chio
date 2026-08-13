@@ -8840,6 +8840,64 @@ fn finding_challenge_a_snapshot_from_an_expired_observer_key_authorizes_nothing(
 }
 
 #[test]
+fn finding_challenge_revoked_status_operator_blocks_impairment_dispatch() -> TestResult {
+    let case = finalizing_liability()?;
+    let authority_id = market_config().status_feed_operator.authority.authority_id;
+    let coordinator = case
+        .deployment
+        .coordinator_with_revoked_role(&authority_id, FindingDisputeLockDisposition::Forfeited)?;
+
+    let refused = coordinator
+        .finalize(
+            &case.liability_key,
+            &case.enforcement,
+            &case.penalty,
+            &case.snapshot,
+            &case.seller,
+            &settlement_config()?,
+            &settlement_config()?.operator_address,
+            &evm_vault_snapshot(),
+            &anchor_proof()?,
+            &ScriptedObservations::qualified(),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )
+        .expect_err("a revoked status operator cannot precede impairment dispatch");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::AuthorityLifecycle {
+            role: "status feed operator",
+            ..
+        }
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_observer_and_vault_operator_epochs_rotate_independently() -> TestResult {
+    let case = finalizing_liability()?;
+    let authorized = case.authorized()?;
+    let mut body = case.snapshot.body.clone();
+    body.operator_key_epoch = PINNED_KEY_EPOCH + 1;
+    body.snapshot_id = String::new();
+    body.snapshot_id = compute_snapshot_id(&body)?;
+    let independently_rotated = SignedExportEnvelope::sign(body, &keypair(34))?;
+
+    let refreshed = case.coordinator.refresh_finalizing_enforcement(
+        &authorized,
+        &independently_rotated,
+        &case.seller,
+        SETTLEMENT_NOW + 1,
+    )?;
+    assert_eq!(
+        refreshed.enforcement.body.bond_snapshot_envelope_sha256,
+        signed_envelope_sha256(&independently_rotated)?
+    );
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_rotated_snapshot_cannot_replace_a_bound_enforcement_root() -> TestResult {
     let case = finalizing_liability()?;
     let authorized = case.authorized()?;

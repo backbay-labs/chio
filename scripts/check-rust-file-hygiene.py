@@ -398,8 +398,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/trust/chio-finding-verifier/src/verify.rs": allow(
         "2026-08-31",
-        "cognition finding verifier with governance and evidence-signer lifecycle validation; capped to current M9 size until split",
-        max_lines=2_021,
+        "cognition finding verifier with governance, collateral, and evidence-signer role separation; capped to current M9 size until split",
+        max_lines=2_026,
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",
@@ -408,18 +408,18 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs": allow(
         "2026-08-31",
-        "cognition challenge enforcement end-to-end regression suite; capped to current size until split",
-        max_lines=11_566,
+        "cognition challenge enforcement end-to-end regression suite with status-operator dispatch lifecycle coverage; capped to current size until split",
+        max_lines=11_410,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
         "2026-08-31",
-        "cognition market exit regression suite with status-gated activation and renewal coverage; capped to current size until split",
-        max_lines=3_232,
+        "cognition market exit regression suite with status and collateral lifecycle-gated activation coverage; capped to current size until split",
+        max_lines=3_246,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
-        "cognition purchase and recovery end-to-end regression suite with reservation-time status lifecycle coverage; capped until split",
-        max_lines=5_727,
+        "cognition purchase and recovery end-to-end regression suite with reservation and activation lifecycle evidence; capped until split",
+        max_lines=5_740,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",
