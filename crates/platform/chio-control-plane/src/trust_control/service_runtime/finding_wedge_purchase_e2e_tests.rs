@@ -4399,6 +4399,43 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         canonical_json_bytes(&replay_after_revocation)?,
         "an exact committed reservation must replay after operator revocation"
     );
+    for authority_id in [
+        deployment
+            .web
+            .admission
+            .body
+            .purchase_authority
+            .authority_id
+            .as_str(),
+        deployment
+            .web
+            .admission
+            .body
+            .failed_delivery_authority
+            .authority_id
+            .as_str(),
+        deployment.web.authorization.body.authorization_id.as_str(),
+    ] {
+        let revoked_authority = coordinator_with_status(
+            &authority,
+            Arc::new(TestTerminalAuthorityStatusResolver::revoked(authority_id)),
+        )?;
+        let replay_after_revocation = revoked_authority.reserve(
+            &exchange.bid,
+            &exchange.ask,
+            &exchange.buyer_signature_hex,
+            &deployment.web.admission,
+            &deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        )?;
+        assert_eq!(
+            canonical_json_bytes(&first)?,
+            canonical_json_bytes(&replay_after_revocation)?,
+            "an exact committed reservation must replay after authority revocation"
+        );
+    }
     let venue = market_config().venue;
     let revoked_venue = coordinator_with_venue(
         &authority,

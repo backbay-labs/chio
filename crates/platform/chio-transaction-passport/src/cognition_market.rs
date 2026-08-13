@@ -181,6 +181,15 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     trust: &CognitionMarketProofTrust,
     externally_verified_claims: &[String],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    if trust
+        .trusted_passport_signer_keys
+        .iter()
+        .any(|key| key == &trust.finding_verifier_authority)
+    {
+        return Err(claim_failed(
+            "passport signer and finding verifier authorities must be distinct",
+        ));
+    }
     if trust.profile_governance_authority.key == trust.finding_verifier_authority {
         return Err(claim_failed(
             "profile governance and finding verifier authorities must be distinct",

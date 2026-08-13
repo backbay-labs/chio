@@ -681,13 +681,6 @@ impl FindingPurchaseCoordinator {
             if !authority_policy_covers(policy, now) {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
-            self.require_live_terminal_authority(
-                policy,
-                &signing_key,
-                AuthorityStatusReading::Current,
-                now,
-                role,
-            )?;
         }
         // The digest is derived from the envelope just verified, never
         // accepted from the caller: it gates the sale below and is signed
@@ -789,7 +782,6 @@ impl FindingPurchaseCoordinator {
         if now < authorization.issued_at || now >= authorization.expires_at {
             return Err(PurchaseCoordinatorError::SellerAuthorizationWindow);
         }
-        self.require_live_seller_authorization(seller_authorization, now)?;
         if ask.signer_key != authorization.issuer && ask.signer_key != authorization.seller {
             return Err(PurchaseCoordinatorError::AskMinterUnauthorized);
         }
@@ -915,6 +907,27 @@ impl FindingPurchaseCoordinator {
             if expires_at <= now {
                 return Err(PurchaseCoordinatorError::ReservationWindow);
             }
+            for (role, policy, signing_key) in [
+                (
+                    "purchase",
+                    &admission.body.purchase_authority,
+                    self.purchase_authority.public_key(),
+                ),
+                (
+                    "failed-delivery",
+                    &admission.body.failed_delivery_authority,
+                    self.failed_delivery_authority.public_key(),
+                ),
+            ] {
+                self.require_live_terminal_authority(
+                    policy,
+                    &signing_key,
+                    AuthorityStatusReading::Current,
+                    now,
+                    role,
+                )?;
+            }
+            self.require_live_seller_authorization(seller_authorization, now)?;
             input.expires_at = expires_at;
             let status_operator_observed_at = self
                 .require_live_status_operator(&finding.status_feed_ref, now)?

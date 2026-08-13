@@ -1832,6 +1832,23 @@ fn cognition_market_qualified_profile_rejects_self_signed_verifier_status() -> T
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_verifier_as_passport_signer() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle.trust.trusted_passport_signer_keys =
+        vec![bundle.trust.finding_verifier_authority.clone()];
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("finding verifier was accepted as a passport signer")?
+        .to_string();
+    assert!(
+        error.contains("passport signer and finding verifier authorities must be distinct"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_verifier_as_status_operator() -> TestResult {
     let mut bundle = build_bundle()?;
     bundle
