@@ -9,7 +9,7 @@ use chio_core_types::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_core_types::receipt::body::ChioReceipt;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
-use chio_core_types::session::OperationContext;
+use chio_core_types::session::{OperationContext, OperationKind};
 use chio_swarm_authority::finding_pool::{
     verify_finding_pool_allocation, SignedFindingPoolAllocation,
 };
@@ -792,6 +792,7 @@ impl ChioKernel {
         let tenant_id = self
             .with_session(&request.operation_context.session_id, |session| {
                 session.validate_context(request.operation_context)?;
+                session.ensure_operation_allowed(OperationKind::ToolCall)?;
                 Ok(crate::kernel::extract_tenant_id_from_auth_context(
                     &session.auth_context(),
                 ))

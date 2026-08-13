@@ -26,6 +26,7 @@ use chio_kernel::finding_purchase::{
     FindingStatusProofVerifier, VerifiedFindingPurchase, VerifiedFindingStatusProof,
 };
 use chio_kernel::receipt_store::ReceiptStore;
+use chio_kernel::session::SessionState;
 use chio_kernel::{
     ChioKernel, HotPathDeadlineConfig, KernelConfig, MemoryBudgetConfig,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
@@ -359,6 +360,7 @@ fn debit_at_with_policy_and_authority(
         allocation_authority,
         reject_purchase_verification,
         None,
+        SessionState::Ready,
     )
 }
 
@@ -377,6 +379,7 @@ fn debit_at_with_policy_and_authority_and_tenant(
     allocation_authority: PublicKey,
     reject_purchase_verification: bool,
     tenant_id: Option<&str>,
+    session_state: SessionState,
 ) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
     let verified_purchase = VerifiedFindingPurchase {
         finding_id: "a".repeat(64),
@@ -484,6 +487,23 @@ fn debit_at_with_policy_and_authority_and_tenant(
                 ),
             )
             .test_expect("install authenticated purchaser tenant");
+    }
+    match session_state {
+        SessionState::Initializing => {}
+        SessionState::Ready => kernel
+            .activate_session(&session_id)
+            .test_expect("activate purchaser session"),
+        SessionState::Draining => {
+            kernel
+                .activate_session(&session_id)
+                .test_expect("activate purchaser session before draining");
+            kernel
+                .begin_draining_session(&session_id)
+                .test_expect("begin draining purchaser session");
+        }
+        SessionState::Closed => kernel
+            .close_session(&session_id)
+            .test_expect("close purchaser session"),
     }
     let operation_context = OperationContext::new(
         session_id,
@@ -599,6 +619,7 @@ fn cognition_market_debit_resolves_tenant_from_authenticated_session_context() {
         fixture.authority.public_key(),
         false,
         Some("tenant-A"),
+        SessionState::Ready,
     )
     .test_expect("reserve against authenticated tenant context");
 
@@ -611,6 +632,48 @@ fn cognition_market_debit_resolves_tenant_from_authenticated_session_context() {
         )
         .test_expect("load reserved tenant");
     assert_eq!(tenant_id.as_deref(), Some("tenant-A"));
+}
+
+#[test]
+fn cognition_market_debit_rejects_non_ready_sessions_before_reservation() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let database = directory.path().join("finding-pool.sqlite3");
+    let ledger = open_qualified(&database, ledger_domain()).test_expect("open qualified ledger");
+    let fixture = fixture(100, &ledger);
+
+    for (state, suffix) in [
+        (SessionState::Initializing, "initializing"),
+        (SessionState::Draining, "draining"),
+        (SessionState::Closed, "closed"),
+    ] {
+        let purchase_id = format!("purchase:session:{suffix}");
+        let purchase_admissions = Arc::new(AtomicU64::new(0));
+        let error = debit_at_with_policy_and_authority_and_tenant(
+            &ledger,
+            &fixture,
+            &purchase_id,
+            10,
+            2_000,
+            None,
+            None,
+            Arc::clone(&purchase_admissions),
+            false,
+            Keypair::from_seed(&[99_u8; 32]),
+            fixture.authority.public_key(),
+            false,
+            Some("tenant-A"),
+            state,
+        )
+        .test_expect_err("non-ready sessions must not reserve pool allocation");
+        assert!(
+            matches!(error, FindingPoolDebitError::SessionContext(ref message) if message.contains("cannot handle tool_call") && message.contains(suffix)),
+            "unexpected {suffix} session error: {error}"
+        );
+        assert_eq!(purchase_admissions.load(Ordering::SeqCst), 0);
+        assert!(!ledger
+            .contains_purchase(&purchase_id)
+            .test_expect("inspect rejected session reservation"));
+    }
 }
 
 #[test]
