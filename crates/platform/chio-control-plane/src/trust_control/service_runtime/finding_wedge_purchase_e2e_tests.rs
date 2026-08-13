@@ -4910,11 +4910,11 @@ async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_stand
         .get_reservation(&fixture.exchange.reservation_id)?
         .is_none());
 
-    let cached_status_coordinator = coordinator_with_status(
+    let live_status_coordinator = coordinator_with_status(
         &fixture.authority,
-        Arc::new(TestTerminalAuthorityStatusResolver::cached(1)),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
     )?;
-    let receipt = cached_status_coordinator.reserve(
+    let receipt = live_status_coordinator.reserve(
         &fixture.exchange.bid,
         &fixture.exchange.ask,
         &fixture.exchange.buyer_signature_hex,
@@ -5662,7 +5662,7 @@ async fn wedge_purchase_reservation_atomically_rejects_retracted_finding() -> Te
             &lane.deployment.web.authorization,
             EXPOSURE_UNITS,
             RESERVATION_TTL_SECS,
-            now,
+            exchange.ask.body.issued_at,
         )
         .err()
         .ok_or("retracted finding opened a reservation")?;
