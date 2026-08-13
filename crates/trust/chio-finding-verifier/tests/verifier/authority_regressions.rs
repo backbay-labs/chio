@@ -149,6 +149,42 @@ fn unpinned_profile_or_empty_kernel_keys_reject_outright() -> TestResult {
 }
 
 #[test]
+fn revoked_profile_governance_authority_cannot_backdate_a_profile() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    let revoked = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: trust
+                .governance_authority_policy
+                .revocation_status_ref
+                .clone(),
+            authority_id: trust.governance_authority_policy.authority_id.clone(),
+            key: trust.governance_authority_policy.key.clone(),
+            key_epoch: trust.governance_authority_policy.key_epoch,
+            revoked_from: Some(1_749_999_999),
+            observed_at: trust.trusted_time,
+        },
+        &fx.checkpoint_status_authority,
+    )?;
+    let governance_authority_id = trust.governance_authority_policy.authority_id.clone();
+    let status = trust
+        .checkpoint_signer_status
+        .as_mut()
+        .ok_or("status trust missing")?;
+    status
+        .signed_statuses
+        .retain(|signed| signed.body.authority_id != governance_authority_id);
+    status.signed_statuses.push(revoked);
+
+    assert_eq!(
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx))).err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
+    Ok(())
+}
+
+#[test]
 fn report_signing_key_must_be_distinct_from_governance_and_evidence() -> TestResult {
     let fx = fixture()?;
     let trusted = trust_roots(&fx);

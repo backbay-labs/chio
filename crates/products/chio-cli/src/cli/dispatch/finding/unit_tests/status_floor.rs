@@ -276,6 +276,7 @@ fn status_rejects_a_projected_digest_that_does_not_hash_the_proof_bytes() {
         &authorization,
         &status.service_bond_evidence_sha256,
         300,
+        status.checked_at,
     )
     .unwrap_err()
     .to_string();

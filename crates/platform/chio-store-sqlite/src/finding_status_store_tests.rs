@@ -234,6 +234,42 @@ fn trusted_time_high_water_survives_restart_and_rejects_rollback() {
 }
 
 #[test]
+fn purchase_status_gate_rejects_a_different_operator_authorization() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('4');
+    let epoch_id = hex64('5');
+    let root_hash = hex64('6');
+    store
+        .observe_verified_epoch(&epoch(1, &epoch_id, &root_hash, b"operator-bound-epoch", 1))
+        .expect("persist epoch");
+    store
+        .observe_verified_non_inclusion(&non_inclusion(
+            1,
+            &epoch_id,
+            &root_hash,
+            &finding_id,
+            b"operator-bound-proof",
+        ))
+        .expect("persist non-inclusion");
+
+    let mut connection = store.connection().expect("open status connection");
+    let transaction = store
+        .begin_read(&mut connection)
+        .expect("begin status read");
+    let error = status_for_purchase_tx(
+        &transaction,
+        FEED,
+        &finding_id,
+        NOW + 20,
+        Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+    )
+    .expect_err("different operator authorization must fail closed");
+    assert!(matches!(error, FindingStatusStoreError::Conflict(_)));
+}
+
+#[test]
 fn imported_inclusion_reconciles_a_matching_local_outbox_intent() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();
@@ -349,6 +385,56 @@ fn current_inclusion_replaces_the_same_findings_superseded_proof() {
         )
         .expect("read retained point proofs");
     assert_eq!((count, retained_epoch), (1, 2));
+}
+
+#[test]
+fn retained_older_inclusion_becomes_sticky_without_lowering_the_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('8');
+    let intent_sha256 = hex64('9');
+    let epoch_one_id = hex64('a');
+    let epoch_one_root = hex64('b');
+    let epoch_two_id = hex64('c');
+    let epoch_two_root = hex64('d');
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &epoch_one_id,
+            &epoch_one_root,
+            b"retained-epoch-one",
+            1,
+        ))
+        .expect("retain older epoch");
+    store
+        .observe_verified_epoch(&epoch(
+            2,
+            &epoch_two_id,
+            &epoch_two_root,
+            b"current-epoch-two",
+            1,
+        ))
+        .expect("advance current floor");
+    let old_retraction = inclusion(
+        1,
+        &epoch_one_id,
+        &epoch_one_root,
+        &finding_id,
+        &intent_sha256,
+        b"authenticated-old-retraction",
+    );
+    store
+        .record_verified_retraction_at_retained_epoch(&old_retraction)
+        .expect("retain authenticated retraction tombstone");
+
+    assert_eq!(store.get_feed_floor(FEED).expect("floor").map_epoch, 2);
+    assert!(matches!(
+        store
+            .status_for_purchase(FEED, &finding_id, NOW + 20)
+            .expect("sticky retraction decision"),
+        FindingStatusDecision::Retracted(_)
+    ));
 }
 
 #[test]

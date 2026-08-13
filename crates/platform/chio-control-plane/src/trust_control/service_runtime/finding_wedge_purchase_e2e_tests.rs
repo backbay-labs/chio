@@ -1987,6 +1987,7 @@ fn coordinator_with_status_pin(
         &keypair(17).public_key(),
         authority_status,
         authority_status_pin,
+        &market_config().status_feed_operator,
         &keypair(6).public_key(),
         VENUE_ID,
     )?)
@@ -4519,6 +4520,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         &keypair(17).public_key(),
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_pin(37, "authority-status"),
+        &market_config().status_feed_operator,
         &keypair(6).public_key(),
         VENUE_ID,
     )?;
@@ -4551,6 +4553,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         &keypair(19).public_key(),
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_pin(37, "authority-status"),
+        &market_config().status_feed_operator,
         &keypair(6).public_key(),
         VENUE_ID,
     )?;
@@ -4588,6 +4591,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
                 &keypair(17).public_key(),
                 Arc::new(TestTerminalAuthorityStatusResolver::live()),
                 &aliased_status_pin,
+                &market_config().status_feed_operator,
                 &keypair(6).public_key(),
                 VENUE_ID,
             ),
@@ -4651,6 +4655,67 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
     assert!(purchase_store
         .get_reservation(&fixture.exchange.reservation_id)?
         .is_some());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_standing() -> TestResult
+{
+    let fixture = open_reserve_fixture().await?;
+    let now = unix_timestamp_now();
+    let status_operator = market_config().status_feed_operator;
+    for (authority_id, expected_role) in [
+        (
+            fixture
+                .deployment
+                .web
+                .admission
+                .body
+                .purchase_authority
+                .authority_id
+                .as_str(),
+            "purchase",
+        ),
+        (
+            fixture
+                .deployment
+                .web
+                .admission
+                .body
+                .failed_delivery_authority
+                .authority_id
+                .as_str(),
+            "failed-delivery",
+        ),
+        (
+            status_operator.authority.authority_id.as_str(),
+            "status-operator",
+        ),
+    ] {
+        let coordinator = coordinator_with_status(
+            &fixture.authority,
+            Arc::new(TestTerminalAuthorityStatusResolver::revoked(authority_id)),
+        )?;
+        assert!(matches!(
+            coordinator.reserve(
+                &fixture.exchange.bid,
+                &fixture.exchange.ask,
+                &fixture.exchange.buyer_signature_hex,
+                &fixture.deployment.web.admission,
+                &fixture.deployment.web.authorization,
+                EXPOSURE_UNITS,
+                RESERVATION_TTL_SECS,
+                now,
+            ),
+            Err(PurchaseCoordinatorError::AuthorityLifecycle { role, .. })
+                if role == expected_role
+        ));
+        assert!(fixture
+            .authority
+            .finding_purchase_store()
+            .get_reservation(&fixture.exchange.reservation_id)?
+            .is_none());
+    }
     Ok(())
 }
 

@@ -40,6 +40,16 @@ pub(super) fn make_signed_finding_report(
     inputs: &FindingReportInputs<'_>,
     trusted_time: u64,
 ) -> Result<SignedFindingVerifierReport, Box<dyn std::error::Error>> {
+    let evidence_status_authority = Keypair::from_seed(&[98_u8; 32]);
+    let governance_authority_policy = FindingAuthorityKeyPolicy {
+        authority_id: "profile-governance".to_owned(),
+        key: inputs.governance.public_key(),
+        key_epoch: 1,
+        valid_from: inputs.profile.body.issued_at,
+        valid_until: inputs.profile.body.expires_at,
+        rotation_policy_ref: "rotation/profile-governance".to_owned(),
+        revocation_status_ref: "revocations/profile-governance".to_owned(),
+    };
     let collateral_authority = FindingAuthorityKeyPolicy {
         authority_id: "authority-collateral".to_owned(),
         key: inputs.collateral.public_key(),
@@ -50,7 +60,21 @@ pub(super) fn make_signed_finding_report(
         revocation_status_ref: "revocations/collateral-authority".to_owned(),
     };
     let mut signer_status =
-        checkpoint_status_trust(inputs.profile, inputs.governance, trusted_time)?;
+        checkpoint_status_trust(inputs.profile, &evidence_status_authority, trusted_time)?;
+    signer_status
+        .signed_statuses
+        .push(SignedExportEnvelope::sign(
+            FindingAuthorityStatus {
+                schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: governance_authority_policy.revocation_status_ref.clone(),
+                authority_id: governance_authority_policy.authority_id.clone(),
+                key: governance_authority_policy.key.clone(),
+                key_epoch: governance_authority_policy.key_epoch,
+                revoked_from: None,
+                observed_at: trusted_time,
+            },
+            &evidence_status_authority,
+        )?);
     signer_status
         .signed_statuses
         .push(SignedExportEnvelope::sign(
@@ -63,10 +87,11 @@ pub(super) fn make_signed_finding_report(
                 revoked_from: None,
                 observed_at: trusted_time,
             },
-            inputs.governance,
+            &evidence_status_authority,
         )?);
     let trust = FindingVerifierTrustRoots {
         governance_authority: inputs.governance.public_key(),
+        governance_authority_policy,
         profile: inputs.profile.clone(),
         admitted_kernel_keys: vec![inputs.kernel.public_key()],
         collateral_authority,

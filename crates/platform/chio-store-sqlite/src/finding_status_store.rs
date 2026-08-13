@@ -947,6 +947,42 @@ impl SqliteFindingStatusStore {
         Ok(outcome)
     }
 
+    /// Preserve an authenticated retraction proved at a retained older epoch
+    /// without moving the durable feed floor backward. This is only for an
+    /// inclusion proof that has already passed the portable verifier. A stale
+    /// non-inclusion proof can never enter through this path.
+    fn record_verified_retraction_at_retained_epoch(
+        &self,
+        proof: &VerifiedFindingStatusProofInput<'_>,
+    ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+        validate_proof_input(proof)?;
+        if proof.kind != FindingStatusProofKind::Inclusion {
+            return Err(invariant(
+                "retained-epoch retraction API received a non-inclusion proof",
+            ));
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        ensure_feed_exists_tx(&transaction, proof.feed_id, proof.operator_id)?;
+        let floor = load_floor_tx(&transaction, proof.feed_id)?.ok_or_else(|| {
+            FindingStatusStoreError::MissingFloor {
+                feed_id: proof.feed_id.to_owned(),
+            }
+        })?;
+        if proof.operator_id != floor.operator_id
+            || proof.key_domain_nonce != floor.key_domain_nonce
+            || proof.map_epoch >= floor.map_epoch
+        {
+            return Err(FindingStatusStoreError::Conflict(
+                "imported retraction does not bind a retained older feed epoch".to_owned(),
+            ));
+        }
+        let outcome = persist_proof_tx(&transaction, proof)?;
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(outcome)
+    }
+
     /// Type-safe inclusion wrapper over [`Self::record_verified_proof`].
     pub fn observe_verified_inclusion(
         &self,
@@ -1076,7 +1112,8 @@ impl SqliteFindingStatusStore {
         require_positive(trusted_now, "trusted_now")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
-        let decision = status_for_purchase_tx(&transaction, feed_id, finding_id, trusted_now)?;
+        let decision =
+            status_for_purchase_tx(&transaction, feed_id, finding_id, trusted_now, None)?;
         transaction.commit().map_err(sqlite_error)?;
         Ok(decision)
     }
@@ -1501,16 +1538,7 @@ impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
         let current_epoch = self
             .get_current_epoch(feed_id)
             .map_err(|error| error.to_string())?;
-        if current_epoch.signed_epoch_bytes != observation.signed_epoch_bytes
-            || current_epoch.operator_authorization_sha256
-                != observation.operator_authorization_sha256
-        {
-            return Err(
-                "imported finding status point proof does not bind the exact durable feed floor"
-                    .to_owned(),
-            );
-        }
-        self.record_verified_proof(&VerifiedFindingStatusProofInput {
+        let verified_proof = VerifiedFindingStatusProofInput {
             feed_id,
             operator_id: &epoch.operator_id,
             key_domain_nonce,
@@ -1525,8 +1553,22 @@ impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
             checked_at,
             valid_until: epoch.valid_until,
             recorded_at: observation.recorded_at,
-        })
-        .map_err(|error| error.to_string())?;
+        };
+        if current_epoch.signed_epoch_bytes != observation.signed_epoch_bytes
+            || current_epoch.operator_authorization_sha256
+                != observation.operator_authorization_sha256
+        {
+            if kind == FindingStatusProofKind::Inclusion && map_epoch < current_epoch.map_epoch {
+                self.record_verified_retraction_at_retained_epoch(&verified_proof)
+                    .map_err(|error| error.to_string())?;
+            }
+            return Err(
+                "imported finding status point proof does not bind the exact durable feed floor"
+                    .to_owned(),
+            );
+        }
+        self.record_verified_proof(&verified_proof)
+            .map_err(|error| error.to_string())?;
 
         let expected_proof_sha256 = sha256_hex(observation.proof_bytes);
         match self
@@ -1562,6 +1604,7 @@ pub(crate) fn status_for_purchase_tx(
     feed_id: &str,
     finding_id: &str,
     trusted_now: u64,
+    expected_operator_authorization_sha256: Option<&str>,
 ) -> Result<FindingStatusDecision, FindingStatusStoreError> {
     require_identifier(feed_id, "feed_id")?;
     require_hex64(finding_id, "finding_id")?;
@@ -1580,6 +1623,13 @@ pub(crate) fn status_for_purchase_tx(
             feed_id: feed_id.to_owned(),
         }
     })?;
+    if expected_operator_authorization_sha256
+        .is_some_and(|expected| floor.operator_authorization_sha256 != expected)
+    {
+        return Err(FindingStatusStoreError::Conflict(
+            "current status floor does not bind the governance-authorized operator".to_owned(),
+        ));
+    }
     let proof =
         load_proof_tx(transaction, feed_id, finding_id, floor.map_epoch)?.ok_or_else(|| {
             FindingStatusStoreError::MissingState {

@@ -547,15 +547,23 @@ impl SqliteFindingPurchaseStore {
         &self,
         input: &FindingPurchaseReservationInput<'_>,
         status_feed_id: &str,
+        status_operator_authorization_sha256: &str,
         trusted_now: u64,
     ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
-        self.open_reservation_inner(input, Some((status_feed_id, trusted_now)))
+        self.open_reservation_inner(
+            input,
+            Some((
+                status_feed_id,
+                status_operator_authorization_sha256,
+                trusted_now,
+            )),
+        )
     }
 
     fn open_reservation_inner(
         &self,
         input: &FindingPurchaseReservationInput<'_>,
-        status_gate: Option<(&str, u64)>,
+        status_gate: Option<(&str, &str, u64)>,
     ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
         validate_reservation_input(input)?;
         let mut connection = self.connection()?;
@@ -572,13 +580,19 @@ impl SqliteFindingPurchaseStore {
                 "reservation id is already bound to different purchase parameters".to_owned(),
             ));
         }
-        if let Some((feed_id, trusted_now)) = status_gate {
-            match status_for_purchase_tx(&transaction, feed_id, input.finding_id, trusted_now)
-                .map_err(|error| {
-                    FindingPurchaseStoreError::Conflict(format!(
-                        "finding is not verified live for reservation: {error}"
-                    ))
-                })? {
+        if let Some((feed_id, operator_authorization_sha256, trusted_now)) = status_gate {
+            match status_for_purchase_tx(
+                &transaction,
+                feed_id,
+                input.finding_id,
+                trusted_now,
+                Some(operator_authorization_sha256),
+            )
+            .map_err(|error| {
+                FindingPurchaseStoreError::Conflict(format!(
+                    "finding is not verified live for reservation: {error}"
+                ))
+            })? {
                 FindingStatusDecision::VerifiedLive(_) => {}
                 FindingStatusDecision::Pending(_) => {
                     return Err(FindingPurchaseStoreError::Conflict(

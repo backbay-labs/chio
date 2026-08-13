@@ -256,6 +256,8 @@ struct Fixture {
     profile: SignedExportEnvelope<FindingChallengeVerifierProfile>,
     nonce_resolver: TestNonceResolver,
     checkpoint_status_authority: Keypair,
+    governance_authority_policy: FindingAuthorityKeyPolicy,
+    governance_authority_status: SignedFindingAuthorityStatus,
     checkpoint_signer_status: SignedFindingAuthorityStatus,
     receipt_signer_statuses: Vec<SignedFindingAuthorityStatus>,
     collateral_authority_policy: FindingAuthorityKeyPolicy,
@@ -562,6 +564,19 @@ fn fixture_with_runtime_assurance(
     ];
 
     let checkpoint_status_authority = keypair(22);
+    let governance_authority_policy = key_policy(1, "profile-governance");
+    let governance_authority_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: governance_authority_policy.revocation_status_ref.clone(),
+            authority_id: governance_authority_policy.authority_id.clone(),
+            key: governance_authority_policy.key.clone(),
+            key_epoch: governance_authority_policy.key_epoch,
+            revoked_from: None,
+            observed_at: 1_750_000_010,
+        },
+        &checkpoint_status_authority,
+    )?;
     let collateral_authority_policy = key_policy(4, "collateral");
     let collateral_authority_status = SignedExportEnvelope::sign(
         FindingAuthorityStatus {
@@ -617,6 +632,8 @@ fn fixture_with_runtime_assurance(
         profile,
         nonce_resolver,
         checkpoint_status_authority,
+        governance_authority_policy,
+        governance_authority_status,
         checkpoint_signer_status,
         receipt_signer_statuses,
         collateral_authority_policy,
@@ -773,6 +790,7 @@ fn runtime_bundle(fx: &RuntimeFixture) -> FindingEvidenceBundle<'_> {
 fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
     FindingVerifierTrustRoots {
         governance_authority: fx.governance.public_key(),
+        governance_authority_policy: fx.governance_authority_policy.clone(),
         profile: fx.profile.clone(),
         admitted_kernel_keys: vec![keypair(21).public_key(), keypair(12).public_key()],
         collateral_authority: fx.collateral_authority_policy.clone(),
@@ -784,6 +802,7 @@ fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
         status_freshness_policy: None,
         checkpoint_signer_status: Some(FindingCheckpointSignerStatusTrust {
             signed_statuses: std::iter::once(fx.checkpoint_signer_status.clone())
+                .chain(std::iter::once(fx.governance_authority_status.clone()))
                 .chain(fx.receipt_signer_statuses.iter().cloned())
                 .chain(std::iter::once(fx.collateral_authority_status.clone()))
                 .collect(),

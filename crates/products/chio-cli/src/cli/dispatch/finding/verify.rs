@@ -136,6 +136,7 @@ pub(super) fn cmd_finding_verify(
         resolve_status_floor_path(status_proof_input.is_some(), status_rollback_floor)?;
     let trust = FindingVerifierTrustRoots {
         governance_authority: roots.governance_authority,
+        governance_authority_policy: roots.governance_authority_policy,
         profile: roots.profile,
         admitted_kernel_keys: roots.admitted_kernel_keys,
         collateral_authority: roots.collateral_authority,
@@ -320,6 +321,7 @@ pub(super) fn strict_finding_ingress(
 #[serde(deny_unknown_fields)]
 struct FindingTrustRootsFile {
     governance_authority: PublicKey,
+    governance_authority_policy: chio_finding::FindingAuthorityKeyPolicy,
     profile: SignedFindingChallengeVerifierProfile,
     admitted_kernel_keys: Vec<PublicKey>,
     collateral_authority: chio_finding::FindingAuthorityKeyPolicy,

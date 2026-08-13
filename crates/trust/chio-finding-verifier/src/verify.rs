@@ -112,6 +112,10 @@ pub enum FindingVerifierError {
 pub struct FindingVerifierTrustRoots {
     /// Governance root that must have signed the profile envelope.
     pub governance_authority: PublicKey,
+    /// Full lifecycle policy for the profile governance signer. The bare key
+    /// above remains the external root pin, while this policy and fresh status
+    /// prevent a retired key from minting a backdated profile.
+    pub governance_authority_policy: FindingAuthorityKeyPolicy,
     /// The admitted reusable verifier profile.
     pub profile: SignedFindingChallengeVerifierProfile,
     /// Kernel keys admitted for authoritative-spend accounting.
@@ -582,6 +586,18 @@ pub fn verify_finding_evidence(
 
     // Pinned profile and kernel keys are preconditions, not facets: with
     // an unverified profile no facet below is meaningful.
+    if trust.governance_authority_policy.key != trust.governance_authority
+        || verify_authority_status(
+            &trust.governance_authority_policy,
+            trust.profile.body.issued_at,
+            trust.trusted_time,
+            trust.checkpoint_signer_status.as_ref(),
+            "profile governance authority",
+        )
+        .is_err()
+    {
+        return Err(FindingVerifierError::ProfileInvalid);
+    }
     verify_signed_profile(&trust.profile, &trust.governance_authority)
         .map_err(|_| FindingVerifierError::ProfileInvalid)?;
     validate_supported_finding_verifier_profile(&trust.profile.body)?;
@@ -1732,6 +1748,7 @@ fn bundle_digest(
         checkpoint_signer_status_sha256s: Vec<String>,
         checkpoint_status_authority_policy_sha256: Option<String>,
         checkpoint_status_max_age_secs: Option<u64>,
+        governance_authority_policy_sha256: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         finding_delivery_execution_nonce_envelope_sha256: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1888,6 +1905,10 @@ fn bundle_digest(
             .checkpoint_signer_status
             .as_ref()
             .map(|status| status.max_age_secs),
+        governance_authority_policy_sha256: sha256_hex(
+            &canonical_json_bytes(&trust.governance_authority_policy)
+                .map_err(|_| FindingVerifierError::Canonicalization)?,
+        ),
         finding_delivery_execution_nonce_envelope_sha256,
         finding_delivery_receipt_sha256,
         finding_delivery_inclusion_proof_sha256,

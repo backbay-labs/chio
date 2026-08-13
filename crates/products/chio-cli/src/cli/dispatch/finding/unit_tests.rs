@@ -1327,8 +1327,34 @@ fn verify_refuses_to_call_integrity_alone_evidence_verification() {
 /// unavailable rather than collapsing them into a verified badge.
 fn golden_trust_roots() -> String {
     let profile: serde_json::Value = serde_json::from_str(GOLDEN_PROFILE_RAW).unwrap();
+    let governance_key = chio_core_types::crypto::PublicKey::from_hex(GOLDEN_GOVERNANCE_AUTHORITY)
+        .unwrap();
+    let governance_policy = chio_finding::FindingAuthorityKeyPolicy {
+        authority_id: "profile-governance".to_owned(),
+        key: governance_key.clone(),
+        key_epoch: 1,
+        valid_from: 1_700_000_000,
+        valid_until: 1_900_000_000,
+        rotation_policy_ref: "rotation/profile-governance".to_owned(),
+        revocation_status_ref: "revocations/profile-governance".to_owned(),
+    };
+    let status_authority = Keypair::from_seed(&[99_u8; 32]);
+    let governance_status = chio_core_types::receipt::lineage::SignedExportEnvelope::sign(
+        chio_finding::FindingAuthorityStatus {
+            schema: chio_finding::FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: governance_policy.revocation_status_ref.clone(),
+            authority_id: governance_policy.authority_id.clone(),
+            key: governance_key,
+            key_epoch: governance_policy.key_epoch,
+            revoked_from: None,
+            observed_at: 1_784_880_000,
+        },
+        &status_authority,
+    )
+    .unwrap();
     serde_json::to_string(&serde_json::json!({
         "governance_authority": GOLDEN_GOVERNANCE_AUTHORITY,
+        "governance_authority_policy": governance_policy,
         "profile": profile,
         "admitted_kernel_keys": [GOLDEN_PRODUCTION_SIGNER],
         "collateral_authority": {
@@ -1339,6 +1365,19 @@ fn golden_trust_roots() -> String {
             "valid_until": 1_900_000_000_u64,
             "rotation_policy_ref": "rotation/collateral-authority",
             "revocation_status_ref": "revocations/collateral-authority"
+        },
+        "checkpoint_signer_status": {
+            "signed_statuses": [governance_status],
+            "status_authority": {
+                "authority_id": "evidence-status-authority",
+                "key": status_authority.public_key(),
+                "key_epoch": 1,
+                "valid_from": 1_700_000_000_u64,
+                "valid_until": 1_900_000_000_u64,
+                "rotation_policy_ref": "rotation/evidence-status-authority",
+                "revocation_status_ref": "revocations/evidence-status-authority"
+            },
+            "max_age_secs": 300_u64
         },
         "trusted_time": 1_784_880_000_u64,
     }))

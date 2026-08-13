@@ -60,7 +60,7 @@ use chio_store_sqlite::{
 
 use super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::finding_purchase_verifier::{PurchaseReservationReader, ReservationExpectation};
-use super::service_types::FindingAuthorityPin;
+use super::service_types::{FindingAuthorityPin, FindingStatusOperatorPin};
 
 /// Domain separator for the deterministic reservation identity.
 const RESERVATION_DOMAIN: &str = "chio.finding.reservation.v1";
@@ -211,6 +211,7 @@ pub struct FindingPurchaseCoordinator {
     failed_delivery_authority: Keypair,
     authority_status: Arc<dyn FindingAuthorityStatusResolver>,
     authority_status_pin: FindingAuthorityPin,
+    status_feed_operator: FindingStatusOperatorPin,
     venue_authority: PublicKey,
     venue_id: String,
 }
@@ -232,6 +233,7 @@ impl FindingPurchaseCoordinator {
         failed_delivery_pin: &PublicKey,
         authority_status: Arc<dyn FindingAuthorityStatusResolver>,
         authority_status_pin: &FindingAuthorityPin,
+        status_feed_operator: &FindingStatusOperatorPin,
         venue_pin: &PublicKey,
         venue_id: &str,
     ) -> Result<Self, PurchaseCoordinatorError> {
@@ -243,8 +245,15 @@ impl FindingPurchaseCoordinator {
         let authority_status_key = authority_status_pin
             .validate("authority-status")
             .map_err(|_| PurchaseCoordinatorError::AuthorityStatusPin)?;
+        let status_operator_key = status_feed_operator
+            .require_live(
+                &status_feed_operator.feed_id,
+                status_feed_operator.authority.valid_from,
+            )
+            .map_err(|_| PurchaseCoordinatorError::AuthorityStatusPin)?;
         if authority_status_key == purchase_authority.public_key()
             || authority_status_key == failed_delivery_authority.public_key()
+            || authority_status_key == status_operator_key
         {
             return Err(PurchaseCoordinatorError::AuthorityStatusPin);
         }
@@ -263,6 +272,7 @@ impl FindingPurchaseCoordinator {
             failed_delivery_authority,
             authority_status,
             authority_status_pin: authority_status_pin.clone(),
+            status_feed_operator: status_feed_operator.clone(),
             venue_authority: venue_pin.clone(),
             venue_id: venue_id.to_owned(),
         })
@@ -336,6 +346,35 @@ impl FindingPurchaseCoordinator {
             return Err(reject("authority is revoked at finalization"));
         }
         Ok(())
+    }
+
+    fn require_live_status_operator(
+        &self,
+        feed_id: &str,
+        now: u64,
+    ) -> Result<&str, PurchaseCoordinatorError> {
+        let key = self
+            .status_feed_operator
+            .require_live(feed_id, now)
+            .map_err(|_| PurchaseCoordinatorError::AuthorityLifecycle {
+                role: "status-operator",
+                reason: "configured operator authorization is not live",
+            })?;
+        let policy = FindingAuthorityKeyPolicy {
+            authority_id: self.status_feed_operator.authority.authority_id.clone(),
+            key: key.clone(),
+            key_epoch: self.status_feed_operator.authority.key_epoch,
+            valid_from: self.status_feed_operator.authority.valid_from,
+            valid_until: self.status_feed_operator.authority.valid_until,
+            rotation_policy_ref: self.status_feed_operator.rotation_policy_ref.clone(),
+            revocation_status_ref: self
+                .status_feed_operator
+                .authority
+                .revocation_status_ref
+                .clone(),
+        };
+        self.require_live_terminal_authority(&policy, &key, now, now, "status-operator")?;
+        Ok(&self.status_feed_operator.authorization_sha256)
     }
 
     fn require_live_seller_authorization(
@@ -518,6 +557,7 @@ impl FindingPurchaseCoordinator {
             if !authority_policy_covers(policy, now) {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
+            self.require_live_terminal_authority(policy, &signing_key, now, now, role)?;
         }
         // The digest is derived from the envelope just verified, never
         // accepted from the caller: it gates the sale below and is signed
@@ -731,8 +771,16 @@ impl FindingPurchaseCoordinator {
             maximum_sale_exposure_units,
             created_at: now,
         };
+        let status_operator_authorization_sha256 = self
+            .require_live_status_operator(&finding.status_feed_ref, now)?
+            .to_owned();
         self.store
-            .open_live_reservation(&input, &finding.status_feed_ref, now)
+            .open_live_reservation(
+                &input,
+                &finding.status_feed_ref,
+                &status_operator_authorization_sha256,
+                now,
+            )
             .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
         let receipt = ReservationReceipt {
             schema: RESERVATION_RECEIPT_SCHEMA.to_owned(),
