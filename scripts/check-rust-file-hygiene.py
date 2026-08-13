@@ -383,8 +383,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_handlers.rs": allow(
         "2026-08-31",
-        "cognition finding handler surface with seller-authority lifecycle validation; capped to current M9 size until split",
-        max_lines=2_137,
+        "cognition finding handler surface with atomic status-gated activation and renewal; capped to current M9 size until split",
+        max_lines=2_216,
     ),
     "crates/economy/chio-finding/tests/challenge_families.rs": allow(
         "2026-08-31",
@@ -394,7 +394,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/trust/chio-finding-verifier/tests/verifier.rs": allow(
         "2026-08-31",
         "cognition finding verifier regression suite with runtime and collateral authority lifecycle coverage; capped until split",
-        max_lines=2_116,
+        max_lines=2_135,
+    ),
+    "crates/trust/chio-finding-verifier/src/verify.rs": allow(
+        "2026-08-31",
+        "cognition finding verifier with governance and evidence-signer lifecycle validation; capped to current M9 size until split",
+        max_lines=2_021,
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",
@@ -408,13 +413,13 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
         "2026-08-31",
-        "cognition market exit regression suite with seller-authorization lifecycle coverage; capped to current size until split",
-        max_lines=3_064,
+        "cognition market exit regression suite with status-gated activation and renewal coverage; capped to current size until split",
+        max_lines=3_232,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
         "cognition purchase and recovery end-to-end regression suite with reservation-time status lifecycle coverage; capped until split",
-        max_lines=5_604,
+        max_lines=5_727,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",
@@ -428,8 +433,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-store-sqlite/src/finding_market_store.rs": allow(
         "2026-08-31",
-        "cognition finding market authority store; capped to current size until split",
-        max_lines=2_083,
+        "cognition finding market authority store with atomic status and expired-prepare recovery; capped to current size until split",
+        max_lines=2_337,
     ),
     "crates/platform/chio-store-sqlite/src/finding_challenge_store.rs": allow(
         "2026-08-31",
@@ -459,7 +464,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/finding_purchase_store.rs": allow(
         "2026-08-31",
         "cognition purchase and recovery authority store with atomic finding-status reservation gate; capped until split",
-        max_lines=3_325,
+        max_lines=3_339,
     ),
     "crates/platform/chio-store-sqlite/src/finding_purchase_store_tests.rs": allow(
         "2026-08-31",

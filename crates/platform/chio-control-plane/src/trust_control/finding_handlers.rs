@@ -37,9 +37,10 @@ use chio_open_market::listing::{
     SignedGenericListing,
 };
 use chio_store_sqlite::finding_market_store::{
-    finding_fee_idempotency_key, FindingActivationAttemptState,
+    finding_fee_idempotency_key, FindingActivationAttemptState, FindingActivationOutcome,
     FindingActivationPreparationOutcome, FindingAdmissionSnapshot, FindingAllocationState,
-    FindingFeeIntent, FindingFeeIntentOutcome, FindingRecordInput, SqliteFindingMarketStore,
+    FindingFeeIntent, FindingFeeIntentOutcome, FindingFeeState, FindingRecordInput,
+    SqliteFindingMarketStore,
 };
 
 use super::report_validation::validate_service_auth;
@@ -1874,32 +1875,28 @@ pub(crate) async fn handle_activate_finding(
             instruction_sha256,
         });
     }
-    let mut fee_outcomes = Vec::with_capacity(charges.len());
-    for (terminal, charge) in admission.fee_terminals.iter().zip(&charges) {
-        let intent = FindingFeeIntent {
-            fee_schedule_envelope_sha256: &schedule_digest,
-            event: &terminal.event,
-            finding_id: &finding_id,
-            listing_id: &admission.listing_id,
-            payer: &terminal.payer,
-            amount: &terminal.amount,
-            pool_principal_id: &terminal.pool_principal_id,
-            rail_destination: &terminal.rail_destination,
-            instruction_sha256: &charge.instruction_sha256,
-        };
-        match store.begin_fee_intent(&intent) {
-            Ok(fenced) => fee_outcomes.push(fenced.outcome),
-            Err(error) => {
-                return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
-            }
-        }
+    // Atomically validate live status, fence every fee intent, claim the
+    // allocation, and retain the exact admission before money can move. A
+    // concurrent retraction therefore wins before any financial state opens.
+    // A crash from here onward leaves one replayable prepare record, so a
+    // reconciled charge cannot lose its activation owner.
+    if config
+        .status_feed_operator
+        .require_live(&finding.status_feed_ref, now)
+        .is_err()
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding status operator is not live for activation",
+        );
     }
-
-    // Claim the allocation and retain the exact admission before money
-    // can move. A crash from here onward leaves a replayable prepare
-    // record, so a reconciled charge cannot lose its activation owner to
-    // a concurrent allocation consumer.
-    match store.prepare_listing_activation(&admission_json, admission, now) {
+    match store.prepare_listing_activation(
+        &admission_json,
+        admission,
+        &finding.status_feed_ref,
+        &config.status_feed_operator.authorization_sha256,
+        now,
+    ) {
         Ok(FindingActivationPreparationOutcome::Prepared)
         | Ok(FindingActivationPreparationOutcome::PendingReplay) => {}
         Ok(FindingActivationPreparationOutcome::AlreadyActivated) => {
@@ -1909,18 +1906,31 @@ pub(crate) async fn handle_activate_finding(
             }))
             .into_response();
         }
+        Ok(FindingActivationPreparationOutcome::Expired) => {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "prepared activation expired before completion",
+            );
+        }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 
     // Dispatch and reconcile each unsettled terminal. Reconciled intents
     // from an earlier attempt are never dispatched twice.
-    for ((terminal, charge), outcome) in admission
-        .fee_terminals
-        .iter()
-        .zip(&charges)
-        .zip(fee_outcomes)
-    {
-        if outcome == FindingFeeIntentOutcome::AlreadyReconciled {
+    for (terminal, charge) in admission.fee_terminals.iter().zip(&charges) {
+        let fee_event = match store.get_fee_event(&charge.idempotency_key) {
+            Ok(Some(event)) => event,
+            Ok(None) => {
+                return plain_http_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "prepared activation lost its fee intent",
+                )
+            }
+            Err(error) => {
+                return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+            }
+        };
+        if fee_event.state == FindingFeeState::Reconciled {
             continue;
         }
         let observation = match rail.dispatch(&charge.instruction) {
@@ -1970,6 +1980,10 @@ pub(crate) async fn handle_activate_finding(
     // the active admission, supersedes the prior active row, and marks
     // the durable prepare complete.
     match store.activate_listing(&admission_json, admission, now) {
+        Ok(FindingActivationOutcome::Expired) => plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "prepared activation expired; collateral was released and matching fees remain credited",
+        ),
         Ok(outcome) => {
             if let Err(error) = purchase_store.register_community_fund_destination(
                 &admission.backing_allocation_id,
@@ -2027,6 +2041,30 @@ pub(crate) async fn handle_finding_participation(
         }
     };
     let now = unix_timestamp_now();
+    let artifact_json = match store.get_finding_bytes(&finding_id) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return plain_http_error(StatusCode::NOT_FOUND, "unknown finding"),
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    };
+    let finding: Finding = match serde_json::from_str(&artifact_json) {
+        Ok(finding) => finding,
+        Err(_) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "stored finding failed deserialization",
+            )
+        }
+    };
+    if config
+        .status_feed_operator
+        .require_live(&finding.status_feed_ref, now)
+        .is_err()
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding status operator is not live for participation renewal",
+        );
+    }
     let current_epoch = match live_admission_epoch(&store, &snapshot, &admission, now) {
         Some(epoch) => epoch,
         None => {
@@ -2108,7 +2146,12 @@ pub(crate) async fn handle_finding_participation(
         rail_destination: &config.audit_pool.rail_destination,
         instruction_sha256: &instruction_sha256,
     };
-    match store.begin_fee_intent(&intent) {
+    match store.begin_live_participation_fee_intent(
+        &intent,
+        &finding.status_feed_ref,
+        &config.status_feed_operator.authorization_sha256,
+        now,
+    ) {
         Ok(fenced) if fenced.outcome == FindingFeeIntentOutcome::AlreadyReconciled => {
             return Json(serde_json::json!({
                 "findingId": finding_id,

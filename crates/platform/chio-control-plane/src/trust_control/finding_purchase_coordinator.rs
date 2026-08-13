@@ -239,6 +239,7 @@ impl FindingPurchaseCoordinator {
     ) -> Result<Self, PurchaseCoordinatorError> {
         if purchase_authority.public_key() != *purchase_pin
             || failed_delivery_authority.public_key() != *failed_delivery_pin
+            || purchase_authority.public_key() == failed_delivery_authority.public_key()
         {
             return Err(PurchaseCoordinatorError::AuthorityPinMismatch);
         }

@@ -1527,6 +1527,11 @@ impl Deployment {
         // Let the pre-signed fixture mature before constructing the current
         // status used at activation.
         wait_until_unix(web.report.body.evaluation_time).await;
+        let authority = state
+            .joint_authority_store
+            .as_ref()
+            .ok_or_else(|| missing("joint authority store before activation"))?;
+        publish_live_status_proof_b64(authority, &web.finding_id, unix_timestamp_now())?;
 
         let (status, body) = send(
             state,
@@ -1538,11 +1543,6 @@ impl Deployment {
         .await?;
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         assert_eq!(json_body(&body)?["outcome"], serde_json::json!("Activated"));
-        let authority = state
-            .joint_authority_store
-            .as_ref()
-            .ok_or_else(|| missing("joint authority store after activation"))?;
-        publish_live_status_proof_b64(authority, &web.finding_id, unix_timestamp_now())?;
         Ok(())
     }
 }
@@ -4598,6 +4598,25 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
             Err(PurchaseCoordinatorError::AuthorityStatusPin)
         ));
     }
+
+    assert!(matches!(
+        FindingPurchaseCoordinator::new(
+            purchase_store.clone(),
+            fixture.authority.finding_market_store(),
+            fixture.authority.admission_operation_store(),
+            fixture.authority.tool_outcome_store(),
+            keypair(16),
+            &keypair(16).public_key(),
+            keypair(16),
+            &keypair(16).public_key(),
+            Arc::new(TestTerminalAuthorityStatusResolver::live()),
+            &authority_pin(37, "authority-status"),
+            &market_config().status_feed_operator,
+            &keypair(6).public_key(),
+            VENUE_ID,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityPinMismatch)
+    ));
 
     // A venue-signed admission whose declared purchase window has lapsed
     // by the reservation instant.

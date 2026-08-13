@@ -108,11 +108,15 @@ BEGIN
     SELECT RAISE(ABORT, 'collateral allocation identity is immutable');
 END;
 
-CREATE TRIGGER IF NOT EXISTS collateral_allocations_lifecycle
+DROP TRIGGER IF EXISTS collateral_allocations_lifecycle;
+CREATE TRIGGER collateral_allocations_lifecycle
 BEFORE UPDATE OF state ON collateral_allocations
-WHEN NOT (OLD.state = 'live' AND NEW.state IN ('consumed', 'expired', 'released'))
+WHEN NOT (
+    (OLD.state = 'live' AND NEW.state IN ('consumed', 'expired', 'released'))
+    OR (OLD.state = 'consumed' AND NEW.state = 'released')
+)
 BEGIN
-    SELECT RAISE(ABORT, 'collateral allocation leaves live exactly once');
+    SELECT RAISE(ABORT, 'invalid collateral allocation lifecycle');
 END;
 
 CREATE TRIGGER IF NOT EXISTS collateral_allocations_no_delete
@@ -246,6 +250,25 @@ CREATE TRIGGER IF NOT EXISTS finding_activation_attempts_no_delete
 BEFORE DELETE ON finding_activation_attempts
 BEGIN
     SELECT RAISE(ABORT, 'finding activation attempt must be retained');
+END;
+
+CREATE TABLE IF NOT EXISTS finding_expired_activation_attempts (
+    admission_id TEXT NOT NULL PRIMARY KEY,
+    expired_at INTEGER NOT NULL CHECK (expired_at > 0),
+    FOREIGN KEY (admission_id)
+        REFERENCES finding_activation_attempts(admission_id)
+);
+
+CREATE TRIGGER IF NOT EXISTS finding_expired_activation_attempts_immutable
+BEFORE UPDATE ON finding_expired_activation_attempts
+BEGIN
+    SELECT RAISE(ABORT, 'expired finding activation marker is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS finding_expired_activation_attempts_no_delete
+BEFORE DELETE ON finding_expired_activation_attempts
+BEGIN
+    SELECT RAISE(ABORT, 'expired finding activation marker must be retained');
 END;
 
 CREATE TABLE IF NOT EXISTS admissions (
