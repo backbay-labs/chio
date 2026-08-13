@@ -97,6 +97,8 @@ pub enum FindingVerifierError {
     AliasedRuntimeAssuranceAuthorities,
     #[error("verifier report and collateral authorities must be independent")]
     AliasedVerifierAndCollateralAuthorities,
+    #[error("verifier report and status operator authorities must be independent")]
+    AliasedVerifierAndStatusOperatorAuthorities,
     #[error("report body construction failed canonicalization")]
     Canonicalization,
     #[error("report profile does not match the profile used for evaluation")]
@@ -629,6 +631,15 @@ pub fn verify_finding_evidence(
     }
     if trust.collateral_authority.key == trust.profile.body.verifier_report_signer.key {
         return Err(FindingVerifierError::AliasedVerifierAndCollateralAuthorities);
+    }
+    if trust
+        .status_operator_authorization
+        .as_ref()
+        .is_some_and(|authorization| {
+            authorization.operator.key == trust.profile.body.verifier_report_signer.key
+        })
+    {
+        return Err(FindingVerifierError::AliasedVerifierAndStatusOperatorAuthorities);
     }
     if trust.trusted_time < finding.issued_at || trust.trusted_time >= finding.expires_at {
         return Err(FindingVerifierError::FindingInactive);

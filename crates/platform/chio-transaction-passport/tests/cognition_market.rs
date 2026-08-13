@@ -1809,6 +1809,29 @@ fn cognition_market_qualified_profile_rejects_self_signed_verifier_status() -> T
 }
 
 #[test]
+fn cognition_market_qualified_profile_rejects_verifier_as_status_operator() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle
+        .trust
+        .status
+        .as_mut()
+        .ok_or("status trust missing")?
+        .status_operator_authorization
+        .operator
+        .key = bundle.trust.finding_verifier_authority.clone();
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("finding verifier was accepted as the status operator")?
+        .to_string();
+    assert!(
+        error.contains("status operator and finding verifier authorities must be distinct"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_an_expired_status_authority() -> TestResult {
     let mut bundle = build_bundle()?;
     bundle

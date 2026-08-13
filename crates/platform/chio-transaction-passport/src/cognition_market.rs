@@ -178,6 +178,13 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "profile governance and finding verifier authorities must be distinct",
         ));
     }
+    if trust.status.as_ref().is_some_and(|status| {
+        status.status_operator_authorization.operator.key == trust.finding_verifier_authority
+    }) {
+        return Err(claim_failed(
+            "status operator and finding verifier authorities must be distinct",
+        ));
+    }
     // Validate the signed root and the complete graph shape before interpreting
     // cognition-market roles. This also rejects unsupported registered schemas,
     // dangling/cyclic edges, and advisory authority edges.

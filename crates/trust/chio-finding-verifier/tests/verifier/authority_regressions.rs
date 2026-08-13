@@ -284,6 +284,24 @@ fn verifier_report_and_collateral_authorities_must_be_distinct() -> TestResult {
 }
 
 #[test]
+fn verifier_report_and_status_operator_authorities_must_be_distinct() -> TestResult {
+    let fx = fixture()?;
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let (_, mut authorization, freshness) = portable_live_status_proof(&finding.finding_id)?;
+    authorization.operator.key = fx.profile.body.verifier_report_signer.key.clone();
+
+    let mut trust = trust_roots(&fx);
+    trust.status_operator_authorization = Some(authorization);
+    trust.status_freshness_policy = Some(freshness);
+
+    assert_eq!(
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx))).err(),
+        Some(FindingVerifierError::AliasedVerifierAndStatusOperatorAuthorities)
+    );
+    Ok(())
+}
+
+#[test]
 fn runtime_assurance_requires_live_unrevoked_authority_standing() -> TestResult {
     let fx = runtime_fixture(RuntimeAssuranceTier::Verified)?;
 
