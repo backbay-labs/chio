@@ -253,6 +253,7 @@ impl FindingRetractionResolver for VerifiedFindingRetractionResolver {
             || lineage.memory_write_capability_id != provenance.capability_id
             || lineage.delivery_receipt_id.trim().is_empty()
             || lineage.finding_id.trim().is_empty()
+            || lineage.finding_id != query.key
             || lineage.status_feed_id.trim().is_empty()
             || !is_hex64(&lineage.memory_content_sha256)
         {
@@ -363,7 +364,7 @@ mod tests {
         provenance
             .append(MemoryProvenanceAppend {
                 store: "memory".to_owned(),
-                key: "key-1".to_owned(),
+                key: "finding-1".to_owned(),
                 capability_id: "cap-1".to_owned(),
                 receipt_id: "write-receipt-1".to_owned(),
                 written_at: 5,
@@ -407,7 +408,7 @@ mod tests {
         let resolved = resolver(FindingStatusValue::Live, 20, 10)
             .resolve(FindingRetractionQuery {
                 store: "memory",
-                key: "key-1",
+                key: "finding-1",
             })
             .expect("resolve verified memory lineage");
         assert_eq!(resolved.finding_id, "finding-1");
@@ -420,7 +421,7 @@ mod tests {
     fn stale_status_and_missing_provenance_fail_closed() {
         let stale = resolver(FindingStatusValue::Live, 10, 11).resolve(FindingRetractionQuery {
             store: "memory",
-            key: "key-1",
+            key: "finding-1",
         });
         assert_eq!(stale, Err(FindingRetractionResolveError::StaleStatus));
 
@@ -440,7 +441,7 @@ mod tests {
             resolver_with_lineage_feed(FindingStatusValue::Live, 20, 10, "status-feed/other-venue")
                 .resolve(FindingRetractionQuery {
                     store: "memory",
-                    key: "key-1",
+                    key: "finding-1",
                 });
         assert_eq!(
             mismatch,
@@ -456,10 +457,66 @@ mod tests {
             let resolved = resolver(value, 20, 10)
                 .resolve(FindingRetractionQuery {
                     store: "memory",
-                    key: "key-1",
+                    key: "finding-1",
                 })
                 .expect("resolve sticky status");
             assert_eq!(resolved.value, value);
         }
+    }
+
+    #[test]
+    fn lineage_finding_must_match_the_requested_memory_key() {
+        let provenance = Arc::new(InMemoryMemoryProvenanceStore::new());
+        provenance
+            .append(MemoryProvenanceAppend {
+                store: "memory".to_owned(),
+                key: "finding-alias".to_owned(),
+                capability_id: "cap-1".to_owned(),
+                receipt_id: "write-receipt-1".to_owned(),
+                written_at: 5,
+            })
+            .expect("append aliased test provenance");
+        let lineage = Arc::new(StaticLineage {
+            value: Some(VerifiedFindingDeliveryLineage {
+                memory_write_receipt_id: "write-receipt-1".to_owned(),
+                memory_write_capability_id: "cap-1".to_owned(),
+                delivery_receipt_id: "delivery-receipt-1".to_owned(),
+                finding_id: "finding-1".to_owned(),
+                status_feed_id: "feed-1".to_owned(),
+                memory_content_sha256: "c".repeat(64),
+            }),
+        });
+        let status = Arc::new(StaticStatus {
+            value: Some(AuthenticatedFindingStatus {
+                finding_id: "finding-1".to_owned(),
+                feed_id: "feed-1".to_owned(),
+                map_epoch: 7,
+                epoch_id: "a".repeat(64),
+                root_hash: "b".repeat(64),
+                checked_at: 9,
+                valid_until: 20,
+                value: FindingStatusValue::Live,
+            }),
+        });
+        let resolver = VerifiedFindingRetractionResolver::new(
+            "resolver-1",
+            "feed-1",
+            provenance,
+            lineage,
+            status,
+            Arc::new(StaticClock(10)),
+        )
+        .expect("build aliased test resolver");
+
+        assert_eq!(
+            resolver.resolve(FindingRetractionQuery {
+                store: "memory",
+                key: "finding-alias",
+            }),
+            Err(FindingRetractionResolveError::InvalidLineage(
+                "write receipt, capability, delivery receipt, or finding binding differs"
+                    .to_owned(),
+            ))
+        );
     }
 }

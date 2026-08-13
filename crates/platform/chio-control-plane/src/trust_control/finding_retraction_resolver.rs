@@ -296,12 +296,13 @@ impl FindingStatusCache for SqliteFindingStatusCache {
                 FindingStatusProofKind::Inclusion,
             ),
         };
+        let verified_at = self.clock.now_unix_secs()?;
         verify_proof_record(
             &self.operator,
             &self.service_bond,
             self.max_epoch_age_secs,
             &proof,
-            now,
+            verified_at,
         )
         .map_err(FindingRetractionResolveError::InvalidStatus)?;
         if proof.kind != expected_kind {

@@ -23,6 +23,8 @@ use chio_store_sqlite::{
     FindingStatusProofRecord, FindingStatusStoreError, FindingStickyStatus,
     SqliteFindingStatusStore, VerifiedFindingStatusProofInput,
 };
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
     FindingStatusOperatorPin, FindingStatusServiceBond, FINDING_STATUS_MAX_EPOCH_AGE_SECS,
@@ -34,6 +36,22 @@ struct PortableStatusMaterial {
     signed_epoch: SignedFindingStatusEpoch,
     signed_epoch_bytes: Vec<u8>,
     verified: VerifiedFindingStatusProof,
+}
+
+pub(crate) trait FindingStatusAdmissionClock: Send + Sync {
+    fn now_unix_secs(&self) -> Result<u64, String>;
+}
+
+#[derive(Debug, Default)]
+struct SystemFindingStatusAdmissionClock;
+
+impl FindingStatusAdmissionClock for SystemFindingStatusAdmissionClock {
+    fn now_unix_secs(&self) -> Result<u64, String> {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .map_err(|error| format!("finding status clock is unavailable: {error}"))
+    }
 }
 
 struct ProofFields<'a> {
@@ -212,6 +230,7 @@ pub struct MarketFindingStatusVerifier {
     service_bond: FindingStatusServiceBond,
     max_epoch_age_secs: u64,
     store: SqliteFindingStatusStore,
+    clock: Arc<dyn FindingStatusAdmissionClock>,
 }
 
 impl MarketFindingStatusVerifier {
@@ -222,6 +241,22 @@ impl MarketFindingStatusVerifier {
         service_bond: FindingStatusServiceBond,
         max_epoch_age_secs: u64,
         store: SqliteFindingStatusStore,
+    ) -> Result<Self, String> {
+        Self::new_with_clock(
+            operator,
+            service_bond,
+            max_epoch_age_secs,
+            store,
+            Arc::new(SystemFindingStatusAdmissionClock),
+        )
+    }
+
+    pub(crate) fn new_with_clock(
+        operator: FindingStatusOperatorPin,
+        service_bond: FindingStatusServiceBond,
+        max_epoch_age_secs: u64,
+        store: SqliteFindingStatusStore,
+        clock: Arc<dyn FindingStatusAdmissionClock>,
     ) -> Result<Self, String> {
         if max_epoch_age_secs == 0 || max_epoch_age_secs > FINDING_STATUS_MAX_EPOCH_AGE_SECS {
             return Err(
@@ -239,6 +274,7 @@ impl MarketFindingStatusVerifier {
             service_bond,
             max_epoch_age_secs,
             store,
+            clock,
         })
     }
 
@@ -340,17 +376,36 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
                 recorded_at: now_unix_secs,
             })
             .map_err(|error| error.to_string())?;
-        match self
+        let decision = self
             .store
             .status_for_purchase(fields.feed_id, fields.finding_id, now_unix_secs)
-            .map_err(|error| error.to_string())?
-        {
+            .map_err(|error| error.to_string())?;
+        let refreshed_now = self.clock.now_unix_secs()?.max(now_unix_secs);
+        let refreshed_material = self.verify_at(view, refreshed_now, true)?;
+        if &refreshed_material.verified != verified {
+            return Err("finding status proof changed during final admission".to_owned());
+        }
+        verify_epoch_record(
+            &self.operator,
+            &self.service_bond,
+            self.max_epoch_age_secs,
+            &current_epoch,
+            refreshed_now,
+        )?;
+        match decision {
             FindingStatusDecision::VerifiedLive(record)
                 if record.proof_sha256 == verified.proof_sha256
                     && record.map_epoch == verified.map_epoch
                     && record.epoch_id == verified.status_epoch_id
                     && record.root_hash == verified.root_hash =>
             {
+                verify_proof_record(
+                    &self.operator,
+                    &self.service_bond,
+                    self.max_epoch_age_secs,
+                    &record,
+                    refreshed_now,
+                )?;
                 Ok(())
             }
             FindingStatusDecision::VerifiedLive(_) => {

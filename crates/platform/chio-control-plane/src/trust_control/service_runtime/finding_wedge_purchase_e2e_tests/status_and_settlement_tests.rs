@@ -11,6 +11,29 @@ fn assert_denied_with(response: &ToolCallResponse, fragment: &str) {
     );
 }
 
+struct FixedStatusAdmissionClock(u64);
+
+impl crate::trust_control::finding_status_verifier::FindingStatusAdmissionClock
+    for FixedStatusAdmissionClock
+{
+    fn now_unix_secs(&self) -> Result<u64, String> {
+        Ok(self.0)
+    }
+}
+
+struct AdvancingRetractionClock {
+    now: AtomicU64,
+    step_secs: u64,
+}
+
+impl chio_guards::finding_retraction::FindingRetractionClock for AdvancingRetractionClock {
+    fn now_unix_secs(
+        &self,
+    ) -> Result<u64, chio_guards::finding_retraction::FindingRetractionResolveError> {
+        Ok(self.now.fetch_add(self.step_secs, Ordering::SeqCst))
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn finding_purchase_without_status_verifier_denies_before_effects() -> TestResult {
     let lane = open_lane(LaneOptions {
@@ -45,6 +68,56 @@ async fn finding_status_retraction() -> TestResult {
         )?;
     let now = unix_timestamp_now();
     let live = publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    let stale_after_store_reads = now + config.status_max_epoch_age_secs + 1;
+    let refreshed_verifier = MarketFindingStatusVerifier::new_with_clock(
+        config.status_feed_operator.clone(),
+        config.status_feed_service_bond.clone(),
+        config.status_max_epoch_age_secs,
+        status_store.clone(),
+        Arc::new(FixedStatusAdmissionClock(stale_after_store_reads)),
+    )?;
+    let live_b64 = STANDARD.encode(&live.proof_bytes);
+    let live_view = chio_kernel::finding_purchase::FindingStatusProofContextView {
+        proof_b64: &live_b64,
+        expected_finding_id: &lane.deployment.web.finding_id,
+        expected_feed_id: &config.status_feed_operator_ref,
+    };
+    let verified_live = chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_proof(
+        &refreshed_verifier,
+        &live_view,
+    )?;
+    let stale_admission =
+        chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_admission(
+            &refreshed_verifier,
+            &live_view,
+            &verified_live,
+            now,
+        )
+        .expect_err("time refreshed after status-store work must reject an expired epoch");
+    assert!(
+        stale_admission.contains("stale") || stale_admission.contains("freshness"),
+        "unexpected refreshed-time rejection: {stale_admission}"
+    );
+
+    let cache = crate::trust_control::finding_retraction_resolver::SqliteFindingStatusCache::new(
+        &config,
+        status_store.clone(),
+        Arc::new(AdvancingRetractionClock {
+            now: AtomicU64::new(now),
+            step_secs: config.status_max_epoch_age_secs + 1,
+        }),
+    )?;
+    let stale_cache = chio_guards::finding_retraction::FindingStatusCache::authenticated_status(
+        &cache,
+        &lane.deployment.web.finding_id,
+    )
+    .expect_err("time refreshed after cache reads must reject an expired epoch");
+    assert!(matches!(
+        &stale_cache,
+        chio_guards::finding_retraction::FindingRetractionResolveError::InvalidStatus(ref message)
+            if message.contains("stale") || message.contains("freshness")
+    ), "unexpected refreshed-cache rejection: {stale_cache:?}");
+
     let duplicate_live =
         publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now + 1)?;
     assert_eq!(duplicate_live.proof_sha256, live.proof_sha256);
@@ -337,6 +410,22 @@ async fn finding_status_retraction() -> TestResult {
 
     let anchor_refresh_at = status_gate_now + 2;
     assert!(!status_gate_publisher.epoch_refresh_required(&[], anchor_refresh_at)?);
+    let prior_invalid_refresh_epoch = status_gate_store
+        .get_feed_floor(&config.status_feed_operator_ref)?
+        .map_epoch;
+    let invalid_anchors = (0..17)
+        .map(|index| format!("anchor://finding-status/invalid-{index}"))
+        .collect::<Vec<_>>();
+    let invalid_refresh = status_gate_publisher
+        .publish_epoch_refresh(&invalid_anchors, anchor_refresh_at)
+        .expect_err("an invalid root-only epoch must fail before advancing the floor");
+    assert!(invalid_refresh.contains("anchor_refs"));
+    assert_eq!(
+        status_gate_store
+            .get_feed_floor(&config.status_feed_operator_ref)?
+            .map_epoch,
+        prior_invalid_refresh_epoch
+    );
     let finalized_anchors = vec!["anchor://finding-status/finalized-1".to_owned()];
     assert!(status_gate_publisher
         .epoch_refresh_required(&finalized_anchors, anchor_refresh_at)?);

@@ -159,7 +159,10 @@ impl FindingStatusEpochPublisher {
             valid_until,
         };
         body.status_epoch_id = compute_status_epoch_id(&body).map_err(|error| error.to_string())?;
-        SignedExportEnvelope::sign(body, &self.operator_keypair).map_err(|error| error.to_string())
+        let signed = SignedExportEnvelope::sign(body, &self.operator_keypair)
+            .map_err(|error| error.to_string())?;
+        signed.body.validate().map_err(|error| error.to_string())?;
+        Ok(signed)
     }
 
     /// Reuse the current signed map for point proofs while it remains live.

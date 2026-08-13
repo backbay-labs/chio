@@ -553,7 +553,7 @@ fn fixture_slash_penalty() -> Result<SignedOpenMarketPenalty, AnyError> {
         expires_at: Some(KEY_VALID_UNTIL),
         evidence_refs: vec![OpenMarketEvidenceReference {
             kind: OpenMarketEvidenceKind::External,
-            reference_id: "outcome-finalizing-fixture".to_string(),
+            reference_id: byte_hex64(0xb3),
             uri: None,
             sha256: Some(byte_hex64(0xb4)),
         }],
