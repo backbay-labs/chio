@@ -1,5 +1,6 @@
 use super::{
-    live_admission_epoch, FindingMarketConfig, FindingSearchAdmissionView, SignedFindingAdmission,
+    live_admission_epoch, verify_status_operator_authority_lifecycle, FindingMarketConfig,
+    FindingSearchAdmissionView, SignedFindingAdmission, SignedFindingAuthorityStatus,
     SqliteFindingMarketStore,
 };
 
@@ -10,9 +11,19 @@ use super::{
 pub(super) fn current_admission_view(
     store: &SqliteFindingMarketStore,
     config: &FindingMarketConfig,
+    authority_status: Option<&SignedFindingAuthorityStatus>,
     finding_id: &str,
     now: u64,
 ) -> Option<FindingSearchAdmissionView> {
+    let authority_status = authority_status?;
+    verify_status_operator_authority_lifecycle(
+        &authority_status,
+        config,
+        &config.status_feed_operator.feed_id,
+        now,
+        "admission view",
+    )
+    .ok()?;
     store
         .require_verified_live_status(
             &config.status_feed_operator.feed_id,

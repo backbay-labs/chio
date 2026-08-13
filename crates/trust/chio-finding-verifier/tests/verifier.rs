@@ -388,10 +388,11 @@ fn fixture_with_runtime_assurance(
     let second_bytes = canonical_json_bytes(&second)?;
     let leaves = [first_bytes.clone(), second_bytes.clone()];
     let tree = MerkleTree::from_leaves(&leaves)?;
+    let checkpoint_signer = keypair(23);
     let checkpoint = checkpoint_at(
-        build_checkpoint(1, 1, 2, &leaves, &kernel)?,
+        build_checkpoint(1, 1, 2, &leaves, &checkpoint_signer)?,
         1_750_000_001,
-        &kernel,
+        &checkpoint_signer,
     )?;
     let checkpoint_transparency = build_checkpoint_transparency(std::slice::from_ref(&checkpoint))?;
     let log_id = checkpoint_log_id(&checkpoint);
@@ -418,7 +419,7 @@ fn fixture_with_runtime_assurance(
         ],
         checkpoint_logs: vec![FindingCheckpointLogPolicy {
             log_id,
-            signer: key_policy(21, "checkpoint"),
+            signer: key_policy(23, "checkpoint"),
         }],
         bbs_projection_issuer: FindingBbsIssuerPolicy {
             issuer_fingerprint: "bbs-issuer-fp".to_string(),
@@ -935,6 +936,33 @@ fn portable_live_status_proof_for_feed(
     ))
 }
 
+fn install_status_operator_standing(
+    fx: &Fixture,
+    trust: &mut FindingVerifierTrustRoots,
+    authorization: &FindingStatusOperatorAuthorization,
+    observed_at: u64,
+) -> Result<(), Box<dyn Error>> {
+    let standing = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: authorization.operator.revocation_status_ref.clone(),
+            authority_id: authorization.operator.authority_id.clone(),
+            key: authorization.operator.key.clone(),
+            key_epoch: authorization.operator.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &fx.checkpoint_status_authority,
+    )?;
+    trust
+        .checkpoint_signer_status
+        .as_mut()
+        .ok_or("missing signer-status trust")?
+        .signed_statuses
+        .push(standing);
+    Ok(())
+}
+
 fn clone_receipts(fx: &Fixture) -> Vec<ResolvedReceiptEvidence> {
     fx.receipts
         .iter()
@@ -1013,7 +1041,7 @@ fn resolved_delivery_with_times(
     let receipt_bytes = canonical_json_bytes(&receipt)?;
     let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_bytes))?;
     let prior_chain_leaf = checkpoint_chain_leaf_hash(&fx.checkpoint.body)?;
-    let checkpoint_signer = keypair(21);
+    let checkpoint_signer = keypair(23);
     let checkpoint = checkpoint_at(
         build_checkpoint_with_previous(
             2,
@@ -1444,7 +1472,7 @@ fn production_checkpoints_cannot_postdate_the_finding() -> TestResult {
     evidence.checkpoints[0] = checkpoint_at(
         evidence.checkpoints[0].clone(),
         trust.trusted_time.saturating_add(1),
-        &keypair(21),
+        &keypair(23),
     )?;
     evidence.checkpoint_transparency = build_checkpoint_transparency(&evidence.checkpoints)?;
 
@@ -1471,7 +1499,7 @@ fn production_receipts_cannot_postdate_their_checkpoint() -> TestResult {
     evidence.checkpoints[0] = checkpoint_at(
         evidence.checkpoints[0].clone(),
         fx.receipts[0].receipt.timestamp,
-        &keypair(21),
+        &keypair(23),
     )?;
     evidence.checkpoint_transparency = build_checkpoint_transparency(&evidence.checkpoints)?;
 
@@ -1566,6 +1594,7 @@ fn portable_status_proof_verifies_and_is_pinned_into_signed_report() -> TestResu
     let (status_bytes, authorization, freshness) = portable_live_status_proof(&finding.finding_id)?;
     let mut trust = trust_roots(&fx);
     trust.trusted_time = freshness.now;
+    install_status_operator_standing(&fx, &mut trust, &authorization, freshness.now)?;
     trust.status_operator_authorization = Some(authorization);
     trust.status_freshness_policy = Some(freshness);
     let mut evidence = bundle(&fx, clone_receipts(&fx));
@@ -1600,6 +1629,40 @@ fn portable_status_proof_verifies_and_is_pinned_into_signed_report() -> TestResu
 }
 
 #[test]
+fn portable_status_proof_rejects_revoked_operator_standing() -> TestResult {
+    let fx = fixture()?;
+    let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    let (status_bytes, authorization, freshness) = portable_live_status_proof(&finding.finding_id)?;
+    let mut trust = trust_roots(&fx);
+    trust.trusted_time = freshness.now;
+    install_status_operator_standing(&fx, &mut trust, &authorization, freshness.now)?;
+    let standing = trust
+        .checkpoint_signer_status
+        .as_mut()
+        .ok_or("missing signer-status trust")?
+        .signed_statuses
+        .iter_mut()
+        .find(|status| status.body.authority_id == authorization.operator.authority_id)
+        .ok_or("status operator standing missing")?;
+    standing.body.revoked_from = Some(freshness.now);
+    *standing = SignedExportEnvelope::sign(standing.body.clone(), &fx.checkpoint_status_authority)?;
+    trust.status_operator_authorization = Some(authorization);
+    trust.status_freshness_policy = Some(freshness);
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.status_proof_input = Some(&status_bytes);
+
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    let status = draft
+        .facets()
+        .iter()
+        .find(|facet| facet.facet == FindingFacetKind::StatusLiveness)
+        .ok_or("status-liveness facet missing")?;
+    assert_eq!(status.outcome, FindingFacetOutcome::Failed);
+    assert!(status.reason.contains("status operator is revoked"));
+    Ok(())
+}
+
+#[test]
 fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> TestResult {
     let fx = fixture()?;
     let finding: Finding = serde_json::from_str(&fx.raw_finding)?;
@@ -1609,6 +1672,7 @@ fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> T
 
     let mut baseline_trust = trust_roots(&fx);
     baseline_trust.trusted_time = freshness.now;
+    install_status_operator_standing(&fx, &mut baseline_trust, &authorization, freshness.now)?;
     baseline_trust.status_operator_authorization = Some(authorization.clone());
     baseline_trust.status_freshness_policy = Some(freshness);
     let baseline = verify_finding_evidence(&fx.raw_finding, &baseline_trust, &evidence)?;
@@ -1617,11 +1681,18 @@ fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> T
         Some(FindingFacetOutcome::Verified)
     );
 
+    let baseline_authorization = authorization.clone();
     let mut alternate_authorization = authorization;
     alternate_authorization.operator.rotation_policy_ref =
         "status-rotation-policy/alternate".to_owned();
     let mut authorization_trust = trust_roots(&fx);
     authorization_trust.trusted_time = freshness.now;
+    install_status_operator_standing(
+        &fx,
+        &mut authorization_trust,
+        &alternate_authorization,
+        freshness.now,
+    )?;
     authorization_trust.status_operator_authorization = Some(alternate_authorization);
     authorization_trust.status_freshness_policy = Some(freshness);
     let authorization_changed =
@@ -1637,8 +1708,13 @@ fn resolved_bundle_commitment_includes_status_authorization_and_freshness() -> T
 
     let mut freshness_trust = trust_roots(&fx);
     freshness_trust.trusted_time = freshness.now;
-    freshness_trust.status_operator_authorization =
-        baseline_trust.status_operator_authorization.clone();
+    install_status_operator_standing(
+        &fx,
+        &mut freshness_trust,
+        &baseline_authorization,
+        freshness.now,
+    )?;
+    freshness_trust.status_operator_authorization = Some(baseline_authorization);
     freshness_trust.status_freshness_policy = Some(FindingStatusFreshnessPolicy {
         now: freshness.now,
         max_epoch_age_secs: freshness.max_epoch_age_secs + 1,
@@ -2020,7 +2096,7 @@ fn checkpoint_equivocation_fails_before_membership() -> TestResult {
     let fx = fixture()?;
     let mut fork = fx.checkpoint.clone();
     fork.body.issued_at = fork.body.issued_at.saturating_add(1);
-    fork.signature = keypair(21).sign(&canonical_json_bytes(&fork.body)?);
+    fork.signature = keypair(23).sign(&canonical_json_bytes(&fork.body)?);
     let checkpoints = vec![fx.checkpoint.clone(), fork];
     let transparency = build_checkpoint_transparency(&checkpoints)?;
 

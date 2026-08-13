@@ -124,7 +124,7 @@ pub enum PurchaseCoordinatorError {
     AuthorityPinMismatch,
     #[error("authority-status pin is invalid or aliases a terminal signing authority")]
     AuthorityStatusPin,
-    #[error("venue authority pin is invalid or aliases a terminal signing authority")]
+    #[error("venue authority pin is invalid or aliases another trusted authority")]
     VenuePin,
     #[error("reserve request signature does not verify under the buyer key")]
     BuyerSignature,
@@ -265,6 +265,8 @@ impl FindingPurchaseCoordinator {
         if venue_id.is_empty()
             || venue_key == purchase_authority.public_key()
             || venue_key == failed_delivery_authority.public_key()
+            || venue_key == authority_status_key
+            || venue_key == status_operator_key
         {
             return Err(PurchaseCoordinatorError::VenuePin);
         }

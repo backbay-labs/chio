@@ -53,6 +53,7 @@ fn metrics_state(service_token: &str) -> TrustServiceState {
         cluster_progress: None,
         finding_rail: None,
         finding_purchase_executor: None,
+        finding_authority_status_resolver: None,
         finding_challenge_executor: None,
     }
 }

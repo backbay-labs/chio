@@ -317,6 +317,25 @@ fn signed_listing_authority_status(
     )?)
 }
 
+fn signed_status_operator_authority_status(
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = market_config().status_feed_operator.authority;
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
 fn signed_seller_authorization_status(
     authorization: &SignedFindingSellerAuthorization,
     observed_at: u64,
@@ -544,6 +563,9 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(Arc::new(VenueLedgerRailObserver)),
         finding_purchase_executor: None,
+        finding_authority_status_resolver: Some(Arc::new(
+            TestTerminalAuthorityStatusResolver::live(),
+        )),
         finding_challenge_executor: None,
     }
 }
@@ -740,7 +762,7 @@ fn build_profile(
         ],
         checkpoint_logs: vec![FindingCheckpointLogPolicy {
             log_id,
-            signer: key_policy(21, "checkpoint"),
+            signer: key_policy(23, "checkpoint"),
         }],
         bbs_projection_issuer: FindingBbsIssuerPolicy {
             issuer_fingerprint: "bbs-issuer-fp".to_string(),
@@ -1176,16 +1198,17 @@ impl MarketWeb {
         let first_bytes = canonical_json_bytes(&first)?;
         let second_bytes = canonical_json_bytes(&second)?;
         let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
+        let checkpoint_signer = keypair(23);
         let checkpoint = checkpoint_at(
             build_checkpoint(
                 1,
                 1,
                 2,
                 &[first_bytes.clone(), second_bytes.clone()],
-                &kernel,
+                &checkpoint_signer,
             )?,
             ISSUED_AT,
-            &kernel,
+            &checkpoint_signer,
         )?;
         let log_id = checkpoint_log_id(&checkpoint);
         let evidence_checkpoint_ref = format!("{log_id}#1");
@@ -1378,6 +1401,9 @@ impl MarketWeb {
             "listingAuthorityStatus": serde_json::to_value(signed_listing_authority_status(
                 unix_timestamp_now(),
             )?)?,
+            "statusOperatorAuthorityStatus": serde_json::to_value(
+                signed_status_operator_authority_status(unix_timestamp_now())?,
+            )?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
             "sellerAuthorizationStatus": serde_json::to_value(
                 signed_seller_authorization_status(
@@ -4609,6 +4635,30 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         ));
     }
 
+    for aliased_venue_pin in [
+        authority_pin(37, "venue-as-authority-status"),
+        authority_pin(36, "venue-as-status-operator"),
+    ] {
+        assert!(matches!(
+            FindingPurchaseCoordinator::new(
+                purchase_store.clone(),
+                fixture.authority.finding_market_store(),
+                fixture.authority.admission_operation_store(),
+                fixture.authority.tool_outcome_store(),
+                keypair(16),
+                &keypair(16).public_key(),
+                keypair(17),
+                &keypair(17).public_key(),
+                Arc::new(TestTerminalAuthorityStatusResolver::live()),
+                &authority_pin(37, "authority-status"),
+                &market_config().status_feed_operator,
+                &aliased_venue_pin,
+                VENUE_ID,
+            ),
+            Err(PurchaseCoordinatorError::VenuePin)
+        ));
+    }
+
     assert!(matches!(
         FindingPurchaseCoordinator::new(
             purchase_store.clone(),
@@ -5184,6 +5234,9 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
         "listingAuthorityStatus": serde_json::to_value(signed_listing_authority_status(
             unix_timestamp_now(),
         )?)?,
+        "statusOperatorAuthorityStatus": serde_json::to_value(
+            signed_status_operator_authority_status(unix_timestamp_now())?,
+        )?,
         "sellerAuthorization": serde_json::to_value(&web.authorization)?,
         "sellerAuthorizationStatus": serde_json::to_value(
             signed_seller_authorization_status(&web.authorization, unix_timestamp_now())?,

@@ -14,6 +14,9 @@ pub(crate) async fn serve_async(
     finding_purchase_executor: Option<
         super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
     >,
+    finding_authority_status_resolver: Option<
+        Arc<dyn super::super::finding_challenge_coordinator::FindingAuthorityStatusResolver>,
+    >,
     finding_challenge_executor: Option<
         Arc<dyn super::super::finding_challenge_handlers::FindingChallengeSubmissionExecutor>,
     >,
@@ -22,6 +25,7 @@ pub(crate) async fn serve_async(
         config,
         injected_joint_authority_store,
         finding_purchase_executor,
+        finding_authority_status_resolver,
         finding_challenge_executor,
     )
     .await
@@ -32,6 +36,9 @@ async fn serve_async_inner(
     injected_joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
     finding_purchase_executor: Option<
         super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    >,
+    finding_authority_status_resolver: Option<
+        Arc<dyn super::super::finding_challenge_coordinator::FindingAuthorityStatusResolver>,
     >,
     finding_challenge_executor: Option<
         Arc<dyn super::super::finding_challenge_handlers::FindingChallengeSubmissionExecutor>,
@@ -104,6 +111,7 @@ async fn serve_async_inner(
         cluster_progress,
         finding_rail,
         finding_purchase_executor,
+        finding_authority_status_resolver,
         finding_challenge_executor,
     };
     let controller = ShutdownController::install();
@@ -393,7 +401,7 @@ mod windows_authority_tests {
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         };
 
-        let Err(error) = serve_async(config).await else {
+        let Err(error) = serve_async(config, None, None, None, None).await else {
             return Err(CliError::cli_other_error(
                 "Windows trust service unexpectedly started with a joint authority database",
             ));

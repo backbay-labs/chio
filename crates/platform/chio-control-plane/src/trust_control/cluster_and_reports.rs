@@ -99,6 +99,7 @@ mod cluster_and_reports_tests {
             cluster_progress,
             finding_rail: None,
             finding_purchase_executor: None,
+            finding_authority_status_resolver: None,
             finding_challenge_executor: None,
         };
         // A fresh peer starts with force_snapshot = true (it must snapshot before

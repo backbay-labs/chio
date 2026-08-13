@@ -713,10 +713,24 @@ fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> 
     } else {
         None
     };
+    let status_operator_authority_status = state
+        .finding_authority_status_resolver
+        .as_ref()
+        .and_then(|resolver| {
+            resolver
+                .resolve(&config.status_feed_operator.authority, now)
+                .ok()
+        });
     let results: Vec<FindingSearchRowView> = rows
         .into_iter()
         .map(|row| {
-            let admission = current_admission_view(&store, &config, &row.finding_id, now);
+            let admission = current_admission_view(
+                &store,
+                &config,
+                status_operator_authority_status.as_ref(),
+                &row.finding_id,
+                now,
+            );
             FindingSearchRowView {
                 finding_id: row.finding_id,
                 artifact_sha256: row.artifact_sha256,
@@ -916,6 +930,7 @@ pub(crate) struct FindingActivateRequest {
     pub profile_governance_authority_status: SignedFindingAuthorityStatus,
     pub venue_authority_status: SignedFindingAuthorityStatus,
     pub listing_authority_status: SignedFindingAuthorityStatus,
+    pub status_operator_authority_status: SignedFindingAuthorityStatus,
     pub seller_authorization: SignedFindingSellerAuthorization,
     pub seller_authorization_status: SignedFindingAuthorityStatus,
     pub terms: SignedFindingMarketTerms,
@@ -1006,11 +1021,12 @@ fn verify_listing_authority_lifecycle(
     Ok(())
 }
 
-fn verify_status_operator_authority_lifecycle(
+pub(super) fn verify_status_operator_authority_lifecycle(
     authority_status: &SignedFindingAuthorityStatus,
     config: &FindingMarketConfig,
     feed_id: &str,
     now: u64,
+    boundary: &str,
 ) -> Result<(), String> {
     let operator_key = config
         .status_feed_operator
@@ -1025,7 +1041,7 @@ fn verify_status_operator_authority_lifecycle(
     let operator = &config.status_feed_operator.authority;
     let status = &authority_status.body;
     if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
-        return Err("authority-status signer is not live at participation renewal".into());
+        return Err(format!("authority-status signer is not live at {boundary}"));
     }
     if !operator.covers(status.observed_at) {
         return Err("status operator reading is outside its configured authority window".into());
@@ -1040,13 +1056,15 @@ fn verify_status_operator_authority_lifecycle(
     if status.observed_at > now
         || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
     {
-        return Err("status operator reading is not fresh at participation renewal".into());
+        return Err(format!(
+            "status operator reading is not fresh at {boundary}"
+        ));
     }
     if status
         .revoked_from
         .is_some_and(|revoked_from| revoked_from <= now)
     {
-        return Err("status operator is revoked at participation renewal".into());
+        return Err(format!("status operator is revoked at {boundary}"));
     }
     Ok(())
 }
@@ -1403,6 +1421,15 @@ pub(crate) async fn handle_activate_finding(
             )
         }
     };
+    if let Err(error) = verify_status_operator_authority_lifecycle(
+        &request.status_operator_authority_status,
+        &config,
+        &finding.status_feed_ref,
+        authorization_now,
+        "activation",
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
     if finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
         let Some(recipe_sha256) = finding.replay_recipe_sha256.as_deref() else {
             return plain_http_error(StatusCode::BAD_REQUEST, "replay recipe digest missing");
@@ -2082,6 +2109,7 @@ pub(crate) async fn handle_finding_participation(
         &config,
         &finding.status_feed_ref,
         now,
+        "participation renewal",
     ) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
@@ -2236,7 +2264,23 @@ pub(crate) async fn handle_get_finding_admission(
         Err(response) => return response,
     };
     let now = unix_timestamp_now();
-    if current_admission_view(&store, &config, &finding_id, now).is_none() {
+    let status_operator_authority_status = state
+        .finding_authority_status_resolver
+        .as_ref()
+        .and_then(|resolver| {
+            resolver
+                .resolve(&config.status_feed_operator.authority, now)
+                .ok()
+        });
+    if current_admission_view(
+        &store,
+        &config,
+        status_operator_authority_status.as_ref(),
+        &finding_id,
+        now,
+    )
+    .is_none()
+    {
         return plain_http_error(StatusCode::NOT_FOUND, "no current admission");
     }
     match store.get_current_admission(&finding_id) {

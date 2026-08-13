@@ -1072,6 +1072,11 @@ impl FindingChallengeCoordinator {
         &self.market_config
     }
 
+    /// Resolver used by read paths to recheck current authority standing.
+    pub(crate) fn authority_status_resolver(&self) -> Arc<dyn FindingAuthorityStatusResolver> {
+        Arc::clone(&self.authority_status)
+    }
+
     /// Authenticate and durably record one challenge, charging the
     /// dispute fee and locking the dispute bond for a buyer submission.
     ///

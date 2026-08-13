@@ -24,7 +24,7 @@ pub struct RevokeCapabilityResponse {
 }
 
 pub fn serve(config: TrustServiceConfig) -> Result<(), CliError> {
-    serve_with_optional_finding_challenge_executor(config, None, None, None)
+    serve_with_optional_finding_challenge_executor(config, None, None, None, None)
 }
 
 /// Serve trust control with a checked cognition-market challenge runtime.
@@ -36,11 +36,12 @@ pub fn serve_with_finding_challenge_runtime(
     runtime: FindingChallengeSubmissionRuntime,
 ) -> Result<(), CliError> {
     validate_finding_challenge_runtime(&config, &runtime)?;
-    let (joint_authority_store, executor) = runtime.into_parts();
+    let (joint_authority_store, executor, authority_status_resolver) = runtime.into_parts();
     serve_with_optional_finding_challenge_executor(
         config,
         Some(joint_authority_store),
         None,
+        Some(authority_status_resolver),
         Some(executor),
     )
 }
@@ -59,11 +60,13 @@ pub fn serve_with_finding_market_runtime(
         &challenge_runtime.mutation_fence(),
         &purchase_executor.mutation_fence(),
     )?;
-    let (joint_authority_store, challenge_executor) = challenge_runtime.into_parts();
+    let (joint_authority_store, challenge_executor, authority_status_resolver) =
+        challenge_runtime.into_parts();
     serve_with_optional_finding_challenge_executor(
         config,
         Some(joint_authority_store),
         Some(purchase_executor),
+        Some(authority_status_resolver),
         Some(challenge_executor),
     )
 }
@@ -102,6 +105,9 @@ fn serve_with_optional_finding_challenge_executor(
     config: TrustServiceConfig,
     joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
     purchase_executor: Option<super::finding_purchase_routes::SharedFindingPurchaseExecutor>,
+    authority_status_resolver: Option<
+        Arc<dyn super::finding_challenge_coordinator::FindingAuthorityStatusResolver>,
+    >,
     executor: Option<Arc<dyn FindingChallengeSubmissionExecutor>>,
 ) -> Result<(), CliError> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -114,8 +120,14 @@ fn serve_with_optional_finding_challenge_executor(
             CliError::cli_other_error(format!("failed to start async runtime: {error}"))
         })?;
     runtime.block_on(async move {
-        service_runtime::serve_async(config, joint_authority_store, purchase_executor, executor)
-            .await
+        service_runtime::serve_async(
+            config,
+            joint_authority_store,
+            purchase_executor,
+            authority_status_resolver,
+            executor,
+        )
+        .await
     })
 }
 
@@ -125,7 +137,7 @@ pub fn serve_with_finding_purchase_executor(
     config: TrustServiceConfig,
     executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
 ) -> Result<(), CliError> {
-    serve_with_optional_finding_challenge_executor(config, None, Some(executor), None)
+    serve_with_optional_finding_challenge_executor(config, None, Some(executor), None, None)
 }
 
 #[cfg(test)]

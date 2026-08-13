@@ -178,3 +178,24 @@ async fn participation_rejects_revoked_status_operator_before_fee_intent() -> Te
     assert!(stack.store.get_fee_event(&renewal_key)?.is_none());
     Ok(())
 }
+
+#[tokio::test]
+async fn admission_views_recheck_current_status_operator_standing() -> TestResult {
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let resolver = Arc::new(TestStatusOperatorAuthorityResolver::default());
+    stack.state.finding_authority_status_resolver = Some(resolver.clone());
+    stack.seed_market().await?;
+    let (status, body) = stack.activate().await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    assert!(stack.admission_marker().await?.is_some());
+
+    resolver.revoke(unix_timestamp_now());
+    assert!(stack.admission_marker().await?.is_none());
+    let (status, _) = send(
+        &stack.state,
+        public_get(&format!("/v1/findings/{}/admission", stack.web.finding_id))?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    Ok(())
+}

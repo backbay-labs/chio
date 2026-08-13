@@ -297,6 +297,13 @@ pub fn validate_supported_finding_verifier_profile(
             .checkpoint_logs
             .iter()
             .any(|log| log.signer.key == profile.verifier_report_signer.key)
+        || profile.receipt_signers.iter().any(|receipt| {
+            profile.checkpoint_logs.iter().any(|checkpoint| {
+                receipt.policy.key == checkpoint.signer.key
+                    && receipt.policy.valid_from < checkpoint.signer.valid_until
+                    && checkpoint.signer.valid_from < receipt.policy.valid_until
+            })
+        })
         || profile.required_facets.iter().any(|facet| {
             matches!(
                 facet,
@@ -1071,6 +1078,19 @@ fn evaluate_status_liveness(
             FindingFacetKind::StatusLiveness,
             FindingFacetOutcome::Failed,
             "status proof predates the verified Finding",
+        );
+    }
+    if let Err(error) = verify_authority_status(
+        &authorization.operator,
+        proof_checked_at,
+        freshness.now,
+        trust.checkpoint_signer_status.as_ref(),
+        "status operator",
+    ) {
+        return facet(
+            FindingFacetKind::StatusLiveness,
+            FindingFacetOutcome::Failed,
+            error,
         );
     }
     match verify_status_proof_input(&proof, authorization, freshness) {

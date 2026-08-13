@@ -43,7 +43,7 @@ fn production_checkpoint_must_predate_the_finding() -> TestResult {
         .first_mut()
         .ok_or("production checkpoint missing")?;
     checkpoint.body.issued_at = finding.issued_at.saturating_add(1);
-    checkpoint.signature = keypair(21).sign(&canonical_json_bytes(&checkpoint.body)?);
+    checkpoint.signature = keypair(23).sign(&canonical_json_bytes(&checkpoint.body)?);
     evidence.checkpoint_transparency =
         build_checkpoint_transparency(std::slice::from_ref(checkpoint))?;
 

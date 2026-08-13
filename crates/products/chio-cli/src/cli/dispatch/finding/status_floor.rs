@@ -524,7 +524,8 @@ pub(super) fn advance_status_floor_locked(
         }
     }
 
-    let is_durably_retracted = read_status_retraction(path, status, authorization)?;
+    let is_durably_retracted = legacy_retractions.contains(status.finding_id)
+        || read_status_retraction(path, status, authorization)?;
     if !status.is_retracted && is_durably_retracted {
         return Err(CliError::cli_other_error(
             "finding status response attempts to revive a durably retracted Finding".to_owned(),

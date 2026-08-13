@@ -135,6 +135,43 @@ fn status_floor_keeps_retractions_sticky_per_finding() {
 }
 
 #[test]
+fn status_floor_rejects_a_legacy_retraction_on_the_first_migration_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let floor_path = dir.path().join("status-floor.json");
+    let authorization = authorization();
+    let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
+    let legacy = FindingStatusCliFloorV1 {
+        schema: "chio.finding.status-cli-floor.v1".to_owned(),
+        feed_id: authorization.feed_id.clone(),
+        operator_id: authorization.operator.authority_id.clone(),
+        rotation_policy_ref: authorization.operator.rotation_policy_ref.clone(),
+        operator_key_epoch: authorization.operator.key_epoch,
+        operator_key: Some(authorization.operator.key.clone()),
+        operator_authorization_sha256: authorization_sha256.clone(),
+        key_domain_nonce: 3_318_287_169_837_494,
+        map_epoch: 8,
+        epoch_id: "1".repeat(64),
+        root_hash: "2".repeat(64),
+        retracted_finding_ids: std::iter::once(GOLDEN_FINDING_ID.to_owned()).collect(),
+    };
+    std::fs::write(&floor_path, canonical_json_bytes(&legacy).unwrap()).unwrap();
+
+    let mut attempted_revival = response("non_inclusion");
+    attempted_revival.map_epoch = 9;
+    attempted_revival.epoch_id = "3".repeat(64);
+    attempted_revival.root_hash = "4".repeat(64);
+    let error = advance_status_floor(
+        &floor_path,
+        &attempted_revival.floor_observation(),
+        &authorization,
+        &authorization_sha256,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("durably retracted"), "unexpected error: {error}");
+}
+
+#[test]
 fn status_floor_migrates_v1_epoch_and_sticky_retractions() {
     let dir = tempfile::tempdir().unwrap();
     let floor_path = dir.path().join("status-floor.json");

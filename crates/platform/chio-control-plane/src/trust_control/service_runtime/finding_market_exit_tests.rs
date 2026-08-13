@@ -6,6 +6,7 @@ use super::finding_evidence_test_support::{
     FindingReportInputs as ReportInputs,
 };
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -288,6 +289,42 @@ fn signed_status_operator_authority_status(
     )?)
 }
 
+#[derive(Default)]
+struct TestStatusOperatorAuthorityResolver {
+    revoked_from: AtomicU64,
+}
+
+impl TestStatusOperatorAuthorityResolver {
+    fn revoke(&self, revoked_from: u64) {
+        self.revoked_from.store(revoked_from, Ordering::SeqCst);
+    }
+}
+
+impl crate::trust_control::finding_challenge_coordinator::FindingAuthorityStatusResolver
+    for TestStatusOperatorAuthorityResolver
+{
+    fn resolve(
+        &self,
+        pin: &FindingAuthorityPin,
+        now: u64,
+    ) -> Result<SignedFindingAuthorityStatus, String> {
+        let revoked_from = self.revoked_from.load(Ordering::SeqCst);
+        SignedExportEnvelope::sign(
+            FindingAuthorityStatus {
+                schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: pin.revocation_status_ref.clone(),
+                authority_id: pin.authority_id.clone(),
+                key: pin.key().map_err(|error| error.to_string())?,
+                key_epoch: pin.key_epoch,
+                revoked_from: (revoked_from != 0).then_some(revoked_from),
+                observed_at: now,
+            },
+            &keypair(37),
+        )
+        .map_err(|error| error.to_string())
+    }
+}
+
 fn participation_request(
     schedule: &SignedOpenMarketFeeSchedule,
     revoked_from: Option<u64>,
@@ -445,6 +482,9 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(rail),
         finding_purchase_executor: None,
+        finding_authority_status_resolver: Some(Arc::new(
+            TestStatusOperatorAuthorityResolver::default(),
+        )),
         finding_challenge_executor: None,
     }
 }
@@ -635,7 +675,7 @@ fn build_profile(
         ],
         checkpoint_logs: vec![FindingCheckpointLogPolicy {
             log_id,
-            signer: key_policy(21, "checkpoint"),
+            signer: key_policy(23, "checkpoint"),
         }],
         bbs_projection_issuer: FindingBbsIssuerPolicy {
             issuer_fingerprint: "bbs-issuer-fp".to_string(),
@@ -1110,16 +1150,17 @@ impl MarketWeb {
         let first_bytes = canonical_json_bytes(&first)?;
         let second_bytes = canonical_json_bytes(&second)?;
         let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
+        let checkpoint_signer = keypair(23);
         let checkpoint = checkpoint_at(
             build_checkpoint(
                 1,
                 1,
                 2,
                 &[first_bytes.clone(), second_bytes.clone()],
-                &kernel,
+                &checkpoint_signer,
             )?,
             ISSUED_AT,
-            &kernel,
+            &checkpoint_signer,
         )?;
         let log_id = checkpoint_log_id(&checkpoint);
         let evidence_checkpoint_ref = format!("{log_id}#1");
@@ -1395,6 +1436,9 @@ impl MarketWeb {
                 unix_timestamp_now(),
                 None,
             )?)?,
+            "statusOperatorAuthorityStatus": serde_json::to_value(
+                signed_status_operator_authority_status(unix_timestamp_now(), None)?,
+            )?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
             "sellerAuthorizationStatus": serde_json::to_value(
                 signed_seller_authorization_status(
@@ -1803,6 +1847,21 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         "listing authority is revoked at activation",
     )
     .await?;
+
+    let mut revoked_status_operator_request: serde_json::Value =
+        serde_json::from_str(&web.activate_request(&web.admission, &web.schedule, &web.report)?)?;
+    revoked_status_operator_request["statusOperatorAuthorityStatus"] =
+        serde_json::to_value(signed_status_operator_authority_status(now, Some(now))?)?;
+    assert_activation_rejected(
+        &stack,
+        revoked_status_operator_request.to_string(),
+        "status operator is revoked at activation",
+    )
+    .await?;
+    assert!(stack
+        .store
+        .get_fee_event(&stack.publication_fee_key())?
+        .is_none());
 
     let mut revoked_collateral_request: serde_json::Value =
         serde_json::from_str(&web.activate_request(&web.admission, &web.schedule, &web.report)?)?;
