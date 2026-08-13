@@ -17,7 +17,7 @@ pub(super) fn current_admission_view(
 ) -> Option<FindingSearchAdmissionView> {
     let authority_status = authority_status?;
     verify_status_operator_authority_lifecycle(
-        &authority_status,
+        authority_status,
         config,
         &config.status_feed_operator.feed_id,
         now,
