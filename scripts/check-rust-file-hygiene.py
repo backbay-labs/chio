@@ -383,8 +383,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_handlers.rs": allow(
         "2026-08-31",
-        "cognition finding handler surface with atomic status-gated activation and renewal; capped to current M9 size until split",
-        max_lines=2_216,
+        "cognition finding handler surface with atomic lifecycle-gated activation and authenticated status-operator renewal; capped to current M9 size until split",
+        max_lines=2_236,
     ),
     "crates/economy/chio-finding/tests/challenge_families.rs": allow(
         "2026-08-31",

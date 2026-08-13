@@ -967,6 +967,7 @@ fn verify_seller_authorization_lifecycle(
 
 fn verify_listing_authority_lifecycle(
     listing: &SignedGenericListing,
+    pricing_hint: &chio_open_market::listing::SignedListingPricingHint,
     authority_status: &SignedFindingAuthorityStatus,
     config: &FindingMarketConfig,
     now: u64,
@@ -989,8 +990,10 @@ fn verify_listing_authority_lifecycle(
     {
         return Err("listing authority status does not bind the deployment pin".into());
     }
-    if status.observed_at < listing.body.published_at {
-        return Err("listing authority status predates the listing".into());
+    if status.observed_at < listing.body.published_at
+        || status.observed_at < pricing_hint.body.issued_at
+    {
+        return Err("listing authority status predates the listing or pricing hint".into());
     }
     if status.observed_at > now
         || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
@@ -999,6 +1002,51 @@ fn verify_listing_authority_lifecycle(
     }
     if status.revoked_from.is_some() {
         return Err("listing authority is revoked at activation".into());
+    }
+    Ok(())
+}
+
+fn verify_status_operator_authority_lifecycle(
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    feed_id: &str,
+    now: u64,
+) -> Result<(), String> {
+    let operator_key = config
+        .status_feed_operator
+        .require_live(feed_id, now)
+        .map_err(|error| error.to_string())?;
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let operator = &config.status_feed_operator.authority;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live at participation renewal".into());
+    }
+    if !operator.covers(status.observed_at) {
+        return Err("status operator reading is outside its configured authority window".into());
+    }
+    if status.status_ref != operator.revocation_status_ref
+        || status.authority_id != operator.authority_id
+        || status.key != operator_key
+        || status.key_epoch != operator.key_epoch
+    {
+        return Err("status operator reading does not bind the configured authority".into());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("status operator reading is not fresh at participation renewal".into());
+    }
+    if status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= now)
+    {
+        return Err("status operator is revoked at participation renewal".into());
     }
     Ok(())
 }
@@ -1417,14 +1465,6 @@ pub(crate) async fn handle_activate_finding(
             "finding listing authority is not live at activation",
         );
     }
-    if let Err(error) = verify_listing_authority_lifecycle(
-        &request.listing,
-        &request.listing_authority_status,
-        &config,
-        authorization_now,
-    ) {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error);
-    }
     if request.listing.body.status != GenericListingStatus::Active {
         return plain_http_error(StatusCode::BAD_REQUEST, "finding listing is not active");
     }
@@ -1463,6 +1503,15 @@ pub(crate) async fn handle_activate_finding(
             StatusCode::BAD_REQUEST,
             "pricing hint identity does not match the admitted listing",
         );
+    }
+    if let Err(error) = verify_listing_authority_lifecycle(
+        &request.listing,
+        &request.pricing_hint,
+        &request.listing_authority_status,
+        &config,
+        authorization_now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     if request.pricing_hint.body.capability_scope != admission.capability_scope {
         return plain_http_error(StatusCode::BAD_REQUEST, "pricing hint scope mismatch");
@@ -1980,6 +2029,7 @@ pub(crate) async fn handle_activate_finding(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct FindingParticipationRequest {
     pub fee_schedule: SignedOpenMarketFeeSchedule,
+    pub status_operator_authority_status: SignedFindingAuthorityStatus,
 }
 
 /// POST /v1/findings/{finding_id}/participation (authenticated): collect
@@ -2027,15 +2077,13 @@ pub(crate) async fn handle_finding_participation(
             )
         }
     };
-    if config
-        .status_feed_operator
-        .require_live(&finding.status_feed_ref, now)
-        .is_err()
-    {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "finding status operator is not live for participation renewal",
-        );
+    if let Err(error) = verify_status_operator_authority_lifecycle(
+        &request.status_operator_authority_status,
+        &config,
+        &finding.status_feed_ref,
+        now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     let current_epoch = match live_admission_epoch(&store, &snapshot, &admission, now) {
         Some(epoch) => epoch,

@@ -268,6 +268,38 @@ fn signed_listing_authority_status(
     )?)
 }
 
+fn signed_status_operator_authority_status(
+    observed_at: u64,
+    revoked_from: Option<u64>,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = market_config().status_feed_operator.authority;
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+fn participation_request(
+    schedule: &SignedOpenMarketFeeSchedule,
+    revoked_from: Option<u64>,
+) -> Result<serde_json::Value, AnyError> {
+    Ok(serde_json::json!({
+        "feeSchedule": serde_json::to_value(schedule)?,
+        "statusOperatorAuthorityStatus": serde_json::to_value(
+            signed_status_operator_authority_status(unix_timestamp_now(), revoked_from)?,
+        )?,
+    }))
+}
+
 fn signed_seller_authorization_status(
     authorization: &SignedFindingSellerAuthorization,
     observed_at: u64,
@@ -1873,6 +1905,34 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     )
     .await?;
 
+    let mut post_status_pricing_body = web.pricing_hint.body.clone();
+    post_status_pricing_body.issued_at = unix_timestamp_now().saturating_sub(1);
+    let post_status_pricing =
+        SignedListingPricingHint::sign(post_status_pricing_body, &web.operator)?;
+    let mut post_status_admission =
+        web.admission_body(&web.schedule_sha256, &web.report, ADMISSION_EXPIRES_AT)?;
+    post_status_admission.pricing_hint_envelope_sha256 = digest_of(&post_status_pricing)?;
+    let post_status_admission = sign_admission(post_status_admission, &web.venue)?;
+    let mut post_status_request: serde_json::Value =
+        serde_json::from_str(&web.activate_request_with_listing_and_pricing(
+            &post_status_admission,
+            &web.schedule,
+            &web.report,
+            &web.listing,
+            &post_status_pricing,
+        )?)?;
+    post_status_request["listingAuthorityStatus"] =
+        serde_json::to_value(signed_listing_authority_status(
+            post_status_pricing.body.issued_at.saturating_sub(1),
+            None,
+        )?)?;
+    assert_activation_rejected(
+        &stack,
+        post_status_request.to_string(),
+        "listing authority status predates the listing or pricing hint",
+    )
+    .await?;
+
     for pricing_body in [
         {
             let mut body = web.pricing_hint.body.clone();
@@ -2509,9 +2569,7 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
 
     // A prepaid current epoch cannot be charged again or used to buy a future
     // epoch before that epoch is due.
-    let renewal = serde_json::json!({
-        "feeSchedule": serde_json::to_value(&web.schedule)?,
-    });
+    let renewal = participation_request(&web.schedule, None)?;
     let (status, body) = send(
         &stack.state,
         authed_post(
@@ -2979,10 +3037,7 @@ async fn unpaid_epoch_drops_the_marker_until_renewal() -> TestResult {
 
     // Renewal restores currency. Epochs advance one wall-clock second at
     // a time here, so a short bounded loop of renewals catches up.
-    let renewal = serde_json::json!({
-        "feeSchedule": serde_json::to_value(&stack.web.schedule)?,
-    })
-    .to_string();
+    let renewal = participation_request(&stack.web.schedule, None)?.to_string();
     let mut restored = false;
     for _ in 0..8 {
         let (status, body) = send(
@@ -3044,9 +3099,7 @@ async fn fee_routes_require_an_explicit_authoritative_rail() -> TestResult {
     tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
     let mut no_rail_state = participation.state.clone();
     no_rail_state.finding_rail = None;
-    let renewal = serde_json::json!({
-        "feeSchedule": serde_json::to_value(&participation.web.schedule)?,
-    });
+    let renewal = participation_request(&participation.web.schedule, None)?;
     let (status, body) = send(
         &no_rail_state,
         authed_post(
@@ -3112,9 +3165,7 @@ async fn participation_renewal_rejects_a_mismatched_rail_observation() -> TestRe
     tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
     let mut mismatched_state = stack.state.clone();
     mismatched_state.finding_rail = Some(Arc::new(MismatchedRail));
-    let renewal = serde_json::json!({
-        "feeSchedule": serde_json::to_value(&stack.web.schedule)?,
-    });
+    let renewal = participation_request(&stack.web.schedule, None)?;
     let (status, body) = send(
         &mismatched_state,
         authed_post(
@@ -3158,9 +3209,7 @@ async fn expired_admission_loses_the_marker() -> TestResult {
     )
     .await?;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    let renewal = serde_json::json!({
-        "feeSchedule": serde_json::to_value(&stack.web.schedule)?,
-    });
+    let renewal = participation_request(&stack.web.schedule, None)?;
     let (status, body) = send(
         &stack.state,
         authed_post(

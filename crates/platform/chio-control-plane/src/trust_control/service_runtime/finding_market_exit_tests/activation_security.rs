@@ -124,9 +124,7 @@ async fn retracted_finding_is_hidden_and_cannot_open_market_state() -> TestResul
     assert_eq!(status, StatusCode::NOT_FOUND);
 
     tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
-    let renewal = serde_json::json!({
-        "feeSchedule": serde_json::to_value(&participation.web.schedule)?,
-    });
+    let renewal = participation_request(&participation.web.schedule, None)?;
     let (status, body) = send(
         &participation.state,
         authed_post(
@@ -147,5 +145,36 @@ async fn retracted_finding_is_hidden_and_cannot_open_market_state() -> TestResul
         LISTING_ID,
     );
     assert!(participation.store.get_fee_event(&renewal_key)?.is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn participation_rejects_revoked_status_operator_before_fee_intent() -> TestResult {
+    let mut stack = provision_stack(1, ADMISSION_EXPIRES_AT)?;
+    stack.seed_market().await?;
+    let (status, body) = stack.activate().await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+
+    tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
+    let revoked_at = unix_timestamp_now();
+    let renewal = participation_request(&stack.web.schedule, Some(revoked_at))?;
+    let (status, body) = send(
+        &stack.state,
+        authed_post(
+            &format!("/v1/findings/{}/participation", stack.web.finding_id),
+            renewal.to_string(),
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body)
+        .contains("status operator is revoked at participation renewal"));
+    let renewal_key = finding_fee_idempotency_key(
+        &stack.web.schedule_sha256,
+        &FindingFeeEvent::ParticipationEpoch { epoch_index: 1 },
+        &stack.web.finding_id,
+        LISTING_ID,
+    );
+    assert!(stack.store.get_fee_event(&renewal_key)?.is_none());
     Ok(())
 }
