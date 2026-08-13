@@ -167,12 +167,9 @@ fn production_receipt_rejects_self_signed_status() -> TestResult {
         .checkpoint_signer_status
         .as_mut()
         .ok_or("signer status trust missing")?;
-    let signed_status = status_trust
-        .signed_statuses
-        .iter_mut()
-        .find(|signed| signed.body.authority_id == "authority-production")
-        .ok_or("production signer status missing")?;
-    signed_status.signature = signer.sign(&canonical_json_bytes(&signed_status.body)?);
+    for signed_status in &mut status_trust.signed_statuses {
+        *signed_status = SignedExportEnvelope::sign(signed_status.body.clone(), &signer)?;
+    }
     status_trust.status_authority.key = signer.public_key();
 
     let draft =

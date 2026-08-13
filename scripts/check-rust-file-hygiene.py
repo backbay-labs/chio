@@ -393,8 +393,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/trust/chio-finding-verifier/tests/verifier.rs": allow(
         "2026-08-31",
-        "cognition finding verifier regression suite with runtime and collateral authority lifecycle coverage; capped until split",
-        max_lines=2_135,
+        "cognition finding verifier regression suite with runtime, collateral, and stale-attestation lifecycle coverage; capped until split",
+        max_lines=2_143,
     ),
     "crates/trust/chio-finding-verifier/src/verify.rs": allow(
         "2026-08-31",

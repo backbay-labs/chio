@@ -113,18 +113,9 @@ fn expired_checkpoint_status_authority_denies_receipts_and_checkpoints() -> Test
         .status_authority
         .valid_until = trust.trusted_time;
 
-    let draft =
-        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
-    let authenticity = draft
-        .facets()
-        .iter()
-        .find(|facet| facet.facet == FindingFacetKind::ReceiptAuthenticity)
-        .ok_or("receipt-authenticity facet missing")?;
-    assert_eq!(authenticity.outcome, FindingFacetOutcome::Failed);
-    assert!(authenticity.reason.contains("not live at evaluation"));
     assert_eq!(
-        draft.facet_outcome(FindingFacetKind::CheckpointMembership),
-        Some(FindingFacetOutcome::Failed)
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx))).err(),
+        Some(FindingVerifierError::ProfileInvalid)
     );
     Ok(())
 }

@@ -1902,10 +1902,18 @@ fn runtime_assurance_rejects_invalid_or_stale_signed_artifacts() -> TestResult {
         Some(FindingFacetOutcome::Failed)
     );
 
-    let mut stale_trust = runtime_trust_roots(&fx);
-    stale_trust.trusted_time = 1_800_000_000;
-    let stale = runtime_bundle(&fx);
-    let draft = verify_finding_evidence(&fx.fixture.raw_finding, &stale_trust, &stale)?;
+    let mut stale = runtime_bundle(&fx);
+    let mut stale_attestation = stale
+        .runtime_attestation
+        .take()
+        .ok_or("missing attestation")?
+        .body;
+    stale_attestation.expires_at = trust.trusted_time;
+    stale.runtime_attestation = Some(SignedExportEnvelope::sign(
+        stale_attestation,
+        &fx.attestation_authority,
+    )?);
+    let draft = verify_finding_evidence(&fx.fixture.raw_finding, &trust, &stale)?;
     assert_eq!(
         draft.facet_outcome(FindingFacetKind::RuntimeAssuranceBacking),
         Some(FindingFacetOutcome::Failed)
