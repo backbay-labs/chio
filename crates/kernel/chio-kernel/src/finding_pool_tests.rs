@@ -848,7 +848,7 @@ fn dispatch_claims_the_configured_pool_reservation() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
     let Ok(claims) = ledger.claims.lock() else {
         panic!("test claim lock was poisoned");
@@ -875,7 +875,7 @@ fn dispatch_claim_uses_the_persisted_nondecreasing_time_floor() {
     assert_eq!(ledger.advance_trusted_time_floor(50_000), Ok(50_000));
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
     let Ok(claims) = ledger.claims.lock() else {
         panic!("test claim lock was poisoned");
@@ -887,12 +887,14 @@ fn dispatch_claim_uses_the_persisted_nondecreasing_time_floor() {
 }
 
 #[test]
-fn dispatch_claim_binds_the_authenticated_tenant() {
+fn dispatch_claim_uses_the_request_scoped_authenticated_tenant() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
-    let _tenant_scope = crate::kernel::scope_receipt_tenant_id(Some("tenant-A".to_owned()));
+    let _tenant_scope =
+        kernel.scope_receipt_tenant_id_for_request("request:test", Some("tenant-A".to_owned()));
+    let _thread_scope = crate::kernel::scope_receipt_tenant_id(None);
     assert!(kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
     let Ok(claims) = ledger.claims.lock() else {
         panic!("test claim lock was poisoned");
@@ -912,7 +914,7 @@ fn startup_reconciliation_does_not_complete_behind_an_active_outbox_lease() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
     let now = crate::kernel::current_unix_timestamp_ms();
     let claimed = ledger
@@ -933,7 +935,7 @@ fn pre_dispatch_recovery_releases_the_bound_pool_claim() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
     assert!(kernel
         .release_finding_pool_claim_before_dispatch("operation:test", 12_346)
@@ -954,7 +956,7 @@ fn verified_post_commit_no_effect_releases_the_bound_pool_claim() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
     assert!(kernel
         .release_finding_pool_claim_after_verified_no_effect("operation:test", 12_346)
@@ -975,7 +977,7 @@ fn unknown_dispatch_recovery_finalizes_the_bound_pool_claim() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
     assert!(kernel
         .finalize_finding_pool_claim_after_unknown_dispatch("operation:test", 12_346)
@@ -997,7 +999,7 @@ fn dispatch_rejects_a_pool_reservation_without_durable_admission() {
     let kernel = kernel_with_ledger(Arc::clone(&ledger));
 
     assert_eq!(
-        kernel.claim_finding_pool_delivery(&purchase(), 12_345, None),
+        kernel.claim_finding_pool_delivery(&purchase(), "request:test", 12_345, None),
         Err(FindingPoolLedgerError::DurableAdmissionRequired)
     );
     assert!(ledger
@@ -1067,7 +1069,7 @@ fn pending_pool_receipt_is_not_acknowledged_without_a_durable_store() {
     let ledger = Arc::new(RecordingLedger::default());
     let first_kernel = kernel_with_ledger(Arc::clone(&ledger));
     assert!(first_kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
     assert_eq!(
         ledger
@@ -1106,7 +1108,7 @@ fn concurrent_pool_outbox_flushers_project_each_receipt_once() {
         Arc::clone(&shared_receipt_store),
     );
     assert!(producer
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
     ledger.delay_pending_reads.store(true, Ordering::SeqCst);
     let barrier = Arc::new(Barrier::new(5));
@@ -1257,7 +1259,7 @@ fn pool_outbox_retry_after_durable_append_does_not_duplicate_projection() {
         .store(true, Ordering::SeqCst);
 
     assert!(kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
     assert!(kernel
         .flush_finding_pool_mutation_receipts(ledger.as_ref())
@@ -1356,7 +1358,7 @@ fn stable_pool_receipt_authority_survives_ordinary_kernel_key_rotation() {
     let ledger = Arc::new(RecordingLedger::default());
     let first_kernel = kernel_with_keys(Arc::clone(&ledger), 91, 92);
     assert!(first_kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
 
     let rotated_kernel = kernel_with_keys(Arc::clone(&ledger), 93, 92);

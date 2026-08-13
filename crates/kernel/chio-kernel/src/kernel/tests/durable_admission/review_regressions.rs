@@ -181,7 +181,12 @@ fn durable_startup_reconciliation_drains_the_pool_receipt_outbox() {
         .set_finding_pool_ledger(ledger.clone())
         .expect("qualified finding pool ledger");
     kernel
-        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:startup-outbox"))
+        .claim_finding_pool_delivery(
+            &purchase(),
+            "request:startup-outbox",
+            12_345,
+            Some("operation:startup-outbox"),
+        )
         .expect("commit a pool mutation with a pending signed receipt");
     ledger.clear_active_claim_operations();
     assert_eq!(

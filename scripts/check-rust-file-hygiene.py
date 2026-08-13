@@ -353,8 +353,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/dispatch.rs": allow(
         "2026-08-31",
-        "kernel dispatch surface with M6 status snapshots and M8 pool claim checks; capped to current size until split",
-        max_lines=2_055,
+        "kernel dispatch surface with M6 status snapshots and M8 request-scoped pool claims; capped to current size until split",
+        max_lines=2_060,
     ),
     "crates/kernel/chio-kernel/src/tool_outcome/release.rs": allow(
         "2026-08-31",

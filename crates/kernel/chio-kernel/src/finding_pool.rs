@@ -1073,6 +1073,7 @@ impl ChioKernel {
     pub(crate) fn claim_finding_pool_delivery(
         &self,
         purchase: &crate::finding_purchase::VerifiedFindingPurchase,
+        request_id: &str,
         trusted_now_unix_ms: u64,
         durable_admission_operation_id: Option<&str>,
     ) -> Result<(), FindingPoolLedgerError> {
@@ -1088,7 +1089,7 @@ impl ChioKernel {
         let trusted_now_unix_ms = ledger.advance_trusted_time_floor(trusted_now_unix_ms)?;
         let claim = AuthorizedFindingPoolClaim {
             purchase_id: purchase.purchase_intent_id.clone(),
-            tenant_id: crate::kernel::current_scoped_receipt_tenant_id(),
+            tenant_id: self.receipt_tenant_id_for_request(Some(request_id)),
             finding_id: purchase.finding_id.clone(),
             listing_id: purchase.listing_id.clone(),
             reservation_id: purchase.reservation_id.clone(),
