@@ -98,6 +98,10 @@ pub struct CognitionMarketVerifierAuthorityStatusTrust {
 #[derive(Clone)]
 pub struct CognitionMarketStatusTrust {
     pub status_operator_authorization: FindingStatusOperatorAuthorization,
+    /// Fresh, independently signed standing for the operator policy above.
+    /// The static authorization alone cannot prove that governance has not
+    /// retired the key since it was issued.
+    pub operator_authority_status: CognitionMarketVerifierAuthorityStatusTrust,
     pub status_freshness: FindingStatusFreshnessPolicy,
     pub status_store: Arc<dyn CognitionMarketStatusTrustStore>,
 }
@@ -510,6 +514,12 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             status_trust.status_freshness,
         )
         .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
+        verify_status_operator_authority_status(
+            &status_trust.status_operator_authorization.operator,
+            &status_trust.operator_authority_status,
+            signed_epoch.body.generated_at,
+            status_trust.status_freshness.now,
+        )?;
         if matches!(status, FindingStatusProofInput::Inclusion(_)) {
             let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
                 .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
@@ -673,6 +683,82 @@ fn verify_verifier_authority_status(
     if status.revoked_from.is_some() {
         return Err(claim_failed(
             "unanchored signed verifier report cannot be accepted after verifier-key revocation",
+        ));
+    }
+    Ok(())
+}
+
+fn verify_status_operator_authority_status(
+    policy: &FindingAuthorityKeyPolicy,
+    trust: &CognitionMarketVerifierAuthorityStatusTrust,
+    epoch_generated_at: u64,
+    expected_checked_at: u64,
+) -> Result<(), TransactionPassportError> {
+    if trust.checked_at == 0 || trust.max_age_secs == 0 || trust.checked_at != expected_checked_at {
+        return Err(claim_failed(
+            "status operator authority standing freshness policy is invalid",
+        ));
+    }
+    trust
+        .status_authority
+        .validate("status operator standing authority")
+        .map_err(|error| {
+            claim_failed(format!(
+                "status operator standing authority is invalid: {error}"
+            ))
+        })?;
+    if trust.status_authority.key == policy.key {
+        return Err(claim_failed(
+            "status operator standing authority must be independent from the status operator",
+        ));
+    }
+    if trust.checked_at < trust.status_authority.valid_from
+        || trust.checked_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "status operator standing authority is not live at the current trusted verification time",
+        ));
+    }
+    verify_signed_authority_status(&trust.signed_status, &trust.status_authority.key).map_err(
+        |error| {
+            claim_failed(format!(
+                "status operator authority standing is invalid: {error}"
+            ))
+        },
+    )?;
+    let status = &trust.signed_status.body;
+    if status.observed_at < trust.status_authority.valid_from
+        || status.observed_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "status operator authority standing was signed outside the standing-authority lifecycle",
+        ));
+    }
+    if status.status_ref != policy.revocation_status_ref
+        || status.authority_id != policy.authority_id
+        || status.key != policy.key
+        || status.key_epoch != policy.key_epoch
+    {
+        return Err(claim_failed(
+            "status operator authority standing does not match the deployment-pinned operator policy",
+        ));
+    }
+    if status.observed_at < epoch_generated_at
+        || status.observed_at > trust.checked_at
+        || trust.checked_at.saturating_sub(status.observed_at) > trust.max_age_secs
+    {
+        return Err(claim_failed(
+            "status operator authority standing is stale for the signed status epoch",
+        ));
+    }
+    if trust.checked_at >= policy.valid_until {
+        return Err(claim_failed(
+            "unanchored signed status epoch cannot be accepted after status-operator key expiration",
+        ));
+    }
+    if status.revoked_from.is_some() {
+        return Err(claim_failed(
+            "unanchored signed status epoch cannot be accepted after status-operator key revocation",
         ));
     }
     Ok(())

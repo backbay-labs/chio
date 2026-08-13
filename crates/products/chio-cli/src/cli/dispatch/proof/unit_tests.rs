@@ -173,6 +173,41 @@ fn verifier_authority_status_fixture(
     )
 }
 
+fn status_operator_authority_status_fixture(
+    directory: &std::path::Path,
+    authorization: &chio_finding::FindingStatusOperatorAuthorization,
+) -> std::path::PathBuf {
+    let status_authority = chio_core_types::Keypair::from_seed(&[102_u8; 32]);
+    let operator = &authorization.operator;
+    let status = proof_test_ok(
+        chio_core_types::receipt::lineage::SignedExportEnvelope::sign(
+            chio_finding::FindingAuthorityStatus {
+                schema: chio_finding::FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: operator.revocation_status_ref.clone(),
+                authority_id: operator.authority_id.clone(),
+                key: operator.key.clone(),
+                key_epoch: operator.key_epoch,
+                revoked_from: None,
+                observed_at: 1_784_880_030,
+            },
+            &status_authority,
+        ),
+        "sign status operator authority status fixture",
+    );
+    let path = directory.join("status-operator-authority-status.json");
+    proof_test_ok(
+        std::fs::write(
+            &path,
+            proof_test_ok(
+                chio_core_types::canonical_json_bytes(&status),
+                "serialize status operator authority status fixture",
+            ),
+        ),
+        "write status operator authority status fixture",
+    );
+    path
+}
+
 #[test]
 fn only_verified_finding_claim_set_rows_force_cognition_market_routing() {
     let transaction_claim_set = serde_json::to_vec(&serde_json::json!({
@@ -587,6 +622,8 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         std::fs::write(&authorization_path, &authorization_bytes),
         "write status authorization",
     );
+    let operator_authority_status_path =
+        status_operator_authority_status_fixture(tempdir.path(), &authorization);
     let authority_database = tempdir.path().join("status-authority.db");
     let authority_lock_root = tempdir.path().join("status-authority-locks");
     proof_test_ok(
@@ -746,6 +783,10 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         (
             "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH",
             authorization_path.as_os_str(),
+        ),
+        (
+            "CHIO_FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH",
+            operator_authority_status_path.as_os_str(),
         ),
         (
             "CHIO_FINDING_STATUS_AUTHORITY_DATABASE_PATH",

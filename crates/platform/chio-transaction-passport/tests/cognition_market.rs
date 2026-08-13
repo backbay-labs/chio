@@ -586,6 +586,22 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         },
         &verifier_status_authority,
     )?;
+    let status_operator_authorization = status_authorization(&status_keypair);
+    let status_operator_authority_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: status_operator_authorization
+                .operator
+                .revocation_status_ref
+                .clone(),
+            authority_id: status_operator_authorization.operator.authority_id.clone(),
+            key: status_operator_authorization.operator.key.clone(),
+            key_epoch: status_operator_authorization.operator.key_epoch,
+            revoked_from: None,
+            observed_at: CHECKED_AT,
+        },
+        &verifier_status_authority,
+    )?;
     let trust = CognitionMarketProofTrust {
         trusted_passport_signer_keys: vec![root.public_key()],
         trusted_checkpoint_signer_keys: Vec::new(),
@@ -609,7 +625,13 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
             max_age_secs: 60,
         },
         status: Some(CognitionMarketStatusTrust {
-            status_operator_authorization: status_authorization(&status_keypair),
+            status_operator_authorization,
+            operator_authority_status: CognitionMarketVerifierAuthorityStatusTrust {
+                signed_status: status_operator_authority_status,
+                status_authority: profile_key_policy(10, "verifier-status-authority"),
+                checked_at: CHECKED_AT,
+                max_age_secs: 60,
+            },
             status_freshness: FindingStatusFreshnessPolicy {
                 now: CHECKED_AT,
                 max_epoch_age_secs: 60,
@@ -1826,6 +1848,30 @@ fn cognition_market_qualified_profile_rejects_verifier_as_status_operator() -> T
         .to_string();
     assert!(
         error.contains("status operator and finding verifier authorities must be distinct"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_qualified_profile_rejects_revoked_status_operator_standing() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let status_trust = bundle.trust.status.as_mut().ok_or("status trust missing")?;
+    let mut standing = status_trust
+        .operator_authority_status
+        .signed_status
+        .body
+        .clone();
+    standing.revoked_from = Some(CHECKED_AT);
+    status_trust.operator_authority_status.signed_status =
+        SignedExportEnvelope::sign(standing, &Keypair::from_seed(&[10_u8; 32]))?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("status proof signed by a revoked operator was accepted")?
+        .to_string();
+    assert!(
+        error.contains("after status-operator key revocation"),
         "unexpected error: {error}"
     );
     Ok(())

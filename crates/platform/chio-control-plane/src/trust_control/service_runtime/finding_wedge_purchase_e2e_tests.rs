@@ -4738,6 +4738,43 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reservation_cannot_outlive_authority_status_signer() -> TestResult {
+    let fixture = open_reserve_fixture().await?;
+    let now = unix_timestamp_now();
+    let mut authority_status_pin = authority_pin(37, "authority-status");
+    authority_status_pin.valid_until = now.saturating_add(1);
+    let coordinator = FindingPurchaseCoordinator::new(
+        fixture.authority.finding_purchase_store(),
+        fixture.authority.finding_market_store(),
+        fixture.authority.admission_operation_store(),
+        fixture.authority.tool_outcome_store(),
+        keypair(16),
+        &keypair(16).public_key(),
+        keypair(17),
+        &keypair(17).public_key(),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &authority_status_pin,
+        &market_config().status_feed_operator,
+        &market_config().venue,
+        VENUE_ID,
+    )?;
+
+    coordinator.reserve(
+        &fixture.exchange.bid,
+        &fixture.exchange.ask,
+        &fixture.exchange.buyer_signature_hex,
+        &fixture.deployment.web.admission,
+        &fixture.deployment.web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    let reservation = coordinator.resolve(&fixture.exchange.reservation_id)?;
+    assert_eq!(reservation.expires_at, authority_status_pin.valid_until);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_standing() -> TestResult
 {
     let fixture = open_reserve_fixture().await?;

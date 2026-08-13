@@ -40,6 +40,8 @@ const FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS_ENV: &str =
     "CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS";
 const FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV: &str =
     "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH";
+const FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH_ENV: &str =
+    "CHIO_FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH";
 const FINDING_STATUS_AUTHORITY_DATABASE_PATH_ENV: &str =
     "CHIO_FINDING_STATUS_AUTHORITY_DATABASE_PATH";
 const FINDING_STATUS_AUTHORITY_LOCK_ROOT_ENV: &str = "CHIO_FINDING_STATUS_AUTHORITY_LOCK_ROOT";
@@ -355,7 +357,11 @@ pub(super) fn cognition_market_proof_trust_from_env(
             .required_facets
             .contains(&chio_finding::FindingFacetKind::StatusLiveness);
     let status = if status_liveness_required {
-        Some(cognition_market_status_trust_from_env()?)
+        Some(cognition_market_status_trust_from_env(
+            &status_authority,
+            checked_at,
+            max_age_secs,
+        )?)
     } else {
         None
     };
@@ -561,6 +567,9 @@ fn require_independent_verifier_status_authority(
 }
 
 fn cognition_market_status_trust_from_env(
+    status_authority: &chio_finding::FindingAuthorityKeyPolicy,
+    checked_at: u64,
+    max_age_secs: u64,
 ) -> Result<chio_control_plane::transaction_passport::CognitionMarketStatusTrust, CliError> {
     let authorization_path = required_utf8_env(FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV)?;
     let mut reader = std::fs::File::open(&authorization_path)?
@@ -597,6 +606,13 @@ fn cognition_market_status_trust_from_env(
             "Finding status operator authorization is invalid: {error}"
         ))
     })?;
+    let operator_authority_status = finding_authority_status_trust_from_env(
+        FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH_ENV,
+        &status_operator_authorization.operator.key,
+        status_authority,
+        checked_at,
+        max_age_secs,
+    )?;
     let now = required_positive_u64_env(FINDING_STATUS_NOW_UNIX_SECONDS_ENV)?;
     let max_epoch_age_secs = required_positive_u64_env(FINDING_STATUS_MAX_AGE_SECONDS_ENV)?;
     let authority_database = required_utf8_env(FINDING_STATUS_AUTHORITY_DATABASE_PATH_ENV)?;
@@ -614,6 +630,7 @@ fn cognition_market_status_trust_from_env(
     Ok(
         chio_control_plane::transaction_passport::CognitionMarketStatusTrust {
             status_operator_authorization,
+            operator_authority_status,
             status_freshness: chio_finding::FindingStatusFreshnessPolicy {
                 now,
                 max_epoch_age_secs,

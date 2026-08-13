@@ -284,6 +284,21 @@ fn verifier_report_and_collateral_authorities_must_be_distinct() -> TestResult {
 }
 
 #[test]
+fn fee_schedule_and_collateral_authorities_must_be_distinct() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    trust
+        .fee_schedule_authorities
+        .push(trust.collateral_authority.key.clone());
+
+    assert_eq!(
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx))).err(),
+        Some(FindingVerifierError::AliasedFeeScheduleAndCollateralAuthorities)
+    );
+    Ok(())
+}
+
+#[test]
 fn verifier_report_and_status_operator_authorities_must_be_distinct() -> TestResult {
     let fx = fixture()?;
     let finding: Finding = serde_json::from_str(&fx.raw_finding)?;

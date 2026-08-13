@@ -148,6 +148,7 @@ export CHIO_FINDING_TRUST_ROOT_SNAPSHOT_SHA256=<approved-trust-root-snapshot-dig
 export CHIO_FINDING_RESOLVER_POLICY_SHA256=<approved-resolver-policy-digest>
 export CHIO_FINDING_TRUSTED_TIME_INPUT_SHA256=<approved-trusted-time-input-digest>
 export CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH=<canonical-authorization.json>
+export CHIO_FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH=<canonical-signed-operator-status.json>
 export CHIO_FINDING_STATUS_AUTHORITY_DATABASE_PATH=<provisioned-authority.db>
 export CHIO_FINDING_STATUS_AUTHORITY_LOCK_ROOT=<secure-authority-lock-directory>
 export CHIO_FINDING_STATUS_NOW_UNIX_SECONDS=<trusted-verification-time>
@@ -160,11 +161,11 @@ profile-governance key and policy, and its report signer must equal the
 separately pinned verifier key. The verifier loads the profile's exact
 canonical bytes, requires their digest to match the out-of-band profile pin,
 and verifies the profile signature and lifecycle. It also requires fresh
-signed status witnesses for both the profile-governance signer and report
-signer from the separately pinned status-authority policy, requires that policy
-to cover each witness observation and the shared current trusted verification
-time, and rejects newly backdated artifacts after either key is revoked or
-expires. The report must bind the
+signed status witnesses for the profile-governance signer, report signer, and
+status operator from the separately pinned status-authority policy, requires
+that policy to cover each witness observation and the shared current trusted
+verification time, and rejects newly backdated artifacts after any key is
+revoked or expires. The report must bind the
 deployment-pinned trust-root snapshot, resolver policy, and trusted-time
 input. Verification fails closed when any profile floor, snapshot commitment,
 pin, authorization, durable authority store, trusted time, or freshness limit

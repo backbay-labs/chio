@@ -813,6 +813,7 @@ impl FindingPurchaseCoordinator {
             .min(ask.body.expires_at)
             .min(ask.body.token_offer.expires_at)
             .min(admission.body.expires_at)
+            .min(self.authority_status_pin.valid_until)
             .min(self.venue_authority.valid_until)
             .min(admission.body.purchase_authority.valid_until)
             .min(admission.body.failed_delivery_authority.valid_until)
