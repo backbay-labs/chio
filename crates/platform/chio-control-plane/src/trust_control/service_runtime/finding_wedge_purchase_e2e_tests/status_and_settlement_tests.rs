@@ -93,7 +93,8 @@ async fn finding_status_retraction() -> TestResult {
             &verified_live,
             now,
         )
-        .expect_err("time refreshed after status-store work must reject an expired epoch");
+        .err()
+        .ok_or("time refreshed after status-store work accepted an expired epoch")?;
     assert!(
         stale_admission.contains("stale") || stale_admission.contains("freshness"),
         "unexpected refreshed-time rejection: {stale_admission}"
@@ -111,7 +112,8 @@ async fn finding_status_retraction() -> TestResult {
         &cache,
         &lane.deployment.web.finding_id,
     )
-    .expect_err("time refreshed after cache reads must reject an expired epoch");
+    .err()
+    .ok_or("time refreshed after cache reads accepted an expired epoch")?;
     assert!(matches!(
         &stale_cache,
         chio_guards::finding_retraction::FindingRetractionResolveError::InvalidStatus(ref message)
@@ -418,7 +420,8 @@ async fn finding_status_retraction() -> TestResult {
         .collect::<Vec<_>>();
     let invalid_refresh = status_gate_publisher
         .publish_epoch_refresh(&invalid_anchors, anchor_refresh_at)
-        .expect_err("an invalid root-only epoch must fail before advancing the floor");
+        .err()
+        .ok_or("an invalid root-only epoch advanced the floor")?;
     assert!(invalid_refresh.contains("anchor_refs"));
     assert_eq!(
         status_gate_store
