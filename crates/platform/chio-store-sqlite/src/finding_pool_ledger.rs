@@ -148,7 +148,7 @@ impl SqliteFindingPoolLedger {
         if path_text.is_empty()
             || empty_uri_filename
             || is_in_memory_sqlite_path(path_text)
-            || sqlite_uri_disables_locking(path_text)
+            || crate::sqlite_uri_disables_locking(path_text)
             || sqlite_uri_is_read_only(path_text)
         {
             return Err(FindingPoolLedgerError::Storage(
@@ -328,11 +328,12 @@ fn qualified_sqlite_parent_dir(
     let encoded_filename = filesystem_path.to_str().ok_or_else(|| {
         FindingPoolLedgerError::Storage("SQLite URI filename is not valid UTF-8".to_string())
     })?;
-    let decoded_filename = percent_decode_uri_component(encoded_filename).ok_or_else(|| {
-        FindingPoolLedgerError::Storage(
-            "SQLite URI filename has invalid percent encoding".to_string(),
-        )
-    })?;
+    let decoded_filename = crate::percent_decode_sqlite_uri_component(encoded_filename)
+        .ok_or_else(|| {
+            FindingPoolLedgerError::Storage(
+                "SQLite URI filename has invalid percent encoding".to_string(),
+            )
+        })?;
     if decoded_filename.contains('\0') {
         return Err(FindingPoolLedgerError::Storage(
             "SQLite URI filename contains a NUL byte".to_string(),
@@ -356,27 +357,6 @@ fn sqlite_uri_filename_is_empty(path: &str) -> bool {
     name.is_empty()
 }
 
-fn sqlite_uri_disables_locking(path: &str) -> bool {
-    let Some(rest) = path.strip_prefix("file:") else {
-        return false;
-    };
-    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
-    let Some((_, query)) = rest.split_once('?') else {
-        return false;
-    };
-    query.split('&').any(|pair| {
-        let (key, value) = pair.split_once('=').map_or((pair, ""), |parts| parts);
-        let Some(key) = percent_decode_uri_component(key) else {
-            return true;
-        };
-        let Some(value) = percent_decode_uri_component(value) else {
-            return true;
-        };
-        key.eq_ignore_ascii_case("nolock")
-            || (key.eq_ignore_ascii_case("vfs") && value.eq_ignore_ascii_case("unix-none"))
-    })
-}
-
 fn sqlite_uri_is_read_only(path: &str) -> bool {
     let Some(rest) = path.strip_prefix("file:") else {
         return false;
@@ -388,8 +368,8 @@ fn sqlite_uri_is_read_only(path: &str) -> bool {
     query.split('&').any(|pair| {
         let (key, value) = pair.split_once('=').map_or((pair, ""), |parts| parts);
         let (Some(key), Some(value)) = (
-            percent_decode_uri_component(key),
-            percent_decode_uri_component(value),
+            crate::percent_decode_sqlite_uri_component(key),
+            crate::percent_decode_sqlite_uri_component(value),
         ) else {
             return true;
         };
@@ -400,37 +380,6 @@ fn sqlite_uri_is_read_only(path: &str) -> bool {
                     "1" | "on" | "true" | "yes"
                 ))
     })
-}
-
-fn percent_decode_uri_component(value: &str) -> Option<String> {
-    let bytes = value.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' {
-            let high = *bytes.get(index + 1)?;
-            let low = *bytes.get(index + 2)?;
-            decoded.push(
-                hex_nibble(high)?
-                    .checked_mul(16)?
-                    .checked_add(hex_nibble(low)?)?,
-            );
-            index += 3;
-        } else {
-            decoded.push(bytes[index]);
-            index += 1;
-        }
-    }
-    String::from_utf8(decoded).ok()
-}
-
-const fn hex_nibble(value: u8) -> Option<u8> {
-    match value {
-        b'0'..=b'9' => Some(value - b'0'),
-        b'a'..=b'f' => Some(value - b'a' + 10),
-        b'A'..=b'F' => Some(value - b'A' + 10),
-        _ => None,
-    }
 }
 
 fn verify_qualified_connection(

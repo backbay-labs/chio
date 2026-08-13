@@ -1229,6 +1229,8 @@ impl ChioKernel {
             return Ok(());
         }
         let decision = Self::finding_pool_terminal_decision(purchase, disposition)?;
+        let occurred_at_unix_ms =
+            ledger.advance_trusted_time_floor(crate::kernel::current_unix_timestamp_ms())?;
         let terminal = AuthorizedFindingPoolTerminal {
             purchase_id: purchase.purchase_intent_id.clone(),
             finding_id: purchase.finding_id.clone(),
@@ -1238,7 +1240,7 @@ impl ChioKernel {
             amount_units: purchase.accepted_price.units,
             currency: purchase.accepted_price.currency.clone(),
             decision,
-            occurred_at_unix_ms: crate::kernel::current_unix_timestamp_ms(),
+            occurred_at_unix_ms,
         };
         self.flush_finding_pool_mutation_receipts(ledger)?;
         let attestor = |mutation: &FindingPoolMutation| {

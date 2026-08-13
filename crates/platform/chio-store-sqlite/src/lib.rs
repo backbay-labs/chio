@@ -196,6 +196,49 @@ fn percent_decode_sqlite_uri(value: &str) -> String {
     String::from_utf8_lossy(&decoded).into_owned()
 }
 
+fn percent_decode_sqlite_uri_component(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let high = *bytes.get(index + 1)?;
+            let low = *bytes.get(index + 2)?;
+            decoded.push(
+                hex_nibble(high)?
+                    .checked_mul(16)?
+                    .checked_add(hex_nibble(low)?)?,
+            );
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
+}
+
+pub(crate) fn sqlite_uri_disables_locking(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("file:") else {
+        return false;
+    };
+    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
+    let Some((_, query)) = rest.split_once('?') else {
+        return false;
+    };
+    query.split('&').any(|pair| {
+        let (key, value) = pair.split_once('=').map_or((pair, ""), |parts| parts);
+        let Some(key) = percent_decode_sqlite_uri_component(key) else {
+            return true;
+        };
+        let Some(value) = percent_decode_sqlite_uri_component(value) else {
+            return true;
+        };
+        key.eq_ignore_ascii_case("nolock")
+            || (key.eq_ignore_ascii_case("vfs") && value.eq_ignore_ascii_case("unix-none"))
+    })
+}
+
 const fn hex_nibble(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),

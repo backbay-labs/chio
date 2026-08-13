@@ -1,6 +1,37 @@
 use super::super::*;
 use super::support::*;
 
+#[cfg(unix)]
+#[test]
+fn qualified_receipt_sink_rejects_locking_disabled_sqlite_uris(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = tempfile::tempdir()?;
+    for root in [directory.path(), anchor_directory.path()] {
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    for (name, query) in [
+        ("nolock.sqlite3", "nolock=1"),
+        ("unix-none.sqlite3", "vfs=unix-none"),
+    ] {
+        let uri = format!("file:{}?{query}", directory.path().join(name).display());
+        let error = match SqliteReceiptStore::open_for_finding_pool(
+            std::path::PathBuf::from(uri),
+            anchor_directory.path(),
+        ) {
+            Ok(_) => return Err("locking-disabled URI was accepted".into()),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            ReceiptStoreError::Conflict(message) if message.contains("disables file locking")
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn qualified_reader_and_reopen_reject_live_rollback_after_writer_routed_receipt(
 ) -> Result<(), Box<dyn std::error::Error>> {

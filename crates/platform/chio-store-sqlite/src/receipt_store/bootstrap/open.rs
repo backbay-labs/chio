@@ -466,12 +466,22 @@ impl SqliteReceiptStore {
         rollback_anchor_root: Option<&Path>,
     ) -> Result<Self, ReceiptStoreError> {
         let path = path.as_ref();
-        if rollback_anchor_root.is_some()
-            && path.to_str().is_none_or(crate::is_in_memory_sqlite_path)
-        {
-            return Err(ReceiptStoreError::Conflict(
-                "finding-pool receipt sink requires a durable SQLite path".to_string(),
-            ));
+        if rollback_anchor_root.is_some() {
+            let Some(path_text) = path.to_str() else {
+                return Err(ReceiptStoreError::Conflict(
+                    "finding-pool receipt sink requires a durable SQLite path".to_string(),
+                ));
+            };
+            if crate::is_in_memory_sqlite_path(path_text) {
+                return Err(ReceiptStoreError::Conflict(
+                    "finding-pool receipt sink requires a durable SQLite path".to_string(),
+                ));
+            }
+            if crate::sqlite_uri_disables_locking(path_text) {
+                return Err(ReceiptStoreError::Conflict(
+                    "finding-pool receipt sink SQLite URI disables file locking".to_string(),
+                ));
+            }
         }
         let connection_flags = if create_if_missing {
             None

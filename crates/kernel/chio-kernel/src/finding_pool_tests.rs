@@ -801,6 +801,32 @@ fn delivery_capture_finalizes_the_configured_pool_reservation() {
 }
 
 #[test]
+fn delivery_terminal_uses_the_persisted_nondecreasing_time_floor() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let future_floor = crate::kernel::current_unix_timestamp_ms() + 60_000;
+    assert_eq!(
+        ledger.advance_trusted_time_floor(future_floor),
+        Ok(future_floor)
+    );
+    let kernel = kernel_with_ledger(Arc::clone(&ledger));
+    assert!(kernel
+        .settle_finding_pool_delivery(
+            &purchase(),
+            &crate::tool_outcome::SettlementDispositionV1::Capture {
+                amount: MonetaryAmount {
+                    units: 25,
+                    currency: "USD".to_owned(),
+                },
+            },
+        )
+        .is_ok());
+    assert_eq!(
+        recorded_pool_mutation(&kernel).occurred_at_unix_ms,
+        future_floor.to_string()
+    );
+}
+
+#[test]
 fn dispatch_claims_the_configured_pool_reservation() {
     let ledger = Arc::new(RecordingLedger::default());
     let kernel = kernel_with_ledger(Arc::clone(&ledger));

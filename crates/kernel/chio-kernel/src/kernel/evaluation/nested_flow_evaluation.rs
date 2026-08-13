@@ -1657,6 +1657,8 @@ impl ChioKernel {
                     reason = %redacted!(&error),
                     "tool server returned URL elicitation after nested dispatch; outcome is unknown"
                 );
+                post_admission_drop_guard.persist_url_elicitation_cancellation()?;
+                drop(post_admission_drop_guard);
                 return Err(error);
             }
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
@@ -1676,6 +1678,8 @@ impl ChioKernel {
                     reason = %redacted!(&error),
                     "tool server returned URL elicitation after dispatch; outcome is unknown"
                 );
+                post_admission_drop_guard.persist_url_elicitation_cancellation()?;
+                drop(post_admission_drop_guard);
                 return Err(error);
             }
             Err(KernelError::RequestCancelled { request_id, reason }) => {

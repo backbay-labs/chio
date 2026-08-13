@@ -65,9 +65,22 @@ impl RollbackGenerationAnchor {
             use std::os::unix::fs::OpenOptionsExt as _;
             options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
         }
-        let file = options
-            .open(&path)
-            .map_err(|error| format!("rollback anchor open failed: {error}"))?;
+        let (file, created) = match options.create_new(true).open(&path) {
+            Ok(file) => (file, true),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                options.create_new(false).create(false);
+                let file = options
+                    .open(&path)
+                    .map_err(|error| format!("rollback anchor open failed: {error}"))?;
+                (file, false)
+            }
+            Err(error) => return Err(format!("rollback anchor open failed: {error}")),
+        };
+        if created {
+            File::open(&root)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|error| format!("rollback anchor root sync failed: {error}"))?;
+        }
         let metadata = file
             .metadata()
             .map_err(|error| format!("rollback anchor metadata failed: {error}"))?;

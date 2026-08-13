@@ -1952,11 +1952,8 @@ impl ChioKernel {
                     reason = %redacted!(&error),
                     "tool server returned URL elicitation after dispatch; outcome is unknown"
                 );
-                // A tool server controls this error and may have performed its
-                // effect before returning it. Leave the post-dispatch guard
-                // armed so reservations remain retained, a cancellation
-                // receipt lands, and durable admission terminalizes as
-                // outcome-unknown.
+                post_admission_drop_guard.persist_url_elicitation_cancellation()?;
+                drop(post_admission_drop_guard);
                 return Err(error);
             }
             Err(KernelError::RequestCancelled { reason, .. }) => {

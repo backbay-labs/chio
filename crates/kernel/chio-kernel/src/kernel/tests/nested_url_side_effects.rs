@@ -9,6 +9,26 @@ struct NestedNotificationThenUrlElicitationServer;
 
 struct CancellationPollThenUrlElicitationServer;
 
+struct RejectingUrlCancellationReceiptStore {
+    appends: std::sync::Arc<AtomicU64>,
+}
+
+impl ReceiptStore for RejectingUrlCancellationReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        self.appends.fetch_add(1, Ordering::SeqCst);
+        Err(ReceiptStoreError::Conflict(
+            "injected URL cancellation receipt failure".to_owned(),
+        ))
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+}
+
 struct RevalidationReadyRuntimeAdmissionHook {
     calls: std::sync::Arc<AtomicU64>,
     releases: std::sync::Arc<AtomicU64>,
@@ -385,6 +405,76 @@ fn nested_notification_before_url_elicitation_is_terminal_without_child_receipt(
     ));
     assert_eq!(kernel.receipt_log().len(), 1);
     assert!(kernel.child_receipt_log().is_empty());
+    Ok(())
+}
+
+#[test]
+fn nested_url_elicitation_surfaces_cancellation_receipt_failure(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let appends = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_receipt_store(Box::new(RejectingUrlCancellationReceiptStore {
+        appends: std::sync::Arc::clone(&appends),
+    }))?;
+    kernel.register_tool_server(Box::new(NestedNotificationThenUrlElicitationServer));
+
+    let agent_keypair = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent_keypair,
+        make_scope(vec![make_grant("nested-notification-server", "notify")]),
+        300,
+    );
+    let request = make_request(
+        "nested-notification-url-receipt-failure",
+        &capability,
+        "notify",
+        "nested-notification-server",
+    );
+    let session_id = kernel.open_session(
+        agent_keypair.public_key().to_hex(),
+        vec![capability.clone()],
+    )?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        &request.request_id,
+        &agent_keypair.public_key().to_hex(),
+    );
+    let operation = ToolCallOperation {
+        capability,
+        server_id: request.server_id,
+        tool_name: request.tool_name,
+        arguments: request.arguments,
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        execution_nonce: None,
+        model_metadata: None,
+        extra_metadata: None,
+    };
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let result = runtime.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        kernel
+            .evaluate_tool_call_operation_with_nested_flow_client_async(
+                &context,
+                &operation,
+                &mut client,
+            )
+            .await
+    });
+
+    let error = result.expect_err("receipt persistence failure must replace the URL error");
+    assert!(error
+        .to_string()
+        .contains("injected URL cancellation receipt failure"));
+    assert!(appends.load(Ordering::SeqCst) >= 1);
     Ok(())
 }
 

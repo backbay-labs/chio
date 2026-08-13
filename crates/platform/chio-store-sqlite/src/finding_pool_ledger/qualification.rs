@@ -142,7 +142,7 @@ pub(super) fn prepare_database_identity(
 ) -> Result<QualifiedDatabaseIdentity, FindingPoolLedgerError> {
     let filesystem_path = if path_text.starts_with("file:") {
         let encoded = sqlite_uri_filename(path_text);
-        let decoded = super::percent_decode_uri_component(encoded).ok_or_else(|| {
+        let decoded = crate::percent_decode_sqlite_uri_component(encoded).ok_or_else(|| {
             FindingPoolLedgerError::Storage(
                 "SQLite URI filename has invalid percent encoding".to_string(),
             )
