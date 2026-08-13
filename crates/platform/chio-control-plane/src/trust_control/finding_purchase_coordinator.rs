@@ -911,11 +911,11 @@ impl FindingPurchaseCoordinator {
             .is_exact_reservation_replay(&input)
             .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
         if !exact_replay {
+            self.require_live_venue_authority(now)?;
             if expires_at <= now {
                 return Err(PurchaseCoordinatorError::ReservationWindow);
             }
             input.expires_at = expires_at;
-            self.require_live_venue_authority(now)?;
             let status_operator_observed_at = self
                 .require_live_status_operator(&finding.status_feed_ref, now)?
                 .1;
