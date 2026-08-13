@@ -408,7 +408,17 @@ impl RollbackGenerationAnchor {
                 continue;
             }
             if marker != COMMIT_MARKER {
-                corrupt_slot = true;
+                interrupted_slot = true;
+                match self.decode_slot(&slot) {
+                    Ok(record) => {
+                        if prepared_record.replace(record).is_some() {
+                            return Err(
+                                "rollback anchor contains multiple prepared slots".to_string()
+                            );
+                        }
+                    }
+                    Err(_) => corrupt_slot = true,
+                }
                 continue;
             }
             match self.decode_slot(&slot) {
@@ -789,6 +799,63 @@ mod tests {
         };
         assert_eq!(loaded.record.store_generation, 1);
         assert!(!loaded.interrupted_slot);
+    }
+
+    #[test]
+    fn torn_commit_marker_recovers_after_the_store_commit() {
+        let Ok(root) = tempfile::tempdir() else {
+            panic!("create anchor root");
+        };
+        secure_root(root.path());
+        let anchor = match RollbackGenerationAnchor::open(root.path(), b"torn-commit-marker") {
+            Ok(anchor) => anchor,
+            Err(error) => panic!("open anchor: {error}"),
+        };
+        assert!(anchor.bind_initial_while(|| Ok((0, true))).is_ok());
+        let Ok(instance_id) = anchor.instance_id() else {
+            panic!("load anchor instance id");
+        };
+        let Ok(prepared) = anchor.prepare_next(1, 1, &instance_id) else {
+            panic!("prepare next generation");
+        };
+        let slot_index = match usize::try_from((prepared.record_generation - 1) % 2) {
+            Ok(index) => index,
+            Err(_) => panic!("prepared slot index fits usize"),
+        };
+        let offset = slot_index * SLOT_SIZE;
+        assert!(write_all_at(&anchor.file, &COMMIT_MARKER[..4], offset).is_ok());
+        assert!(anchor.file.sync_data().is_ok());
+
+        assert!(anchor.verify(1).is_ok());
+        let Ok(Some(loaded)) = anchor.load_record() else {
+            panic!("load recovered torn-marker anchor");
+        };
+        assert_eq!(loaded.record, prepared);
+        assert!(!loaded.corrupt_slot);
+        assert!(!loaded.interrupted_slot);
+        let mut committed_marker = [0_u8; COMMIT_MARKER.len()];
+        assert!(read_exact_at(&anchor.file, &mut committed_marker, offset).is_ok());
+        assert_eq!(&committed_marker, COMMIT_MARKER);
+    }
+
+    #[test]
+    fn malformed_marker_without_a_valid_prepared_record_remains_corrupt() {
+        let Ok(root) = tempfile::tempdir() else {
+            panic!("create anchor root");
+        };
+        secure_root(root.path());
+        let anchor = match RollbackGenerationAnchor::open(root.path(), b"corrupt-marker") {
+            Ok(anchor) => anchor,
+            Err(error) => panic!("open anchor: {error}"),
+        };
+        assert!(anchor.bind_initial_while(|| Ok((0, true))).is_ok());
+        assert!(write_all_at(&anchor.file, b"CORRUPT!", SLOT_SIZE).is_ok());
+        assert!(anchor.file.sync_data().is_ok());
+
+        assert_eq!(
+            anchor.verify(0),
+            Err("rollback anchor contains a corrupt slot".to_string())
+        );
     }
 
     #[test]
