@@ -9,7 +9,8 @@
 //!
 //! The default trust-control service does not install an executor. An operator
 //! must inject one explicitly with
-//! [`super::serve_with_finding_purchase_executor`].
+//! [`super::serve_with_finding_purchase_executor`], together with the rail and
+//! authority-status resolver that keep its market views and mutations live.
 
 use std::sync::Arc;
 

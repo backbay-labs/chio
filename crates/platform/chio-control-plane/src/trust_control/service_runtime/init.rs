@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 pub(crate) async fn serve_async(
     config: TrustServiceConfig,
     injected_joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
+    finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>>,
     finding_purchase_executor: Option<
         super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
     >,
@@ -24,6 +25,7 @@ pub(crate) async fn serve_async(
     serve_async_inner(
         config,
         injected_joint_authority_store,
+        finding_rail,
         finding_purchase_executor,
         finding_authority_status_resolver,
         finding_challenge_executor,
@@ -34,6 +36,7 @@ pub(crate) async fn serve_async(
 async fn serve_async_inner(
     config: TrustServiceConfig,
     injected_joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
+    finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>>,
     finding_purchase_executor: Option<
         super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
     >,
@@ -45,6 +48,11 @@ async fn serve_async_inner(
     >,
 ) -> Result<(), CliError> {
     config.validate()?;
+    validate_finding_purchase_runtime_dependencies(
+        finding_purchase_executor.is_some(),
+        finding_rail.is_some(),
+        finding_authority_status_resolver.is_some(),
+    )?;
     let enterprise_provider_registry = load_enterprise_provider_registry(
         config.enterprise_providers_file.as_deref(),
         "trust_control",
@@ -94,10 +102,6 @@ async fn serve_async_inner(
         FederationAdmissionRateLimiter::from_memory_budget(&config.memory_budget),
     ));
     let cluster_progress = cluster.as_ref().map(|_| Arc::new(ClusterProgress::new()));
-    // Public configuration does not provide an authoritative fee-settlement
-    // backend. Keep fee-bearing market transitions unavailable until the
-    // deployment injects a real idempotent rail adapter.
-    let finding_rail = None;
     let state = TrustServiceState {
         config,
         joint_authority_store,
@@ -191,6 +195,24 @@ async fn serve_async_inner(
     })
 }
 
+fn validate_finding_purchase_runtime_dependencies(
+    has_purchase_executor: bool,
+    has_rail: bool,
+    has_authority_status_resolver: bool,
+) -> Result<(), CliError> {
+    if has_purchase_executor && !has_rail {
+        return Err(CliError::cli_other_error(
+            "finding purchase runtime requires an idempotent settlement rail".to_string(),
+        ));
+    }
+    if has_purchase_executor && !has_authority_status_resolver {
+        return Err(CliError::cli_other_error(
+            "finding purchase runtime requires an authority-status resolver".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_injected_joint_authority_store(
     config: &TrustServiceConfig,
     store: &SqliteAuthorityStore,
@@ -236,8 +258,8 @@ fn cluster_join_budget(drain_timeout: Duration, elapsed_since_signal: Duration) 
 mod tests {
     use super::cluster_join_budget;
     use super::{
-        open_configured_joint_authority_store, validate_injected_joint_authority_store,
-        SqliteAuthorityStore, TrustServiceConfig,
+        open_configured_joint_authority_store, validate_finding_purchase_runtime_dependencies,
+        validate_injected_joint_authority_store, SqliteAuthorityStore, TrustServiceConfig,
     };
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
@@ -302,6 +324,26 @@ mod tests {
                 "teardown at elapsed={elapsed:?} must stay within the drain window"
             );
         }
+    }
+
+    #[test]
+    fn purchase_runtime_requires_rail_and_authority_status_resolution() {
+        assert!(validate_finding_purchase_runtime_dependencies(false, false, false).is_ok());
+        assert!(validate_finding_purchase_runtime_dependencies(true, true, true).is_ok());
+
+        let Err(missing_rail) = validate_finding_purchase_runtime_dependencies(true, false, true)
+        else {
+            panic!("purchase runtime without a rail must fail closed");
+        };
+        assert!(missing_rail.to_string().contains("settlement rail"));
+
+        let Err(missing_status) = validate_finding_purchase_runtime_dependencies(true, true, false)
+        else {
+            panic!("purchase runtime without status resolution must fail closed");
+        };
+        assert!(missing_status
+            .to_string()
+            .contains("authority-status resolver"));
     }
 
     #[cfg(unix)]
@@ -401,7 +443,7 @@ mod windows_authority_tests {
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         };
 
-        let Err(error) = serve_async(config, None, None, None, None).await else {
+        let Err(error) = serve_async(config, None, None, None, None, None).await else {
             return Err(CliError::cli_other_error(
                 "Windows trust service unexpectedly started with a joint authority database",
             ));

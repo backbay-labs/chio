@@ -24,7 +24,7 @@ pub struct RevokeCapabilityResponse {
 }
 
 pub fn serve(config: TrustServiceConfig) -> Result<(), CliError> {
-    serve_with_optional_finding_challenge_executor(config, None, None, None, None)
+    serve_with_optional_finding_challenge_executor(config, None, None, None, None, None)
 }
 
 /// Serve trust control with a checked cognition-market challenge runtime.
@@ -41,6 +41,7 @@ pub fn serve_with_finding_challenge_runtime(
         config,
         Some(joint_authority_store),
         None,
+        None,
         Some(authority_status_resolver),
         Some(executor),
     )
@@ -50,10 +51,14 @@ pub fn serve_with_finding_challenge_runtime(
 ///
 /// This is the production composition path for deployments whose challenge
 /// coordinator and purchase executor share the serving-owned purchase store.
+/// The injected rail must implement the idempotent observation contract of
+/// [`FindingRailObserver`]; activation and participation renewal use it rather
+/// than silently installing a non-settling placeholder.
 pub fn serve_with_finding_market_runtime(
     config: TrustServiceConfig,
     challenge_runtime: FindingChallengeSubmissionRuntime,
     purchase_executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    rail: Arc<dyn super::finding_handlers::FindingRailObserver>,
 ) -> Result<(), CliError> {
     validate_finding_challenge_runtime(&config, &challenge_runtime)?;
     validate_finding_market_mutation_fence(
@@ -65,6 +70,7 @@ pub fn serve_with_finding_market_runtime(
     serve_with_optional_finding_challenge_executor(
         config,
         Some(joint_authority_store),
+        Some(rail),
         Some(purchase_executor),
         Some(authority_status_resolver),
         Some(challenge_executor),
@@ -104,6 +110,7 @@ fn validate_finding_challenge_runtime(
 fn serve_with_optional_finding_challenge_executor(
     config: TrustServiceConfig,
     joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
+    rail: Option<Arc<dyn super::finding_handlers::FindingRailObserver>>,
     purchase_executor: Option<super::finding_purchase_routes::SharedFindingPurchaseExecutor>,
     authority_status_resolver: Option<
         Arc<dyn super::finding_challenge_coordinator::FindingAuthorityStatusResolver>,
@@ -123,6 +130,7 @@ fn serve_with_optional_finding_challenge_executor(
         service_runtime::serve_async(
             config,
             joint_authority_store,
+            rail,
             purchase_executor,
             authority_status_resolver,
             executor,
@@ -132,12 +140,26 @@ fn serve_with_optional_finding_challenge_executor(
 }
 
 /// Serve trust-control with an explicitly configured cognition-market
-/// purchase adapter. Ordinary [`serve`] keeps the purchase route unavailable.
+/// purchase adapter, fee rail, and current authority-status resolver. Ordinary
+/// [`serve`] keeps the purchase route unavailable. Supplying all three keeps
+/// activation, renewal, public admission views, and purchase execution on the
+/// same configured market boundary.
 pub fn serve_with_finding_purchase_executor(
     config: TrustServiceConfig,
     executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    rail: Arc<dyn super::finding_handlers::FindingRailObserver>,
+    authority_status_resolver: Arc<
+        dyn super::finding_challenge_coordinator::FindingAuthorityStatusResolver,
+    >,
 ) -> Result<(), CliError> {
-    serve_with_optional_finding_challenge_executor(config, None, Some(executor), None, None)
+    serve_with_optional_finding_challenge_executor(
+        config,
+        None,
+        Some(rail),
+        Some(executor),
+        Some(authority_status_resolver),
+        None,
+    )
 }
 
 #[cfg(test)]

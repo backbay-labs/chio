@@ -214,6 +214,8 @@ pub(super) fn cmd_finding_verify(
             proof_bytes,
             authorization,
             freshness,
+            draft.facet_outcome(FindingFacetKind::StatusLiveness)
+                == Some(FindingFacetOutcome::Verified),
             &accepted.finding.finding_id,
             &accepted.finding.status_feed_ref,
         )?;
@@ -579,9 +581,13 @@ fn persist_authenticated_status_retraction(
     proof_bytes: &[u8],
     authorization: &chio_finding::FindingStatusOperatorAuthorization,
     freshness: chio_finding::FindingStatusFreshnessPolicy,
+    authenticated_operator_standing: bool,
     expected_finding_id: &str,
     expected_feed_id: &str,
 ) -> Result<bool, CliError> {
+    if !authenticated_operator_standing {
+        return Ok(false);
+    }
     let proof = chio_finding::parse_status_proof_input(proof_bytes).map_err(|error| {
         CliError::cli_other_error(format!("finding status proof is invalid: {error}"))
     })?;
@@ -1013,6 +1019,26 @@ mod tests {
     }
 
     #[test]
+    fn finding_verify_does_not_persist_retraction_without_authenticated_operator_standing(
+    ) -> Result<(), CliError> {
+        let (proof_bytes, authorization, freshness) = authenticated_inclusion_fixture()?;
+        let dir = tempfile::tempdir()?;
+        let floor_path = dir.path().join("status-floor.json");
+
+        assert!(!persist_authenticated_status_retraction(
+            &floor_path,
+            &proof_bytes,
+            &authorization,
+            freshness,
+            false,
+            RETRACTED_FINDING_ID,
+            &authorization.feed_id,
+        )?);
+        assert!(!floor_path.exists());
+        Ok(())
+    }
+
+    #[test]
     fn finding_verify_persists_an_authenticated_retraction_before_failure() -> Result<(), CliError> {
         let (proof_bytes, authorization, freshness) = authenticated_inclusion_fixture()?;
         let dir = tempfile::tempdir()?;
@@ -1048,6 +1074,7 @@ mod tests {
             &proof_bytes,
             &authorization,
             freshness,
+            true,
             RETRACTED_FINDING_ID,
             &authorization.feed_id,
         )
