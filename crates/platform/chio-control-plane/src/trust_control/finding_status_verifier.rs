@@ -398,7 +398,12 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
         )?;
         let decision = self
             .store
-            .status_for_purchase(fields.feed_id, fields.finding_id, refreshed_now)
+            .status_for_purchase(
+                fields.feed_id,
+                fields.finding_id,
+                refreshed_now,
+                self.max_epoch_age_secs,
+            )
             .map_err(|error| error.to_string())?;
         let record = match decision {
             FindingStatusDecision::VerifiedLive(record)

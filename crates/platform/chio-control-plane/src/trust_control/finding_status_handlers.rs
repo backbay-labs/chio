@@ -1332,6 +1332,7 @@ mod tests {
                 proof: &retracted_proof,
                 proof_bytes: &retracted.proof_bytes,
                 operator_authorization_sha256: &operator.authorization_sha256,
+                max_epoch_age_secs: 300,
                 recorded_at: NOW + 1,
             })
             .test_expect_err("an imported inclusion must preserve the raw v1 leaf encoding");
@@ -1355,6 +1356,7 @@ mod tests {
                 proof: &imported_proof,
                 proof_bytes: &imported.proof_bytes,
                 operator_authorization_sha256: &operator.authorization_sha256,
+                max_epoch_age_secs: 300,
                 recorded_at: NOW + 1,
             })
             .test_expect_err("one imported point proof must not advance the durable feed floor");

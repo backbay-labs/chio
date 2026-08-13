@@ -1944,6 +1944,7 @@ pub(crate) async fn handle_activate_finding(
         &finding.status_feed_ref,
         &config.status_feed_operator.authorization_sha256,
         now,
+        config.status_max_epoch_age_secs,
     ) {
         Ok(FindingActivationPreparationOutcome::Prepared)
         | Ok(FindingActivationPreparationOutcome::PendingReplay) => {}
@@ -2199,6 +2200,7 @@ pub(crate) async fn handle_finding_participation(
         &finding.status_feed_ref,
         &config.status_feed_operator.authorization_sha256,
         now,
+        config.status_max_epoch_age_secs,
     ) {
         Ok(fenced) if fenced.outcome == FindingFeeIntentOutcome::AlreadyReconciled => {
             return Json(serde_json::json!({

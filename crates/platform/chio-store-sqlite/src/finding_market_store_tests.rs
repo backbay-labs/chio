@@ -1220,6 +1220,7 @@ fn retracted_status_atomically_blocks_activation_and_participation_intents() {
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
         NOW,
+        300,
     );
     assert!(matches!(
         activation,
@@ -1261,6 +1262,7 @@ fn retracted_status_atomically_blocks_activation_and_participation_intents() {
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
         NOW,
+        300,
     );
     assert!(matches!(
         renewal,
@@ -1272,6 +1274,86 @@ fn retracted_status_atomically_blocks_activation_and_participation_intents() {
         .store
         .get_fee_event(&key)
         .expect("read rejected renewal intent")
+        .is_none());
+}
+
+#[test]
+fn stale_status_epoch_atomically_blocks_activation_and_participation_intents() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let artifact = publish_finding(
+        &fixture.store,
+        &finding_id,
+        "regression/stale-status-gate",
+        &hex64('c'),
+        1_700_000_000,
+        1_900_000_000,
+    );
+    let backing = backing_body(&finding_id, "vault:stale-status-gate");
+    let backing_envelope = envelope_string(&backing, &keypair(21));
+    let backing_sha256 = chio_core::sha256_hex(backing_envelope.as_bytes());
+    fixture
+        .store
+        .register_allocation(&backing_envelope, &backing, NOW)
+        .expect("register stale-status-gated allocation");
+    let admission = admission_body(
+        &finding_id,
+        &chio_core::sha256_hex(artifact.as_bytes()),
+        &backing,
+        &backing_sha256,
+    );
+    let admission_envelope = envelope_string(&admission, &keypair(31));
+    install_status(&fixture, &finding_id, FindingStatusProofKind::NonInclusion);
+
+    let activation = fixture.store.prepare_listing_activation(
+        &admission_envelope,
+        &admission,
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW,
+        1,
+    );
+    assert!(matches!(
+        activation,
+        Err(FindingMarketStoreError::Conflict(ref detail)) if detail.contains("stale")
+    ));
+    assert!(fixture
+        .store
+        .get_activation_attempt(&admission.admission_id)
+        .expect("read rejected stale-status activation")
+        .is_none());
+
+    let event = FindingFeeEvent::ParticipationEpoch { epoch_index: 1 };
+    let amount = usd(3);
+    let instruction_sha256 = hex64('8');
+    let schedule_sha256 = hex64('5');
+    let intent = FindingFeeIntent {
+        fee_schedule_envelope_sha256: &schedule_sha256,
+        event: &event,
+        finding_id: &finding_id,
+        listing_id: LISTING_ID,
+        payer: "seller-42",
+        amount: &amount,
+        pool_principal_id: "pool:audit",
+        rail_destination: "rail:venue-ledger:audit-pool",
+        instruction_sha256: &instruction_sha256,
+    };
+    let renewal = fixture.store.begin_live_participation_fee_intent(
+        &intent,
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW,
+        1,
+    );
+    assert!(matches!(
+        renewal,
+        Err(FindingMarketStoreError::Conflict(ref detail)) if detail.contains("stale")
+    ));
+    let key = finding_fee_idempotency_key(&schedule_sha256, &event, &finding_id, LISTING_ID);
+    assert!(fixture
+        .store
+        .get_fee_event(&key)
+        .expect("read rejected stale-status renewal")
         .is_none());
 }
 
@@ -1312,6 +1394,7 @@ fn prepared_activation_replay_reuses_its_retained_live_status_decision() {
                 STATUS_FEED,
                 STATUS_AUTHORIZATION_SHA256,
                 NOW,
+                300,
             )
             .expect("prepare under live status"),
         FindingActivationPreparationOutcome::Prepared
@@ -1325,6 +1408,7 @@ fn prepared_activation_replay_reuses_its_retained_live_status_decision() {
                 STATUS_FEED,
                 STATUS_AUTHORIZATION_SHA256,
                 NOW + 500,
+                300,
             )
             .expect("replay after the live-status proof expires"),
         FindingActivationPreparationOutcome::PendingReplay

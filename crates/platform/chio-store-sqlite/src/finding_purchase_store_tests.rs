@@ -12,13 +12,20 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::finding_market_store::{FindingRecordInput, SqliteFindingMarketStore};
-use crate::SqliteAuthorityStore;
+use crate::{
+    FindingStatusProofKind, SqliteAuthorityStore, VerifiedFindingStatusEpochInput,
+    VerifiedFindingStatusProofInput, FINDING_STATUS_KEY_DOMAIN_NONCE,
+};
 
 const LISTING_ID: &str = "purchase-listing-01";
 const OTHER_LISTING_ID: &str = "purchase-listing-02";
 const NOW: u64 = 1_750_000_000;
 const EXPIRES_AT: u64 = NOW + 3_600;
 const PAYOUT_DESTINATION: &str = "0x000000000000000000000000000000000000002a";
+const STATUS_FEED: &str = "status-feed/purchase-store";
+const STATUS_OPERATOR: &str = "purchase-store-status-operator";
+const STATUS_AUTHORIZATION_SHA256: &str =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 /// The exposure cap `backing_body` registers for every fixture allocation.
 const REGISTERED_EXPOSURE_CAP: u64 = 450;
 
@@ -328,6 +335,76 @@ fn open_reservation(fixture: &Fixture, purchase: &Purchase) -> FindingPurchaseWr
         .store
         .open_reservation(&purchase.input(&fixture.allocation_id))
         .expect("open reservation")
+}
+
+fn install_live_status(fixture: &Fixture, finding_id: &str) {
+    let epoch_id = hex64('d');
+    let root_hash = hex64('e');
+    let status = fixture._authority.finding_status_store();
+    status
+        .observe_verified_epoch(&VerifiedFindingStatusEpochInput {
+            feed_id: STATUS_FEED,
+            operator_id: STATUS_OPERATOR,
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            map_epoch: 1,
+            epoch_id: &epoch_id,
+            root_hash: &root_hash,
+            signed_epoch_bytes: b"purchase-status-epoch",
+            operator_key: "purchase-status-key",
+            operator_key_epoch: 1,
+            operator_authorization_sha256: STATUS_AUTHORIZATION_SHA256,
+            generated_at: NOW - 2,
+            valid_until: NOW + 600,
+            recorded_at: NOW - 1,
+        })
+        .expect("persist purchase status epoch");
+    status
+        .record_verified_proof(&VerifiedFindingStatusProofInput {
+            feed_id: STATUS_FEED,
+            operator_id: STATUS_OPERATOR,
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            map_epoch: 1,
+            epoch_id: &epoch_id,
+            root_hash: &root_hash,
+            finding_id,
+            kind: FindingStatusProofKind::NonInclusion,
+            proof_bytes: b"purchase-status-proof",
+            status_value_bytes: None,
+            retraction_intent_sha256: None,
+            checked_at: NOW - 1,
+            valid_until: NOW + 500,
+            recorded_at: NOW,
+        })
+        .expect("persist purchase status proof");
+}
+
+#[test]
+fn stale_status_epoch_atomically_blocks_purchase_reservation() {
+    let fixture = fixture();
+    let purchase = Purchase::new("stale-status", LISTING_ID, 100);
+    install_live_status(&fixture, &purchase.finding_id);
+
+    let result = fixture.store.open_live_reservation(
+        &purchase.input(&fixture.allocation_id),
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW,
+        1,
+    );
+    assert!(matches!(
+        result,
+        Err(FindingPurchaseStoreError::Conflict(ref detail)) if detail.contains("stale")
+    ));
+    assert!(fixture
+        .store
+        .get_reservation(&purchase.reservation_id)
+        .expect("read rejected stale-status reservation")
+        .is_none());
+    assert!(fixture
+        .store
+        .get_encumbrance(&purchase.reservation_id)
+        .expect("read rejected stale-status encumbrance")
+        .is_none());
 }
 
 fn mark_capture(fixture: &Fixture, purchase: &Purchase, now: u64) {

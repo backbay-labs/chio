@@ -539,16 +539,18 @@ impl SqliteFindingPurchaseStore {
         self.open_reservation_inner(input, None)
     }
 
-    /// Open a reservation only while the Finding has fresh current-floor
-    /// non-inclusion evidence. The status decision and financial mutation
-    /// share this immediate transaction, so a concurrent retraction either
-    /// commits first and denies the sale or commits after this reservation.
+    /// Open a reservation only while the Finding has current-floor
+    /// non-inclusion evidence whose signed epoch is within the configured
+    /// age ceiling. The status decision and financial mutation share this
+    /// immediate transaction, so a concurrent retraction either commits
+    /// first and denies the sale or commits after this reservation.
     pub fn open_live_reservation(
         &self,
         input: &FindingPurchaseReservationInput<'_>,
         status_feed_id: &str,
         status_operator_authorization_sha256: &str,
         trusted_now: u64,
+        status_max_epoch_age_secs: u64,
     ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
         self.open_reservation_inner(
             input,
@@ -556,6 +558,7 @@ impl SqliteFindingPurchaseStore {
                 status_feed_id,
                 status_operator_authorization_sha256,
                 trusted_now,
+                status_max_epoch_age_secs,
             )),
         )
     }
@@ -563,7 +566,7 @@ impl SqliteFindingPurchaseStore {
     fn open_reservation_inner(
         &self,
         input: &FindingPurchaseReservationInput<'_>,
-        status_gate: Option<(&str, &str, u64)>,
+        status_gate: Option<(&str, &str, u64, u64)>,
     ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
         validate_reservation_input(input)?;
         let mut connection = self.connection()?;
@@ -580,12 +583,15 @@ impl SqliteFindingPurchaseStore {
                 "reservation id is already bound to different purchase parameters".to_owned(),
             ));
         }
-        if let Some((feed_id, operator_authorization_sha256, trusted_now)) = status_gate {
+        if let Some((feed_id, operator_authorization_sha256, trusted_now, max_epoch_age_secs)) =
+            status_gate
+        {
             match status_for_purchase_tx(
                 &transaction,
                 feed_id,
                 input.finding_id,
                 trusted_now,
+                max_epoch_age_secs,
                 Some(operator_authorization_sha256),
             )
             .map_err(|error| {

@@ -375,18 +375,28 @@ fn signed_collateral_authority_status(
 
 struct TestTerminalAuthorityStatusResolver {
     revoked_authority_id: Option<String>,
+    observed_at_lag_secs: u64,
 }
 
 impl TestTerminalAuthorityStatusResolver {
     fn live() -> Self {
         Self {
             revoked_authority_id: None,
+            observed_at_lag_secs: 0,
+        }
+    }
+
+    fn cached(observed_at_lag_secs: u64) -> Self {
+        Self {
+            revoked_authority_id: None,
+            observed_at_lag_secs,
         }
     }
 
     fn revoked(authority_id: &str) -> Self {
         Self {
             revoked_authority_id: Some(authority_id.to_owned()),
+            observed_at_lag_secs: 0,
         }
     }
 }
@@ -408,7 +418,7 @@ impl FindingAuthorityStatusResolver for TestTerminalAuthorityStatusResolver {
                 revoked_from: (self.revoked_authority_id.as_deref()
                     == Some(pin.authority_id.as_str()))
                 .then_some(now),
-                observed_at: now,
+                observed_at: now.saturating_sub(self.observed_at_lag_secs),
             },
             &keypair(37),
         )
@@ -2024,6 +2034,7 @@ fn coordinator_with_status_pin(
         authority_status,
         authority_status_pin,
         &market_config().status_feed_operator,
+        market_config().status_max_epoch_age_secs,
         &market_config().venue,
         VENUE_ID,
     )?)
@@ -4557,6 +4568,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_pin(37, "authority-status"),
         &market_config().status_feed_operator,
+        market_config().status_max_epoch_age_secs,
         &market_config().venue,
         VENUE_ID,
     )?;
@@ -4590,6 +4602,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_pin(37, "authority-status"),
         &market_config().status_feed_operator,
+        market_config().status_max_epoch_age_secs,
         &market_config().venue,
         VENUE_ID,
     )?;
@@ -4628,6 +4641,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
                 Arc::new(TestTerminalAuthorityStatusResolver::live()),
                 &aliased_status_pin,
                 &market_config().status_feed_operator,
+                market_config().status_max_epoch_age_secs,
                 &market_config().venue,
                 VENUE_ID,
             ),
@@ -4652,6 +4666,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
                 Arc::new(TestTerminalAuthorityStatusResolver::live()),
                 &authority_pin(37, "authority-status"),
                 &market_config().status_feed_operator,
+                market_config().status_max_epoch_age_secs,
                 &aliased_venue_pin,
                 VENUE_ID,
             ),
@@ -4672,6 +4687,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
             Arc::new(TestTerminalAuthorityStatusResolver::live()),
             &authority_pin(37, "authority-status"),
             &market_config().status_feed_operator,
+            market_config().status_max_epoch_age_secs,
             &market_config().venue,
             VENUE_ID,
         ),
@@ -4755,6 +4771,7 @@ async fn wedge_purchase_reservation_cannot_outlive_authority_status_signer() -> 
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_status_pin,
         &market_config().status_feed_operator,
+        market_config().status_max_epoch_age_secs,
         &market_config().venue,
         VENUE_ID,
     )?;
@@ -4849,6 +4866,7 @@ async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_stand
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_pin(37, "authority-status"),
         &market_config().status_feed_operator,
+        market_config().status_max_epoch_age_secs,
         &expired_venue,
         VENUE_ID,
     )?;
@@ -4870,6 +4888,22 @@ async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_stand
         .finding_purchase_store()
         .get_reservation(&fixture.exchange.reservation_id)?
         .is_none());
+
+    let cached_status_coordinator = coordinator_with_status(
+        &fixture.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::cached(1)),
+    )?;
+    let receipt = cached_status_coordinator.reserve(
+        &fixture.exchange.bid,
+        &fixture.exchange.ask,
+        &fixture.exchange.buyer_signature_hex,
+        &fixture.deployment.web.admission,
+        &fixture.deployment.web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    assert_eq!(receipt.body.receipt_id, fixture.exchange.reservation_id);
     Ok(())
 }
 
@@ -5435,6 +5469,26 @@ async fn wedge_purchase_terminal_closure_requires_live_authority_status() -> Tes
         Err(PurchaseCoordinatorError::AuthorityLifecycle {
             role: "purchase",
             reason: "authority is revoked at finalization",
+        })
+    ));
+    let pre_terminal_reading = coordinator_with_status(
+        &delivered.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::cached(
+            now.saturating_sub(delivered_response.receipt.timestamp)
+                .saturating_add(1),
+        )),
+    )?;
+    assert!(matches!(
+        pre_terminal_reading.finalize_delivery(
+            &delivered.purchase.handshake.reservation_id,
+            &delivered_response.receipt,
+            &delivered.deployment.web.admission,
+            &delivered.deployment.web.backing,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "purchase",
+            reason: "revocation status is not a fresh post-terminal reading",
         })
     ));
     let mut expired_status_pin = authority_pin(37, "authority-status");

@@ -60,7 +60,9 @@ use chio_store_sqlite::{
 
 use super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::finding_purchase_verifier::{PurchaseReservationReader, ReservationExpectation};
-use super::service_types::{FindingAuthorityPin, FindingStatusOperatorPin};
+use super::service_types::{
+    FindingAuthorityPin, FindingStatusOperatorPin, FINDING_STATUS_MAX_EPOCH_AGE_SECS,
+};
 
 /// Domain separator for the deterministic reservation identity.
 const RESERVATION_DOMAIN: &str = "chio.finding.reservation.v1";
@@ -104,6 +106,12 @@ enum ExpectedPurchaseTerminal {
     Denied,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AuthorityStatusReading {
+    Current,
+    PostTerminal { terminal_at: u64 },
+}
+
 struct VerifiedPurchaseTerminal {
     delivery: FindingDelivery,
     settlement: SettlementDispositionV1,
@@ -124,6 +132,8 @@ pub enum PurchaseCoordinatorError {
     AuthorityPinMismatch,
     #[error("authority-status pin is invalid or aliases a terminal signing authority")]
     AuthorityStatusPin,
+    #[error("configured status epoch age ceiling is invalid")]
+    StatusEpochAge,
     #[error("venue authority pin is invalid or aliases another trusted authority")]
     VenuePin,
     #[error("reserve request signature does not verify under the buyer key")]
@@ -212,6 +222,7 @@ pub struct FindingPurchaseCoordinator {
     authority_status: Arc<dyn FindingAuthorityStatusResolver>,
     authority_status_pin: FindingAuthorityPin,
     status_feed_operator: FindingStatusOperatorPin,
+    status_max_epoch_age_secs: u64,
     venue_authority: FindingAuthorityPin,
     venue_id: String,
 }
@@ -235,6 +246,7 @@ impl FindingPurchaseCoordinator {
         authority_status: Arc<dyn FindingAuthorityStatusResolver>,
         authority_status_pin: &FindingAuthorityPin,
         status_feed_operator: &FindingStatusOperatorPin,
+        status_max_epoch_age_secs: u64,
         venue_pin: &FindingAuthorityPin,
         venue_id: &str,
     ) -> Result<Self, PurchaseCoordinatorError> {
@@ -259,6 +271,11 @@ impl FindingPurchaseCoordinator {
         {
             return Err(PurchaseCoordinatorError::AuthorityStatusPin);
         }
+        if status_max_epoch_age_secs == 0
+            || status_max_epoch_age_secs > FINDING_STATUS_MAX_EPOCH_AGE_SECS
+        {
+            return Err(PurchaseCoordinatorError::StatusEpochAge);
+        }
         let venue_key = venue_pin
             .validate("venue")
             .map_err(|_| PurchaseCoordinatorError::VenuePin)?;
@@ -280,6 +297,7 @@ impl FindingPurchaseCoordinator {
             authority_status,
             authority_status_pin: authority_status_pin.clone(),
             status_feed_operator: status_feed_operator.clone(),
+            status_max_epoch_age_secs,
             venue_authority: venue_pin.clone(),
             venue_id: venue_id.to_owned(),
         })
@@ -351,7 +369,7 @@ impl FindingPurchaseCoordinator {
         &self,
         policy: &FindingAuthorityKeyPolicy,
         signing_key: &PublicKey,
-        terminal_at: u64,
+        reading: AuthorityStatusReading,
         now: u64,
         role: &'static str,
     ) -> Result<(), PurchaseCoordinatorError> {
@@ -362,7 +380,13 @@ impl FindingPurchaseCoordinator {
         if policy.key != *signing_key {
             return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
         }
-        if !authority_policy_covers(policy, terminal_at) || !authority_policy_covers(policy, now) {
+        if !authority_policy_covers(policy, now)
+            || matches!(
+                reading,
+                AuthorityStatusReading::PostTerminal { terminal_at }
+                    if !authority_policy_covers(policy, terminal_at)
+            )
+        {
             return Err(reject("configured authority window is not live"));
         }
         let signed = self
@@ -391,6 +415,11 @@ impl FindingPurchaseCoordinator {
                 "revocation status was signed outside the authority-status window",
             ));
         }
+        if !authority_policy_covers(policy, status.observed_at) {
+            return Err(reject(
+                "revocation status was observed outside the admitted authority window",
+            ));
+        }
         if status.status_ref != policy.revocation_status_ref
             || status.authority_id != policy.authority_id
             || status.key != policy.key
@@ -400,19 +429,33 @@ impl FindingPurchaseCoordinator {
                 "revocation status does not bind the admitted policy",
             ));
         }
-        if status.observed_at < terminal_at
-            || status.observed_at > now
+        if status.observed_at > now
             || now.saturating_sub(status.observed_at) > TERMINAL_AUTHORITY_STATUS_MAX_AGE_SECS
+            || matches!(
+                reading,
+                AuthorityStatusReading::PostTerminal { terminal_at }
+                    if status.observed_at < terminal_at
+            )
         {
-            return Err(reject(
-                "revocation status is not a fresh post-terminal reading",
-            ));
+            return Err(reject(match reading {
+                AuthorityStatusReading::Current => {
+                    "revocation status is not a fresh current reading"
+                }
+                AuthorityStatusReading::PostTerminal { .. } => {
+                    "revocation status is not a fresh post-terminal reading"
+                }
+            }));
         }
         if status
             .revoked_from
             .is_some_and(|revoked_from| revoked_from <= now)
         {
-            return Err(reject("authority is revoked at finalization"));
+            return Err(reject(match reading {
+                AuthorityStatusReading::Current => "authority is revoked at reservation",
+                AuthorityStatusReading::PostTerminal { .. } => {
+                    "authority is revoked at finalization"
+                }
+            }));
         }
         Ok(())
     }
@@ -442,7 +485,13 @@ impl FindingPurchaseCoordinator {
                 .revocation_status_ref
                 .clone(),
         };
-        self.require_live_terminal_authority(&policy, &key, now, now, "status-operator")?;
+        self.require_live_terminal_authority(
+            &policy,
+            &key,
+            AuthorityStatusReading::Current,
+            now,
+            "status-operator",
+        )?;
         Ok(&self.status_feed_operator.authorization_sha256)
     }
 
@@ -627,7 +676,13 @@ impl FindingPurchaseCoordinator {
             if !authority_policy_covers(policy, now) {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
-            self.require_live_terminal_authority(policy, &signing_key, now, now, role)?;
+            self.require_live_terminal_authority(
+                policy,
+                &signing_key,
+                AuthorityStatusReading::Current,
+                now,
+                role,
+            )?;
         }
         // The digest is derived from the envelope just verified, never
         // accepted from the caller: it gates the sale below and is signed
@@ -852,6 +907,7 @@ impl FindingPurchaseCoordinator {
                 &finding.status_feed_ref,
                 &status_operator_authorization_sha256,
                 now,
+                self.status_max_epoch_age_secs,
             )
             .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
         let receipt = ReservationReceipt {
@@ -1294,7 +1350,9 @@ impl FindingPurchaseCoordinator {
         self.require_live_terminal_authority(
             &admission.body.purchase_authority,
             &self.purchase_authority.public_key(),
-            receipt.timestamp,
+            AuthorityStatusReading::PostTerminal {
+                terminal_at: receipt.timestamp,
+            },
             now,
             "purchase",
         )?;
@@ -1477,7 +1535,9 @@ impl FindingPurchaseCoordinator {
         self.require_live_terminal_authority(
             &admission.body.failed_delivery_authority,
             &self.failed_delivery_authority.public_key(),
-            receipt.timestamp,
+            AuthorityStatusReading::PostTerminal {
+                terminal_at: receipt.timestamp,
+            },
             now,
             "failed-delivery",
         )?;

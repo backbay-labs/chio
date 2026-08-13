@@ -1165,14 +1165,21 @@ impl SqliteFindingStatusStore {
         feed_id: &str,
         finding_id: &str,
         trusted_now: u64,
+        max_epoch_age_secs: u64,
     ) -> Result<FindingStatusDecision, FindingStatusStoreError> {
         require_identifier(feed_id, "feed_id")?;
         require_hex64(finding_id, "finding_id")?;
         require_positive(trusted_now, "trusted_now")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
-        let decision =
-            status_for_purchase_tx(&transaction, feed_id, finding_id, trusted_now, None)?;
+        let decision = status_for_purchase_tx(
+            &transaction,
+            feed_id,
+            finding_id,
+            trusted_now,
+            max_epoch_age_secs,
+            None,
+        )?;
         transaction.commit().map_err(sqlite_error)?;
         Ok(decision)
     }
@@ -1648,7 +1655,12 @@ impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
 
         let expected_proof_sha256 = sha256_hex(observation.proof_bytes);
         match self
-            .status_for_purchase(feed_id, finding_id, observation.recorded_at)
+            .status_for_purchase(
+                feed_id,
+                finding_id,
+                observation.recorded_at,
+                observation.max_epoch_age_secs,
+            )
             .map_err(|error| error.to_string())?
         {
             FindingStatusDecision::VerifiedLive(record)
@@ -1680,11 +1692,13 @@ pub(crate) fn status_for_purchase_tx(
     feed_id: &str,
     finding_id: &str,
     trusted_now: u64,
+    max_epoch_age_secs: u64,
     expected_operator_authorization_sha256: Option<&str>,
 ) -> Result<FindingStatusDecision, FindingStatusStoreError> {
     require_identifier(feed_id, "feed_id")?;
     require_hex64(finding_id, "finding_id")?;
     require_positive(trusted_now, "trusted_now")?;
+    require_positive(max_epoch_age_secs, "max_epoch_age_secs")?;
     ensure_feed_registered_tx(transaction, feed_id)?;
 
     if let Some(status) = load_status_tx(transaction, feed_id, finding_id)? {
@@ -1712,13 +1726,20 @@ pub(crate) fn status_for_purchase_tx(
                 finding_id: finding_id.to_owned(),
             }
         })?;
+    let floor_epoch = load_epoch_tx(transaction, feed_id, floor.map_epoch)?
+        .ok_or_else(|| invariant("status floor points to a missing signed epoch"))?;
+    verify_floor_epoch_consistency(&floor, &floor_epoch)?;
     if proof.kind != FindingStatusProofKind::NonInclusion {
         return Err(invariant(
             "inclusion proof exists without the required sticky retracted state",
         ));
     }
     verify_proof_record_at_floor(&proof, &floor)?;
-    if trusted_now < proof.checked_at || trusted_now >= proof.valid_until {
+    if trusted_now < proof.checked_at
+        || trusted_now >= proof.valid_until
+        || trusted_now < floor_epoch.generated_at
+        || trusted_now.saturating_sub(floor_epoch.generated_at) > max_epoch_age_secs
+    {
         return Err(FindingStatusStoreError::StaleProof {
             finding_id: finding_id.to_owned(),
             trusted_now,

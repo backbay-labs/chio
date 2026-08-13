@@ -48,6 +48,7 @@ pub struct CognitionMarketStatusObservation<'a> {
     pub proof: &'a FindingStatusProofInput,
     pub proof_bytes: &'a [u8],
     pub operator_authorization_sha256: &'a str,
+    pub max_epoch_age_secs: u64,
     pub recorded_at: u64,
 }
 
@@ -543,6 +544,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
                     proof_bytes: status_bytes,
                     operator_authorization_sha256: &status_trust
                         .status_operator_authorization_sha256,
+                    max_epoch_age_secs: status_trust.status_freshness.max_epoch_age_secs,
                     recorded_at: status_trust.status_freshness.now,
                 },
             );
@@ -611,6 +613,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
                 proof: &status,
                 proof_bytes: status_bytes,
                 operator_authorization_sha256: &status_trust.status_operator_authorization_sha256,
+                max_epoch_age_secs: status_trust.status_freshness.max_epoch_age_secs,
                 recorded_at: status_trust.status_freshness.now,
             })
             .map_err(|error| {

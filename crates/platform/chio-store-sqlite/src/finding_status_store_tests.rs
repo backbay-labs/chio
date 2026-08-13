@@ -9,6 +9,7 @@ use crate::SqliteAuthorityStore;
 const FEED: &str = "venue-east/finding-status";
 const OPERATOR: &str = "venue-east-status-operator";
 const NOW: u64 = 1_900_000_000;
+const MAX_EPOCH_AGE_SECS: u64 = 300;
 
 struct DurableFixture {
     _temp: TempDir,
@@ -171,12 +172,16 @@ fn floor_epoch_and_non_inclusion_survive_restart_with_exact_bytes() {
     assert_eq!(proof.signed_epoch_bytes, epoch_bytes);
     assert!(matches!(
         store
-            .status_for_purchase(FEED, &finding_id, NOW + 100)
+            .status_for_purchase(FEED, &finding_id, NOW + 100, MAX_EPOCH_AGE_SECS)
             .expect("fresh decision"),
         FindingStatusDecision::VerifiedLive(_)
     ));
     assert!(matches!(
-        store.status_for_purchase(FEED, &finding_id, NOW + 501),
+        store.status_for_purchase(FEED, &finding_id, NOW + 302, MAX_EPOCH_AGE_SECS),
+        Err(FindingStatusStoreError::StaleProof { .. })
+    ));
+    assert!(matches!(
+        store.status_for_purchase(FEED, &finding_id, NOW + 501, MAX_EPOCH_AGE_SECS),
         Err(FindingStatusStoreError::StaleProof { .. })
     ));
 }
@@ -263,6 +268,7 @@ fn purchase_status_gate_rejects_a_different_operator_authorization() {
         FEED,
         &finding_id,
         NOW + 20,
+        MAX_EPOCH_AGE_SECS,
         Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
     )
     .expect_err("different operator authorization must fail closed");
@@ -426,7 +432,7 @@ fn retained_older_inclusion_becomes_sticky_without_lowering_the_floor() {
     assert_eq!(store.get_feed_floor(FEED).expect("floor").map_epoch, 2);
     assert!(matches!(
         store
-            .status_for_purchase(FEED, &finding_id, NOW + 20)
+            .status_for_purchase(FEED, &finding_id, NOW + 20, MAX_EPOCH_AGE_SECS)
             .expect("sticky retraction decision"),
         FindingStatusDecision::Retracted(_)
     ));
@@ -476,7 +482,7 @@ fn conflicting_current_epoch_inclusion_becomes_sticky_without_moving_the_floor()
     assert_eq!(floor.epoch_id, retained_epoch_id);
     assert_eq!(floor.root_hash, retained_root);
     let status = store
-        .status_for_purchase(FEED, &finding_id, NOW + 20)
+        .status_for_purchase(FEED, &finding_id, NOW + 20, MAX_EPOCH_AGE_SECS)
         .expect("sticky retraction decision");
     let FindingStatusDecision::Retracted(status) = status else {
         panic!("same-epoch equivocation must make retraction sticky");
@@ -535,7 +541,7 @@ fn future_epoch_inclusion_becomes_sticky_without_advancing_the_floor() {
     assert_eq!(floor.epoch_id, retained_epoch_id);
     assert_eq!(floor.root_hash, retained_root);
     let status = store
-        .status_for_purchase(FEED, &finding_id, NOW + 20)
+        .status_for_purchase(FEED, &finding_id, NOW + 20, MAX_EPOCH_AGE_SECS)
         .expect("sticky future retraction decision");
     let FindingStatusDecision::Retracted(status) = status else {
         panic!("future authenticated retraction must be sticky");
@@ -564,7 +570,7 @@ fn future_epoch_inclusion_becomes_sticky_without_advancing_the_floor() {
     );
     assert!(matches!(
         store
-            .status_for_purchase(FEED, &finding_id, NOW + 20)
+            .status_for_purchase(FEED, &finding_id, NOW + 20, MAX_EPOCH_AGE_SECS)
             .expect("sticky retraction after floor advance"),
         FindingStatusDecision::Retracted(_)
     ));
@@ -635,7 +641,7 @@ fn atomic_retraction_classification_uses_the_latest_durable_floor() {
     assert_eq!(store.get_feed_floor(FEED).expect("floor").map_epoch, 3);
     assert!(matches!(
         store
-            .status_for_purchase(FEED, &finding_id, NOW + 20)
+            .status_for_purchase(FEED, &finding_id, NOW + 20, MAX_EPOCH_AGE_SECS)
             .expect("sticky retraction decision"),
         FindingStatusDecision::Retracted(_)
     ));
@@ -1529,7 +1535,7 @@ fn pending_and_retracted_are_sticky_across_restart_and_contradiction() {
             .expect("issue voluntary intent");
         assert!(matches!(
             store
-                .status_for_purchase(FEED, &finding_id, NOW + 2)
+                .status_for_purchase(FEED, &finding_id, NOW + 2, MAX_EPOCH_AGE_SECS)
                 .expect("pending decision"),
             FindingStatusDecision::Pending(_)
         ));
@@ -1581,7 +1587,7 @@ fn pending_and_retracted_are_sticky_across_restart_and_contradiction() {
     let store = authority.finding_status_store();
     assert!(matches!(
         store
-            .status_for_purchase(FEED, &finding_id, NOW + 30)
+            .status_for_purchase(FEED, &finding_id, NOW + 30, MAX_EPOCH_AGE_SECS)
             .expect("retracted decision"),
         FindingStatusDecision::Retracted(_)
     ));
@@ -1654,7 +1660,7 @@ fn missing_floor_or_current_status_evidence_fails_closed_after_restart() {
         ));
         assert!(matches!(
             store
-                .status_for_purchase(FEED, &pending_finding, NOW + 10)
+                .status_for_purchase(FEED, &pending_finding, NOW + 10, MAX_EPOCH_AGE_SECS)
                 .expect("sticky pending remains a deny"),
             FindingStatusDecision::Pending(_)
         ));
@@ -1669,7 +1675,7 @@ fn missing_floor_or_current_status_evidence_fails_closed_after_restart() {
     let store = authority.finding_status_store();
     let unknown_finding = hex64('3');
     assert!(matches!(
-        store.status_for_purchase(FEED, &unknown_finding, NOW + 20),
+        store.status_for_purchase(FEED, &unknown_finding, NOW + 20, MAX_EPOCH_AGE_SECS,),
         Err(FindingStatusStoreError::MissingState { .. })
     ));
 }

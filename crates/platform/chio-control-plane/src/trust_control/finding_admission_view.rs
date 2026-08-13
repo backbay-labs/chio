@@ -30,6 +30,7 @@ pub(super) fn current_admission_view(
             finding_id,
             &config.status_feed_operator.authorization_sha256,
             now,
+            config.status_max_epoch_age_secs,
         )
         .ok()?;
     let snapshot = store.get_current_admission(finding_id).ok().flatten()?;

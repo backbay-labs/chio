@@ -751,6 +751,7 @@ impl SqliteFindingMarketStore {
         status_feed_id: &str,
         status_operator_authorization_sha256: &str,
         trusted_now: u64,
+        status_max_epoch_age_secs: u64,
     ) -> Result<FindingFeeIntentResult, FindingMarketStoreError> {
         self.begin_fee_intent_inner(
             intent,
@@ -758,6 +759,7 @@ impl SqliteFindingMarketStore {
                 status_feed_id,
                 status_operator_authorization_sha256,
                 trusted_now,
+                status_max_epoch_age_secs,
             )),
         )
     }
@@ -765,7 +767,7 @@ impl SqliteFindingMarketStore {
     fn begin_fee_intent_inner(
         &self,
         intent: &FindingFeeIntent<'_>,
-        status_gate: Option<(&str, &str, u64)>,
+        status_gate: Option<(&str, &str, u64, u64)>,
     ) -> Result<FindingFeeIntentResult, FindingMarketStoreError> {
         require_hex64(
             intent.fee_schedule_envelope_sha256,
@@ -790,13 +792,16 @@ impl SqliteFindingMarketStore {
         let (event_kind, epoch_index) = fee_event_parts(intent.event);
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
-        if let Some((feed_id, operator_authorization_sha256, trusted_now)) = status_gate {
+        if let Some((feed_id, operator_authorization_sha256, trusted_now, max_epoch_age_secs)) =
+            status_gate
+        {
             require_verified_live_status_tx(
                 &transaction,
                 feed_id,
                 intent.finding_id,
                 operator_authorization_sha256,
                 trusted_now,
+                max_epoch_age_secs,
             )?;
         }
         if let Some(existing) = load_fee_event_tx(&transaction, &key)? {
@@ -1043,6 +1048,7 @@ impl SqliteFindingMarketStore {
         status_feed_id: &str,
         status_operator_authorization_sha256: &str,
         prepared_at: u64,
+        status_max_epoch_age_secs: u64,
     ) -> Result<FindingActivationPreparationOutcome, FindingMarketStoreError> {
         self.prepare_listing_activation_inner(
             admission_envelope_json,
@@ -1051,6 +1057,7 @@ impl SqliteFindingMarketStore {
                 status_feed_id,
                 status_operator_authorization_sha256,
                 prepared_at,
+                status_max_epoch_age_secs,
             )),
             prepared_at,
         )
@@ -1070,7 +1077,7 @@ impl SqliteFindingMarketStore {
         &self,
         admission_envelope_json: &str,
         admission: &FindingAdmission,
-        status_gate: Option<(&str, &str, u64)>,
+        status_gate: Option<(&str, &str, u64, u64)>,
         prepared_at: u64,
     ) -> Result<FindingActivationPreparationOutcome, FindingMarketStoreError> {
         let envelope_sha256 =
@@ -1112,13 +1119,16 @@ impl SqliteFindingMarketStore {
                 "admission id is already bound to different bytes".to_owned(),
             ));
         }
-        if let Some((feed_id, operator_authorization_sha256, trusted_now)) = status_gate {
+        if let Some((feed_id, operator_authorization_sha256, trusted_now, max_epoch_age_secs)) =
+            status_gate
+        {
             require_verified_live_status_tx(
                 &transaction,
                 feed_id,
                 &admission.finding_id,
                 operator_authorization_sha256,
                 trusted_now,
+                max_epoch_age_secs,
             )?;
         }
         if sales_blocked_tx(&transaction, &admission.listing_id)
@@ -2088,12 +2098,14 @@ fn require_verified_live_status_tx(
     finding_id: &str,
     operator_authorization_sha256: &str,
     trusted_now: u64,
+    max_epoch_age_secs: u64,
 ) -> Result<(), FindingMarketStoreError> {
     match status_for_purchase_tx(
         transaction,
         feed_id,
         finding_id,
         trusted_now,
+        max_epoch_age_secs,
         Some(operator_authorization_sha256),
     )
     .map_err(|error| {
