@@ -283,6 +283,7 @@ pub struct AuthorizedFindingPoolDebitReplay {
 #[derive(Debug, Clone)]
 pub struct AuthorizedFindingPoolClaim {
     purchase_id: String,
+    tenant_id: Option<String>,
     finding_id: String,
     listing_id: String,
     reservation_id: String,
@@ -386,6 +387,11 @@ impl AuthorizedFindingPoolClaim {
     #[must_use]
     pub fn purchase_id(&self) -> &str {
         &self.purchase_id
+    }
+
+    #[must_use]
+    pub fn tenant_id(&self) -> Option<&str> {
+        self.tenant_id.as_deref()
     }
 
     #[must_use]
@@ -1072,6 +1078,7 @@ impl ChioKernel {
         let trusted_now_unix_ms = ledger.advance_trusted_time_floor(trusted_now_unix_ms)?;
         let claim = AuthorizedFindingPoolClaim {
             purchase_id: purchase.purchase_intent_id.clone(),
+            tenant_id: crate::kernel::current_scoped_receipt_tenant_id(),
             finding_id: purchase.finding_id.clone(),
             listing_id: purchase.listing_id.clone(),
             reservation_id: purchase.reservation_id.clone(),

@@ -15,7 +15,7 @@ use crate::{
 #[derive(Default)]
 pub(crate) struct RecordingLedger {
     decisions: Mutex<Vec<FindingPoolTerminalDecision>>,
-    claims: Mutex<Vec<(String, u64)>>,
+    claims: Mutex<Vec<(String, u64, Option<String>)>>,
     active_claim_operations: Mutex<Vec<String>>,
     recovery_releases: Mutex<Vec<String>>,
     unknown_dispatch_finalizations: Mutex<Vec<String>>,
@@ -155,7 +155,11 @@ impl FindingPoolLedger for RecordingLedger {
                 "test claim lock was poisoned".to_owned(),
             ));
         };
-        claims.push((claim.purchase_id().to_owned(), claim.claimed_at_unix_ms()));
+        claims.push((
+            claim.purchase_id().to_owned(),
+            claim.claimed_at_unix_ms(),
+            claim.tenant_id().map(str::to_owned),
+        ));
         drop(claims);
         let mut active_claim_operations = self.active_claim_operations.lock().map_err(|_| {
             FindingPoolLedgerError::Storage("test active claim lock was poisoned".to_owned())
@@ -172,7 +176,7 @@ impl FindingPoolLedger for RecordingLedger {
                 schema: FINDING_POOL_MUTATION_SCHEMA_V1.to_owned(),
                 kind: FindingPoolMutationKind::Claim,
                 purchase_id: claim.purchase_id().to_owned(),
-                tenant_id: None,
+                tenant_id: claim.tenant_id().map(str::to_owned),
                 allocation_id: "allocation:test".to_owned(),
                 allocation_envelope_sha256: "a".repeat(64),
                 amount_units: claim.amount_units().to_string(),
@@ -806,7 +810,10 @@ fn dispatch_claims_the_configured_pool_reservation() {
     let Ok(claims) = ledger.claims.lock() else {
         panic!("test claim lock was poisoned");
     };
-    assert_eq!(claims.as_slice(), &[("purchase:test".to_owned(), 12_345)]);
+    assert_eq!(
+        claims.as_slice(),
+        &[("purchase:test".to_owned(), 12_345, None)]
+    );
     drop(claims);
     let pending = ledger
         .pending_mutation_receipts()
@@ -830,7 +837,31 @@ fn dispatch_claim_uses_the_persisted_nondecreasing_time_floor() {
     let Ok(claims) = ledger.claims.lock() else {
         panic!("test claim lock was poisoned");
     };
-    assert_eq!(claims.as_slice(), &[("purchase:test".to_owned(), 50_000)]);
+    assert_eq!(
+        claims.as_slice(),
+        &[("purchase:test".to_owned(), 50_000, None)]
+    );
+}
+
+#[test]
+fn dispatch_claim_binds_the_authenticated_tenant() {
+    let ledger = Arc::new(RecordingLedger::default());
+    let kernel = kernel_with_ledger(Arc::clone(&ledger));
+    let _tenant_scope = crate::kernel::scope_receipt_tenant_id(Some("tenant-A".to_owned()));
+    assert!(kernel
+        .claim_finding_pool_delivery(&purchase(), 12_345, Some("operation:test"))
+        .is_ok());
+    let Ok(claims) = ledger.claims.lock() else {
+        panic!("test claim lock was poisoned");
+    };
+    assert_eq!(
+        claims.as_slice(),
+        &[(
+            "purchase:test".to_owned(),
+            12_345,
+            Some("tenant-A".to_owned())
+        )]
+    );
 }
 
 #[test]

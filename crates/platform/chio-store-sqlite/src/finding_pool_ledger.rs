@@ -827,7 +827,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
         let transaction = self.transaction(&mut connection)?;
         let stored = transaction
             .query_row(
-                "SELECT allocation_envelope_sha256, finding_id, listing_id, \
+                "SELECT allocation_envelope_sha256, tenant_id, finding_id, listing_id, \
                         reservation_id, authoritative_payment_operation_id, \
                         accepted_bid_envelope_sha256, venue_admission_envelope_sha256, \
                         amount_units, currency, state, claim_deadline_unix_ms, \
@@ -837,7 +837,7 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(1)?,
                         row.get::<_, String>(2)?,
                         row.get::<_, String>(3)?,
                         row.get::<_, String>(4)?,
@@ -847,34 +847,36 @@ impl FindingPoolLedger for SqliteFindingPoolLedger {
                         row.get::<_, String>(8)?,
                         row.get::<_, String>(9)?,
                         row.get::<_, String>(10)?,
-                        row.get::<_, Option<String>>(11)?,
+                        row.get::<_, String>(11)?,
                         row.get::<_, Option<String>>(12)?,
+                        row.get::<_, Option<String>>(13)?,
                     ))
                 },
             )
             .optional()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?
             .ok_or(FindingPoolLedgerError::ReservationMissing)?;
-        let amount = parse_units(&stored.7, "debit.amount_units")?;
-        let state = parse_state(&stored.9)?;
-        let claim_deadline = parse_units(&stored.10, "debit.claim_deadline_unix_ms")?;
-        if stored.1 != claim.finding_id()
-            || stored.2 != claim.listing_id()
-            || stored.3 != claim.reservation_id()
-            || stored.4 != claim.authoritative_payment_operation_id()
-            || stored.5 != claim.accepted_bid_envelope_sha256()
-            || stored.6 != claim.venue_admission_envelope_sha256()
+        let amount = parse_units(&stored.8, "debit.amount_units")?;
+        let state = parse_state(&stored.10)?;
+        let claim_deadline = parse_units(&stored.11, "debit.claim_deadline_unix_ms")?;
+        if stored.1.as_deref() != claim.tenant_id()
+            || stored.2 != claim.finding_id()
+            || stored.3 != claim.listing_id()
+            || stored.4 != claim.reservation_id()
+            || stored.5 != claim.authoritative_payment_operation_id()
+            || stored.6 != claim.accepted_bid_envelope_sha256()
+            || stored.7 != claim.venue_admission_envelope_sha256()
             || amount != claim.amount_units()
-            || stored.8 != claim.currency()
+            || stored.9 != claim.currency()
         {
             return Err(FindingPoolLedgerError::ReplayConflict);
         }
         if state != FindingPoolDebitState::Reserved {
             return Err(FindingPoolLedgerError::TerminalConflict);
         }
-        if let Some(claimed_at) = stored.11 {
+        if let Some(claimed_at) = stored.12 {
             parse_units(&claimed_at, "debit.claimed_at_unix_ms")?;
-            if stored.12.as_deref() != Some(claim.durable_admission_operation_id()) {
+            if stored.13.as_deref() != Some(claim.durable_admission_operation_id()) {
                 return Err(FindingPoolLedgerError::ReplayConflict);
             }
             transaction
