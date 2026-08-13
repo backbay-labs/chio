@@ -261,7 +261,7 @@ jobs:
           CARGO_BUILD_JOBS: "1"
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: |
-          if ! cargo tree -p chio-control-plane -e normal 2>/dev/null | grep -qE '[[:space:]]chio-finding(-verifier)? v'; then
+          if ! cargo tree -p chio-control-plane -e normal 2>/dev/null | grep -E '[[:space:]]chio-finding(-verifier)? v' >/dev/null; then
             echo "ERROR: chio-finding is absent from the default control-plane dependency tree" >&2
             echo "The qualified cognition market must remain linked into the promoted default control plane." >&2
             exit 1

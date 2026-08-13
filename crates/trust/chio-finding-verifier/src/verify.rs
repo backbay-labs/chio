@@ -424,6 +424,29 @@ fn verify_authority_status(
     Ok(())
 }
 
+/// Verify current authenticated standing for the governance-authorized
+/// Finding status operator at the instant a portable proof was checked.
+///
+/// Inclusion proves retraction rather than liveness, but it still needs this
+/// independent lifecycle check before a caller may persist its rollback
+/// floor. Keeping that check separate from the liveness facet prevents an
+/// authenticated denial from being discarded merely because it correctly
+/// makes the liveness facet fail.
+pub fn verify_status_operator_standing(
+    policy: &FindingAuthorityKeyPolicy,
+    proof_checked_at: u64,
+    evaluated_at: u64,
+    trust: Option<&FindingCheckpointSignerStatusTrust>,
+) -> Result<(), String> {
+    verify_authority_status(
+        policy,
+        proof_checked_at,
+        evaluated_at,
+        trust,
+        "status operator",
+    )
+}
+
 fn verify_receipt_signer_status(
     policy: &FindingAuthorityKeyPolicy,
     acted_at: u64,
@@ -1096,13 +1119,6 @@ fn evaluate_status_liveness(
             "status proof and operator authorization do not bind the Finding status feed",
         );
     }
-    if matches!(proof, FindingStatusProofInput::Inclusion(_)) {
-        return facet(
-            FindingFacetKind::StatusLiveness,
-            FindingFacetOutcome::Failed,
-            "status proof authenticates a retracted Finding",
-        );
-    }
     if proof_checked_at < finding.issued_at {
         return facet(
             FindingFacetKind::StatusLiveness,
@@ -1110,17 +1126,23 @@ fn evaluate_status_liveness(
             "status proof predates the verified Finding",
         );
     }
-    if let Err(error) = verify_authority_status(
+    if let Err(error) = verify_status_operator_standing(
         &authorization.operator,
         proof_checked_at,
         freshness.now,
         trust.checkpoint_signer_status.as_ref(),
-        "status operator",
     ) {
         return facet(
             FindingFacetKind::StatusLiveness,
             FindingFacetOutcome::Failed,
             error,
+        );
+    }
+    if matches!(proof, FindingStatusProofInput::Inclusion(_)) {
+        return facet(
+            FindingFacetKind::StatusLiveness,
+            FindingFacetOutcome::Failed,
+            "status proof authenticates a retracted Finding",
         );
     }
     match verify_status_proof_input(&proof, authorization, freshness) {

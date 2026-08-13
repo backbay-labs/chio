@@ -214,8 +214,7 @@ pub(super) fn cmd_finding_verify(
             proof_bytes,
             authorization,
             freshness,
-            draft.facet_outcome(FindingFacetKind::StatusLiveness)
-                == Some(FindingFacetOutcome::Verified),
+            trust.checkpoint_signer_status.as_ref(),
             &accepted.finding.finding_id,
             &accepted.finding.status_feed_ref,
         )?;
@@ -581,13 +580,10 @@ fn persist_authenticated_status_retraction(
     proof_bytes: &[u8],
     authorization: &chio_finding::FindingStatusOperatorAuthorization,
     freshness: chio_finding::FindingStatusFreshnessPolicy,
-    authenticated_operator_standing: bool,
+    operator_status_trust: Option<&FindingCheckpointSignerStatusTrust>,
     expected_finding_id: &str,
     expected_feed_id: &str,
 ) -> Result<bool, CliError> {
-    if !authenticated_operator_standing {
-        return Ok(false);
-    }
     let proof = chio_finding::parse_status_proof_input(proof_bytes).map_err(|error| {
         CliError::cli_other_error(format!("finding status proof is invalid: {error}"))
     })?;
@@ -595,6 +591,16 @@ fn persist_authenticated_status_retraction(
         return Ok(false);
     };
     if inclusion.finding_id != expected_finding_id || inclusion.feed_id != expected_feed_id {
+        return Ok(false);
+    }
+    if chio_finding_verifier::verify_status_operator_standing(
+        &authorization.operator,
+        inclusion.checked_at,
+        freshness.now,
+        operator_status_trust,
+    )
+    .is_err()
+    {
         return Ok(false);
     }
     let Ok(epoch) =
@@ -872,6 +878,7 @@ mod tests {
             Vec<u8>,
             chio_finding::FindingStatusOperatorAuthorization,
             chio_finding::FindingStatusFreshnessPolicy,
+            FindingCheckpointSignerStatusTrust,
         ),
         CliError,
     > {
@@ -946,12 +953,39 @@ mod tests {
             checked_at,
         )
         .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        let status_authority = Keypair::from_seed(&[43_u8; 32]);
+        let operator_status = SignedExportEnvelope::sign(
+            chio_finding::FindingAuthorityStatus {
+                schema: chio_finding::FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+                status_ref: authorization.operator.revocation_status_ref.clone(),
+                authority_id: authorization.operator.authority_id.clone(),
+                key: authorization.operator.key.clone(),
+                key_epoch: authorization.operator.key_epoch,
+                revoked_from: None,
+                observed_at: checked_at,
+            },
+            &status_authority,
+        )
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         Ok((
             canonical_json_bytes(&proof)?,
             authorization,
             chio_finding::FindingStatusFreshnessPolicy {
                 now: checked_at,
                 max_epoch_age_secs: 60,
+            },
+            FindingCheckpointSignerStatusTrust {
+                signed_statuses: vec![operator_status],
+                status_authority: chio_finding::FindingAuthorityKeyPolicy {
+                    authority_id: "cli-status-authority".to_string(),
+                    key: status_authority.public_key(),
+                    key_epoch: 1,
+                    valid_from: 1_700_000_000,
+                    valid_until: 1_800_000_000,
+                    rotation_policy_ref: "rotation/cli-status-authority-v1".to_string(),
+                    revocation_status_ref: "revocations/cli-status-authority".to_string(),
+                },
+                max_age_secs: 60,
             },
         ))
     }
@@ -1021,7 +1055,7 @@ mod tests {
     #[test]
     fn finding_verify_does_not_persist_retraction_without_authenticated_operator_standing(
     ) -> Result<(), CliError> {
-        let (proof_bytes, authorization, freshness) = authenticated_inclusion_fixture()?;
+        let (proof_bytes, authorization, freshness, _) = authenticated_inclusion_fixture()?;
         let dir = tempfile::tempdir()?;
         let floor_path = dir.path().join("status-floor.json");
 
@@ -1030,7 +1064,7 @@ mod tests {
             &proof_bytes,
             &authorization,
             freshness,
-            false,
+            None,
             RETRACTED_FINDING_ID,
             &authorization.feed_id,
         )?);
@@ -1040,7 +1074,8 @@ mod tests {
 
     #[test]
     fn finding_verify_persists_an_authenticated_retraction_before_failure() -> Result<(), CliError> {
-        let (proof_bytes, authorization, freshness) = authenticated_inclusion_fixture()?;
+        let (proof_bytes, authorization, freshness, operator_status_trust) =
+            authenticated_inclusion_fixture()?;
         let dir = tempfile::tempdir()?;
         let floor_path = dir.path().join("status-floor.json");
         let proof = chio_finding::parse_status_proof_input(&proof_bytes)
@@ -1074,7 +1109,7 @@ mod tests {
             &proof_bytes,
             &authorization,
             freshness,
-            true,
+            Some(&operator_status_trust),
             RETRACTED_FINDING_ID,
             &authorization.feed_id,
         )

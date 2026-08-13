@@ -739,6 +739,10 @@ fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> 
                 .resolve(&config.status_feed_operator.authority, now)
                 .ok()
         });
+    let venue_authority_status = state
+        .finding_authority_status_resolver
+        .as_ref()
+        .and_then(|resolver| resolver.resolve(&config.venue, now).ok());
     let results: Vec<FindingSearchRowView> = rows
         .into_iter()
         .map(|row| {
@@ -747,6 +751,7 @@ fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> 
                 &status_store,
                 &config,
                 status_operator_authority_status.as_ref(),
+                venue_authority_status.as_ref(),
                 &row.finding_id,
                 now,
             );
@@ -1110,6 +1115,9 @@ pub(crate) fn verify_venue_authority_lifecycle(
     let status = &authority_status.body;
     if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
         return Err("authority-status signer is not live at activation".into());
+    }
+    if !config.venue.covers(now) {
+        return Err("venue authority is not live at activation".into());
     }
     if status.status_ref != config.venue.revocation_status_ref
         || status.authority_id != config.venue.authority_id
@@ -2333,11 +2341,16 @@ pub(crate) async fn handle_get_finding_admission(
                 .resolve(&config.status_feed_operator.authority, now)
                 .ok()
         });
+    let venue_authority_status = state
+        .finding_authority_status_resolver
+        .as_ref()
+        .and_then(|resolver| resolver.resolve(&config.venue, now).ok());
     if current_admission_view(
         &store,
         &status_store,
         &config,
         status_operator_authority_status.as_ref(),
+        venue_authority_status.as_ref(),
         &finding_id,
         now,
     )

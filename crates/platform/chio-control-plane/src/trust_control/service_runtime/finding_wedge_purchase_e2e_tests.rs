@@ -2040,6 +2040,29 @@ fn coordinator_with_status_pin(
     )?)
 }
 
+fn coordinator_with_venue(
+    authority: &SqliteAuthorityStore,
+    authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+    venue: &FindingAuthorityPin,
+) -> Result<FindingPurchaseCoordinator, AnyError> {
+    Ok(FindingPurchaseCoordinator::new(
+        authority.finding_purchase_store(),
+        authority.finding_market_store(),
+        authority.admission_operation_store(),
+        authority.tool_outcome_store(),
+        keypair(16),
+        &keypair(16).public_key(),
+        keypair(17),
+        &keypair(17).public_key(),
+        authority_status,
+        &authority_pin(37, "authority-status"),
+        &market_config().status_feed_operator,
+        market_config().status_max_epoch_age_secs,
+        venue,
+        VENUE_ID,
+    )?)
+}
+
 fn live_status_proof_b64_at(
     authority: &SqliteAuthorityStore,
     finding_id: &str,
@@ -4375,6 +4398,51 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         canonical_json_bytes(&first)?,
         canonical_json_bytes(&replay_after_revocation)?,
         "an exact committed reservation must replay after operator revocation"
+    );
+    let venue = market_config().venue;
+    let revoked_venue = coordinator_with_venue(
+        &authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::revoked(
+            &venue.authority_id,
+        )),
+        &venue,
+    )?;
+    let replay_after_venue_revocation = revoked_venue.reserve(
+        &exchange.bid,
+        &exchange.ask,
+        &exchange.buyer_signature_hex,
+        &deployment.web.admission,
+        &deployment.web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    assert_eq!(
+        canonical_json_bytes(&first)?,
+        canonical_json_bytes(&replay_after_venue_revocation)?,
+        "an exact committed reservation must replay after venue revocation"
+    );
+    let mut expired_venue = venue;
+    expired_venue.valid_until = now;
+    let expired_venue_coordinator = coordinator_with_venue(
+        &authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &expired_venue,
+    )?;
+    let replay_after_venue_expiry = expired_venue_coordinator.reserve(
+        &exchange.bid,
+        &exchange.ask,
+        &exchange.buyer_signature_hex,
+        &deployment.web.admission,
+        &deployment.web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    assert_eq!(
+        canonical_json_bytes(&first)?,
+        canonical_json_bytes(&replay_after_venue_expiry)?,
+        "an exact committed reservation must replay after venue expiry"
     );
     assert_eq!(first.body.receipt_id, exchange.reservation_id);
     let stored = authority

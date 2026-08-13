@@ -72,6 +72,17 @@ fn activation_requires_profile_pinned_settlement_authorities() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn venue_lifecycle_rejects_an_expired_deployment_pin() -> TestResult {
+    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let now = unix_timestamp_now();
+    let mut config = market_config();
+    config.venue.valid_until = now;
+    let status = signed_venue_authority_status(now, None)?;
+    assert!(verify_venue_authority_lifecycle(&stack.web.admission, &status, &config, now).is_err());
+    Ok(())
+}
+
 #[tokio::test]
 async fn retracted_finding_is_hidden_and_cannot_open_market_state() -> TestResult {
     let mut activation = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
@@ -183,6 +194,27 @@ async fn participation_rejects_revoked_status_operator_before_fee_intent() -> Te
 async fn admission_views_recheck_current_status_operator_standing() -> TestResult {
     let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     let resolver = Arc::new(TestStatusOperatorAuthorityResolver::default());
+    stack.state.finding_authority_status_resolver = Some(resolver.clone());
+    stack.seed_market().await?;
+    let (status, body) = stack.activate().await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    assert!(stack.admission_marker().await?.is_some());
+
+    resolver.revoke(unix_timestamp_now());
+    assert!(stack.admission_marker().await?.is_none());
+    let (status, _) = send(
+        &stack.state,
+        public_get(&format!("/v1/findings/{}/admission", stack.web.finding_id))?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    Ok(())
+}
+
+#[tokio::test]
+async fn admission_views_recheck_current_venue_standing() -> TestResult {
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let resolver = Arc::new(TestVenueAuthorityResolver::default());
     stack.state.finding_authority_status_resolver = Some(resolver.clone());
     stack.seed_market().await?;
     let (status, body) = stack.activate().await?;

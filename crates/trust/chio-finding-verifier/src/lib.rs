@@ -38,9 +38,9 @@ pub use cost::{FindingNonceResolver, NoNonceEvidence};
 pub use receipts::{verify_receipt_strict, ReceiptStrictError};
 pub use verify::{
     sign_finding_verifier_report, validate_supported_finding_verifier_profile,
-    verify_finding_evidence, FindingBondSnapshot, FindingBondStoreSnapshot,
-    FindingCheckpointSignerStatusTrust, FindingEvidenceBundle, FindingVerifierDraft,
-    FindingVerifierError, FindingVerifierTrustRoots, ResolvedFindingDeliveryEvidence,
-    ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot, FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1,
-    MAX_RAW_FINDING_BYTES,
+    verify_finding_evidence, verify_status_operator_standing, FindingBondSnapshot,
+    FindingBondStoreSnapshot, FindingCheckpointSignerStatusTrust, FindingEvidenceBundle,
+    FindingVerifierDraft, FindingVerifierError, FindingVerifierTrustRoots,
+    ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot,
+    FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1, MAX_RAW_FINDING_BYTES,
 };

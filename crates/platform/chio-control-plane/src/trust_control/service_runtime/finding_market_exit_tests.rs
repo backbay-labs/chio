@@ -325,6 +325,44 @@ impl crate::trust_control::finding_challenge_coordinator::FindingAuthorityStatus
     }
 }
 
+#[derive(Default)]
+struct TestVenueAuthorityResolver {
+    revoked_from: AtomicU64,
+}
+
+impl TestVenueAuthorityResolver {
+    fn revoke(&self, revoked_from: u64) {
+        self.revoked_from.store(revoked_from, Ordering::SeqCst);
+    }
+}
+
+impl crate::trust_control::finding_challenge_coordinator::FindingAuthorityStatusResolver
+    for TestVenueAuthorityResolver
+{
+    fn resolve(
+        &self,
+        pin: &FindingAuthorityPin,
+        now: u64,
+    ) -> Result<SignedFindingAuthorityStatus, String> {
+        let revoked_from = self.revoked_from.load(Ordering::SeqCst);
+        let venue_id = market_config().venue.authority_id;
+        SignedExportEnvelope::sign(
+            FindingAuthorityStatus {
+                schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: pin.revocation_status_ref.clone(),
+                authority_id: pin.authority_id.clone(),
+                key: pin.key().map_err(|error| error.to_string())?,
+                key_epoch: pin.key_epoch,
+                revoked_from: (revoked_from != 0 && pin.authority_id == venue_id)
+                    .then_some(revoked_from),
+                observed_at: now,
+            },
+            &keypair(37),
+        )
+        .map_err(|error| error.to_string())
+    }
+}
+
 fn participation_request(
     schedule: &SignedOpenMarketFeeSchedule,
     revoked_from: Option<u64>,

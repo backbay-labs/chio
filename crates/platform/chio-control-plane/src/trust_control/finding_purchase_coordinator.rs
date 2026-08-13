@@ -642,7 +642,12 @@ impl FindingPurchaseCoordinator {
         // usable once it verifies under the pinned venue authority. An
         // unverified admission would let its presenter choose which
         // collateral the sale encumbers.
-        let venue_authority = self.require_live_venue_authority(now)?;
+        let venue_authority = self.venue_authority.key().map_err(|_| {
+            PurchaseCoordinatorError::AuthorityLifecycle {
+                role: "venue",
+                reason: "configured authority key is invalid",
+            }
+        })?;
         chio_finding::verify_signed_admission(admission, &venue_authority, &self.venue_id)
             .map_err(|error| PurchaseCoordinatorError::AdmissionEnvelope(error.to_string()))?;
         if now < admission.body.issued_at || now >= admission.body.expires_at {
@@ -873,10 +878,13 @@ impl FindingPurchaseCoordinator {
             .min(admission.body.purchase_authority.valid_until)
             .min(admission.body.failed_delivery_authority.valid_until)
             .min(authorization.expires_at);
-        if expires_at <= now {
-            return Err(PurchaseCoordinatorError::ReservationWindow);
-        }
-        let input = FindingPurchaseReservationInput {
+        let replay_probe_expires_at = if expires_at > now {
+            expires_at
+        } else {
+            now.checked_add(1)
+                .ok_or(PurchaseCoordinatorError::ReservationWindow)?
+        };
+        let mut input = FindingPurchaseReservationInput {
             reservation_id: &reservation_id,
             purchase_intent_id: &derive_purchase_intent_id(&reservation_id),
             authoritative_payment_operation_id: &derive_payment_operation_id(&reservation_id),
@@ -892,7 +900,7 @@ impl FindingPurchaseCoordinator {
             participation_epoch,
             amount_units: ask.body.quoted_price.units,
             currency: &ask.body.quoted_price.currency,
-            expires_at,
+            expires_at: replay_probe_expires_at,
             encumbrance_id: &encumbrance_id,
             allocation_id: &admission.body.backing_allocation_id,
             maximum_sale_exposure_units,
@@ -902,22 +910,26 @@ impl FindingPurchaseCoordinator {
             .store
             .is_exact_reservation_replay(&input)
             .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
-        let status_operator_observed_at = if exact_replay {
-            0
-        } else {
-            self.require_live_status_operator(&finding.status_feed_ref, now)?
-                .1
-        };
-        self.store
-            .open_live_reservation(
-                &input,
-                &finding.status_feed_ref,
-                &self.status_feed_operator.authorization_sha256,
-                status_operator_observed_at,
-                now,
-                self.status_max_epoch_age_secs,
-            )
-            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
+        if !exact_replay {
+            if expires_at <= now {
+                return Err(PurchaseCoordinatorError::ReservationWindow);
+            }
+            input.expires_at = expires_at;
+            self.require_live_venue_authority(now)?;
+            let status_operator_observed_at = self
+                .require_live_status_operator(&finding.status_feed_ref, now)?
+                .1;
+            self.store
+                .open_live_reservation(
+                    &input,
+                    &finding.status_feed_ref,
+                    &self.status_feed_operator.authorization_sha256,
+                    status_operator_observed_at,
+                    now,
+                    self.status_max_epoch_age_secs,
+                )
+                .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
+        }
         let receipt = ReservationReceipt {
             schema: RESERVATION_RECEIPT_SCHEMA.to_owned(),
             receipt_id: reservation_id,
