@@ -46,6 +46,10 @@ use chio_store_sqlite::finding_market_store::{
 use super::report_validation::validate_service_auth;
 use super::*;
 
+#[path = "finding_admission_view.rs"]
+mod admission_view;
+use admission_view::current_admission_view;
+
 /// Publish body cap: strict canonical findings are small; anything larger
 /// is hostile or malformed. Enforced at the route layer and re-checked
 /// here so direct handler tests share the bound.
@@ -648,38 +652,6 @@ struct FindingSearchResponse {
     count: usize,
 }
 
-/// A stored admission is CURRENT only while its envelope is unexpired,
-/// its allocation remains consumed by the active admission, and
-/// participation fees are paid through the present audit epoch (computed
-/// from the retained terms envelope the admission binds by digest).
-/// Presence of this block in a search row IS the qualified
-/// cognition-market profile marker.
-fn current_admission_view(
-    store: &SqliteFindingMarketStore,
-    finding_id: &str,
-    now: u64,
-) -> Option<FindingSearchAdmissionView> {
-    let snapshot = store.get_current_admission(finding_id).ok().flatten()?;
-    let admission: SignedFindingAdmission = serde_json::from_str(&snapshot.envelope_json).ok()?;
-    let current_epoch = live_admission_epoch(store, &snapshot, &admission, now)?;
-    let paid_through = store
-        .paid_through_epoch(
-            finding_id,
-            &snapshot.listing_id,
-            &admission.body.fee_schedule_envelope_sha256,
-        )
-        .ok()
-        .flatten()?;
-    if paid_through < current_epoch {
-        return None;
-    }
-    Some(FindingSearchAdmissionView {
-        admission_id: snapshot.admission_id,
-        envelope_sha256: snapshot.envelope_sha256,
-        expires_at: snapshot.expires_at,
-    })
-}
-
 /// Return the current payable audit epoch only while the stored admission
 /// still owns its backing and remains inside its signed lifetime. Payment
 /// status is intentionally checked by the caller: discovery requires the
@@ -711,7 +683,7 @@ fn live_admission_epoch(
 }
 
 fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> Response {
-    let (_, store) = match finding_market_context(state) {
+    let (config, store) = match finding_market_context(state) {
         Ok(context) => context,
         Err(response) => return response,
     };
@@ -744,7 +716,7 @@ fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> 
     let results: Vec<FindingSearchRowView> = rows
         .into_iter()
         .map(|row| {
-            let admission = current_admission_view(&store, &row.finding_id, now);
+            let admission = current_admission_view(&store, &config, &row.finding_id, now);
             FindingSearchRowView {
                 finding_id: row.finding_id,
                 artifact_sha256: row.artifact_sha256,
@@ -1879,10 +1851,11 @@ pub(crate) async fn handle_activate_finding(
     // concurrent retraction therefore wins before any financial state opens.
     // A crash from here onward leaves one replayable prepare record, so a
     // reconciled charge cannot lose its activation owner.
-    if config
-        .status_feed_operator
-        .require_live(&finding.status_feed_ref, now)
-        .is_err()
+    if !prepared_replay
+        && config
+            .status_feed_operator
+            .require_live(&finding.status_feed_ref, now)
+            .is_err()
     {
         return plain_http_error(
             StatusCode::BAD_REQUEST,
@@ -2210,12 +2183,12 @@ pub(crate) async fn handle_get_finding_admission(
     State(state): State<TrustServiceState>,
     AxumPath(finding_id): AxumPath<String>,
 ) -> Response {
-    let (_, store) = match finding_market_context(&state) {
+    let (config, store) = match finding_market_context(&state) {
         Ok(context) => context,
         Err(response) => return response,
     };
     let now = unix_timestamp_now();
-    if current_admission_view(&store, &finding_id, now).is_none() {
+    if current_admission_view(&store, &config, &finding_id, now).is_none() {
         return plain_http_error(StatusCode::NOT_FOUND, "no current admission");
     }
     match store.get_current_admission(&finding_id) {

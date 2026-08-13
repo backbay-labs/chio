@@ -105,6 +105,8 @@ pub enum FindingAdmissionError {
     FeeScheduleEnvelope(FiscalOpenMarketError),
     #[error("fee schedule rejected by the fiscal authorization gate: {0}")]
     FeeScheduleUnauthorized(FiscalOpenMarketError),
+    #[error("fee schedule was issued after the verification time")]
+    FeeScheduleNotYetLive,
     #[error("fee schedule defines no Listing-class bond requirement")]
     ListingRequirementMissing,
     #[error("Listing-class bond requirement is not slashable")]
@@ -446,6 +448,9 @@ fn verify_finding_admission_inner(
             )
             .map_err(FindingAdmissionError::FeeScheduleUnauthorized)?;
         }
+    }
+    if context.fee_schedule.body.issued_at > context.now {
+        return Err(FindingAdmissionError::FeeScheduleNotYetLive);
     }
 
     // Sizing inequality: the schedule's slashable Listing-class

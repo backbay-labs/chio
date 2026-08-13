@@ -934,6 +934,7 @@ fn admitted_finding_clears_the_real_bid_path() {
 include!("finding_admission/pheromone_carrier.rs");
 
 include!("finding_admission/pheromone_freshness.rs");
+include!("finding_admission/fee_schedule_lifecycle.rs");
 
 #[test]
 fn finding_pheromone_reassesses_immutable_listing_freshness_at_the_current_clock() {

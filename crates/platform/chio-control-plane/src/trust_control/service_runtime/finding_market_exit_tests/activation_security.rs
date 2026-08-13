@@ -71,3 +71,81 @@ fn activation_requires_profile_pinned_settlement_authorities() -> TestResult {
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn retracted_finding_is_hidden_and_cannot_open_market_state() -> TestResult {
+    let mut activation = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    activation.seed_market().await?;
+    let activation_authority = activation
+        .state
+        .joint_authority_store
+        .as_ref()
+        .ok_or_else(|| missing("activation authority"))?;
+    retract_finding(
+        activation_authority,
+        &activation.web.finding_id,
+        "pre-activation",
+    )?;
+    let (status, body) = activation.activate().await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("pending or retracted"));
+    assert_not_admitted_with_allocation(&activation, FindingAllocationState::Live).await?;
+    assert!(activation
+        .store
+        .get_fee_event(&activation.publication_fee_key())?
+        .is_none());
+
+    let mut participation = provision_stack(1, ADMISSION_EXPIRES_AT)?;
+    participation.seed_market().await?;
+    let (status, body) = participation.activate().await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let participation_authority = participation
+        .state
+        .joint_authority_store
+        .as_ref()
+        .ok_or_else(|| missing("participation authority"))?;
+    retract_finding(
+        participation_authority,
+        &participation.web.finding_id,
+        "pre-renewal",
+    )?;
+    assert!(
+        participation.admission_marker().await?.is_none(),
+        "a retracted Finding must disappear from public discovery"
+    );
+    let (status, _) = send(
+        &participation.state,
+        public_get(&format!(
+            "/v1/findings/{}/admission",
+            participation.web.finding_id
+        ))?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
+    let renewal = serde_json::json!({
+        "feeSchedule": serde_json::to_value(&participation.web.schedule)?,
+    });
+    let (status, body) = send(
+        &participation.state,
+        authed_post(
+            &format!(
+                "/v1/findings/{}/participation",
+                participation.web.finding_id
+            ),
+            renewal.to_string(),
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("pending or retracted"));
+    let renewal_key = finding_fee_idempotency_key(
+        &participation.web.schedule_sha256,
+        &FindingFeeEvent::ParticipationEpoch { epoch_index: 1 },
+        &participation.web.finding_id,
+        LISTING_ID,
+    );
+    assert!(participation.store.get_fee_event(&renewal_key)?.is_none());
+    Ok(())
+}

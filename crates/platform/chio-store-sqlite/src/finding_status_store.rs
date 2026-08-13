@@ -893,7 +893,8 @@ impl SqliteFindingStatusStore {
             advance.epoch.recorded_at,
         )?;
         let prior_floor = load_floor_tx(&transaction, advance.epoch.feed_id)?;
-        let mut outcome = persist_epoch_tx(&transaction, &advance.epoch, prior_floor.as_ref())?;
+        let mut outcome =
+            persist_epoch_tx(&transaction, &advance.epoch, prior_floor.as_ref(), true)?;
 
         for leaf in advance.leaves {
             if persist_leaf_tx(&transaction, &advance.epoch, leaf)?
@@ -1078,6 +1079,44 @@ impl SqliteFindingStatusStore {
                 FindingStatusWriteOutcome::Inserted
             }
         };
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(outcome)
+    }
+
+    /// Retain an authenticated future signed epoch and its inclusion proof
+    /// without advancing the durable floor. The proof still creates the
+    /// sticky tombstone, so a later conflicting floor cannot restore liveness.
+    fn record_verified_retraction_at_future_epoch(
+        &self,
+        epoch: &VerifiedFindingStatusEpochInput<'_>,
+        proof: &VerifiedFindingStatusProofInput<'_>,
+    ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+        validate_epoch_input(epoch)?;
+        validate_proof_input(proof)?;
+        verify_proof_epoch_binding(proof, epoch)?;
+        if proof.kind != FindingStatusProofKind::Inclusion {
+            return Err(invariant(
+                "future-epoch retraction API received a non-inclusion proof",
+            ));
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        ensure_feed_exists_tx(&transaction, epoch.feed_id, epoch.operator_id)?;
+        let floor = load_floor_tx(&transaction, epoch.feed_id)?.ok_or_else(|| {
+            FindingStatusStoreError::MissingFloor {
+                feed_id: epoch.feed_id.to_owned(),
+            }
+        })?;
+        if epoch.map_epoch <= floor.map_epoch {
+            return Err(FindingStatusStoreError::Conflict(
+                "future retraction does not advance beyond the retained feed floor".to_owned(),
+            ));
+        }
+        let mut outcome = persist_epoch_tx(&transaction, epoch, Some(&floor), false)?;
+        if persist_proof_tx(&transaction, proof)? == FindingStatusWriteOutcome::Inserted {
+            outcome = FindingStatusWriteOutcome::Inserted;
+        }
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(outcome)
@@ -1665,6 +1704,28 @@ impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
                 } else if map_epoch == current_epoch.map_epoch {
                     self.record_verified_retraction_at_conflicting_current_epoch(&verified_proof)
                         .map_err(|error| error.to_string())?;
+                } else {
+                    let operator_key = epoch.operator_key.to_hex();
+                    let verified_epoch = VerifiedFindingStatusEpochInput {
+                        feed_id: &epoch.feed_id,
+                        operator_id: &epoch.operator_id,
+                        key_domain_nonce: epoch.key_domain_nonce,
+                        map_epoch: epoch.map_epoch,
+                        epoch_id: &epoch.status_epoch_id,
+                        root_hash: &epoch.root_hash,
+                        signed_epoch_bytes: observation.signed_epoch_bytes,
+                        operator_key: &operator_key,
+                        operator_key_epoch: epoch.operator_key_epoch,
+                        operator_authorization_sha256: observation.operator_authorization_sha256,
+                        generated_at: epoch.generated_at,
+                        valid_until: epoch.valid_until,
+                        recorded_at: observation.recorded_at,
+                    };
+                    self.record_verified_retraction_at_future_epoch(
+                        &verified_epoch,
+                        &verified_proof,
+                    )
+                    .map_err(|error| error.to_string())?;
                 }
             }
             return Err(

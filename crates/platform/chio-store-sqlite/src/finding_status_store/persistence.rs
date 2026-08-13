@@ -243,6 +243,7 @@ fn persist_epoch_tx(
     transaction: &Transaction<'_>,
     epoch: &VerifiedFindingStatusEpochInput<'_>,
     prior_floor: Option<&FindingStatusFeedFloor>,
+    advance_floor: bool,
 ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
     let signed_epoch_sha256 = sha256_hex(epoch.signed_epoch_bytes);
     if prior_floor.is_none() {
@@ -330,8 +331,21 @@ fn persist_epoch_tx(
         });
     }
 
-    transaction
-        .execute(
+    let epoch_outcome = match load_epoch_tx(transaction, epoch.feed_id, epoch.map_epoch)? {
+        Some(existing)
+            if epoch_record_matches_input(&existing, epoch, &signed_epoch_sha256) =>
+        {
+            FindingStatusWriteOutcome::ExactReplay
+        }
+        Some(_) => {
+            return Err(FindingStatusStoreError::Equivocation {
+                feed_id: epoch.feed_id.to_owned(),
+                map_epoch: epoch.map_epoch,
+            })
+        }
+        None => {
+            transaction
+                .execute(
             r#"
             INSERT INTO finding_status_epochs (
                 feed_id, operator_id, key_domain_nonce, map_epoch, epoch_id,
@@ -360,6 +374,13 @@ fn persist_epoch_tx(
             ],
         )
         .map_err(sqlite_error)?;
+            FindingStatusWriteOutcome::Inserted
+        }
+    };
+
+    if !advance_floor {
+        return Ok(epoch_outcome);
+    }
 
     if prior_floor.is_some() {
         transaction

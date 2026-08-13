@@ -1276,6 +1276,71 @@ fn retracted_status_atomically_blocks_activation_and_participation_intents() {
 }
 
 #[test]
+fn prepared_activation_replay_reuses_its_retained_live_status_decision() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let artifact = publish_finding(
+        &fixture.store,
+        &finding_id,
+        "regression/status-replay",
+        &hex64('c'),
+        1_700_000_000,
+        1_900_000_000,
+    );
+    let backing = backing_body(&finding_id, "vault:status-replay");
+    let backing_envelope = envelope_string(&backing, &keypair(21));
+    let backing_sha256 = chio_core::sha256_hex(backing_envelope.as_bytes());
+    fixture
+        .store
+        .register_allocation(&backing_envelope, &backing, NOW)
+        .expect("register status-replay allocation");
+    let admission = admission_body(
+        &finding_id,
+        &chio_core::sha256_hex(artifact.as_bytes()),
+        &backing,
+        &backing_sha256,
+    );
+    let admission_envelope = envelope_string(&admission, &keypair(31));
+    install_status(&fixture, &finding_id, FindingStatusProofKind::NonInclusion);
+
+    assert_eq!(
+        fixture
+            .store
+            .prepare_listing_activation(
+                &admission_envelope,
+                &admission,
+                STATUS_FEED,
+                STATUS_AUTHORIZATION_SHA256,
+                NOW,
+            )
+            .expect("prepare under live status"),
+        FindingActivationPreparationOutcome::Prepared
+    );
+    assert_eq!(
+        fixture
+            .store
+            .prepare_listing_activation(
+                &admission_envelope,
+                &admission,
+                STATUS_FEED,
+                STATUS_AUTHORIZATION_SHA256,
+                NOW + 500,
+            )
+            .expect("replay after the live-status proof expires"),
+        FindingActivationPreparationOutcome::PendingReplay
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_allocation(&backing.allocation_id)
+            .expect("read replay allocation")
+            .expect("replay allocation exists")
+            .state,
+        FindingAllocationState::Consumed
+    );
+}
+
+#[test]
 fn expired_prepared_activation_releases_collateral_and_retains_fee_credit() {
     let fixture = fixture();
     let finding_id = hex64('b');

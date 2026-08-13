@@ -79,7 +79,11 @@ async fn profile_registration_requires_live_unrevoked_governance() -> TestResult
     )
     .await?;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(String::from_utf8_lossy(&body).contains("not live at registration"));
+    assert!(
+        String::from_utf8_lossy(&body).contains("not live at registration"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
 
     let (status, body) = send(
         &stack.state,
@@ -90,7 +94,11 @@ async fn profile_registration_requires_live_unrevoked_governance() -> TestResult
     )
     .await?;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(String::from_utf8_lossy(&body).contains("revoked at registration"));
+    assert!(
+        String::from_utf8_lossy(&body).contains("revoked at profile registration"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
 
     let mut newly_issued = profile.body.clone();
     newly_issued.issued_at = now;
@@ -122,7 +130,11 @@ async fn profile_registration_requires_live_unrevoked_governance() -> TestResult
     )
     .await?;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(String::from_utf8_lossy(&body).contains("not live at registration"));
+    assert!(
+        String::from_utf8_lossy(&body).contains("not live at registration"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
 
     let mut future = profile.body.clone();
     future.issued_at = now.saturating_add(60);
@@ -187,7 +199,11 @@ async fn collateral_registration_requires_live_unrevoked_authority() -> TestResu
     )
     .await?;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(String::from_utf8_lossy(&body).contains("not live at registration"));
+    assert!(
+        String::from_utf8_lossy(&body).contains("finding collateral authority is not live"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
 
     let (status, body) = send(
         &stack.state,
@@ -198,7 +214,11 @@ async fn collateral_registration_requires_live_unrevoked_authority() -> TestResu
     )
     .await?;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(String::from_utf8_lossy(&body).contains("revoked at registration"));
+    assert!(
+        String::from_utf8_lossy(&body).contains("collateral authority is revoked"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
     assert!(stack.store.get_allocation(&stack.web.allocation_id)?.is_none());
     Ok(())
 }

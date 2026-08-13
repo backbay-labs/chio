@@ -490,6 +490,85 @@ fn conflicting_current_epoch_inclusion_becomes_sticky_without_moving_the_floor()
 }
 
 #[test]
+fn future_epoch_inclusion_becomes_sticky_without_advancing_the_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('8');
+    let intent_sha256 = hex64('9');
+    let retained_epoch_id = hex64('a');
+    let retained_root = hex64('b');
+    let future_epoch_id = hex64('c');
+    let future_root = hex64('d');
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &retained_epoch_id,
+            &retained_root,
+            b"retained-epoch-one",
+            1,
+        ))
+        .expect("retain current epoch");
+    let future_epoch = epoch(
+        3,
+        &future_epoch_id,
+        &future_root,
+        b"authenticated-future-epoch",
+        1,
+    );
+    let future_retraction = inclusion(
+        3,
+        &future_epoch_id,
+        &future_root,
+        &finding_id,
+        &intent_sha256,
+        b"authenticated-future-retraction",
+    );
+    store
+        .record_verified_retraction_at_future_epoch(&future_epoch, &future_retraction)
+        .expect("retain authenticated future retraction tombstone");
+
+    let floor = store.get_feed_floor(FEED).expect("floor");
+    assert_eq!(floor.map_epoch, 1);
+    assert_eq!(floor.epoch_id, retained_epoch_id);
+    assert_eq!(floor.root_hash, retained_root);
+    let status = store
+        .status_for_purchase(FEED, &finding_id, NOW + 20)
+        .expect("sticky future retraction decision");
+    let FindingStatusDecision::Retracted(status) = status else {
+        panic!("future authenticated retraction must be sticky");
+    };
+    assert_eq!(status.retracted_map_epoch, Some(3));
+    assert_eq!(
+        status.retracted_epoch_id.as_deref(),
+        Some(future_epoch_id.as_str())
+    );
+    assert_eq!(
+        status.retracted_root_hash.as_deref(),
+        Some(future_root.as_str())
+    );
+    assert_eq!(
+        store
+            .observe_verified_epoch(&future_epoch)
+            .expect("advance to retained future epoch"),
+        FindingStatusWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .get_feed_floor(FEED)
+            .expect("advanced floor")
+            .map_epoch,
+        3
+    );
+    assert!(matches!(
+        store
+            .status_for_purchase(FEED, &finding_id, NOW + 20)
+            .expect("sticky retraction after floor advance"),
+        FindingStatusDecision::Retracted(_)
+    ));
+}
+
+#[test]
 fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();

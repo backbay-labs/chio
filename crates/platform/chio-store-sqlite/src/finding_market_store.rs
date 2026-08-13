@@ -1,6 +1,5 @@
 //! Durable storage for the cognition finding market: publication,
 //! discovery, collateral backing, fee accounting, and venue admission.
-//!
 //! Seven tables back the cognition market: `findings` (the exact accepted
 //! canonical artifact bytes plus the descriptor index), `recipe_blobs`
 //! (content-addressed replay-recipe preimages, retained without
@@ -1078,15 +1077,6 @@ impl SqliteFindingMarketStore {
             validate_activation_envelope(admission_envelope_json, admission, prepared_at)?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
-        if let Some((feed_id, operator_authorization_sha256, trusted_now)) = status_gate {
-            require_verified_live_status_tx(
-                &transaction,
-                feed_id,
-                &admission.finding_id,
-                operator_authorization_sha256,
-                trusted_now,
-            )?;
-        }
         ensure_admission_fee_intents_tx(&transaction, admission)?;
         if let Some(existing) = load_activation_attempt_tx(&transaction, &admission.admission_id)? {
             if existing.envelope_json != admission_envelope_json {
@@ -1121,6 +1111,15 @@ impl SqliteFindingMarketStore {
             return Err(FindingMarketStoreError::Conflict(
                 "admission id is already bound to different bytes".to_owned(),
             ));
+        }
+        if let Some((feed_id, operator_authorization_sha256, trusted_now)) = status_gate {
+            require_verified_live_status_tx(
+                &transaction,
+                feed_id,
+                &admission.finding_id,
+                operator_authorization_sha256,
+                trusted_now,
+            )?;
         }
         if sales_blocked_tx(&transaction, &admission.listing_id)
             .map_err(|error| FindingMarketStoreError::Unavailable(error.to_string()))?
@@ -2330,7 +2329,8 @@ fn sqlite_error(error: rusqlite::Error) -> FindingMarketStoreError {
         other => FindingMarketStoreError::Unavailable(other.to_string()),
     }
 }
-
+#[path = "finding_market_status_read.rs"]
+mod status_read;
 #[cfg(test)]
 #[path = "finding_market_store_tests.rs"]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
