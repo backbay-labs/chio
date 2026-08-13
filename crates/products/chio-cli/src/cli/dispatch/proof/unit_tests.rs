@@ -65,8 +65,59 @@ fn verifier_profile_fixture(
 fn verifier_authority_status_fixture(
     directory: &std::path::Path,
     profile: &chio_finding::SignedFindingChallengeVerifierProfile,
-) -> (std::path::PathBuf, std::path::PathBuf) {
+) -> (
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+) {
     let status_authority = chio_core_types::Keypair::from_seed(&[102_u8; 32]);
+    let governance_policy = chio_finding::FindingAuthorityKeyPolicy {
+        authority_id: "qualified-profile-governance".to_owned(),
+        key: profile.body.governance_authority.clone(),
+        key_epoch: 1,
+        valid_from: 1_784_879_940,
+        valid_until: 1_784_880_600,
+        rotation_policy_ref: "rotation/qualified-profile-governance-v1".to_owned(),
+        revocation_status_ref: "revocations/qualified-profile-governance-v1".to_owned(),
+    };
+    let governance_policy_path = directory.join("profile-governance-authority-policy.json");
+    proof_test_ok(
+        std::fs::write(
+            &governance_policy_path,
+            proof_test_ok(
+                chio_core_types::canonical_json_bytes(&governance_policy),
+                "serialize profile governance policy fixture",
+            ),
+        ),
+        "write profile governance policy fixture",
+    );
+    let governance_status = proof_test_ok(
+        chio_core_types::receipt::lineage::SignedExportEnvelope::sign(
+            chio_finding::FindingAuthorityStatus {
+                schema: chio_finding::FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: governance_policy.revocation_status_ref.clone(),
+                authority_id: governance_policy.authority_id.clone(),
+                key: governance_policy.key.clone(),
+                key_epoch: governance_policy.key_epoch,
+                revoked_from: None,
+                observed_at: 1_784_880_030,
+            },
+            &status_authority,
+        ),
+        "sign profile governance authority status fixture",
+    );
+    let governance_status_path = directory.join("profile-governance-authority-status.json");
+    proof_test_ok(
+        std::fs::write(
+            &governance_status_path,
+            proof_test_ok(
+                chio_core_types::canonical_json_bytes(&governance_status),
+                "serialize profile governance authority status fixture",
+            ),
+        ),
+        "write profile governance authority status fixture",
+    );
     let signer = &profile.body.verifier_report_signer;
     let status = proof_test_ok(
         chio_core_types::receipt::lineage::SignedExportEnvelope::sign(
@@ -114,7 +165,12 @@ fn verifier_authority_status_fixture(
         ),
         "write verifier status authority policy fixture",
     );
-    (path, policy_path)
+    (
+        governance_policy_path,
+        governance_status_path,
+        path,
+        policy_path,
+    )
 }
 
 #[test]
@@ -183,8 +239,12 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
     };
     let tempdir = proof_test_ok(tempfile::tempdir(), "create verifier-status directory");
     let (profile_path, profile, profile_digest) = verifier_profile_fixture();
-    let (verifier_status_path, verifier_status_authority_policy_path) =
-        verifier_authority_status_fixture(tempdir.path(), &profile);
+    let (
+        governance_policy_path,
+        governance_status_path,
+        verifier_status_path,
+        verifier_status_authority_policy_path,
+    ) = verifier_authority_status_fixture(tempdir.path(), &profile);
     let governance_key = profile.body.governance_authority.to_hex();
     let verifier_key = profile.body.verifier_report_signer.key.clone();
     let verifier_key = verifier_key.to_hex();
@@ -192,6 +252,14 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
         (
             "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY",
             std::ffi::OsStr::new(&governance_key),
+        ),
+        (
+            "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH",
+            governance_policy_path.as_os_str(),
+        ),
+        (
+            "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_STATUS_PATH",
+            governance_status_path.as_os_str(),
         ),
         (
             "CHIO_FINDING_VERIFIER_AUTHORITY_KEY",
@@ -298,12 +366,24 @@ fn cognition_market_trust_loads_status_for_profile_liveness_floor() {
     let governance_key = governance.public_key().to_hex();
     let verifier_key = signed.body.verifier_report_signer.key.to_hex();
     let profile_digest = chio_core_types::crypto::sha256_hex(&profile_bytes);
-    let (verifier_status_path, verifier_status_authority_policy_path) =
-        verifier_authority_status_fixture(tempdir.path(), &signed);
+    let (
+        governance_policy_path,
+        governance_status_path,
+        verifier_status_path,
+        verifier_status_authority_policy_path,
+    ) = verifier_authority_status_fixture(tempdir.path(), &signed);
     let _env = TestEnvGuard::set(&[
         (
             "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY",
             std::ffi::OsStr::new(&governance_key),
+        ),
+        (
+            "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH",
+            governance_policy_path.as_os_str(),
+        ),
+        (
+            "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_STATUS_PATH",
+            governance_status_path.as_os_str(),
         ),
         (
             "CHIO_FINDING_VERIFIER_AUTHORITY_KEY",
@@ -470,8 +550,12 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
     };
     let tempdir = proof_test_ok(tempfile::tempdir(), "create tempdir");
     let (profile_path, profile, profile_digest) = verifier_profile_fixture();
-    let (verifier_status_path, verifier_status_authority_policy_path) =
-        verifier_authority_status_fixture(tempdir.path(), &profile);
+    let (
+        governance_policy_path,
+        governance_status_path,
+        verifier_status_path,
+        verifier_status_authority_policy_path,
+    ) = verifier_authority_status_fixture(tempdir.path(), &profile);
     let governance_key = profile.body.governance_authority.to_hex();
     let verifier_authority = profile.body.verifier_report_signer.key.clone();
     let verifier_authority_hex = verifier_authority.to_hex();
@@ -598,6 +682,14 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         (
             "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY",
             std::ffi::OsStr::new(&governance_key),
+        ),
+        (
+            "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH",
+            governance_policy_path.as_os_str(),
+        ),
+        (
+            "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_STATUS_PATH",
+            governance_status_path.as_os_str(),
         ),
         (
             "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS",

@@ -560,6 +560,19 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
     let trusted_verifier_profile_envelope_sha256 =
         signed_envelope_sha256(&trusted_verifier_profile)?;
     let verifier_status_authority = Keypair::from_seed(&[10_u8; 32]);
+    let profile_governance_authority = profile_key_policy(8, "profile-governance");
+    let profile_governance_authority_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: profile_governance_authority.revocation_status_ref.clone(),
+            authority_id: profile_governance_authority.authority_id.clone(),
+            key: profile_governance_authority.key.clone(),
+            key_epoch: profile_governance_authority.key_epoch,
+            revoked_from: None,
+            observed_at: CHECKED_AT,
+        },
+        &verifier_status_authority,
+    )?;
     let verifier_signer_policy = &trusted_verifier_profile.body.verifier_report_signer;
     let verifier_authority_status = SignedExportEnvelope::sign(
         FindingAuthorityStatus {
@@ -576,7 +589,13 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
     let trust = CognitionMarketProofTrust {
         trusted_passport_signer_keys: vec![root.public_key()],
         trusted_checkpoint_signer_keys: Vec::new(),
-        profile_governance_authority: Keypair::from_seed(&[8_u8; 32]).public_key(),
+        profile_governance_authority,
+        profile_governance_authority_status: CognitionMarketVerifierAuthorityStatusTrust {
+            signed_status: profile_governance_authority_status,
+            status_authority: profile_key_policy(10, "verifier-status-authority"),
+            checked_at: CHECKED_AT,
+            max_age_secs: 60,
+        },
         finding_verifier_authority: verifier_keypair().public_key(),
         trusted_verifier_profile_envelope_sha256,
         trusted_verifier_profile,
@@ -625,6 +644,11 @@ fn verify(bundle: &QualifiedBundle) -> TestResult {
             .any(|candidate| candidate == claim));
     }
     Ok(())
+}
+
+fn set_authority_status_checked_at(bundle: &mut QualifiedBundle, checked_at: u64) {
+    bundle.trust.profile_governance_authority_status.checked_at = checked_at;
+    bundle.trust.verifier_authority_status.checked_at = checked_at;
 }
 
 fn replace_trusted_profile(
@@ -1515,45 +1539,6 @@ fn cognition_market_qualified_profile_rejects_mismatched_profile_id() -> TestRes
 }
 
 #[test]
-fn cognition_market_qualified_profile_rejects_self_pinned_governance() -> TestResult {
-    let mut bundle = build_bundle()?;
-    let unauthorized_governance = Keypair::from_seed(&[88_u8; 32]);
-    let mut profile = bundle.trust.trusted_verifier_profile.body.clone();
-    profile.governance_authority = unauthorized_governance.public_key();
-    profile.required_facets.clear();
-    profile.profile_id = compute_profile_id(&profile)?;
-    let signed = SignedExportEnvelope::sign(profile, &unauthorized_governance)?;
-    bundle.trust.trusted_verifier_profile_envelope_sha256 = signed_envelope_sha256(&signed)?;
-    bundle.trust.trusted_verifier_profile = signed;
-
-    let error = verify(&bundle)
-        .err()
-        .ok_or("a self-pinned profile governance authority was accepted")?
-        .to_string();
-    assert!(
-        error.contains("envelope signer does not match the pinned authority: profile"),
-        "unexpected error: {error}"
-    );
-    Ok(())
-}
-
-#[test]
-fn cognition_market_qualified_profile_rejects_aliased_authorities() -> TestResult {
-    let mut bundle = build_bundle()?;
-    bundle.trust.finding_verifier_authority = bundle.trust.profile_governance_authority.clone();
-
-    let error = verify(&bundle)
-        .err()
-        .ok_or("aliased governance and verifier authorities were accepted")?
-        .to_string();
-    assert!(
-        error.contains("governance and finding verifier authorities must be distinct"),
-        "unexpected error: {error}"
-    );
-    Ok(())
-}
-
-#[test]
 fn cognition_market_qualified_profile_rejects_an_unsupported_predicate_engine() -> TestResult {
     let mut bundle = build_bundle()?;
     replace_trusted_profile(&mut bundle, |profile| {
@@ -1856,7 +1841,7 @@ fn cognition_market_qualified_profile_rejects_backdated_report_after_revocation(
     status.observed_at = CHECKED_AT + 2;
     bundle.trust.verifier_authority_status.signed_status =
         SignedExportEnvelope::sign(status, &Keypair::from_seed(&[10_u8; 32]))?;
-    bundle.trust.verifier_authority_status.checked_at = CHECKED_AT + 2;
+    set_authority_status_checked_at(&mut bundle, CHECKED_AT + 2);
 
     let error = verify(&bundle)
         .err()
@@ -1884,7 +1869,7 @@ fn cognition_market_qualified_profile_rejects_backdated_report_after_key_expiry(
     status.observed_at = CHECKED_AT + 2;
     bundle.trust.verifier_authority_status.signed_status =
         SignedExportEnvelope::sign(status, &Keypair::from_seed(&[10_u8; 32]))?;
-    bundle.trust.verifier_authority_status.checked_at = CHECKED_AT + 2;
+    set_authority_status_checked_at(&mut bundle, CHECKED_AT + 2);
 
     let error = verify(&bundle)
         .err()
@@ -1900,7 +1885,7 @@ fn cognition_market_qualified_profile_rejects_backdated_report_after_key_expiry(
 #[test]
 fn cognition_market_qualified_profile_rejects_a_stale_status_clock() -> TestResult {
     let mut bundle = build_bundle()?;
-    bundle.trust.verifier_authority_status.checked_at = CHECKED_AT + 1;
+    set_authority_status_checked_at(&mut bundle, CHECKED_AT + 1);
 
     let error = verify(&bundle)
         .err()
@@ -2100,3 +2085,5 @@ fn regenerate_cognition_market_golden() -> TestResult {
 
 #[path = "cognition_market/profile_expiry_regression.rs"]
 mod expiry_regressions;
+#[path = "cognition_market/profile_governance_regressions.rs"]
+mod profile_governance_regressions;

@@ -135,6 +135,8 @@ running `chio proof verify <transaction-passport.json>`:
 ```bash
 export CHIO_TRANSACTION_TRUSTED_ROOT_KEYS=<passport-root-public-key>
 export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY=<profile-governance-public-key>
+export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH=<canonical-profile-governance-policy.json>
+export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_STATUS_PATH=<canonical-signed-governance-status.json>
 export CHIO_FINDING_VERIFIER_AUTHORITY_KEY=<finding-verifier-public-key>
 export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_PATH=<canonical-signed-authority-status.json>
 export CHIO_FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH=<canonical-authority-status-signer-policy.json>
@@ -152,16 +154,17 @@ export CHIO_FINDING_STATUS_NOW_UNIX_SECONDS=<trusted-verification-time>
 export CHIO_FINDING_STATUS_MAX_AGE_SECONDS=<deployment-freshness-limit>
 ```
 
-The signed profile is the only source of the verifier key epoch, validity
-window, rotation policy, revocation source, and required facet floor. Its
-governance signer must equal the separately pinned profile-governance key, and
-its report signer must equal the separately pinned verifier key. The verifier
-loads the profile's exact canonical bytes, requires their digest to match the
-out-of-band profile pin, and verifies the profile signature and lifecycle. It
-also requires a fresh signed status witness for the report signer from the
-separately pinned status-authority policy, requires that policy to cover both
-the witness observation and the current trusted verification time, and rejects
-reports produced at or after the witness's effective revocation time. The report must bind the
+The signed profile is the source of the report signer policy and required
+facet floor. Its governance signer must equal both the separately pinned
+profile-governance key and policy, and its report signer must equal the
+separately pinned verifier key. The verifier loads the profile's exact
+canonical bytes, requires their digest to match the out-of-band profile pin,
+and verifies the profile signature and lifecycle. It also requires fresh
+signed status witnesses for both the profile-governance signer and report
+signer from the separately pinned status-authority policy, requires that policy
+to cover each witness observation and the shared current trusted verification
+time, and rejects newly backdated artifacts after either key is revoked or
+expires. The report must bind the
 deployment-pinned trust-root snapshot, resolver policy, and trusted-time
 input. Verification fails closed when any profile floor, snapshot commitment,
 pin, authorization, durable authority store, trusted time, or freshness limit

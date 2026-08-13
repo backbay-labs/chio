@@ -71,7 +71,8 @@ pub trait CognitionMarketStatusTrustStore: Send + Sync {
 pub struct CognitionMarketProofTrust {
     pub trusted_passport_signer_keys: Vec<PublicKey>,
     pub trusted_checkpoint_signer_keys: Vec<PublicKey>,
-    pub profile_governance_authority: PublicKey,
+    pub profile_governance_authority: FindingAuthorityKeyPolicy,
+    pub profile_governance_authority_status: CognitionMarketVerifierAuthorityStatusTrust,
     pub finding_verifier_authority: PublicKey,
     pub trusted_verifier_profile_envelope_sha256: String,
     pub trusted_verifier_profile: SignedFindingChallengeVerifierProfile,
@@ -172,7 +173,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     trust: &CognitionMarketProofTrust,
     externally_verified_claims: &[String],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
-    if trust.profile_governance_authority == trust.finding_verifier_authority {
+    if trust.profile_governance_authority.key == trust.finding_verifier_authority {
         return Err(claim_failed(
             "profile governance and finding verifier authorities must be distinct",
         ));
@@ -304,11 +305,38 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "trusted verifier profile bytes do not match the deployment-pinned digest",
         ));
     }
+    trust
+        .profile_governance_authority
+        .validate("profile governance authority")
+        .map_err(|error| {
+            claim_failed(format!(
+                "profile governance authority policy is invalid: {error}"
+            ))
+        })?;
+    if trust.trusted_verifier_profile.body.governance_authority
+        != trust.profile_governance_authority.key
+    {
+        return Err(claim_failed(
+            "trusted verifier profile governance key does not match the deployment-pinned policy",
+        ));
+    }
     verify_signed_profile(
         &trust.trusted_verifier_profile,
-        &trust.profile_governance_authority,
+        &trust.profile_governance_authority.key,
     )
     .map_err(|error| claim_failed(format!("trusted verifier profile is invalid: {error}")))?;
+    verify_profile_governance_authority_status(
+        &trust.profile_governance_authority,
+        &trust.profile_governance_authority_status,
+        trust.trusted_verifier_profile.body.issued_at,
+    )?;
+    if trust.profile_governance_authority_status.checked_at
+        != trust.verifier_authority_status.checked_at
+    {
+        return Err(claim_failed(
+            "profile governance and verifier authority status clocks must agree",
+        ));
+    }
     if trust.trusted_verifier_profile.body.predicate_engine
         != FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1
     {
@@ -638,6 +666,89 @@ fn verify_verifier_authority_status(
     if status.revoked_from.is_some() {
         return Err(claim_failed(
             "unanchored signed verifier report cannot be accepted after verifier-key revocation",
+        ));
+    }
+    Ok(())
+}
+
+fn verify_profile_governance_authority_status(
+    policy: &FindingAuthorityKeyPolicy,
+    trust: &CognitionMarketVerifierAuthorityStatusTrust,
+    profile_issued_at: u64,
+) -> Result<(), TransactionPassportError> {
+    if trust.checked_at == 0 || trust.max_age_secs == 0 {
+        return Err(claim_failed(
+            "profile governance authority status freshness policy is invalid",
+        ));
+    }
+    if profile_issued_at < policy.valid_from || profile_issued_at >= policy.valid_until {
+        return Err(claim_failed(
+            "trusted verifier profile was signed outside the profile governance authority lifecycle",
+        ));
+    }
+    trust
+        .status_authority
+        .validate("profile governance status authority")
+        .map_err(|error| {
+            claim_failed(format!(
+                "profile governance status authority is invalid: {error}"
+            ))
+        })?;
+    if trust.status_authority.key == policy.key {
+        return Err(claim_failed(
+            "profile governance status authority must be independent from the profile signer",
+        ));
+    }
+    if trust.checked_at < trust.status_authority.valid_from
+        || trust.checked_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "profile governance status authority is not live at the current trusted verification time",
+        ));
+    }
+    verify_signed_authority_status(&trust.signed_status, &trust.status_authority.key).map_err(
+        |error| {
+            claim_failed(format!(
+                "profile governance authority status is invalid: {error}"
+            ))
+        },
+    )?;
+    let status = &trust.signed_status.body;
+    if status.observed_at < trust.status_authority.valid_from
+        || status.observed_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "profile governance authority status was signed outside the status-authority lifecycle",
+        ));
+    }
+    if status.status_ref != policy.revocation_status_ref
+        || status.authority_id != policy.authority_id
+        || status.key != policy.key
+        || status.key_epoch != policy.key_epoch
+    {
+        return Err(claim_failed(
+            "profile governance authority status does not match the deployment-pinned signer policy",
+        ));
+    }
+    if status.observed_at < profile_issued_at
+        || status.observed_at > trust.checked_at
+        || trust.checked_at.saturating_sub(status.observed_at) > trust.max_age_secs
+    {
+        return Err(claim_failed(
+            "profile governance authority status is stale for the signed profile",
+        ));
+    }
+    // The profile carries no independently authenticated signing-time anchor.
+    // Once trusted time reaches key expiry or revocation is observed, the old
+    // key could mint a newly backdated profile, so no profile remains live.
+    if trust.checked_at >= policy.valid_until {
+        return Err(claim_failed(
+            "unanchored signed verifier profile cannot be accepted after profile-governance key expiration",
+        ));
+    }
+    if status.revoked_from.is_some() {
+        return Err(claim_failed(
+            "unanchored signed verifier profile cannot be accepted after profile-governance key revocation",
         ));
     }
     Ok(())

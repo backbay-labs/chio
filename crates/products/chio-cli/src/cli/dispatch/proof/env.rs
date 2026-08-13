@@ -18,6 +18,10 @@ const TRANSACTION_TRUSTED_CHECKPOINT_KEYS_ENV: &str =
 const FINDING_VERIFIER_AUTHORITY_KEY_ENV: &str = "CHIO_FINDING_VERIFIER_AUTHORITY_KEY";
 const FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV: &str =
     "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY";
+const FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH_ENV: &str =
+    "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH";
+const FINDING_PROFILE_GOVERNANCE_AUTHORITY_STATUS_PATH_ENV: &str =
+    "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_STATUS_PATH";
 const FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV: &str =
     "CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256";
 const FINDING_VERIFIER_PROFILE_PATH_ENV: &str = "CHIO_FINDING_VERIFIER_PROFILE_PATH";
@@ -43,7 +47,7 @@ const FINDING_STATUS_NOW_UNIX_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_NOW_UNIX_
 const FINDING_STATUS_MAX_AGE_SECONDS_ENV: &str = "CHIO_FINDING_STATUS_MAX_AGE_SECONDS";
 const FINDING_STATUS_AUTHORIZATION_MAX_BYTES: usize = 64 * 1024;
 const FINDING_VERIFIER_AUTHORITY_STATUS_MAX_BYTES: usize = 64 * 1024;
-const FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_MAX_BYTES: usize = 64 * 1024;
+const FINDING_AUTHORITY_POLICY_MAX_BYTES: usize = 64 * 1024;
 const FINDING_VERIFIER_PROFILE_MAX_BYTES: usize = 256 * 1024;
 const RUNTIME_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_RUNTIME_TRUSTED_ROOT_KEYS";
 const ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV: &str = "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS";
@@ -262,6 +266,15 @@ pub(super) fn cognition_market_proof_trust_from_env(
     let profile_governance_authority = governance_keys.into_iter().next().ok_or_else(|| {
         CliError::cli_other_error("Finding profile governance authority key is missing")
     })?;
+    let profile_governance_authority_policy = finding_authority_policy_from_env(
+        FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH_ENV,
+        "profile governance authority",
+    )?;
+    if profile_governance_authority_policy.key != profile_governance_authority {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH_ENV} key does not match {FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV}"
+        )));
+    }
     let verifier_keys = required_public_keys_from_env(
         FINDING_VERIFIER_AUTHORITY_KEY_ENV,
         "Finding verifier authority",
@@ -282,7 +295,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
     let trusted_verifier_profile = finding_verifier_profile_from_env()?;
     chio_finding::verify_signed_profile(
         &trusted_verifier_profile,
-        &profile_governance_authority,
+        &profile_governance_authority_policy.key,
     )
     .map_err(|error| {
         CliError::cli_other_error(format!(
@@ -303,8 +316,39 @@ pub(super) fn cognition_market_proof_trust_from_env(
         required_sha256_env(FINDING_RESOLVER_POLICY_SHA256_ENV)?;
     let trusted_time_input_sha256 =
         required_sha256_env(FINDING_TRUSTED_TIME_INPUT_SHA256_ENV)?;
-    let verifier_authority_status =
-        finding_verifier_authority_status_trust_from_env(&finding_verifier_authority)?;
+    let status_authority = finding_authority_policy_from_env(
+        FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV,
+        "Finding authority-status signer",
+    )?;
+    require_independent_verifier_status_authority(
+        &status_authority.key,
+        &finding_verifier_authority,
+    )?;
+    if status_authority.key == profile_governance_authority {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV} key must differ from {FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV}"
+        )));
+    }
+    let checked_at = required_positive_u64_env(
+        FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT_ENV,
+    )?;
+    let max_age_secs = required_positive_u64_env(
+        FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS_ENV,
+    )?;
+    let profile_governance_authority_status = finding_authority_status_trust_from_env(
+        FINDING_PROFILE_GOVERNANCE_AUTHORITY_STATUS_PATH_ENV,
+        &profile_governance_authority,
+        &status_authority,
+        checked_at,
+        max_age_secs,
+    )?;
+    let verifier_authority_status = finding_authority_status_trust_from_env(
+        FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV,
+        &finding_verifier_authority,
+        &status_authority,
+        checked_at,
+        max_age_secs,
+    )?;
     let status_liveness_required = status_claim_selected
         || trusted_verifier_profile
             .body
@@ -327,7 +371,8 @@ pub(super) fn cognition_market_proof_trust_from_env(
         chio_control_plane::transaction_passport::CognitionMarketProofTrust {
             trusted_passport_signer_keys: trusted_passport_signer_keys.to_vec(),
             trusted_checkpoint_signer_keys: trusted_checkpoint_signer_keys.to_vec(),
-            profile_governance_authority,
+            profile_governance_authority: profile_governance_authority_policy,
+            profile_governance_authority_status,
             finding_verifier_authority,
             trusted_verifier_profile_envelope_sha256,
             trusted_verifier_profile,
@@ -386,13 +431,17 @@ fn finding_verifier_profile_from_env(
     Ok(profile)
 }
 
-fn finding_verifier_authority_status_trust_from_env(
-    finding_verifier_authority: &chio_core_types::PublicKey,
+fn finding_authority_status_trust_from_env(
+    status_path_env: &'static str,
+    subject_authority: &chio_core_types::PublicKey,
+    status_authority: &chio_finding::FindingAuthorityKeyPolicy,
+    checked_at: u64,
+    max_age_secs: u64,
 ) -> Result<
     chio_control_plane::transaction_passport::CognitionMarketVerifierAuthorityStatusTrust,
     CliError,
 > {
-    let path = required_utf8_env(FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV)?;
+    let path = required_utf8_env(status_path_env)?;
     let mut reader = std::fs::File::open(&path)?
         .take((FINDING_VERIFIER_AUTHORITY_STATUS_MAX_BYTES as u64).saturating_add(1));
     let mut bytes =
@@ -400,103 +449,100 @@ fn finding_verifier_authority_status_trust_from_env(
     reader.read_to_end(&mut bytes)?;
     if bytes.len() > FINDING_VERIFIER_AUTHORITY_STATUS_MAX_BYTES {
         return Err(CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} exceeds the authority-status size bound"
+            "{status_path_env} exceeds the authority-status size bound"
         )));
     }
     let text = std::str::from_utf8(&bytes).map_err(|error| {
         CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} is not valid UTF-8: {error}"
+            "{status_path_env} is not valid UTF-8: {error}"
         ))
     })?;
     let canonical = chio_core_types::canonical_json_bytes_from_str(text).map_err(|error| {
         CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} is not strict canonical I-JSON: {error}"
+            "{status_path_env} is not strict canonical I-JSON: {error}"
         ))
     })?;
     if canonical != bytes {
         return Err(CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} is not the canonical authority-status serialization"
+            "{status_path_env} is not the canonical authority-status serialization"
         )));
     }
     let signed_status: chio_finding::SignedFindingAuthorityStatus =
         serde_json::from_slice(&bytes).map_err(|error| {
             CliError::cli_other_error(format!(
-                "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} is not a signed Finding authority status: {error}"
+                "{status_path_env} is not a signed Finding authority status: {error}"
             ))
         })?;
     let typed = chio_core_types::canonical_json_bytes(&signed_status).map_err(|error| {
         CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} could not be canonicalized: {error}"
+            "{status_path_env} could not be canonicalized: {error}"
         ))
     })?;
     if typed != bytes {
         return Err(CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} typed status does not preserve the exact canonical bytes"
+            "{status_path_env} typed status does not preserve the exact canonical bytes"
         )));
     }
-    let status_authority = finding_verifier_status_authority_policy_from_env()?;
-    require_independent_verifier_status_authority(
-        &status_authority.key,
-        finding_verifier_authority,
-    )?;
     chio_finding::verify_signed_authority_status(&signed_status, &status_authority.key).map_err(
         |error| {
             CliError::cli_other_error(format!(
-                "{FINDING_VERIFIER_AUTHORITY_STATUS_PATH_ENV} is not authorized by {FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV}: {error}"
+                "{status_path_env} is not authorized by {FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV}: {error}"
             ))
         },
     )?;
+    if &signed_status.body.key != subject_authority {
+        return Err(CliError::cli_other_error(format!(
+            "{status_path_env} key does not match its deployment-pinned authority"
+        )));
+    }
     Ok(
         chio_control_plane::transaction_passport::CognitionMarketVerifierAuthorityStatusTrust {
             signed_status,
-            status_authority,
-            checked_at: required_positive_u64_env(
-                FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT_ENV,
-            )?,
-            max_age_secs: required_positive_u64_env(
-                FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS_ENV,
-            )?,
+            status_authority: status_authority.clone(),
+            checked_at,
+            max_age_secs,
         },
     )
 }
 
-fn finding_verifier_status_authority_policy_from_env(
+fn finding_authority_policy_from_env(
+    policy_path_env: &'static str,
+    subject: &'static str,
 ) -> Result<chio_finding::FindingAuthorityKeyPolicy, CliError> {
-    let path = required_utf8_env(FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV)?;
+    let path = required_utf8_env(policy_path_env)?;
     let mut reader = std::fs::File::open(&path)?
-        .take((FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_MAX_BYTES as u64).saturating_add(1));
-    let mut bytes =
-        Vec::with_capacity(FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_MAX_BYTES.saturating_add(1));
+        .take((FINDING_AUTHORITY_POLICY_MAX_BYTES as u64).saturating_add(1));
+    let mut bytes = Vec::with_capacity(FINDING_AUTHORITY_POLICY_MAX_BYTES.saturating_add(1));
     reader.read_to_end(&mut bytes)?;
-    if bytes.len() > FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_MAX_BYTES {
+    if bytes.len() > FINDING_AUTHORITY_POLICY_MAX_BYTES {
         return Err(CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV} exceeds the authority-policy size bound"
+            "{policy_path_env} exceeds the authority-policy size bound"
         )));
     }
     let text = std::str::from_utf8(&bytes).map_err(|error| {
         CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV} is not valid UTF-8: {error}"
+            "{policy_path_env} is not valid UTF-8: {error}"
         ))
     })?;
     let canonical = chio_core_types::canonical_json_bytes_from_str(text).map_err(|error| {
         CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV} is not strict canonical I-JSON: {error}"
+            "{policy_path_env} is not strict canonical I-JSON: {error}"
         ))
     })?;
     if canonical != bytes {
         return Err(CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV} is not the canonical authority-policy serialization"
+            "{policy_path_env} is not the canonical authority-policy serialization"
         )));
     }
     let policy: chio_finding::FindingAuthorityKeyPolicy = serde_json::from_slice(&bytes)
         .map_err(|error| {
             CliError::cli_other_error(format!(
-                "{FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV} is not a Finding authority policy: {error}"
+                "{policy_path_env} is not a Finding authority policy: {error}"
             ))
         })?;
-    policy.validate("verifier status authority").map_err(|error| {
+    policy.validate(subject).map_err(|error| {
         CliError::cli_other_error(format!(
-            "{FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH_ENV} is invalid: {error}"
+            "{policy_path_env} is invalid: {error}"
         ))
     })?;
     Ok(policy)

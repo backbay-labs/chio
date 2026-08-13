@@ -139,7 +139,7 @@ fn cognition_market_qualified_profile_rejects_backdated_report_after_profile_exp
     status.observed_at = CHECKED_AT + 2;
     bundle.trust.verifier_authority_status.signed_status =
         SignedExportEnvelope::sign(status, &Keypair::from_seed(&[10_u8; 32]))?;
-    bundle.trust.verifier_authority_status.checked_at = CHECKED_AT + 2;
+    set_authority_status_checked_at(&mut bundle, CHECKED_AT + 2);
 
     let error = verify(&bundle)
         .err()
@@ -170,12 +170,30 @@ fn cognition_market_qualified_profile_rejects_backdated_report_after_finding_exp
     status.observed_at = finding.expires_at;
     bundle.trust.verifier_authority_status.signed_status =
         SignedExportEnvelope::sign(status, &Keypair::from_seed(&[10_u8; 32]))?;
-    bundle.trust.verifier_authority_status.checked_at = finding.expires_at;
+    set_authority_status_checked_at(&mut bundle, finding.expires_at);
     bundle
         .trust
         .verifier_authority_status
         .status_authority
         .valid_until = finding.expires_at + 1;
+    bundle.trust.profile_governance_authority.valid_until = finding.expires_at + 600;
+    bundle
+        .trust
+        .profile_governance_authority_status
+        .status_authority
+        .valid_until = finding.expires_at + 1;
+    let mut governance_status = bundle
+        .trust
+        .profile_governance_authority_status
+        .signed_status
+        .body
+        .clone();
+    governance_status.observed_at = finding.expires_at;
+    bundle
+        .trust
+        .profile_governance_authority_status
+        .signed_status =
+        SignedExportEnvelope::sign(governance_status, &Keypair::from_seed(&[10_u8; 32]))?;
 
     let error = verify(&bundle)
         .err()
