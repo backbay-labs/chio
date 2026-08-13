@@ -3196,6 +3196,7 @@ fn append_receipt_batch(
         validate_adopted_claim_log_delta(&tx, head.claim_log_max_seq, baseline_max)?;
     }
     let mut results = Vec::with_capacity(requests.len());
+    let mut database_mutated = false;
     for request in requests {
         #[cfg(test)]
         if test_hooks::panic_during_append_batch(&request.receipt.content_hash) {
@@ -3204,20 +3205,18 @@ fn append_receipt_batch(
         // Per-record SAVEPOINT: a coalesced group-commit
         // batch mixes independent producers. A per-receipt failure (a conflicting
         // duplicate raw JSON, a lineage insert failure) must fail ONLY that
-        // record, not roll back and error every unrelated valid append sharing
-        // the same group-commit window. Wrap each record so a failure ROLLBACK TO
-        // the savepoint undoes JUST this record's partial work - its receipt row,
-        // its projection-trigger claim-log row, and its AUTOINCREMENT entry_seq,
-        // which SQLite restores with the savepoint so surviving rows stay
-        // contiguous - and the loop continues with the others. Two extra SQL
+        // record, not every unrelated append in the group. A failed savepoint
+        // rolls back only that record and its projection. Two extra SQL
         // statements per record: O(1) per record, O(b) per batch, never a
         // full-history scan, so the flat per-append cost holds.
         tx.execute_batch("SAVEPOINT chio_append_record")
             .map_err(ReceiptStoreError::Sqlite)?;
+        let changes_before = tx.total_changes();
         match append_single_receipt_record(&tx, request) {
             Ok(seq) => {
                 tx.execute_batch("RELEASE chio_append_record")
                     .map_err(ReceiptStoreError::Sqlite)?;
+                database_mutated |= tx.total_changes() != changes_before;
                 results.push(Ok(seq));
             }
             Err(error) => {
@@ -3249,7 +3248,7 @@ fn append_receipt_batch(
         .collect::<std::collections::BTreeSet<u64>>()
         .len() as u64;
     #[cfg(feature = "chaos-test-hooks")]
-    chaos_test_hooks::pause_after_receipt_write_before_commit(inserted > 0)?;
+    chaos_test_hooks::pause_after_receipt_write_before_commit(database_mutated)?;
     // O(b) projection cross-check over the delta only: the claim-log
     // projection triggers (bootstrap/open.rs:676 tool, :711 child) must have
     // advanced the projection by exactly the rows this batch inserted.
@@ -3277,7 +3276,8 @@ fn append_receipt_batch(
     if delta_count > 0 {
         validate_adopted_claim_log_delta(&tx, baseline_max, post_max)?;
     }
-    match (rollback_anchor, rollback_generation, inserted > 0) {
+    // A duplicate can still mutate lineage, so anchor every successful write.
+    match (rollback_anchor, rollback_generation, database_mutated) {
         (Some(anchor), Some(generation), true) => {
             let next = generation.checked_add(1).ok_or_else(|| {
                 ReceiptStoreError::Conflict("receipt rollback generation overflowed".to_string())

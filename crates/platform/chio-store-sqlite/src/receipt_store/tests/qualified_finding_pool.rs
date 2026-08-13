@@ -63,3 +63,58 @@ fn qualified_receipt_sink_rejects_anchor_on_the_database_snapshot_device(
     }
     Ok(())
 }
+
+#[test]
+fn qualified_receipt_sink_anchors_lineage_only_duplicate_mutations(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-lineage-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("qualified-lineage.sqlite3");
+    let snapshot = directory.path().join("before-lineage.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    let receipt =
+        super::insert::sample_receipt_with_id_and_call_chain("anchored-lineage-duplicate");
+    let value = serde_json::to_value(&receipt)?;
+    let canonical = Arc::new(CanonicalBytes::from_value(&value)?);
+
+    store.append_chio_receipt_canonical_returning_seq(Arc::clone(&canonical))?;
+    store.flush_receipt_writes()?;
+    let connection = rusqlite::Connection::open(&database)?;
+    let lineage_before: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM receipt_lineage_statements WHERE receipt_id = ?1",
+        [receipt.id.as_str()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(lineage_before, 0);
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+    std::fs::copy(&database, &snapshot)?;
+
+    chio_kernel::ReceiptStore::append_chio_receipt_canonical(&store, &receipt, canonical.as_ref())?;
+    store.flush_receipt_writes()?;
+    let connection = rusqlite::Connection::open(&database)?;
+    let lineage_after: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM receipt_lineage_statements WHERE receipt_id = ?1",
+        [receipt.id.as_str()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(lineage_after, 1);
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+
+    std::fs::copy(&snapshot, &database)?;
+    let error = store
+        .max_child_receipt_seq()
+        .err()
+        .ok_or("lineage-only rollback must fail a qualified receipt read")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
+        "unexpected lineage-only rollback error: {error}"
+    );
+    Ok(())
+}

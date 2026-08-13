@@ -12,6 +12,10 @@ use chio_core::capability::token::{CapabilityToken, CHIO_CAPABILITY_SCHEMA};
 use chio_core::crypto::{sha256_hex, Ed25519Backend, Keypair, PublicKey};
 use chio_core::receipt::body::ChioReceipt;
 use chio_core::receipt::lineage::SignedExportEnvelope;
+use chio_core::session::{
+    OAuthBearerFederatedClaims, OAuthBearerSessionAuthInput, OperationContext, RequestId,
+    SessionAuthContext,
+};
 use chio_kernel::finding_pool::{
     FindingPoolDebitAuthorization, FindingPoolDebitError, FindingPoolDebitRequest,
     FindingPoolDebitState, FindingPoolLedger, FindingPoolLedgerError, QualifiedFindingPoolLedger,
@@ -341,6 +345,39 @@ fn debit_at_with_policy_and_authority(
     allocation_authority: PublicKey,
     reject_purchase_verification: bool,
 ) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
+    debit_at_with_policy_and_authority_and_tenant(
+        ledger,
+        fixture,
+        purchase_id,
+        amount_units,
+        now_unix_ms,
+        status_verifier,
+        status_proof_b64,
+        purchase_admissions,
+        reject_purchase_admission,
+        kernel_key,
+        allocation_authority,
+        reject_purchase_verification,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn debit_at_with_policy_and_authority_and_tenant(
+    ledger: &SqliteFindingPoolLedger,
+    fixture: &PoolFixture,
+    purchase_id: &str,
+    amount_units: u64,
+    now_unix_ms: u64,
+    status_verifier: Option<Arc<dyn FindingStatusProofVerifier>>,
+    status_proof_b64: Option<&str>,
+    purchase_admissions: Arc<AtomicU64>,
+    reject_purchase_admission: bool,
+    kernel_key: Keypair,
+    allocation_authority: PublicKey,
+    reject_purchase_verification: bool,
+    tenant_id: Option<&str>,
+) -> Result<chio_kernel::finding_pool::FindingPoolDebitReceipt, FindingPoolDebitError> {
     let verified_purchase = VerifiedFindingPurchase {
         finding_id: "a".repeat(64),
         listing_id: "listing:cognition-market:1".to_string(),
@@ -421,6 +458,38 @@ fn debit_at_with_policy_and_authority(
         budget_share_bps: None,
         signature: fixture.authority.sign(purchase_id.as_bytes()),
     };
+    let agent_id = fixture.purchaser.public_key().to_hex();
+    let session_id = kernel
+        .open_session(agent_id.clone(), vec![capability.clone()])
+        .test_expect("open authenticated purchaser session");
+    if let Some(tenant_id) = tenant_id {
+        kernel
+            .set_session_auth_context(
+                &session_id,
+                SessionAuthContext::streamable_http_oauth_bearer_with_claims(
+                    OAuthBearerSessionAuthInput {
+                        principal: Some(format!("oidc:https://issuer.example#sub:{agent_id}")),
+                        issuer: Some("https://issuer.example".to_owned()),
+                        subject: Some(agent_id.clone()),
+                        audience: Some("chio-mcp".to_owned()),
+                        scopes: vec!["mcp:invoke".to_owned()],
+                        federated_claims: OAuthBearerFederatedClaims {
+                            tenant_id: Some(tenant_id.to_owned()),
+                            ..OAuthBearerFederatedClaims::default()
+                        },
+                        enterprise_identity: None,
+                        token_fingerprint: Some("finding-pool-test-token".to_owned()),
+                        origin: Some("https://app.example".to_owned()),
+                    },
+                ),
+            )
+            .test_expect("install authenticated purchaser tenant");
+    }
+    let operation_context = OperationContext::new(
+        session_id,
+        RequestId::new(format!("request:{purchase_id}")),
+        agent_id,
+    );
     let arguments = serde_json::Value::Null;
     let context_b64 = "test-purchase-context";
     let expected_output_digest = "c".repeat(64);
@@ -448,6 +517,7 @@ fn debit_at_with_policy_and_authority(
         std::iter::empty::<String>(),
     );
     kernel.debit_finding_pool_purchase(FindingPoolDebitRequest {
+        operation_context: &operation_context,
         allocation: &fixture.allocation,
         pool: &fixture.pool,
         expected_allocation_envelope_sha256: &fixture.envelope_sha256,
@@ -505,6 +575,42 @@ impl FindingStatusProofVerifier for StaticStatusVerifier {
         self.admissions.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
+}
+
+#[test]
+fn cognition_market_debit_resolves_tenant_from_authenticated_session_context() {
+    let directory = tempfile::tempdir().test_expect("create ledger directory");
+    let database = directory.path().join("finding-pool.sqlite3");
+    let ledger = open_qualified(&database, ledger_domain()).test_expect("open qualified ledger");
+    let fixture = fixture(100, &ledger);
+    let purchase_id = "purchase:authenticated-tenant";
+
+    debit_at_with_policy_and_authority_and_tenant(
+        &ledger,
+        &fixture,
+        purchase_id,
+        10,
+        2_000,
+        None,
+        None,
+        Arc::new(AtomicU64::new(0)),
+        false,
+        Keypair::from_seed(&[99_u8; 32]),
+        fixture.authority.public_key(),
+        false,
+        Some("tenant-A"),
+    )
+    .test_expect("reserve against authenticated tenant context");
+
+    let connection = rusqlite::Connection::open(&database).test_expect("open tenant ledger");
+    let tenant_id: Option<String> = connection
+        .query_row(
+            "SELECT tenant_id FROM finding_pool_debits WHERE purchase_id = ?1",
+            [purchase_id],
+            |row| row.get(0),
+        )
+        .test_expect("load reserved tenant");
+    assert_eq!(tenant_id.as_deref(), Some("tenant-A"));
 }
 
 #[test]

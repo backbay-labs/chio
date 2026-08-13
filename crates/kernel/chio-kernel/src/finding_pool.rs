@@ -9,6 +9,7 @@ use chio_core_types::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_core_types::receipt::body::ChioReceipt;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
+use chio_core_types::session::OperationContext;
 use chio_swarm_authority::finding_pool::{
     verify_finding_pool_allocation, SignedFindingPoolAllocation,
 };
@@ -212,6 +213,8 @@ pub enum FindingPoolDebitError {
     AllocationAuthorityMissing,
     #[error("qualified finding pool ledger is not configured")]
     LedgerMissing,
+    #[error("finding pool debit session context rejected: {0}")]
+    SessionContext(String),
     #[error("finding pool debit {0} is invalid")]
     InvalidField(&'static str),
     #[error(transparent)]
@@ -219,6 +222,10 @@ pub enum FindingPoolDebitError {
 }
 
 pub struct FindingPoolDebitRequest<'a> {
+    /// Authenticated session and request identity that will later dispatch the
+    /// purchase. The kernel derives tenant identity from this session rather
+    /// than trusting caller-provided or thread-local tenant state.
+    pub operation_context: &'a OperationContext,
     pub allocation: &'a SignedFindingPoolAllocation,
     pub pool: &'a SwarmBudgetPool,
     pub expected_allocation_envelope_sha256: &'a str,
@@ -782,6 +789,19 @@ impl ChioKernel {
         trusted_now_unix_ms: u64,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolDebitError> {
         self.require_finding_pool_debit_active()?;
+        let tenant_id = self
+            .with_session(&request.operation_context.session_id, |session| {
+                session.validate_context(request.operation_context)?;
+                Ok(crate::kernel::extract_tenant_id_from_auth_context(
+                    &session.auth_context(),
+                ))
+            })
+            .map_err(|error| FindingPoolDebitError::SessionContext(error.to_string()))?;
+        if request.operation_context.agent_id
+            != request.purchase_context.capability.subject.to_hex()
+        {
+            return Err(FindingPoolDebitError::PurchaserMismatch);
+        }
         let ledger = self
             .finding_pool_ledger()
             .ok_or(FindingPoolDebitError::LedgerMissing)?;
@@ -842,7 +862,6 @@ impl ChioKernel {
                 candidate_purchase_id,
                 &verified.purchaser_key,
             )?;
-        let tenant_id = crate::kernel::current_scoped_receipt_tenant_id();
         if committed_purchase {
             let replay = AuthorizedFindingPoolDebitReplay {
                 purchase_id: candidate_purchase_id.clone(),

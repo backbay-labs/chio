@@ -700,7 +700,7 @@ fn append_inflight_counter_does_not_underflow_on_concurrent_drain() {
 /// receipt never reaches the lineage insert at all. The atomicity fold under
 /// test only matters for receipts that actually trigger that insert, so this
 /// helper builds one.
-fn sample_receipt_with_id_and_call_chain(id: &str) -> ChioReceipt {
+pub(super) fn sample_receipt_with_id_and_call_chain(id: &str) -> ChioReceipt {
     let keypair = receipt_test_keypair();
     ChioReceipt::sign(
         ChioReceiptBody {
