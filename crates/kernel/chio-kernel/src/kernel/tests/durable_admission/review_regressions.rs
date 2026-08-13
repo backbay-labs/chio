@@ -119,7 +119,7 @@ fn durable_server_url_elicitation_finalizes_the_pool_claim() {
     assert!(matches!(
         error,
         Err(KernelError::UrlElicitationsRequired { .. })
-    ));
+    ), "unexpected durable URL elicitation result: {error:?}");
     let terminal = store.operation();
     assert_eq!(
         terminal.state(),
