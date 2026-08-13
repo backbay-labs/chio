@@ -65,6 +65,12 @@ pub(super) fn temp_db(prefix: &str) -> std::io::Result<(tempfile::TempDir, std::
     Ok((directory, path))
 }
 
+pub(super) fn rollback_anchor_tempdir(prefix: &str) -> std::io::Result<tempfile::TempDir> {
+    tempfile::Builder::new()
+        .prefix(prefix)
+        .tempdir_in("/dev/shm")
+}
+
 pub(super) fn restore_transparency_projection_guards(
     connection: &rusqlite::Connection,
 ) -> Result<(), ReceiptStoreError> {

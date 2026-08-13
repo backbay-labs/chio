@@ -8,7 +8,7 @@ fn qualified_receipt_sink_rejects_locking_disabled_sqlite_uris(
     use std::os::unix::fs::PermissionsExt as _;
 
     let directory = tempfile::tempdir()?;
-    let anchor_directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-nolock-anchor")?;
     for root in [directory.path(), anchor_directory.path()] {
         std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
     }
@@ -36,7 +36,7 @@ fn qualified_receipt_sink_rejects_locking_disabled_sqlite_uris(
 fn qualified_reader_and_reopen_reject_live_rollback_after_writer_routed_receipt(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
-    let anchor_directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-rollback-anchor")?;
     #[cfg(unix)]
     for root in [directory.path(), anchor_directory.path()] {
         use std::os::unix::fs::PermissionsExt as _;

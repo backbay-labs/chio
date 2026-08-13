@@ -130,8 +130,10 @@ impl SqliteFindingPoolLedger {
     ///
     /// In-memory paths are refused because restart durability is part of the
     /// hard-ceiling qualification. `store_identity` must be held outside the
-    /// SQLite database. Its live proof, canonical identity, and external anchor
-    /// instance id bind it globally, so a copy cannot qualify elsewhere.
+    /// SQLite database. `rollback_anchor_root` must be on a different
+    /// filesystem device so the same storage snapshot cannot roll back both
+    /// records. The identity's live proof, canonical identity, and external
+    /// anchor instance id bind it globally, so a copy cannot qualify elsewhere.
     pub fn open_qualified(
         path: impl AsRef<Path>,
         ledger_domain: impl Into<String>,
@@ -160,6 +162,11 @@ impl SqliteFindingPoolLedger {
                 .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
         }
         let database_identity = prepare_database_identity(path_text)?;
+        crate::rollback_generation::require_separate_snapshot_domain(
+            database_identity.path(),
+            rollback_anchor_root.as_ref(),
+        )
+        .map_err(FindingPoolLedgerError::Storage)?;
         let manager =
             SqliteConnectionManager::file(database_identity.path()).with_init(|connection| {
                 connection.busy_timeout(Duration::from_secs(30))?;
@@ -1755,7 +1762,7 @@ mod tests {
     fn rollback_anchor_root() -> &'static Path {
         static ROOT: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
         ROOT.get_or_init(|| {
-            let root = std::env::temp_dir().join(format!(
+            let root = Path::new("/dev/shm").join(format!(
                 "chio-finding-pool-unit-anchors-{}",
                 std::process::id()
             ));
@@ -1772,6 +1779,33 @@ mod tests {
             }
             root
         })
+    }
+
+    #[test]
+    fn qualified_open_rejects_anchor_on_the_database_snapshot_device() {
+        let identity = Ed25519Backend::new(Keypair::from_seed(&[71_u8; 32]));
+        for (suffix, use_database_root) in [("same-directory", true), ("same-device", false)] {
+            let database_root = tempfile::tempdir().test_expect("create database root");
+            let anchor_root = tempfile::tempdir().test_expect("create sibling anchor root");
+            let selected_anchor = if use_database_root {
+                database_root.path()
+            } else {
+                anchor_root.path()
+            };
+            let error = SqliteFindingPoolLedger::open_qualified(
+                database_root.path().join("pool.sqlite3"),
+                format!("ledger:test-snapshot-domain:{suffix}"),
+                &identity,
+                selected_anchor,
+            )
+            .err()
+            .test_expect("co-located rollback anchor must fail qualification");
+            assert!(matches!(
+                error,
+                FindingPoolLedgerError::Storage(message)
+                    if message.contains("shares the protected database snapshot domain")
+            ));
+        }
     }
 
     fn open_qualified(

@@ -41,6 +41,25 @@ enum AnchorLoadState {
 
 static PROCESS_ANCHOR_LOCKS: OnceLock<Mutex<BTreeMap<PathBuf, Weak<Mutex<()>>>>> = OnceLock::new();
 
+/// Reject an anchor that can be rolled back by the same filesystem snapshot
+/// as its protected SQLite database. A qualified anchor must cross a device
+/// boundary; path separation alone is not a rollback boundary.
+pub(crate) fn require_separate_snapshot_domain(
+    database_path: &Path,
+    anchor_root: &Path,
+) -> Result<(), String> {
+    let database_metadata = fs::metadata(database_path)
+        .map_err(|error| format!("protected SQLite database metadata failed: {error}"))?;
+    let anchor_metadata = fs::metadata(anchor_root)
+        .map_err(|error| format!("rollback anchor root metadata failed: {error}"))?;
+    if metadata_device(&database_metadata)? == metadata_device(&anchor_metadata)? {
+        return Err(
+            "rollback anchor root shares the protected database snapshot domain".to_string(),
+        );
+    }
+    Ok(())
+}
+
 pub(crate) struct RollbackGenerationAnchor {
     file: File,
     root: PathBuf,

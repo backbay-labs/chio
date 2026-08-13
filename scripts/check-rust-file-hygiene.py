@@ -419,7 +419,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/finding_pool_ledger.rs": allow(
         "2026-08-31",
         "cognition pool ledger with durable delivery claims; capped to current M8 size until split",
-        max_lines=2_244,
+        max_lines=2_250,
     ),
     "crates/platform/chio-store-sqlite/src/finding_challenge_store_tests.rs": allow(
         "2026-08-31",
@@ -454,7 +454,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/support.rs": allow(
         "2026-08-31",
         "receipt store test support module; capped to current size until split",
-        max_lines=2_050,
+        max_lines=2_056,
     ),
     "crates/platform/chio-store-sqlite/src/serving_owner/global_commit_chain.rs": allow(
         "2026-08-31",

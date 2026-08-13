@@ -155,8 +155,13 @@ fn durable_receipt_sink_binding(
     path: &Path,
     internal_sink_id: &str,
 ) -> Result<String, ReceiptStoreError> {
+    let filesystem_path = receipt_sink_filesystem_path(path)?;
+    durable_receipt_sink_file_binding(&filesystem_path, internal_sink_id)
+}
+
+fn receipt_sink_filesystem_path(path: &Path) -> Result<PathBuf, ReceiptStoreError> {
     let Some(path_text) = path.to_str() else {
-        return durable_receipt_sink_file_binding(path, internal_sink_id);
+        return Ok(path.to_path_buf());
     };
     if crate::is_in_memory_sqlite_path(path_text) {
         return Err(ReceiptStoreError::Conflict(
@@ -174,7 +179,7 @@ fn durable_receipt_sink_binding(
     } else {
         filesystem_path
     };
-    durable_receipt_sink_file_binding(&filesystem_path, internal_sink_id)
+    Ok(filesystem_path)
 }
 
 fn qualify_receipt_sink(
@@ -192,6 +197,14 @@ fn qualify_receipt_sink(
     let Some(rollback_anchor_root) = rollback_anchor_root else {
         return Ok((None, None));
     };
+    let filesystem_path = receipt_sink_filesystem_path(path)?;
+    crate::rollback_generation::require_separate_snapshot_domain(
+        &filesystem_path,
+        rollback_anchor_root,
+    )
+    .map_err(|error| {
+        ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+    })?;
     let file_sink_binding = durable_receipt_sink_binding(path, internal_sink_id)?;
     ensure_receipt_rollback_generation(connection)?;
     let mut scope = Vec::new();
@@ -430,7 +443,7 @@ impl SqliteReceiptStore {
     }
 
     /// Open a receipt store that may be bound to a qualified finding-pool
-    /// ledger. The anchor root must live on rollback-resistant storage outside
+    /// ledger. The anchor root must live on a different filesystem device from
     /// the SQLite database and must be private to the effective user.
     pub fn open_for_finding_pool(
         path: impl AsRef<Path>,

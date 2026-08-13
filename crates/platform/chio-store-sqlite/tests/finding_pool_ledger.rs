@@ -51,7 +51,7 @@ fn store_identity() -> Ed25519Backend {
 fn rollback_anchor_root() -> &'static std::path::Path {
     static ROOT: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
     ROOT.get_or_init(|| {
-        let root = std::env::temp_dir().join(format!(
+        let root = std::path::Path::new("/dev/shm").join(format!(
             "chio-finding-pool-test-anchors-{}",
             std::process::id()
         ));
@@ -68,6 +68,13 @@ fn rollback_anchor_root() -> &'static std::path::Path {
         }
         root
     })
+}
+
+fn rollback_anchor_tempdir(prefix: &str) -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix(prefix)
+        .tempdir_in("/dev/shm")
+        .test_expect("create rollback anchor directory")
 }
 
 fn open_qualified(
@@ -1535,8 +1542,8 @@ fn sqlite_receipt_store_identity_survives_reopen() {
 #[test]
 fn independent_receipt_anchors_produce_distinct_sink_identities() {
     let directory = tempfile::tempdir().test_expect("create receipt directory");
-    let first_anchor = tempfile::tempdir().test_expect("create first anchor directory");
-    let second_anchor = tempfile::tempdir().test_expect("create second anchor directory");
+    let first_anchor = rollback_anchor_tempdir("chio-first-receipt-anchor");
+    let second_anchor = rollback_anchor_tempdir("chio-second-receipt-anchor");
     let path = directory.path().join("receipts.sqlite3");
     let first = SqliteReceiptStore::open_for_finding_pool(&path, first_anchor.path())
         .test_expect("open receipt store with first anchor");
