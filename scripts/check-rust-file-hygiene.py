@@ -418,8 +418,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
-        "cognition purchase and recovery end-to-end regression suite with reservation and activation lifecycle evidence; capped until split",
-        max_lines=5_740,
+        "cognition purchase and recovery end-to-end regression suite with reservation, venue-authority, and activation lifecycle evidence; capped until split",
+        max_lines=5_778,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",

@@ -1998,7 +1998,7 @@ fn coordinator_with_status_pin(
         authority_status,
         authority_status_pin,
         &market_config().status_feed_operator,
-        &keypair(6).public_key(),
+        &market_config().venue,
         VENUE_ID,
     )?)
 }
@@ -4531,7 +4531,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_pin(37, "authority-status"),
         &market_config().status_feed_operator,
-        &keypair(6).public_key(),
+        &market_config().venue,
         VENUE_ID,
     )?;
     assert!(matches!(
@@ -4564,7 +4564,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_pin(37, "authority-status"),
         &market_config().status_feed_operator,
-        &keypair(6).public_key(),
+        &market_config().venue,
         VENUE_ID,
     )?;
     assert!(matches!(
@@ -4602,7 +4602,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
                 Arc::new(TestTerminalAuthorityStatusResolver::live()),
                 &aliased_status_pin,
                 &market_config().status_feed_operator,
-                &keypair(6).public_key(),
+                &market_config().venue,
                 VENUE_ID,
             ),
             Err(PurchaseCoordinatorError::AuthorityStatusPin)
@@ -4622,7 +4622,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
             Arc::new(TestTerminalAuthorityStatusResolver::live()),
             &authority_pin(37, "authority-status"),
             &market_config().status_feed_operator,
-            &keypair(6).public_key(),
+            &market_config().venue,
             VENUE_ID,
         ),
         Err(PurchaseCoordinatorError::AuthorityPinMismatch)
@@ -4693,6 +4693,7 @@ async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_stand
     let fixture = open_reserve_fixture().await?;
     let now = unix_timestamp_now();
     let status_operator = market_config().status_feed_operator;
+    let venue = market_config().venue;
     for (authority_id, expected_role) in [
         (
             fixture
@@ -4720,6 +4721,7 @@ async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_stand
             status_operator.authority.authority_id.as_str(),
             "status-operator",
         ),
+        (venue.authority_id.as_str(), "venue"),
     ] {
         let coordinator = coordinator_with_status(
             &fixture.authority,
@@ -4745,6 +4747,42 @@ async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_stand
             .get_reservation(&fixture.exchange.reservation_id)?
             .is_none());
     }
+
+    let mut expired_venue = market_config().venue;
+    expired_venue.valid_until = now;
+    let expired_venue_coordinator = FindingPurchaseCoordinator::new(
+        fixture.authority.finding_purchase_store(),
+        fixture.authority.finding_market_store(),
+        fixture.authority.admission_operation_store(),
+        fixture.authority.tool_outcome_store(),
+        keypair(16),
+        &keypair(16).public_key(),
+        keypair(17),
+        &keypair(17).public_key(),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &authority_pin(37, "authority-status"),
+        &market_config().status_feed_operator,
+        &expired_venue,
+        VENUE_ID,
+    )?;
+    assert!(matches!(
+        expired_venue_coordinator.reserve(
+            &fixture.exchange.bid,
+            &fixture.exchange.ask,
+            &fixture.exchange.buyer_signature_hex,
+            &fixture.deployment.web.admission,
+            &fixture.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle { role: "venue", .. })
+    ));
+    assert!(fixture
+        .authority
+        .finding_purchase_store()
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_none());
     Ok(())
 }
 

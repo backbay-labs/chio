@@ -124,7 +124,7 @@ pub enum PurchaseCoordinatorError {
     AuthorityPinMismatch,
     #[error("authority-status pin is invalid or aliases a terminal signing authority")]
     AuthorityStatusPin,
-    #[error("venue authority pin must be named and distinct from the signing authorities")]
+    #[error("venue authority pin is invalid or aliases a terminal signing authority")]
     VenuePin,
     #[error("reserve request signature does not verify under the buyer key")]
     BuyerSignature,
@@ -212,7 +212,7 @@ pub struct FindingPurchaseCoordinator {
     authority_status: Arc<dyn FindingAuthorityStatusResolver>,
     authority_status_pin: FindingAuthorityPin,
     status_feed_operator: FindingStatusOperatorPin,
-    venue_authority: PublicKey,
+    venue_authority: FindingAuthorityPin,
     venue_id: String,
 }
 
@@ -220,7 +220,8 @@ impl FindingPurchaseCoordinator {
     /// Build the coordinator over the durable purchase store and the
     /// market store whose admission lifecycle gates every sale, verifying
     /// each signing key equals its configured public pin and that the
-    /// venue the admissions must carry is named.
+    /// venue authority policy is valid and names the admissions this
+    /// coordinator accepts.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         store: SqliteFindingPurchaseStore,
@@ -234,7 +235,7 @@ impl FindingPurchaseCoordinator {
         authority_status: Arc<dyn FindingAuthorityStatusResolver>,
         authority_status_pin: &FindingAuthorityPin,
         status_feed_operator: &FindingStatusOperatorPin,
-        venue_pin: &PublicKey,
+        venue_pin: &FindingAuthorityPin,
         venue_id: &str,
     ) -> Result<Self, PurchaseCoordinatorError> {
         if purchase_authority.public_key() != *purchase_pin
@@ -258,9 +259,12 @@ impl FindingPurchaseCoordinator {
         {
             return Err(PurchaseCoordinatorError::AuthorityStatusPin);
         }
+        let venue_key = venue_pin
+            .validate("venue")
+            .map_err(|_| PurchaseCoordinatorError::VenuePin)?;
         if venue_id.is_empty()
-            || *venue_pin == purchase_authority.public_key()
-            || *venue_pin == failed_delivery_authority.public_key()
+            || venue_key == purchase_authority.public_key()
+            || venue_key == failed_delivery_authority.public_key()
         {
             return Err(PurchaseCoordinatorError::VenuePin);
         }
@@ -277,6 +281,68 @@ impl FindingPurchaseCoordinator {
             venue_authority: venue_pin.clone(),
             venue_id: venue_id.to_owned(),
         })
+    }
+
+    fn require_live_venue_authority(
+        &self,
+        now: u64,
+    ) -> Result<PublicKey, PurchaseCoordinatorError> {
+        let reject = |reason| PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "venue",
+            reason,
+        };
+        if !self.authority_status_pin.covers(now) {
+            return Err(reject("authority-status signer window is not live"));
+        }
+        if !self.venue_authority.covers(now) {
+            return Err(reject("configured authority window is not live"));
+        }
+        let venue_key = self
+            .venue_authority
+            .key()
+            .map_err(|_| reject("configured authority key is invalid"))?;
+        let signed = self
+            .authority_status
+            .resolve(&self.venue_authority, now)
+            .map_err(|_| reject("revocation source could not be resolved"))?;
+        let authority_status_key = self
+            .authority_status_pin
+            .key()
+            .map_err(|_| reject("authority-status signer key is invalid"))?;
+        verify_signed_authority_status(&signed, &authority_status_key)
+            .map_err(|_| reject("revocation status signature is invalid"))?;
+        let status = &signed.body;
+        if !self.authority_status_pin.covers(status.observed_at) {
+            return Err(reject(
+                "revocation status was signed outside the authority-status window",
+            ));
+        }
+        if !self.venue_authority.covers(status.observed_at) {
+            return Err(reject(
+                "revocation status was observed outside the venue authority window",
+            ));
+        }
+        if status.status_ref != self.venue_authority.revocation_status_ref
+            || status.authority_id != self.venue_authority.authority_id
+            || status.key != venue_key
+            || status.key_epoch != self.venue_authority.key_epoch
+        {
+            return Err(reject(
+                "revocation status does not bind the configured venue policy",
+            ));
+        }
+        if status.observed_at > now
+            || now.saturating_sub(status.observed_at) > TERMINAL_AUTHORITY_STATUS_MAX_AGE_SECS
+        {
+            return Err(reject("revocation status is not a fresh current reading"));
+        }
+        if status
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from <= now)
+        {
+            return Err(reject("authority is revoked at reservation"));
+        }
+        Ok(venue_key)
     }
 
     fn require_live_terminal_authority(
@@ -525,7 +591,8 @@ impl FindingPurchaseCoordinator {
         // usable once it verifies under the pinned venue authority. An
         // unverified admission would let its presenter choose which
         // collateral the sale encumbers.
-        chio_finding::verify_signed_admission(admission, &self.venue_authority, &self.venue_id)
+        let venue_authority = self.require_live_venue_authority(now)?;
+        chio_finding::verify_signed_admission(admission, &venue_authority, &self.venue_id)
             .map_err(|error| PurchaseCoordinatorError::AdmissionEnvelope(error.to_string()))?;
         if now < admission.body.issued_at || now >= admission.body.expires_at {
             return Err(PurchaseCoordinatorError::AdmissionWindow);
@@ -744,6 +811,7 @@ impl FindingPurchaseCoordinator {
             .min(ask.body.expires_at)
             .min(ask.body.token_offer.expires_at)
             .min(admission.body.expires_at)
+            .min(self.venue_authority.valid_until)
             .min(admission.body.purchase_authority.valid_until)
             .min(admission.body.failed_delivery_authority.valid_until)
             .min(authorization.expires_at);
@@ -824,7 +892,11 @@ impl FindingPurchaseCoordinator {
         reservation: &FindingPurchaseReservationRecord,
         admission: &SignedFindingAdmission,
     ) -> Result<(), PurchaseCoordinatorError> {
-        chio_finding::verify_signed_admission(admission, &self.venue_authority, &self.venue_id)
+        let venue_authority = self
+            .venue_authority
+            .key()
+            .map_err(|_| PurchaseCoordinatorError::VenuePin)?;
+        chio_finding::verify_signed_admission(admission, &venue_authority, &self.venue_id)
             .map_err(|error| PurchaseCoordinatorError::AdmissionEnvelope(error.to_string()))?;
         let digest = canonical_json_bytes(admission)
             .map(|bytes| sha256_hex(&bytes))
