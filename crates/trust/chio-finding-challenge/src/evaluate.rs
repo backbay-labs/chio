@@ -68,6 +68,9 @@ fn adjudicate(
     verify_signed_challenge(input.challenge, input.pinned_audit_authority)
         .map_err(FindingChallengeInadmissible::ChallengeRejected)?;
     let challenge = &input.challenge.body;
+    if input.evaluated_at < challenge.filed_at {
+        return Err(FindingChallengeInadmissible::EvaluationPredatesFiling);
+    }
 
     // The profile is a precondition, not evidence: with an unverified profile
     // no role key below means anything.

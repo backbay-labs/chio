@@ -70,6 +70,10 @@ pub enum SlashAmountError {
     CandidateAboveRequirement,
     #[error("the community fund destination must be distinct from every buyer destination")]
     CommunityFundCollision,
+    #[error("verified harm purchase keys must be unique")]
+    DuplicatePurchaseKey,
+    #[error("verified harm destinations must be unique aggregates")]
+    DuplicateBuyerDestination,
     #[error("unbatched v1 supports at most 15 harmed-buyer destinations")]
     TooManyBuyerDestinations,
     #[error("distribution entries do not sum to the slash")]
@@ -88,6 +92,29 @@ pub struct SlashInputs<'a> {
     pub listing_required_amount: &'a MonetaryAmount,
     /// The community fund destination pinned by the venue admission.
     pub community_fund_destination: &'a str,
+}
+
+fn validate_harm_identities(
+    harms: &[VerifiedHarm],
+    community_fund_destination: &str,
+) -> Result<(), SlashAmountError> {
+    if harms
+        .iter()
+        .any(|harm| harm.destination == community_fund_destination)
+    {
+        return Err(SlashAmountError::CommunityFundCollision);
+    }
+    for (index, harm) in harms.iter().enumerate() {
+        for other in harms.iter().skip(index.saturating_add(1)) {
+            if harm.purchase_key == other.purchase_key {
+                return Err(SlashAmountError::DuplicatePurchaseKey);
+            }
+            if harm.destination == other.destination {
+                return Err(SlashAmountError::DuplicateBuyerDestination);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Compute the checked numeric challenge award for verified ordered harms.
@@ -214,12 +241,7 @@ pub fn compute_slash_distribution(
     if &inputs.listing_required_amount.currency != currency {
         return Err(SlashAmountError::CurrencyMismatch);
     }
-    if harms
-        .iter()
-        .any(|harm| harm.destination == inputs.community_fund_destination)
-    {
-        return Err(SlashAmountError::CommunityFundCollision);
-    }
+    validate_harm_identities(harms, inputs.community_fund_destination)?;
 
     let mut ordered: Vec<&VerifiedHarm> = harms.iter().collect();
     ordered.sort_by(|left, right| left.purchase_key.cmp(&right.purchase_key));
@@ -282,12 +304,7 @@ pub fn compute_frozen_slash_distribution(
     community_fund_destination: &str,
     harms: &[VerifiedHarm],
 ) -> Result<SlashDistribution, SlashAmountError> {
-    if harms
-        .iter()
-        .any(|harm| harm.destination == community_fund_destination)
-    {
-        return Err(SlashAmountError::CommunityFundCollision);
-    }
+    validate_harm_identities(harms, community_fund_destination)?;
     let mut ordered: Vec<&VerifiedHarm> = harms.iter().collect();
     ordered.sort_by(|left, right| left.purchase_key.cmp(&right.purchase_key));
     let ordered_harms: Vec<u64> = ordered
@@ -546,6 +563,34 @@ mod tests {
         assert_eq!(
             compute_slash_distribution(&base, &harms).unwrap_err(),
             SlashAmountError::CommunityFundCollision
+        );
+    }
+
+    #[test]
+    fn duplicate_purchase_and_destination_identities_reject() {
+        let stake = usd(10);
+        let required = usd(5_000);
+        let base = inputs(&stake, &required);
+        let duplicate_purchase = [harm("key-a", "rail:a", 4), harm("key-a", "rail:b", 6)];
+        let duplicate_destination = [harm("key-a", "rail:a", 4), harm("key-b", "rail:a", 6)];
+
+        assert_eq!(
+            compute_slash_distribution(&base, &duplicate_purchase).unwrap_err(),
+            SlashAmountError::DuplicatePurchaseKey
+        );
+        assert_eq!(
+            compute_frozen_slash_distribution(&usd(10), "community", &duplicate_purchase)
+                .unwrap_err(),
+            SlashAmountError::DuplicatePurchaseKey
+        );
+        assert_eq!(
+            compute_slash_distribution(&base, &duplicate_destination).unwrap_err(),
+            SlashAmountError::DuplicateBuyerDestination
+        );
+        assert_eq!(
+            compute_frozen_slash_distribution(&usd(10), "community", &duplicate_destination)
+                .unwrap_err(),
+            SlashAmountError::DuplicateBuyerDestination
         );
     }
 }

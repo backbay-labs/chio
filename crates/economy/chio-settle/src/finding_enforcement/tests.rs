@@ -228,7 +228,7 @@ fn penalty_for(enforcement: &FindingChallengeEnforcement) -> SignedOpenMarketPen
             listing_id: enforcement.listing_id.clone(),
             activation_id: None,
             subject_operator_id: Some("seller-42".to_string()),
-            abuse_class: OpenMarketAbuseClass::UnverifiableListingBehavior,
+            abuse_class: OpenMarketAbuseClass::FraudulentListing,
             bond_class: OpenMarketBondClass::Listing,
             action: OpenMarketPenaltyAction::SlashBond,
             state: OpenMarketPenaltyState::Enforced,
@@ -237,10 +237,10 @@ fn penalty_for(enforcement: &FindingChallengeEnforcement) -> SignedOpenMarketPen
             updated_at: 100,
             expires_at: None,
             evidence_refs: vec![OpenMarketEvidenceReference {
-                kind: OpenMarketEvidenceKind::GovernanceCase,
-                reference_id: "case-42".to_string(),
+                kind: OpenMarketEvidenceKind::External,
+                reference_id: enforcement.outcome_id.clone(),
                 uri: None,
-                sha256: None,
+                sha256: Some(enforcement.outcome_envelope_sha256.clone()),
             }],
             supersedes_penalty_id: None,
             issued_by: "market-penalty".to_string(),
@@ -248,6 +248,18 @@ fn penalty_for(enforcement: &FindingChallengeEnforcement) -> SignedOpenMarketPen
         },
         &penalty_keypair(),
     )
+}
+
+fn enforcement_bound_to_penalty(
+    mut enforcement: FindingChallengeEnforcement,
+    penalty: &SignedOpenMarketPenalty,
+) -> SignedFindingChallengeEnforcement {
+    enforcement.penalty_envelope_sha256 =
+        signed_envelope_sha256(penalty).test_expect("penalty digest computes");
+    enforcement.enforcement_id.clear();
+    enforcement.enforcement_id =
+        compute_enforcement_id(&enforcement).test_expect("enforcement id computes");
+    sign(enforcement, &finalization_keypair())
 }
 
 fn penalty_status_at(
@@ -549,6 +561,72 @@ fn dispatch_rejects_an_unbound_or_revoked_penalty() {
             TRUSTED_NOW,
         ),
         "was revoked when the penalty was signed",
+    );
+}
+
+#[test]
+fn dispatch_penalty_must_bind_the_finding_outcome() {
+    let (baseline, snapshot) = default_pair();
+    let pins = default_pins();
+    let policy = default_dispatch_policy();
+
+    let mut wrong_class_body = penalty_for(&baseline.body).body;
+    wrong_class_body.abuse_class = OpenMarketAbuseClass::UnverifiableListingBehavior;
+    let wrong_class = sign(wrong_class_body, &penalty_keypair());
+    let wrong_class_enforcement = enforcement_bound_to_penalty(baseline.body.clone(), &wrong_class);
+    assert_rejected(
+        verify_finding_enforcement(
+            &wrong_class_enforcement,
+            &wrong_class,
+            &penalty_status_at(&wrong_class_enforcement.body, TRUSTED_NOW),
+            &snapshot,
+            &pins,
+            &policy,
+            TRUSTED_NOW,
+        ),
+        "does not authorize this enforcement",
+    );
+
+    let mut wrong_reference_body = penalty_for(&baseline.body).body;
+    wrong_reference_body.evidence_refs = vec![OpenMarketEvidenceReference {
+        kind: OpenMarketEvidenceKind::GovernanceCase,
+        reference_id: "case-42".to_string(),
+        uri: None,
+        sha256: None,
+    }];
+    let wrong_reference = sign(wrong_reference_body, &penalty_keypair());
+    let wrong_reference_enforcement =
+        enforcement_bound_to_penalty(baseline.body.clone(), &wrong_reference);
+    assert_rejected(
+        verify_finding_enforcement(
+            &wrong_reference_enforcement,
+            &wrong_reference,
+            &penalty_status_at(&wrong_reference_enforcement.body, TRUSTED_NOW),
+            &snapshot,
+            &pins,
+            &policy,
+            TRUSTED_NOW,
+        ),
+        "does not bind the adjudicated challenge outcome",
+    );
+
+    let mut substituted_outcome_body = penalty_for(&baseline.body).body;
+    substituted_outcome_body.evidence_refs[0].reference_id = hex64(0xee);
+    substituted_outcome_body.evidence_refs[0].sha256 = Some(hex64(0xef));
+    let substituted_outcome = sign(substituted_outcome_body, &penalty_keypair());
+    let substituted_outcome_enforcement =
+        enforcement_bound_to_penalty(baseline.body, &substituted_outcome);
+    assert_rejected(
+        verify_finding_enforcement(
+            &substituted_outcome_enforcement,
+            &substituted_outcome,
+            &penalty_status_at(&substituted_outcome_enforcement.body, TRUSTED_NOW),
+            &snapshot,
+            &pins,
+            &policy,
+            TRUSTED_NOW,
+        ),
+        "does not bind the adjudicated challenge outcome",
     );
 }
 

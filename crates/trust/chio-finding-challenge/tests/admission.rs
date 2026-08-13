@@ -62,6 +62,21 @@ const REASONS: [FindingChallengeReason; 25] = [
     FindingChallengeReason::ReplayPredicateNotAdmitted,
 ];
 
+#[test]
+fn evaluation_cannot_predate_the_signed_filing() -> TestResult {
+    let world = world()?;
+    let case = digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let mut input = world.input(&case.challenge, &evidence);
+    input.evaluated_at = case.challenge.body.filed_at.saturating_sub(1);
+    let evaluation = evaluate_finding_challenge(&input);
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::EvaluationPredatesFiling,
+    )?;
+    Ok(())
+}
+
 /// Every cell of the closed compatibility matrix, evaluated end to end. An
 /// inadmissible pairing must produce no verdict at all, and an admissible one
 /// must reach an adjudication.

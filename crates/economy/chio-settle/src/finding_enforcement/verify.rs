@@ -10,8 +10,10 @@ use chio_finding::{
     FindingObservedFinality, SignedFindingAuthorityStatus, SignedFindingChallengeEnforcement,
     SignedFindingFinalizedBondSnapshot, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
+use chio_open_market::evidence::OpenMarketEvidenceKind;
+use chio_open_market::fee_schedule::OpenMarketBondClass;
 use chio_open_market::penalty::{
-    OpenMarketPenaltyAction, OpenMarketPenaltyState, SignedOpenMarketPenalty,
+    OpenMarketAbuseClass, OpenMarketPenaltyAction, OpenMarketPenaltyState, SignedOpenMarketPenalty,
 };
 
 use super::{parse_evm_address, reject};
@@ -548,12 +550,27 @@ fn verify_penalty_dispatch_authority(
     }
     let penalty = &signed_penalty.body;
     if penalty.listing_id != enforcement.listing_id
+        || penalty.bond_class != OpenMarketBondClass::Listing
+        || penalty.abuse_class != OpenMarketAbuseClass::FraudulentListing
         || penalty.action != OpenMarketPenaltyAction::SlashBond
         || penalty.state != OpenMarketPenaltyState::Enforced
         || penalty.penalty_amount != enforcement.amount
     {
         return Err(reject(
             "presented penalty does not authorize this enforcement",
+        ));
+    }
+    let [evidence] = penalty.evidence_refs.as_slice() else {
+        return Err(reject(
+            "finding penalty must carry exactly one challenge-outcome reference",
+        ));
+    };
+    if evidence.kind != OpenMarketEvidenceKind::External
+        || evidence.reference_id != enforcement.outcome_id
+        || evidence.sha256.as_deref() != Some(enforcement.outcome_envelope_sha256.as_str())
+    {
+        return Err(reject(
+            "finding penalty does not bind the adjudicated challenge outcome",
         ));
     }
     if penalty.updated_at < enforcement.penalty_valid_from

@@ -174,6 +174,8 @@ pub struct FindingResolvedReproduction<'a> {
 pub enum FindingChallengeInadmissible {
     #[error("challenge submission rejected: {0}")]
     ChallengeRejected(FindingError),
+    #[error("challenge evaluation predates the signed filing")]
+    EvaluationPredatesFiling,
     #[error("verifier profile rejected: {0}")]
     ProfileRejected(FindingError),
     #[error("retained governance policy does not match the profile signer")]
