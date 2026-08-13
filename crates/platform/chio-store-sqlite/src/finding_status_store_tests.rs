@@ -398,14 +398,9 @@ fn retained_older_inclusion_becomes_sticky_without_lowering_the_floor() {
     let epoch_one_root = hex64('b');
     let epoch_two_id = hex64('c');
     let epoch_two_root = hex64('d');
+    let epoch_one = epoch(1, &epoch_one_id, &epoch_one_root, b"retained-epoch-one", 1);
     store
-        .observe_verified_epoch(&epoch(
-            1,
-            &epoch_one_id,
-            &epoch_one_root,
-            b"retained-epoch-one",
-            1,
-        ))
+        .observe_verified_epoch(&epoch_one)
         .expect("retain older epoch");
     store
         .observe_verified_epoch(&epoch(
@@ -425,7 +420,7 @@ fn retained_older_inclusion_becomes_sticky_without_lowering_the_floor() {
         b"authenticated-old-retraction",
     );
     store
-        .record_verified_retraction_at_retained_epoch(&old_retraction)
+        .record_verified_retraction_against_current_floor(&epoch_one, &old_retraction)
         .expect("retain authenticated retraction tombstone");
 
     assert_eq!(store.get_feed_floor(FEED).expect("floor").map_epoch, 2);
@@ -465,8 +460,15 @@ fn conflicting_current_epoch_inclusion_becomes_sticky_without_moving_the_floor()
         &intent_sha256,
         b"authenticated-current-equivocation",
     );
+    let conflicting_epoch = epoch(
+        1,
+        &conflicting_epoch_id,
+        &conflicting_root,
+        b"authenticated-current-equivocation-epoch",
+        1,
+    );
     store
-        .record_verified_retraction_at_conflicting_current_epoch(&retraction)
+        .record_verified_retraction_against_current_floor(&conflicting_epoch, &retraction)
         .expect("retain authenticated same-epoch retraction tombstone");
 
     let floor = store.get_feed_floor(FEED).expect("floor");
@@ -525,7 +527,7 @@ fn future_epoch_inclusion_becomes_sticky_without_advancing_the_floor() {
         b"authenticated-future-retraction",
     );
     store
-        .record_verified_retraction_at_future_epoch(&future_epoch, &future_retraction)
+        .record_verified_retraction_against_current_floor(&future_epoch, &future_retraction)
         .expect("retain authenticated future retraction tombstone");
 
     let floor = store.get_feed_floor(FEED).expect("floor");
@@ -564,6 +566,77 @@ fn future_epoch_inclusion_becomes_sticky_without_advancing_the_floor() {
         store
             .status_for_purchase(FEED, &finding_id, NOW + 20)
             .expect("sticky retraction after floor advance"),
+        FindingStatusDecision::Retracted(_)
+    ));
+}
+
+#[test]
+fn atomic_retraction_classification_uses_the_latest_durable_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('8');
+    let intent_sha256 = hex64('9');
+    let epoch_one_id = hex64('a');
+    let epoch_one_root = hex64('b');
+    let epoch_two_id = hex64('c');
+    let epoch_two_root = hex64('d');
+    let retained_epoch_two_id = hex64('1');
+    let retained_epoch_two_root = hex64('2');
+    let epoch_three_id = hex64('e');
+    let epoch_three_root = hex64('f');
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &epoch_one_id,
+            &epoch_one_root,
+            b"atomic-floor-one",
+            1,
+        ))
+        .expect("retain first floor");
+    let superseded_epoch = epoch(
+        2,
+        &epoch_two_id,
+        &epoch_two_root,
+        b"atomic-superseded-epoch",
+        1,
+    );
+    let retraction = inclusion(
+        2,
+        &epoch_two_id,
+        &epoch_two_root,
+        &finding_id,
+        &intent_sha256,
+        b"atomic-superseded-retraction",
+    );
+    store
+        .observe_verified_epoch(&epoch(
+            2,
+            &retained_epoch_two_id,
+            &retained_epoch_two_root,
+            b"atomic-retained-epoch-two",
+            1,
+        ))
+        .expect("retain a conflicting second epoch");
+    store
+        .observe_verified_epoch(&epoch(
+            3,
+            &epoch_three_id,
+            &epoch_three_root,
+            b"atomic-floor-three",
+            1,
+        ))
+        .expect("advance floor before retraction persistence");
+
+    store
+        .record_verified_retraction_against_current_floor(&superseded_epoch, &retraction)
+        .expect("reclassify and retain authenticated retraction");
+
+    assert_eq!(store.get_feed_floor(FEED).expect("floor").map_epoch, 3);
+    assert!(matches!(
+        store
+            .status_for_purchase(FEED, &finding_id, NOW + 20)
+            .expect("sticky retraction decision"),
         FindingStatusDecision::Retracted(_)
     ));
 }

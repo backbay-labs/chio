@@ -469,6 +469,8 @@ fn cognition_market_trust_loads_status_for_profile_liveness_floor() {
     ]);
     let _missing_status_env = TestEnvGuard::remove(&[
         "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH",
+        "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_SHA256",
+        "CHIO_FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH",
         "CHIO_FINDING_STATUS_AUTHORITY_DATABASE_PATH",
         "CHIO_FINDING_STATUS_AUTHORITY_LOCK_ROOT",
         "CHIO_FINDING_STATUS_NOW_UNIX_SECONDS",
@@ -685,7 +687,9 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         "serialize signed status epoch fixture",
     );
     let operator_key = signed_epoch.body.operator_key.to_hex();
-    let authorization_sha256 = chio_core_types::crypto::sha256_hex(&authorization_bytes);
+    // The durable floor binds the governance-signed envelope, not the bare
+    // authorization body loaded separately above.
+    let authorization_sha256 = "ab".repeat(32);
     {
         let authority = proof_test_ok(
             chio_store_sqlite::SqliteAuthorityStore::open_serving(
@@ -783,6 +787,10 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         (
             "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH",
             authorization_path.as_os_str(),
+        ),
+        (
+            "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_SHA256",
+            std::ffi::OsStr::new(&authorization_sha256),
         ),
         (
             "CHIO_FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH",

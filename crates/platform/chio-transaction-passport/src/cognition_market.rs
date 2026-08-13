@@ -98,6 +98,9 @@ pub struct CognitionMarketVerifierAuthorityStatusTrust {
 #[derive(Clone)]
 pub struct CognitionMarketStatusTrust {
     pub status_operator_authorization: FindingStatusOperatorAuthorization,
+    /// Digest of the governance-signed authorization envelope retained by
+    /// the durable status floor. This is not the digest of the bare body.
+    pub status_operator_authorization_sha256: String,
     /// Fresh, independently signed standing for the operator policy above.
     /// The static authorization alone cannot prove that governance has not
     /// retired the key since it was issued.
@@ -478,6 +481,15 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         let status_trust = trust.status.as_ref().ok_or_else(|| {
             claim_failed("status-liveness verification has no deployment-pinned status trust")
         })?;
+        if crate::validation::validate_sha256_hex(
+            &status_trust.status_operator_authorization_sha256,
+        )
+        .is_err()
+        {
+            return Err(claim_failed(
+                "status operator authorization envelope digest is invalid",
+            ));
+        }
         let status_bytes = artifact_bytes(artifacts, status_node.path)?;
         let status = chio_finding::parse_status_proof_input(status_bytes)
             .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
@@ -523,17 +535,14 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         if matches!(status, FindingStatusProofInput::Inclusion(_)) {
             let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
                 .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
-            let authorization_bytes =
-                canonical_json_bytes(&status_trust.status_operator_authorization)
-                    .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
-            let operator_authorization_sha256 = crate::sha256_hex(&authorization_bytes);
             let admission = status_trust.status_store.admit_verified_status(
                 &CognitionMarketStatusObservation {
                     signed_epoch: &signed_epoch,
                     signed_epoch_bytes: &signed_epoch_bytes,
                     proof: &status,
                     proof_bytes: status_bytes,
-                    operator_authorization_sha256: &operator_authorization_sha256,
+                    operator_authorization_sha256: &status_trust
+                        .status_operator_authorization_sha256,
                     recorded_at: status_trust.status_freshness.now,
                 },
             );
@@ -594,9 +603,6 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         })?;
         let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
             .map_err(|error| invalid_artifact(status_path, error.to_string()))?;
-        let authorization_bytes = canonical_json_bytes(&status_trust.status_operator_authorization)
-            .map_err(|error| invalid_artifact(status_path, error.to_string()))?;
-        let operator_authorization_sha256 = crate::sha256_hex(&authorization_bytes);
         status_trust
             .status_store
             .admit_verified_status(&CognitionMarketStatusObservation {
@@ -604,7 +610,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
                 signed_epoch_bytes: &signed_epoch_bytes,
                 proof: &status,
                 proof_bytes: status_bytes,
-                operator_authorization_sha256: &operator_authorization_sha256,
+                operator_authorization_sha256: &status_trust.status_operator_authorization_sha256,
                 recorded_at: status_trust.status_freshness.now,
             })
             .map_err(|error| {

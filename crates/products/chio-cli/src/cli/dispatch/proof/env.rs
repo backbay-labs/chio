@@ -40,6 +40,8 @@ const FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS_ENV: &str =
     "CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS";
 const FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH_ENV: &str =
     "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH";
+const FINDING_STATUS_OPERATOR_AUTHORIZATION_SHA256_ENV: &str =
+    "CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_SHA256";
 const FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH_ENV: &str =
     "CHIO_FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH";
 const FINDING_STATUS_AUTHORITY_DATABASE_PATH_ENV: &str =
@@ -606,6 +608,8 @@ fn cognition_market_status_trust_from_env(
             "Finding status operator authorization is invalid: {error}"
         ))
     })?;
+    let status_operator_authorization_sha256 =
+        required_sha256_env(FINDING_STATUS_OPERATOR_AUTHORIZATION_SHA256_ENV)?;
     let operator_authority_status = finding_authority_status_trust_from_env(
         FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH_ENV,
         &status_operator_authorization.operator.key,
@@ -630,6 +634,7 @@ fn cognition_market_status_trust_from_env(
     Ok(
         chio_control_plane::transaction_passport::CognitionMarketStatusTrust {
             status_operator_authorization,
+            status_operator_authorization_sha256,
             operator_authority_status,
             status_freshness: chio_finding::FindingStatusFreshnessPolicy {
                 now,

@@ -626,6 +626,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         },
         status: Some(CognitionMarketStatusTrust {
             status_operator_authorization,
+            status_operator_authorization_sha256: HEX64.to_owned(),
             operator_authority_status: CognitionMarketVerifierAuthorityStatusTrust {
                 signed_status: status_operator_authority_status,
                 status_authority: profile_key_policy(10, "verifier-status-authority"),

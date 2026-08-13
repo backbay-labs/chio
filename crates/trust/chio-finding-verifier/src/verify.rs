@@ -101,6 +101,8 @@ pub enum FindingVerifierError {
     AliasedFeeScheduleAndCollateralAuthorities,
     #[error("verifier report and status operator authorities must be independent")]
     AliasedVerifierAndStatusOperatorAuthorities,
+    #[error("verifier report and authority-status signers must be independent")]
+    AliasedVerifierAndStatusAuthority,
     #[error("report body construction failed canonicalization")]
     Canonicalization,
     #[error("report profile does not match the profile used for evaluation")]
@@ -596,6 +598,15 @@ pub fn verify_finding_evidence(
         return Err(FindingVerifierError::RawBytesNotCanonical);
     }
     let finding_artifact_sha256 = sha256_hex(&strict_bytes);
+    if trust
+        .checkpoint_signer_status
+        .as_ref()
+        .is_some_and(|status| {
+            status.status_authority.key == trust.profile.body.verifier_report_signer.key
+        })
+    {
+        return Err(FindingVerifierError::AliasedVerifierAndStatusAuthority);
+    }
 
     // Pinned profile and kernel keys are preconditions, not facets: with
     // an unverified profile no facet below is meaningful.

@@ -317,6 +317,24 @@ fn verifier_report_and_status_operator_authorities_must_be_distinct() -> TestRes
 }
 
 #[test]
+fn verifier_report_and_authority_status_signers_must_be_distinct() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    trust
+        .checkpoint_signer_status
+        .as_mut()
+        .ok_or("missing authority-status trust")?
+        .status_authority
+        .key = trust.profile.body.verifier_report_signer.key.clone();
+
+    assert_eq!(
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx))).err(),
+        Some(FindingVerifierError::AliasedVerifierAndStatusAuthority)
+    );
+    Ok(())
+}
+
+#[test]
 fn runtime_assurance_requires_live_unrevoked_authority_standing() -> TestResult {
     let fx = runtime_fixture(RuntimeAssuranceTier::Verified)?;
 
