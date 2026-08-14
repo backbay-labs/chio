@@ -383,8 +383,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_handlers.rs": allow(
         "2026-08-31",
-        "cognition finding handler surface with authenticated status-operator standing at activation and renewal; capped to current M9 size until split",
-        max_lines=2_355,
+        "cognition finding handler surface with authenticated status-operator standing and live service-bond renewal; capped to current M9 size until split",
+        max_lines=2_404,
     ),
     "crates/economy/chio-finding/tests/challenge_families.rs": allow(
         "2026-08-31",
@@ -409,7 +409,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs": allow(
         "2026-08-31",
         "cognition challenge enforcement end-to-end regression suite with explicit unavailable-status and authority-rotation coverage; capped to current size until split",
-        max_lines=11_425,
+        max_lines=11_435,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
         "2026-08-31",
@@ -419,7 +419,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
         "cognition purchase and recovery end-to-end regression suite with reservation and authority-role separation; capped until split",
-        max_lines=6_051,
+        max_lines=6_104,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",
@@ -474,7 +474,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/finding_status_store/persistence.rs": allow(
         "2026-08-31",
         "cognition finding status persistence with durable rollback recovery; capped to current size until split",
-        max_lines=2_067,
+        max_lines=2_088,
     ),
     "crates/platform/chio-store-sqlite/src/fiscal_store.rs": allow(
         "2026-08-31",

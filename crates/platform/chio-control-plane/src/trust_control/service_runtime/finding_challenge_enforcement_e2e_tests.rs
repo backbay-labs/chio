@@ -2165,6 +2165,9 @@ impl EvidenceInvalidCase {
         FindingChallengeClassEvidence::EvidenceInvalid(FindingEvidenceInvalidEvidence {
             purchase_standing: FindingPurchaseStandingEvidence {
                 purchase_record: &self.purchase_record,
+                bid_request: &self.purchase_bid_request,
+                accepted_bid: &self.purchase_accepted_bid,
+                reservation_receipt: &self.purchase_reservation_receipt,
                 delivery_receipt: &self.purchase_delivery_receipt,
                 delivery_checkpoint: &self.purchase_delivery_checkpoint,
                 delivery_checkpoint_transparency: &self.purchase_delivery_checkpoint_transparency,

@@ -323,3 +323,51 @@ async fn activation_and_admission_views_require_a_live_status_service_bond() -> 
     assert!(discovery.admission_marker().await?.is_none());
     Ok(())
 }
+
+#[tokio::test]
+async fn participation_renewal_requires_a_live_status_service_bond_before_fees() -> TestResult {
+    let mut stack = provision_stack(1, ADMISSION_EXPIRES_AT)?;
+    stack.seed_market().await?;
+    let (status, response) = stack.activate().await?;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&response)
+    );
+
+    tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
+    stack
+        .state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or_else(|| missing("finding market config"))?
+        .status_feed_service_bond
+        .valid_until = unix_timestamp_now();
+    let renewal = participation_request(&stack.web.schedule, None)?;
+    let (status, response) = send(
+        &stack.state,
+        authed_post(
+            &format!("/v1/findings/{}/participation", stack.web.finding_id),
+            renewal.to_string(),
+        )?,
+    )
+    .await?;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&response).contains("status service bond"));
+    assert_eq!(
+        stack.store.paid_through_epoch(
+            &stack.web.finding_id,
+            LISTING_ID,
+            &stack.web.schedule_sha256,
+        )?,
+        Some(0)
+    );
+    assert!(stack
+        .store
+        .get_fee_event(&stack.epoch_fee_key(1))?
+        .is_none());
+    Ok(())
+}

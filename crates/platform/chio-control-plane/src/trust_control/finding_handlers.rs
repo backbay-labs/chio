@@ -2313,6 +2313,15 @@ pub(crate) async fn handle_finding_participation(
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
     if !exact_replay {
+        if let Err(error) = require_status_feed_through(
+            &config.status_feed_operator,
+            &config.status_feed_service_bond,
+            &finding.status_feed_ref,
+            now,
+            now,
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+        }
         let status_epoch = match finding_status_store(&state).and_then(|status_store| {
             status_store
                 .get_current_epoch(&finding.status_feed_ref)

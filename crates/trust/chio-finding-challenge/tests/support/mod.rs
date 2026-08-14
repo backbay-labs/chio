@@ -943,6 +943,7 @@ impl World {
                 authoritative_payment_operation_id: record
                     .authoritative_payment_operation_id
                     .clone(),
+                status_proof: None,
             },
             "financial": {
                 "grant_index": 0,
