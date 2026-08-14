@@ -112,15 +112,29 @@ fn authenticates(
     {
         return false;
     }
+    if verify_signed_authority_status(proof.publication_status, pinned_status_authority).is_err() {
+        return false;
+    }
+    let publication = &proof.publication_status.body;
+    if publication.status_ref != policy.revocation_status_ref
+        || publication.authority_id != policy.authority_id
+        || publication.key != policy.key
+        || publication.key_epoch != policy.key_epoch
+        || publication.revoked_from != Some(body.revoked_from)
+        || publication.observed_at < body.recorded_at
+        || publication.observed_at > evaluated_at
+    {
+        return false;
+    }
     let status = &proof.governance_authority_status.body;
     status.status_ref == governance_policy.revocation_status_ref
         && status.authority_id == governance_policy.authority_id
         && status.key == *governance_policy.key
         && status.key_epoch == governance_policy.key_epoch
-        && status.observed_at >= body.recorded_at
+        && status.observed_at >= publication.observed_at
         && status.observed_at <= evaluated_at
         && evaluated_at.saturating_sub(status.observed_at) <= MAX_AUTHORITY_STATUS_AGE_SECS
         && status.revoked_from.is_none_or(|revoked_from| {
-            revoked_from > body.recorded_at && revoked_from <= status.observed_at
+            revoked_from > publication.observed_at && revoked_from <= status.observed_at
         })
 }

@@ -298,6 +298,21 @@ fn finalization_status_at(
     )
 }
 
+fn observer_status_at(observed_at: u64) -> SignedFindingAuthorityStatus {
+    sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: "revocations/settlement-observer".to_owned(),
+            authority_id: "settlement-observer".to_owned(),
+            key: observer_keypair().public_key(),
+            key_epoch: 1,
+            revoked_from: None,
+            observed_at,
+        },
+        &status_keypair(),
+    )
+}
+
 /// Sign a snapshot, bind an enforcement to that exact envelope, apply the
 /// case-specific mutation, then re-derive the content-addressed id so every
 /// negative case differs only in the field under test.
@@ -344,7 +359,7 @@ fn default_pins() -> FindingEnforcementPins {
     }
 }
 
-fn default_dispatch_policy() -> FindingDispatchPolicy {
+fn default_dispatch_policy_at(observed_at: u64) -> FindingDispatchPolicy {
     FindingDispatchPolicy {
         penalty_authority: FindingPenaltyAuthorityPolicy {
             authority_id: "market-penalty".to_owned(),
@@ -362,6 +377,15 @@ fn default_dispatch_policy() -> FindingDispatchPolicy {
             valid_until: 1_800_000_000,
             revocation_status_ref: "revocations/venue-finalization".to_owned(),
         },
+        settlement_observer: FindingPenaltyAuthorityPolicy {
+            authority_id: "settlement-observer".to_owned(),
+            key: observer_keypair().public_key(),
+            key_epoch: 1,
+            valid_from: 1,
+            valid_until: 1_800_000_000,
+            revocation_status_ref: "revocations/settlement-observer".to_owned(),
+        },
+        settlement_observer_status: observer_status_at(observed_at),
         authority_status_authority: status_keypair().public_key(),
         max_authority_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
         expected_sanction_case_id: "case-42".to_owned(),
@@ -373,6 +397,10 @@ fn default_dispatch_policy() -> FindingDispatchPolicy {
         .into_iter()
         .collect(),
     }
+}
+
+fn default_dispatch_policy() -> FindingDispatchPolicy {
+    default_dispatch_policy_at(TRUSTED_NOW)
 }
 
 fn verify_pair(
@@ -391,7 +419,7 @@ fn verify_pair(
         &finalization_status,
         snapshot,
         pins,
-        &default_dispatch_policy(),
+        &default_dispatch_policy_at(trusted_now_secs),
         trusted_now_secs,
     )
 }
@@ -898,6 +926,66 @@ fn pins_reject_one_key_reused_across_two_roles() {
             needle,
         );
     }
+}
+
+#[test]
+fn dispatch_policy_rejects_penalty_and_finalization_key_reuse() {
+    let (enforcement, snapshot) = default_pair();
+    let mut policy = default_dispatch_policy();
+    policy.penalty_authority.key = policy.finalization_authority.key.clone();
+
+    assert_rejected(
+        verify_finding_enforcement(
+            &enforcement,
+            &penalty_for(&enforcement.body),
+            &penalty_status_at(&enforcement.body, TRUSTED_NOW),
+            &finalization_status_at(&enforcement.body, TRUSTED_NOW),
+            &snapshot,
+            &default_pins(),
+            &policy,
+            TRUSTED_NOW,
+        ),
+        "penalty and finalization authorities must be distinct keys",
+    );
+}
+
+#[test]
+fn revoked_settlement_observer_cannot_authorize_a_fresh_snapshot() {
+    let (enforcement, snapshot) = default_pair();
+    let mut policy = default_dispatch_policy();
+    let mut status = policy.settlement_observer_status.body.clone();
+    status.revoked_from = Some(OBSERVED_AT);
+    policy.settlement_observer_status = sign(status, &status_keypair());
+
+    assert_rejected(
+        verify_finding_enforcement(
+            &enforcement,
+            &penalty_for(&enforcement.body),
+            &penalty_status_at(&enforcement.body, TRUSTED_NOW),
+            &finalization_status_at(&enforcement.body, TRUSTED_NOW),
+            &snapshot,
+            &default_pins(),
+            &policy,
+            TRUSTED_NOW,
+        ),
+        "settlement observer is revoked",
+    );
+    assert_rejected(
+        verify_finding_collateral_snapshot(
+            &snapshot,
+            &observer_keypair().public_key(),
+            FindingSettlementObserverEvidence {
+                retained_policy: &policy.settlement_observer,
+                signed_status: &policy.settlement_observer_status,
+                status_authority: &policy.authority_status_authority,
+                max_status_age_secs: policy.max_authority_status_age_secs,
+            },
+            FindingFinalityRequirement::Confirmations { min_depth: 64 },
+            MAX_SNAPSHOT_AGE_SECS,
+            TRUSTED_NOW,
+        ),
+        "settlement observer is revoked",
+    );
 }
 
 #[test]

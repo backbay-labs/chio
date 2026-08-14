@@ -140,9 +140,13 @@ pub struct FindingRevokedKeyProof<'a> {
     /// The signed statement. The evaluator re-verifies it against the same
     /// pinned governance root that authorized the profile.
     pub statement: &'a SignedFindingKeyRevocation,
+    /// Independently signed feed entry proving that the exact target policy
+    /// was reported revoked no later than this observation. This timestamped
+    /// publication, rather than the statement's self-declared `recorded_at`,
+    /// must predate any withdrawal of the governance signer.
+    pub publication_status: &'a SignedFindingAuthorityStatus,
     /// Status reading for the retained governance key, observed after the
-    /// statement was recorded. This prevents a compromised retired key from
-    /// minting a newly backdated revocation.
+    /// independently authenticated publication.
     pub governance_authority_status: &'a SignedFindingAuthorityStatus,
 }
 

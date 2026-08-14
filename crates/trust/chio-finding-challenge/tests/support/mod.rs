@@ -790,6 +790,18 @@ impl World {
         };
         Ok(RevokedKey {
             statement: SignedExportEnvelope::sign(body, signer)?,
+            publication_status: SignedExportEnvelope::sign(
+                FindingAuthorityStatus {
+                    schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+                    status_ref: policy.revocation_status_ref.clone(),
+                    authority_id: policy.authority_id.clone(),
+                    key: policy.key.clone(),
+                    key_epoch: policy.key_epoch,
+                    revoked_from: Some(revoked_from),
+                    observed_at: 1_740_000_000,
+                },
+                &self.authority_status,
+            )?,
             governance_authority_status: self.governance_authority_status.clone(),
         })
     }
@@ -1162,6 +1174,7 @@ pub enum RevocationShape {
 /// An owned revocation statement, so a case can hand out borrowed views.
 pub struct RevokedKey {
     pub statement: SignedFindingKeyRevocation,
+    pub publication_status: SignedFindingAuthorityStatus,
     pub governance_authority_status: SignedFindingAuthorityStatus,
 }
 
@@ -1171,6 +1184,7 @@ impl EvidenceCase {
             .iter()
             .map(|proof| FindingRevokedKeyProof {
                 statement: &proof.statement,
+                publication_status: &proof.publication_status,
                 governance_authority_status: &proof.governance_authority_status,
             })
             .collect()

@@ -110,6 +110,12 @@ pub struct FindingDispatchPolicy {
     /// finalization signer its role. The enforcement repeats these fields,
     /// but cannot select the policy that authenticates them.
     pub finalization_authority: FindingPenaltyAuthorityPolicy,
+    /// Independently retained lifecycle policy for the settlement observer.
+    /// The snapshot signer cannot select the policy that authenticates it.
+    pub settlement_observer: FindingPenaltyAuthorityPolicy,
+    /// Fresh status reading for the settlement observer's exact retained
+    /// policy. Fresh dispatch requires the observer to remain unrevoked.
+    pub settlement_observer_status: SignedFindingAuthorityStatus,
     /// Independent authority that signs revocation-source readings for the
     /// historical penalty key named by the enforcement.
     pub authority_status_authority: PublicKey,
@@ -138,6 +144,16 @@ pub struct FindingPenaltyAuthorityPolicy {
     pub valid_from: u64,
     pub valid_until: u64,
     pub revocation_status_ref: String,
+}
+
+/// Independently authenticated observer lifecycle evidence supplied to the
+/// public collateral verifier.
+#[derive(Debug, Clone, Copy)]
+pub struct FindingSettlementObserverEvidence<'a> {
+    pub retained_policy: &'a FindingPenaltyAuthorityPolicy,
+    pub signed_status: &'a SignedFindingAuthorityStatus,
+    pub status_authority: &'a PublicKey,
+    pub max_status_age_secs: u64,
 }
 
 impl FindingPenaltyAuthorityPolicy {
@@ -173,11 +189,41 @@ impl FindingDispatchPolicy {
     pub fn validate(&self, pins: &FindingEnforcementPins) -> Result<(), SettlementError> {
         self.penalty_authority.validate("penalty")?;
         self.finalization_authority.validate("finalization")?;
+        self.settlement_observer.validate("settlement observer")?;
         if self.finalization_authority.key != pins.finalization_authority {
             return Err(SettlementError::InvalidInput(
                 "retained finalization policy does not match the pinned finalization key"
                     .to_owned(),
             ));
+        }
+        if self.settlement_observer.key != pins.settlement_observer {
+            return Err(SettlementError::InvalidInput(
+                "retained settlement observer policy does not match the pinned observer key"
+                    .to_owned(),
+            ));
+        }
+        for (left, right, label) in [
+            (
+                &self.penalty_authority.key,
+                &self.finalization_authority.key,
+                "penalty and finalization authorities",
+            ),
+            (
+                &self.penalty_authority.key,
+                &self.settlement_observer.key,
+                "penalty authority and settlement observer",
+            ),
+            (
+                &self.penalty_authority.key,
+                &pins.seller,
+                "penalty authority and seller",
+            ),
+        ] {
+            if left == right {
+                return Err(SettlementError::InvalidInput(format!(
+                    "{label} must be distinct keys"
+                )));
+            }
         }
         require_signing_key(
             &self.authority_status_authority,
@@ -399,18 +445,28 @@ pub fn verify_finding_enforcement(
 pub fn verify_finding_collateral_snapshot(
     signed_snapshot: &SignedFindingFinalizedBondSnapshot,
     settlement_observer: &PublicKey,
+    observer_evidence: FindingSettlementObserverEvidence<'_>,
     finality_requirement: FindingFinalityRequirement,
     max_snapshot_age_secs: u64,
     trusted_now_secs: u64,
 ) -> Result<u64, SettlementError> {
     verify_signed_finalized_bond_snapshot(signed_snapshot, settlement_observer)
         .map_err(|error| reject(format!("finalized bond snapshot rejected: {error}")))?;
-    ensure_observed_finality_satisfies_policy(&signed_snapshot.body, finality_requirement)?;
     ensure_snapshot_is_fresh(
         &signed_snapshot.body,
         max_snapshot_age_secs,
         trusted_now_secs,
     )?;
+    verify_settlement_observer_lifecycle(
+        &signed_snapshot.body,
+        settlement_observer,
+        observer_evidence.retained_policy,
+        observer_evidence.signed_status,
+        observer_evidence.status_authority,
+        observer_evidence.max_status_age_secs,
+        trusted_now_secs,
+    )?;
+    ensure_observed_finality_satisfies_policy(&signed_snapshot.body, finality_requirement)?;
     signed_snapshot
         .body
         .live_allocated_collateral()
@@ -467,6 +523,7 @@ fn verify_finding_enforcement_inner(
 
     let enforcement = &signed_enforcement.body;
     let snapshot = &signed_snapshot.body;
+    ensure_snapshot_is_not_from_future(snapshot, trusted_now_secs)?;
 
     if let Some((
         signed_penalty,
@@ -476,6 +533,15 @@ fn verify_finding_enforcement_inner(
     )) = penalty_evidence
     {
         dispatch_policy.validate(pins)?;
+        verify_settlement_observer_lifecycle(
+            snapshot,
+            &pins.settlement_observer,
+            &dispatch_policy.settlement_observer,
+            &dispatch_policy.settlement_observer_status,
+            &dispatch_policy.authority_status_authority,
+            dispatch_policy.max_authority_status_age_secs,
+            trusted_now_secs,
+        )?;
         verify_finalization_dispatch_authority(
             enforcement,
             finalization_authority_status,
@@ -536,7 +602,6 @@ fn verify_finding_enforcement_inner(
         ));
     }
     ensure_destinations_sum_exactly(enforcement)?;
-    ensure_snapshot_is_not_from_future(snapshot, trusted_now_secs)?;
     if require_fresh_snapshot {
         ensure_snapshot_is_fresh(snapshot, pins.max_snapshot_age_secs, trusted_now_secs)?;
     }
@@ -557,6 +622,66 @@ fn verify_finding_enforcement_inner(
         root_intent_id,
         finality_requirement: pins.finality_requirement,
     })
+}
+
+/// Authenticate the observer policy and current lifecycle reading behind a
+/// snapshot before it can grant fresh dispatch authority.
+#[allow(clippy::too_many_arguments)]
+fn verify_settlement_observer_lifecycle(
+    snapshot: &FindingFinalizedBondSnapshot,
+    settlement_observer: &PublicKey,
+    retained: &FindingPenaltyAuthorityPolicy,
+    signed_status: &SignedFindingAuthorityStatus,
+    authority_status_authority: &PublicKey,
+    max_status_age_secs: u64,
+    trusted_now_secs: u64,
+) -> Result<(), SettlementError> {
+    retained.validate("settlement observer")?;
+    require_signing_key(authority_status_authority, "authority_status_authority")?;
+    if max_status_age_secs == 0 {
+        return Err(SettlementError::InvalidInput(
+            "max_authority_status_age_secs must be nonzero".to_owned(),
+        ));
+    }
+    if retained.key != *settlement_observer {
+        return Err(reject(
+            "settlement observer does not match retained governance policy",
+        ));
+    }
+    if snapshot.observed_at < retained.valid_from || snapshot.observed_at >= retained.valid_until {
+        return Err(reject(
+            "bond snapshot was signed outside the retained settlement observer window",
+        ));
+    }
+    verify_signed_authority_status(signed_status, authority_status_authority)
+        .map_err(|error| reject(format!("settlement observer status rejected: {error}")))?;
+    let status = &signed_status.body;
+    if status.schema != FINDING_AUTHORITY_STATUS_SCHEMA_V1
+        || status.status_ref != retained.revocation_status_ref
+        || status.authority_id != retained.authority_id
+        || status.key != retained.key
+        || status.key_epoch != retained.key_epoch
+    {
+        return Err(reject(
+            "settlement observer status does not bind the retained governance policy",
+        ));
+    }
+    if status.observed_at < snapshot.observed_at || status.observed_at > trusted_now_secs {
+        return Err(reject(
+            "settlement observer status is not a post-snapshot trusted-time reading",
+        ));
+    }
+    if trusted_now_secs.saturating_sub(status.observed_at) > max_status_age_secs {
+        return Err(reject(
+            "settlement observer status is older than the configured maximum age",
+        ));
+    }
+    if status.revoked_from.is_some() {
+        return Err(reject(
+            "settlement observer is revoked and cannot authorize fresh dispatch",
+        ));
+    }
+    Ok(())
 }
 
 /// Authenticate the exact penalty and historical authority lifecycle that

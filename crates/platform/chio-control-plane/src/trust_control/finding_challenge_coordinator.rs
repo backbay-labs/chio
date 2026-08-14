@@ -104,7 +104,7 @@ use chio_settle::{
     verify_finding_enforcement_for_reconciliation, EvmBondSnapshot, FindingBondObservationSource,
     FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
     FindingImpairmentOutcome, FindingImpairmentPublisher, FindingImpairmentQuarantine,
-    FindingPenaltyAuthorityPolicy, PlannedFindingImpairment,
+    FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence, PlannedFindingImpairment,
     PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement, SettlementChainConfig,
     VerifiedFindingEnforcement,
 };
@@ -2217,7 +2217,7 @@ impl FindingChallengeCoordinator {
             .map_err(|_| ChallengeCoordinatorError::Signing)?;
 
         self.require_live_settlement_observer(bond_snapshot, now)?;
-        let settlement_observer = self.require_live_role(
+        let (settlement_observer, settlement_observer_status) = self.resolve_live_role(
             &self.pins.settlement_observer,
             bond_snapshot.body.observed_at,
             now,
@@ -2233,6 +2233,10 @@ impl FindingChallengeCoordinator {
         let dispatch_policy = FindingDispatchPolicy {
             penalty_authority: settlement_penalty_authority_policy(&penalty_authority)?,
             finalization_authority: settlement_penalty_authority_policy(&self.finalization_pin)?,
+            settlement_observer: settlement_penalty_authority_policy(
+                &self.pins.settlement_observer,
+            )?,
+            settlement_observer_status,
             authority_status_authority: self
                 .pins
                 .authority_status
@@ -2422,21 +2426,22 @@ impl FindingChallengeCoordinator {
         let (finalization_authority, finalization_status) =
             self.require_enforcement_signature(enforcement, &retained.finalization_policy, now)?;
         let seller_was_confirmed = seller_intent.state == FindingEffectIntentState::Confirmed;
-        let settlement_observer = if seller_was_confirmed {
+        let (settlement_observer, settlement_observer_status) = if seller_was_confirmed {
             // The finalization authority content-bound this exact signed
             // snapshot before dispatch. Recovery authenticates that frozen
             // history under its original observer even after the configured
             // operator rotates; the confirmed transaction itself is
             // independently re-observed below.
-            bond_snapshot.signer_key.clone()
+            (bond_snapshot.signer_key.clone(), None)
         } else {
             self.require_live_settlement_observer(bond_snapshot, now)?;
-            self.require_live_role(
+            let (key, status) = self.resolve_live_role(
                 &self.pins.settlement_observer,
                 bond_snapshot.body.observed_at,
                 now,
                 "settlement observer",
-            )?
+            )?;
+            (key, Some(status))
         };
         let pins = FindingEnforcementPins {
             finalization_authority,
@@ -2497,6 +2502,14 @@ impl FindingChallengeCoordinator {
                 penalty_authority: settlement_penalty_authority_policy(&penalty_authority)?,
                 finalization_authority: settlement_penalty_authority_policy(
                     &retained.finalization_policy,
+                )?,
+                settlement_observer: settlement_penalty_authority_policy(
+                    &self.pins.settlement_observer,
+                )?,
+                settlement_observer_status: settlement_observer_status.ok_or(
+                    ChallengeCoordinatorError::SettlementObserverLifecycle(
+                        "fresh dispatch lacks an authenticated observer status",
+                    ),
                 )?,
                 authority_status_authority: self.pins.authority_status.key().map_err(|_| {
                     ChallengeCoordinatorError::AuthorityPinMismatch("authority status")
@@ -3997,10 +4010,19 @@ impl FindingChallengeCoordinator {
     ) -> Result<u64, ChallengeCoordinatorError> {
         let snapshot = &collateral.bond_snapshot;
         self.require_live_settlement_observer(snapshot, now)?;
-        let settlement_observer =
-            self.pins.settlement_observer.key().map_err(|_| {
-                ChallengeCoordinatorError::AuthorityPinMismatch("settlement observer")
-            })?;
+        let (settlement_observer, settlement_observer_status) = self.resolve_live_role(
+            &self.pins.settlement_observer,
+            snapshot.body.observed_at,
+            now,
+            "settlement observer",
+        )?;
+        let authority_status_authority = self
+            .pins
+            .authority_status
+            .key()
+            .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("authority status"))?;
+        let settlement_observer_policy =
+            settlement_penalty_authority_policy(&self.pins.settlement_observer)?;
         if snapshot.body.currency != collateral.base_finding_stake.currency {
             return Err(ChallengeCoordinatorError::CollateralSnapshot(
                 "snapshot currency does not match the signed base stake",
@@ -4009,6 +4031,12 @@ impl FindingChallengeCoordinator {
         verify_finding_collateral_snapshot(
             snapshot,
             &settlement_observer,
+            FindingSettlementObserverEvidence {
+                retained_policy: &settlement_observer_policy,
+                signed_status: &settlement_observer_status,
+                status_authority: &authority_status_authority,
+                max_status_age_secs: MAX_REVOCATION_STATUS_AGE_SECS,
+            },
             self.pins.settlement_finality_requirement,
             self.market_config.max_snapshot_age_secs,
             now,

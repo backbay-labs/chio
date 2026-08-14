@@ -3,6 +3,7 @@
 
 mod support;
 
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
     FindingChallengeVerdict, FindingEvidenceClass, FindingGuaranteeClass, FindingReceiptRole,
 };
@@ -73,6 +74,39 @@ fn a_revocation_signed_after_governance_compromise_cannot_uphold() -> TestResult
     let recorded_at = revoked[0].statement.body.recorded_at;
     revoked[0].governance_authority_status =
         world.status_for_policy(&world.governance_policy, Some(recorded_at))?;
+    let case = evidence_case_with_revocations(&world, EvidenceShape::Sound, revoked)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::EvidenceKeyRevocationNotEstablished,
+    )?;
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
+    assert!(!evaluation.authorizes_penalty());
+    Ok(())
+}
+
+#[test]
+fn a_backdated_revocation_published_after_governance_withdrawal_cannot_uphold() -> TestResult {
+    let world = world()?;
+    let mut revoked = vec![world.revocation(
+        &world.production_kernel.public_key(),
+        PUBLISHED_AT - 1,
+        RevocationShape::Sound,
+    )?];
+    let recorded_at = revoked[0].statement.body.recorded_at;
+    let governance_revoked_from = recorded_at + 100;
+    revoked[0].governance_authority_status =
+        world.status_for_policy(&world.governance_policy, Some(governance_revoked_from))?;
+    let mut late_publication = revoked[0].publication_status.body.clone();
+    late_publication.observed_at = governance_revoked_from + 1;
+    revoked[0].publication_status =
+        SignedExportEnvelope::sign(late_publication, &world.authority_status)?;
     let case = evidence_case_with_revocations(&world, EvidenceShape::Sound, revoked)?;
     let proofs = case.revocation_proofs();
     let evidence = case.evidence(&proofs);
