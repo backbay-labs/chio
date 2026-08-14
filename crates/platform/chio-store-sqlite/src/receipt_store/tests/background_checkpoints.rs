@@ -748,12 +748,12 @@ fn chain_connected_rejects_missing_earlier_checkpoint() -> Result<(), Box<dyn st
     Ok(())
 }
 
-/// The OPERATOR/IMPORT checkpoint append (store_checkpoint ->
-/// store_kernel_checkpoint_atomic) only parses the LATEST checkpoint as
-/// predecessor, so a mid-chain tamper whose latest row still parses would let an
-/// operator extend an already-corrupt chain. The operator path must re-verify the
-/// full chain and fail closed. (This does NOT touch the background builder, which
-/// stays on the incremental head and never walks full history.)
+/// The OPERATOR/IMPORT checkpoint append only parses the LATEST checkpoint as
+/// predecessor unless its validated transaction re-verifies the chain, so a
+/// mid-chain tamper whose latest row still parses would let an operator extend
+/// an already-corrupt chain. The operator path must re-verify the full chain and
+/// fail closed. (This does NOT touch the background builder, which stays on the
+/// incremental head and never walks full history.)
 #[test]
 fn operator_checkpoint_append_reverifies_chain() -> Result<(), Box<dyn std::error::Error>> {
     let path = unique_db_path("chio-operator-reverify-chain");

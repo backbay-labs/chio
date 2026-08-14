@@ -1164,6 +1164,7 @@ impl ChioKernel {
         let Some(ledger) = self.finding_pool_ledger() else {
             return Ok(());
         };
+        let trusted_now_unix_ms = ledger.advance_trusted_time_floor(trusted_now_unix_ms)?;
         self.flush_finding_pool_mutation_receipts(ledger)?;
         let release = AuthorizedFindingPoolRecoveryRelease {
             durable_admission_operation_id: durable_admission_operation_id.to_owned(),
@@ -1187,6 +1188,7 @@ impl ChioKernel {
         let Some(ledger) = self.finding_pool_ledger() else {
             return Ok(());
         };
+        let trusted_now_unix_ms = ledger.advance_trusted_time_floor(trusted_now_unix_ms)?;
         self.flush_finding_pool_mutation_receipts(ledger)?;
         let release = AuthorizedFindingPoolRecoveryRelease {
             durable_admission_operation_id: durable_admission_operation_id.to_owned(),
@@ -1211,6 +1213,7 @@ impl ChioKernel {
         let Some(ledger) = self.finding_pool_ledger() else {
             return Ok(());
         };
+        let trusted_now_unix_ms = ledger.advance_trusted_time_floor(trusted_now_unix_ms)?;
         self.flush_finding_pool_mutation_receipts(ledger)?;
         let terminal = AuthorizedFindingPoolUnknownDispatchTerminal {
             durable_admission_operation_id: durable_admission_operation_id.to_owned(),

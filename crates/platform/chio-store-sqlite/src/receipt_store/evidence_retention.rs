@@ -1,7 +1,8 @@
 use super::support::{
     ensure_checkpoint_transparency_guards, ensure_transparency_projection_guards,
     insert_receipt_retention_watermark, load_claim_tree_canonical_bytes_range,
-    load_persisted_checkpoint_row, parse_persisted_checkpoint_row, store_kernel_checkpoint_atomic,
+    load_persisted_checkpoint_row, parse_persisted_checkpoint_row,
+    store_kernel_checkpoint_validated_tx,
 };
 use super::*;
 
@@ -69,9 +70,48 @@ impl SqliteReceiptStore {
 
     /// Store a signed KernelCheckpoint in the kernel_checkpoints table.
     pub fn store_checkpoint(&self, checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
+        enum CheckpointStoreAttempt {
+            Committed,
+            Rejected(ReceiptStoreError),
+            Panicked(Box<dyn std::any::Any + Send>),
+        }
+
         let checkpoint = checkpoint.clone();
-        self.writer_handle()
-            .run_write(move |connection| store_kernel_checkpoint_atomic(connection, &checkpoint))
+        let attempt = self
+            .writer_handle()
+            .run_write_anchored_metadata(move |tx| {
+                ensure_checkpoint_transparency_guards(tx)?;
+                ensure_transparency_projection_guards(tx)?;
+                tx.execute_batch("SAVEPOINT chio_store_checkpoint_candidate")?;
+                let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    store_kernel_checkpoint_validated_tx(tx, &checkpoint)
+                }));
+                match attempt {
+                    Ok(Ok(())) => {
+                        tx.execute_batch("RELEASE SAVEPOINT chio_store_checkpoint_candidate")?;
+                        Ok(CheckpointStoreAttempt::Committed)
+                    }
+                    Ok(Err(error)) => {
+                        tx.execute_batch(
+                            "ROLLBACK TO SAVEPOINT chio_store_checkpoint_candidate; \
+                         RELEASE SAVEPOINT chio_store_checkpoint_candidate;",
+                        )?;
+                        Ok(CheckpointStoreAttempt::Rejected(error))
+                    }
+                    Err(payload) => {
+                        tx.execute_batch(
+                            "ROLLBACK TO SAVEPOINT chio_store_checkpoint_candidate; \
+                         RELEASE SAVEPOINT chio_store_checkpoint_candidate;",
+                        )?;
+                        Ok(CheckpointStoreAttempt::Panicked(payload))
+                    }
+                }
+            })?;
+        match attempt {
+            CheckpointStoreAttempt::Committed => Ok(()),
+            CheckpointStoreAttempt::Rejected(error) => Err(error),
+            CheckpointStoreAttempt::Panicked(payload) => std::panic::resume_unwind(payload),
+        }
     }
 
     /// Load a KernelCheckpoint by its checkpoint_seq.

@@ -937,6 +937,7 @@ fn pre_dispatch_recovery_releases_the_bound_pool_claim() {
     assert!(kernel
         .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
+    assert_eq!(ledger.advance_trusted_time_floor(50_000), Ok(50_000));
     assert!(kernel
         .release_finding_pool_claim_before_dispatch("operation:test", 12_346)
         .is_ok());
@@ -945,7 +946,12 @@ fn pre_dispatch_recovery_releases_the_bound_pool_claim() {
     };
     assert_eq!(releases.as_slice(), &["operation:test".to_owned()]);
     drop(releases);
-    assert_eq!(kernel.receipt_log().receipts().len(), 2);
+    let receipts = kernel.receipt_log().receipts();
+    assert_eq!(receipts.len(), 2);
+    assert_eq!(
+        pool_mutation_from_receipt(&receipts[1]).occurred_at_unix_ms,
+        "50000"
+    );
     assert!(ledger
         .pending_mutation_receipts()
         .is_ok_and(|receipts| receipts.is_empty()));
@@ -958,6 +964,7 @@ fn verified_post_commit_no_effect_releases_the_bound_pool_claim() {
     assert!(kernel
         .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
+    assert_eq!(ledger.advance_trusted_time_floor(50_000), Ok(50_000));
     assert!(kernel
         .release_finding_pool_claim_after_verified_no_effect("operation:test", 12_346)
         .is_ok());
@@ -966,7 +973,12 @@ fn verified_post_commit_no_effect_releases_the_bound_pool_claim() {
     };
     assert_eq!(releases.as_slice(), &["operation:test".to_owned()]);
     drop(releases);
-    assert_eq!(kernel.receipt_log().receipts().len(), 2);
+    let receipts = kernel.receipt_log().receipts();
+    assert_eq!(receipts.len(), 2);
+    assert_eq!(
+        pool_mutation_from_receipt(&receipts[1]).occurred_at_unix_ms,
+        "50000"
+    );
     assert!(ledger
         .pending_mutation_receipts()
         .is_ok_and(|receipts| receipts.is_empty()));
@@ -979,6 +991,7 @@ fn unknown_dispatch_recovery_finalizes_the_bound_pool_claim() {
     assert!(kernel
         .claim_finding_pool_delivery(&purchase(), "request:test", 12_345, Some("operation:test"))
         .is_ok());
+    assert_eq!(ledger.advance_trusted_time_floor(50_000), Ok(50_000));
     assert!(kernel
         .finalize_finding_pool_claim_after_unknown_dispatch("operation:test", 12_346)
         .is_ok());
@@ -987,7 +1000,12 @@ fn unknown_dispatch_recovery_finalizes_the_bound_pool_claim() {
     };
     assert_eq!(finalizations.as_slice(), &["operation:test".to_owned()]);
     drop(finalizations);
-    assert_eq!(kernel.receipt_log().receipts().len(), 2);
+    let receipts = kernel.receipt_log().receipts();
+    assert_eq!(receipts.len(), 2);
+    assert_eq!(
+        pool_mutation_from_receipt(&receipts[1]).occurred_at_unix_ms,
+        "50000"
+    );
     assert!(ledger
         .pending_mutation_receipts()
         .is_ok_and(|receipts| receipts.is_empty()));

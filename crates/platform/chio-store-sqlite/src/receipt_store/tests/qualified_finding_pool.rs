@@ -1,5 +1,5 @@
 use super::super::*;
-use super::support::rollback_anchor_tempdir;
+use super::support::*;
 
 #[test]
 fn qualified_receipt_sink_rejects_read_only_sqlite_uris() -> Result<(), Box<dyn std::error::Error>>
@@ -268,6 +268,112 @@ fn qualified_receipt_sink_anchors_standalone_checkpoint_commits(
     assert!(
         matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
         "unexpected standalone checkpoint rollback error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn qualified_receipt_sink_anchors_imported_checkpoint_commits(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-import-checkpoint-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("qualified-import-checkpoint.sqlite3");
+    let snapshot = directory.path().join("before-import-checkpoint.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    let receipt = super::support::sample_receipt_with_id("anchored-import-checkpoint");
+    let seq = chio_kernel::ReceiptStore::append_chio_receipt_returning_seq(&store, &receipt)?
+        .ok_or("qualified receipt store did not return a sequence")?;
+    store.flush_receipt_writes()?;
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+    std::fs::copy(&database, &snapshot)?;
+
+    let checkpoint = build_checkpoint(
+        1,
+        seq,
+        seq,
+        &canonical_receipt_bytes(&store, seq, seq),
+        &receipt_test_keypair(),
+    )?;
+    store.store_checkpoint(&checkpoint)?;
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+
+    std::fs::copy(&snapshot, &database)?;
+    let error = store
+        .max_child_receipt_seq()
+        .err()
+        .ok_or("imported checkpoint rollback must fail a qualified receipt read")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
+        "unexpected imported checkpoint rollback error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn qualified_receipt_sink_anchors_checkpoint_publication_bindings(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-publication-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory
+        .path()
+        .join("qualified-publication-binding.sqlite3");
+    let snapshot = directory.path().join("before-publication-binding.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    let receipt = super::support::sample_receipt_with_id("anchored-publication-binding");
+    chio_kernel::ReceiptStore::append_chio_receipt_returning_seq(&store, &receipt)?;
+    let report = store.create_next_receipt_checkpoint(1, &receipt_test_keypair())?;
+    let checkpoint_seq = report
+        .checkpoint_seq
+        .ok_or("qualified receipt store did not create a checkpoint")?;
+    let checkpoint = store
+        .load_checkpoint_by_seq(checkpoint_seq)?
+        .ok_or("qualified receipt store did not retain its checkpoint")?;
+    let publication = build_checkpoint_publication(&checkpoint)?;
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+    std::fs::copy(&database, &snapshot)?;
+
+    let binding = chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding {
+        publication_identity: chio_core::receipt::checkpoint::CheckpointPublicationIdentity::new(
+            chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::LocalLog,
+            publication.log_id,
+        ),
+        trust_anchor_identity: chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentity::new(
+            chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentityKind::TransparencyRoot,
+            "qualified-root-set",
+        ),
+        trust_anchor_ref: "qualified-anchor-root".to_owned(),
+        signer_cert_ref: "qualified-cert-chain".to_owned(),
+        publication_profile_version: "phase4-pilot".to_owned(),
+    };
+    store.record_checkpoint_publication_trust_anchor_binding(checkpoint_seq, &binding)?;
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+
+    std::fs::copy(&snapshot, &database)?;
+    let error = store
+        .max_child_receipt_seq()
+        .err()
+        .ok_or("publication binding rollback must fail a qualified receipt read")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
+        "unexpected publication binding rollback error: {error}"
     );
     Ok(())
 }

@@ -1041,11 +1041,11 @@ impl SqliteReceiptStore {
             ))
         })?;
 
-        self.writer_handle().run_write(move |connection| {
-            ensure_checkpoint_transparency_guards(connection)?;
-            ensure_transparency_projection_guards(connection)?;
+        self.writer_handle().run_write_anchored_metadata(move |tx| {
+            ensure_checkpoint_transparency_guards(tx)?;
+            ensure_transparency_projection_guards(tx)?;
 
-            let existing = connection
+            let existing = tx
                 .query_row(
                     r#"
                 SELECT binding_json
@@ -1069,7 +1069,7 @@ impl SqliteReceiptStore {
                     )))
                 }
                 None => {
-                    connection.execute(
+                    tx.execute(
                         r#"
                     INSERT INTO checkpoint_publication_trust_anchor_bindings (
                         checkpoint_seq,
