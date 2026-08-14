@@ -638,6 +638,7 @@ mod tests {
         reservations: Arc<AtomicU64>,
         receipts: Arc<AtomicU64>,
         deny_verification: Arc<AtomicBool>,
+        fail_receipts: Arc<AtomicBool>,
     }
 
     impl FindingRecoveryVerifier for TestRecoveryVerifier {
@@ -679,7 +680,11 @@ mod tests {
             _recorded_at: u64,
         ) -> Result<(), String> {
             self.receipts.fetch_add(1, Ordering::SeqCst);
-            Ok(())
+            if self.fail_receipts.load(Ordering::SeqCst) {
+                Err("recovery lineage backend unavailable".to_owned())
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -864,6 +869,7 @@ mod tests {
             reservations: Arc::clone(&reservations),
             receipts,
             deny_verification,
+            fail_receipts: Arc::new(AtomicBool::new(false)),
         }));
         kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
             portable_deny: Arc::clone(&portable_deny),
@@ -922,6 +928,7 @@ mod tests {
             reservations: Arc::clone(&reservations),
             receipts,
             deny_verification: Arc::clone(&deny_verification),
+            fail_receipts: Arc::new(AtomicBool::new(false)),
         }));
         kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
             portable_deny: Arc::clone(&portable_deny),
@@ -1079,11 +1086,65 @@ mod tests {
             reservations: Arc::new(AtomicU64::new(0)),
             receipts: Arc::clone(&receipts),
             deny_verification: Arc::new(AtomicBool::new(false)),
+            fail_receipts: Arc::new(AtomicBool::new(false)),
         }));
         kernel
             .record_completed_recovery_receipt(Some(&verified), "recovery-receipt", 42)
             .expect("record authenticated recovery lineage");
         assert_eq!(receipts.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn ordinary_recovery_lineage_failure_prevents_allow_receipt_persistence() {
+        let receipts = Arc::new(AtomicU64::new(0));
+        let mut kernel = kernel();
+        kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
+            reservations: Arc::new(AtomicU64::new(0)),
+            receipts: Arc::clone(&receipts),
+            deny_verification: Arc::new(AtomicBool::new(false)),
+            fail_receipts: Arc::new(AtomicBool::new(true)),
+        }));
+        let mut request = recovery_request();
+        let output = serde_json::json!({"payload": "recovered"});
+        let output_bytes = chio_core::canonical::canonical_json_bytes(&output)
+            .expect("recovery output is canonical");
+        request.capability.scope.grants[0].constraints[0] =
+            Constraint::OutputDigestSha256(chio_core::crypto::sha256_hex(&output_bytes));
+        let verified = VerifiedFindingRecovery {
+            recovery_id: marker().recovery_id,
+            finding_id: marker().finding_id,
+            listing_id: marker().listing_id,
+            payload_sha256: chio_core::crypto::sha256_hex(&output_bytes),
+            expected_status_feed_id: "feed-1".to_owned(),
+            original_capability_id: marker().original_capability_id,
+            original_delivery_receipt_id: marker().original_delivery_receipt_id,
+            purchase_key: marker().purchase_key,
+            original_subject_key_hex: request.capability.subject.to_hex(),
+        };
+        let error = kernel
+            .finalize_ordinary_recovery_response(
+                crate::kernel::evaluation::evaluation_helpers::OrdinaryRecoveryFinalization {
+                    request: &request,
+                    output: crate::runtime::ToolServerOutput::Value(output),
+                    elapsed: std::time::Duration::ZERO,
+                    timestamp: 1,
+                    matched_grant_index: 0,
+                    cost: crate::kernel::responses::FinalizeToolOutputCostContext {
+                        charge_result: None,
+                        reported_cost: None,
+                        payment_authorization: None,
+                        cap: &request.capability,
+                    },
+                    metadata: None,
+                    guard_evidence: &[],
+                    payee_binding: None,
+                    recovery: Some(&verified),
+                },
+            )
+            .expect_err("unavailable lineage backend must fail before Allow persistence");
+        assert!(error.to_string().contains("lineage backend unavailable"));
+        assert_eq!(receipts.load(Ordering::SeqCst), 1);
+        assert!(kernel.receipt_log().is_empty());
     }
 
     #[test]

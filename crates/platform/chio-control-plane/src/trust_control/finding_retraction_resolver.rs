@@ -324,6 +324,32 @@ impl FindingStatusCache for SqliteFindingStatusCache {
                 "durable status decision and portable proof kind differ".to_owned(),
             ));
         }
+        let final_now = self.clock.now_unix_secs()?;
+        let final_decision = self
+            .store
+            .status_for_purchase(&self.feed_id, finding_id, final_now)
+            .map_err(|error| FindingRetractionResolveError::StatusUnavailable(error.to_string()))?;
+        let decision_unchanged = match final_decision {
+            FindingStatusDecision::VerifiedLive(final_proof) => {
+                expected_kind == FindingStatusProofKind::NonInclusion && final_proof == proof
+            }
+            FindingStatusDecision::Retracted(_) => {
+                expected_kind == FindingStatusProofKind::Inclusion
+                    && self
+                        .store
+                        .get_latest_proof(&self.feed_id, finding_id)
+                        .map_err(|error| {
+                            FindingRetractionResolveError::StatusUnavailable(error.to_string())
+                        })?
+                        .is_some_and(|final_proof| final_proof == proof)
+            }
+            FindingStatusDecision::Pending(_) => false,
+        };
+        if !decision_unchanged {
+            return Err(FindingRetractionResolveError::StatusUnavailable(
+                "finding status changed after proof verification".to_owned(),
+            ));
+        }
         let value = match proof.kind {
             FindingStatusProofKind::NonInclusion => FindingStatusValue::Live,
             FindingStatusProofKind::Inclusion => FindingStatusValue::Retracted,

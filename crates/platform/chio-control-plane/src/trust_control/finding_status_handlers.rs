@@ -423,6 +423,23 @@ fn validate_intent_submission(
     Ok(())
 }
 
+fn intent_persistence_time(
+    signed: &SignedFindingStatusIntentSubmission,
+    operator: &FindingStatusOperatorPin,
+    service_bond: &FindingStatusServiceBond,
+    feed_id: &str,
+    retained_exact_replay: bool,
+    initial_now: u64,
+    read_now: impl FnOnce() -> u64,
+) -> Result<u64, Response> {
+    if retained_exact_replay {
+        return Ok(initial_now);
+    }
+    let persistence_now = read_now();
+    validate_intent_submission(signed, operator, service_bond, feed_id, persistence_now)?;
+    Ok(persistence_now)
+}
+
 fn require_authorized_voluntary_source(
     state: &TrustServiceState,
     signed: &SignedFindingStatusIntentSubmission,
@@ -645,6 +662,18 @@ pub(crate) async fn handle_submit_finding_status_intent(
             return response;
         }
     }
+    let persistence_now = match intent_persistence_time(
+        &signed,
+        &config.status_feed_operator,
+        &config.status_feed_service_bond,
+        &feed_id,
+        retained_exact_replay,
+        now,
+        unix_timestamp_now,
+    ) {
+        Ok(now) => now,
+        Err(response) => return response,
+    };
     let outcome = match store.issue_retraction_intent(&FindingRetractionIntentInput {
         intent_id: &body.intent_id,
         feed_id: &body.feed_id,
@@ -654,7 +683,7 @@ pub(crate) async fn handle_submit_finding_status_intent(
         intent_bytes: raw.as_bytes(),
         issued_at: body.issued_at,
         inclusion_deadline: body.inclusion_deadline,
-        created_at: now,
+        created_at: persistence_now,
     }) {
         Ok(outcome) => outcome,
         Err(error) => return status_write_error(error),
@@ -1017,6 +1046,26 @@ mod tests {
         let response = validate_intent_submission(&signed, &operator, &bond, FEED_ID, NOW)
             .test_expect_err("operator and bond must cover the full inclusion SLA");
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn new_intent_refreshes_liveness_at_persistence_but_exact_replay_is_exempt() {
+        let (operator, bond) = config();
+        let signed = SignedExportEnvelope::sign(submission(), &operator_key())
+            .test_expect("signed status intent");
+        let response =
+            intent_persistence_time(&signed, &operator, &bond, FEED_ID, false, NOW, || {
+                signed.body.inclusion_deadline
+            })
+            .test_expect_err("intent expiring during validation must not be persisted");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let replay_time =
+            intent_persistence_time(&signed, &operator, &bond, FEED_ID, true, NOW, || {
+                panic!("exact replay must not refresh submission liveness")
+            })
+            .test_expect("retained exact replay remains recoverable");
+        assert_eq!(replay_time, NOW);
     }
 
     #[test]

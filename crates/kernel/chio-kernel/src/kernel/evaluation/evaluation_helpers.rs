@@ -38,17 +38,17 @@ pub(super) struct ExecutionNonceReservingResponse<'a> {
     pub(super) budget_lease_acquired: bool,
 }
 
-pub(super) struct OrdinaryRecoveryFinalization<'a> {
-    pub(super) request: &'a ToolCallRequest,
-    pub(super) output: ToolServerOutput,
-    pub(super) elapsed: Duration,
-    pub(super) timestamp: u64,
-    pub(super) matched_grant_index: usize,
-    pub(super) cost: FinalizeToolOutputCostContext<'a>,
-    pub(super) metadata: Option<serde_json::Value>,
-    pub(super) guard_evidence: &'a [chio_core::receipt::metadata::GuardEvidence],
-    pub(super) payee_binding: Option<&'a VerifiedGovernedPayeeBinding>,
-    pub(super) recovery: Option<&'a crate::finding_recovery::VerifiedFindingRecovery>,
+pub(crate) struct OrdinaryRecoveryFinalization<'a> {
+    pub(crate) request: &'a ToolCallRequest,
+    pub(crate) output: ToolServerOutput,
+    pub(crate) elapsed: Duration,
+    pub(crate) timestamp: u64,
+    pub(crate) matched_grant_index: usize,
+    pub(crate) cost: FinalizeToolOutputCostContext<'a>,
+    pub(crate) metadata: Option<serde_json::Value>,
+    pub(crate) guard_evidence: &'a [chio_core::receipt::metadata::GuardEvidence],
+    pub(crate) payee_binding: Option<&'a VerifiedGovernedPayeeBinding>,
+    pub(crate) recovery: Option<&'a crate::finding_recovery::VerifiedFindingRecovery>,
 }
 
 struct CleanupReleaseOutcome {
@@ -158,7 +158,7 @@ pub(crate) fn delivery_commitment_denial(
 }
 
 impl ChioKernel {
-    pub(super) fn finalize_ordinary_recovery_response(
+    pub(crate) fn finalize_ordinary_recovery_response(
         &self,
         finalization: OrdinaryRecoveryFinalization<'_>,
     ) -> Result<ToolCallResponse, KernelError> {
@@ -166,9 +166,9 @@ impl ChioKernel {
             finalization.metadata,
             finalization.recovery,
         );
-        let response =
-            self.with_pre_invocation_guard_evidence(finalization.guard_evidence, || {
-                self.finalize_budgeted_tool_output_with_cost_and_metadata(
+        self.with_pre_invocation_guard_evidence(finalization.guard_evidence, || {
+            let Some(recovery) = finalization.recovery else {
+                return self.finalize_budgeted_tool_output_with_cost_and_metadata(
                     finalization.request,
                     finalization.output,
                     finalization.elapsed,
@@ -177,14 +177,36 @@ impl ChioKernel {
                     finalization.cost,
                     metadata,
                     finalization.payee_binding,
-                )
-            })?;
-        self.record_completed_recovery_receipt(
-            finalization.recovery,
-            &response.receipt.id,
-            response.receipt.timestamp,
-        )?;
-        Ok(response)
+                );
+            };
+            let FinalizeToolOutputCostContext {
+                charge_result,
+                reported_cost: _,
+                payment_authorization,
+                cap: _,
+            } = finalization.cost;
+            if charge_result.is_some() || payment_authorization.is_some() {
+                return Err(KernelError::Internal(
+                    "finding recovery reached ordinary finalization with monetary state".to_owned(),
+                ));
+            }
+            self.finalize_tool_output_with_metadata_and_payee_binding_before_allow_persist(
+                finalization.request,
+                finalization.output,
+                finalization.elapsed,
+                finalization.timestamp,
+                finalization.matched_grant_index,
+                metadata,
+                finalization.payee_binding,
+                |receipt| {
+                    self.record_completed_recovery_receipt(
+                        Some(recovery),
+                        &receipt.id,
+                        receipt.timestamp,
+                    )
+                },
+            )
+        })
     }
 
     pub(crate) fn compensate_durable_admission_after_pre_dispatch_cleanup(

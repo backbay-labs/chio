@@ -34,6 +34,47 @@ impl chio_guards::finding_retraction::FindingRetractionClock for AdvancingRetrac
     }
 }
 
+struct RetractionBeforeCacheReleaseClock {
+    now: u64,
+    calls: AtomicU64,
+    store: SqliteFindingStatusStore,
+    feed_id: String,
+    operator_id: String,
+    finding_id: String,
+    intent_id: String,
+    intent_bytes: Vec<u8>,
+    inclusion_deadline: u64,
+}
+
+impl chio_guards::finding_retraction::FindingRetractionClock
+    for RetractionBeforeCacheReleaseClock
+{
+    fn now_unix_secs(
+        &self,
+    ) -> Result<u64, chio_guards::finding_retraction::FindingRetractionResolveError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 2 {
+            self.store
+                .issue_retraction_intent(&chio_store_sqlite::FindingRetractionIntentInput {
+                    intent_id: &self.intent_id,
+                    feed_id: &self.feed_id,
+                    operator_id: &self.operator_id,
+                    finding_id: &self.finding_id,
+                    source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
+                    intent_bytes: &self.intent_bytes,
+                    issued_at: self.now,
+                    inclusion_deadline: self.inclusion_deadline,
+                    created_at: self.now,
+                })
+                .map_err(|error| {
+                    chio_guards::finding_retraction::FindingRetractionResolveError::ClockUnavailable(
+                        error.to_string(),
+                    )
+                })?;
+        }
+        Ok(self.now)
+    }
+}
+
 struct RetractionOnRefreshClock {
     now: u64,
     fired: AtomicBool,
@@ -634,6 +675,61 @@ async fn finding_status_freshness_rechecks_after_store_reads() -> TestResult {
         chio_guards::finding_retraction::FindingRetractionResolveError::InvalidStatus(ref message)
             if message.contains("stale") || message.contains("freshness")
     ), "unexpected refreshed-cache rejection: {stale_cache:?}");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn finding_status_cache_rechecks_sticky_state_after_proof_verification() -> TestResult {
+    let lane = open_lane(LaneOptions {
+        install_status_verifier: true,
+        publish_status_proof: false,
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let config = market_config();
+    let status_store = lane.authority.finding_status_store();
+    let publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            status_store.clone(),
+            config.status_feed_operator.clone(),
+            config.status_feed_service_bond.clone(),
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    let now = unix_timestamp_now();
+    publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    let intent_bytes = canonical_json_bytes(&serde_json::json!({
+        "finding_id": lane.deployment.web.finding_id,
+        "reason": "concurrent-cache-retraction",
+        "schema": "chio.finding.voluntary-retraction.v1",
+    }))?;
+    let cache = crate::trust_control::finding_retraction_resolver::SqliteFindingStatusCache::new(
+        &config,
+        status_store.clone(),
+        Arc::new(RetractionBeforeCacheReleaseClock {
+            now,
+            calls: AtomicU64::new(0),
+            store: status_store,
+            feed_id: config.status_feed_operator_ref.clone(),
+            operator_id: config.status_feed_operator.authority.authority_id.clone(),
+            finding_id: lane.deployment.web.finding_id.clone(),
+            intent_id: sha256_hex(b"m6-cache-release-retraction-intent"),
+            intent_bytes,
+            inclusion_deadline: now + config.status_feed_service_bond.inclusion_sla_secs,
+        }),
+    )?;
+    let error = chio_guards::finding_retraction::FindingStatusCache::authenticated_status(
+        &cache,
+        &lane.deployment.web.finding_id,
+    )
+    .err()
+    .ok_or("concurrent retraction was accepted after cache proof verification")?;
+    assert!(matches!(
+        error,
+        chio_guards::finding_retraction::FindingRetractionResolveError::StatusUnavailable(
+            ref message
+        ) if message.contains("changed")
+    ));
     Ok(())
 }
 
