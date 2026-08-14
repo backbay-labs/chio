@@ -789,15 +789,34 @@ impl ChioKernel {
         trusted_now_unix_ms: u64,
     ) -> Result<FindingPoolDebitReceipt, FindingPoolDebitError> {
         self.require_finding_pool_debit_active()?;
-        let tenant_id = self
-            .with_session(&request.operation_context.session_id, |session| {
-                session.validate_context(request.operation_context)?;
-                session.ensure_operation_allowed(OperationKind::ToolCall)?;
-                Ok(crate::kernel::extract_tenant_id_from_auth_context(
-                    &session.auth_context(),
-                ))
-            })
-            .map_err(|error| FindingPoolDebitError::SessionContext(error.to_string()))?;
+        let session_id = request.operation_context.session_id.clone();
+        self.with_session(&session_id, |session| {
+            session
+                .with_operation_boundary(
+                    request.operation_context,
+                    OperationKind::ToolCall,
+                    |snapshot| {
+                        let tenant_id = crate::kernel::extract_tenant_id_from_auth_context(
+                            &snapshot.auth_context,
+                        );
+                        self.debit_finding_pool_purchase_with_session(
+                            &request,
+                            trusted_now_unix_ms,
+                            tenant_id,
+                        )
+                    },
+                )
+                .map_err(crate::KernelError::from)
+        })
+        .map_err(|error| FindingPoolDebitError::SessionContext(error.to_string()))?
+    }
+
+    fn debit_finding_pool_purchase_with_session(
+        &self,
+        request: &FindingPoolDebitRequest<'_>,
+        trusted_now_unix_ms: u64,
+        tenant_id: Option<String>,
+    ) -> Result<FindingPoolDebitReceipt, FindingPoolDebitError> {
         if request.operation_context.agent_id
             != request.purchase_context.capability.subject.to_hex()
         {
@@ -859,7 +878,7 @@ impl ChioKernel {
         }
         let (authorization_expires_at, debit_request_binding_sha256) =
             verify_purchaser_authorization(
-                &request,
+                request,
                 candidate_purchase_id,
                 &verified.purchaser_key,
             )?;

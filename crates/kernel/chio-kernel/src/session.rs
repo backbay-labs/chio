@@ -1316,6 +1316,30 @@ impl Session {
         }
     }
 
+    /// Capture authentication under an allowed lifecycle state and keep that
+    /// state stable until the caller's effect boundary returns.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn with_operation_boundary<R>(
+        &self,
+        context: &OperationContext,
+        operation: OperationKind,
+        run: impl FnOnce(&SessionAnchorSnapshot) -> R,
+    ) -> Result<R, SessionError> {
+        self.validate_context(context)?;
+        let state_guard = self.read_inner();
+        if !operation_allowed_for_state(state_guard.state, operation) {
+            return Err(SessionError::OperationNotAllowed {
+                session_id: self.id.clone(),
+                operation: operation.as_str(),
+                state: state_guard.state.as_str(),
+            });
+        }
+        let snapshot = self.session_anchor_snapshot();
+        let result = run(&snapshot);
+        drop(state_guard);
+        Ok(result)
+    }
+
     pub fn track_request(
         &self,
         context: &OperationContext,

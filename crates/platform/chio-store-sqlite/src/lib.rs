@@ -218,6 +218,17 @@ fn percent_decode_sqlite_uri_component(value: &str) -> Option<String> {
     String::from_utf8(decoded).ok()
 }
 
+pub(crate) fn sqlite_uri_has_nonlocal_authority(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("file://") else {
+        return false;
+    };
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let Some(authority) = percent_decode_sqlite_uri_component(&rest[..authority_end]) else {
+        return true;
+    };
+    !authority.is_empty() && !authority.eq_ignore_ascii_case("localhost")
+}
+
 pub(crate) fn sqlite_uri_disables_locking(path: &str) -> bool {
     let Some(rest) = path.strip_prefix("file:") else {
         return false;
@@ -664,7 +675,9 @@ pub use tool_outcome_store::SqliteToolOutcomeStore;
 
 #[cfg(test)]
 mod tests {
-    use super::{is_in_memory_sqlite_path, sqlite_parent_dir_to_create};
+    use super::{
+        is_in_memory_sqlite_path, sqlite_parent_dir_to_create, sqlite_uri_has_nonlocal_authority,
+    };
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -737,6 +750,28 @@ mod tests {
                 !is_in_memory_sqlite_path(path),
                 "{path} must classify as durable"
             );
+        }
+    }
+
+    #[test]
+    fn classifies_sqlite_uri_authorities() {
+        for path in [
+            "receipts.db",
+            "file:/var/lib/chio/receipts.db",
+            "file:///var/lib/chio/receipts.db",
+            "file://localhost/var/lib/chio/receipts.db",
+            "file://LOCALHOST/var/lib/chio/receipts.db",
+            "file://%6cocalhost/var/lib/chio/receipts.db",
+        ] {
+            assert!(!sqlite_uri_has_nonlocal_authority(path), "{path}");
+        }
+        for path in [
+            "file://remote-host/var/lib/chio/receipts.db",
+            "file://%72emote-host/var/lib/chio/receipts.db",
+            "file://localhost%00/var/lib/chio/receipts.db",
+            "file://%zz/var/lib/chio/receipts.db",
+        ] {
+            assert!(sqlite_uri_has_nonlocal_authority(path), "{path}");
         }
     }
 }

@@ -1,5 +1,9 @@
 use super::*;
+#[cfg(feature = "cognition-market-experimental")]
+use std::sync::mpsc;
 use std::sync::{Arc, Barrier};
+#[cfg(feature = "cognition-market-experimental")]
+use std::time::Duration;
 
 fn make_context(request_id: &str) -> OperationContext {
     OperationContext {
@@ -33,6 +37,54 @@ fn lifecycle_transitions_do_not_require_exclusive_session_borrow() {
     assert_eq!(shared.state(), SessionState::Ready);
     shared.begin_draining().unwrap();
     assert_eq!(shared.state(), SessionState::Draining);
+}
+
+#[test]
+#[cfg(feature = "cognition-market-experimental")]
+fn operation_boundary_holds_ready_state_until_the_effect_finishes() {
+    let session = Arc::new(Session::new(
+        SessionId::new("sess-1"),
+        "agent-1".to_string(),
+        Vec::new(),
+    ));
+    session.activate().unwrap();
+    let effect_entered = Arc::new(Barrier::new(2));
+    let release_effect = Arc::new(Barrier::new(2));
+    let effect_session = Arc::clone(&session);
+    let entered = Arc::clone(&effect_entered);
+    let release = Arc::clone(&release_effect);
+    let effect = std::thread::spawn(move || {
+        effect_session
+            .with_operation_boundary(
+                &make_context("req-operation-boundary"),
+                OperationKind::ToolCall,
+                |_| {
+                    entered.wait();
+                    release.wait();
+                },
+            )
+            .unwrap();
+    });
+    effect_entered.wait();
+
+    let (transition_started_tx, transition_started_rx) = mpsc::channel();
+    let (transition_finished_tx, transition_finished_rx) = mpsc::channel();
+    let transition_session = Arc::clone(&session);
+    let transition = std::thread::spawn(move || {
+        transition_started_tx.send(()).unwrap();
+        transition_session.begin_draining().unwrap();
+        transition_finished_tx.send(()).unwrap();
+    });
+    transition_started_rx.recv().unwrap();
+    assert!(transition_finished_rx
+        .recv_timeout(Duration::from_millis(50))
+        .is_err());
+
+    release_effect.wait();
+    effect.join().unwrap();
+    transition.join().unwrap();
+    assert_eq!(transition_finished_rx.recv(), Ok(()));
+    assert_eq!(session.state(), SessionState::Draining);
 }
 
 #[test]

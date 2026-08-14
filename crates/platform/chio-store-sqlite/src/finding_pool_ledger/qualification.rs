@@ -140,6 +140,11 @@ static FINDING_POOL_DOMAIN_LEASES: OnceLock<Mutex<BTreeMap<String, Weak<FindingP
 pub(super) fn prepare_database_identity(
     path_text: &str,
 ) -> Result<QualifiedDatabaseIdentity, FindingPoolLedgerError> {
+    if crate::sqlite_uri_has_nonlocal_authority(path_text) {
+        return Err(FindingPoolLedgerError::Storage(
+            "qualified finding pool SQLite URI has a non-local authority".to_owned(),
+        ));
+    }
     let filesystem_path = if path_text.starts_with("file:") {
         let encoded = sqlite_uri_filename(path_text)?;
         let decoded = crate::percent_decode_sqlite_uri_component(encoded).ok_or_else(|| {

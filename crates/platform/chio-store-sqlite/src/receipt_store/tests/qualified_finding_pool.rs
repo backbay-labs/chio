@@ -34,6 +34,28 @@ fn qualified_receipt_sink_rejects_read_only_sqlite_uris() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn qualified_receipt_sink_rejects_nonlocal_sqlite_uri_authorities(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-uri-authority-anchor")?;
+    for uri in [
+        "file://remote-host/var/lib/chio/receipts.db",
+        "file://%72emote-host/var/lib/chio/receipts.db",
+    ] {
+        let error = SqliteReceiptStore::open_for_finding_pool(
+            std::path::PathBuf::from(uri),
+            anchor_directory.path(),
+        )
+        .err()
+        .ok_or("non-local SQLite URI authority was accepted")?;
+        assert!(matches!(
+            error,
+            ReceiptStoreError::Conflict(message) if message.contains("non-local authority")
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn qualified_receipt_sink_rejects_anchor_on_the_database_snapshot_device(
 ) -> Result<(), Box<dyn std::error::Error>> {
     for use_database_root in [true, false] {

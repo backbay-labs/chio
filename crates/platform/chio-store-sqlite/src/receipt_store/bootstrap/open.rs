@@ -500,6 +500,11 @@ impl SqliteReceiptStore {
                     "finding-pool receipt sink SQLite URI is read-only".to_string(),
                 ));
             }
+            if crate::sqlite_uri_has_nonlocal_authority(path_text) {
+                return Err(ReceiptStoreError::Conflict(
+                    "finding-pool receipt sink SQLite URI has a non-local authority".to_string(),
+                ));
+            }
         }
         let connection_flags = if create_if_missing {
             None
