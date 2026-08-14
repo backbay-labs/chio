@@ -1957,7 +1957,7 @@ fn digest_mismatch_case(
                 media_type_check: shape.media_type_check,
                 settlement_mode: FindingDeliverySettlementMode::LocalReversibleHold,
                 accepted_bid_envelope_sha256: hex64('c'),
-                venue_admission_envelope_sha256: hex64('d'),
+                venue_admission_envelope_sha256: deployment.admission_envelope_sha256.clone(),
                 reservation_id: DENY_RESERVATION_ID.to_string(),
                 purchase_intent_id: DENY_INTENT_ID.to_string(),
                 authoritative_payment_operation_id: DENY_PAYMENT_ID.to_string(),
@@ -3664,6 +3664,27 @@ fn close_challenge(
     }
 }
 
+fn close_upheld_challenge(
+    deployment: &Deployment,
+    challenge: &SignedFindingChallenge,
+    now: u64,
+) -> TestResult {
+    let exposure = deployment
+        .purchases
+        .list_outstanding_exposure_total(&deployment.allocation_id, now)?;
+    let outcome = upheld_outcome(challenge, &deployment.allocation_id, exposure, "USD")?;
+    let outcome_json = canonical_json_bytes(&outcome)?;
+    close_challenge(
+        deployment,
+        &challenge.body.challenge_id,
+        FindingChallengeVerdict::Upheld,
+        &signed_envelope_sha256(&outcome)?,
+        &outcome_json,
+        now,
+    )?;
+    Ok(())
+}
+
 /// The evaluator-signed upheld outcome the uphold transaction consumes.
 fn upheld_outcome(
     challenge: &SignedFindingChallenge,
@@ -4002,14 +4023,7 @@ fn finding_challenge_pool_rotation_preserves_the_admission_pinned_rail() -> Test
     assert_eq!(lock.pool_principal_id, CHALLENGE_POOL_PRINCIPAL);
     assert_eq!(lock.pool_rail_destination, CHALLENGE_POOL_DESTINATION);
     assert_eq!(lock.pool_authority_epoch, 1);
-    close_challenge(
-        &deployment,
-        &challenge.body.challenge_id,
-        FindingChallengeVerdict::Upheld,
-        &digest("rotated-pool-upheld"),
-        b"rotated-pool-upheld",
-        NOW + 1,
-    )?;
+    close_upheld_challenge(&deployment, &challenge, NOW + 1)?;
     assert_eq!(
         coordinator.dispose_dispute_bond(&challenge.body.challenge_id, NOW + 2)?,
         Some(FindingDisputeLockDisposition::Returned)
@@ -5314,14 +5328,7 @@ fn finding_challenge_upheld_verdict_returns_the_dispute_bond() -> TestResult {
     let (_, raw) = finding_artifact()?;
     coordinator.submit(&challenge, &raw, NOW)?;
 
-    close_challenge(
-        &deployment,
-        &challenge.body.challenge_id,
-        FindingChallengeVerdict::Upheld,
-        &digest("upheld-outcome"),
-        b"upheld-outcome",
-        NOW + 10,
-    )?;
+    close_upheld_challenge(&deployment, &challenge, NOW + 10)?;
     assert_eq!(
         coordinator.dispose_dispute_bond(&challenge.body.challenge_id, NOW + 11)?,
         Some(FindingDisputeLockDisposition::Returned)
@@ -5350,14 +5357,7 @@ fn finding_challenge_a_failed_refund_never_reports_the_bond_returned() -> TestRe
     let challenge = buyer_challenge(&keypair(41))?;
     let (_, raw) = finding_artifact()?;
     coordinator.submit(&challenge, &raw, NOW)?;
-    close_challenge(
-        &deployment,
-        &challenge.body.challenge_id,
-        FindingChallengeVerdict::Upheld,
-        &digest("upheld-refund-retry"),
-        b"upheld-refund-retry",
-        NOW + 10,
-    )?;
+    close_upheld_challenge(&deployment, &challenge, NOW + 10)?;
 
     deployment.rail.refuse();
     assert!(matches!(
@@ -8425,7 +8425,7 @@ fn finding_challenge_a_reorged_bond_observation_never_reaches_the_publisher() ->
 
 #[test]
 fn finding_challenge_an_observer_cannot_weaken_deployment_finality() -> TestResult {
-    let case = finalizing_liability()?;
+    let case = finalizing_liability_before_root_binding()?;
 
     // The trusted observer signs a self-consistent snapshot at one
     // confirmation, then the finalization authority binds that exact
@@ -8878,7 +8878,7 @@ fn finding_challenge_revoked_status_operator_blocks_impairment_dispatch() -> Tes
             &settlement_config()?,
             &settlement_config()?.operator_address,
             &evm_vault_snapshot(),
-            &anchor_proof()?,
+            &enforcement_anchor_proof(&case.enforcement)?,
             &ScriptedObservations::qualified(),
             &UnreachablePublisher,
             SETTLEMENT_NOW,
@@ -8897,7 +8897,7 @@ fn finding_challenge_revoked_status_operator_blocks_impairment_dispatch() -> Tes
 
 #[test]
 fn finding_challenge_observer_and_vault_operator_epochs_rotate_independently() -> TestResult {
-    let case = finalizing_liability()?;
+    let case = finalizing_liability_before_root_binding()?;
     let authorized = case.authorized()?;
     let mut body = case.snapshot.body.clone();
     body.operator_key_epoch = PINNED_KEY_EPOCH + 1;
@@ -9812,7 +9812,7 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
         let deployment = deployment()?;
         let sale = settle_purchase(&deployment, "purchase-life", BUYER_ONE_DESTINATION, 50, NOW)?;
         let live = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
-        let ready = ready_to_uphold(&deployment, &live)?;
+        let ready = ready_to_uphold_with_open_exposure(&deployment, &live, 100)?;
         let governance = governance()?;
         let revoked = deployment.coordinator_with_revoked_role(
             "authority-purchase",
@@ -11297,13 +11297,16 @@ fn finding_challenge_an_expired_reservation_neither_wedges_nor_inflates_the_clai
     coordinator.submit(&challenge, &raw, NOW + 2)?;
     let outcome = upheld_outcome(&challenge, &deployment.allocation_id, 100, "USD")?;
     let outcome_json = canonical_json_bytes(&outcome)?;
+    deployment
+        .purchases
+        .expire_reservations(NOW + 6, usize::MAX)?;
     close_challenge(
         &deployment,
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &signed_envelope_sha256(&outcome)?,
         &outcome_json,
-        NOW + 3,
+        NOW + 6,
     )?;
 
     let stake = usd(300);

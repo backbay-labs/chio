@@ -48,21 +48,35 @@ fn finalizing_liability_without_anchor() -> Result<FinalizingLiability, AnyError
     finalizing_liability_with(EnforcementRoot::Confirmed, false)
 }
 
+fn finalizing_liability_before_root_binding() -> Result<FinalizingLiability, AnyError> {
+    finalizing_liability_with_options(
+        EnforcementRoot::Confirmed,
+        false,
+        PriorVoluntaryRetraction::None,
+        false,
+    )
+}
+
 fn finalizing_liability_with(
     root: EnforcementRoot,
     anchor_fenced: bool,
 ) -> Result<FinalizingLiability, AnyError> {
-    finalizing_liability_with_prior_retraction(
-        root,
-        anchor_fenced,
-        PriorVoluntaryRetraction::None,
-    )
+    finalizing_liability_with_options(root, anchor_fenced, PriorVoluntaryRetraction::None, true)
 }
 
 fn finalizing_liability_with_prior_retraction(
     root: EnforcementRoot,
     anchor_fenced: bool,
     prior_retraction: PriorVoluntaryRetraction,
+) -> Result<FinalizingLiability, AnyError> {
+    finalizing_liability_with_options(root, anchor_fenced, prior_retraction, true)
+}
+
+fn finalizing_liability_with_options(
+    root: EnforcementRoot,
+    anchor_fenced: bool,
+    prior_retraction: PriorVoluntaryRetraction,
+    prepare_root: bool,
 ) -> Result<FinalizingLiability, AnyError> {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -397,7 +411,8 @@ fn finalizing_liability_with_prior_retraction(
         slash,
         snapshot,
     };
-    if root == EnforcementRoot::Confirmed
+    if prepare_root
+        && root == EnforcementRoot::Confirmed
         && prior_retraction == PriorVoluntaryRetraction::None
     {
         let refused = case
