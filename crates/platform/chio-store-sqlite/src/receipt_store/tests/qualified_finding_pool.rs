@@ -16,7 +16,16 @@ fn qualified_receipt_sink_rejects_read_only_sqlite_uris() -> Result<(), Box<dyn 
     store.flush_receipt_writes()?;
     drop(store);
 
-    for query in ["mode=ro", "immutable=1", "immutable=true"] {
+    for query in [
+        "mode=ro",
+        "immutable=1",
+        "immutable=true",
+        "immutable=2",
+        "immutable=01",
+        "immutable=-1",
+        "immutable=",
+        "immutable=maybe",
+    ] {
         let uri = format!("file:{}?{query}", database.display());
         let error = match SqliteReceiptStore::open_existing_for_finding_pool(
             std::path::PathBuf::from(uri),
@@ -29,6 +38,32 @@ fn qualified_receipt_sink_rejects_read_only_sqlite_uris() -> Result<(), Box<dyn 
             error,
             ReceiptStoreError::Conflict(message) if message.contains("read-only")
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn qualified_receipt_sink_allows_explicitly_false_immutable_sqlite_uris(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-mutable-uri-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("mutable.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    store.flush_receipt_writes()?;
+    drop(store);
+
+    for value in ["0", "off", "false", "no", "FALSE"] {
+        let uri = format!("file:{}?immutable={value}", database.display());
+        let store = SqliteReceiptStore::open_existing_for_finding_pool(
+            std::path::PathBuf::from(uri),
+            anchor_directory.path(),
+        )?;
+        store.flush_receipt_writes()?;
     }
     Ok(())
 }
@@ -137,6 +172,62 @@ fn qualified_receipt_sink_anchors_lineage_only_duplicate_mutations(
     assert!(
         matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
         "unexpected lineage-only rollback error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn qualified_receipt_sink_anchors_standalone_lineage_mutations(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-standalone-lineage-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory
+        .path()
+        .join("qualified-standalone-lineage.sqlite3");
+    let snapshot = directory.path().join("before-standalone-lineage.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    let receipt = super::support::sample_receipt_with_id("anchored-standalone-lineage");
+    chio_kernel::ReceiptStore::append_chio_receipt_returning_seq(&store, &receipt)?;
+    store.flush_receipt_writes()?;
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+    std::fs::copy(&database, &snapshot)?;
+
+    store.record_receipt_lineage_statement_record(
+        &receipt.id,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some("standalone-lineage-chain"),
+        2_101,
+        &serde_json::json!({"evidenceClass": "standalone"}),
+    )?;
+    let connection = rusqlite::Connection::open(&database)?;
+    let lineage_after: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM receipt_lineage_statements WHERE receipt_id = ?1",
+        [receipt.id.as_str()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(lineage_after, 1);
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+
+    std::fs::copy(&snapshot, &database)?;
+    let error = store
+        .max_child_receipt_seq()
+        .err()
+        .ok_or("standalone lineage rollback must fail a qualified receipt read")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
+        "unexpected standalone lineage rollback error: {error}"
     );
     Ok(())
 }

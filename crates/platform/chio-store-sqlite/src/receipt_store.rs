@@ -957,6 +957,18 @@ impl WriterHandle {
         self.run_receipt_write_kind(job, false)
     }
 
+    /// Run a rollback-protected metadata mutation on the same anchored
+    /// transaction path as receipt appends. Use this for metadata whose loss
+    /// would change the authenticated meaning of a persisted receipt, such as
+    /// standalone receipt-lineage materialization or refreshes.
+    pub(crate) fn run_write_anchored_metadata<T, F>(&self, job: F) -> Result<T, ReceiptStoreError>
+    where
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        self.run_receipt_write_kind(job, false)
+    }
+
     fn run_critical_receipt_write<T, F>(&self, job: F) -> Result<T, ReceiptStoreError>
     where
         F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,

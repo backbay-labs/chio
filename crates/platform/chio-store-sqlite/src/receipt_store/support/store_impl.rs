@@ -245,11 +245,9 @@ impl SqliteReceiptStore {
         let parent_receipt_id = parent_receipt_id.map(ToString::to_string);
         let chain_id = chain_id.map(ToString::to_string);
         let statement_json = statement_json.clone();
-        self.writer_handle().run_write(move |connection| {
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        self.writer_handle().run_write_anchored_metadata(move |tx| {
             persist_receipt_lineage_statement_tx(
-                &tx,
+                tx,
                 &child_receipt_id,
                 request_id.as_deref(),
                 session_id.as_deref(),
@@ -261,7 +259,6 @@ impl SqliteReceiptStore {
                 RECEIPT_LINEAGE_SOURCE_KIND,
                 &statement_json,
             )?;
-            tx.commit()?;
             Ok(())
         })
     }
@@ -271,13 +268,10 @@ impl SqliteReceiptStore {
         receipt_id: &str,
     ) -> Result<Vec<ReceiptLineageStatementLink>, ReceiptStoreError> {
         let receipt_id = receipt_id.to_string();
-        self.writer_handle().run_write(move |connection| {
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt_id)?;
-            refresh_receipt_lineage_rows_for_parent_receipt_tx(&tx, &receipt_id)?;
-            let links = load_receipt_lineage_statement_links(&tx, &receipt_id)?;
-            tx.commit()?;
+        self.writer_handle().run_write_anchored_metadata(move |tx| {
+            ensure_receipt_lineage_statement_for_receipt_id_tx(tx, &receipt_id)?;
+            refresh_receipt_lineage_rows_for_parent_receipt_tx(tx, &receipt_id)?;
+            let links = load_receipt_lineage_statement_links(tx, &receipt_id)?;
             Ok(links)
         })
     }
@@ -288,10 +282,8 @@ impl SqliteReceiptStore {
     ) -> Result<Option<chio_core::receipt::lineage::ReceiptLineageStatement>, ReceiptStoreError>
     {
         let receipt_id = receipt_id.to_string();
-        self.writer_handle().run_write(move |connection| {
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt_id)?;
+        self.writer_handle().run_write_anchored_metadata(move |tx| {
+            ensure_receipt_lineage_statement_for_receipt_id_tx(tx, &receipt_id)?;
             let raw = tx
                 .query_row(
                     "SELECT raw_json FROM receipt_lineage_statements WHERE receipt_id = ?1",
@@ -307,7 +299,6 @@ impl SqliteReceiptStore {
                     .map_err(ReceiptStoreError::from)
                 })
                 .transpose()?;
-            tx.commit()?;
             Ok(statement)
         })
     }
@@ -317,12 +308,9 @@ impl SqliteReceiptStore {
         receipt_id: &str,
     ) -> Result<Option<ReceiptLineageVerification>, ReceiptStoreError> {
         let receipt_id = receipt_id.to_string();
-        self.writer_handle().run_write(move |connection| {
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt_id)?;
-            let verification = load_receipt_lineage_verification(&tx, &receipt_id)?;
-            tx.commit()?;
+        self.writer_handle().run_write_anchored_metadata(move |tx| {
+            ensure_receipt_lineage_statement_for_receipt_id_tx(tx, &receipt_id)?;
+            let verification = load_receipt_lineage_verification(tx, &receipt_id)?;
             Ok(verification)
         })
     }

@@ -268,9 +268,9 @@ pub(crate) fn sqlite_uri_is_read_only(path: &str) -> bool {
         };
         (key.eq_ignore_ascii_case("mode") && value.eq_ignore_ascii_case("ro"))
             || (key.eq_ignore_ascii_case("immutable")
-                && matches!(
+                && !matches!(
                     value.to_ascii_lowercase().as_str(),
-                    "1" | "on" | "true" | "yes"
+                    "0" | "off" | "false" | "no"
                 ))
     })
 }
