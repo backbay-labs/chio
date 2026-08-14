@@ -165,6 +165,8 @@ pub enum FindingAuditError {
     AuditAuthorityPolicy(FindingError),
     #[error("audit authority policy does not cover the signed round")]
     AuditAuthorityWindow,
+    #[error("audit status signer reuses the {0} authority key")]
+    StatusAuthorityRoleCollision(&'static str),
     #[error("audit authority status rejected: {0}")]
     AuditAuthorityStatus(FindingError),
     #[error("audit authority status does not bind the pinned policy")]
@@ -441,6 +443,27 @@ pub fn verify_audit_report(
         .pinned_audit_policy
         .validate("audit authority policy")
         .map_err(FindingAuditError::AuditAuthorityPolicy)?;
+    for (role, key) in [
+        ("audit", &witnesses.pinned_audit_policy.key),
+        (
+            "audit seed witness",
+            &witnesses.pinned_seed_witness_policy.key,
+        ),
+        ("audit governance", &witnesses.pinned_governance_policy.key),
+    ] {
+        if witnesses.pinned_status_authority == *key {
+            return Err(FindingAuditError::StatusAuthorityRoleCollision(role));
+        }
+    }
+    if witnesses
+        .pinned_evaluator_policies
+        .iter()
+        .any(|policy| policy.key == witnesses.pinned_status_authority)
+    {
+        return Err(FindingAuditError::StatusAuthorityRoleCollision(
+            "audit evaluator",
+        ));
+    }
     verify_signed_audit_epoch(
         epoch,
         &witnesses.pinned_audit_policy.key,

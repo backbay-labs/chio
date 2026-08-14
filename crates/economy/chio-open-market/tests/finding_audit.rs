@@ -509,7 +509,7 @@ fn report_for(
             weight_or_none: Some(selected.weight),
         })
         .collect();
-    let audit_attempts = audit_attempts_for_report(&report, &selected_entries, &epoch);
+    let audit_attempts = audit_attempts_for_report(&report, &selected_entries, epoch);
     report.attempt_envelope_sha256s = audit_attempts
         .iter()
         .map(|attempt| signed_envelope_sha256(attempt).test_expect("audit attempt envelope digest"))
@@ -824,6 +824,37 @@ fn report_verification_authenticates_the_audit_authority_lifecycle() {
         .test_unwrap_err(),
         FindingAuditError::AuditAuthorityRevoked
     );
+}
+
+#[test]
+fn report_verification_keeps_the_status_signer_independent() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
+    let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+    let policies = [audit_evaluator_policy()];
+
+    for (role, key) in [
+        ("audit", audit_authority().public_key()),
+        ("audit seed witness", seed_witness().public_key()),
+        ("audit governance", governance_authority().public_key()),
+        ("audit evaluator", audit_evaluator().public_key()),
+    ] {
+        let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
+        witnesses.pinned_status_authority = key;
+        assert_eq!(
+            verify_audit_report_with_witness(
+                &sign_epoch(&epoch),
+                &sign_report(&report),
+                &eligible,
+                &witnesses,
+            )
+            .test_unwrap_err(),
+            FindingAuditError::StatusAuthorityRoleCollision(role)
+        );
+    }
 }
 
 #[test]
