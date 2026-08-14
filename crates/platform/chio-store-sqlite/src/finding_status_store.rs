@@ -180,6 +180,15 @@ pub struct FindingRetractionIntentInput<'a> {
     pub created_at: u64,
 }
 
+/// Expiring authority material that must still cover a new intent when the
+/// SQLite write transaction is ready to commit it. Exact replay is exempt so
+/// an already-durable terminal fact remains recoverable after expiry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FindingRetractionIntentCommitLiveness {
+    pub valid_from: u64,
+    pub valid_until: u64,
+}
+
 /// Retained retraction intent and its outbox state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingRetractionIntentRecord {
@@ -466,16 +475,33 @@ impl SqliteFindingStatusStore {
         &self,
         input: &FindingRetractionIntentInput<'_>,
     ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+        self.issue_retraction_intent_inner(input, None, || input.created_at)
+    }
+
+    /// Persist a new intent only if its admission-pinned operator and bond are
+    /// still live after acquiring the SQLite mutex and beginning the write
+    /// transaction. The commit clock is deliberately sampled inside that
+    /// transaction; sampling it in an HTTP handler before a blocking store
+    /// call leaves a window for an immediately overdue sticky intent.
+    pub fn issue_retraction_intent_with_commit_clock(
+        &self,
+        input: &FindingRetractionIntentInput<'_>,
+        liveness: FindingRetractionIntentCommitLiveness,
+        read_now: impl FnOnce() -> u64,
+    ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+        self.issue_retraction_intent_inner(input, Some(liveness), read_now)
+    }
+
+    fn issue_retraction_intent_inner(
+        &self,
+        input: &FindingRetractionIntentInput<'_>,
+        liveness: Option<FindingRetractionIntentCommitLiveness>,
+        read_now: impl FnOnce() -> u64,
+    ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
         validate_intent_input(input)?;
         let intent_sha256 = sha256_hex(input.intent_bytes);
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
-        ensure_feed_tx(
-            &transaction,
-            input.feed_id,
-            input.operator_id,
-            input.created_at,
-        )?;
 
         if let Some(existing) = load_intent_tx(&transaction, input.intent_id)? {
             verify_intent_replay(&existing, input, &intent_sha256)?;
@@ -493,6 +519,24 @@ impl SqliteFindingStatusStore {
             )));
         }
 
+        if let Some(liveness) = liveness {
+            validate_intent_commit_liveness(input, liveness)?;
+        }
+        let created_at = read_now();
+        if let Some(liveness) = liveness {
+            if created_at < liveness.valid_from
+                || created_at >= liveness.valid_until
+                || created_at < input.issued_at
+                || created_at >= input.inclusion_deadline
+            {
+                return Err(FindingStatusStoreError::Conflict(
+                    "retraction intent authority or inclusion window expired before durable commit"
+                        .to_owned(),
+                ));
+            }
+        }
+        ensure_feed_tx(&transaction, input.feed_id, input.operator_id, created_at)?;
+
         let (initial_state, finality_sha256, finality_bytes, dispatch_eligible_at) = match input
             .source
         {
@@ -500,7 +544,7 @@ impl SqliteFindingStatusStore {
                 "dispatch_eligible",
                 Some(intent_sha256.as_str()),
                 Some(input.intent_bytes),
-                Some(sqlite_i64(input.created_at, "created_at")?),
+                Some(sqlite_i64(created_at, "created_at")?),
             ),
             FindingRetractionIntentSource::Enforcement => ("waiting_finality", None, None, None),
         };
@@ -529,7 +573,7 @@ impl SqliteFindingStatusStore {
                     finality_sha256,
                     finality_bytes,
                     dispatch_eligible_at,
-                    sqlite_i64(input.created_at, "created_at")?,
+                    sqlite_i64(created_at, "created_at")?,
                 ],
             )
             .map_err(sqlite_error)?;
@@ -546,7 +590,7 @@ impl SqliteFindingStatusStore {
                     input.operator_id,
                     input.finding_id,
                     intent_sha256,
-                    sqlite_i64(input.created_at, "created_at")?,
+                    sqlite_i64(created_at, "created_at")?,
                 ],
             )
             .map_err(sqlite_error)?;

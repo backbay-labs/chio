@@ -54,6 +54,27 @@ fn validate_intent_input(
     Ok(())
 }
 
+fn validate_intent_commit_liveness(
+    input: &FindingRetractionIntentInput<'_>,
+    liveness: FindingRetractionIntentCommitLiveness,
+) -> Result<(), FindingStatusStoreError> {
+    require_positive(liveness.valid_from, "intent authority valid_from")?;
+    if liveness.valid_until <= liveness.valid_from {
+        return Err(invariant(
+            "intent authority valid_until must follow valid_from",
+        ));
+    }
+    if input.issued_at < liveness.valid_from
+        || input.inclusion_deadline >= liveness.valid_until
+    {
+        return Err(FindingStatusStoreError::Conflict(
+            "retraction intent is not covered through its inclusion deadline".to_owned(),
+        ));
+    }
+    sqlite_i64(liveness.valid_until, "intent authority valid_until")?;
+    Ok(())
+}
+
 fn validate_leaf_input(
     input: &VerifiedFindingStatusLeafInput<'_>,
 ) -> Result<(), FindingStatusStoreError> {

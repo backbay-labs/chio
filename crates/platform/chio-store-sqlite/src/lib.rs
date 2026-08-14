@@ -285,10 +285,11 @@ pub use finding_recovery_store::{
 };
 #[cfg(feature = "cognition-market-experimental")]
 pub use finding_status_store::{
-    FindingRetractionIntentInput, FindingRetractionIntentRecord, FindingRetractionIntentSource,
-    FindingRetractionIntentState, FindingStatusDecision, FindingStatusEpochAdvance,
-    FindingStatusEpochRecord, FindingStatusFeedFloor, FindingStatusLeafRecord,
-    FindingStatusProofKind, FindingStatusProofRecord, FindingStatusRecord, FindingStatusStoreError,
+    FindingRetractionIntentCommitLiveness, FindingRetractionIntentInput,
+    FindingRetractionIntentRecord, FindingRetractionIntentSource, FindingRetractionIntentState,
+    FindingStatusDecision, FindingStatusEpochAdvance, FindingStatusEpochRecord,
+    FindingStatusFeedFloor, FindingStatusLeafRecord, FindingStatusProofKind,
+    FindingStatusProofRecord, FindingStatusRecord, FindingStatusStoreError,
     FindingStatusWriteOutcome, FindingStickyStatus, SqliteFindingStatusStore,
     VerifiedFindingStatusEpochInput, VerifiedFindingStatusLeafInput,
     VerifiedFindingStatusProofInput, FINDING_STATUS_KEY_DOMAIN_NONCE,

@@ -21,16 +21,41 @@ impl crate::trust_control::finding_status_verifier::FindingStatusAdmissionClock
     }
 }
 
-struct AdvancingRetractionClock {
-    now: AtomicU64,
-    step_secs: u64,
+struct FinalBoundaryStatusAdmissionClock {
+    fresh_now: u64,
+    final_now: u64,
+    calls: AtomicU64,
 }
 
-impl chio_guards::finding_retraction::FindingRetractionClock for AdvancingRetractionClock {
+impl crate::trust_control::finding_status_verifier::FindingStatusAdmissionClock
+    for FinalBoundaryStatusAdmissionClock
+{
+    fn now_unix_secs(&self) -> Result<u64, String> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            Ok(self.fresh_now)
+        } else {
+            Ok(self.final_now)
+        }
+    }
+}
+
+struct FinalBoundaryRetractionClock {
+    fresh_now: u64,
+    final_now: u64,
+    calls: AtomicU64,
+}
+
+impl chio_guards::finding_retraction::FindingRetractionClock
+    for FinalBoundaryRetractionClock
+{
     fn now_unix_secs(
         &self,
     ) -> Result<u64, chio_guards::finding_retraction::FindingRetractionResolveError> {
-        Ok(self.now.fetch_add(self.step_secs, Ordering::SeqCst))
+        if self.calls.fetch_add(1, Ordering::SeqCst) < 2 {
+            Ok(self.fresh_now)
+        } else {
+            Ok(self.final_now)
+        }
     }
 }
 
@@ -581,7 +606,7 @@ async fn finding_status_retraction() -> TestResult {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn finding_status_freshness_rechecks_after_store_reads() -> TestResult {
+async fn finding_status_freshness_rechecks_at_final_clock_samples() -> TestResult {
     let admission_lane = open_lane(LaneOptions {
         install_status_verifier: true,
         publish_status_proof: false,
@@ -604,13 +629,17 @@ async fn finding_status_freshness_rechecks_after_store_reads() -> TestResult {
         &[],
         now,
     )?;
-    let stale_after_store_reads = now + config.status_max_epoch_age_secs + 1;
+    let stale_at_final_decision = now + config.status_max_epoch_age_secs + 1;
     let refreshed_verifier = MarketFindingStatusVerifier::new_with_clock(
         config.status_feed_operator.clone(),
         config.status_feed_service_bond.clone(),
         config.status_max_epoch_age_secs,
         admission_store,
-        Arc::new(FixedStatusAdmissionClock(stale_after_store_reads)),
+        Arc::new(FinalBoundaryStatusAdmissionClock {
+            fresh_now: now + 1,
+            final_now: stale_at_final_decision,
+            calls: AtomicU64::new(0),
+        }),
     )?;
     let live_b64 = STANDARD.encode(&live.proof_bytes);
     let live_view = chio_kernel::finding_purchase::FindingStatusProofContextView {
@@ -631,7 +660,7 @@ async fn finding_status_freshness_rechecks_after_store_reads() -> TestResult {
             now,
         )
         .err()
-        .ok_or("time refreshed after status-store work accepted an expired epoch")?;
+        .ok_or("final status admission clock accepted an expired epoch")?;
     assert!(
         stale_admission.contains("stale") || stale_admission.contains("freshness"),
         "unexpected refreshed-time rejection: {stale_admission}"
@@ -660,9 +689,10 @@ async fn finding_status_freshness_rechecks_after_store_reads() -> TestResult {
     let cache = crate::trust_control::finding_retraction_resolver::SqliteFindingStatusCache::new(
         &config,
         cache_store,
-        Arc::new(AdvancingRetractionClock {
-            now: AtomicU64::new(now),
-            step_secs: config.status_max_epoch_age_secs + 1,
+        Arc::new(FinalBoundaryRetractionClock {
+            fresh_now: now + 1,
+            final_now: stale_at_final_decision,
+            calls: AtomicU64::new(0),
         }),
     )?;
     let stale_cache = chio_guards::finding_retraction::FindingStatusCache::authenticated_status(
@@ -670,7 +700,7 @@ async fn finding_status_freshness_rechecks_after_store_reads() -> TestResult {
         &cache_lane.deployment.web.finding_id,
     )
     .err()
-    .ok_or("time refreshed after cache reads accepted an expired epoch")?;
+    .ok_or("final cache clock accepted an expired epoch")?;
     assert!(matches!(
         &stale_cache,
         chio_guards::finding_retraction::FindingRetractionResolveError::InvalidStatus(ref message)

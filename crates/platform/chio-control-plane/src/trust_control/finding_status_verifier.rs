@@ -429,9 +429,25 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
             refreshed_now,
         )?;
         // Cryptographic verification above can be expensive. Re-observe time
-        // and make the durable sticky-state decision the final operation so a
-        // concurrent retraction cannot release a stale live admission.
+        // and revalidate every expiring trust input at that final sample before
+        // making the durable sticky-state decision. The proof window can
+        // outlive the operator authorization, service bond, or configured
+        // maximum epoch age, so `status_for_purchase` alone is not sufficient.
         let final_now = self.observe_trusted_now(self.clock.now_unix_secs()?)?;
+        verify_epoch_record(
+            &self.operator,
+            &self.service_bond,
+            self.max_epoch_age_secs,
+            &current_epoch,
+            final_now,
+        )?;
+        verify_proof_record(
+            &self.operator,
+            &self.service_bond,
+            self.max_epoch_age_secs,
+            &record,
+            final_now,
+        )?;
         match self
             .store
             .status_for_purchase(fields.feed_id, fields.finding_id, final_now)

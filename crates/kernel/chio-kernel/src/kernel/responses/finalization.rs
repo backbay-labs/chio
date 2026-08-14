@@ -26,33 +26,6 @@ impl ChioKernel {
         extra_metadata: Option<serde_json::Value>,
         verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
     ) -> Result<ToolCallResponse, KernelError> {
-        self.finalize_tool_output_with_metadata_and_payee_binding_before_allow_persist(
-            request,
-            output,
-            elapsed,
-            timestamp,
-            matched_grant_index,
-            extra_metadata,
-            verified_payee_binding,
-            |_| Ok(()),
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn finalize_tool_output_with_metadata_and_payee_binding_before_allow_persist<F>(
-        &self,
-        request: &ToolCallRequest,
-        output: ToolServerOutput,
-        elapsed: Duration,
-        timestamp: u64,
-        matched_grant_index: usize,
-        extra_metadata: Option<serde_json::Value>,
-        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
-        before_allow_persist: F,
-    ) -> Result<ToolCallResponse, KernelError>
-    where
-        F: FnOnce(&ChioReceipt) -> Result<(), KernelError>,
-    {
         let output = self.apply_stream_limits(output, elapsed)?;
         let post_invocation = self.apply_post_invocation_pipeline(
             request,
@@ -100,7 +73,7 @@ impl ChioKernel {
 
         match post_invocation.output {
             ToolServerOutput::Value(value) => self
-                .build_allow_response_with_metadata_and_payee_binding_before_persist(
+                .build_allow_response_with_metadata_and_payee_binding(
                     request,
                     ToolCallOutput::Value(value),
                     timestamp,
@@ -108,10 +81,9 @@ impl ChioKernel {
                     post_invocation.extra_metadata,
                     verified_payee_binding,
                     AllowResponseNonce::MintForAllow,
-                    before_allow_persist,
                 ),
             ToolServerOutput::Stream(ToolServerStreamResult::Complete(stream)) => self
-                .build_allow_response_with_metadata_and_payee_binding_before_persist(
+                .build_allow_response_with_metadata_and_payee_binding(
                     request,
                     ToolCallOutput::Stream(stream),
                     timestamp,
@@ -119,7 +91,6 @@ impl ChioKernel {
                     post_invocation.extra_metadata,
                     verified_payee_binding,
                     AllowResponseNonce::MintForAllow,
-                    before_allow_persist,
                 ),
             ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { stream, reason }) => self
                 .build_incomplete_response_with_output_metadata_and_payee_binding(

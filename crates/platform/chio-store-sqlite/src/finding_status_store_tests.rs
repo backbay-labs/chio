@@ -622,6 +622,66 @@ fn exact_retraction_intent_replay_retains_the_first_server_time() {
 }
 
 #[test]
+fn new_retraction_intent_checks_liveness_inside_the_write_transaction() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('4');
+    let intent_id = hex64('5');
+    let input = FindingRetractionIntentInput {
+        intent_id: &intent_id,
+        feed_id: FEED,
+        operator_id: OPERATOR,
+        finding_id: &finding_id,
+        source: FindingRetractionIntentSource::Voluntary,
+        intent_bytes: b"seller-signed-retraction",
+        issued_at: NOW + 1,
+        inclusion_deadline: NOW + 500,
+        created_at: NOW + 1,
+    };
+    let liveness = FindingRetractionIntentCommitLiveness {
+        valid_from: NOW,
+        valid_until: NOW + 1_000,
+    };
+    assert!(matches!(
+        store.issue_retraction_intent_with_commit_clock(&input, liveness, || NOW + 500),
+        Err(FindingStatusStoreError::Conflict(_))
+    ));
+    assert!(store
+        .get_retraction_intent(&intent_id)
+        .expect("load rejected intent")
+        .is_none());
+
+    assert_eq!(
+        store
+            .issue_retraction_intent_with_commit_clock(&input, liveness, || NOW + 2)
+            .expect("commit while every liveness bound still holds"),
+        FindingStatusWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .get_retraction_intent(&intent_id)
+            .expect("load committed intent")
+            .expect("intent exists")
+            .created_at,
+        NOW + 2
+    );
+    assert_eq!(
+        store
+            .issue_retraction_intent_with_commit_clock(
+                &input,
+                FindingRetractionIntentCommitLiveness {
+                    valid_from: NOW,
+                    valid_until: NOW + 400,
+                },
+                || panic!("exact replay must not consult expired admission material"),
+            )
+            .expect("recover exact replay after the commit boundary"),
+        FindingStatusWriteOutcome::ExactReplay
+    );
+}
+
+#[test]
 fn dispatch_eligibility_replay_retains_the_original_authorization_time() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();

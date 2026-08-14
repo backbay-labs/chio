@@ -38,38 +38,6 @@ impl ChioKernel {
         verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
         nonce: AllowResponseNonce,
     ) -> Result<ToolCallResponse, KernelError> {
-        self.build_allow_response_with_metadata_and_payee_binding_before_persist(
-            request,
-            output,
-            timestamp,
-            matched_grant_index,
-            extra_metadata,
-            verified_payee_binding,
-            nonce,
-            |_| Ok(()),
-        )
-    }
-
-    /// Build and sign an allow receipt, stage caller-owned durable bindings,
-    /// and only then append the receipt. The hook is intentionally after
-    /// signing because its binding may require the receipt id, but before the
-    /// append so a hook failure cannot leave a durable Allow behind while the
-    /// caller observes an error.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn build_allow_response_with_metadata_and_payee_binding_before_persist<F>(
-        &self,
-        request: &ToolCallRequest,
-        output: ToolCallOutput,
-        timestamp: u64,
-        matched_grant_index: Option<usize>,
-        extra_metadata: Option<serde_json::Value>,
-        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
-        nonce: AllowResponseNonce,
-        before_persist: F,
-    ) -> Result<ToolCallResponse, KernelError>
-    where
-        F: FnOnce(&ChioReceipt) -> Result<(), KernelError>,
-    {
         let cap = &request.capability;
         if let Err(error) = self.check_revocation(cap) {
             let reason =
@@ -143,7 +111,6 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        before_persist(&receipt)?;
         self.record_chio_receipt_with_federation(request, &receipt)?;
 
         info!(

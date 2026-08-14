@@ -9,9 +9,10 @@ use base64::Engine as _;
 use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_finding::verify_pinned_envelope;
 use chio_store_sqlite::{
-    FindingRetractionIntentInput, FindingRetractionIntentSource, FindingStatusEpochRecord,
-    FindingStatusProofKind, FindingStatusProofRecord, FindingStatusStoreError,
-    FindingStatusWriteOutcome, FindingStickyStatus, SqliteFindingStatusStore,
+    FindingRetractionIntentCommitLiveness, FindingRetractionIntentInput,
+    FindingRetractionIntentSource, FindingStatusEpochRecord, FindingStatusProofKind,
+    FindingStatusProofRecord, FindingStatusStoreError, FindingStatusWriteOutcome,
+    FindingStickyStatus, SqliteFindingStatusStore,
 };
 
 use super::report_validation::validate_service_auth;
@@ -674,17 +675,34 @@ pub(crate) async fn handle_submit_finding_status_intent(
         Ok(now) => now,
         Err(response) => return response,
     };
-    let outcome = match store.issue_retraction_intent(&FindingRetractionIntentInput {
-        intent_id: &body.intent_id,
-        feed_id: &body.feed_id,
-        operator_id: &body.operator_id,
-        finding_id: &body.finding_id,
-        source: body.source.store_source(),
-        intent_bytes: raw.as_bytes(),
-        issued_at: body.issued_at,
-        inclusion_deadline: body.inclusion_deadline,
-        created_at: persistence_now,
-    }) {
+    let operator_valid_until = config
+        .status_feed_operator
+        .revoked_from
+        .unwrap_or(config.status_feed_operator.authority.valid_until)
+        .min(config.status_feed_operator.authority.valid_until);
+    let commit_liveness = FindingRetractionIntentCommitLiveness {
+        valid_from: config
+            .status_feed_operator
+            .authority
+            .valid_from
+            .max(config.status_feed_service_bond.valid_from),
+        valid_until: operator_valid_until.min(config.status_feed_service_bond.valid_until),
+    };
+    let outcome = match store.issue_retraction_intent_with_commit_clock(
+        &FindingRetractionIntentInput {
+            intent_id: &body.intent_id,
+            feed_id: &body.feed_id,
+            operator_id: &body.operator_id,
+            finding_id: &body.finding_id,
+            source: body.source.store_source(),
+            intent_bytes: raw.as_bytes(),
+            issued_at: body.issued_at,
+            inclusion_deadline: body.inclusion_deadline,
+            created_at: persistence_now,
+        },
+        commit_liveness,
+        unix_timestamp_now,
+    ) {
         Ok(outcome) => outcome,
         Err(error) => return status_write_error(error),
     };

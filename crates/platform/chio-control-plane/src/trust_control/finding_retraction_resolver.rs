@@ -325,6 +325,14 @@ impl FindingStatusCache for SqliteFindingStatusCache {
             ));
         }
         let final_now = self.clock.now_unix_secs()?;
+        verify_proof_record(
+            &self.operator,
+            &self.service_bond,
+            self.max_epoch_age_secs,
+            &proof,
+            final_now,
+        )
+        .map_err(FindingRetractionResolveError::InvalidStatus)?;
         let final_decision = self
             .store
             .status_for_purchase(&self.feed_id, finding_id, final_now)

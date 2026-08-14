@@ -570,12 +570,22 @@ impl ChioKernel {
                 })
             })
             .count();
+        let recovery_matching_grant_count =
+            matching_grants
+                .iter()
+                .filter(|matching| {
+                    matching.grant.constraints.iter().any(|constraint| {
+                        matches!(constraint, Constraint::RequireFindingRecovery(_))
+                    })
+                })
+                .count();
         // Only a grant that can serve this request may force the structured path. An
         // unrelated cumulative grant elsewhere in the capability must not withdraw an
         // otherwise exempt call.
         let requires_structured_admission = aggregate_quota.is_some()
             || request.supplemental_authorization.is_some()
-            || cumulative_matching_grant_count != 0;
+            || cumulative_matching_grant_count != 0
+            || recovery_matching_grant_count != 0;
         if request.supplemental_authorization.is_some()
             && self.supplemental_quota_verifier.is_none()
         {
@@ -597,10 +607,15 @@ impl ChioKernel {
         } else {
             SideEffectClass::SideEffecting
         };
-        if !self.durable_admission_mode.covers(effect_class) {
+        // A recovery can be read-only at the tool boundary, but execution has
+        // already been attempted under a durable retry quota. Always route it
+        // through the recoverable terminal projection so its Allow receipt and
+        // receipt-to-delivery lineage cannot disagree and trigger a duplicate
+        // execution after a later persistence failure.
+        if !self.durable_admission_mode.covers(effect_class) && recovery_matching_grant_count == 0 {
             if requires_structured_admission {
                 return Err(KernelError::DurableAdmission(
-                    "aggregate, cumulative, and supplemental authorization requires durable admission coverage"
+                    "aggregate, cumulative, supplemental, and recovery authorization requires durable admission coverage"
                         .to_string(),
                 ));
             }

@@ -166,45 +166,22 @@ impl ChioKernel {
             finalization.metadata,
             finalization.recovery,
         );
+        if finalization.recovery.is_some() {
+            return Err(KernelError::DurableAdmission(
+                "finding recovery requires an atomic durable admission terminal projection"
+                    .to_owned(),
+            ));
+        }
         self.with_pre_invocation_guard_evidence(finalization.guard_evidence, || {
-            let Some(recovery) = finalization.recovery else {
-                return self.finalize_budgeted_tool_output_with_cost_and_metadata(
-                    finalization.request,
-                    finalization.output,
-                    finalization.elapsed,
-                    finalization.timestamp,
-                    finalization.matched_grant_index,
-                    finalization.cost,
-                    metadata,
-                    finalization.payee_binding,
-                );
-            };
-            let FinalizeToolOutputCostContext {
-                charge_result,
-                reported_cost: _,
-                payment_authorization,
-                cap: _,
-            } = finalization.cost;
-            if charge_result.is_some() || payment_authorization.is_some() {
-                return Err(KernelError::Internal(
-                    "finding recovery reached ordinary finalization with monetary state".to_owned(),
-                ));
-            }
-            self.finalize_tool_output_with_metadata_and_payee_binding_before_allow_persist(
+            self.finalize_budgeted_tool_output_with_cost_and_metadata(
                 finalization.request,
                 finalization.output,
                 finalization.elapsed,
                 finalization.timestamp,
                 finalization.matched_grant_index,
+                finalization.cost,
                 metadata,
                 finalization.payee_binding,
-                |receipt| {
-                    self.record_completed_recovery_receipt(
-                        Some(recovery),
-                        &receipt.id,
-                        receipt.timestamp,
-                    )
-                },
             )
         })
     }

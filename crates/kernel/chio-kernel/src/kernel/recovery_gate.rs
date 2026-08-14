@@ -14,7 +14,7 @@ use crate::finding_recovery::{
 use crate::request_matching::resolve_required_matching_grants;
 use crate::runtime::ToolCallRequest;
 
-use super::{ChioKernel, KernelError};
+use super::ChioKernel;
 
 pub(crate) struct RecoveryMarkedGrant<'a> {
     marker: &'a FindingRecoveryMarkerV1,
@@ -560,33 +560,6 @@ impl ChioKernel {
             })?;
         Ok(())
     }
-
-    /// Persist the receipt-to-delivery edge before an ordinary recovery
-    /// response leaves the kernel. Durable finalization calls the same seam
-    /// after committing its terminal projection; the non-durable lanes must
-    /// not release a successful payload without this authenticated lineage.
-    pub(crate) fn record_completed_recovery_receipt(
-        &self,
-        recovery: Option<&VerifiedFindingRecovery>,
-        receipt_id: &str,
-        recorded_at: u64,
-    ) -> Result<(), KernelError> {
-        let Some(recovery) = recovery else {
-            return Ok(());
-        };
-        let verifier = self.finding_recovery_verifier.as_ref().ok_or_else(|| {
-            KernelError::Internal(
-                "finding recovery verifier disappeared during ordinary finalization".to_owned(),
-            )
-        })?;
-        verifier
-            .record_recovery_receipt(recovery, receipt_id, recorded_at)
-            .map_err(|error| {
-                KernelError::Internal(format!(
-                    "finding recovery lineage could not be recorded: {error}"
-                ))
-            })
-    }
 }
 
 pub(crate) fn attach_finding_recovery_metadata(
@@ -1052,7 +1025,7 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_recovery_receipt_is_typed_and_recorded_before_release() {
+    fn recovery_receipt_metadata_keeps_typed_original_lineage() {
         let verified = VerifiedFindingRecovery {
             recovery_id: "a".repeat(64),
             finding_id: "b".repeat(64),
@@ -1079,7 +1052,10 @@ mod tests {
             block.original_delivery_receipt_id,
             verified.original_delivery_receipt_id
         );
+    }
 
+    #[test]
+    fn ordinary_recovery_refuses_non_atomic_terminalization() {
         let receipts = Arc::new(AtomicU64::new(0));
         let mut kernel = kernel();
         kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
@@ -1087,22 +1063,6 @@ mod tests {
             receipts: Arc::clone(&receipts),
             deny_verification: Arc::new(AtomicBool::new(false)),
             fail_receipts: Arc::new(AtomicBool::new(false)),
-        }));
-        kernel
-            .record_completed_recovery_receipt(Some(&verified), "recovery-receipt", 42)
-            .expect("record authenticated recovery lineage");
-        assert_eq!(receipts.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn ordinary_recovery_lineage_failure_prevents_allow_receipt_persistence() {
-        let receipts = Arc::new(AtomicU64::new(0));
-        let mut kernel = kernel();
-        kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
-            reservations: Arc::new(AtomicU64::new(0)),
-            receipts: Arc::clone(&receipts),
-            deny_verification: Arc::new(AtomicBool::new(false)),
-            fail_receipts: Arc::new(AtomicBool::new(true)),
         }));
         let mut request = recovery_request();
         let output = serde_json::json!({"payload": "recovered"});
@@ -1141,9 +1101,9 @@ mod tests {
                     recovery: Some(&verified),
                 },
             )
-            .expect_err("unavailable lineage backend must fail before Allow persistence");
-        assert!(error.to_string().contains("lineage backend unavailable"));
-        assert_eq!(receipts.load(Ordering::SeqCst), 1);
+            .expect_err("ordinary recovery must require a durable terminal projection");
+        assert!(error.to_string().contains("atomic durable admission"));
+        assert_eq!(receipts.load(Ordering::SeqCst), 0);
         assert!(kernel.receipt_log().is_empty());
     }
 
