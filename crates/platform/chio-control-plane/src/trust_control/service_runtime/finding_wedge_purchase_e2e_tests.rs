@@ -2034,6 +2034,7 @@ fn coordinator_with_status_pin(
         authority_status,
         authority_status_pin,
         &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
         &market_config().venue,
         VENUE_ID,
@@ -2057,6 +2058,7 @@ fn coordinator_with_venue(
         authority_status,
         &authority_pin(37, "authority-status"),
         &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
         venue,
         VENUE_ID,
@@ -4694,6 +4696,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_pin(37, "authority-status"),
         &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
         &market_config().venue,
         VENUE_ID,
@@ -4728,6 +4731,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_pin(37, "authority-status"),
         &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
         &market_config().venue,
         VENUE_ID,
@@ -4767,6 +4771,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
                 Arc::new(TestTerminalAuthorityStatusResolver::live()),
                 &aliased_status_pin,
                 &market_config().status_feed_operator,
+                &market_config().status_feed_service_bond,
                 market_config().status_max_epoch_age_secs,
                 &market_config().venue,
                 VENUE_ID,
@@ -4792,6 +4797,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
                 Arc::new(TestTerminalAuthorityStatusResolver::live()),
                 &authority_pin(37, "authority-status"),
                 &market_config().status_feed_operator,
+                &market_config().status_feed_service_bond,
                 market_config().status_max_epoch_age_secs,
                 &aliased_venue_pin,
                 VENUE_ID,
@@ -4813,6 +4819,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
             Arc::new(TestTerminalAuthorityStatusResolver::live()),
             &authority_pin(37, "authority-status"),
             &market_config().status_feed_operator,
+            &market_config().status_feed_service_bond,
             market_config().status_max_epoch_age_secs,
             &market_config().venue,
             VENUE_ID,
@@ -4897,6 +4904,7 @@ async fn wedge_purchase_reservation_cannot_outlive_authority_status_signer() -> 
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_status_pin,
         &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
         &market_config().venue,
         VENUE_ID,
@@ -4992,6 +5000,7 @@ async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_stand
         Arc::new(TestTerminalAuthorityStatusResolver::live()),
         &authority_pin(37, "authority-status"),
         &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
         &expired_venue,
         VENUE_ID,
@@ -5008,6 +5017,47 @@ async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_stand
             now,
         ),
         Err(PurchaseCoordinatorError::AuthorityLifecycle { role: "venue", .. })
+    ));
+    assert!(fixture
+        .authority
+        .finding_purchase_store()
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_none());
+
+    let mut expired_bond = market_config().status_feed_service_bond;
+    expired_bond.valid_until = now;
+    let expired_bond_coordinator = FindingPurchaseCoordinator::new(
+        fixture.authority.finding_purchase_store(),
+        fixture.authority.finding_market_store(),
+        fixture.authority.admission_operation_store(),
+        fixture.authority.tool_outcome_store(),
+        keypair(16),
+        &keypair(16).public_key(),
+        keypair(17),
+        &keypair(17).public_key(),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &authority_pin(37, "authority-status"),
+        &status_operator,
+        &expired_bond,
+        market_config().status_max_epoch_age_secs,
+        &market_config().venue,
+        VENUE_ID,
+    )?;
+    assert!(matches!(
+        expired_bond_coordinator.reserve(
+            &fixture.exchange.bid,
+            &fixture.exchange.ask,
+            &fixture.exchange.buyer_signature_hex,
+            &fixture.deployment.web.admission,
+            &fixture.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "status-operator",
+            ..
+        })
     ));
     assert!(fixture
         .authority

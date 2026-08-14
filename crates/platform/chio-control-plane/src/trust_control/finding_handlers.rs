@@ -46,7 +46,9 @@ use super::*;
 
 #[path = "finding_admission_view.rs"]
 mod admission_view;
-use admission_view::current_admission_view;
+use admission_view::{
+    current_admission_view, terminal_authority_pin, verify_terminal_authority_lifecycle,
+};
 #[path = "finding_handlers/participation.rs"]
 mod participation;
 use participation::reconcile_participation_fee_intent;
@@ -1457,6 +1459,26 @@ pub(crate) async fn handle_activate_finding(
             )
         }
     };
+    if admission.status_feed_operator_ref != finding.status_feed_ref {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "admission status feed does not match the Finding status feed",
+        );
+    }
+    if require_status_feed_through(
+        &config.status_feed_operator,
+        &config.status_feed_service_bond,
+        &finding.status_feed_ref,
+        authorization_now,
+        authorization_now,
+    )
+    .is_err()
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding status service bond is not live for activation",
+        );
+    }
     let status_epoch = match finding_status_store(&state).and_then(|store| {
         store
             .get_current_epoch(&finding.status_feed_ref)
@@ -1737,6 +1759,32 @@ pub(crate) async fn handle_activate_finding(
     {
         return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
+    let Some(authority_status_resolver) = state.finding_authority_status_resolver.as_deref() else {
+        return plain_http_error(
+            StatusCode::CONFLICT,
+            "finding activation requires the authority-status resolver",
+        );
+    };
+    for policy in [
+        &admission.purchase_authority,
+        &admission.failed_delivery_authority,
+    ] {
+        let authority_status = match authority_status_resolver
+            .resolve(&terminal_authority_pin(policy), authorization_now)
+        {
+            Ok(status) => status,
+            Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
+        };
+        if let Err(error) = verify_terminal_authority_lifecycle(
+            policy,
+            &authority_status,
+            &config,
+            admission.issued_at,
+            authorization_now,
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error);
+        }
+    }
 
     // Pinned keys.
     let venue_key = match config.venue.key() {
@@ -1977,14 +2025,18 @@ pub(crate) async fn handle_activate_finding(
     // A crash from here onward leaves one replayable prepare record, so a
     // reconciled charge cannot lose its activation owner.
     if !prepared_replay
-        && config
-            .status_feed_operator
-            .require_live(&finding.status_feed_ref, now)
-            .is_err()
+        && require_status_feed_through(
+            &config.status_feed_operator,
+            &config.status_feed_service_bond,
+            &finding.status_feed_ref,
+            now,
+            now,
+        )
+        .is_err()
     {
         return plain_http_error(
             StatusCode::BAD_REQUEST,
-            "finding status operator is not live for activation",
+            "finding status operator or service bond is not live for activation",
         );
     }
     match store.prepare_listing_activation(

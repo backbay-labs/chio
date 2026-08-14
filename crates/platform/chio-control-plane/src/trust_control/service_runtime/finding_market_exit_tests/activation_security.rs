@@ -231,3 +231,95 @@ async fn admission_views_recheck_current_venue_standing() -> TestResult {
     assert_eq!(status, StatusCode::NOT_FOUND);
     Ok(())
 }
+
+#[tokio::test]
+async fn activation_rejects_an_admission_bound_to_another_status_feed() -> TestResult {
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    stack.seed_market().await?;
+    let mut body = stack.web.admission.body.clone();
+    body.status_feed_operator_ref = "status-feed/another-venue".to_owned();
+    body.admission_id = compute_admission_id(&body)?;
+    let admission = sign_admission(body, &stack.web.venue)?;
+    let request = stack
+        .web
+        .activate_request(&admission, &stack.web.schedule, &stack.web.report)?;
+    let (status, response) = send(
+        &stack.state,
+        authed_post(
+            &format!("/v1/findings/{}/activate", stack.web.finding_id),
+            request,
+        )?,
+    )
+    .await?;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&response).contains("status feed does not match"));
+    assert_not_admitted_with_allocation(&stack, FindingAllocationState::Live).await?;
+    assert!(stack
+        .store
+        .get_fee_event(&stack.publication_fee_key())?
+        .is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn activation_requires_current_terminal_authority_standing_before_fees() -> TestResult {
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let resolver = Arc::new(TestStatusOperatorAuthorityResolver::default());
+    stack.state.finding_authority_status_resolver = Some(resolver.clone());
+    stack.seed_market().await?;
+    resolver.revoke(unix_timestamp_now());
+
+    let (status, response) = stack.activate().await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&response).contains("terminal authority is revoked"));
+    assert_not_admitted_with_allocation(&stack, FindingAllocationState::Live).await?;
+    assert!(stack
+        .store
+        .get_fee_event(&stack.publication_fee_key())?
+        .is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn activation_and_admission_views_require_a_live_status_service_bond() -> TestResult {
+    let mut activation = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    activation.seed_market().await?;
+    activation
+        .state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or_else(|| missing("finding market config"))?
+        .status_feed_service_bond
+        .valid_until = unix_timestamp_now();
+    let (status, response) = activation.activate().await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&response).contains("service bond is not live"));
+    assert_not_admitted_with_allocation(&activation, FindingAllocationState::Live).await?;
+    assert!(activation
+        .store
+        .get_fee_event(&activation.publication_fee_key())?
+        .is_none());
+
+    let mut discovery = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    discovery.seed_market().await?;
+    let (status, response) = discovery.activate().await?;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&response)
+    );
+    assert!(discovery.admission_marker().await?.is_some());
+    discovery
+        .state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or_else(|| missing("finding market config"))?
+        .status_feed_service_bond
+        .valid_until = unix_timestamp_now();
+    assert!(discovery.admission_marker().await?.is_none());
+    Ok(())
+}

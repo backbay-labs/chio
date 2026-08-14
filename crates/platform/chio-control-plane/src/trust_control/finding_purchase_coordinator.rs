@@ -61,7 +61,8 @@ use chio_store_sqlite::{
 use super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::finding_purchase_verifier::{PurchaseReservationReader, ReservationExpectation};
 use super::service_types::{
-    FindingAuthorityPin, FindingStatusOperatorPin, FINDING_STATUS_MAX_EPOCH_AGE_SECS,
+    require_status_feed_through, FindingAuthorityPin, FindingStatusOperatorPin,
+    FindingStatusServiceBond, FINDING_STATUS_MAX_EPOCH_AGE_SECS,
 };
 
 /// Domain separator for the deterministic reservation identity.
@@ -222,6 +223,7 @@ pub struct FindingPurchaseCoordinator {
     authority_status: Arc<dyn FindingAuthorityStatusResolver>,
     authority_status_pin: FindingAuthorityPin,
     status_feed_operator: FindingStatusOperatorPin,
+    status_feed_service_bond: FindingStatusServiceBond,
     status_max_epoch_age_secs: u64,
     venue_authority: FindingAuthorityPin,
     venue_id: String,
@@ -246,6 +248,7 @@ impl FindingPurchaseCoordinator {
         authority_status: Arc<dyn FindingAuthorityStatusResolver>,
         authority_status_pin: &FindingAuthorityPin,
         status_feed_operator: &FindingStatusOperatorPin,
+        status_feed_service_bond: &FindingStatusServiceBond,
         status_max_epoch_age_secs: u64,
         venue_pin: &FindingAuthorityPin,
         venue_id: &str,
@@ -264,6 +267,9 @@ impl FindingPurchaseCoordinator {
                 &status_feed_operator.feed_id,
                 status_feed_operator.authority.valid_from,
             )
+            .map_err(|_| PurchaseCoordinatorError::AuthorityStatusPin)?;
+        status_feed_service_bond
+            .validate(status_feed_operator)
             .map_err(|_| PurchaseCoordinatorError::AuthorityStatusPin)?;
         if authority_status_key == purchase_authority.public_key()
             || authority_status_key == failed_delivery_authority.public_key()
@@ -297,6 +303,7 @@ impl FindingPurchaseCoordinator {
             authority_status,
             authority_status_pin: authority_status_pin.clone(),
             status_feed_operator: status_feed_operator.clone(),
+            status_feed_service_bond: status_feed_service_bond.clone(),
             status_max_epoch_age_secs,
             venue_authority: venue_pin.clone(),
             venue_id: venue_id.to_owned(),
@@ -465,13 +472,17 @@ impl FindingPurchaseCoordinator {
         feed_id: &str,
         now: u64,
     ) -> Result<(&str, u64), PurchaseCoordinatorError> {
-        let key = self
-            .status_feed_operator
-            .require_live(feed_id, now)
-            .map_err(|_| PurchaseCoordinatorError::AuthorityLifecycle {
-                role: "status-operator",
-                reason: "configured operator authorization is not live",
-            })?;
+        let key = require_status_feed_through(
+            &self.status_feed_operator,
+            &self.status_feed_service_bond,
+            feed_id,
+            now,
+            now,
+        )
+        .map_err(|_| PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "status-operator",
+            reason: "configured operator authorization or service bond is not live",
+        })?;
         let policy = FindingAuthorityKeyPolicy {
             authority_id: self.status_feed_operator.authority.authority_id.clone(),
             key: key.clone(),

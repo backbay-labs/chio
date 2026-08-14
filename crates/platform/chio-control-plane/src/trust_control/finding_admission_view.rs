@@ -1,13 +1,13 @@
 use super::super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::{
-    live_admission_epoch, verify_status_operator_authority_lifecycle,
+    live_admission_epoch, require_status_feed_through, verify_status_operator_authority_lifecycle,
     verify_venue_authority_lifecycle, FindingAuthorityKeyPolicy, FindingAuthorityPin,
     FindingMarketConfig, FindingSearchAdmissionView, SignedFindingAdmission,
     SignedFindingAuthorityStatus, SqliteFindingMarketStore, SqliteFindingStatusStore,
     FINDING_AUTHORITY_STATUS_MAX_AGE_SECS,
 };
 
-fn terminal_authority_pin(policy: &FindingAuthorityKeyPolicy) -> FindingAuthorityPin {
+pub(super) fn terminal_authority_pin(policy: &FindingAuthorityKeyPolicy) -> FindingAuthorityPin {
     FindingAuthorityPin {
         authority_id: policy.authority_id.clone(),
         key_hex: policy.key.to_hex(),
@@ -18,7 +18,7 @@ fn terminal_authority_pin(policy: &FindingAuthorityKeyPolicy) -> FindingAuthorit
     }
 }
 
-fn verify_terminal_authority_lifecycle(
+pub(super) fn verify_terminal_authority_lifecycle(
     policy: &FindingAuthorityKeyPolicy,
     authority_status: &SignedFindingAuthorityStatus,
     config: &FindingMarketConfig,
@@ -80,6 +80,14 @@ pub(super) fn current_admission_view(
     now: u64,
 ) -> Option<FindingSearchAdmissionView> {
     let status_operator_authority_status = status_operator_authority_status?;
+    require_status_feed_through(
+        &config.status_feed_operator,
+        &config.status_feed_service_bond,
+        &config.status_feed_operator.feed_id,
+        now,
+        now,
+    )
+    .ok()?;
     let status_epoch = status_store
         .get_current_epoch(&config.status_feed_operator.feed_id)
         .ok()?;
