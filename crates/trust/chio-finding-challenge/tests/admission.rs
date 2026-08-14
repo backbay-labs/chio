@@ -592,6 +592,23 @@ fn standing_requires_fresh_purchase_authority_status() -> TestResult {
 }
 
 #[test]
+fn a_backdated_purchase_record_cannot_borrow_a_later_settlement_receipt() -> TestResult {
+    let mut world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::BackdatedAfterSettlement)?;
+    world.purchase_authority_status =
+        world.purchase_status(Some(case.purchase_record.body.recorded_at + 50))?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingSettlementNotEstablished,
+    )?;
+    Ok(())
+}
+
+#[test]
 fn standing_must_name_the_purchase_key_the_record_carries() -> TestResult {
     let world = world()?;
     let case = evidence_case_with_standing(&world, StandingShape::ForeignPurchaseKey)?;

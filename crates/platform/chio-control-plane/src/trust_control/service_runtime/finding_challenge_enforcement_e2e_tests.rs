@@ -78,7 +78,8 @@ use chio_finding::{
 };
 use chio_finding_challenge::{
     FindingChallengeClassEvidence, FindingDigestMismatchEvidence, FindingEvidenceInvalidEvidence,
-    FindingReplayContradictionEvidence, FindingResolvedReproduction,
+    FindingPurchaseStandingEvidence, FindingReplayContradictionEvidence,
+    FindingResolvedReproduction,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_kernel::checkpoint::{
@@ -158,9 +159,12 @@ use tower::ServiceExt;
 
 #[path = "finding_challenge_enforcement_e2e_tests/evidence_bundle_tests.rs"]
 mod evidence_bundle_tests;
+#[path = "finding_challenge_enforcement_e2e_tests/purchase_standing_fixture.rs"]
+mod purchase_standing_fixture;
 #[path = "finding_challenge_enforcement_e2e_tests/replay_fixture.rs"]
 mod replay_fixture;
 
+use purchase_standing_fixture::{clone_resolved, settled_delivery_evidence, SettledPurchase};
 use replay_fixture::{PhaseShape, ReplayActionFactory};
 
 use super::build_router;
@@ -1953,6 +1957,10 @@ fn digest_mismatch_case(
 struct EvidenceInvalidCase {
     challenge: SignedFindingChallenge,
     purchase_record: SignedFindingPurchaseRecord,
+    purchase_delivery_receipt: ResolvedReceiptEvidence,
+    purchase_delivery_checkpoint: KernelCheckpoint,
+    purchase_delivery_checkpoint_transparency: CheckpointTransparencySummary,
+    purchase_delivery_authority_status: SignedFindingAuthorityStatus,
     receipts: Vec<ResolvedReceiptEvidence>,
     checkpoint: KernelCheckpoint,
     checkpoint_transparency: CheckpointTransparencySummary,
@@ -1982,7 +1990,13 @@ impl EvidenceInvalidCase {
         checkpoint_transparency: &'a CheckpointTransparencySummary,
     ) -> FindingChallengeClassEvidence<'a> {
         FindingChallengeClassEvidence::EvidenceInvalid(FindingEvidenceInvalidEvidence {
-            purchase_record: &self.purchase_record,
+            purchase_standing: FindingPurchaseStandingEvidence {
+                purchase_record: &self.purchase_record,
+                delivery_receipt: &self.purchase_delivery_receipt,
+                delivery_checkpoint: &self.purchase_delivery_checkpoint,
+                delivery_checkpoint_transparency: &self.purchase_delivery_checkpoint_transparency,
+                delivery_authority_status: &self.purchase_delivery_authority_status,
+            },
             challenged_receipts: &self.receipts,
             challenged_checkpoint: checkpoint,
             checkpoint_transparency,
@@ -2059,6 +2073,12 @@ fn evidence_invalid_case(
     Ok(EvidenceInvalidCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
         purchase_record: standing.record.clone(),
+        purchase_delivery_receipt: clone_resolved(&standing.delivery_receipt)?,
+        purchase_delivery_checkpoint: standing.delivery_checkpoint.clone(),
+        purchase_delivery_checkpoint_transparency: standing
+            .delivery_checkpoint_transparency
+            .clone(),
+        purchase_delivery_authority_status: standing.delivery_authority_status.clone(),
         receipts: evidence.receipts,
         checkpoint: evidence.checkpoint,
         checkpoint_transparency,
@@ -2075,6 +2095,10 @@ fn evidence_invalid_case(
 struct ReplayCase {
     challenge: SignedFindingChallenge,
     purchase_record: SignedFindingPurchaseRecord,
+    purchase_delivery_receipt: ResolvedReceiptEvidence,
+    purchase_delivery_checkpoint: KernelCheckpoint,
+    purchase_delivery_checkpoint_transparency: CheckpointTransparencySummary,
+    purchase_delivery_authority_status: SignedFindingAuthorityStatus,
     replay_authority_status: SignedFindingAuthorityStatus,
     receipts: Vec<ResolvedReceiptEvidence>,
     checkpoint: KernelCheckpoint,
@@ -2098,7 +2122,13 @@ impl ReplayCase {
         reproductions: &'a [FindingResolvedReproduction<'a>],
     ) -> FindingChallengeClassEvidence<'a> {
         FindingChallengeClassEvidence::ReplayContradiction(FindingReplayContradictionEvidence {
-            purchase_record: &self.purchase_record,
+            purchase_standing: FindingPurchaseStandingEvidence {
+                purchase_record: &self.purchase_record,
+                delivery_receipt: &self.purchase_delivery_receipt,
+                delivery_checkpoint: &self.purchase_delivery_checkpoint,
+                delivery_checkpoint_transparency: &self.purchase_delivery_checkpoint_transparency,
+                delivery_authority_status: &self.purchase_delivery_authority_status,
+            },
             replay_authority_status: &self.replay_authority_status,
             reproductions,
         })
@@ -2226,6 +2256,12 @@ fn replay_case(
     Ok(ReplayCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
         purchase_record: standing.record.clone(),
+        purchase_delivery_receipt: clone_resolved(&standing.delivery_receipt)?,
+        purchase_delivery_checkpoint: standing.delivery_checkpoint.clone(),
+        purchase_delivery_checkpoint_transparency: standing
+            .delivery_checkpoint_transparency
+            .clone(),
+        purchase_delivery_authority_status: standing.delivery_authority_status.clone(),
         replay_authority_status,
         receipts: resolved,
         checkpoint,
@@ -2304,9 +2340,10 @@ fn audit_seed() -> String {
 /// eligible snapshot and the seed commitment, the snapshot itself, and the
 /// seed the venue later revealed.
 fn published_audit_round() -> Result<FindingAuditRound, AnyError> {
-    let (finding, _) = finding_artifact()?;
+    let challenged = challenged_finding()?;
+    let finding = &challenged.finding;
     audit_round_over(vec![EligibleListing {
-        finding_id: finding.finding_id,
+        finding_id: finding.finding_id.clone(),
         listing_id: LISTING_ID.to_string(),
         weight_or_none: None,
     }])
@@ -2464,19 +2501,6 @@ fn venue_audit_challenge_for_round(
     Ok(SignedExportEnvelope::sign(challenge, &keypair(35))?)
 }
 
-// ---------------------------------------------------------------------------
-// Settled purchases the claim snapshot derives from
-// ---------------------------------------------------------------------------
-
-/// One settled sale as the claim snapshot and the two standing-bearing
-/// evidence classes read it.
-#[derive(Clone)]
-struct SettledPurchase {
-    purchase_key: String,
-    record: SignedFindingPurchaseRecord,
-    record_envelope_sha256: String,
-}
-
 /// Whether the sale path admitted the record's payout destination. A
 /// destination that was never admitted must never reach a distribution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2562,7 +2586,7 @@ fn settle_purchase_with(
             created_at: now,
         })?;
     let ordinal = deployment.purchases.reserve_slot(&reservation_id, now)?;
-    let record = FindingPurchaseRecord {
+    let mut record = FindingPurchaseRecord {
         schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_string(),
         purchase_key: derive_purchase_key(&bid, &payment_operation_id),
         purchase_intent_id: format!("intent-{tag}"),
@@ -2583,11 +2607,14 @@ fn settle_purchase_with(
         },
         seller_backing_envelope_sha256: hex64('6'),
         encumbrance_id: format!("encumbrance-{tag}"),
-        delivery_receipt_id: format!("receipt-delivery-{tag}"),
+        delivery_receipt_id: String::new(),
         payment_reference: payment_operation_id.clone(),
         payout_destination: refund_destination.clone(),
         recorded_at: now,
     };
+    let delivery =
+        settled_delivery_evidence(&record, &reservation_id, &finding.payload_sha256, now)?;
+    record.delivery_receipt_id = delivery.receipt.receipt.id.clone();
     record.validate()?;
     let purchase_key = record.purchase_key.clone();
     let signed = SignedFindingPurchaseRecord::sign(record, &keypair(16))?;
@@ -2608,7 +2635,7 @@ fn settle_purchase_with(
             purchase_key: &purchase_key,
             record_json: &record_json,
             record_sha256: &record_sha256,
-            delivery_receipt_id: &format!("receipt-delivery-{tag}"),
+            delivery_receipt_id: &delivery.receipt.receipt.id,
             payout_destination: settlement_destination,
             retention_expires_at: now + 100_000,
             now,
@@ -2618,6 +2645,10 @@ fn settle_purchase_with(
         record_envelope_sha256: signed_envelope_sha256(&signed)?,
         purchase_key,
         record: signed,
+        delivery_receipt: delivery.receipt,
+        delivery_checkpoint: delivery.checkpoint,
+        delivery_checkpoint_transparency: delivery.checkpoint_transparency,
+        delivery_authority_status: delivery.authority_status,
     })
 }
 

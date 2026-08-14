@@ -9,7 +9,7 @@ use chio_finding::{
 };
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeInadmissible,
-    FindingChallengeReason, FindingEvidenceInvalidEvidence,
+    FindingChallengeReason, FindingEvidenceInvalidEvidence, FindingPurchaseStandingEvidence,
 };
 
 use support::{
@@ -567,7 +567,15 @@ fn an_evidence_set_smaller_than_the_contested_subset_is_inadmissible() -> TestRe
     let proofs = case.revocation_proofs();
     // The challenge contests two receipts; the resolver supplied one.
     let evidence = FindingChallengeClassEvidence::EvidenceInvalid(FindingEvidenceInvalidEvidence {
-        purchase_record: &case.purchase_record,
+        purchase_standing: FindingPurchaseStandingEvidence {
+            purchase_record: &case.purchase_record,
+            delivery_receipt: &case.purchase_standing.delivery_receipt,
+            delivery_checkpoint: &case.purchase_standing.delivery_checkpoint,
+            delivery_checkpoint_transparency: &case
+                .purchase_standing
+                .delivery_checkpoint_transparency,
+            delivery_authority_status: &case.purchase_standing.delivery_authority_status,
+        },
         challenged_receipts: &case.challenged_receipts[..1],
         challenged_checkpoint: &case.challenged_checkpoint,
         checkpoint_transparency: &case.checkpoint_transparency,

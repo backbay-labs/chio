@@ -5336,9 +5336,11 @@ impl FindingChallengeCoordinator {
         now: u64,
     ) -> Result<Option<SignedFindingAuthorityStatus>, ChallengeCoordinatorError> {
         let signed = match evidence {
-            FindingChallengeClassEvidence::EvidenceInvalid(evidence) => evidence.purchase_record,
+            FindingChallengeClassEvidence::EvidenceInvalid(evidence) => {
+                evidence.purchase_standing.purchase_record
+            }
             FindingChallengeClassEvidence::ReplayContradiction(evidence) => {
-                evidence.purchase_record
+                evidence.purchase_standing.purchase_record
             }
             FindingChallengeClassEvidence::DigestMismatch(_) => return Ok(None),
         };
@@ -5991,8 +5993,16 @@ impl FindingChallengeCoordinator {
             .map_err(|_| ChallengeCoordinatorError::Canonical)?;
         let (branch, mut supplemental_digests) = match evidence {
             FindingChallengeClassEvidence::EvidenceInvalid(resolved) => {
+                let standing = &resolved.purchase_standing;
                 let mut digests = vec![
-                    self.envelope_digest(resolved.purchase_record)?,
+                    self.envelope_digest(standing.purchase_record)?,
+                    self.resolved_receipt_digest(
+                        &standing.delivery_receipt.canonical_receipt_bytes,
+                        &standing.delivery_receipt.inclusion_proof,
+                    )?,
+                    self.canonical_digest(standing.delivery_checkpoint)?,
+                    self.canonical_digest(standing.delivery_checkpoint_transparency)?,
+                    self.envelope_digest(standing.delivery_authority_status)?,
                     self.envelope_digest(resolved.production_authority_status)?,
                 ];
                 if let Some(status) = purchase_authority_status {
@@ -6008,6 +6018,7 @@ impl FindingChallengeCoordinator {
                 digests.push(self.canonical_digest(resolved.checkpoint_transparency)?);
                 for proof in resolved.revoked_keys {
                     digests.push(self.envelope_digest(proof.statement)?);
+                    digests.push(self.envelope_digest(proof.publication_status)?);
                     digests.push(self.envelope_digest(proof.governance_authority_status)?);
                 }
                 ("evidence_invalid", digests)
@@ -6027,8 +6038,16 @@ impl FindingChallengeCoordinator {
                 ],
             ),
             FindingChallengeClassEvidence::ReplayContradiction(resolved) => {
+                let standing = &resolved.purchase_standing;
                 let mut digests = vec![
-                    self.envelope_digest(resolved.purchase_record)?,
+                    self.envelope_digest(standing.purchase_record)?,
+                    self.resolved_receipt_digest(
+                        &standing.delivery_receipt.canonical_receipt_bytes,
+                        &standing.delivery_receipt.inclusion_proof,
+                    )?,
+                    self.canonical_digest(standing.delivery_checkpoint)?,
+                    self.canonical_digest(standing.delivery_checkpoint_transparency)?,
+                    self.envelope_digest(standing.delivery_authority_status)?,
                     self.envelope_digest(resolved.replay_authority_status)?,
                 ];
                 if let Some(status) = purchase_authority_status {

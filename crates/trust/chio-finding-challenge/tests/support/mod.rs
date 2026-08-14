@@ -53,7 +53,7 @@ use chio_finding::{
 use chio_finding_challenge::{
     FindingChallengeAdjudication, FindingChallengeClassEvidence, FindingChallengeEvaluation,
     FindingChallengeEvaluationInput, FindingChallengeInadmissible, FindingChallengeReason,
-    FindingDigestMismatchEvidence, FindingEvidenceInvalidEvidence,
+    FindingDigestMismatchEvidence, FindingEvidenceInvalidEvidence, FindingPurchaseStandingEvidence,
     FindingReplayContradictionEvidence, FindingResolvedReproduction,
     FindingRetainedAuthorityPolicy, FindingRevokedKeyProof,
 };
@@ -78,6 +78,7 @@ pub const PUBLISHED_AT: u64 = 1_700_000_000;
 pub const EVALUATED_AT: u64 = 1_750_000_500;
 pub const KEY_VALID_FROM: u64 = 1_600_000_000;
 pub const KEY_VALID_UNTIL: u64 = 1_900_000_000;
+const PURCHASE_KEY_VALID_UNTIL: u64 = 1_745_000_000;
 
 pub fn keypair(seed: u8) -> Keypair {
     Keypair::from_seed(&[seed; 32])
@@ -439,7 +440,10 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
             FindingFacetKind::CheckpointMembership,
         ],
         verifier_report_signer: key_policy(&keypair(15).public_key(), "verifier-report"),
-        purchase_authority: key_policy(&purchase_authority.public_key(), "purchase"),
+        purchase_authority: FindingAuthorityKeyPolicy {
+            valid_until: PURCHASE_KEY_VALID_UNTIL,
+            ..key_policy(&purchase_authority.public_key(), "purchase")
+        },
         failed_delivery_authority: key_policy(
             &failed_delivery_authority.public_key(),
             "failed-delivery",
@@ -702,11 +706,18 @@ impl World {
         &self,
         shape: StandingShape,
     ) -> Built<SignedFindingPurchaseRecord> {
+        Ok(self.purchase_standing_shaped(shape)?.0)
+    }
+
+    fn purchase_standing_shaped(
+        &self,
+        shape: StandingShape,
+    ) -> Built<(SignedFindingPurchaseRecord, PurchaseStandingProof)> {
         let buyer = match shape {
             StandingShape::ForeignBuyer => keypair(77).public_key(),
             _ => self.buyer.public_key(),
         };
-        let record = FindingPurchaseRecord {
+        let mut record = FindingPurchaseRecord {
             schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_string(),
             purchase_key: derive_purchase_key(HEX64_THIRD, PAYMENT_OPERATION_ID),
             purchase_intent_id: PURCHASE_INTENT_ID.to_string(),
@@ -730,23 +741,81 @@ impl World {
                 _ => HEX64_ALT.to_string(),
             },
             encumbrance_id: "encumbrance-42".to_string(),
-            delivery_receipt_id: "delivery-receipt-42".to_string(),
+            delivery_receipt_id: String::new(),
             payment_reference: "payment-reference-42".to_string(),
             payout_destination: "0x1111111111111111111111111111111111111111".to_owned(),
             // The only difference of an unnamed record: it is a settled
             // record of the same sale that the challenge does not name.
             recorded_at: match shape {
                 StandingShape::UnnamedRecord => 1_740_000_001,
-                StandingShape::OutsideAuthorityWindow => KEY_VALID_UNTIL + 1,
+                StandingShape::OutsideAuthorityWindow => PURCHASE_KEY_VALID_UNTIL,
                 _ => 1_740_000_000,
             },
         };
+        let receipt_timestamp = match shape {
+            StandingShape::BackdatedAfterSettlement => record.recorded_at + 100,
+            _ => record.recorded_at,
+        };
+        let metadata = serde_json::json!({
+            FINDING_DELIVERY_METADATA_KEY: FindingDelivery {
+                schema: FINDING_DELIVERY_SCHEMA.to_string(),
+                finding_id: record.finding_id.clone(),
+                listing_id: record.listing_id.clone(),
+                transform_profile: FindingTransformProfile::Identity,
+                digest_check: DeliveryResult::Matched,
+                media_type_check: FindingMediaTypeCheck::Matched,
+                settlement_mode: FindingDeliverySettlementMode::LocalReversibleHold,
+                accepted_bid_envelope_sha256: record.accepted_bid_envelope_sha256.clone(),
+                venue_admission_envelope_sha256: record
+                    .venue_admission_envelope_sha256
+                    .clone(),
+                reservation_id: RESERVATION_ID.to_string(),
+                purchase_intent_id: record.purchase_intent_id.clone(),
+                authoritative_payment_operation_id: record
+                    .authoritative_payment_operation_id
+                    .clone(),
+            }
+        });
+        let receipt = signed_receipt(
+            &self.delivery_kernel,
+            receipt_timestamp,
+            "finding.reveal",
+            ToolCallAction::from_parameters(serde_json::json!({ "finding": "reveal" }))?,
+            Decision::Allow,
+            &self.finding.payload_sha256,
+            Some(metadata),
+        )?;
+        record.delivery_receipt_id = receipt.id.clone();
         let authority = match shape {
             StandingShape::ForeignAuthority => &self.buyer,
             StandingShape::AdmissionAuthority => &self.delivery_kernel,
             _ => &self.purchase_authority,
         };
-        Ok(SignedExportEnvelope::sign(record, authority)?)
+        let signed = SignedExportEnvelope::sign(record, authority)?;
+        let leaves = vec![canonical_json_bytes(&receipt)?];
+        let checkpoint = build_checkpoint(1, 1, 1, &leaves, &self.delivery_kernel)?;
+        let resolved = resolve(receipt, &leaves, 0, 1, 1)?;
+        let checkpoint_transparency =
+            build_checkpoint_transparency(core::slice::from_ref(&checkpoint))?;
+        let delivery_policy = self
+            .profile
+            .body
+            .receipt_signers
+            .iter()
+            .find(|signer| signer.role == FindingReceiptRole::Delivery)
+            .map(|signer| &signer.policy)
+            .ok_or("missing delivery role policy")?;
+        let delivery_authority_status =
+            signed_authority_status(delivery_policy, &self.authority_status, None)?;
+        Ok((
+            signed,
+            PurchaseStandingProof {
+                delivery_receipt: resolved,
+                delivery_checkpoint: checkpoint,
+                delivery_checkpoint_transparency: checkpoint_transparency,
+                delivery_authority_status,
+            },
+        ))
     }
 
     /// A revocation statement for one key, built against the production
@@ -1142,11 +1211,22 @@ pub enum StandingShape {
     ForeignBuyer,
     /// The declared standing names a purchase key the record does not carry.
     ForeignPurchaseKey,
+    /// A compromised purchase authority backdates a new record before the
+    /// authenticated delivery receipt that is supposed to establish it.
+    BackdatedAfterSettlement,
+}
+
+pub struct PurchaseStandingProof {
+    pub delivery_receipt: ResolvedReceiptEvidence,
+    pub delivery_checkpoint: KernelCheckpoint,
+    pub delivery_checkpoint_transparency: CheckpointTransparencySummary,
+    pub delivery_authority_status: SignedFindingAuthorityStatus,
 }
 
 pub struct EvidenceCase {
     pub challenge: SignedFindingChallenge,
     pub purchase_record: SignedFindingPurchaseRecord,
+    pub purchase_standing: PurchaseStandingProof,
     pub challenged_receipts: Vec<ResolvedReceiptEvidence>,
     pub challenged_checkpoint: KernelCheckpoint,
     pub checkpoint_transparency: CheckpointTransparencySummary,
@@ -1195,7 +1275,15 @@ impl EvidenceCase {
         proofs: &'a [FindingRevokedKeyProof<'a>],
     ) -> FindingChallengeClassEvidence<'a> {
         FindingChallengeClassEvidence::EvidenceInvalid(FindingEvidenceInvalidEvidence {
-            purchase_record: &self.purchase_record,
+            purchase_standing: FindingPurchaseStandingEvidence {
+                purchase_record: &self.purchase_record,
+                delivery_receipt: &self.purchase_standing.delivery_receipt,
+                delivery_checkpoint: &self.purchase_standing.delivery_checkpoint,
+                delivery_checkpoint_transparency: &self
+                    .purchase_standing
+                    .delivery_checkpoint_transparency,
+                delivery_authority_status: &self.purchase_standing.delivery_authority_status,
+            },
             challenged_receipts: &self.challenged_receipts,
             challenged_checkpoint: &self.challenged_checkpoint,
             checkpoint_transparency: &self.checkpoint_transparency,
@@ -1227,7 +1315,7 @@ fn build_evidence_case(
     standing: StandingShape,
     revoked_keys: Vec<RevokedKey>,
 ) -> Built<EvidenceCase> {
-    let purchase_record = world.purchase_record_shaped(standing)?;
+    let (purchase_record, purchase_standing) = world.purchase_standing_shaped(standing)?;
     // Every shape but the unnamed record names the record it carries, so the
     // gate under test is the only one that can fail.
     let purchase_record_envelope_sha256 = match standing {
@@ -1359,6 +1447,7 @@ fn build_evidence_case(
     Ok(EvidenceCase {
         challenge,
         purchase_record,
+        purchase_standing,
         challenged_receipts,
         challenged_checkpoint,
         checkpoint_transparency,
@@ -1478,6 +1567,7 @@ impl Default for ReplayShape {
 pub struct ReplayCase {
     pub challenge: SignedFindingChallenge,
     pub purchase_record: SignedFindingPurchaseRecord,
+    pub purchase_standing: PurchaseStandingProof,
     pub replay_authority_status: SignedFindingAuthorityStatus,
     pub receipts: Vec<ResolvedReceiptEvidence>,
     pub checkpoint: KernelCheckpoint,
@@ -1501,7 +1591,15 @@ impl ReplayCase {
         reproductions: &'a [FindingResolvedReproduction<'a>],
     ) -> FindingChallengeClassEvidence<'a> {
         FindingChallengeClassEvidence::ReplayContradiction(FindingReplayContradictionEvidence {
-            purchase_record: &self.purchase_record,
+            purchase_standing: FindingPurchaseStandingEvidence {
+                purchase_record: &self.purchase_record,
+                delivery_receipt: &self.purchase_standing.delivery_receipt,
+                delivery_checkpoint: &self.purchase_standing.delivery_checkpoint,
+                delivery_checkpoint_transparency: &self
+                    .purchase_standing
+                    .delivery_checkpoint_transparency,
+                delivery_authority_status: &self.purchase_standing.delivery_authority_status,
+            },
             replay_authority_status: &self.replay_authority_status,
             reproductions,
         })
@@ -1509,7 +1607,8 @@ impl ReplayCase {
 }
 
 pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
-    let purchase_record = world.purchase_record()?;
+    let (purchase_record, purchase_standing) =
+        world.purchase_standing_shaped(StandingShape::Sound)?;
     let purchase_record_envelope_sha256 = signed_envelope_sha256(&purchase_record)?;
     let recipe_preimage = shape
         .recipe_preimage
@@ -1644,6 +1743,7 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
     Ok(ReplayCase {
         challenge,
         purchase_record,
+        purchase_standing,
         replay_authority_status,
         receipts: resolved,
         checkpoint,

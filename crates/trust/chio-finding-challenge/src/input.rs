@@ -110,8 +110,8 @@ pub struct FindingDigestMismatchEvidence<'a> {
 
 /// Resolved evidence for an `evidence_invalid` challenge.
 pub struct FindingEvidenceInvalidEvidence<'a> {
-    /// The purchase-authority-signed record that establishes standing.
-    pub purchase_record: &'a SignedFindingPurchaseRecord,
+    /// Authenticated settled-purchase evidence that establishes standing.
+    pub purchase_standing: FindingPurchaseStandingEvidence<'a>,
     /// Exactly the contested receipts, in the order the challenge names
     /// them.
     pub challenged_receipts: &'a [ResolvedReceiptEvidence],
@@ -152,12 +152,23 @@ pub struct FindingRevokedKeyProof<'a> {
 
 /// Resolved evidence for a `replay_contradiction` challenge.
 pub struct FindingReplayContradictionEvidence<'a> {
-    /// The purchase-authority-signed record that establishes standing.
-    pub purchase_record: &'a SignedFindingPurchaseRecord,
+    /// Authenticated settled-purchase evidence that establishes standing.
+    pub purchase_standing: FindingPurchaseStandingEvidence<'a>,
     /// Fresh authenticated lifecycle reading for the replay receipt role.
     pub replay_authority_status: &'a SignedFindingAuthorityStatus,
     /// One resolved reproduction per challenge tuple, in challenge order.
     pub reproductions: &'a [FindingResolvedReproduction<'a>],
+}
+
+/// Exact purchase record plus the authenticated delivery terminal that fixes
+/// when the purchase authority published it.
+#[derive(Clone, Copy)]
+pub struct FindingPurchaseStandingEvidence<'a> {
+    pub purchase_record: &'a SignedFindingPurchaseRecord,
+    pub delivery_receipt: &'a ResolvedReceiptEvidence,
+    pub delivery_checkpoint: &'a KernelCheckpoint,
+    pub delivery_checkpoint_transparency: &'a CheckpointTransparencySummary,
+    pub delivery_authority_status: &'a SignedFindingAuthorityStatus,
 }
 
 /// One resolved reproduction tuple: the mediated runner receipt and the
@@ -206,6 +217,8 @@ pub enum FindingChallengeInadmissible {
     StandingRejected(FindingError),
     #[error("purchase authority is not established for the instant the standing record settled")]
     StandingAuthorityNotEstablished,
+    #[error("purchase standing has no authenticated settlement receipt at its recorded instant")]
+    StandingSettlementNotEstablished,
     #[error("failed-delivery authority is not established for the instant the standing terminal was recorded")]
     FailedDeliveryAuthorityNotEstablished,
     #[error("standing artifact does not bind the challenge: {0}")]

@@ -11,7 +11,7 @@ use chio_finding::{
 };
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeInadmissible,
-    FindingChallengeReason, FindingReplayContradictionEvidence,
+    FindingChallengeReason, FindingPurchaseStandingEvidence, FindingReplayContradictionEvidence,
 };
 
 use support::{
@@ -335,7 +335,15 @@ fn a_reproduction_set_smaller_than_the_challenge_is_inadmissible() -> TestResult
     // The challenge carries two tuples; the resolver supplied one.
     let evidence =
         FindingChallengeClassEvidence::ReplayContradiction(FindingReplayContradictionEvidence {
-            purchase_record: &case.purchase_record,
+            purchase_standing: FindingPurchaseStandingEvidence {
+                purchase_record: &case.purchase_record,
+                delivery_receipt: &case.purchase_standing.delivery_receipt,
+                delivery_checkpoint: &case.purchase_standing.delivery_checkpoint,
+                delivery_checkpoint_transparency: &case
+                    .purchase_standing
+                    .delivery_checkpoint_transparency,
+                delivery_authority_status: &case.purchase_standing.delivery_authority_status,
+            },
             replay_authority_status: &case.replay_authority_status,
             reproductions: &reproductions[..1],
         });

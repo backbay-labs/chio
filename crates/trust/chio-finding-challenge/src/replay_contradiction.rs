@@ -56,7 +56,7 @@ pub(crate) fn evaluate_replay_contradiction(
 ) -> Result<FindingChallengeAdjudication, FindingChallengeInadmissible> {
     bind_purchase_record(
         context,
-        evidence.purchase_record,
+        &evidence.purchase_standing,
         purchase_record_envelope_sha256,
     )?;
 

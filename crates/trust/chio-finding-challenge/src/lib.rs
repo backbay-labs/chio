@@ -49,7 +49,8 @@ pub use ingress::FindingIngressError;
 pub use input::{
     FindingChallengeAdjudication, FindingChallengeClassEvidence, FindingChallengeEvaluation,
     FindingChallengeEvaluationInput, FindingChallengeInadmissible, FindingDigestMismatchEvidence,
-    FindingEvidenceInvalidEvidence, FindingReplayContradictionEvidence,
-    FindingResolvedReproduction, FindingRetainedAuthorityPolicy, FindingRevokedKeyProof,
+    FindingEvidenceInvalidEvidence, FindingPurchaseStandingEvidence,
+    FindingReplayContradictionEvidence, FindingResolvedReproduction,
+    FindingRetainedAuthorityPolicy, FindingRevokedKeyProof,
 };
 pub use reason::{FindingChallengeReason, FindingChallengeReasonClass};

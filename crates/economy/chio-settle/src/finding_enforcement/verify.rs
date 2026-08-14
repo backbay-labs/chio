@@ -650,6 +650,11 @@ fn verify_settlement_observer_lifecycle(
 ) -> Result<(), SettlementError> {
     retained.validate("settlement observer")?;
     require_signing_key(authority_status_authority, "authority_status_authority")?;
+    if authority_status_authority == settlement_observer {
+        return Err(SettlementError::InvalidInput(
+            "settlement observer and authority status signer must be distinct keys".to_owned(),
+        ));
+    }
     if max_status_age_secs == 0 {
         return Err(SettlementError::InvalidInput(
             "max_authority_status_age_secs must be nonzero".to_owned(),

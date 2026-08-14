@@ -59,7 +59,7 @@ pub(crate) fn evaluate_evidence_invalid(
 ) -> Result<FindingChallengeAdjudication, FindingChallengeInadmissible> {
     bind_purchase_record(
         context,
-        evidence.purchase_record,
+        &evidence.purchase_standing,
         purchase_record_envelope_sha256,
     )?;
 

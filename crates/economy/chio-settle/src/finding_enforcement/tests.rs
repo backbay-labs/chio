@@ -1023,6 +1023,31 @@ fn revoked_settlement_observer_cannot_authorize_a_fresh_snapshot() {
 }
 
 #[test]
+fn standalone_snapshot_rejects_an_observer_as_its_own_status_signer() {
+    let (_, snapshot) = default_pair();
+    let policy = default_dispatch_policy();
+    let observer = observer_keypair();
+    let forged_status = sign(policy.settlement_observer_status.body.clone(), &observer);
+
+    assert_rejected(
+        verify_finding_collateral_snapshot(
+            &snapshot,
+            &observer.public_key(),
+            FindingSettlementObserverEvidence {
+                retained_policy: &policy.settlement_observer,
+                signed_status: &forged_status,
+                status_authority: &observer.public_key(),
+                max_status_age_secs: policy.max_authority_status_age_secs,
+            },
+            FindingFinalityRequirement::Confirmations { min_depth: 64 },
+            MAX_SNAPSHOT_AGE_SECS,
+            TRUSTED_NOW,
+        ),
+        "settlement observer and authority status signer must be distinct keys",
+    );
+}
+
+#[test]
 fn pins_reject_a_zero_observation_age_bound() {
     let pins = FindingEnforcementPins {
         max_snapshot_age_secs: 0,
