@@ -184,7 +184,7 @@ async fn finding_purchase_without_status_verifier_denies_before_effects() -> Tes
     })
     .await?;
     let denied = lane.reveal("m6-missing-status-verifier", "m6-missing-status-nonce")?;
-    assert_denied_with(&denied, "configured finding status verifier");
+    assert_denied_with(&denied, "configured kernel verifier");
     assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 0);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);
     assert_eq!(lane.invocations.load(Ordering::SeqCst), 0);
@@ -721,17 +721,18 @@ async fn finding_status_freshness_rechecks_at_final_clock_samples() -> TestResul
             keypair(36),
             config.status_max_epoch_age_secs,
         )?;
+    let cache_now = unix_timestamp_now();
     cache_publisher.publish_non_inclusion(
         &cache_lane.deployment.web.finding_id,
         &[],
-        now,
+        cache_now,
     )?;
     let cache = crate::trust_control::finding_retraction_resolver::SqliteFindingStatusCache::new(
         &config,
         cache_store,
         Arc::new(FinalBoundaryRetractionClock {
-            fresh_now: now + 1,
-            final_now: stale_at_final_decision,
+            fresh_now: cache_now + 1,
+            final_now: cache_now + config.status_max_epoch_age_secs + 1,
             calls: AtomicU64::new(0),
         }),
     )?;
