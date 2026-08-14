@@ -270,6 +270,7 @@ pub(crate) fn evaluate_digest_mismatch(
     if overlay.validate().is_err()
         || overlay.finding_id != context.finding.finding_id
         || overlay.listing_id != context.challenge.listing_id
+        || overlay.venue_admission_envelope_sha256 != terminal.venue_admission_envelope_sha256
         || overlay.accepted_bid_envelope_sha256 != terminal.accepted_bid_envelope_sha256
         || overlay.reservation_id != terminal.reservation_id
         || overlay.purchase_intent_id != terminal.purchase_intent_id

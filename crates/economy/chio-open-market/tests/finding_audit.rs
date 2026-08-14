@@ -1570,6 +1570,37 @@ fn a_report_that_does_not_strictly_follow_its_epoch_rejects() {
 }
 
 #[test]
+fn a_report_must_strictly_follow_every_outcome() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let mut report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
+    let mut outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+    outcomes[0].body.evaluated_at = report.reported_at;
+    outcomes[0].body.outcome_id = derive_outcome_id(&outcomes[0].body).test_expect("outcome id");
+    outcomes[0] = SignedFindingChallengeOutcome::sign(outcomes[0].body.clone(), &audit_evaluator())
+        .test_expect("sign same-tick outcome");
+    report.outcome_envelope_digests = outcomes
+        .iter()
+        .map(|outcome| signed_envelope_sha256(outcome).test_expect("outcome envelope digest"))
+        .collect();
+    reseal(&mut report);
+    let policies = [audit_evaluator_policy()];
+
+    assert!(matches!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &report_witnesses(&epoch, &policies, &audit_attempts, &outcomes),
+        )
+        .test_unwrap_err(),
+        FindingAuditError::OutcomeTimeBinding(_)
+    ));
+}
+
+#[test]
 fn a_report_revealing_a_wrong_seed_rejects() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");

@@ -172,6 +172,29 @@ fn failed_delivery_must_bind_the_challenged_admission_and_backing() -> TestResul
 }
 
 #[test]
+fn denial_overlay_must_bind_the_challenged_admission() -> TestResult {
+    let world = world()?;
+    let shape = DenyShape {
+        venue_admission_envelope_sha256: HEX64_THIRD.to_string(),
+        ..DenyShape::seller_origin()
+    };
+    let case = digest_case(&world, &shape)?;
+    let evidence = case.evidence();
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::DeliveryEvidenceNotEstablished,
+    )?;
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
+    assert!(!evaluation.authorizes_penalty());
+    Ok(())
+}
+
+#[test]
 fn revoked_delivery_receipt_key_cannot_establish_a_mismatch() -> TestResult {
     let world = world()?;
     let mut case = digest_case(&world, &DenyShape::seller_origin())?;

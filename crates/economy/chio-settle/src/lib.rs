@@ -60,7 +60,8 @@ pub use evm::{
 };
 #[cfg(feature = "cognition-market-experimental")]
 pub use finding_enforcement::{
-    dispatch_finding_impairment, plan_finding_impairment,
+    dispatch_finding_impairment, finding_enforcement_anchor_parameters,
+    finding_enforcement_anchor_parameters_for_artifact, plan_finding_impairment,
     plan_finding_impairment_for_reconciliation, recheck_finding_bond_observation,
     reconcile_finding_impairment, reobserve_finding_impairment,
     reobserve_finding_impairment_for_reconciliation, verify_finding_collateral_snapshot,
@@ -72,7 +73,8 @@ pub use finding_enforcement::{
     FindingImpairmentQuarantine, FindingOperatorQualification, FindingPenaltyAuthorityPolicy,
     FindingSettlementObserverEvidence, FindingVaultRejection, PlannedFindingImpairment,
     PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement,
-    StoredImpairmentTransaction, VerifiedFindingEnforcement,
+    StoredImpairmentTransaction, VerifiedFindingEnforcement, FINDING_ENFORCEMENT_ANCHOR_SCHEMA_V1,
+    FINDING_ENFORCEMENT_ANCHOR_TOOL_NAME, FINDING_ENFORCEMENT_ANCHOR_TOOL_SERVER,
 };
 pub use hook::{
     SettlementFailureClass, SettlementFailureCode, SettlementFailureCodeParseError,

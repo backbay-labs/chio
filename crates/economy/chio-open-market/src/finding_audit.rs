@@ -803,6 +803,13 @@ pub fn verify_audit_report(
         policy
             .validate("audit evaluator policy")
             .map_err(FindingAuditError::Outcome)?;
+        verify_signed_challenge_outcome(signed, &policy.key).map_err(FindingAuditError::Outcome)?;
+        if outcome.evaluated_at <= epoch.committed_at || outcome.evaluated_at >= report.reported_at
+        {
+            return Err(FindingAuditError::OutcomeTimeBinding(
+                outcome.outcome_id.clone(),
+            ));
+        }
         let mut latest_status: Option<&SignedFindingAuthorityStatus> = None;
         for status in witnesses.evaluator_statuses.iter().filter(|status| {
             status.body.status_ref == policy.revocation_status_ref
@@ -848,7 +855,6 @@ pub fn verify_audit_report(
                 outcome.outcome_id.clone(),
             ));
         }
-        verify_signed_challenge_outcome(signed, &policy.key).map_err(FindingAuditError::Outcome)?;
         if outcome.authorization != FindingChallengeAuthorizationKind::VenueAudit {
             return Err(FindingAuditError::OutcomeAuthorization(
                 outcome.outcome_id.clone(),
@@ -856,11 +862,6 @@ pub fn verify_audit_report(
         }
         if outcome.audit_epoch_envelope_sha256.as_deref() != Some(epoch_envelope_sha256.as_str()) {
             return Err(FindingAuditError::OutcomeRoundBinding(
-                outcome.outcome_id.clone(),
-            ));
-        }
-        if outcome.evaluated_at <= epoch.committed_at || outcome.evaluated_at > report.reported_at {
-            return Err(FindingAuditError::OutcomeTimeBinding(
                 outcome.outcome_id.clone(),
             ));
         }

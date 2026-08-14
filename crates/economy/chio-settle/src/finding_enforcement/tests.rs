@@ -31,6 +31,10 @@ use crate::{
 
 use chio_test_support::prelude::*;
 
+#[path = "test_anchor_proof.rs"]
+mod anchor_proof_fixture;
+use anchor_proof_fixture::enforcement_anchor_proof;
+
 const BOND_VAULT_CONTRACT: &str = "0x621c302d6EC93b7186bEF18dF5D6436C6ea30125";
 const OPERATOR_KEY_HASH: &str =
     "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975";
@@ -459,12 +463,13 @@ fn vault_snapshot() -> EvmBondSnapshot {
 }
 
 fn planned() -> PlannedFindingImpairment {
+    let verified = verified();
     plan_finding_impairment(
         &sample_config(),
-        &verified(),
+        &verified,
         &operator_address(),
         &vault_snapshot(),
-        &sample_anchor_proof(),
+        &enforcement_anchor_proof(&verified),
     )
     .test_expect("verified enforcement plans an impairment")
 }
@@ -478,12 +483,13 @@ fn reconciliation_planned() -> PlannedFindingImpairmentReconciliation {
         OBSERVED_AT + MAX_SNAPSHOT_AGE_SECS + 1,
     )
     .test_expect("confirmed recovery authenticates its aged snapshot");
+    let proof = enforcement_anchor_proof(verified.verified());
     plan_finding_impairment_for_reconciliation(
         &sample_config(),
         &verified,
         &operator_address(),
         &vault_snapshot(),
-        &sample_anchor_proof(),
+        &proof,
     )
     .test_expect("confirmed recovery reconstructs its frozen impairment")
 }
@@ -1383,13 +1389,14 @@ fn plan_finding_impairment_freezes_the_authorized_call() {
 fn plan_rejects_a_vault_snapshot_from_another_vault() {
     let mut foreign = vault_snapshot();
     foreign.vault_id = chain_hash(0x45);
+    let verified = verified();
 
     let error = plan_finding_impairment(
         &sample_config(),
-        &verified(),
+        &verified,
         &operator_address(),
         &foreign,
-        &sample_anchor_proof(),
+        &enforcement_anchor_proof(&verified),
     )
     .test_expect_err("a foreign vault must not be impaired");
 
@@ -1403,13 +1410,14 @@ fn plan_rejects_a_vault_snapshot_from_another_vault() {
 fn plan_rejects_operator_key_drift_between_the_snapshot_and_the_chain() {
     let mut drifted = vault_snapshot();
     drifted.operator_key_hash = chain_hash(0x22);
+    let verified = verified();
 
     let error = plan_finding_impairment(
         &sample_config(),
-        &verified(),
+        &verified,
         &operator_address(),
         &drifted,
-        &sample_anchor_proof(),
+        &enforcement_anchor_proof(&verified),
     )
     .test_expect_err("operator key drift must not be impaired");
 
@@ -1432,7 +1440,7 @@ fn plan_rejects_a_config_that_does_not_match_the_snapshot() {
         &verified,
         &operator_address(),
         &vault_snapshot(),
-        &sample_anchor_proof(),
+        &enforcement_anchor_proof(&verified),
     )
     .test_expect_err("a foreign chain must not be impaired");
     assert!(
@@ -1448,13 +1456,33 @@ fn plan_rejects_a_config_that_does_not_match_the_snapshot() {
         &verified,
         &operator_address(),
         &vault_snapshot(),
-        &sample_anchor_proof(),
+        &enforcement_anchor_proof(&verified),
     )
     .test_expect_err("a foreign vault contract must not be impaired");
     assert!(
         error
             .to_string()
             .contains("bond_vault_contract does not match"),
+        "unexpected rejection: {error}"
+    );
+}
+
+#[test]
+fn plan_rejects_an_anchor_receipt_from_another_operation() {
+    let verified = verified();
+    let error = plan_finding_impairment(
+        &sample_config(),
+        &verified,
+        &operator_address(),
+        &vault_snapshot(),
+        &sample_anchor_proof(),
+    )
+    .test_expect_err("an unrelated anchored receipt must not authorize impairment");
+
+    assert!(
+        error
+            .to_string()
+            .contains("does not authorize a finding enforcement root"),
         "unexpected rejection: {error}"
     );
 }

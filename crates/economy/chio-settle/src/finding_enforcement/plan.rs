@@ -1,7 +1,11 @@
 //! Preparation of the exact call one verified enforcement authorizes.
 
 use chio_core::capability::scope::MonetaryAmount;
+use chio_core::receipt::decision::Decision;
 use chio_core::web3::anchors::AnchorInclusionProof;
+use chio_finding::{
+    signed_envelope_sha256, FindingEffectIntentKind, SignedFindingChallengeEnforcement,
+};
 
 use super::verify::{ReconciledFindingEnforcement, VerifiedFindingEnforcement};
 use super::{parse_chain_hash, parse_evm_address, reject};
@@ -9,6 +13,128 @@ use crate::{
     prepare_bond_impair, scale_chio_amount_to_token_minor_units, EvmBondSnapshot,
     PreparedBondImpair, PreparedEvmCall, SettlementChainConfig, SettlementError,
 };
+
+/// Tool server recorded by the anchored receipt that authorizes one finding
+/// enforcement root.
+pub const FINDING_ENFORCEMENT_ANCHOR_TOOL_SERVER: &str = "chio-control-plane";
+
+/// Tool name recorded by the anchored receipt that authorizes one finding
+/// enforcement root.
+pub const FINDING_ENFORCEMENT_ANCHOR_TOOL_NAME: &str = "finding.enforcement-root";
+
+/// Schema of the exact enforcement identity committed by the anchored
+/// receipt leaf.
+pub const FINDING_ENFORCEMENT_ANCHOR_SCHEMA_V1: &str = "chio.finding.enforcement-anchor.v1";
+
+/// Build the exact action parameters an enforcement-root receipt must carry.
+///
+/// Root publishers use this value when requesting the mediated receipt. The
+/// planner compares the signed, Merkle-included action against the same value
+/// before it returns a dispatchable impairment.
+#[must_use]
+pub fn finding_enforcement_anchor_parameters(
+    verified: &VerifiedFindingEnforcement,
+) -> serde_json::Value {
+    enforcement_anchor_parameters(
+        verified.root_intent_id(),
+        verified.seller_impair_intent_id(),
+        &verified.enforcement().enforcement_id,
+        verified.enforcement_envelope_sha256(),
+        &verified.enforcement().penalty_envelope_sha256,
+        &verified.enforcement().liability_key,
+    )
+}
+
+/// Build the mediated anchor action directly from a signed enforcement.
+///
+/// Root publication precedes impairment verification, so publishers use this
+/// form to obtain the exact anchored receipt later consumed by the planner.
+pub fn finding_enforcement_anchor_parameters_for_artifact(
+    enforcement: &SignedFindingChallengeEnforcement,
+) -> Result<serde_json::Value, SettlementError> {
+    let root_intent_id = unique_effect_intent(enforcement, FindingEffectIntentKind::RootIntent)?;
+    let seller_impair_intent_id =
+        unique_effect_intent(enforcement, FindingEffectIntentKind::SellerImpair)?;
+    let enforcement_envelope_sha256 = signed_envelope_sha256(enforcement)
+        .map_err(|error| reject(format!("enforcement envelope digest rejected: {error}")))?;
+    Ok(enforcement_anchor_parameters(
+        root_intent_id,
+        seller_impair_intent_id,
+        &enforcement.body.enforcement_id,
+        &enforcement_envelope_sha256,
+        &enforcement.body.penalty_envelope_sha256,
+        &enforcement.body.liability_key,
+    ))
+}
+
+fn unique_effect_intent(
+    enforcement: &SignedFindingChallengeEnforcement,
+    kind: FindingEffectIntentKind,
+) -> Result<&str, SettlementError> {
+    let mut matches = enforcement
+        .body
+        .effect_intents
+        .iter()
+        .filter(|binding| binding.kind == kind);
+    let intent = matches
+        .next()
+        .ok_or_else(|| reject(format!("enforcement lacks {kind:?} intent binding")))?;
+    if matches.next().is_some() {
+        return Err(reject(format!(
+            "enforcement carries more than one {kind:?} intent binding"
+        )));
+    }
+    Ok(&intent.intent_id)
+}
+
+fn enforcement_anchor_parameters(
+    root_intent_id: &str,
+    seller_impair_intent_id: &str,
+    enforcement_id: &str,
+    enforcement_envelope_sha256: &str,
+    penalty_envelope_sha256: &str,
+    liability_key: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "schema": FINDING_ENFORCEMENT_ANCHOR_SCHEMA_V1,
+        "root_intent_id": root_intent_id,
+        "seller_impair_intent_id": seller_impair_intent_id,
+        "enforcement_id": enforcement_id,
+        "enforcement_envelope_sha256": enforcement_envelope_sha256,
+        "penalty_envelope_sha256": penalty_envelope_sha256,
+        "liability_key": liability_key,
+    })
+}
+
+fn require_enforcement_anchor_binding(
+    verified: &VerifiedFindingEnforcement,
+    anchor_proof: &AnchorInclusionProof,
+) -> Result<(), SettlementError> {
+    let receipt = &anchor_proof.receipt;
+    if receipt.tool_server != FINDING_ENFORCEMENT_ANCHOR_TOOL_SERVER
+        || receipt.tool_name != FINDING_ENFORCEMENT_ANCHOR_TOOL_NAME
+        || receipt.decision != Some(Decision::Allow)
+    {
+        return Err(reject(
+            "anchor proof receipt does not authorize a finding enforcement root",
+        ));
+    }
+    if !receipt
+        .action
+        .verify_hash()
+        .map_err(|error| reject(format!("anchor proof action hash rejected: {error}")))?
+    {
+        return Err(reject(
+            "anchor proof action hash does not match its parameters",
+        ));
+    }
+    if receipt.action.parameters != finding_enforcement_anchor_parameters(verified) {
+        return Err(reject(
+            "anchor proof receipt does not bind this enforcement, penalty, and root intent",
+        ));
+    }
+    Ok(())
+}
 
 /// One frozen payout leg: the enforcement's ordered destination and the
 /// token-denominated share the prepared call carries for it.
@@ -133,6 +259,7 @@ pub fn plan_finding_impairment(
     config.validate()?;
     let enforcement = verified.enforcement();
     let snapshot = verified.snapshot();
+    require_enforcement_anchor_binding(verified, anchor_proof)?;
 
     if config.chain_id != snapshot.chain_id {
         return Err(reject(

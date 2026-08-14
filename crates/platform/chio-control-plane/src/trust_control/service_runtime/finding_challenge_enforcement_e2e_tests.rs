@@ -165,6 +165,8 @@ use crate::trust_control::{FindingRailInstruction, FindingRailObservation, Findi
 use chio_test_support::plain::TestResultOk;
 use tower::ServiceExt;
 
+#[path = "finding_challenge_enforcement_e2e_tests/enforcement_anchor_proof.rs"]
+mod enforcement_anchor_proof_fixture;
 #[path = "finding_challenge_enforcement_e2e_tests/evidence_bundle_tests.rs"]
 mod evidence_bundle_tests;
 #[path = "finding_challenge_enforcement_e2e_tests/purchase_standing_fixture.rs"]
@@ -172,6 +174,9 @@ mod purchase_standing_fixture;
 #[path = "finding_challenge_enforcement_e2e_tests/replay_fixture.rs"]
 mod replay_fixture;
 
+use enforcement_anchor_proof_fixture::{
+    anchor_evidence_hash, enforcement_anchor_proof, sample_anchor_evidence_hash,
+};
 use purchase_standing_fixture::{clone_resolved, settled_delivery_evidence, SettledPurchase};
 use replay_fixture::{PhaseShape, ReplayActionFactory};
 
@@ -7717,7 +7722,7 @@ fn finalizing_liability_with(
     )?;
     if root == EnforcementRoot::Mismatched {
         let merkle_root = chain_hash(0xee);
-        let evidence_hash = anchor_evidence_hash()?;
+        let evidence_hash = sample_anchor_evidence_hash()?;
         deployment.challenges.bind_effect_root(
             &enforcement_root_intent_key(),
             &liability_key,
@@ -7895,7 +7900,7 @@ impl FinalizingLiability {
             &settlement_config()?,
             &settlement_config()?.operator_address,
             &evm_vault_snapshot(),
-            &anchor_proof()?,
+            &enforcement_anchor_proof(&self.enforcement)?,
             observations,
             publisher,
             now,
@@ -7998,13 +8003,6 @@ fn fixture_slash_penalty() -> Result<SignedOpenMarketPenalty, AnyError> {
     };
     artifact.validate()?;
     Ok(SignedOpenMarketPenalty::sign(artifact, &keypair(33))?)
-}
-
-/// The leaf the vault burns for the anchored receipt in the example
-/// proof, derived exactly as the impairment plan derives it.
-fn anchor_evidence_hash() -> Result<String, AnyError> {
-    let bytes = canonical_json_bytes(&anchor_proof()?.receipt.body())?;
-    Ok(leaf_hash(&bytes).to_hex_prefixed())
 }
 
 /// The exact settlement pair the choke point verifies, plus the finding
@@ -8485,7 +8483,7 @@ fn finding_challenge_an_anchor_leaf_bound_elsewhere_never_reaches_the_publisher(
     // is what a proof reused across enforcements looks like once the leaf
     // is fenced.
     case.deployment.challenges.record_effect_intent(
-        &derive_anchor_evidence_intent_key(&anchor_evidence_hash()?),
+        &derive_anchor_evidence_intent_key(&anchor_evidence_hash(&case.enforcement)?),
         chio_store_sqlite::FindingEffectIntentKind::RootIntent,
         &digest("an impairment this proof already authorized"),
         Some(&case.liability_key),
@@ -8573,7 +8571,7 @@ fn finding_challenge_an_observer_cannot_weaken_deployment_finality() -> TestResu
             &settlement_config()?,
             &settlement_config()?.operator_address,
             &evm_vault_snapshot(),
-            &anchor_proof()?,
+            &enforcement_anchor_proof(&enforcement)?,
             &ScriptedObservations::qualified(),
             &UnreachablePublisher,
             SETTLEMENT_NOW,
@@ -8616,7 +8614,7 @@ fn finding_challenge_snapshot_seller_must_match_the_durable_liability() -> TestR
             &settlement_config()?,
             &settlement_config()?.operator_address,
             &evm_vault_snapshot(),
-            &anchor_proof()?,
+            &enforcement_anchor_proof(&enforcement)?,
             &ScriptedObservations::qualified(),
             &UnreachablePublisher,
             SETTLEMENT_NOW,
@@ -8740,7 +8738,7 @@ fn finding_challenge_enforcement_recovers_across_finalization_authority_rotation
             &settlement_config()?,
             &settlement_config()?.operator_address,
             &evm_vault_snapshot(),
-            &anchor_proof()?,
+            &enforcement_anchor_proof(&case.enforcement)?,
             &ScriptedObservations::qualified(),
             &publisher,
             SETTLEMENT_NOW,
@@ -8786,7 +8784,7 @@ fn finding_challenge_penalty_recovers_across_penalty_authority_rotation() -> Tes
             &settlement_config()?,
             &settlement_config()?.operator_address,
             &evm_vault_snapshot(),
-            &anchor_proof()?,
+            &enforcement_anchor_proof(&case.enforcement)?,
             &ScriptedObservations::qualified(),
             &publisher,
             SETTLEMENT_NOW,
@@ -8827,7 +8825,7 @@ fn finding_challenge_finalization_requires_the_retained_enforcement_envelope() -
             &settlement_config()?,
             &settlement_config()?.operator_address,
             &evm_vault_snapshot(),
-            &anchor_proof()?,
+            &enforcement_anchor_proof(&substituted)?,
             &ScriptedObservations::qualified(),
             &UnreachablePublisher,
             SETTLEMENT_NOW,
@@ -8874,7 +8872,7 @@ fn finding_challenge_an_enforcement_naming_another_vault_never_reaches_the_publi
             &settlement_config()?,
             &settlement_config()?.operator_address,
             &evm_vault_snapshot_for(&elsewhere),
-            &anchor_proof()?,
+            &enforcement_anchor_proof(&enforcement)?,
             &ScriptedObservations::qualified(),
             &UnreachablePublisher,
             SETTLEMENT_NOW,
@@ -8908,7 +8906,7 @@ fn finding_challenge_a_snapshot_from_an_expired_observer_key_authorizes_nothing(
             &settlement_config()?,
             &settlement_config()?.operator_address,
             &evm_vault_snapshot(),
-            &anchor_proof()?,
+            &enforcement_anchor_proof(&case.enforcement)?,
             &ScriptedObservations::qualified(),
             &UnreachablePublisher,
             SETTLEMENT_NOW,

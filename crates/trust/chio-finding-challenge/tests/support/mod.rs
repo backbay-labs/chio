@@ -980,6 +980,7 @@ pub struct DenyShape {
     pub contract_result: DeliveryResult,
     pub overlay_digest_check: DeliveryResult,
     pub media_type_check: FindingMediaTypeCheck,
+    pub venue_admission_envelope_sha256: String,
     /// `None` uses the finding's committed payload digest.
     pub expected_digest: Option<String>,
     pub observed_digest: String,
@@ -991,7 +992,6 @@ pub struct DenyShape {
     /// Supply a checkpoint that is not the one the references name.
     pub substitute_checkpoint: bool,
 }
-
 impl DenyShape {
     /// The authenticated seller-origin mismatch: the only shape that upholds.
     pub fn seller_origin() -> Self {
@@ -1001,6 +1001,7 @@ impl DenyShape {
             contract_result: DeliveryResult::Mismatched,
             overlay_digest_check: DeliveryResult::Mismatched,
             media_type_check: FindingMediaTypeCheck::NotEvaluated,
+            venue_admission_envelope_sha256: HEX64.to_string(),
             expected_digest: None,
             observed_digest: HEX64_ALT.to_string(),
             signer: DenySigner::Delivery,
@@ -1029,7 +1030,6 @@ impl DenyShape {
         }
     }
 }
-
 pub struct DigestCase {
     pub challenge: SignedFindingChallenge,
     pub failed_delivery: SignedFindingFailedDelivery,
@@ -1129,7 +1129,7 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
             media_type_check: shape.media_type_check,
             settlement_mode: FindingDeliverySettlementMode::LocalReversibleHold,
             accepted_bid_envelope_sha256: HEX64_THIRD.to_string(),
-            venue_admission_envelope_sha256: HEX64.to_string(),
+            venue_admission_envelope_sha256: shape.venue_admission_envelope_sha256.clone(),
             reservation_id: RESERVATION_ID.to_string(),
             purchase_intent_id: PURCHASE_INTENT_ID.to_string(),
             authoritative_payment_operation_id: PAYMENT_OPERATION_ID.to_string(),
