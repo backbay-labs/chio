@@ -1206,6 +1206,14 @@ mod tests {
     #[test]
     fn portable_proof_survives_a_valid_replacement_bond_window(
     ) -> Result<(), Box<dyn std::error::Error>> {
+        struct FixedAdmissionClock(u64);
+
+        impl super::super::finding_status_verifier::FindingStatusAdmissionClock for FixedAdmissionClock {
+            fn now_unix_secs(&self) -> Result<u64, String> {
+                Ok(self.0)
+            }
+        }
+
         let (operator, bond) = config();
         let (_temp, authority) = provision_authority()?;
         let store = authority.finding_status_store();
@@ -1221,12 +1229,14 @@ mod tests {
         let mut replacement_bond = bond;
         replacement_bond.valid_from = NOW + 1;
         replacement_bond.evidence_sha256 = sha256_hex(b"replacement-status-bond");
-        let verifier = super::super::finding_status_verifier::MarketFindingStatusVerifier::new(
-            operator,
-            replacement_bond,
-            300,
-            store,
-        )?;
+        let verifier =
+            super::super::finding_status_verifier::MarketFindingStatusVerifier::new_with_clock(
+                operator,
+                replacement_bond,
+                300,
+                store,
+                Arc::new(FixedAdmissionClock(NOW + 1)),
+            )?;
         let proof_b64 = STANDARD.encode(&published.proof_bytes);
         let view = FindingStatusProofContextView {
             proof_b64: &proof_b64,
