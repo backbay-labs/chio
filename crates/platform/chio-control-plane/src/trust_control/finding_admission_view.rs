@@ -1,10 +1,11 @@
 use super::super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::{
-    live_admission_epoch, require_status_feed_through, verify_status_operator_authority_lifecycle,
-    verify_venue_authority_lifecycle, FindingAuthorityKeyPolicy, FindingAuthorityPin,
-    FindingMarketConfig, FindingSearchAdmissionView, SignedFindingAdmission,
-    SignedFindingAuthorityStatus, SqliteFindingMarketStore, SqliteFindingStatusStore,
-    FINDING_AUTHORITY_STATUS_MAX_AGE_SECS,
+    live_admission_epoch, require_status_feed_through, verify_seller_authorization_lifecycle,
+    verify_status_operator_authority_lifecycle, verify_venue_authority_lifecycle,
+    FindingAuthorityKeyPolicy, FindingAuthorityPin, FindingMarketConfig,
+    FindingSearchAdmissionView, SignedFindingAdmission, SignedFindingAuthorityStatus,
+    SignedFindingSellerAuthorization, SqliteFindingMarketStore, SqliteFindingStatusStore,
+    FINDING_AUTHORITY_STATUS_MAX_AGE_SECS, FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
 };
 
 pub(super) fn terminal_authority_pin(policy: &FindingAuthorityKeyPolicy) -> FindingAuthorityPin {
@@ -65,6 +66,56 @@ pub(super) fn verify_terminal_authority_lifecycle(
     Ok(())
 }
 
+pub(super) fn verify_current_admission_authorities(
+    store: &SqliteFindingMarketStore,
+    config: &FindingMarketConfig,
+    authority_status_resolver: &dyn FindingAuthorityStatusResolver,
+    venue_authority_status: &SignedFindingAuthorityStatus,
+    admission: &SignedFindingAdmission,
+    now: u64,
+) -> Result<(), String> {
+    verify_venue_authority_lifecycle(admission, venue_authority_status, config, now)?;
+    for policy in [
+        &admission.body.purchase_authority,
+        &admission.body.failed_delivery_authority,
+    ] {
+        let authority_status = authority_status_resolver
+            .resolve(&terminal_authority_pin(policy), now)
+            .map_err(|error| format!("terminal authority status resolution failed: {error}"))?;
+        verify_terminal_authority_lifecycle(
+            policy,
+            &authority_status,
+            config,
+            admission.body.issued_at,
+            now,
+        )?;
+    }
+    let authorization_bytes = store
+        .get_recipe_blob(&admission.body.seller_authorization_envelope_sha256)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "admission-bound seller authorization is not retained".to_owned())?;
+    let authorization: SignedFindingSellerAuthorization =
+        serde_json::from_slice(&authorization_bytes)
+            .map_err(|_| "admission-bound seller authorization is malformed".to_owned())?;
+    chio_finding::verify_signed_seller_authorization(&authorization)
+        .map_err(|error| error.to_string())?;
+    if now < authorization.body.issued_at || now >= authorization.body.expires_at {
+        return Err("seller authorization is not live for the admission view".to_owned());
+    }
+    let seller_pin = FindingAuthorityPin {
+        authority_id: authorization.body.authorization_id.clone(),
+        key_hex: authorization.body.issuer.to_hex(),
+        key_epoch: FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
+        valid_from: authorization.body.issued_at,
+        valid_until: authorization.body.expires_at,
+        revocation_status_ref: authorization.body.revocation_status_ref.clone(),
+    };
+    let seller_status = authority_status_resolver
+        .resolve(&seller_pin, now)
+        .map_err(|error| format!("seller authorization status resolution failed: {error}"))?;
+    verify_seller_authorization_lifecycle(&authorization, &seller_status, config, now)
+}
+
 /// A stored admission is CURRENT only while its envelope is unexpired,
 /// its allocation remains consumed by the active admission, participation
 /// fees are paid through the present audit epoch, and the exact status floor
@@ -112,24 +163,16 @@ pub(super) fn current_admission_view(
         .ok()?;
     let snapshot = store.get_current_admission(finding_id).ok().flatten()?;
     let admission: SignedFindingAdmission = serde_json::from_str(&snapshot.envelope_json).ok()?;
-    verify_venue_authority_lifecycle(&admission, venue_authority_status?, config, now).ok()?;
     let authority_status_resolver = authority_status_resolver?;
-    for policy in [
-        &admission.body.purchase_authority,
-        &admission.body.failed_delivery_authority,
-    ] {
-        let authority_status = authority_status_resolver
-            .resolve(&terminal_authority_pin(policy), now)
-            .ok()?;
-        verify_terminal_authority_lifecycle(
-            policy,
-            &authority_status,
-            config,
-            admission.body.issued_at,
-            now,
-        )
-        .ok()?;
-    }
+    verify_current_admission_authorities(
+        store,
+        config,
+        authority_status_resolver,
+        venue_authority_status?,
+        &admission,
+        now,
+    )
+    .ok()?;
     let current_epoch = live_admission_epoch(store, &snapshot, &admission, now)?;
     let paid_through = store
         .paid_through_epoch(

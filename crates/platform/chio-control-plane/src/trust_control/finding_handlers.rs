@@ -47,7 +47,8 @@ use super::*;
 #[path = "finding_admission_view.rs"]
 mod admission_view;
 use admission_view::{
-    current_admission_view, terminal_authority_pin, verify_terminal_authority_lifecycle,
+    current_admission_view, terminal_authority_pin, verify_current_admission_authorities,
+    verify_terminal_authority_lifecycle,
 };
 #[path = "finding_handlers/participation.rs"]
 mod participation;
@@ -1948,6 +1949,24 @@ pub(crate) async fn handle_activate_finding(
     {
         return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, "terms retention failed");
     }
+    let authorization_json = match chio_core::canonical_json_bytes(&request.seller_authorization) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "seller authorization failed canonicalization",
+            )
+        }
+    };
+    if store
+        .put_recipe_blob(&authorization_digest, &authorization_json, now)
+        .is_err()
+    {
+        return plain_http_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "seller authorization retention failed",
+        );
+    }
 
     // Validate every fee terminal and install every idempotency fence
     // before the allocation is prepared. No rail dispatch occurs until
@@ -2337,6 +2356,29 @@ pub(crate) async fn handle_finding_participation(
             status_epoch.generated_at,
             now,
             "participation renewal",
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error);
+        }
+        let authority_status_resolver = match state.finding_authority_status_resolver.as_deref() {
+            Some(resolver) => resolver,
+            None => {
+                return plain_http_error(
+                    StatusCode::BAD_REQUEST,
+                    "admission authority status resolver is not configured",
+                )
+            }
+        };
+        let venue_authority_status = match authority_status_resolver.resolve(&config.venue, now) {
+            Ok(status) => status,
+            Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
+        };
+        if let Err(error) = verify_current_admission_authorities(
+            &store,
+            &config,
+            authority_status_resolver,
+            &venue_authority_status,
+            &admission,
+            now,
         ) {
             return plain_http_error(StatusCode::BAD_REQUEST, &error);
         }

@@ -233,6 +233,36 @@ async fn admission_views_recheck_current_venue_standing() -> TestResult {
 }
 
 #[tokio::test]
+async fn admission_views_recheck_bound_seller_authorization_standing() -> TestResult {
+    let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    let resolver = Arc::new(TestSelectiveAuthorityResolver::new(
+        stack.web.authorization.body.authorization_id.clone(),
+    ));
+    stack.state.finding_authority_status_resolver = Some(resolver.clone());
+    stack.seed_market().await?;
+    let (status, body) = stack.activate().await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    assert_eq!(
+        stack
+            .store
+            .get_recipe_blob(&stack.web.authorization_sha256)?,
+        Some(canonical_json_bytes(&stack.web.authorization)?),
+        "activation retains the exact admission-bound seller authorization"
+    );
+    assert!(stack.admission_marker().await?.is_some());
+
+    resolver.revoke(unix_timestamp_now());
+    assert!(stack.admission_marker().await?.is_none());
+    let (status, _) = send(
+        &stack.state,
+        public_get(&format!("/v1/findings/{}/admission", stack.web.finding_id))?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    Ok(())
+}
+
+#[tokio::test]
 async fn activation_rejects_an_admission_bound_to_another_status_feed() -> TestResult {
     let mut stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
     stack.seed_market().await?;
@@ -369,5 +399,72 @@ async fn participation_renewal_requires_a_live_status_service_bond_before_fees()
         .store
         .get_fee_event(&stack.epoch_fee_key(1))?
         .is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn participation_renewal_rechecks_admission_authorities_before_fees() -> TestResult {
+    for authority in ["venue", "purchase", "failed-delivery"] {
+        let mut stack = provision_stack(1, ADMISSION_EXPIRES_AT)?;
+        let authority_id = match authority {
+            "venue" => market_config().venue.authority_id,
+            "purchase" => stack
+                .web
+                .admission
+                .body
+                .purchase_authority
+                .authority_id
+                .clone(),
+            "failed-delivery" => stack
+                .web
+                .admission
+                .body
+                .failed_delivery_authority
+                .authority_id
+                .clone(),
+            _ => unreachable!("closed authority fixture"),
+        };
+        let resolver = Arc::new(TestSelectiveAuthorityResolver::new(authority_id));
+        stack.state.finding_authority_status_resolver = Some(resolver.clone());
+        stack.seed_market().await?;
+        let (status, response) = stack.activate().await?;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(&response)
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
+        resolver.revoke(unix_timestamp_now());
+        let renewal = participation_request(&stack.web.schedule, None)?;
+        let (status, response) = send(
+            &stack.state,
+            authed_post(
+                &format!("/v1/findings/{}/participation", stack.web.finding_id),
+                renewal.to_string(),
+            )?,
+        )
+        .await?;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{authority}");
+        assert!(
+            String::from_utf8_lossy(&response).contains("authority is revoked"),
+            "{authority}: {}",
+            String::from_utf8_lossy(&response)
+        );
+        assert_eq!(
+            stack.store.paid_through_epoch(
+                &stack.web.finding_id,
+                LISTING_ID,
+                &stack.web.schedule_sha256,
+            )?,
+            Some(0)
+        );
+        assert!(stack
+            .store
+            .get_fee_event(&stack.epoch_fee_key(1))?
+            .is_none());
+    }
     Ok(())
 }
