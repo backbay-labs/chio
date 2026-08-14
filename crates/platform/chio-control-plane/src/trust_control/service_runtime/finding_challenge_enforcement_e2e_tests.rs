@@ -63,9 +63,9 @@ use chio_finding::{
     FindingReceiptRef, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
     FindingRecipePhase, FindingRecipePhaseKind, FindingReplayObservation,
     FindingReplayPredicateResult, FindingReplayRecipeInput, FindingReplayReproduction,
-    FindingReplayTerminalResult, FindingResourceCaps, FindingVaultReference,
-    FindingVenueAuditAuthorization, SignedFindingAdmission, SignedFindingAuthorityStatus,
-    SignedFindingChallenge, SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
+    FindingResourceCaps, FindingVaultReference, FindingVenueAuditAuthorization,
+    SignedFindingAdmission, SignedFindingAuthorityStatus, SignedFindingChallenge,
+    SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
     SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery,
     SignedFindingFinalizedBondSnapshot, SignedFindingMarketTerms, SignedFindingPurchaseRecord,
     FINDING_ADMISSION_SCHEMA_V1, FINDING_AUDIT_EPOCH_SCHEMA_V1,
@@ -158,6 +158,10 @@ use tower::ServiceExt;
 
 #[path = "finding_challenge_enforcement_e2e_tests/evidence_bundle_tests.rs"]
 mod evidence_bundle_tests;
+#[path = "finding_challenge_enforcement_e2e_tests/replay_fixture.rs"]
+mod replay_fixture;
+
+use replay_fixture::{PhaseShape, ReplayActionFactory};
 
 use super::build_router;
 
@@ -2068,39 +2072,6 @@ fn evidence_invalid_case(
 // replay_contradiction evidence
 // ---------------------------------------------------------------------------
 
-/// One reproduction phase as the runner reported it.
-#[derive(Debug, Clone, Copy)]
-struct PhaseShape {
-    phase: FindingRecipePhaseKind,
-    terminal: FindingReplayTerminalResult,
-    exit_code: i64,
-}
-
-impl PhaseShape {
-    const fn baseline_fails() -> Self {
-        Self {
-            phase: FindingRecipePhaseKind::Baseline,
-            terminal: FindingReplayTerminalResult::Completed,
-            exit_code: 1,
-        }
-    }
-
-    const fn candidate_passes() -> Self {
-        Self {
-            phase: FindingRecipePhaseKind::Candidate,
-            terminal: FindingReplayTerminalResult::Completed,
-            exit_code: 0,
-        }
-    }
-
-    const fn candidate_fails() -> Self {
-        Self {
-            exit_code: 1,
-            ..Self::candidate_passes()
-        }
-    }
-}
-
 struct ReplayCase {
     challenge: SignedFindingChallenge,
     purchase_record: SignedFindingPurchaseRecord,
@@ -2143,7 +2114,8 @@ fn replay_case(
 ) -> Result<ReplayCase, AnyError> {
     let recipe_preimage =
         recipe_preimage.map_or_else(|| challenged.recipe_preimage.clone(), str::to_owned);
-    let recipe_digest = sha256_hex(recipe_preimage.as_bytes());
+    let replay_action = ReplayActionFactory::from_preimage(&recipe_preimage)?;
+    let recipe_digest = replay_action.recipe_sha256().to_owned();
     let kernel = replay_kernel();
 
     let mut observation_texts = Vec::with_capacity(phases.len());
@@ -2174,10 +2146,7 @@ fn replay_case(
             &kernel,
             REPLAY_AT + index as u64,
             "finding.replay",
-            ToolCallAction::from_parameters(serde_json::json!({
-                "replay_run_id": REPLAY_RUN_ID,
-                "phase": index,
-            }))?,
+            replay_action.for_phase(phase.phase)?,
             Decision::Allow,
             &sha256_hex(text.as_bytes()),
             None,
