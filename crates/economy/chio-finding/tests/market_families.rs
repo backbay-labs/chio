@@ -250,6 +250,7 @@ fn report_body(verifier: &Keypair) -> Result<FindingVerifierReport, FindingError
         replay_recipe_input_sha256: None,
         status_proof_input_sha256: None,
         finding_delivery_receipt_id: None,
+        finding_delivery: None,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
         trusted_time_input_sha256: HEX64.to_string(),

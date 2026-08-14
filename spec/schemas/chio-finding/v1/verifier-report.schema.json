@@ -64,6 +64,9 @@
         "finding_delivery_receipt_id": {
           "$ref": "#/$defs/sha256"
         },
+        "finding_delivery": {
+          "$ref": "#/$defs/findingDelivery"
+        },
         "trust_root_snapshot_sha256": {
           "$ref": "#/$defs/sha256"
         },
@@ -242,6 +245,25 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "finding_delivery_receipt_id"
+            ]
+          },
+          "then": {
+            "required": [
+              "finding_delivery"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "finding_delivery"
+              ]
+            }
+          }
         }
       ]
     },
@@ -305,6 +327,108 @@
         }
       }
     },
+    "findingDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "finding_id",
+        "listing_id",
+        "transform_profile",
+        "digest_check",
+        "media_type_check",
+        "settlement_mode",
+        "accepted_bid_envelope_sha256",
+        "venue_admission_envelope_sha256",
+        "reservation_id",
+        "purchase_intent_id",
+        "authoritative_payment_operation_id"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.delivery.v1"
+        },
+        "finding_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "listing_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "transform_profile": {
+          "const": "identity"
+        },
+        "digest_check": {
+          "enum": [
+            "matched",
+            "mismatched"
+          ]
+        },
+        "media_type_check": {
+          "enum": [
+            "matched",
+            "mismatched",
+            "not_evaluated"
+          ]
+        },
+        "settlement_mode": {
+          "const": "local_reversible_hold"
+        },
+        "accepted_bid_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "venue_admission_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "reservation_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "purchase_intent_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "authoritative_payment_operation_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "status_proof": {
+          "$ref": "#/$defs/findingStatusProof"
+        }
+      }
+    },
+    "findingStatusProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feed_id",
+        "key_domain_nonce",
+        "map_epoch",
+        "status_epoch_artifact_sha256",
+        "proof_sha256",
+        "root_hash",
+        "non_inclusion_checked_at"
+      ],
+      "properties": {
+        "feed_id": {
+          "$ref": "#/$defs/hierarchicalIdentifier"
+        },
+        "key_domain_nonce": {
+          "const": 3318287169837494
+        },
+        "map_epoch": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "status_epoch_artifact_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "proof_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "root_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "non_inclusion_checked_at": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        }
+      }
+    },
     "iJsonU64": {
       "type": "integer",
       "minimum": 0,
@@ -314,6 +438,14 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 9007199254740991
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,512}$"
+    },
+    "hierarchicalIdentifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,512}$"
     },
     "nonBlankString": {
       "type": "string",

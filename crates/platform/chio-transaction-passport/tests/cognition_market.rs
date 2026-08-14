@@ -4,22 +4,31 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chio_core_types::canonical_json_bytes;
+use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
+use chio_core_types::receipt::metadata::{
+    DeliveryResult, FindingDelivery, FindingDeliverySettlementMode, FindingMediaTypeCheck,
+    FindingTransformProfile, FINDING_DELIVERY_SCHEMA,
+};
 use chio_finding::{
     build_status_inclusion_proof_input, build_status_non_inclusion_proof_input, compute_finding_id,
-    compute_profile_id, compute_report_id, compute_status_epoch_id, finding_checkpoint_log_id,
-    sign_finding, signed_envelope_sha256, FindingAuthorityKeyPolicy, FindingAuthorityStatus,
-    FindingBbsIssuerPolicy, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
-    FindingClaimedVerdict, FindingFacetKind, FindingFacetOutcome, FindingFacetResult,
-    FindingPredicate, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
-    FindingRecipePhase, FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
-    FindingStatusEpoch, FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization,
-    FindingStatusOperatorRole, FindingStatusProofInput, FindingVerifierReport,
-    SignedFindingChallengeVerifierProfile, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
-    FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+    compute_profile_id, compute_report_id, compute_status_epoch_id, derive_purchase_key,
+    finding_checkpoint_log_id, sign_finding, signed_envelope_sha256, FindingAuthorityKeyPolicy,
+    FindingAuthorityStatus, FindingBbsIssuerPolicy, FindingChallengeVerifierProfile,
+    FindingCheckpointLogPolicy, FindingClaimedVerdict, FindingFacetKind, FindingFacetOutcome,
+    FindingFacetResult, FindingPredicate, FindingPurchaseRecord, FindingReceiptRole,
+    FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind,
+    FindingReplayRecipeInput, FindingResourceCaps, FindingStatusEpoch,
+    FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusOperatorRole,
+    FindingStatusProofInput, FindingVerifierReport, SignedFindingChallengeVerifierProfile,
+    FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
+    FINDING_PURCHASE_RECORD_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
     FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
     FINDING_STATUS_SIGNATURE_DOMAIN, FINDING_VERIFIER_REPORT_SCHEMA_V1,
+};
+use chio_open_market::purchase_verification::{
+    derive_payment_operation_id, derive_purchase_intent_id,
 };
 use chio_revocation_oracle::{
     finding_status_empty_leaf_hash, FindingStatusSparseMap, FINDING_STATUS_BRANCH_DOMAIN,
@@ -418,6 +427,7 @@ fn report_bytes_for_profile(
         replay_recipe_input_sha256: Some(sha256_hex(recipe)),
         status_proof_input_sha256: Some(sha256_hex(status)),
         finding_delivery_receipt_id: Some("89".repeat(32)),
+        finding_delivery: Some(finding_delivery_overlay()),
         trust_root_snapshot_sha256: "45".repeat(32),
         resolver_policy_sha256: "56".repeat(32),
         trusted_time_input_sha256: "67".repeat(32),
@@ -433,9 +443,14 @@ fn report_bytes_for_profile(
     Ok(canonical_json_bytes(&signed)?)
 }
 
-fn claim_set_bytes(report_path: &str, recipe_path: &str, status_path: &str) -> TestResult<Vec<u8>> {
+fn claim_set_bytes(
+    report_path: &str,
+    purchase_record_path: &str,
+    recipe_path: &str,
+    status_path: &str,
+) -> TestResult<Vec<u8>> {
     let paths = [
-        vec![report_path],
+        vec![report_path, purchase_record_path],
         vec![report_path, recipe_path],
         vec![report_path, status_path],
         vec![report_path],
@@ -473,7 +488,7 @@ fn verifier_policy_bytes() -> TestResult<Vec<u8>> {
         "issued_at": "2026-07-31T20:00:30Z",
         "required_claims": COGNITION_MARKET_CLAIMS,
         "omitted_claims": [],
-        "required_evidence_roles": ["report", "advisory-observation"]
+        "required_evidence_roles": ["report", "commerce-order-context", "advisory-observation"]
     }))?)
 }
 
@@ -493,14 +508,17 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
     let recipe_path = "attachments/replay-recipe-input.json";
     let status_path = "attachments/status-proof-input.json";
     let report_path = "report.json";
+    let purchase_record_path = "purchase-record.json";
     let recipe = recipe_bytes("bb")?;
     let status = status_proof_bytes()?;
     let report = report_bytes(&recipe, &status)?;
+    let purchase_record = purchase_record_bytes()?;
     let finding = expiry_regressions::finding_fixture_bytes()?;
-    let claim_set = claim_set_bytes(report_path, recipe_path, status_path)?;
+    let claim_set = claim_set_bytes(report_path, purchase_record_path, recipe_path, status_path)?;
     let verifier_policy = verifier_policy_bytes()?;
 
     let report_id = sha256_hex(&report);
+    let purchase_record_id = sha256_hex(&purchase_record);
     let finding_node_id = sha256_hex(&finding);
     let recipe_id = sha256_hex(&recipe);
     let status_id = sha256_hex(&status);
@@ -515,6 +533,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
             node("verifier-policy.json", "verifier-policy", "chio.transaction.verifier-policy.v1", &verifier_policy),
             node(finding_path, "external-subject", chio_finding::FINDING_SCHEMA_V1, &finding),
             node(report_path, "report", FINDING_VERIFIER_REPORT_SCHEMA_V1, &report),
+            node(purchase_record_path, "commerce-order-context", FINDING_PURCHASE_RECORD_SCHEMA_V1, &purchase_record),
             node(recipe_path, "advisory-observation", FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, &recipe),
             node(status_path, "advisory-observation", FINDING_STATUS_PROOF_INPUT_SCHEMA_V1, &status)
         ],
@@ -523,6 +542,8 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
             {"from": claim_set_id, "to": report_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
             {"from": claim_set_id, "to": finding_node_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
             {"from": report_id, "to": finding_node_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
+            {"from": claim_set_id, "to": purchase_record_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
+            {"from": report_id, "to": purchase_record_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
             {"from": report_id, "to": recipe_id, "predicate": "binds", "evidence_class": "digest-bound-reference"},
             {"from": report_id, "to": status_id, "predicate": "binds", "evidence_class": "digest-bound-reference"}
         ]
@@ -552,6 +573,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         ("verifier-policy.json".to_string(), verifier_policy.clone()),
         (finding_path.to_string(), finding),
         (report_path.to_string(), report),
+        (purchase_record_path.to_string(), purchase_record),
         (recipe_path.to_string(), recipe),
         (status_path.to_string(), status),
     ]);
@@ -613,6 +635,7 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
             max_age_secs: 60,
         },
         finding_verifier_authority: verifier_keypair().public_key(),
+        purchase_authority: purchase_authority_keypair().public_key(),
         trusted_verifier_profile_envelope_sha256,
         trusted_verifier_profile,
         trusted_trust_root_snapshot_sha256: "45".repeat(32),
@@ -1213,36 +1236,6 @@ fn cognition_market_profile_status_floor_reaches_durable_store_for_delivery_clai
     .to_string();
     assert!(
         error.contains("sticky retracted state"),
-        "unexpected error: {error}"
-    );
-    Ok(())
-}
-
-#[test]
-fn cognition_market_delivery_claim_rejects_a_pre_sale_report() -> TestResult {
-    let mut bundle = build_bundle()?;
-    let report_bytes = bundle
-        .artifacts
-        .get("report.json")
-        .ok_or("report missing")?;
-    let signed: SignedExportEnvelope<FindingVerifierReport> = serde_json::from_slice(report_bytes)?;
-    let mut report = signed.body;
-    report.finding_delivery_receipt_id = None;
-    report.report_id = compute_report_id(&report)?;
-    let replacement = SignedExportEnvelope::sign(report, &verifier_keypair())?;
-    replace_graph_artifact(
-        &mut bundle,
-        "report.json",
-        canonical_json_bytes(&replacement)?,
-    )?;
-    resign_graph(&mut bundle)?;
-
-    let error = verify(&bundle)
-        .err()
-        .ok_or("pre-sale report granted a delivery-bound claim")?
-        .to_string();
-    assert!(
-        error.contains("requires a verified Finding delivery receipt"),
         "unexpected error: {error}"
     );
     Ok(())
@@ -2156,6 +2149,10 @@ fn persisted_cognition_market_golden_verifies() -> TestResult {
             std::fs::read(root.join("report.json"))?,
         ),
         (
+            "purchase-record.json".to_string(),
+            std::fs::read(root.join("purchase-record.json"))?,
+        ),
+        (
             "finding.json".to_string(),
             std::fs::read(root.join("finding.json"))?,
         ),
@@ -2196,6 +2193,7 @@ fn regenerate_cognition_market_golden() -> TestResult {
     Ok(())
 }
 
+include!("cognition_market/delivery_transaction_regressions.rs");
 #[path = "cognition_market/profile_expiry_regression.rs"]
 mod expiry_regressions;
 #[path = "cognition_market/profile_governance_regressions.rs"]

@@ -73,16 +73,39 @@ fn rebind_recipe_and_finding_with(
             .get("report.json")
             .ok_or("report missing")?,
     )?;
-    report.body.finding_id = finding.finding_id;
+    report.body.finding_id = finding.finding_id.clone();
     report.body.finding_artifact_sha256 = finding_sha256;
     report.body.replay_recipe_input_sha256 = Some(sha256_hex(&recipe_bytes));
     report.body.status_proof_input_sha256 = Some(sha256_hex(&status_bytes));
+    report
+        .body
+        .finding_delivery
+        .as_mut()
+        .ok_or("report delivery overlay missing")?
+        .finding_id = finding.finding_id.clone();
     report.body.report_id = compute_report_id(&report.body)?;
     report = SignedExportEnvelope::sign(report.body, &verifier_keypair())?;
+
+    let purchase_record: SignedExportEnvelope<FindingPurchaseRecord> = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("purchase-record.json")
+            .ok_or("purchase record missing")?,
+    )?;
+    let mut purchase_record = purchase_record.body;
+    purchase_record.finding_id = finding.finding_id;
+    purchase_record.validate()?;
+    let purchase_record =
+        SignedExportEnvelope::sign(purchase_record, &purchase_authority_keypair())?;
 
     replace_graph_artifact(bundle, "attachments/replay-recipe-input.json", recipe_bytes)?;
     replace_graph_artifact(bundle, "attachments/status-proof-input.json", status_bytes)?;
     replace_graph_artifact(bundle, "finding.json", finding_bytes)?;
+    replace_graph_artifact(
+        bundle,
+        "purchase-record.json",
+        canonical_json_bytes(&purchase_record)?,
+    )?;
     bundle.passport.claim_set_sha256 =
         replace_graph_artifact(bundle, "claim-set.json", canonical_json_bytes(&claim_set)?)?;
     replace_graph_artifact(bundle, "report.json", canonical_json_bytes(&report)?)?;

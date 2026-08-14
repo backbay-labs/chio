@@ -16,6 +16,7 @@ const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_K
 const TRANSACTION_TRUSTED_CHECKPOINT_KEYS_ENV: &str =
     "CHIO_TRANSACTION_TRUSTED_CHECKPOINT_KEYS";
 const FINDING_VERIFIER_AUTHORITY_KEY_ENV: &str = "CHIO_FINDING_VERIFIER_AUTHORITY_KEY";
+const FINDING_PURCHASE_AUTHORITY_KEY_ENV: &str = "CHIO_FINDING_PURCHASE_AUTHORITY_KEY";
 const FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV: &str =
     "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY";
 const FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH_ENV: &str =
@@ -292,6 +293,18 @@ pub(super) fn cognition_market_proof_trust_from_env(
         .into_iter()
         .next()
         .ok_or_else(|| CliError::cli_other_error("Finding verifier authority key is missing"))?;
+    let purchase_keys = required_public_keys_from_env(
+        FINDING_PURCHASE_AUTHORITY_KEY_ENV,
+        "Finding purchase-record authority",
+    )?;
+    if purchase_keys.len() != 1 {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_PURCHASE_AUTHORITY_KEY_ENV} must contain exactly one public key"
+        )));
+    }
+    let purchase_authority = purchase_keys.into_iter().next().ok_or_else(|| {
+        CliError::cli_other_error("Finding purchase-record authority key is missing")
+    })?;
     require_independent_profile_authorities(
         &profile_governance_authority,
         &finding_verifier_authority,
@@ -383,6 +396,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
             profile_governance_authority: profile_governance_authority_policy,
             profile_governance_authority_status,
             finding_verifier_authority,
+            purchase_authority,
             trusted_verifier_profile_envelope_sha256,
             trusted_verifier_profile,
             trusted_trust_root_snapshot_sha256,

@@ -10,19 +10,25 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use chio_core_types::crypto::PublicKey;
+use chio_core_types::receipt::metadata::{DeliveryResult, FindingMediaTypeCheck};
 use chio_core_types::receipt::MEDIATED_SPEND_PROFILE;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
     signed_envelope_sha256, verify_finding, verify_signed_authority_status, verify_signed_profile,
-    verify_signed_verifier_report, verify_status_proof_input, Finding, FindingAuthorityKeyPolicy,
-    FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome, FindingGuaranteeClass,
-    FindingReplayRecipeInput, FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization,
-    FindingStatusProofInput, SignedFindingAuthorityStatus, SignedFindingChallengeVerifierProfile,
-    SignedFindingStatusEpoch, SignedFindingVerifierReport, FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1,
+    verify_signed_purchase_record, verify_signed_verifier_report, verify_status_proof_input,
+    Finding, FindingAuthorityKeyPolicy, FindingEvidenceClass, FindingFacetKind,
+    FindingFacetOutcome, FindingGuaranteeClass, FindingReplayRecipeInput,
+    FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusProofInput,
+    SignedFindingAuthorityStatus, SignedFindingChallengeVerifierProfile,
+    SignedFindingPurchaseRecord, SignedFindingStatusEpoch, SignedFindingVerifierReport,
+    FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_finding_verifier::validate_supported_finding_verifier_profile;
+use chio_open_market::purchase_verification::{
+    derive_payment_operation_id, derive_purchase_intent_id,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -75,6 +81,8 @@ pub struct CognitionMarketProofTrust {
     pub profile_governance_authority: FindingAuthorityKeyPolicy,
     pub profile_governance_authority_status: CognitionMarketVerifierAuthorityStatusTrust,
     pub finding_verifier_authority: PublicKey,
+    /// Deployment-pinned signer for settled Finding purchase records.
+    pub purchase_authority: PublicKey,
     pub trusted_verifier_profile_envelope_sha256: String,
     pub trusted_verifier_profile: SignedFindingChallengeVerifierProfile,
     pub trusted_trust_root_snapshot_sha256: String,
@@ -190,6 +198,31 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "passport signer and finding verifier authorities must be distinct",
         ));
     }
+    if trust
+        .trusted_passport_signer_keys
+        .iter()
+        .any(|key| key == &trust.purchase_authority)
+    {
+        return Err(claim_failed(
+            "passport signer and purchase-record authorities must be distinct",
+        ));
+    }
+    if trust.purchase_authority == trust.finding_verifier_authority
+        || trust.purchase_authority == trust.profile_governance_authority.key
+        || trust.purchase_authority
+            == trust
+                .profile_governance_authority_status
+                .status_authority
+                .key
+        || trust.status.as_ref().is_some_and(|status| {
+            status.status_operator_authorization.operator.key == trust.purchase_authority
+                || status.operator_authority_status.status_authority.key == trust.purchase_authority
+        })
+    {
+        return Err(claim_failed(
+            "purchase-record authority must be independent from proof authorities",
+        ));
+    }
     if trust.profile_governance_authority.key == trust.finding_verifier_authority {
         return Err(claim_failed(
             "profile governance and finding verifier authorities must be distinct",
@@ -255,6 +288,16 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     let claim_set_node = unique_node(nodes, "claim-set", "chio.transaction.claim-set.v1")?;
     let finding_node = unique_node(nodes, "external-subject", FINDING_SCHEMA_V1)?;
     let report_node = unique_node(nodes, "report", FINDING_VERIFIER_REPORT_SCHEMA_V1)?;
+    let purchase_record_node = selected_claims
+        .contains(COGNITION_MARKET_CLAIMS[0])
+        .then(|| {
+            unique_node(
+                nodes,
+                "commerce-order-context",
+                FINDING_PURCHASE_RECORD_SCHEMA_V1,
+            )
+        })
+        .transpose()?;
     let finding_bytes = artifact_bytes(artifacts, finding_node.path)?;
     require_exact_canonical_json(finding_node.path, finding_bytes)?;
     let finding: Finding = serde_json::from_slice(finding_bytes).map_err(|error| {
@@ -304,6 +347,10 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
     require_digest_bound_attachment_edges(&graph, &report_node, &attachment_nodes)?;
     require_digest_bound_edge(&graph, &claim_set_node, &finding_node)?;
     require_digest_bound_edge(&graph, &report_node, &finding_node)?;
+    if let Some(purchase_record_node) = &purchase_record_node {
+        require_digest_bound_edge(&graph, &claim_set_node, purchase_record_node)?;
+        require_digest_bound_edge(&graph, &report_node, purchase_record_node)?;
+    }
 
     let report_bytes = artifact_bytes(artifacts, report_node.path)?;
     require_exact_canonical_json(report_node.path, report_bytes)?;
@@ -470,6 +517,33 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         ));
     }
     validate_finding_claim_subject(&claim_set.subject, &report, &finding, finding_node.id)?;
+    if let Some(purchase_record_node) = &purchase_record_node {
+        let purchase_record_bytes = artifact_bytes(artifacts, purchase_record_node.path)?;
+        require_exact_canonical_json(purchase_record_node.path, purchase_record_bytes)?;
+        let purchase_record: SignedFindingPurchaseRecord =
+            serde_json::from_slice(purchase_record_bytes).map_err(|error| {
+                invalid_artifact(
+                    purchase_record_node.path,
+                    format!("invalid signed Finding purchase record: {error}"),
+                )
+            })?;
+        let typed_purchase_record_bytes =
+            canonical_json_bytes(&purchase_record).map_err(|error| {
+                invalid_artifact(
+                    purchase_record_node.path,
+                    format!("signed Finding purchase record cannot be serialized: {error}"),
+                )
+            })?;
+        if typed_purchase_record_bytes != purchase_record_bytes {
+            return Err(invalid_artifact(
+                purchase_record_node.path,
+                "signed Finding purchase record bytes do not match the typed canonical encoding",
+            ));
+        }
+        verify_signed_purchase_record(&purchase_record, &trust.purchase_authority)
+            .map_err(|error| invalid_artifact(purchase_record_node.path, error.to_string()))?;
+        require_delivery_transaction_binding(&report, &purchase_record)?;
+    }
 
     if let Some(recipe_node) = &recipe_node {
         let recipe_bytes = artifact_bytes(artifacts, recipe_node.path)?;
@@ -595,6 +669,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         &claim_set,
         &selected_claims,
         report_node.path,
+        purchase_record_node.as_ref().map(|node| node.path),
         recipe_node.as_ref().map(|node| node.path),
         status_node.as_ref().map(|node| node.path),
     )?;
@@ -1071,7 +1146,8 @@ fn require_report_facets(
         }
     }
     if selected_claims.contains(COGNITION_MARKET_CLAIMS[0])
-        && report.body.finding_delivery_receipt_id.is_none()
+        && (report.body.finding_delivery_receipt_id.is_none()
+            || report.body.finding_delivery.is_none())
     {
         return Err(claim_failed(
             "delivery-digest-bound claim requires a verified Finding delivery receipt",
@@ -1112,6 +1188,48 @@ fn require_report_facets(
                 )));
             }
         }
+    }
+    Ok(())
+}
+
+fn require_delivery_transaction_binding(
+    report: &SignedFindingVerifierReport,
+    purchase_record: &SignedFindingPurchaseRecord,
+) -> Result<(), TransactionPassportError> {
+    let receipt_id = report
+        .body
+        .finding_delivery_receipt_id
+        .as_deref()
+        .ok_or_else(|| {
+            claim_failed("delivery-bound claim has no authenticated delivery receipt id")
+        })?;
+    let delivery = report.body.finding_delivery.as_ref().ok_or_else(|| {
+        claim_failed("delivery-bound claim has no authenticated delivery transaction overlay")
+    })?;
+    let purchase = &purchase_record.body;
+    if delivery.digest_check != DeliveryResult::Matched
+        || delivery.media_type_check != FindingMediaTypeCheck::Matched
+    {
+        return Err(claim_failed(
+            "delivery-bound claim does not carry a successful delivery overlay",
+        ));
+    }
+    if receipt_id != purchase.delivery_receipt_id
+        || delivery.finding_id != purchase.finding_id
+        || delivery.listing_id != purchase.listing_id
+        || delivery.accepted_bid_envelope_sha256 != purchase.accepted_bid_envelope_sha256
+        || delivery.venue_admission_envelope_sha256 != purchase.venue_admission_envelope_sha256
+        || delivery.purchase_intent_id != purchase.purchase_intent_id
+        || delivery.authoritative_payment_operation_id
+            != purchase.authoritative_payment_operation_id
+        || purchase.payment_reference != purchase.authoritative_payment_operation_id
+        || derive_purchase_intent_id(&delivery.reservation_id) != purchase.purchase_intent_id
+        || derive_payment_operation_id(&delivery.reservation_id)
+            != purchase.authoritative_payment_operation_id
+    {
+        return Err(claim_failed(
+            "signed delivery report does not bind the passport purchase transaction",
+        ));
     }
     Ok(())
 }
@@ -1201,6 +1319,7 @@ fn validate_selected_cognition_claim_rows(
     claim_set: &ClaimSet,
     selected_claims: &BTreeSet<&'static str>,
     report_path: &str,
+    purchase_record_path: Option<&str>,
     recipe_path: Option<&str>,
     status_path: Option<&str>,
 ) -> Result<(), TransactionPassportError> {
@@ -1222,7 +1341,14 @@ fn validate_selected_cognition_claim_rows(
             )));
         }
         let expected_paths = match *claim_id {
-            claim if claim == COGNITION_MARKET_CLAIMS[0] => vec![report_path.to_string()],
+            claim if claim == COGNITION_MARKET_CLAIMS[0] => vec![
+                report_path.to_string(),
+                purchase_record_path
+                    .ok_or_else(|| {
+                        claim_failed("delivery-bound claim is missing its purchase record")
+                    })?
+                    .to_string(),
+            ],
             claim if claim == COGNITION_MARKET_CLAIMS[1] => vec![
                 report_path.to_string(),
                 recipe_path

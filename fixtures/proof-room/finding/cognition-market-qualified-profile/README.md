@@ -8,8 +8,12 @@ claims through the existing `claim-set` evidence role.
 `report.json` is the finding-verifier authority artifact. `finding.json` is
 the exact issuer-signed subject under the `external-subject` role. The
 passport verifier resolves it to bind the subject digest and lifecycle before
-accepting a report. The replay recipe and portable status proof under
-`attachments/` are intentionally unsigned and use the evidence graph's
+accepting a report. `purchase-record.json` is the purchase-authority-signed
+sale record. The delivery claim requires the report's authenticated delivery
+overlay to match that record's receipt, listing, admission, accepted bid,
+reservation-derived intent, and payment operation. The replay recipe and
+portable status proof under `attachments/` are intentionally unsigned and use
+the evidence graph's
 `advisory-observation` role. The signed report commits their exact canonical
 SHA-256 digests, and `chio-transaction-passport` independently rechecks their
 role, schema, digest, typed semantics, status operator authorization, and

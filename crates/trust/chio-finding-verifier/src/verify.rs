@@ -245,8 +245,7 @@ pub struct FindingEvidenceBundle<'a> {
     pub nonce_resolver: &'a dyn FindingNonceResolver,
 }
 
-/// The draft the venue turns into a signed report: the parsed finding,
-/// the 13 facets in canonical order, and the evaluation metadata.
+/// Draft signed by the venue: finding, 13 ordered facets, and evaluation metadata.
 pub struct FindingVerifierDraft {
     finding: Finding,
     finding_artifact_sha256: String,
@@ -255,9 +254,10 @@ pub struct FindingVerifierDraft {
     /// Exact raw attachment digests copied into the signed report.
     replay_recipe_input_sha256: Option<String>,
     status_proof_input_sha256: Option<String>,
-    /// Authenticated, checkpointed post-purchase receipt for this Finding.
-    /// Absent for ordinary pre-sale admission reports.
+    /// Authenticated post-purchase receipt; absent from pre-sale admission reports.
     finding_delivery_receipt_id: Option<String>,
+    /// Exact authenticated Finding delivery overlay from that receipt.
+    finding_delivery: Option<FindingDelivery>,
     /// Exact governance-signed verifier profile used for facet evaluation.
     /// Kept private so callers cannot relabel an evaluated draft before
     /// report signing.
@@ -464,7 +464,7 @@ fn verify_finding_delivery_receipt(
     nonce_resolver: &dyn FindingNonceResolver,
     signer_status: Option<&FindingCheckpointSignerStatusTrust>,
     evaluation_time: u64,
-) -> Result<String, String> {
+) -> Result<(String, FindingDelivery), String> {
     let receipt = &evidence.receipt;
     verify_receipt_strict(receipt)
         .map_err(|error| format!("delivery receipt {}: {error}", receipt.id))?;
@@ -588,23 +588,19 @@ fn verify_finding_delivery_receipt(
             receipt.id
         ));
     }
-    Ok(receipt.id.clone())
+    Ok((receipt.id.clone(), overlay))
 }
 
-/// Run the offline evidence verifier. The normative order from
-/// ARCHITECTURE 4.1.1: strict raw parse, receipt resolution and strict
-/// verification, checkpoint membership, issuer lineage, recipe binding,
-/// intent binding, cost facets, bond backing, status, assurance, and
-/// guarantee consistency, producing all 13 facets in canonical order.
+/// Run the offline evidence verifier in ARCHITECTURE 4.1.1 order: strict raw
+/// parse and receipt verification, checkpoint membership, issuer lineage,
+/// recipe and intent binding, cost, bond, status, assurance, and consistency.
 pub fn verify_finding_evidence(
     raw_finding: &str,
     trust: &FindingVerifierTrustRoots,
     bundle: &FindingEvidenceBundle<'_>,
 ) -> Result<FindingVerifierDraft, FindingVerifierError> {
-    // Step 1: strict raw ingress. Canonical bytes from the raw text
-    // reject duplicate keys and non-I-JSON numbers; byte equality then
-    // rejects noncanonical spellings outright, and the typed view must
-    // reserialize to the same bytes.
+    // Step 1: canonical raw bytes reject duplicate keys and non-I-JSON numbers;
+    // byte equality rejects noncanonical spellings and typed-view drift.
     if raw_finding.len() > MAX_RAW_FINDING_BYTES {
         return Err(FindingVerifierError::RawTooLarge);
     }
@@ -806,7 +802,7 @@ pub fn verify_finding_evidence(
                 .to_string(),
         );
     }
-    let mut authenticated_delivery_receipt_id = None;
+    let mut authenticated_delivery = None;
     if failure.is_none() {
         if let Some(delivery) = bundle.finding_delivery.as_ref() {
             match verify_finding_delivery_receipt(
@@ -818,13 +814,13 @@ pub fn verify_finding_evidence(
                 trust.checkpoint_signer_status.as_ref(),
                 trust.trusted_time,
             ) {
-                Ok(receipt_id) => authenticated_delivery_receipt_id = Some(receipt_id),
+                Ok(delivery) => authenticated_delivery = Some(delivery),
                 Err(reason) => failure = Some(reason),
             }
         }
     }
     let has_production_receipts = !bundle.receipts.is_empty();
-    let has_authenticated_delivery = authenticated_delivery_receipt_id.is_some();
+    let has_authenticated_delivery = authenticated_delivery.is_some();
     let receipt_authenticity = match failure.as_deref() {
         Some(reason) => facet(
             FindingFacetKind::ReceiptAuthenticity,
@@ -937,9 +933,13 @@ pub fn verify_finding_evidence(
             ),
         }
     };
-    let finding_delivery_receipt_id = delivery_membership_ok
-        .then_some(authenticated_delivery_receipt_id)
+    let finding_delivery = delivery_membership_ok
+        .then_some(authenticated_delivery)
         .flatten();
+    let finding_delivery_receipt_id = finding_delivery
+        .as_ref()
+        .map(|(receipt_id, _)| receipt_id.clone());
+    let finding_delivery = finding_delivery.map(|(_, delivery)| delivery);
     facets.push(checkpoint_membership);
 
     // Facet 4: kernel and revocation trust. Checkpoint signers are pinned
@@ -1011,11 +1011,8 @@ pub fn verify_finding_evidence(
     let settled = evaluate_settled_spend(&receipts, &metered);
     facets.push(cost_facet(FindingFacetKind::SettledSpendBacking, &settled));
 
-    // Facet 10: runtime assurance. The seller tier is never a source of
-    // truth. Signed attestation and appraisal artifacts must re-verify
-    // under independent deployment pins and a non-empty local policy,
-    // then match the assurance metadata signed into every producing
-    // receipt.
+    // Facet 10: runtime assurance comes from independently pinned attestation
+    // and appraisal under local policy, matching every producing receipt.
     facets.push(evaluate_runtime_assurance(
         &finding,
         trust,
@@ -1052,6 +1049,7 @@ pub fn verify_finding_evidence(
         replay_recipe_input_sha256: bundle.recipe_preimage.map(sha256_hex),
         status_proof_input_sha256: bundle.status_proof_input.map(sha256_hex),
         finding_delivery_receipt_id,
+        finding_delivery,
         verifier_profile_envelope_sha256: profile_envelope_sha256,
         trust_root_snapshot_sha256: trust.trust_root_snapshot_sha256.clone(),
         resolver_policy_sha256: trust.resolver_policy_sha256.clone(),
@@ -1756,10 +1754,8 @@ fn evaluate_guarantee_consistency(
             "deterministic_replay claimed without a verified recipe binding",
         );
     }
-    // A metered_attested guarantee asserts that execution and cost were
-    // attested by mediated receipts, so it needs the same receipt and
-    // membership backing plus a kernel-accounted cost floor. Without
-    // this, the strongest non-replay guarantee is the cheapest to claim.
+    // A metered_attested guarantee needs receipt and membership backing plus
+    // a kernel-accounted cost floor, or the strongest guarantee is cheapest.
     if finding.guarantee_class == FindingGuaranteeClass::MeteredAttested
         && (outcome_of(FindingFacetKind::ReceiptAuthenticity)
             != Some(FindingFacetOutcome::Verified)
@@ -2079,6 +2075,7 @@ pub fn sign_finding_verifier_report(
         replay_recipe_input_sha256: draft.replay_recipe_input_sha256.clone(),
         status_proof_input_sha256: draft.status_proof_input_sha256.clone(),
         finding_delivery_receipt_id: draft.finding_delivery_receipt_id.clone(),
+        finding_delivery: draft.finding_delivery.clone(),
         trust_root_snapshot_sha256: draft.trust_root_snapshot_sha256.clone(),
         resolver_policy_sha256: draft.resolver_policy_sha256.clone(),
         trusted_time_input_sha256: draft.trusted_time_input_sha256.clone(),

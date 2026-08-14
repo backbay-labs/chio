@@ -4853,6 +4853,7 @@ dependencies = [
  "chio-core-types",
  "chio-finding",
  "chio-finding-verifier",
+ "chio-open-market",
  "chio-revocation-oracle",
  "chio-test-support",
  "chrono",

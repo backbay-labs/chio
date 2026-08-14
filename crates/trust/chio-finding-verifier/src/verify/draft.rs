@@ -50,6 +50,12 @@ impl FindingVerifierDraft {
         self.finding_delivery_receipt_id.as_deref()
     }
 
+    /// Exact Finding delivery overlay authenticated from the same receipt.
+    #[must_use]
+    pub const fn finding_delivery(&self) -> Option<&FindingDelivery> {
+        self.finding_delivery.as_ref()
+    }
+
     /// Collateral allocation derived from verified bond evidence, when any.
     #[must_use]
     pub fn backing_allocation_id(&self) -> Option<&str> {

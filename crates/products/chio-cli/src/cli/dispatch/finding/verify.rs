@@ -794,6 +794,7 @@ fn emit_evidence_report(
             "resolved_evidence_bundle_sha256": draft.resolved_evidence_bundle_sha256(),
             "backing_allocation_id": draft.backing_allocation_id(),
             "finding_delivery_receipt_id": draft.finding_delivery_receipt_id(),
+            "finding_delivery": draft.finding_delivery(),
             "facets": facet_rows,
             "required_facets": required_labels,
             "unverified_required_facets": unverified,

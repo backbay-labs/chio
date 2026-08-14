@@ -4,7 +4,6 @@
 //! settled into a signed purchase record, and recorded into buyer memory
 //! with a signed lineage statement back to the delivery receipt. The
 //! failure lanes cover every way the reveal must refuse.
-//!
 //! One sqlite authority store provisions both the kernel's durable
 //! admission stores and the finding market and purchase stores, so a
 //! simulated restart is a genuine re-open of the same database.
@@ -128,6 +127,7 @@ mod public_route_support;
 use public_route_support::{
     assert_terminal_cannot_rebind_public_request, FixedTerminalExecutor, RoutedPurchaseExecutor,
 };
+include!("finding_wedge_purchase_e2e_tests/listing_authority_regressions.rs");
 use tower::ServiceExt;
 
 use crate::trust_control::finding_challenge_coordinator::FindingAuthorityStatusResolver;
@@ -2042,6 +2042,7 @@ fn coordinator_with_status_pin(
         &market_config().status_feed_operator,
         &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
+        &market_config().listing,
         &market_config().venue,
         VENUE_ID,
     )?)
@@ -2066,6 +2067,7 @@ fn coordinator_with_venue(
         &market_config().status_feed_operator,
         &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
+        &market_config().listing,
         venue,
         VENUE_ID,
     )?)
@@ -4730,6 +4732,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         &market_config().status_feed_operator,
         &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
+        &market_config().listing,
         &market_config().venue,
         VENUE_ID,
     )?;
@@ -4765,6 +4768,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         &market_config().status_feed_operator,
         &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
+        &market_config().listing,
         &market_config().venue,
         VENUE_ID,
     )?;
@@ -4805,6 +4809,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
                 &market_config().status_feed_operator,
                 &market_config().status_feed_service_bond,
                 market_config().status_max_epoch_age_secs,
+                &market_config().listing,
                 &market_config().venue,
                 VENUE_ID,
             ),
@@ -4831,6 +4836,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
                 &market_config().status_feed_operator,
                 &market_config().status_feed_service_bond,
                 market_config().status_max_epoch_age_secs,
+                &market_config().listing,
                 &aliased_venue_pin,
                 VENUE_ID,
             ),
@@ -4853,6 +4859,7 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
             &market_config().status_feed_operator,
             &market_config().status_feed_service_bond,
             market_config().status_max_epoch_age_secs,
+            &market_config().listing,
             &market_config().venue,
             VENUE_ID,
         ),
@@ -4938,6 +4945,7 @@ async fn wedge_purchase_reservation_cannot_outlive_authority_status_signer() -> 
         &market_config().status_feed_operator,
         &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
+        &market_config().listing,
         &market_config().venue,
         VENUE_ID,
     )?;
@@ -5034,6 +5042,7 @@ async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_stand
         &market_config().status_feed_operator,
         &market_config().status_feed_service_bond,
         market_config().status_max_epoch_age_secs,
+        &market_config().listing,
         &expired_venue,
         VENUE_ID,
     )?;
@@ -5072,6 +5081,7 @@ async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_stand
         &status_operator,
         &expired_bond,
         market_config().status_max_epoch_age_secs,
+        &market_config().listing,
         &market_config().venue,
         VENUE_ID,
     )?;

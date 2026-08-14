@@ -92,6 +92,9 @@ const GOLDEN_BACKING_RAW: &str =
     include_str!("../../../../fixtures/proof-room/finding/bond-backing-basic/backing.json");
 const GOLDEN_REPORT_RAW: &str =
     include_str!("../../../../fixtures/proof-room/finding/verifier-report-basic/report.json");
+const QUALIFIED_DELIVERY_REPORT_RAW: &str = include_str!(
+    "../../../../fixtures/proof-room/finding/cognition-market-qualified-profile/report.json"
+);
 const GOLDEN_ADMISSION_RAW: &str =
     include_str!("../../../../fixtures/proof-room/finding/venue-admission-basic/admission.json");
 const GOLDEN_RECIPE_RAW: &str =
@@ -376,6 +379,7 @@ fn report_body(verifier: &Keypair) -> Result<FindingVerifierReport, FindingError
         replay_recipe_input_sha256: None,
         status_proof_input_sha256: None,
         finding_delivery_receipt_id: None,
+        finding_delivery: None,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
         trusted_time_input_sha256: HEX64.to_string(),
@@ -918,11 +922,24 @@ fn golden_verifier_report_fixture_validates() -> TestResult {
 }
 
 #[test]
+fn qualified_delivery_verifier_report_conforms_to_schema() -> TestResult {
+    let strict_canonical = canonical_json_bytes_from_str(QUALIFIED_DELIVERY_REPORT_RAW)?;
+    let value: Value = serde_json::from_str(QUALIFIED_DELIVERY_REPORT_RAW)?;
+    validate_family_schema(&REPORT, &value)?;
+    let signed: SignedFindingVerifierReport = serde_json::from_str(QUALIFIED_DELIVERY_REPORT_RAW)?;
+    assert_eq!(strict_canonical, canonical_json_bytes(&signed)?);
+    verify_signed_verifier_report(&signed, &signed.body.verifier_authority)?;
+    assert!(signed.body.finding_delivery.is_some());
+    Ok(())
+}
+
+#[test]
 fn signed_verifier_report_rejects_explicit_null_optionals() -> TestResult {
     for field in [
         "replay_recipe_input_sha256",
         "status_proof_input_sha256",
         "finding_delivery_receipt_id",
+        "finding_delivery",
         "backing_allocation_id",
     ] {
         let mut value: Value = serde_json::from_str(GOLDEN_REPORT_RAW)?;

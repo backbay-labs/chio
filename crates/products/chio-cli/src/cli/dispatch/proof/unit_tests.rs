@@ -283,6 +283,9 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
     let governance_key = profile.body.governance_authority.to_hex();
     let verifier_key = profile.body.verifier_report_signer.key.clone();
     let verifier_key = verifier_key.to_hex();
+    let purchase_key = chio_core_types::Keypair::from_seed(&[11_u8; 32])
+        .public_key()
+        .to_hex();
     let _env = TestEnvGuard::set(&[
         (
             "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY",
@@ -299,6 +302,10 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
         (
             "CHIO_FINDING_VERIFIER_AUTHORITY_KEY",
             std::ffi::OsStr::new(&verifier_key),
+        ),
+        (
+            "CHIO_FINDING_PURCHASE_AUTHORITY_KEY",
+            std::ffi::OsStr::new(&purchase_key),
         ),
         (
             "CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_PATH",
@@ -400,6 +407,9 @@ fn cognition_market_trust_loads_status_for_profile_liveness_floor() {
     );
     let governance_key = governance.public_key().to_hex();
     let verifier_key = signed.body.verifier_report_signer.key.to_hex();
+    let purchase_key = chio_core_types::Keypair::from_seed(&[11_u8; 32])
+        .public_key()
+        .to_hex();
     let profile_digest = chio_core_types::crypto::sha256_hex(&profile_bytes);
     let (
         governance_policy_path,
@@ -423,6 +433,10 @@ fn cognition_market_trust_loads_status_for_profile_liveness_floor() {
         (
             "CHIO_FINDING_VERIFIER_AUTHORITY_KEY",
             std::ffi::OsStr::new(&verifier_key),
+        ),
+        (
+            "CHIO_FINDING_PURCHASE_AUTHORITY_KEY",
+            std::ffi::OsStr::new(&purchase_key),
         ),
         (
             "CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_PATH",
@@ -596,6 +610,9 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
     let governance_key = profile.body.governance_authority.to_hex();
     let verifier_authority = profile.body.verifier_report_signer.key.clone();
     let verifier_authority_hex = verifier_authority.to_hex();
+    let purchase_authority_hex = chio_core_types::Keypair::from_seed(&[11_u8; 32])
+        .public_key()
+        .to_hex();
     let authorization = chio_finding::FindingStatusOperatorAuthorization {
         role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
         feed_id: "finding-status/test".to_owned(),
@@ -748,6 +765,10 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         (
             "CHIO_FINDING_VERIFIER_AUTHORITY_KEY",
             std::ffi::OsStr::new(&verifier_authority_hex),
+        ),
+        (
+            "CHIO_FINDING_PURCHASE_AUTHORITY_KEY",
+            std::ffi::OsStr::new(&purchase_authority_hex),
         ),
         (
             "CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_PATH",

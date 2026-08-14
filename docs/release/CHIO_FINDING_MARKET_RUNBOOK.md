@@ -138,6 +138,7 @@ export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY=<profile-governance-public-
 export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH=<canonical-profile-governance-policy.json>
 export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_STATUS_PATH=<canonical-signed-governance-status.json>
 export CHIO_FINDING_VERIFIER_AUTHORITY_KEY=<finding-verifier-public-key>
+export CHIO_FINDING_PURCHASE_AUTHORITY_KEY=<purchase-record-public-key>
 export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_PATH=<canonical-signed-authority-status.json>
 export CHIO_FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH=<canonical-authority-status-signer-policy.json>
 export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT=<trusted-verification-time>
@@ -170,7 +171,9 @@ revoked or expires. The report must bind the
 deployment-pinned trust-root snapshot, resolver policy, and trusted-time
 input. Verification fails closed when any profile floor, snapshot commitment,
 pin, authorization, durable authority store, trusted time, or freshness limit
-is missing or malformed.
+is missing or malformed. A delivery-bound claim also requires a purchase
+record under the separately pinned purchase authority. Its exact sale identity
+must match the verifier-signed delivery overlay carried by the report.
 Provision the authority database and secure lock directory before verification
 and reuse them for every bundle from that feed and stable operator identity.
 The store advances the signed epoch high-water mark and retains sticky

@@ -135,6 +135,8 @@ pub enum PurchaseCoordinatorError {
     AuthorityStatusPin,
     #[error("configured status epoch age ceiling is invalid")]
     StatusEpochAge,
+    #[error("listing authority pin is invalid or aliases another trusted authority")]
+    ListingPin,
     #[error("venue authority pin is invalid or aliases another trusted authority")]
     VenuePin,
     #[error("reserve request signature does not verify under the buyer key")]
@@ -225,6 +227,7 @@ pub struct FindingPurchaseCoordinator {
     status_feed_operator: FindingStatusOperatorPin,
     status_feed_service_bond: FindingStatusServiceBond,
     status_max_epoch_age_secs: u64,
+    listing_authority: FindingAuthorityPin,
     venue_authority: FindingAuthorityPin,
     venue_id: String,
 }
@@ -250,6 +253,7 @@ impl FindingPurchaseCoordinator {
         status_feed_operator: &FindingStatusOperatorPin,
         status_feed_service_bond: &FindingStatusServiceBond,
         status_max_epoch_age_secs: u64,
+        listing_pin: &FindingAuthorityPin,
         venue_pin: &FindingAuthorityPin,
         venue_id: &str,
     ) -> Result<Self, PurchaseCoordinatorError> {
@@ -282,6 +286,16 @@ impl FindingPurchaseCoordinator {
         {
             return Err(PurchaseCoordinatorError::StatusEpochAge);
         }
+        let listing_key = listing_pin
+            .validate("listing")
+            .map_err(|_| PurchaseCoordinatorError::ListingPin)?;
+        if listing_key == purchase_authority.public_key()
+            || listing_key == failed_delivery_authority.public_key()
+            || listing_key == authority_status_key
+            || listing_key == status_operator_key
+        {
+            return Err(PurchaseCoordinatorError::ListingPin);
+        }
         let venue_key = venue_pin
             .validate("venue")
             .map_err(|_| PurchaseCoordinatorError::VenuePin)?;
@@ -290,6 +304,7 @@ impl FindingPurchaseCoordinator {
             || venue_key == failed_delivery_authority.public_key()
             || venue_key == authority_status_key
             || venue_key == status_operator_key
+            || venue_key == listing_key
         {
             return Err(PurchaseCoordinatorError::VenuePin);
         }
@@ -305,32 +320,31 @@ impl FindingPurchaseCoordinator {
             status_feed_operator: status_feed_operator.clone(),
             status_feed_service_bond: status_feed_service_bond.clone(),
             status_max_epoch_age_secs,
+            listing_authority: listing_pin.clone(),
             venue_authority: venue_pin.clone(),
             venue_id: venue_id.to_owned(),
         })
     }
 
-    fn require_live_venue_authority(
+    fn require_live_configured_authority(
         &self,
+        policy: &FindingAuthorityPin,
         now: u64,
+        role: &'static str,
     ) -> Result<PublicKey, PurchaseCoordinatorError> {
-        let reject = |reason| PurchaseCoordinatorError::AuthorityLifecycle {
-            role: "venue",
-            reason,
-        };
+        let reject = |reason| PurchaseCoordinatorError::AuthorityLifecycle { role, reason };
         if !self.authority_status_pin.covers(now) {
             return Err(reject("authority-status signer window is not live"));
         }
-        if !self.venue_authority.covers(now) {
+        if !policy.covers(now) {
             return Err(reject("configured authority window is not live"));
         }
-        let venue_key = self
-            .venue_authority
+        let configured_key = policy
             .key()
             .map_err(|_| reject("configured authority key is invalid"))?;
         let signed = self
             .authority_status
-            .resolve(&self.venue_authority, now)
+            .resolve(policy, now)
             .map_err(|_| reject("revocation source could not be resolved"))?;
         let authority_status_key = self
             .authority_status_pin
@@ -344,18 +358,18 @@ impl FindingPurchaseCoordinator {
                 "revocation status was signed outside the authority-status window",
             ));
         }
-        if !self.venue_authority.covers(status.observed_at) {
+        if !policy.covers(status.observed_at) {
             return Err(reject(
-                "revocation status was observed outside the venue authority window",
+                "revocation status was observed outside the configured authority window",
             ));
         }
-        if status.status_ref != self.venue_authority.revocation_status_ref
-            || status.authority_id != self.venue_authority.authority_id
-            || status.key != venue_key
-            || status.key_epoch != self.venue_authority.key_epoch
+        if status.status_ref != policy.revocation_status_ref
+            || status.authority_id != policy.authority_id
+            || status.key != configured_key
+            || status.key_epoch != policy.key_epoch
         {
             return Err(reject(
-                "revocation status does not bind the configured venue policy",
+                "revocation status does not bind the configured authority policy",
             ));
         }
         if status.observed_at > now
@@ -369,7 +383,21 @@ impl FindingPurchaseCoordinator {
         {
             return Err(reject("authority is revoked at reservation"));
         }
-        Ok(venue_key)
+        Ok(configured_key)
+    }
+
+    fn require_live_listing_authority(
+        &self,
+        now: u64,
+    ) -> Result<PublicKey, PurchaseCoordinatorError> {
+        self.require_live_configured_authority(&self.listing_authority, now, "listing")
+    }
+
+    fn require_live_venue_authority(
+        &self,
+        now: u64,
+    ) -> Result<PublicKey, PurchaseCoordinatorError> {
+        self.require_live_configured_authority(&self.venue_authority, now, "venue")
     }
 
     fn require_live_terminal_authority(
@@ -887,6 +915,7 @@ impl FindingPurchaseCoordinator {
             .min(ask.body.token_offer.expires_at)
             .min(admission.body.expires_at)
             .min(self.authority_status_pin.valid_until)
+            .min(self.listing_authority.valid_until)
             .min(self.venue_authority.valid_until)
             .min(admission.body.purchase_authority.valid_until)
             .min(admission.body.failed_delivery_authority.valid_until)
@@ -977,6 +1006,7 @@ impl FindingPurchaseCoordinator {
             }
             input.participation_epoch =
                 now.saturating_sub(current.activated_at) / terms.body.audit_epoch_length_secs;
+            self.require_live_listing_authority(now)?;
             self.require_live_venue_authority(now)?;
             if expires_at <= now {
                 return Err(PurchaseCoordinatorError::ReservationWindow);

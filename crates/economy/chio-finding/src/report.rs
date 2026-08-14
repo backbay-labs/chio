@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 
 use chio_core_types::crypto::PublicKey;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
+use chio_core_types::receipt::metadata::FindingDelivery;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::envelope::require_ed25519;
@@ -168,6 +169,16 @@ pub struct FindingVerifierReport {
         deserialize_with = "deserialize_non_null_option"
     )]
     pub finding_delivery_receipt_id: Option<String>,
+    /// Exact kernel-signed delivery overlay authenticated from the receipt
+    /// above. This lets downstream passport verification compare the sale's
+    /// full transaction identity instead of treating a receipt id as a
+    /// transferable delivery claim.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
+    pub finding_delivery: Option<FindingDelivery>,
     pub trust_root_snapshot_sha256: String,
     pub resolver_policy_sha256: String,
     pub trusted_time_input_sha256: String,
@@ -222,6 +233,18 @@ impl FindingVerifierReport {
         }
         if let Some(receipt_id) = &self.finding_delivery_receipt_id {
             require_hex64(receipt_id, "finding_delivery_receipt_id")?;
+        }
+        match (&self.finding_delivery_receipt_id, &self.finding_delivery) {
+            (Some(_), Some(delivery)) => {
+                delivery
+                    .validate()
+                    .map_err(|_| FindingError::InvalidField("finding_delivery"))?;
+                if delivery.finding_id != self.finding_id {
+                    return Err(FindingError::InvalidField("finding_delivery.finding_id"));
+                }
+            }
+            (None, None) => {}
+            _ => return Err(FindingError::InvalidField("finding_delivery")),
         }
         require_hex64(
             &self.trust_root_snapshot_sha256,
