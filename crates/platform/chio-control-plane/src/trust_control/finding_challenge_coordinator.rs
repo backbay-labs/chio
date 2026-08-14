@@ -53,8 +53,8 @@ use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
     audit_epoch_precommitment_sha256, compute_enforcement_id, derive_outcome_id,
-    ensure_challenge_class_compatibility, signed_envelope_sha256, verify_finding,
-    verify_pinned_envelope, verify_signed_admission, verify_signed_audit_epoch,
+    derive_seller_impair_intent_id, ensure_challenge_class_compatibility, signed_envelope_sha256,
+    verify_finding, verify_pinned_envelope, verify_signed_admission, verify_signed_audit_epoch,
     verify_signed_audit_round_authorization, verify_signed_challenge,
     verify_signed_challenge_outcome, verify_signed_market_terms, verify_signed_purchase_record,
     Finding, FindingChallenge, FindingChallengeAuthorization, FindingChallengeEnforcement,
@@ -136,7 +136,7 @@ const DEFECT_DOMAIN: &str = "chio.finding.defect.v1";
 /// Domain separator for the liability head identity.
 const LIABILITY_DOMAIN: &str = "chio.finding.liability.v1";
 
-/// Domain separator for the seller-impairment effect.
+/// Domain separator for the seller-impairment effect commitment.
 const EFFECT_SELLER_IMPAIR_DOMAIN: &str = "chio.finding.effect.seller-impair.v1";
 
 /// Domain separator for the challenge-bond disposition effect.
@@ -246,12 +246,7 @@ pub fn derive_seller_impair_intent_key(
     liability_key: &str,
     allocation_digest: &str,
 ) -> String {
-    sha256_hex(
-        format!(
-            "{EFFECT_SELLER_IMPAIR_DOMAIN}\0{chain_id}\0{vault_contract}\0{liability_key}\0{allocation_digest}"
-        )
-        .as_bytes(),
-    )
+    derive_seller_impair_intent_id(chain_id, vault_contract, liability_key, allocation_digest)
 }
 
 /// Domain-keyed identity of one challenge-bond disposition.

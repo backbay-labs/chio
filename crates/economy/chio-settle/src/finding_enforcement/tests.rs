@@ -188,7 +188,7 @@ fn enforcement_body(bond_snapshot_envelope_sha256: &str) -> FindingChallengeEnfo
         effect_intents: vec![
             FindingEffectIntentBinding {
                 kind: FindingEffectIntentKind::SellerImpair,
-                intent_id: hex64(0xc1),
+                intent_id: expected_seller_impair_intent_id(),
             },
             FindingEffectIntentBinding {
                 kind: FindingEffectIntentKind::RootIntent,
@@ -213,6 +213,15 @@ fn enforcement_body(bond_snapshot_envelope_sha256: &str) -> FindingChallengeEnfo
         finalization_revocation_status_ref: "revocations/venue-finalization".to_owned(),
         finalized_at: 1_750_090_100,
     }
+}
+
+fn expected_seller_impair_intent_id() -> String {
+    chio_finding::derive_seller_impair_intent_id(
+        &sample_config().chain_id,
+        BOND_VAULT_CONTRACT,
+        &hex64(0xb1),
+        &hex64(0xb7),
+    )
 }
 
 fn penalty_for(enforcement: &FindingChallengeEnforcement) -> SignedOpenMarketPenalty {
@@ -545,7 +554,10 @@ fn verify_finding_enforcement_accepts_a_matching_pair() {
 
     assert_eq!(verified.enforcement().amount, usd(250));
     assert_eq!(verified.live_allocated_collateral(), 380_000);
-    assert_eq!(verified.seller_impair_intent_id(), hex64(0xc1));
+    assert_eq!(
+        verified.seller_impair_intent_id(),
+        expected_seller_impair_intent_id()
+    );
     assert_eq!(
         verified.bond_snapshot_envelope_sha256(),
         verified.enforcement().bond_snapshot_envelope_sha256
@@ -553,6 +565,28 @@ fn verify_finding_enforcement_accepts_a_matching_pair() {
     assert_ne!(
         verified.enforcement_envelope_sha256(),
         verified.bond_snapshot_envelope_sha256()
+    );
+}
+
+#[test]
+fn dispatch_rejects_a_finalization_selected_seller_impairment_id() {
+    let (enforcement, snapshot) = pair_from(
+        snapshot_body(),
+        &observer_keypair(),
+        &finalization_keypair(),
+        |enforcement| {
+            enforcement
+                .effect_intents
+                .iter_mut()
+                .find(|intent| intent.kind == FindingEffectIntentKind::SellerImpair)
+                .test_expect("seller-impairment binding")
+                .intent_id = hex64(0xc1);
+        },
+    );
+
+    assert_rejected(
+        verify_pair(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+        "seller-impairment intent id does not match the independently derived effect key",
     );
 }
 
@@ -1288,7 +1322,7 @@ fn plan_finding_impairment_freezes_the_authorized_call() {
     let planned = planned();
     let intent = planned.intent();
 
-    assert_eq!(intent.intent_id, hex64(0xc1));
+    assert_eq!(intent.intent_id, expected_seller_impair_intent_id());
     assert_eq!(intent.liability_key, hex64(0xb1));
     assert_eq!(intent.amount, usd(250));
     assert_eq!(intent.slash_amount_minor_units, 2_500_000);

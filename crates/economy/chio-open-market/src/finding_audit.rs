@@ -251,6 +251,8 @@ pub enum FindingAuditError {
     Outcome(FindingError),
     #[error("audit outcome {0} has no exact authenticated evaluator policy")]
     OutcomeAuthorityNotEstablished(String),
+    #[error("audit outcome {0} reuses the audit authority as its evaluator")]
+    OutcomeAuthorityRoleCollision(String),
     #[error("audit outcome {0} has no exact authenticated evaluator status")]
     OutcomeStatusNotEstablished(String),
     #[error("audit evaluator status rejected: {0}")]
@@ -770,6 +772,11 @@ pub fn verify_audit_report(
                 outcome.outcome_id.clone(),
             ));
         };
+        if policy.key == witnesses.pinned_audit_policy.key {
+            return Err(FindingAuditError::OutcomeAuthorityRoleCollision(
+                outcome.outcome_id.clone(),
+            ));
+        }
         policy
             .validate("audit evaluator policy")
             .map_err(FindingAuditError::Outcome)?;

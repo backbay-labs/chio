@@ -21,7 +21,7 @@
 //! settlement choke point applies the operator policy allowlist on top.
 
 use chio_core_types::capability::scope::MonetaryAmount;
-use chio_core_types::crypto::PublicKey;
+use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -40,6 +40,27 @@ pub const FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1: &str =
 /// Bound on the unbatched v1 destination list: fifteen distinct buyer
 /// destinations plus the pinned community fund.
 pub const MAX_ENFORCEMENT_DESTINATIONS: usize = 16;
+
+/// Domain separator for the single seller-impairment effect attached to a
+/// liability and its deterministic allocation.
+const SELLER_IMPAIR_INTENT_DOMAIN: &str = "chio.finding.effect.seller-impair.v1";
+
+/// Derive the only seller-impairment intent id an enforcement for these
+/// immutable settlement coordinates may carry.
+#[must_use]
+pub fn derive_seller_impair_intent_id(
+    chain_id: &str,
+    vault_contract: &str,
+    liability_key: &str,
+    deterministic_allocation_digest: &str,
+) -> String {
+    sha256_hex(
+        format!(
+            "{SELLER_IMPAIR_INTENT_DOMAIN}\0{chain_id}\0{vault_contract}\0{liability_key}\0{deterministic_allocation_digest}"
+        )
+        .as_bytes(),
+    )
+}
 
 /// Domain-keyed semantic effects. Each intent has its own identity so a
 /// retry of one effect can never reconcile against another, and a single

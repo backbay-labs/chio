@@ -1348,6 +1348,38 @@ fn an_outcome_from_an_unpinned_evaluator_cannot_resolve_a_report() {
 }
 
 #[test]
+fn the_audit_authority_cannot_also_resolve_its_own_attempt() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
+    let mut outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+    let reused_policy = evaluator_policy("audit-evaluator", audit_authority().public_key(), 1);
+    let outcome = &mut outcomes[0].body;
+    outcome.evaluator_key = reused_policy.key.clone();
+    outcome.evaluator_key_epoch = reused_policy.key_epoch;
+    outcome.evaluator_valid_from = reused_policy.valid_from;
+    outcome.evaluator_valid_until = reused_policy.valid_until;
+    outcome.evaluator_revocation_status_ref = reused_policy.revocation_status_ref.clone();
+    outcome.outcome_id = derive_outcome_id(outcome).test_expect("outcome id");
+    outcomes[0] = SignedFindingChallengeOutcome::sign(outcome.clone(), &audit_authority())
+        .test_expect("the reused audit authority can sign the outcome");
+    let policies = [reused_policy];
+
+    assert!(matches!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &report_witnesses(&epoch, &policies, &audit_attempts, &outcomes),
+        )
+        .test_unwrap_err(),
+        FindingAuditError::OutcomeAuthorityRoleCollision(_)
+    ));
+}
+
+#[test]
 fn a_report_authenticates_each_historical_evaluator_across_rotation() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");

@@ -4,11 +4,12 @@ use std::collections::BTreeSet;
 
 use chio_core::crypto::{PublicKey, SigningAlgorithm};
 use chio_finding::{
-    signed_envelope_sha256, verify_pinned_envelope, verify_signed_authority_status,
-    verify_signed_challenge_enforcement, verify_signed_finalized_bond_snapshot,
-    FindingChallengeEnforcement, FindingEffectIntentKind, FindingFinalizedBondSnapshot,
-    FindingObservedFinality, SignedFindingAuthorityStatus, SignedFindingChallengeEnforcement,
-    SignedFindingFinalizedBondSnapshot, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
+    derive_seller_impair_intent_id, signed_envelope_sha256, verify_pinned_envelope,
+    verify_signed_authority_status, verify_signed_challenge_enforcement,
+    verify_signed_finalized_bond_snapshot, FindingChallengeEnforcement, FindingEffectIntentKind,
+    FindingFinalizedBondSnapshot, FindingObservedFinality, SignedFindingAuthorityStatus,
+    SignedFindingChallengeEnforcement, SignedFindingFinalizedBondSnapshot,
+    FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
 use chio_open_market::evidence::OpenMarketEvidenceKind;
 use chio_open_market::fee_schedule::OpenMarketBondClass;
@@ -609,6 +610,17 @@ fn verify_finding_enforcement_inner(
     let seller_impair_intent_id =
         bound_intent_id(enforcement, FindingEffectIntentKind::SellerImpair)
             .ok_or_else(|| reject("enforcement carries no seller-impairment effect intent"))?;
+    let expected_seller_impair_intent_id = derive_seller_impair_intent_id(
+        &enforcement.vault.chain_id,
+        &enforcement.vault.vault_contract,
+        &enforcement.liability_key,
+        &enforcement.deterministic_allocation_digest,
+    );
+    if seller_impair_intent_id != expected_seller_impair_intent_id {
+        return Err(reject(
+            "seller-impairment intent id does not match the independently derived effect key",
+        ));
+    }
     let root_intent_id = bound_intent_id(enforcement, FindingEffectIntentKind::RootIntent)
         .ok_or_else(|| reject("enforcement carries no enforcement-root effect intent"))?;
 
