@@ -43,6 +43,6 @@ fn finding_challenge_governance_charter_must_be_issued_inside_the_pinned_window(
         }
     ));
     assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }

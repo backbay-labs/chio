@@ -2793,11 +2793,7 @@ fn settle_purchase_with(
     } else {
         41
     });
-    let withheld_destination = buyer_destination(99);
-    let settlement_destination = match standing {
-        PayoutStanding::Intact => &refund_destination,
-        PayoutStanding::RemovedAfterSettlement => &withheld_destination,
-    };
+    let settlement_destination = &refund_destination;
     let buyer_hex = buyer.public_key().to_hex();
     let ask_digest = digest(&format!("ask-{tag}"));
     let bid_request = SignedExportEnvelope::sign(
@@ -5828,7 +5824,7 @@ fn finding_challenge_uphold_rejects_a_different_authoritative_penalty_calculatio
         ChallengeCoordinatorError::PenaltyCalculationMismatch
     ));
     assert_eq!(liability_heads(&deployment, &finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
@@ -5864,7 +5860,7 @@ fn finding_challenge_a_sanction_for_another_listing_opens_no_liability() -> Test
         ChallengeCoordinatorError::GovernanceBinding("listing_id")
     ));
     assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
@@ -5904,20 +5900,20 @@ fn finding_challenge_a_governance_bundle_no_pinned_root_signed_mints_no_penalty(
         0,
         "an unpinned governance bundle opens no liability"
     );
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
 #[test]
-fn finding_challenge_a_bad_signature_under_the_pinned_case_key_blocks_nothing() -> TestResult {
+fn finding_challenge_a_bad_signature_under_the_pinned_case_key_opens_no_liability() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
     let ready = ready_to_uphold(&deployment, &coordinator)?;
 
     // Advertising the pinned key does not make a signature produced by
-    // another key authentic. This must fail before the upheld transaction
-    // raises the durable sales block.
+    // another key authentic. This opens no liability, while the earlier
+    // upheld-verdict fence keeps the listing quarantined.
     let mut forged_case =
         SignedExportEnvelope::sign(governance.sanction_case.body.clone(), &keypair(99))?;
     forged_case.signer_key = governing_keypair().public_key();
@@ -5946,12 +5942,12 @@ fn finding_challenge_a_bad_signature_under_the_pinned_case_key_blocks_nothing() 
         "{refused:?}"
     );
     assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
 #[test]
-fn finding_challenge_exhausted_collateral_never_blocks_the_listing() -> TestResult {
+fn finding_challenge_exhausted_collateral_keeps_the_verdict_quarantine() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
@@ -5984,8 +5980,8 @@ fn finding_challenge_exhausted_collateral_never_blocks_the_listing() -> TestResu
         "the penalty artifacts refuse a zero amount, so the head is never opened"
     );
     assert!(
-        !deployment.purchases.sales_blocked(LISTING_ID)?,
-        "a listing is never blocked behind a hold that can never be minted"
+        deployment.purchases.sales_blocked(LISTING_ID)?,
+        "a trusted upheld verdict remains quarantined without minting a hold"
     );
     Ok(())
 }
@@ -6028,8 +6024,8 @@ fn finding_challenge_collateral_facts_for_another_allocation_uphold_nothing() ->
         "a mismatched allocation opens no liability"
     );
     assert!(
-        !deployment.purchases.sales_blocked(LISTING_ID)?,
-        "nothing durable happens before the allocation binding is proven"
+        deployment.purchases.sales_blocked(LISTING_ID)?,
+        "the upheld-verdict quarantine survives rejected allocation facts"
     );
     Ok(())
 }
@@ -6071,8 +6067,8 @@ fn finding_challenge_collateral_facts_must_carry_the_signed_stake() -> TestResul
         "an unsigned stake opens no liability"
     );
     assert!(
-        !deployment.purchases.sales_blocked(LISTING_ID)?,
-        "nothing durable happens before the stake binding is proven"
+        deployment.purchases.sales_blocked(LISTING_ID)?,
+        "the upheld-verdict quarantine survives rejected stake facts"
     );
 
     // Matching the facts to a different, valid seller-signed stake is not
@@ -6101,7 +6097,7 @@ fn finding_challenge_collateral_facts_must_carry_the_signed_stake() -> TestResul
         ChallengeCoordinatorError::TermsBinding("terms_envelope_sha256")
     ));
     assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
@@ -9772,7 +9768,7 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
     }
 
     // Governance and penalty authorities both fail before a liability is
-    // opened or sales are blocked.
+    // opened, while the upheld-verdict quarantine remains in force.
     for (authority, role) in [
         ("governance", "historical governance case"),
         ("market-penalty", "penalty"),
@@ -9807,11 +9803,11 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
             } if actual == role
         ));
         assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-        assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+        assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     }
 
-    // Purchase records are authenticated before the sales-blocking
-    // transaction starts.
+    // Purchase records are authenticated before the liability transaction
+    // starts; a rejected record cannot lift the verdict quarantine.
     {
         let deployment = deployment()?;
         let sale = settle_purchase(&deployment, "purchase-life", BUYER_ONE_DESTINATION, 50, NOW)?;
@@ -9846,7 +9842,7 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
             }
         ));
         assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-        assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+        assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     }
 
     // Finalization signs nothing under a revoked key.
