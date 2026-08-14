@@ -33,7 +33,10 @@ use chio_finding::{
 use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
 };
-use chio_store_sqlite::SqliteFindingPurchaseStore;
+use chio_store_sqlite::{
+    FindingPublicPurchaseRequestBinding, FindingPublicPurchaseTerminal,
+    FindingPublicPurchaseTerminalKind, SqliteFindingPurchaseStore,
+};
 use serde::{Deserialize, Serialize};
 
 use super::report_validation::validate_service_auth;
@@ -479,7 +482,9 @@ pub enum FindingPurchaseExecutionError {
 /// or incomplete operation must return `Pending`, never a fabricated terminal.
 /// A new request must revalidate finding liveness and current admission before
 /// reserving. A completed idempotent replay must return its durable terminal
-/// even if either has since expired.
+/// even if either has since expired. Every new public reservation must bind
+/// the complete request policy through `reserve_for_public_request`; returning
+/// an internal or differently bound durable terminal is invalid.
 #[async_trait::async_trait]
 pub trait FindingPurchaseExecutor: Send + Sync {
     /// Active serving fence of the authority store that records purchases.
@@ -870,10 +875,57 @@ pub(crate) async fn handle_purchase_finding(
             "purchase executor returned an invalid terminal",
         );
     }
+    let payer_hex = result.payer_key.to_hex();
+    let public_request = FindingPublicPurchaseRequestBinding {
+        request_id: &request.request_id,
+        finding_id: &request.finding_id,
+        requested_payer: request.payer.as_deref(),
+        resolved_payer: &result.payer,
+        payer_hex: &payer_hex,
+        max_price_units: request.max_price.units,
+        currency: &request.max_price.currency,
+        deadline_secs: request.deadline_secs,
+    };
+    let public_terminal = match result.verdict {
+        FindingPurchaseVerdict::Allow => {
+            result
+                .purchase_record
+                .as_ref()
+                .map(|record| FindingPublicPurchaseTerminal {
+                    kind: FindingPublicPurchaseTerminalKind::PurchaseRecord,
+                    terminal_id: record.body.purchase_key.as_str(),
+                    receipt_id: result.delivery_receipt.id.as_str(),
+                })
+        }
+        FindingPurchaseVerdict::Deny => {
+            result
+                .failed_delivery
+                .as_ref()
+                .map(|failed| FindingPublicPurchaseTerminal {
+                    kind: FindingPublicPurchaseTerminalKind::FailedDelivery,
+                    terminal_id: failed.body.failed_delivery_id.as_str(),
+                    receipt_id: result.delivery_receipt.id.as_str(),
+                })
+        }
+    };
+    let Some(public_terminal) = public_terminal else {
+        return purchase_error(
+            StatusCode::BAD_GATEWAY,
+            "purchase_terminal_invalid",
+            "purchase executor returned an invalid terminal",
+        );
+    };
     if result
         .validate_authorized(&request, &finding, &admission)
         .is_err()
         || require_exact_durable_terminal(&purchase_store, &result).is_err()
+        || purchase_store
+            .verify_public_purchase_terminal(
+                &public_request,
+                &result.reservation_id,
+                &public_terminal,
+            )
+            .is_err()
     {
         return purchase_error(
             StatusCode::BAD_GATEWAY,

@@ -119,8 +119,14 @@ use chio_open_market::recovery::{
 };
 use chio_store_sqlite::finding_market_store::FindingAllocationState;
 use chio_store_sqlite::{
-    FindingPurchaseEncumbranceState, FindingPurchaseReservationState, FindingPurchaseSlotState,
-    SqliteFindingStatusStore,
+    FindingPublicPurchaseRequestBinding, FindingPurchaseEncumbranceState,
+    FindingPurchaseReservationState, FindingPurchaseSlotState, SqliteFindingStatusStore,
+};
+
+#[path = "finding_wedge_purchase_e2e_tests/public_route_support.rs"]
+mod public_route_support;
+use public_route_support::{
+    assert_terminal_cannot_rebind_public_request, FixedTerminalExecutor, RoutedPurchaseExecutor,
 };
 use tower::ServiceExt;
 
@@ -2586,29 +2592,6 @@ impl Lane {
     }
 }
 
-/// Deployment adapter used by the public-route exit. It owns the seller web,
-/// buyer mapping, coordinator keys, and kernel construction, so none of those
-/// artifacts become caller-authoritative request fields.
-struct RoutedPurchaseExecutor {
-    authority: Arc<SqliteAuthorityStore>,
-    web: MarketWeb,
-    witness: VerifiedFindingAdmission,
-    buyer: Keypair,
-    kernel_keypair: Keypair,
-    calls: Arc<PaymentCalls>,
-    invocations: Arc<AtomicU64>,
-    attempts: Arc<AtomicU64>,
-    exchange_now: u64,
-    now: Arc<AtomicU64>,
-    status_proof_b64: String,
-}
-
-impl RoutedPurchaseExecutor {
-    fn execution_error(error: impl std::fmt::Display) -> FindingPurchaseExecutionError {
-        FindingPurchaseExecutionError::Internal(error.to_string())
-    }
-}
-
 #[async_trait::async_trait]
 impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
     fn mutation_fence(&self) -> chio_kernel::admission_operation::StoreMutationFence {
@@ -2630,13 +2613,24 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
             ));
         }
         let payer_key = self.buyer.public_key();
-        let payer = request.payer.clone().unwrap_or_else(|| payer_key.to_hex());
-        if payer != payer_key.to_hex() {
+        let payer_hex = payer_key.to_hex();
+        let payer = request.payer.clone().unwrap_or_else(|| payer_hex.clone());
+        if payer != payer_hex {
             return Err(FindingPurchaseExecutionError::Rejected(
                 "payer is not mapped to the authenticated buyer key".to_owned(),
             ));
         }
         let deadline_secs = request.deadline_secs.unwrap_or(RESERVATION_TTL_SECS);
+        let public_request = FindingPublicPurchaseRequestBinding {
+            request_id: &request.request_id,
+            finding_id: &request.finding_id,
+            requested_payer: request.payer.as_deref(),
+            resolved_payer: &payer,
+            payer_hex: &payer_hex,
+            max_price_units: request.max_price.units,
+            currency: &request.max_price.currency,
+            deadline_secs: request.deadline_secs,
+        };
         let exchange = handshake_at(
             &self.web,
             &self.witness,
@@ -2664,7 +2658,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                     != derive_purchase_intent_id(&exchange.reservation_id)
                     || reservation.authoritative_payment_operation_id
                         != derive_payment_operation_id(&exchange.reservation_id)
-                    || reservation.payer_hex != payer_key.to_hex()
+                    || reservation.payer_hex != payer_hex
                     || reservation.agent_id != exchange.ask.body.agent_id
                     || reservation.finding_id != self.web.finding_id
                     || reservation.listing_id != exchange.ask.body.listing_id
@@ -2680,6 +2674,10 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                         "durable reservation does not bind the public replay".to_owned(),
                     ));
                 }
+                self.authority
+                    .finding_purchase_store()
+                    .verify_public_purchase_reservation(&public_request, &exchange.reservation_id)
+                    .map_err(Self::execution_error)?;
                 SignedReservationReceipt::sign(
                     ReservationReceipt {
                         schema: RESERVATION_RECEIPT_SCHEMA.to_owned(),
@@ -2694,7 +2692,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                 .map_err(Self::execution_error)?
             }
             Err(PurchaseCoordinatorError::UnknownReservation) => coordinator
-                .reserve(
+                .reserve_for_public_request(
                     &exchange.bid,
                     &exchange.ask,
                     &exchange.buyer_signature_hex,
@@ -2703,6 +2701,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                     EXPOSURE_UNITS,
                     deadline_secs,
                     now,
+                    &public_request,
                 )
                 .map_err(Self::execution_error)?,
             Err(error) => return Err(Self::execution_error(error)),
@@ -2832,25 +2831,6 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                 payload_b64,
             }),
         })
-    }
-}
-
-struct FixedTerminalExecutor {
-    authority: Arc<SqliteAuthorityStore>,
-    result: FindingPurchaseResult,
-}
-
-#[async_trait::async_trait]
-impl FindingPurchaseExecutor for FixedTerminalExecutor {
-    fn mutation_fence(&self) -> chio_kernel::admission_operation::StoreMutationFence {
-        self.authority.mutation_fence()
-    }
-
-    async fn execute(
-        &self,
-        _request: FindingPurchaseRequest,
-    ) -> Result<FindingPurchaseResult, FindingPurchaseExecutionError> {
-        Ok(self.result.clone())
     }
 }
 
@@ -3030,6 +3010,16 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
     assert_eq!(calls.releases.load(Ordering::SeqCst), 0);
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
+
+    assert_terminal_cannot_rebind_public_request(
+        &mut state,
+        &authority,
+        &path,
+        &first,
+        &expected_finding_id,
+        &payer,
+    )
+    .await?;
 
     // A retired purchase key cannot use its retained admission to forge a
     // fresh, backdated terminal. Even a correctly signed and internally

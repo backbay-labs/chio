@@ -37,7 +37,7 @@ use chio_store_sqlite::finding_market_store::{
     finding_fee_idempotency_key, FindingActivationAttemptState, FindingActivationOutcome,
     FindingActivationPreparationOutcome, FindingAdmissionSnapshot, FindingAllocationState,
     FindingFeeEventRecord, FindingFeeIntent, FindingFeeIntentOutcome, FindingFeeState,
-    FindingRecordInput, SqliteFindingMarketStore,
+    FindingParticipationAdmissionFence, FindingRecordInput, SqliteFindingMarketStore,
 };
 use chio_store_sqlite::SqliteFindingStatusStore;
 
@@ -47,8 +47,8 @@ use super::*;
 #[path = "finding_admission_view.rs"]
 mod admission_view;
 use admission_view::{
-    current_admission_view, terminal_authority_pin, verify_current_admission_authorities,
-    verify_terminal_authority_lifecycle,
+    current_admission_view, live_admission_epoch, terminal_authority_pin,
+    verify_current_admission_authorities, verify_terminal_authority_lifecycle,
 };
 #[path = "finding_handlers/participation.rs"]
 mod participation;
@@ -671,36 +671,6 @@ struct FindingSearchResponse {
     count: usize,
 }
 
-/// Return the current payable audit epoch only while the stored admission
-/// still owns its backing and remains inside its signed lifetime. Payment
-/// status is intentionally checked by the caller: discovery requires the
-/// epoch already paid, while renewal requires the next unpaid epoch to be due.
-fn live_admission_epoch(
-    store: &SqliteFindingMarketStore,
-    snapshot: &FindingAdmissionSnapshot,
-    admission: &SignedFindingAdmission,
-    now: u64,
-) -> Option<u64> {
-    if now >= snapshot.expires_at {
-        return None;
-    }
-    // Activation dedicates the allocation in the same transaction that
-    // indexes the admission, so the healthy state for an ACTIVE admission
-    // is `Consumed` (encumbered by exactly this admission). `Expired` and
-    // `Released` mean the backing is gone; `Live` with an active
-    // admission cannot happen through the store transaction.
-    if snapshot.allocation_state != FindingAllocationState::Consumed {
-        return None;
-    }
-    let terms_bytes = store
-        .get_recipe_blob(&admission.body.terms_envelope_sha256)
-        .ok()
-        .flatten()?;
-    let terms: SignedFindingMarketTerms = serde_json::from_slice(&terms_bytes).ok()?;
-    let epoch_length = terms.body.audit_epoch_length_secs.max(1);
-    Some(now.saturating_sub(snapshot.activated_at) / epoch_length)
-}
-
 fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> Response {
     let (config, store) = match finding_market_context(state) {
         Ok(context) => context,
@@ -709,6 +679,15 @@ fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> 
     let status_store = match finding_status_store(state) {
         Ok(store) => store,
         Err(response) => return response,
+    };
+    let purchase_store = match state.joint_authority_store.as_ref() {
+        Some(authority) => authority.finding_purchase_store(),
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "finding market requires the joint authority store",
+            )
+        }
     };
     if query.topic_prefix.is_none() && query.context_sha256.is_none() {
         return plain_http_error(
@@ -753,6 +732,7 @@ fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> 
         .map(|row| {
             let admission = current_admission_view(
                 &store,
+                &purchase_store,
                 &status_store,
                 &config,
                 state.finding_authority_status_resolver.as_deref(),
@@ -2385,6 +2365,10 @@ pub(crate) async fn handle_finding_participation(
     }
     let fenced = match store.begin_live_participation_fee_intent(
         &intent,
+        &FindingParticipationAdmissionFence {
+            admission_id: &snapshot.admission_id,
+            admission_envelope_sha256: &snapshot.envelope_sha256,
+        },
         &finding.status_feed_ref,
         &config.status_feed_operator.authorization_sha256,
         request.status_operator_authority_status.body.observed_at,
@@ -2428,6 +2412,15 @@ pub(crate) async fn handle_get_finding_admission(
         Ok(store) => store,
         Err(response) => return response,
     };
+    let purchase_store = match state.joint_authority_store.as_ref() {
+        Some(authority) => authority.finding_purchase_store(),
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "finding market requires the joint authority store",
+            )
+        }
+    };
     let now = unix_timestamp_now();
     let status_operator_authority_status = state
         .finding_authority_status_resolver
@@ -2443,6 +2436,7 @@ pub(crate) async fn handle_get_finding_admission(
         .and_then(|resolver| resolver.resolve(&config.venue, now).ok());
     let Some(admission) = current_admission_view(
         &store,
+        &purchase_store,
         &status_store,
         &config,
         state.finding_authority_status_resolver.as_deref(),

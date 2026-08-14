@@ -1,12 +1,34 @@
 use super::super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::{
-    live_admission_epoch, require_status_feed_through, verify_seller_authorization_lifecycle,
+    require_status_feed_through, verify_seller_authorization_lifecycle,
     verify_status_operator_authority_lifecycle, verify_venue_authority_lifecycle,
-    FindingAuthorityKeyPolicy, FindingAuthorityPin, FindingMarketConfig,
-    FindingSearchAdmissionView, SignedFindingAdmission, SignedFindingAuthorityStatus,
-    SignedFindingSellerAuthorization, SqliteFindingMarketStore, SqliteFindingStatusStore,
-    FINDING_AUTHORITY_STATUS_MAX_AGE_SECS, FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
+    FindingAdmissionSnapshot, FindingAllocationState, FindingAuthorityKeyPolicy,
+    FindingAuthorityPin, FindingMarketConfig, FindingSearchAdmissionView, SignedFindingAdmission,
+    SignedFindingAuthorityStatus, SignedFindingMarketTerms, SignedFindingSellerAuthorization,
+    SqliteFindingMarketStore, SqliteFindingStatusStore, FINDING_AUTHORITY_STATUS_MAX_AGE_SECS,
+    FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
 };
+use chio_store_sqlite::SqliteFindingPurchaseStore;
+
+/// Return the current payable audit epoch only while the stored admission
+/// still owns its backing and remains inside its signed lifetime.
+pub(super) fn live_admission_epoch(
+    store: &SqliteFindingMarketStore,
+    snapshot: &FindingAdmissionSnapshot,
+    admission: &SignedFindingAdmission,
+    now: u64,
+) -> Option<u64> {
+    if now >= snapshot.expires_at || snapshot.allocation_state != FindingAllocationState::Consumed {
+        return None;
+    }
+    let terms_bytes = store
+        .get_recipe_blob(&admission.body.terms_envelope_sha256)
+        .ok()
+        .flatten()?;
+    let terms: SignedFindingMarketTerms = serde_json::from_slice(&terms_bytes).ok()?;
+    let epoch_length = terms.body.audit_epoch_length_secs.max(1);
+    Some(now.saturating_sub(snapshot.activated_at) / epoch_length)
+}
 
 pub(super) fn terminal_authority_pin(policy: &FindingAuthorityKeyPolicy) -> FindingAuthorityPin {
     FindingAuthorityPin {
@@ -160,6 +182,7 @@ pub(super) fn verify_current_admission_authorities(
 /// remains live under the configured feed authority.
 pub(super) fn current_admission_view(
     store: &SqliteFindingMarketStore,
+    purchase_store: &SqliteFindingPurchaseStore,
     status_store: &SqliteFindingStatusStore,
     config: &FindingMarketConfig,
     authority_status_resolver: Option<&dyn FindingAuthorityStatusResolver>,
@@ -200,6 +223,9 @@ pub(super) fn current_admission_view(
         )
         .ok()?;
     let snapshot = store.get_current_admission(finding_id).ok().flatten()?;
+    if purchase_store.sales_blocked(&snapshot.listing_id).ok()? {
+        return None;
+    }
     let admission: SignedFindingAdmission = serde_json::from_str(&snapshot.envelope_json).ok()?;
     let authority_status_resolver = authority_status_resolver?;
     verify_current_admission_authorities(

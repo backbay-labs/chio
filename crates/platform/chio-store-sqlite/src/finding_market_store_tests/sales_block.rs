@@ -4,6 +4,12 @@ use super::*;
 fn sales_block_atomically_rejects_new_participation_intent_but_preserves_replay() {
     let fixture = fixture();
     let finding_id = hex64('a');
+    let (admission, admission_envelope) = activate_participation_admission(&fixture, &finding_id);
+    let admission_envelope_sha256 = chio_core::sha256_hex(admission_envelope.as_bytes());
+    let admission_fence = FindingParticipationAdmissionFence {
+        admission_id: &admission.admission_id,
+        admission_envelope_sha256: &admission_envelope_sha256,
+    };
     install_status(&fixture, &finding_id, FindingStatusProofKind::NonInclusion);
     let amount = usd(3);
     let schedule_sha256 = hex64('5');
@@ -14,7 +20,7 @@ fn sales_block_atomically_rejects_new_participation_intent_but_preserves_replay(
         event: &first_event,
         finding_id: &finding_id,
         listing_id: LISTING_ID,
-        payer: "seller-42",
+        payer: "venue-operator",
         amount: &amount,
         pool_principal_id: "pool:audit",
         rail_destination: "rail:venue-ledger:audit-pool",
@@ -25,6 +31,7 @@ fn sales_block_atomically_rejects_new_participation_intent_but_preserves_replay(
             .store
             .begin_live_participation_fee_intent(
                 &first,
+                &admission_fence,
                 STATUS_FEED,
                 STATUS_AUTHORIZATION_SHA256,
                 NOW,
@@ -45,6 +52,7 @@ fn sales_block_atomically_rejects_new_participation_intent_but_preserves_replay(
             .store
             .begin_live_participation_fee_intent(
                 &first,
+                &admission_fence,
                 STATUS_FEED,
                 STATUS_AUTHORIZATION_SHA256,
                 NOW,
@@ -63,6 +71,7 @@ fn sales_block_atomically_rejects_new_participation_intent_but_preserves_replay(
     };
     let rejected = fixture.store.begin_live_participation_fee_intent(
         &second,
+        &admission_fence,
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
         NOW,

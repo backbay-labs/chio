@@ -1252,14 +1252,20 @@ fn retracted_status_atomically_blocks_activation_and_participation_intents() {
         event: &event,
         finding_id: &finding_id,
         listing_id: LISTING_ID,
-        payer: "seller-42",
+        payer: "venue-operator",
         amount: &amount,
         pool_principal_id: "pool:audit",
         rail_destination: "rail:venue-ledger:audit-pool",
         instruction_sha256: &instruction_sha256,
     };
+    let admission_envelope_sha256 = chio_core::sha256_hex(admission_envelope.as_bytes());
+    let admission_fence = FindingParticipationAdmissionFence {
+        admission_id: &admission.admission_id,
+        admission_envelope_sha256: &admission_envelope_sha256,
+    };
     let renewal = fixture.store.begin_live_participation_fee_intent(
         &intent,
+        &admission_fence,
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
         NOW,
@@ -1335,14 +1341,20 @@ fn stale_status_epoch_atomically_blocks_activation_and_participation_intents() {
         event: &event,
         finding_id: &finding_id,
         listing_id: LISTING_ID,
-        payer: "seller-42",
+        payer: "venue-operator",
         amount: &amount,
         pool_principal_id: "pool:audit",
         rail_destination: "rail:venue-ledger:audit-pool",
         instruction_sha256: &instruction_sha256,
     };
+    let admission_envelope_sha256 = chio_core::sha256_hex(admission_envelope.as_bytes());
+    let admission_fence = FindingParticipationAdmissionFence {
+        admission_id: &admission.admission_id,
+        admission_envelope_sha256: &admission_envelope_sha256,
+    };
     let renewal = fixture.store.begin_live_participation_fee_intent(
         &intent,
+        &admission_fence,
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
         NOW,
@@ -1365,6 +1377,12 @@ fn stale_status_epoch_atomically_blocks_activation_and_participation_intents() {
 fn participation_fee_intent_replays_after_status_freshness_expires() {
     let fixture = fixture();
     let finding_id = hex64('a');
+    let (admission, admission_envelope) = activate_participation_admission(&fixture, &finding_id);
+    let admission_envelope_sha256 = chio_core::sha256_hex(admission_envelope.as_bytes());
+    let admission_fence = FindingParticipationAdmissionFence {
+        admission_id: &admission.admission_id,
+        admission_envelope_sha256: &admission_envelope_sha256,
+    };
     install_status(&fixture, &finding_id, FindingStatusProofKind::NonInclusion);
     let event = FindingFeeEvent::ParticipationEpoch { epoch_index: 1 };
     let amount = usd(3);
@@ -1375,7 +1393,7 @@ fn participation_fee_intent_replays_after_status_freshness_expires() {
         event: &event,
         finding_id: &finding_id,
         listing_id: LISTING_ID,
-        payer: "seller-42",
+        payer: "venue-operator",
         amount: &amount,
         pool_principal_id: "pool:audit",
         rail_destination: "rail:venue-ledger:audit-pool",
@@ -1384,6 +1402,7 @@ fn participation_fee_intent_replays_after_status_freshness_expires() {
 
     let rejected = fixture.store.begin_live_participation_fee_intent(
         &intent,
+        &admission_fence,
         STATUS_FEED,
         STATUS_AUTHORIZATION_SHA256,
         NOW - 3,
@@ -1400,6 +1419,7 @@ fn participation_fee_intent_replays_after_status_freshness_expires() {
         .store
         .begin_live_participation_fee_intent(
             &intent,
+            &admission_fence,
             STATUS_FEED,
             STATUS_AUTHORIZATION_SHA256,
             NOW,
@@ -1417,6 +1437,7 @@ fn participation_fee_intent_replays_after_status_freshness_expires() {
         .store
         .begin_live_participation_fee_intent(
             &intent,
+            &admission_fence,
             STATUS_FEED,
             STATUS_AUTHORIZATION_SHA256,
             NOW,
@@ -1468,8 +1489,11 @@ fn pending_participation_intent_is_recoverable_without_an_admission_lookup() {
         .is_none());
 }
 
+#[path = "finding_market_store_tests/participation_fence.rs"]
+mod participation_fence;
 #[path = "finding_market_store_tests/sales_block.rs"]
 mod sales_block;
+use participation_fence::activate_participation_admission;
 
 #[test]
 fn prepared_activation_replay_reuses_its_retained_live_status_decision() {

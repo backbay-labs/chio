@@ -445,6 +445,20 @@ async fn participation_renewal_rejects_a_sales_block_before_fee_intent() -> Test
         .ok_or_else(|| missing("finding market authority"))?
         .finding_purchase_store()
         .block_new_slots(LISTING_ID, unix_timestamp_now())?;
+    assert!(
+        stack.admission_marker().await?.is_none(),
+        "a sales-blocked listing must be hidden from discovery"
+    );
+    let (status, _) = send(
+        &stack.state,
+        public_get(&format!("/v1/findings/{}/admission", stack.web.finding_id))?,
+    )
+    .await?;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "a sales-blocked listing must not expose its admission"
+    );
     let renewal = participation_request(&stack.web.schedule, None)?;
     let (status, response) = send(
         &stack.state,

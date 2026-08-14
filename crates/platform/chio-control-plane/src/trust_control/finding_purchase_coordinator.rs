@@ -52,10 +52,10 @@ use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
 };
 use chio_store_sqlite::{
-    FindingPurchaseDeliveryInput, FindingPurchaseDenyInput, FindingPurchaseReservationInput,
-    FindingPurchaseReservationRecord, FindingPurchaseReservationState,
-    SqliteAdmissionOperationStore, SqliteFindingMarketStore, SqliteFindingPurchaseStore,
-    SqliteToolOutcomeStore,
+    FindingPublicPurchaseRequestBinding, FindingPurchaseDeliveryInput, FindingPurchaseDenyInput,
+    FindingPurchaseReservationInput, FindingPurchaseReservationRecord,
+    FindingPurchaseReservationState, SqliteAdmissionOperationStore, SqliteFindingMarketStore,
+    SqliteFindingPurchaseStore, SqliteToolOutcomeStore,
 };
 
 use super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
@@ -587,6 +587,61 @@ impl FindingPurchaseCoordinator {
         reservation_ttl_secs: u64,
         now: u64,
     ) -> Result<SignedReservationReceipt, PurchaseCoordinatorError> {
+        self.reserve_inner(
+            bid,
+            ask,
+            buyer_signature_over_ask_digest,
+            admission,
+            seller_authorization,
+            maximum_sale_exposure_units,
+            reservation_ttl_secs,
+            now,
+            None,
+        )
+    }
+
+    /// Reserve for a public request and atomically retain its complete buyer
+    /// policy beside the reservation. Exact replays verify the same immutable
+    /// binding without requiring the admission to remain current.
+    #[allow(clippy::too_many_arguments)]
+    pub fn reserve_for_public_request(
+        &self,
+        bid: &SignedBidRequest,
+        ask: &SignedAskResponse,
+        buyer_signature_over_ask_digest: &str,
+        admission: &SignedFindingAdmission,
+        seller_authorization: &SignedFindingSellerAuthorization,
+        maximum_sale_exposure_units: u64,
+        reservation_ttl_secs: u64,
+        now: u64,
+        public_request: &FindingPublicPurchaseRequestBinding<'_>,
+    ) -> Result<SignedReservationReceipt, PurchaseCoordinatorError> {
+        self.reserve_inner(
+            bid,
+            ask,
+            buyer_signature_over_ask_digest,
+            admission,
+            seller_authorization,
+            maximum_sale_exposure_units,
+            reservation_ttl_secs,
+            now,
+            Some(public_request),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reserve_inner(
+        &self,
+        bid: &SignedBidRequest,
+        ask: &SignedAskResponse,
+        buyer_signature_over_ask_digest: &str,
+        admission: &SignedFindingAdmission,
+        seller_authorization: &SignedFindingSellerAuthorization,
+        maximum_sale_exposure_units: u64,
+        reservation_ttl_secs: u64,
+        now: u64,
+        public_request: Option<&FindingPublicPurchaseRequestBinding<'_>>,
+    ) -> Result<SignedReservationReceipt, PurchaseCoordinatorError> {
         if ask.body.schema != ASK_RESPONSE_SCHEMA
             || !matches!(ask.verify_signature(), Ok(true))
             || ask.body.token_offer.issuer != ask.signer_key
@@ -871,7 +926,13 @@ impl FindingPurchaseCoordinator {
             .store
             .is_exact_reservation_replay(&input)
             .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
-        if !exact_replay {
+        if exact_replay {
+            if let Some(public_request) = public_request {
+                self.store
+                    .verify_public_purchase_reservation(public_request, &reservation_id)
+                    .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
+            }
+        } else {
             // A newer activation may supersede this admission after a
             // reservation committed but before its response arrived. Exact
             // durable replay above recovers that receipt; only a new
@@ -945,16 +1006,26 @@ impl FindingPurchaseCoordinator {
             let status_operator_observed_at = self
                 .require_live_status_operator(&finding.status_feed_ref, now)?
                 .1;
-            self.store
-                .open_live_reservation(
+            match public_request {
+                Some(public_request) => self.store.open_live_public_reservation(
+                    &input,
+                    public_request,
+                    &finding.status_feed_ref,
+                    &self.status_feed_operator.authorization_sha256,
+                    status_operator_observed_at,
+                    now,
+                    self.status_max_epoch_age_secs,
+                ),
+                None => self.store.open_live_reservation(
                     &input,
                     &finding.status_feed_ref,
                     &self.status_feed_operator.authorization_sha256,
                     status_operator_observed_at,
                     now,
                     self.status_max_epoch_age_secs,
-                )
-                .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
+                ),
+            }
+            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
         }
         let receipt = ReservationReceipt {
             schema: RESERVATION_RECEIPT_SCHEMA.to_owned(),

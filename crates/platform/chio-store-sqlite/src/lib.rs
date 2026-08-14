@@ -384,12 +384,15 @@ pub use finding_market_store::{
     FindingActivationOutcome, FindingActivationPreparationOutcome, FindingAdmissionSnapshot,
     FindingAllocationSnapshot, FindingAllocationState, FindingFeeEventRecord, FindingFeeIntent,
     FindingFeeIntentOutcome, FindingFeeIntentResult, FindingFeeState, FindingMarketStoreError,
-    FindingPutOutcome, FindingRecordInput, FindingSearchRow, SqliteFindingMarketStore,
+    FindingParticipationAdmissionFence, FindingPutOutcome, FindingRecordInput, FindingSearchRow,
+    SqliteFindingMarketStore,
 };
 pub use finding_purchase_store::{
-    FindingFailedDeliveryRow, FindingPayoutDestinationAdmission, FindingPurchaseDeliveryInput,
-    FindingPurchaseDenyInput, FindingPurchaseEncumbranceRecord, FindingPurchaseEncumbranceState,
-    FindingPurchaseRecordRow, FindingPurchaseReservationInput, FindingPurchaseReservationRecord,
+    FindingFailedDeliveryRow, FindingPayoutDestinationAdmission,
+    FindingPublicPurchaseRequestBinding, FindingPublicPurchaseTerminal,
+    FindingPublicPurchaseTerminalKind, FindingPurchaseDeliveryInput, FindingPurchaseDenyInput,
+    FindingPurchaseEncumbranceRecord, FindingPurchaseEncumbranceState, FindingPurchaseRecordRow,
+    FindingPurchaseReservationInput, FindingPurchaseReservationRecord,
     FindingPurchaseReservationState, FindingPurchaseSlotRecord, FindingPurchaseSlotState,
     FindingPurchaseStoreError, FindingPurchaseWriteOutcome, SqliteFindingPurchaseStore,
 };

@@ -75,6 +75,81 @@ BEGIN
     SELECT RAISE(ABORT, 'purchase reservation must be retained');
 END;
 
+CREATE TABLE IF NOT EXISTS public_purchase_requests (
+    request_id TEXT NOT NULL PRIMARY KEY CHECK (
+        length(request_id) = 64 AND request_id NOT GLOB '*[^0-9a-f]*'
+    ),
+    reservation_id TEXT NOT NULL UNIQUE
+        REFERENCES purchase_reservations(reservation_id),
+    finding_id TEXT NOT NULL CHECK (
+        length(finding_id) = 64 AND finding_id NOT GLOB '*[^0-9a-f]*'
+    ),
+    requested_payer TEXT CHECK (
+        requested_payer IS NULL OR length(requested_payer) BETWEEN 1 AND 512
+    ),
+    resolved_payer TEXT NOT NULL CHECK (length(resolved_payer) BETWEEN 1 AND 512),
+    payer_hex TEXT NOT NULL CHECK (
+        length(payer_hex) = 64 AND payer_hex NOT GLOB '*[^0-9a-f]*'
+    ),
+    max_price_units INTEGER NOT NULL CHECK (max_price_units > 0),
+    currency TEXT NOT NULL CHECK (
+        length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'
+    ),
+    deadline_secs INTEGER CHECK (deadline_secs IS NULL OR deadline_secs > 0),
+    terminal_kind TEXT CHECK (
+        terminal_kind IS NULL OR terminal_kind IN ('purchase_record', 'failed_delivery')
+    ),
+    terminal_id TEXT CHECK (
+        terminal_id IS NULL OR length(terminal_id) BETWEEN 1 AND 512
+    ),
+    receipt_id TEXT CHECK (
+        receipt_id IS NULL OR length(receipt_id) BETWEEN 1 AND 512
+    ),
+    bound_at INTEGER NOT NULL CHECK (bound_at > 0),
+    CHECK (
+        (terminal_kind IS NULL AND terminal_id IS NULL AND receipt_id IS NULL)
+        OR (terminal_kind IS NOT NULL AND terminal_id IS NOT NULL AND receipt_id IS NOT NULL)
+    )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS public_purchase_requests_terminal
+    ON public_purchase_requests(terminal_kind, terminal_id)
+    WHERE terminal_kind IS NOT NULL;
+
+CREATE TRIGGER IF NOT EXISTS public_purchase_requests_immutable_identity
+BEFORE UPDATE ON public_purchase_requests
+WHEN NEW.request_id <> OLD.request_id
+  OR NEW.reservation_id <> OLD.reservation_id
+  OR NEW.finding_id <> OLD.finding_id
+  OR NEW.requested_payer IS NOT OLD.requested_payer
+  OR NEW.resolved_payer <> OLD.resolved_payer
+  OR NEW.payer_hex <> OLD.payer_hex
+  OR NEW.max_price_units <> OLD.max_price_units
+  OR NEW.currency <> OLD.currency
+  OR NEW.deadline_secs IS NOT OLD.deadline_secs
+  OR NEW.bound_at <> OLD.bound_at
+BEGIN
+    SELECT RAISE(ABORT, 'public purchase request identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS public_purchase_requests_lifecycle
+BEFORE UPDATE OF terminal_kind, terminal_id, receipt_id ON public_purchase_requests
+WHEN NOT (
+    OLD.terminal_kind IS NULL AND OLD.terminal_id IS NULL AND OLD.receipt_id IS NULL
+    AND NEW.terminal_kind IS NOT NULL
+    AND NEW.terminal_id IS NOT NULL
+    AND NEW.receipt_id IS NOT NULL
+)
+BEGIN
+    SELECT RAISE(ABORT, 'public purchase request terminalizes exactly once');
+END;
+
+CREATE TRIGGER IF NOT EXISTS public_purchase_requests_no_delete
+BEFORE DELETE ON public_purchase_requests
+BEGIN
+    SELECT RAISE(ABORT, 'public purchase request must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS purchase_capture_intents (
     reservation_id TEXT NOT NULL PRIMARY KEY
         REFERENCES purchase_reservations(reservation_id),

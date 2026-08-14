@@ -36,6 +36,11 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBe
 use std::sync::{Arc, Mutex, MutexGuard};
 use thiserror::Error;
 
+#[path = "finding_market_participation.rs"]
+mod participation;
+pub use participation::FindingParticipationAdmissionFence;
+use participation::{paid_through_epoch_tx, require_current_participation_admission_tx};
+
 const FINDING_MARKET_SCHEMA_KEY: &str = "finding_market";
 pub(crate) const FINDING_MARKET_SUPPORTED_SCHEMA_VERSION: i32 = 3;
 const FINDING_MARKET_SCHEMA_ANCHORS: &[&str] =
@@ -743,9 +748,11 @@ impl SqliteFindingMarketStore {
     /// observes a current non-retraction proof under the governance-pinned
     /// status-operator authorization. A concurrent status update therefore
     /// wins before an unsellable listing can open another fee intent.
+    #[allow(clippy::too_many_arguments)]
     pub fn begin_live_participation_fee_intent(
         &self,
         intent: &FindingFeeIntent<'_>,
+        admission_fence: &FindingParticipationAdmissionFence<'_>,
         status_feed_id: &str,
         status_operator_authorization_sha256: &str,
         status_operator_observed_at: u64,
@@ -755,6 +762,7 @@ impl SqliteFindingMarketStore {
         self.begin_fee_intent_inner(
             intent,
             Some((
+                admission_fence,
                 status_feed_id,
                 status_operator_authorization_sha256,
                 status_operator_observed_at,
@@ -767,7 +775,14 @@ impl SqliteFindingMarketStore {
     fn begin_fee_intent_inner(
         &self,
         intent: &FindingFeeIntent<'_>,
-        status_gate: Option<(&str, &str, u64, u64, u64)>,
+        status_gate: Option<(
+            &FindingParticipationAdmissionFence<'_>,
+            &str,
+            &str,
+            u64,
+            u64,
+            u64,
+        )>,
     ) -> Result<FindingFeeIntentResult, FindingMarketStoreError> {
         require_hex64(
             intent.fee_schedule_envelope_sha256,
@@ -810,6 +825,7 @@ impl SqliteFindingMarketStore {
             ));
         }
         if let Some((
+            admission_fence,
             feed_id,
             operator_authorization_sha256,
             operator_status_observed_at,
@@ -836,6 +852,12 @@ impl SqliteFindingMarketStore {
                 operator_status_observed_at,
                 trusted_now,
                 max_epoch_age_secs,
+            )?;
+            require_current_participation_admission_tx(
+                &transaction,
+                intent,
+                admission_fence,
+                trusted_now,
             )?;
         }
         let inserted = transaction
@@ -1029,37 +1051,12 @@ impl SqliteFindingMarketStore {
         require_hex64(fee_schedule_envelope_sha256, "fee_schedule_envelope_sha256")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
-        let mut statement = transaction
-            .prepare(
-                r#"
-                SELECT DISTINCT epoch_index FROM fee_events
-                WHERE finding_id = ?1 AND listing_id = ?2
-                  AND fee_schedule_envelope_sha256 = ?3
-                  AND event_kind = 'participation_epoch' AND state = 'reconciled'
-                ORDER BY epoch_index ASC
-                "#,
-            )
-            .map_err(sqlite_error)?;
-        let epochs = statement
-            .query_map(
-                params![finding_id, listing_id, fee_schedule_envelope_sha256],
-                |row| row.get::<_, i64>(0),
-            )
-            .map_err(sqlite_error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(sqlite_error)?;
-        let mut paid_through: Option<u64> = None;
-        let mut expected: u64 = 0;
-        for epoch in epochs {
-            if stored_u64(epoch, "epoch_index")? != expected {
-                break;
-            }
-            paid_through = Some(expected);
-            expected = expected
-                .checked_add(1)
-                .ok_or_else(|| invariant("participation epoch index overflowed"))?;
-        }
-        Ok(paid_through)
+        paid_through_epoch_tx(
+            &transaction,
+            finding_id,
+            listing_id,
+            fee_schedule_envelope_sha256,
+        )
     }
 
     /// Load a durable activation prepare record by admission id.
