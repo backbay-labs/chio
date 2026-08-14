@@ -5365,8 +5365,9 @@ async fn wedge_purchase_rejects_a_resigned_bid_envelope() -> TestResult {
 /// reserved under. A superseded admission carries retired terms, fees,
 /// collateral bindings, and authority pins, so it must stop transacting
 /// everywhere money could still move: a reveal reserved under it denies
-/// before dispatch, and a new reserve presenting the retired envelope
-/// refuses while the current one still reserves.
+/// before dispatch, an exact committed reservation remains replayable, and
+/// a new reserve presenting the retired envelope refuses while the current
+/// one still reserves.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     let lane = open_lane(LaneOptions::standard()).await?;
@@ -5458,6 +5459,8 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     )
     .await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+
+    assert_superseded_reservation_replays(&lane, web)?;
 
     // The reveal reserved under the first admission denies before
     // dispatch: no invocation and no payment authorization.

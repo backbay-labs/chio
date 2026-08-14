@@ -1756,6 +1756,20 @@ pub(crate) fn status_for_purchase_tx(
     Ok(FindingStatusDecision::VerifiedLive(proof))
 }
 
+fn reject_epoch_clock_rollback(
+    epoch: &VerifiedFindingStatusEpochInput<'_>,
+    floor: &FindingStatusFeedFloor,
+) -> Result<(), FindingStatusStoreError> {
+    if epoch.recorded_at >= floor.advanced_at {
+        return Ok(());
+    }
+    Err(FindingStatusStoreError::ClockRollback {
+        feed_id: epoch.feed_id.to_owned(),
+        high_water: floor.advanced_at,
+        observed: epoch.recorded_at,
+    })
+}
+
 include!("finding_status_store/persistence.rs");
 
 #[cfg(test)]

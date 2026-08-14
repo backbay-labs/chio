@@ -138,5 +138,6 @@ pub(super) fn current_admission_view(
         admission_id: snapshot.admission_id,
         envelope_sha256: snapshot.envelope_sha256,
         expires_at: snapshot.expires_at,
+        envelope_json: snapshot.envelope_json,
     })
 }

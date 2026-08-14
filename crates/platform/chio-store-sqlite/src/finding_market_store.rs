@@ -21,8 +21,10 @@
 //! single consumption, fee idempotency, and the atomic activation prepare
 //! and finalization transactions).
 
-use std::sync::{Arc, Mutex, MutexGuard};
-
+use crate::admission_operation_store::verify_active_owner;
+use crate::finding_purchase_store::sales_blocked_tx;
+use crate::finding_status_store::{status_for_purchase_tx, FindingStatusDecision};
+use crate::serving_owner::SqliteServingOwner;
 use chio_core::capability::scope::MonetaryAmount;
 use chio_core::sha256_hex;
 use chio_finding::{
@@ -31,12 +33,8 @@ use chio_finding::{
 };
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
+use std::sync::{Arc, Mutex, MutexGuard};
 use thiserror::Error;
-
-use crate::admission_operation_store::verify_active_owner;
-use crate::finding_purchase_store::sales_blocked_tx;
-use crate::finding_status_store::{status_for_purchase_tx, FindingStatusDecision};
-use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_MARKET_SCHEMA_KEY: &str = "finding_market";
 pub(crate) const FINDING_MARKET_SUPPORTED_SCHEMA_VERSION: i32 = 3;
@@ -2397,6 +2395,8 @@ fn sqlite_error(error: rusqlite::Error) -> FindingMarketStoreError {
         other => FindingMarketStoreError::Unavailable(other.to_string()),
     }
 }
+#[path = "finding_market_fee_recovery.rs"]
+mod fee_recovery;
 #[path = "finding_market_status_read.rs"]
 mod status_read;
 #[cfg(test)]

@@ -238,7 +238,6 @@ fn require_leaf_proofs(
     }
     Ok(())
 }
-
 fn persist_epoch_record_tx(
     transaction: &Transaction<'_>,
     epoch: &VerifiedFindingStatusEpochInput<'_>,
@@ -350,13 +349,7 @@ fn persist_epoch_tx(
                 map_epoch: epoch.map_epoch,
             });
         }
-        if epoch.recorded_at < floor.advanced_at {
-            return Err(FindingStatusStoreError::ClockRollback {
-                feed_id: epoch.feed_id.to_owned(),
-                high_water: floor.advanced_at,
-                observed: epoch.recorded_at,
-            });
-        }
+        reject_epoch_clock_rollback(epoch, floor)?;
         if epoch.operator_key_epoch < floor.operator_key_epoch {
             return Err(invariant("operator key epoch regressed across feed epochs"));
         }

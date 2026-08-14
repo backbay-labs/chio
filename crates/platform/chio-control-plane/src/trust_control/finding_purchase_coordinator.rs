@@ -689,51 +689,6 @@ impl FindingPurchaseCoordinator {
         let admission_envelope_sha256 = canonical_json_bytes(admission)
             .map(|bytes| sha256_hex(&bytes))
             .map_err(|_| PurchaseCoordinatorError::Canonical)?;
-        // An unexpired admission is not sufficient: activation of a newer
-        // admission supersedes it in the durable market store, retiring
-        // its terms, fees, collateral binding, and authority pins. Only
-        // the byte-exact current admission for this finding transacts.
-        let current = self
-            .admissions
-            .get_current_admission(&admission.body.finding_id)
-            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
-            .ok_or(PurchaseCoordinatorError::AdmissionNotCurrent)?;
-        if current.envelope_sha256 != admission_envelope_sha256 {
-            return Err(PurchaseCoordinatorError::AdmissionNotCurrent);
-        }
-        if now < current.activated_at {
-            return Err(PurchaseCoordinatorError::ParticipationBinding(
-                "reservation clock predates admission activation".to_owned(),
-            ));
-        }
-        let terms_bytes = self
-            .admissions
-            .get_recipe_blob(&admission.body.terms_envelope_sha256)
-            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
-            .ok_or_else(|| {
-                PurchaseCoordinatorError::ParticipationBinding(
-                    "admission-bound terms are not retained".to_owned(),
-                )
-            })?;
-        let terms: SignedFindingMarketTerms =
-            serde_json::from_slice(&terms_bytes).map_err(|_| {
-                PurchaseCoordinatorError::ParticipationBinding(
-                    "admission-bound terms are malformed".to_owned(),
-                )
-            })?;
-        terms
-            .body
-            .validate()
-            .map_err(|error| PurchaseCoordinatorError::ParticipationBinding(error.to_string()))?;
-        if terms.body.finding_id != admission.body.finding_id
-            || terms.body.listing_id != admission.body.listing_id
-        {
-            return Err(PurchaseCoordinatorError::ParticipationBinding(
-                "admission-bound terms name another sale".to_owned(),
-            ));
-        }
-        let participation_epoch =
-            now.saturating_sub(current.activated_at) / terms.body.audit_epoch_length_secs;
         // The ask mints the delivery grant and prices the sale against the
         // seller's collateral, so its signer must be a principal the
         // finding issuer authorized for exactly this sale surface. The
@@ -889,7 +844,10 @@ impl FindingPurchaseCoordinator {
             ask_digest: &ask_digest,
             admission_envelope_sha256: &admission_envelope_sha256,
             fee_schedule_envelope_sha256: &admission.body.fee_schedule_envelope_sha256,
-            participation_epoch,
+            // The exact replay probe compares immutable purchase identity and
+            // ignores this new-reservation-only value. It is populated from
+            // the current admission before any new reservation is opened.
+            participation_epoch: 0,
             amount_units: ask.body.quoted_price.units,
             currency: &ask.body.quoted_price.currency,
             expires_at: replay_probe_expires_at,
@@ -903,6 +861,50 @@ impl FindingPurchaseCoordinator {
             .is_exact_reservation_replay(&input)
             .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
         if !exact_replay {
+            // A newer activation may supersede this admission after a
+            // reservation committed but before its response arrived. Exact
+            // durable replay above recovers that receipt; only a new
+            // reservation requires the presented admission to remain current.
+            let current = self
+                .admissions
+                .get_current_admission(&admission.body.finding_id)
+                .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
+                .ok_or(PurchaseCoordinatorError::AdmissionNotCurrent)?;
+            if current.envelope_sha256 != admission_envelope_sha256 {
+                return Err(PurchaseCoordinatorError::AdmissionNotCurrent);
+            }
+            if now < current.activated_at {
+                return Err(PurchaseCoordinatorError::ParticipationBinding(
+                    "reservation clock predates admission activation".to_owned(),
+                ));
+            }
+            let terms_bytes = self
+                .admissions
+                .get_recipe_blob(&admission.body.terms_envelope_sha256)
+                .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
+                .ok_or_else(|| {
+                    PurchaseCoordinatorError::ParticipationBinding(
+                        "admission-bound terms are not retained".to_owned(),
+                    )
+                })?;
+            let terms: SignedFindingMarketTerms =
+                serde_json::from_slice(&terms_bytes).map_err(|_| {
+                    PurchaseCoordinatorError::ParticipationBinding(
+                        "admission-bound terms are malformed".to_owned(),
+                    )
+                })?;
+            terms.body.validate().map_err(|error| {
+                PurchaseCoordinatorError::ParticipationBinding(error.to_string())
+            })?;
+            if terms.body.finding_id != admission.body.finding_id
+                || terms.body.listing_id != admission.body.listing_id
+            {
+                return Err(PurchaseCoordinatorError::ParticipationBinding(
+                    "admission-bound terms name another sale".to_owned(),
+                ));
+            }
+            input.participation_epoch =
+                now.saturating_sub(current.activated_at) / terms.body.audit_epoch_length_secs;
             self.require_live_venue_authority(now)?;
             if expires_at <= now {
                 return Err(PurchaseCoordinatorError::ReservationWindow);

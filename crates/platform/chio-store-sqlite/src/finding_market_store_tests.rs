@@ -1428,6 +1428,47 @@ fn participation_fee_intent_replays_after_status_freshness_expires() {
 }
 
 #[test]
+fn pending_participation_intent_is_recoverable_without_an_admission_lookup() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let schedule_sha256 = hex64('5');
+    let event = FindingFeeEvent::ParticipationEpoch { epoch_index: 4 };
+    let amount = usd(3);
+    let instruction_sha256 = hex64('8');
+    let intent = FindingFeeIntent {
+        fee_schedule_envelope_sha256: &schedule_sha256,
+        event: &event,
+        finding_id: &finding_id,
+        listing_id: LISTING_ID,
+        payer: "seller-42",
+        amount: &amount,
+        pool_principal_id: "pool:audit",
+        rail_destination: "rail:venue-ledger:audit-pool",
+        instruction_sha256: &instruction_sha256,
+    };
+    fixture
+        .store
+        .begin_fee_intent(&intent)
+        .expect("persist participation intent");
+
+    let pending = fixture
+        .store
+        .get_pending_participation_fee_intent(&finding_id, &schedule_sha256)
+        .expect("recover pending intent")
+        .expect("pending intent exists");
+    assert_eq!(pending.event, event);
+    assert_eq!(pending.instruction_sha256, instruction_sha256);
+
+    reconcile(&fixture.store, &pending.idempotency_key, &hex64('9'), 3)
+        .expect("reconcile pending intent");
+    assert!(fixture
+        .store
+        .get_pending_participation_fee_intent(&finding_id, &schedule_sha256)
+        .expect("recheck pending intent")
+        .is_none());
+}
+
+#[test]
 fn prepared_activation_replay_reuses_its_retained_live_status_decision() {
     let fixture = fixture();
     let finding_id = hex64('a');

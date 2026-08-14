@@ -36,8 +36,8 @@ use chio_open_market::listing::{
 use chio_store_sqlite::finding_market_store::{
     finding_fee_idempotency_key, FindingActivationAttemptState, FindingActivationOutcome,
     FindingActivationPreparationOutcome, FindingAdmissionSnapshot, FindingAllocationState,
-    FindingFeeIntent, FindingFeeIntentOutcome, FindingFeeState, FindingRecordInput,
-    SqliteFindingMarketStore,
+    FindingFeeEventRecord, FindingFeeIntent, FindingFeeIntentOutcome, FindingFeeState,
+    FindingRecordInput, SqliteFindingMarketStore,
 };
 use chio_store_sqlite::SqliteFindingStatusStore;
 
@@ -47,6 +47,9 @@ use super::*;
 #[path = "finding_admission_view.rs"]
 mod admission_view;
 use admission_view::current_admission_view;
+#[path = "finding_handlers/participation.rs"]
+mod participation;
+use participation::reconcile_participation_fee_intent;
 
 /// Publish body cap: strict canonical findings are small; anything larger
 /// is hostile or malformed. Enforced at the route layer and re-checked
@@ -639,6 +642,8 @@ struct FindingSearchAdmissionView {
     admission_id: String,
     envelope_sha256: String,
     expires_at: u64,
+    #[serde(skip)]
+    envelope_json: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -2121,6 +2126,30 @@ pub(crate) async fn handle_finding_participation(
         Ok(context) => context,
         Err(response) => return response,
     };
+    let schedule_digest = match signed_fee_schedule_digest(&request.fee_schedule) {
+        Ok(digest) => digest,
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    };
+    let pending = match store.get_pending_participation_fee_intent(&finding_id, &schedule_digest) {
+        Ok(pending) => pending,
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    };
+    if let Some(pending) = pending {
+        let Some(rail) = state.finding_rail.as_ref() else {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "no evidenced rail observer is configured",
+            );
+        };
+        return match reconcile_participation_fee_intent(&store, rail.as_ref(), &pending) {
+            Ok(epoch) => Json(serde_json::json!({
+                "findingId": finding_id,
+                "paidThroughEpoch": epoch,
+            }))
+            .into_response(),
+            Err(response) => response,
+        };
+    }
     let snapshot = match store.get_current_admission(&finding_id) {
         Ok(Some(snapshot)) => snapshot,
         Ok(None) => return plain_http_error(StatusCode::NOT_FOUND, "no active admission"),
@@ -2158,10 +2187,6 @@ pub(crate) async fn handle_finding_participation(
                 "admission is not live for participation renewal",
             )
         }
-    };
-    let schedule_digest = match signed_fee_schedule_digest(&request.fee_schedule) {
-        Ok(digest) => digest,
-        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
     if schedule_digest != admission.body.fee_schedule_envelope_sha256 {
         return plain_http_error(
@@ -2255,7 +2280,7 @@ pub(crate) async fn handle_finding_participation(
             return plain_http_error(StatusCode::BAD_REQUEST, &error);
         }
     }
-    match store.begin_live_participation_fee_intent(
+    let fenced = match store.begin_live_participation_fee_intent(
         &intent,
         &finding.status_feed_ref,
         &config.status_feed_operator.authorization_sha256,
@@ -2270,48 +2295,18 @@ pub(crate) async fn handle_finding_participation(
             }))
             .into_response();
         }
-        Ok(_) => {}
+        Ok(fenced) => fenced,
         Err(error) => {
             return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
         }
-    }
-    let observation = match rail.dispatch(&instruction) {
-        Ok(observation) => observation,
-        Err(reason) => {
-            let _ = store.mark_fee_failed(&idempotency_key);
-            return plain_http_error(
-                StatusCode::BAD_GATEWAY,
-                &format!("rail dispatch failed: {reason}"),
-            );
-        }
     };
-    if !super::finding_challenge_coordinator::rail_observation_matches(
-        &instruction,
-        &instruction_sha256,
-        &observation,
-    ) {
-        let _ = store.mark_fee_failed(&idempotency_key);
-        return plain_http_error(
-            StatusCode::BAD_GATEWAY,
-            "rail observation does not reconcile to the dispatched instruction",
-        );
-    }
-    let observation_sha256 = match canonical_digest_of(&observation) {
-        Ok(digest) => digest,
-        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
-    };
-    match store.mark_fee_reconciled(
-        &idempotency_key,
-        &observation_sha256,
-        &amount,
-        &config.audit_pool.rail_destination,
-    ) {
-        Ok(()) => Json(serde_json::json!({
+    match reconcile_participation_fee_intent(&store, rail.as_ref(), &fenced.record) {
+        Ok(epoch) => Json(serde_json::json!({
             "findingId": finding_id,
-            "paidThroughEpoch": next_epoch,
+            "paidThroughEpoch": epoch,
         }))
         .into_response(),
-        Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+        Err(response) => response,
     }
 }
 
@@ -2343,7 +2338,7 @@ pub(crate) async fn handle_get_finding_admission(
         .finding_authority_status_resolver
         .as_ref()
         .and_then(|resolver| resolver.resolve(&config.venue, now).ok());
-    if current_admission_view(
+    let Some(admission) = current_admission_view(
         &store,
         &status_store,
         &config,
@@ -2352,19 +2347,13 @@ pub(crate) async fn handle_get_finding_admission(
         venue_authority_status.as_ref(),
         &finding_id,
         now,
-    )
-    .is_none()
-    {
+    ) else {
         return plain_http_error(StatusCode::NOT_FOUND, "no current admission");
-    }
-    match store.get_current_admission(&finding_id) {
-        Ok(Some(snapshot)) => (
-            StatusCode::OK,
-            [(axum::http::header::CONTENT_TYPE, "application/json")],
-            snapshot.envelope_json,
-        )
-            .into_response(),
-        Ok(None) => plain_http_error(StatusCode::NOT_FOUND, "no current admission"),
-        Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
-    }
+    };
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        admission.envelope_json,
+    )
+        .into_response()
 }
