@@ -275,16 +275,24 @@ pub(super) async fn run_finding_status_retraction() -> TestResult {
             config.status_max_epoch_age_secs,
         )?;
     let now = unix_timestamp_now();
-    assert_eq!(
-        status_store.list_non_inclusion_enrollment_candidates(
-            &config.status_feed_operator_ref,
-            now,
-            200,
-        )?,
-        vec![lane.deployment.web.finding_id.clone()],
-        "an active admission must enroll its first non-inclusion proof"
+    assert!(
+        status_store
+            .list_non_inclusion_enrollment_candidates(
+                &config.status_feed_operator_ref,
+                now,
+                200,
+            )?
+            .is_empty(),
+        "activation must enroll the admission's first non-inclusion proof"
     );
+    let enrolled = status_store
+        .get_latest_proof(
+            &config.status_feed_operator_ref,
+            &lane.deployment.web.finding_id,
+        )?
+        .ok_or("activation-enrolled non-inclusion proof is durable")?;
     let live = publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    assert_eq!(live.proof_sha256, enrolled.proof_sha256);
     assert!(status_store
         .list_non_inclusion_enrollment_candidates(
             &config.status_feed_operator_ref,

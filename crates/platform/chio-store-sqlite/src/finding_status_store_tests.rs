@@ -1460,14 +1460,10 @@ fn rollback_and_same_epoch_equivocation_reject_without_moving_floor() {
         ))
         .expect("epoch two");
 
+    let mut rollback_epoch = epoch(1, &epoch_one_id, &epoch_one_root, b"signed-epoch-one", 1);
+    rollback_epoch.recorded_at = NOW + 3;
     let rollback = store
-        .observe_verified_epoch(&epoch(
-            1,
-            &epoch_one_id,
-            &epoch_one_root,
-            b"signed-epoch-one",
-            1,
-        ))
+        .observe_verified_epoch(&rollback_epoch)
         .expect_err("rollback must reject");
     assert!(matches!(
         rollback,
