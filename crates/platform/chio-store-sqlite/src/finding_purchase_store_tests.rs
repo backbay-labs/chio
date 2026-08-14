@@ -445,6 +445,9 @@ fn mark_capture(fixture: &Fixture, purchase: &Purchase, now: u64) {
         .expect("mark capture pending");
 }
 
+#[path = "finding_purchase_store_tests/sales_block.rs"]
+mod sales_block;
+
 /// Exposure the fixture allocation still carries at `now`, which is the
 /// quantity its registered cap bounds.
 fn outstanding_exposure(fixture: &Fixture, now: u64) -> u64 {

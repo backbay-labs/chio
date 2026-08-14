@@ -614,6 +614,15 @@ impl SqliteFindingPurchaseStore {
                 "reservation id is already bound to different purchase parameters".to_owned(),
             ));
         }
+        // The durable sales block and the reservation insert share this
+        // immediate transaction. Exact durable replays returned above remain
+        // recoverable, but a block that commits before a new reservation wins
+        // before either the reservation or its exposure can be inserted.
+        if sales_blocked_tx(&transaction, input.listing_id)? {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "listing sales are blocked".to_owned(),
+            ));
+        }
         if let Some((
             feed_id,
             operator_authorization_sha256,

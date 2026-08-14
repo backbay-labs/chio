@@ -817,6 +817,17 @@ impl SqliteFindingMarketStore {
             max_epoch_age_secs,
         )) = status_gate
         {
+            // Participation is meaningful only while the listing can sell.
+            // Check the joint purchase-authority block in the same immediate
+            // transaction that inserts the fee intent. Exact intent replays
+            // returned above remain recoverable after a later block.
+            if sales_blocked_tx(&transaction, intent.listing_id)
+                .map_err(|error| FindingMarketStoreError::Conflict(error.to_string()))?
+            {
+                return Err(FindingMarketStoreError::Conflict(
+                    "listing sales are blocked".to_owned(),
+                ));
+            }
             require_verified_live_status_tx(
                 &transaction,
                 feed_id,

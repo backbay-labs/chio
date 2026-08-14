@@ -74,6 +74,44 @@ pub(super) fn verify_current_admission_authorities(
     admission: &SignedFindingAdmission,
     now: u64,
 ) -> Result<(), String> {
+    let listing_key = config.listing.key().map_err(|error| error.to_string())?;
+    if !config.listing.covers(now) {
+        return Err("configured listing authority is not live for the admission view".to_owned());
+    }
+    let listing_status = authority_status_resolver
+        .resolve(&config.listing, now)
+        .map_err(|error| format!("listing authority status resolution failed: {error}"))?;
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    chio_finding::verify_signed_authority_status(&listing_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &listing_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live for the admission view".to_owned());
+    }
+    if status.status_ref != config.listing.revocation_status_ref
+        || status.authority_id != config.listing.authority_id
+        || status.key != listing_key
+        || status.key_epoch != config.listing.key_epoch
+    {
+        return Err("listing authority status does not bind the deployment pin".to_owned());
+    }
+    if status.observed_at < admission.body.issued_at
+        || status.observed_at < config.listing.valid_from
+        || status.observed_at >= config.listing.valid_until
+        || status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("listing authority status is not a fresh current reading".to_owned());
+    }
+    if status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= now)
+    {
+        return Err("listing authority is revoked for the admission view".to_owned());
+    }
     verify_venue_authority_lifecycle(admission, venue_authority_status, config, now)?;
     for policy in [
         &admission.body.purchase_authority,

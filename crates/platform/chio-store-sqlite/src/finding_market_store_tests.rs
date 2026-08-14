@@ -1468,6 +1468,9 @@ fn pending_participation_intent_is_recoverable_without_an_admission_lookup() {
         .is_none());
 }
 
+#[path = "finding_market_store_tests/sales_block.rs"]
+mod sales_block;
+
 #[test]
 fn prepared_activation_replay_reuses_its_retained_live_status_decision() {
     let fixture = fixture();

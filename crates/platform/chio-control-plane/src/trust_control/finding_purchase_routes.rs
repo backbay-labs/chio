@@ -33,6 +33,7 @@ use chio_finding::{
 use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
 };
+use chio_store_sqlite::SqliteFindingPurchaseStore;
 use serde::{Deserialize, Serialize};
 
 use super::report_validation::validate_service_auth;
@@ -542,6 +543,51 @@ fn purchase_terminal_response(result: &FindingPurchaseResult) -> Response {
     }
 }
 
+fn require_exact_durable_terminal(
+    store: &SqliteFindingPurchaseStore,
+    result: &FindingPurchaseResult,
+) -> Result<(), ()> {
+    match result.verdict {
+        FindingPurchaseVerdict::Allow => {
+            let record = result.purchase_record.as_ref().ok_or(())?;
+            let record_json = chio_core::canonical_json_bytes(record).map_err(|_| ())?;
+            let record_sha256 = sha256_hex(&record_json);
+            let stored = store
+                .get_purchase_record(&record.body.purchase_key)
+                .map_err(|_| ())?
+                .ok_or(())?;
+            if stored.purchase_key != record.body.purchase_key
+                || stored.reservation_id != result.reservation_id
+                || stored.record_json != record_json
+                || stored.record_sha256 != record_sha256
+                || stored.delivery_receipt_id != result.delivery_receipt.id
+                || stored.recorded_at != record.body.recorded_at
+            {
+                return Err(());
+            }
+        }
+        FindingPurchaseVerdict::Deny => {
+            let failed = result.failed_delivery.as_ref().ok_or(())?;
+            let record_json = chio_core::canonical_json_bytes(failed).map_err(|_| ())?;
+            let record_sha256 = sha256_hex(&record_json);
+            let stored = store
+                .get_failed_delivery_record(&failed.body.failed_delivery_id)
+                .map_err(|_| ())?
+                .ok_or(())?;
+            if stored.failed_delivery_id != failed.body.failed_delivery_id
+                || stored.reservation_id != result.reservation_id
+                || stored.record_json != record_json
+                || stored.record_sha256 != record_sha256
+                || stored.deny_receipt_id != result.delivery_receipt.id
+                || stored.recorded_at != failed.body.recorded_at
+            {
+                return Err(());
+            }
+        }
+    }
+    Ok(())
+}
+
 fn parse_request(raw: &str) -> Result<FindingPurchaseRequest, Response> {
     if raw.len() > FINDING_PURCHASE_MAX_BODY_BYTES {
         return Err(purchase_error(
@@ -711,6 +757,7 @@ pub(crate) async fn handle_purchase_finding(
         );
     };
     let store = authority.finding_market_store();
+    let purchase_store = authority.finding_purchase_store();
     let raw_finding = match store.get_finding_bytes(&finding_id) {
         Ok(Some(raw)) => raw,
         Ok(None) => {
@@ -826,6 +873,7 @@ pub(crate) async fn handle_purchase_finding(
     if result
         .validate_authorized(&request, &finding, &admission)
         .is_err()
+        || require_exact_durable_terminal(&purchase_store, &result).is_err()
     {
         return purchase_error(
             StatusCode::BAD_GATEWAY,

@@ -2835,6 +2835,25 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
     }
 }
 
+struct FixedTerminalExecutor {
+    authority: Arc<SqliteAuthorityStore>,
+    result: FindingPurchaseResult,
+}
+
+#[async_trait::async_trait]
+impl FindingPurchaseExecutor for FixedTerminalExecutor {
+    fn mutation_fence(&self) -> chio_kernel::admission_operation::StoreMutationFence {
+        self.authority.mutation_fence()
+    }
+
+    async fn execute(
+        &self,
+        _request: FindingPurchaseRequest,
+    ) -> Result<FindingPurchaseResult, FindingPurchaseExecutionError> {
+        Ok(self.result.clone())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The end-to-end wedge purchase
 // ---------------------------------------------------------------------------
@@ -3011,6 +3030,29 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
     assert_eq!(calls.releases.load(Ordering::SeqCst), 0);
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
+
+    // A retired purchase key cannot use its retained admission to forge a
+    // fresh, backdated terminal. Even a correctly signed and internally
+    // consistent record must byte-match the exact joint-authority row.
+    let mut forged = first;
+    let mut forged_body = forged
+        .purchase_record
+        .as_ref()
+        .ok_or_else(|| missing("public purchase result omitted its record"))?
+        .body
+        .clone();
+    forged_body.recorded_at = forged_body.recorded_at.saturating_sub(1);
+    forged.purchase_record = Some(SignedExportEnvelope::sign(forged_body, &keypair(16))?);
+    state.finding_purchase_executor = Some(Arc::new(FixedTerminalExecutor {
+        authority,
+        result: forged,
+    }));
+    let (status, body) = send(&state, authed_post(&path, canonical_json_bytes(&request)?)?).await?;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_terminal_invalid")
+    );
     Ok(())
 }
 

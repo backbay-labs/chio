@@ -418,8 +418,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
-        "cognition purchase and recovery end-to-end regression suite with reservation and authority-role separation; capped until split",
-        max_lines=6_104,
+        "cognition purchase and recovery end-to-end regression suite with durable public-terminal replay validation; capped until split",
+        max_lines=6_146,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",
@@ -433,8 +433,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-store-sqlite/src/finding_market_store.rs": allow(
         "2026-08-31",
-        "cognition finding market authority store with atomic status and expired-prepare recovery; capped to current size until split",
-        max_lines=2_405,
+        "cognition finding market authority store with atomic status and sales-blocked participation fences; capped to current size until split",
+        max_lines=2_416,
     ),
     "crates/platform/chio-store-sqlite/src/finding_challenge_store.rs": allow(
         "2026-08-31",
@@ -463,13 +463,13 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-store-sqlite/src/finding_purchase_store.rs": allow(
         "2026-08-31",
-        "cognition purchase and recovery authority store with atomic finding-status reservation gate; capped until split",
-        max_lines=3_382,
+        "cognition purchase and recovery authority store with atomic finding-status and sales-block reservation gates; capped until split",
+        max_lines=3_391,
     ),
     "crates/platform/chio-store-sqlite/src/finding_purchase_store_tests.rs": allow(
         "2026-08-31",
-        "cognition purchase authority store regression suite; capped to current size until split",
-        max_lines=3_158,
+        "cognition purchase authority store regression suite split for sales-block coverage; capped to current size until split",
+        max_lines=3_161,
     ),
     "crates/platform/chio-store-sqlite/src/finding_status_store/persistence.rs": allow(
         "2026-08-31",
