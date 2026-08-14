@@ -396,31 +396,50 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
             &current_epoch,
             refreshed_now,
         )?;
-        // This is deliberately the final durable read. A retraction that
-        // commits during proof verification must replace the earlier live
-        // observation before admission returns.
         let decision = self
             .store
             .status_for_purchase(fields.feed_id, fields.finding_id, refreshed_now)
             .map_err(|error| error.to_string())?;
-        match decision {
+        let record = match decision {
             FindingStatusDecision::VerifiedLive(record)
                 if record.proof_sha256 == verified.proof_sha256
                     && record.map_epoch == verified.map_epoch
                     && record.epoch_id == verified.status_epoch_id
                     && record.root_hash == verified.root_hash =>
             {
-                verify_proof_record(
-                    &self.operator,
-                    &self.service_bond,
-                    self.max_epoch_age_secs,
-                    &record,
-                    refreshed_now,
-                )?;
-                Ok(())
+                record
             }
             FindingStatusDecision::VerifiedLive(_) => {
-                Err("durable finding status evidence differs from the verified proof".to_owned())
+                return Err(
+                    "durable finding status evidence differs from the verified proof".to_owned(),
+                );
+            }
+            FindingStatusDecision::Pending(_) => {
+                return Err("finding retraction publication is pending".to_owned());
+            }
+            FindingStatusDecision::Retracted(_) => {
+                return Err("finding is retracted".to_owned());
+            }
+        };
+        verify_proof_record(
+            &self.operator,
+            &self.service_bond,
+            self.max_epoch_age_secs,
+            &record,
+            refreshed_now,
+        )?;
+        // Cryptographic verification above can be expensive. Re-observe time
+        // and make the durable sticky-state decision the final operation so a
+        // concurrent retraction cannot release a stale live admission.
+        let final_now = self.observe_trusted_now(self.clock.now_unix_secs()?)?;
+        match self
+            .store
+            .status_for_purchase(fields.feed_id, fields.finding_id, final_now)
+            .map_err(|error| error.to_string())?
+        {
+            FindingStatusDecision::VerifiedLive(final_record) if final_record == record => Ok(()),
+            FindingStatusDecision::VerifiedLive(_) => {
+                Err("durable finding status changed after proof verification".to_owned())
             }
             FindingStatusDecision::Pending(_) => {
                 Err("finding retraction publication is pending".to_owned())
