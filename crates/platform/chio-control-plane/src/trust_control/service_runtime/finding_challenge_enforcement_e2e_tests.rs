@@ -2163,7 +2163,13 @@ impl EvidenceInvalidCase {
 
     fn evidence_without_production_status(&self) -> FindingChallengeClassEvidence<'_> {
         FindingChallengeClassEvidence::EvidenceInvalid(FindingEvidenceInvalidEvidence {
-            purchase_record: &self.purchase_record,
+            purchase_standing: FindingPurchaseStandingEvidence {
+                purchase_record: &self.purchase_record,
+                delivery_receipt: &self.purchase_delivery_receipt,
+                delivery_checkpoint: &self.purchase_delivery_checkpoint,
+                delivery_checkpoint_transparency: &self.purchase_delivery_checkpoint_transparency,
+                delivery_authority_status: &self.purchase_delivery_authority_status,
+            },
             challenged_receipts: &self.receipts,
             challenged_checkpoint: &self.checkpoint,
             checkpoint_transparency: &self.checkpoint_transparency,

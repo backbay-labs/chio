@@ -59,8 +59,8 @@ pub use verify::{
     verify_finding_enforcement_for_reconciliation, FindingBondObservationRecheck,
     FindingBondObservationSource, FindingBondObservationVerdict, FindingDispatchPolicy,
     FindingEnforcementPins, FindingFinalityRequirement, FindingOperatorQualification,
-    FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence,
-    ReconciledFindingEnforcement, VerifiedFindingEnforcement,
+    FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence, ReconciledFindingEnforcement,
+    VerifiedFindingEnforcement,
 };
 
 use alloy_primitives::{Address, FixedBytes, B256};
