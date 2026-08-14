@@ -53,7 +53,7 @@ pub fn serve_with_finding_challenge_runtime(
 /// coordinator and purchase executor share the serving-owned purchase store.
 /// The injected rail must implement the idempotent observation contract of
 /// [`FindingRailObserver`]; activation and participation renewal use it rather
-/// than silently installing a non-settling placeholder.
+/// than silently omitting settlement observation.
 pub fn serve_with_finding_market_runtime(
     config: TrustServiceConfig,
     challenge_runtime: FindingChallengeSubmissionRuntime,
