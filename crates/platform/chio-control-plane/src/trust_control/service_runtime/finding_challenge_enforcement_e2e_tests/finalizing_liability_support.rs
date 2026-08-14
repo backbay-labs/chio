@@ -132,7 +132,13 @@ fn finalizing_liability_with_prior_retraction(
         259_200,
         NOW + 3,
     )?;
-    let intent_key = byte_hex64(0xc1);
+    let intent_key =
+        crate::trust_control::finding_challenge_coordinator::derive_seller_impair_intent_key(
+            &settlement_config()?.chain_id,
+            BOND_VAULT_CONTRACT,
+            &liability_key,
+            &byte_hex64(0xb7),
+        );
     let penalty = fixture_slash_penalty()?;
     let penalty_envelope_sha256 = signed_envelope_sha256(&penalty)?;
     deployment
