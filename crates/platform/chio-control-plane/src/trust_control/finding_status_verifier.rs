@@ -294,6 +294,13 @@ impl MarketFindingStatusVerifier {
             require_current_liveness,
         )
     }
+
+    fn observe_trusted_now(&self, now: u64) -> Result<u64, String> {
+        self.store
+            .observe_trusted_time(&self.operator.feed_id, now)
+            .map_err(|error| error.to_string())?;
+        Ok(now)
+    }
 }
 
 impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
@@ -315,6 +322,7 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
         verified: &VerifiedFindingStatusProof,
         now_unix_secs: u64,
     ) -> Result<(), String> {
+        let now_unix_secs = self.observe_trusted_now(now_unix_secs)?;
         let material = self.verify_at(view, now_unix_secs, true)?;
         if &material.verified != verified {
             return Err("finding status proof changed between verification phases".to_owned());
@@ -376,7 +384,7 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
                 recorded_at: now_unix_secs,
             })
             .map_err(|error| error.to_string())?;
-        let refreshed_now = self.clock.now_unix_secs()?.max(now_unix_secs);
+        let refreshed_now = self.observe_trusted_now(self.clock.now_unix_secs()?)?;
         let refreshed_material = self.verify_at(view, refreshed_now, true)?;
         if &refreshed_material.verified != verified {
             return Err("finding status proof changed during final admission".to_owned());

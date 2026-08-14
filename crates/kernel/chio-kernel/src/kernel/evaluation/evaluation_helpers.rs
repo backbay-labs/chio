@@ -38,6 +38,19 @@ pub(super) struct ExecutionNonceReservingResponse<'a> {
     pub(super) budget_lease_acquired: bool,
 }
 
+pub(super) struct OrdinaryRecoveryFinalization<'a> {
+    pub(super) request: &'a ToolCallRequest,
+    pub(super) output: ToolServerOutput,
+    pub(super) elapsed: Duration,
+    pub(super) timestamp: u64,
+    pub(super) matched_grant_index: usize,
+    pub(super) cost: FinalizeToolOutputCostContext<'a>,
+    pub(super) metadata: Option<serde_json::Value>,
+    pub(super) guard_evidence: &'a [chio_core::receipt::metadata::GuardEvidence],
+    pub(super) payee_binding: Option<&'a VerifiedGovernedPayeeBinding>,
+    pub(super) recovery: Option<&'a crate::finding_recovery::VerifiedFindingRecovery>,
+}
+
 struct CleanupReleaseOutcome {
     metadata: Option<serde_json::Value>,
     confirmed: bool,
@@ -145,6 +158,35 @@ pub(crate) fn delivery_commitment_denial(
 }
 
 impl ChioKernel {
+    pub(super) fn finalize_ordinary_recovery_response(
+        &self,
+        finalization: OrdinaryRecoveryFinalization<'_>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        let metadata = crate::kernel::recovery_gate::attach_finding_recovery_metadata(
+            finalization.metadata,
+            finalization.recovery,
+        );
+        let response =
+            self.with_pre_invocation_guard_evidence(finalization.guard_evidence, || {
+                self.finalize_budgeted_tool_output_with_cost_and_metadata(
+                    finalization.request,
+                    finalization.output,
+                    finalization.elapsed,
+                    finalization.timestamp,
+                    finalization.matched_grant_index,
+                    finalization.cost,
+                    metadata,
+                    finalization.payee_binding,
+                )
+            })?;
+        self.record_completed_recovery_receipt(
+            finalization.recovery,
+            &response.receipt.id,
+            response.receipt.timestamp,
+        )?;
+        Ok(response)
+    }
+
     pub(crate) fn compensate_durable_admission_after_pre_dispatch_cleanup(
         &self,
         operation: Option<&AdmissionOperationV1>,

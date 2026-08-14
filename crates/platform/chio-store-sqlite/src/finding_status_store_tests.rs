@@ -182,6 +182,58 @@ fn floor_epoch_and_non_inclusion_survive_restart_with_exact_bytes() {
 }
 
 #[test]
+// The clock floor is part of the authenticated feed projection, not process memory.
+fn trusted_time_high_water_survives_restart_and_rejects_rollback() {
+    let fixture = DurableFixture::new();
+    let epoch_id = hex64('a');
+    let root_hash = hex64('b');
+    let high_water = NOW + 100;
+    {
+        let authority = fixture.open();
+        let store = authority.finding_status_store();
+        store
+            .observe_verified_epoch(&epoch(1, &epoch_id, &root_hash, b"clock-floor-epoch", 1))
+            .expect("persist clock floor epoch");
+        assert_eq!(
+            store
+                .observe_trusted_time(FEED, high_water)
+                .expect("advance trusted time"),
+            FindingStatusWriteOutcome::Inserted
+        );
+    }
+
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    assert_eq!(
+        store
+            .observe_trusted_time(FEED, high_water)
+            .expect("exact high-water replay"),
+        FindingStatusWriteOutcome::ExactReplay
+    );
+    assert!(matches!(
+        store.observe_trusted_time(FEED, high_water - 1),
+        Err(FindingStatusStoreError::ClockRollback {
+            high_water: retained,
+            observed,
+            ..
+        }) if retained == high_water && observed == high_water - 1
+    ));
+
+    let next_epoch_id = hex64('c');
+    let next_root_hash = hex64('d');
+    assert!(matches!(
+        store.observe_verified_epoch(&epoch(
+            2,
+            &next_epoch_id,
+            &next_root_hash,
+            b"clock-rollback-epoch",
+            1,
+        )),
+        Err(FindingStatusStoreError::ClockRollback { .. })
+    ));
+}
+
+#[test]
 fn imported_inclusion_reconciles_a_matching_local_outbox_intent() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();

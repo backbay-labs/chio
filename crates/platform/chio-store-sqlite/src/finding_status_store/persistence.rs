@@ -225,6 +225,13 @@ fn persist_epoch_tx(
 ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
     let signed_epoch_sha256 = sha256_hex(epoch.signed_epoch_bytes);
     if let Some(floor) = prior_floor {
+        if epoch.recorded_at < floor.advanced_at {
+            return Err(FindingStatusStoreError::ClockRollback {
+                feed_id: epoch.feed_id.to_owned(),
+                high_water: floor.advanced_at,
+                observed: epoch.recorded_at,
+            });
+        }
         if floor.operator_id != epoch.operator_id
             || floor.key_domain_nonce != epoch.key_domain_nonce
         {
@@ -1796,12 +1803,13 @@ pub(crate) fn initialize_finding_status_schema(
             .execute_batch("DROP TRIGGER IF EXISTS finding_retraction_intents_lifecycle;")
             .map_err(sqlite_error)?;
     }
-    if (1..=2).contains(&on_disk) {
+    if (1..=3).contains(&on_disk) {
         // Revision 3 permits authenticated revocation-state changes for the
         // same operator key and key epoch. Key substitution remains fenced.
         // It also permits deletion of superseded non-inclusion proofs. Recreate
         // both changed triggers because revision 1 and 2 databases retain the
-        // earlier unconditional proof-retention trigger.
+        // earlier unconditional proof-retention trigger. Revision 4 also lets
+        // an otherwise unchanged feed floor advance its trusted-time high-water.
         transaction
             .execute_batch(
                 "DROP TRIGGER IF EXISTS finding_status_feed_floors_monotonic;\

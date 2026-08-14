@@ -254,8 +254,14 @@ impl FindingChallengeCoordinator {
                     "liability carries an invalid durable seller key".to_owned(),
                 )
             })?;
+            let (retained, _) = self.load_retained_finalizing_authorization(liability_key)?;
+            let (finalization_authority, _) = self.require_enforcement_signature(
+                enforcement,
+                &retained.finalization_policy,
+                now,
+            )?;
             let pins = FindingEnforcementPins {
-                finalization_authority: self.finalization_authority.public_key(),
+                finalization_authority,
                 settlement_observer,
                 seller,
                 finality_requirement: self.pins.settlement_finality_requirement,

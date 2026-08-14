@@ -484,6 +484,7 @@ fn status_write_error(error: FindingStatusStoreError) -> Response {
         | FindingStatusStoreError::OutcomeUnknown(_)
         | FindingStatusStoreError::MissingFloor { .. }
         | FindingStatusStoreError::MissingState { .. }
+        | FindingStatusStoreError::ClockRollback { .. }
         | FindingStatusStoreError::StaleProof { .. } => StatusCode::SERVICE_UNAVAILABLE,
     };
     plain_http_error(status, &error.to_string())

@@ -1,3 +1,4 @@
+use super::evaluation_helpers::OrdinaryRecoveryFinalization;
 use super::evaluation_helpers::PreDispatchCleanupDeny;
 use super::*;
 use crate::budget_store::BudgetInvocationCaptureDecision;
@@ -1897,14 +1898,8 @@ impl ChioKernel {
         let recovery_status = self.revalidate_completed_recovery_status(
             matched_grant_index,
             request,
-            verified_finding_admission
-                .recovery
-                .as_ref()
-                .map(|admission| &admission.recovery),
-            verified_finding_admission
-                .recovery
-                .as_ref()
-                .map(|admission| &admission.status),
+            verified_finding_admission.recovery_binding(),
+            verified_finding_admission.recovery_status(),
             current_unix_timestamp_ms() / 1_000,
         );
         if let Err(reason) = recovery_status {
@@ -1923,22 +1918,22 @@ impl ChioKernel {
                 )
             });
         }
-        self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-            self.finalize_budgeted_tool_output_with_cost_and_metadata(
-                request,
-                tool_output,
-                tool_elapsed,
-                now,
-                matched_grant_index,
-                FinalizeToolOutputCostContext {
-                    charge_result: budget_mutation.into_charge_result(),
-                    reported_cost,
-                    payment_authorization,
-                    cap,
-                },
-                runtime_admission_metadata,
-                verified_governed_payee_binding.as_ref(),
-            )
+        self.finalize_ordinary_recovery_response(OrdinaryRecoveryFinalization {
+            request,
+            output: tool_output,
+            elapsed: tool_elapsed,
+            timestamp: now,
+            matched_grant_index,
+            cost: FinalizeToolOutputCostContext {
+                charge_result: budget_mutation.into_charge_result(),
+                reported_cost,
+                payment_authorization,
+                cap,
+            },
+            metadata: runtime_admission_metadata,
+            guard_evidence: &pre_invocation_guard_evidence,
+            payee_binding: verified_governed_payee_binding.as_ref(),
+            recovery: verified_finding_admission.recovery_binding(),
         })
     }
 }

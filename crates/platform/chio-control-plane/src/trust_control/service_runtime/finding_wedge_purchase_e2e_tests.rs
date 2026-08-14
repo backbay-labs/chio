@@ -36,8 +36,9 @@ use chio_core::receipt::kinds::TrustLevel;
 use chio_core::receipt::lineage::{ReceiptLineageRelationKind, SignedExportEnvelope};
 use chio_core::receipt::metadata::{
     DeliveryContract, DeliveryResult, FindingDelivery, FindingDeliverySettlementMode,
-    FindingMediaTypeCheck, FindingTransformProfile, DELIVERY_CONTRACT_METADATA_KEY,
-    DELIVERY_CONTRACT_SCHEMA, FINDING_DELIVERY_METADATA_KEY, FINDING_DELIVERY_SCHEMA,
+    FindingMediaTypeCheck, FindingRecovery, FindingTransformProfile,
+    DELIVERY_CONTRACT_METADATA_KEY, DELIVERY_CONTRACT_SCHEMA, FINDING_DELIVERY_METADATA_KEY,
+    FINDING_DELIVERY_SCHEMA, FINDING_RECOVERY_METADATA_KEY,
 };
 use chio_core::sha256_hex;
 use chio_finding::{
@@ -2042,6 +2043,22 @@ fn finding_delivery_block(response: &ToolCallResponse) -> Result<FindingDelivery
     Ok(block)
 }
 
+fn finding_recovery_receipt_block(
+    response: &ToolCallResponse,
+) -> Result<FindingRecovery, AnyError> {
+    let value = response
+        .receipt
+        .metadata
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+        .and_then(|metadata| metadata.get(FINDING_RECOVERY_METADATA_KEY))
+        .cloned()
+        .ok_or_else(|| missing("finding recovery block is absent"))?;
+    let block: FindingRecovery = serde_json::from_value(value)?;
+    block.validate()?;
+    Ok(block)
+}
+
 fn denial_checkpoint(
     receipt: &ChioReceipt,
 ) -> Result<(KernelCheckpoint, ReceiptInclusionProof), AnyError> {
@@ -3525,54 +3542,7 @@ fn finding_recovery_request(
     })
 }
 
-fn legacy_custom_recovery_token(
-    subject: PublicKey,
-    issuer: &Keypair,
-    token_id: &str,
-    finding_id: &str,
-    payload_sha256: &str,
-    original_receipt_id: &str,
-    original_capability_id: &str,
-    now: u64,
-) -> Result<CapabilityToken, AnyError> {
-    Ok(CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: token_id.to_owned(),
-            issuer: issuer.public_key(),
-            subject,
-            scope: ChioScope {
-                grants: vec![ToolGrant {
-                    server_id: SERVER_ID.to_owned(),
-                    tool_name: READ_FINDING_TOOL.to_owned(),
-                    operations: vec![Operation::Invoke],
-                    constraints: vec![
-                        Constraint::OutputDigestSha256(payload_sha256.to_owned()),
-                        Constraint::Custom(
-                            "recovery_of_receipt_id".to_owned(),
-                            original_receipt_id.to_owned(),
-                        ),
-                        Constraint::Custom(
-                            "recovery_of_capability_id".to_owned(),
-                            original_capability_id.to_owned(),
-                        ),
-                        Constraint::Custom("finding_id".to_owned(), finding_id.to_owned()),
-                    ],
-                    max_invocations: Some(2),
-                    max_cost_per_invocation: None,
-                    max_total_cost: None,
-                    dpop_required: Some(true),
-                }],
-                resource_grants: Vec::new(),
-                prompt_grants: Vec::new(),
-            },
-            issued_at: now.saturating_sub(5),
-            expires_at: now.saturating_add(600),
-            delegation_chain: Vec::new(),
-            aggregate_invocation_budget: None,
-        },
-        issuer,
-    )?)
-}
+include!("finding_wedge_purchase_e2e_tests/recovery_test_support.rs");
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResult {
@@ -3807,6 +3777,22 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         DeliveryResult::Matched
     );
     assert!(finding_delivery_block_absent(&recovered));
+    let recovery_block = finding_recovery_receipt_block(&recovered)?;
+    assert_eq!(recovery_block.recovery_id, marker.recovery_id);
+    assert_eq!(
+        recovery_block.original_delivery_receipt_id,
+        response.receipt.id
+    );
+    let recovery_lineage = lane
+        .authority
+        .finding_recovery_store()
+        .get_receipt_lineage(&recovered.receipt.id)?
+        .ok_or("ordinary recovery receipt lineage was not persisted")?;
+    assert_eq!(recovery_lineage.recovery_id, marker.recovery_id);
+    assert_eq!(
+        recovery_lineage.original_delivery_receipt_id,
+        response.receipt.id
+    );
     assert_eq!(
         delivered_value(&recovered)?,
         reveal_envelope(REVEAL_MEDIA_TYPE, SEALED_PAYLOAD)
@@ -3887,6 +3873,7 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         "reason": "recovery_status_gate_regression",
         "schema": "chio.finding.voluntary-retraction.v1",
     }))?;
+    let retraction_now = unix_timestamp_now().max(now + 1);
     assert_eq!(
         status_store.issue_retraction_intent(&chio_store_sqlite::FindingRetractionIntentInput {
             intent_id: &intent_id,
@@ -3895,13 +3882,13 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
             finding_id: &finding_id,
             source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
             intent_bytes: &intent_bytes,
-            issued_at: now,
-            inclusion_deadline: now + config.status_feed_service_bond.inclusion_sla_secs,
-            created_at: now,
+            issued_at: retraction_now,
+            inclusion_deadline: retraction_now + config.status_feed_service_bond.inclusion_sla_secs,
+            created_at: retraction_now,
         })?,
         chio_store_sqlite::FindingStatusWriteOutcome::Inserted
     );
-    let retracted = publisher.publish_retraction(&intent_id, &[], now + 1)?;
+    let retracted = publisher.publish_retraction(&intent_id, &[], retraction_now)?;
     let retracted_status_proof_b64 = STANDARD.encode(&retracted.proof_bytes);
     let retracted_recovery = restarted.evaluate_tool_call_blocking(&finding_recovery_request(
         "wedge-recovery-3",

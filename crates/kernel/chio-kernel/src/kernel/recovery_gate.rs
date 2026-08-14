@@ -14,7 +14,7 @@ use crate::finding_recovery::{
 use crate::request_matching::resolve_required_matching_grants;
 use crate::runtime::ToolCallRequest;
 
-use super::ChioKernel;
+use super::{ChioKernel, KernelError};
 
 pub(crate) struct RecoveryMarkedGrant<'a> {
     marker: &'a FindingRecoveryMarkerV1,
@@ -25,6 +25,16 @@ pub(crate) struct RecoveryMarkedGrant<'a> {
 pub(crate) struct VerifiedFindingRecoveryAdmission {
     pub(crate) recovery: VerifiedFindingRecovery,
     pub(crate) status: VerifiedFindingStatusProof,
+}
+
+impl crate::kernel::dispatch::VerifiedFindingDispatchAdmission {
+    pub(crate) fn recovery_binding(&self) -> Option<&VerifiedFindingRecovery> {
+        self.recovery.as_ref().map(|admission| &admission.recovery)
+    }
+
+    pub(crate) fn recovery_status(&self) -> Option<&VerifiedFindingStatusProof> {
+        self.recovery.as_ref().map(|admission| &admission.status)
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -550,6 +560,49 @@ impl ChioKernel {
             })?;
         Ok(())
     }
+
+    /// Persist the receipt-to-delivery edge before an ordinary recovery
+    /// response leaves the kernel. Durable finalization calls the same seam
+    /// after committing its terminal projection; the non-durable lanes must
+    /// not release a successful payload without this authenticated lineage.
+    pub(crate) fn record_completed_recovery_receipt(
+        &self,
+        recovery: Option<&VerifiedFindingRecovery>,
+        receipt_id: &str,
+        recorded_at: u64,
+    ) -> Result<(), KernelError> {
+        let Some(recovery) = recovery else {
+            return Ok(());
+        };
+        let verifier = self.finding_recovery_verifier.as_ref().ok_or_else(|| {
+            KernelError::Internal(
+                "finding recovery verifier disappeared during ordinary finalization".to_owned(),
+            )
+        })?;
+        verifier
+            .record_recovery_receipt(recovery, receipt_id, recorded_at)
+            .map_err(|error| {
+                KernelError::Internal(format!(
+                    "finding recovery lineage could not be recorded: {error}"
+                ))
+            })
+    }
+}
+
+pub(crate) fn attach_finding_recovery_metadata(
+    metadata: Option<serde_json::Value>,
+    recovery: Option<&VerifiedFindingRecovery>,
+) -> Option<serde_json::Value> {
+    let Some(recovery) = recovery else {
+        return metadata;
+    };
+    crate::receipt_support::merge_metadata_objects(
+        metadata,
+        Some(serde_json::json!({
+            chio_core::receipt::metadata::FINDING_RECOVERY_METADATA_KEY:
+                finding_recovery_block(recovery)
+        })),
+    )
 }
 
 pub(crate) fn finding_recovery_block(
@@ -583,6 +636,7 @@ mod tests {
 
     struct TestRecoveryVerifier {
         reservations: Arc<AtomicU64>,
+        receipts: Arc<AtomicU64>,
         deny_verification: Arc<AtomicBool>,
     }
 
@@ -624,6 +678,7 @@ mod tests {
             _recovery_receipt_id: &str,
             _recorded_at: u64,
         ) -> Result<(), String> {
+            self.receipts.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
     }
@@ -802,10 +857,12 @@ mod tests {
         let current_deny = Arc::new(AtomicBool::new(false));
         let current_checks = Arc::new(AtomicU64::new(0));
         let reservations = Arc::new(AtomicU64::new(0));
+        let receipts = Arc::new(AtomicU64::new(0));
         let deny_verification = Arc::new(AtomicBool::new(false));
         let mut kernel = kernel();
         kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
             reservations: Arc::clone(&reservations),
+            receipts,
             deny_verification,
         }));
         kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
@@ -858,10 +915,12 @@ mod tests {
         let current_deny = Arc::new(AtomicBool::new(false));
         let current_checks = Arc::new(AtomicU64::new(0));
         let reservations = Arc::new(AtomicU64::new(0));
+        let receipts = Arc::new(AtomicU64::new(0));
         let deny_verification = Arc::new(AtomicBool::new(false));
         let mut kernel = kernel();
         kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
             reservations: Arc::clone(&reservations),
+            receipts,
             deny_verification: Arc::clone(&deny_verification),
         }));
         kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
@@ -983,6 +1042,48 @@ mod tests {
             verified.original_delivery_receipt_id
         );
         assert_eq!(block.purchase_key, verified.purchase_key);
+    }
+
+    #[test]
+    fn ordinary_recovery_receipt_is_typed_and_recorded_before_release() {
+        let verified = VerifiedFindingRecovery {
+            recovery_id: "a".repeat(64),
+            finding_id: "b".repeat(64),
+            listing_id: "listing-1".to_owned(),
+            payload_sha256: "d".repeat(64),
+            expected_status_feed_id: "feed-1".to_owned(),
+            original_capability_id: "capability-original".to_owned(),
+            original_delivery_receipt_id: "receipt-original".to_owned(),
+            purchase_key: "c".repeat(64),
+            original_subject_key_hex: "e".repeat(64),
+        };
+        let metadata = attach_finding_recovery_metadata(
+            Some(serde_json::json!({"existing": true})),
+            Some(&verified),
+        )
+        .expect("recovery metadata");
+        assert_eq!(metadata["existing"], serde_json::json!(true));
+        let block: chio_core::receipt::metadata::FindingRecovery = serde_json::from_value(
+            metadata[chio_core::receipt::metadata::FINDING_RECOVERY_METADATA_KEY].clone(),
+        )
+        .expect("typed recovery block");
+        assert_eq!(block.recovery_id, verified.recovery_id);
+        assert_eq!(
+            block.original_delivery_receipt_id,
+            verified.original_delivery_receipt_id
+        );
+
+        let receipts = Arc::new(AtomicU64::new(0));
+        let mut kernel = kernel();
+        kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
+            reservations: Arc::new(AtomicU64::new(0)),
+            receipts: Arc::clone(&receipts),
+            deny_verification: Arc::new(AtomicBool::new(false)),
+        }));
+        kernel
+            .record_completed_recovery_receipt(Some(&verified), "recovery-receipt", 42)
+            .expect("record authenticated recovery lineage");
+        assert_eq!(receipts.load(Ordering::SeqCst), 1);
     }
 
     #[test]

@@ -103,11 +103,23 @@ BEFORE UPDATE ON finding_status_feed_floors
 WHEN NEW.feed_id <> OLD.feed_id
   OR NEW.operator_id <> OLD.operator_id
   OR NEW.key_domain_nonce <> OLD.key_domain_nonce
-  OR NEW.map_epoch <= OLD.map_epoch
+  OR NEW.map_epoch < OLD.map_epoch
+  OR NEW.advanced_at < OLD.advanced_at
   OR NEW.operator_key_epoch < OLD.operator_key_epoch
   OR (
       NEW.operator_key_epoch = OLD.operator_key_epoch
       AND NEW.operator_key <> OLD.operator_key
+  )
+  OR (
+      NEW.map_epoch = OLD.map_epoch
+      AND (
+          NEW.epoch_id <> OLD.epoch_id
+          OR NEW.root_hash <> OLD.root_hash
+          OR NEW.signed_epoch_sha256 <> OLD.signed_epoch_sha256
+          OR NEW.operator_key <> OLD.operator_key
+          OR NEW.operator_key_epoch <> OLD.operator_key_epoch
+          OR NEW.operator_authorization_sha256 <> OLD.operator_authorization_sha256
+      )
   )
 BEGIN
     SELECT RAISE(ABORT, 'finding status floor must advance monotonically');

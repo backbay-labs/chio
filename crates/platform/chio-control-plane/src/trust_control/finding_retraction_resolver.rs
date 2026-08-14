@@ -23,16 +23,30 @@ use chio_store_sqlite::{FindingStatusDecision, FindingStatusProofKind, SqliteFin
 use super::finding_status_verifier::verify_proof_record;
 use super::{FindingMarketConfig, FindingStatusOperatorPin, FindingStatusServiceBond};
 
-/// Wall clock used by the hosted synchronous guard profile.
-#[derive(Debug, Default)]
-pub struct SystemFindingRetractionClock;
+/// Wall clock used by the hosted synchronous guard profile, fenced by the
+/// authenticated durable status-feed high-water.
+#[derive(Clone)]
+pub struct SystemFindingRetractionClock {
+    feed_id: String,
+    store: SqliteFindingStatusStore,
+}
+
+impl SystemFindingRetractionClock {
+    fn new(feed_id: String, store: SqliteFindingStatusStore) -> Self {
+        Self { feed_id, store }
+    }
+}
 
 impl FindingRetractionClock for SystemFindingRetractionClock {
     fn now_unix_secs(&self) -> Result<u64, FindingRetractionResolveError> {
-        SystemTime::now()
+        let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs())
-            .map_err(|error| FindingRetractionResolveError::ClockUnavailable(error.to_string()))
+            .map_err(|error| FindingRetractionResolveError::ClockUnavailable(error.to_string()))?;
+        self.store
+            .observe_trusted_time(&self.feed_id, now)
+            .map_err(|error| FindingRetractionResolveError::ClockUnavailable(error.to_string()))?;
+        Ok(now)
     }
 }
 
@@ -335,7 +349,10 @@ pub fn sqlite_finding_retraction_resolver(
     receipts: Arc<dyn ReceiptStore>,
     status_store: SqliteFindingStatusStore,
 ) -> Result<Arc<dyn FindingRetractionResolver>, FindingRetractionResolveError> {
-    let clock: Arc<dyn FindingRetractionClock> = Arc::new(SystemFindingRetractionClock);
+    let clock: Arc<dyn FindingRetractionClock> = Arc::new(SystemFindingRetractionClock::new(
+        config.status_feed_operator_ref.clone(),
+        status_store.clone(),
+    ));
     let lineage: Arc<dyn FindingDeliveryLineageResolver> =
         Arc::new(ReceiptStoreFindingDeliveryLineageResolver::new(receipts));
     let status: Arc<dyn FindingStatusCache> = Arc::new(SqliteFindingStatusCache::new(

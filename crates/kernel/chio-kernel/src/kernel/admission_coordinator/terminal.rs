@@ -655,9 +655,21 @@ impl ChioKernel {
             _ => None,
         };
         let receipt_content = receipt_content_for_output(Some(&output), expected_chunks)?;
-        // Reproduce the delivery verdict deterministically so the replay
-        // byte-matches the persisted receipt, whether it was an Allow or a
-        // delivery-denial Deny.
+        let receipt_id = match admission.operation.terminal_replay() {
+            Some(AdmissionTerminalReplay::Receipt { receipt_id, .. }) => receipt_id,
+            _ => {
+                return Err(KernelError::DurableAdmission(
+                    "completed admission has no receipt replay reference".to_owned(),
+                ));
+            }
+        };
+        let receipt = runtime
+            .store
+            .load_chio_receipt(receipt_id.as_str())
+            .map_err(|error| KernelError::DurableAdmission(error.to_string()))?
+            .ok_or_else(|| {
+                KernelError::DurableAdmission("projected receipt disappeared".to_owned())
+            })?;
         let mut delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
             expected_output_digest.as_deref(),
             &receipt_content.content_hash,
@@ -665,15 +677,13 @@ impl ChioKernel {
             &receipt_content.canonical_content,
             purchase.as_ref(),
         );
-        if delivery_evaluation.denial.is_none() {
-            if let Err(reason) = self.revalidate_completed_purchase_status(
-                purchase.as_ref(),
-                current_unix_timestamp_ms() / 1_000,
-            ) {
-                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase replay output withheld");
-                delivery_evaluation.denial =
-                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
-            }
+        if let Some(reason) = self.revalidate_replayed_purchase_delivery(
+            receipt.decision.as_ref(),
+            &mut delivery_evaluation,
+            purchase.as_ref(),
+            current_unix_timestamp_ms() / 1_000,
+        ) {
+            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase replay output withheld");
         }
         let receipt_visible_content = receipt_visible_delivery_content(
             &receipt_content,
@@ -760,21 +770,6 @@ impl ChioKernel {
                 "completed output conflicts with its retained preimage".to_owned(),
             ));
         }
-        let receipt_id = match admission.operation.terminal_replay() {
-            Some(AdmissionTerminalReplay::Receipt { receipt_id, .. }) => receipt_id,
-            _ => {
-                return Err(KernelError::DurableAdmission(
-                    "completed admission has no receipt replay reference".to_owned(),
-                ));
-            }
-        };
-        let receipt = runtime
-            .store
-            .load_chio_receipt(receipt_id.as_str())
-            .map_err(|error| KernelError::DurableAdmission(error.to_string()))?
-            .ok_or_else(|| {
-                KernelError::DurableAdmission("projected receipt disappeared".to_owned())
-            })?;
         let retained_financial_metadata = receipt
             .metadata
             .as_ref()

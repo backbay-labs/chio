@@ -26,7 +26,7 @@ use crate::finding_challenge_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_STATUS_SCHEMA_KEY: &str = "finding_status";
-pub(crate) const FINDING_STATUS_SUPPORTED_SCHEMA_VERSION: i32 = 3;
+pub(crate) const FINDING_STATUS_SUPPORTED_SCHEMA_VERSION: i32 = 4;
 const FINDING_STATUS_SCHEMA_ANCHORS: &[&str] = &[
     "finding_status_feeds",
     "admission_operations",
@@ -77,6 +77,14 @@ pub enum FindingStatusStoreError {
     },
     #[error("finding status epoch {map_epoch} equivocated for feed `{feed_id}`")]
     Equivocation { feed_id: String, map_epoch: u64 },
+    #[error(
+        "finding status clock rollback for feed `{feed_id}`: high-water {high_water}, observed {observed}"
+    )]
+    ClockRollback {
+        feed_id: String,
+        high_water: u64,
+        observed: u64,
+    },
     #[error("non-inclusion contradicts sticky status for finding `{finding_id}`")]
     ContradictoryNonInclusion { finding_id: String },
     #[error("finding status proof for `{finding_id}` is stale at {trusted_now}")]
@@ -399,6 +407,57 @@ impl SqliteFindingStatusStore {
         self.serving_owner
             .sync_authority_anchor(connection)
             .map_err(|error| FindingStatusStoreError::Unavailable(error.to_string()))
+    }
+
+    /// Advance the rollback-protected trusted-time floor for one status feed.
+    ///
+    /// The feed floor is already covered by the authenticated finding-status
+    /// projection, so reusing its monotonic timestamp keeps clock continuity
+    /// across verifier clones and process restarts without creating an
+    /// unanchored side table. Equal observations are exact replays. A wall
+    /// clock below the retained floor fails closed.
+    pub fn observe_trusted_time(
+        &self,
+        feed_id: &str,
+        trusted_now: u64,
+    ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+        require_identifier(feed_id, "feed_id")?;
+        require_positive(trusted_now, "trusted_now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        ensure_feed_registered_tx(&transaction, feed_id)?;
+        let floor = load_floor_tx(&transaction, feed_id)?.ok_or_else(|| {
+            FindingStatusStoreError::MissingFloor {
+                feed_id: feed_id.to_owned(),
+            }
+        })?;
+        if trusted_now < floor.advanced_at {
+            return Err(FindingStatusStoreError::ClockRollback {
+                feed_id: feed_id.to_owned(),
+                high_water: floor.advanced_at,
+                observed: trusted_now,
+            });
+        }
+        if trusted_now == floor.advanced_at {
+            transaction.commit().map_err(sqlite_error)?;
+            return Ok(FindingStatusWriteOutcome::ExactReplay);
+        }
+        let changed = transaction
+            .execute(
+                "UPDATE finding_status_feed_floors SET advanced_at = ?2 WHERE feed_id = ?1 AND advanced_at = ?3",
+                params![
+                    feed_id,
+                    sqlite_i64(trusted_now, "trusted_now")?,
+                    sqlite_i64(floor.advanced_at, "advanced_at")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        if changed != 1 {
+            return Err(invariant("finding status clock floor changed concurrently"));
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingStatusWriteOutcome::Inserted)
     }
 
     /// Atomically persist a local retraction intent and the sticky pending row.

@@ -339,6 +339,9 @@ fn finalizing_liability_with_prior_retraction(
     let retained = serde_json::json!({
         "enforcement": enforcement.clone(),
         "slash": slash.clone(),
+        "finalizationPolicy": market_config().venue_finalization,
+        "sanctionCaseId": FIXTURE_SANCTION_CASE_ID,
+        "heldPenaltyId": FIXTURE_HELD_PENALTY_ID,
     });
     let authorization_json = canonical_json_bytes(&retained)?;
     let authorization_sha256 = sha256_hex(&authorization_json);
@@ -557,7 +560,7 @@ fn fixture_slash_penalty() -> Result<SignedOpenMarketPenalty, AnyError> {
             uri: None,
             sha256: Some(byte_hex64(0xb4)),
         }],
-        supersedes_penalty_id: None,
+        supersedes_penalty_id: Some(FIXTURE_HELD_PENALTY_ID.to_string()),
         issued_by: "market@chio.example".to_string(),
         note: None,
     };

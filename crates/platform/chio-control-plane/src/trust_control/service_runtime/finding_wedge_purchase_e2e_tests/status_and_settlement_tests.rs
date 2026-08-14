@@ -120,58 +120,6 @@ async fn finding_status_retraction() -> TestResult {
             200,
         )?
         .is_empty());
-    let stale_after_store_reads = now + config.status_max_epoch_age_secs + 1;
-    let refreshed_verifier = MarketFindingStatusVerifier::new_with_clock(
-        config.status_feed_operator.clone(),
-        config.status_feed_service_bond.clone(),
-        config.status_max_epoch_age_secs,
-        status_store.clone(),
-        Arc::new(FixedStatusAdmissionClock(stale_after_store_reads)),
-    )?;
-    let live_b64 = STANDARD.encode(&live.proof_bytes);
-    let live_view = chio_kernel::finding_purchase::FindingStatusProofContextView {
-        proof_b64: &live_b64,
-        expected_finding_id: &lane.deployment.web.finding_id,
-        expected_feed_id: &config.status_feed_operator_ref,
-    };
-    let verified_live = chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_proof(
-        &refreshed_verifier,
-        &live_view,
-    )?;
-    let stale_admission =
-        chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_admission(
-            &refreshed_verifier,
-            &live_view,
-            &verified_live,
-            now,
-        )
-        .err()
-        .ok_or("time refreshed after status-store work accepted an expired epoch")?;
-    assert!(
-        stale_admission.contains("stale") || stale_admission.contains("freshness"),
-        "unexpected refreshed-time rejection: {stale_admission}"
-    );
-
-    let cache = crate::trust_control::finding_retraction_resolver::SqliteFindingStatusCache::new(
-        &config,
-        status_store.clone(),
-        Arc::new(AdvancingRetractionClock {
-            now: AtomicU64::new(now),
-            step_secs: config.status_max_epoch_age_secs + 1,
-        }),
-    )?;
-    let stale_cache = chio_guards::finding_retraction::FindingStatusCache::authenticated_status(
-        &cache,
-        &lane.deployment.web.finding_id,
-    )
-    .err()
-    .ok_or("time refreshed after cache reads accepted an expired epoch")?;
-    assert!(matches!(
-        &stale_cache,
-        chio_guards::finding_retraction::FindingRetractionResolveError::InvalidStatus(ref message)
-            if message.contains("stale") || message.contains("freshness")
-    ), "unexpected refreshed-cache rejection: {stale_cache:?}");
-
     let duplicate_live =
         publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now + 1)?;
     assert_eq!(duplicate_live.proof_sha256, live.proof_sha256);
@@ -323,6 +271,7 @@ async fn finding_status_retraction() -> TestResult {
         "reason": "seller_voluntary_retraction",
         "schema": "chio.finding.voluntary-retraction.v1",
     }))?;
+    let primary_intent_now = unix_timestamp_now().max(now);
     let intent = chio_store_sqlite::FindingRetractionIntentInput {
         intent_id: &intent_id,
         feed_id: &config.status_feed_operator_ref,
@@ -330,9 +279,10 @@ async fn finding_status_retraction() -> TestResult {
         finding_id: &lane.deployment.web.finding_id,
         source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
         intent_bytes: &intent_bytes,
-        issued_at: now,
-        inclusion_deadline: now + config.status_feed_service_bond.inclusion_sla_secs,
-        created_at: now,
+        issued_at: primary_intent_now,
+        inclusion_deadline: primary_intent_now
+            + config.status_feed_service_bond.inclusion_sla_secs,
+        created_at: primary_intent_now,
     };
     assert_eq!(
         status_store.issue_retraction_intent(&intent)?,
@@ -343,7 +293,11 @@ async fn finding_status_retraction() -> TestResult {
         chio_store_sqlite::FindingStatusWriteOutcome::ExactReplay
     );
     assert!(publisher
-        .publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)
+        .publish_non_inclusion(
+            &lane.deployment.web.finding_id,
+            &[],
+            primary_intent_now,
+        )
         .is_err());
 
     let hook_store = status_gate_store.clone();
@@ -352,8 +306,9 @@ async fn finding_status_retraction() -> TestResult {
     let hook_operator_id = config.status_feed_operator.authority.authority_id.clone();
     let hook_finding_id = lane.deployment.web.finding_id.clone();
     let hook_intent_bytes = intent_bytes.clone();
+    let status_gate_intent_now = unix_timestamp_now().max(status_gate_now);
     let inclusion_deadline =
-        status_gate_now + config.status_feed_service_bond.inclusion_sla_secs;
+        status_gate_intent_now + config.status_feed_service_bond.inclusion_sla_secs;
     status_lane
         .kernel
         .set_payment_adapter(Box::new(ReversibleHoldAdapter {
@@ -367,9 +322,9 @@ async fn finding_status_retraction() -> TestResult {
                         finding_id: &hook_finding_id,
                         source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
                         intent_bytes: &hook_intent_bytes,
-                        issued_at: status_gate_now,
+                        issued_at: status_gate_intent_now,
                         inclusion_deadline,
-                        created_at: status_gate_now,
+                        created_at: status_gate_intent_now,
                     })
                     .map(|_| ())
                     .map_err(|error| error.to_string())
@@ -387,11 +342,18 @@ async fn finding_status_retraction() -> TestResult {
     assert_eq!(status_lane.calls.releases.load(Ordering::SeqCst), 1);
     assert_eq!(status_lane.invocations.load(Ordering::SeqCst), 0);
 
-    let included =
-        status_gate_publisher.publish_retraction(&intent_id, &[], status_gate_now)?;
+    let status_gate_retraction_now = unix_timestamp_now().max(status_gate_intent_now);
+    let included = status_gate_publisher.publish_retraction(
+        &intent_id,
+        &[],
+        status_gate_retraction_now,
+    )?;
     let included_b64 = STANDARD.encode(&included.proof_bytes);
-    let duplicate =
-        status_gate_publisher.publish_retraction(&intent_id, &[], status_gate_now)?;
+    let duplicate = status_gate_publisher.publish_retraction(
+        &intent_id,
+        &[],
+        status_gate_retraction_now,
+    )?;
     assert_eq!(duplicate.proof_sha256, included.proof_sha256);
     let retracted = status_lane.reveal_with_status(
         &status_lane.purchase,
@@ -415,6 +377,7 @@ async fn finding_status_retraction() -> TestResult {
         "reason": "seller_voluntary_retraction",
         "schema": "chio.finding.voluntary-retraction.v1",
     }))?;
+    let second_intent_now = unix_timestamp_now().max(status_gate_retraction_now);
     status_gate_store.issue_retraction_intent(
         &chio_store_sqlite::FindingRetractionIntentInput {
             intent_id: &second_intent_id,
@@ -423,19 +386,23 @@ async fn finding_status_retraction() -> TestResult {
             finding_id: &second_finding_id,
             source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
             intent_bytes: &second_intent_bytes,
-            issued_at: status_gate_now,
-            inclusion_deadline: status_gate_now
+            issued_at: second_intent_now,
+            inclusion_deadline: second_intent_now
                 + config.status_feed_service_bond.inclusion_sla_secs,
-            created_at: status_gate_now,
+            created_at: second_intent_now,
         },
     )?;
-    let second_included =
-        status_gate_publisher.publish_retraction(&second_intent_id, &[], status_gate_now + 1)?;
+    let second_publish_now = unix_timestamp_now().max(second_intent_now + 1);
+    let second_included = status_gate_publisher.publish_retraction(
+        &second_intent_id,
+        &[],
+        second_publish_now,
+    )?;
     let refresh_candidates = status_gate_store.list_publication_candidates(
         &config.status_feed_operator_ref,
         &config.status_feed_operator.authority.key_hex,
         &config.status_feed_operator.authorization_sha256,
-        status_gate_now + 1,
+        second_publish_now,
         200,
     )?;
     assert!(refresh_candidates
@@ -445,7 +412,7 @@ async fn finding_status_retraction() -> TestResult {
         .get_latest_proof(&config.status_feed_operator_ref, &lane.deployment.web.finding_id)?
         .is_none());
     let refreshed_included =
-        status_gate_publisher.publish_retraction(&intent_id, &[], status_gate_now + 1)?;
+        status_gate_publisher.publish_retraction(&intent_id, &[], second_publish_now)?;
     assert_eq!(refreshed_included.map_epoch, second_included.map_epoch);
     assert_eq!(
         refreshed_included.kind,
@@ -456,13 +423,13 @@ async fn finding_status_retraction() -> TestResult {
             &config.status_feed_operator_ref,
             &config.status_feed_operator.authority.key_hex,
             &config.status_feed_operator.authorization_sha256,
-            now + 1,
+            second_publish_now,
             200,
         )?
         .iter()
         .any(|candidate| candidate.intent_id == intent_id));
 
-    let anchor_refresh_at = status_gate_now + 2;
+    let anchor_refresh_at = second_publish_now + 1;
     assert!(!status_gate_publisher.epoch_refresh_required(&[], anchor_refresh_at)?);
     let prior_invalid_refresh_epoch = status_gate_store
         .get_feed_floor(&config.status_feed_operator_ref)?
@@ -517,10 +484,11 @@ async fn finding_status_retraction() -> TestResult {
     let prior_epoch = status_gate_store
         .get_feed_floor(&config.status_feed_operator_ref)?
         .map_epoch;
+    let rotation_now = unix_timestamp_now().max(anchor_refresh_at + 1);
     let rotated = rotated_publisher.publish_non_inclusion(
         &sha256_hex(b"m6-live-after-operator-rotation"),
         &[],
-        now + 2,
+        rotation_now,
     )?;
     assert_eq!(rotated.map_epoch, prior_epoch + 1);
     assert_eq!(
@@ -530,7 +498,8 @@ async fn finding_status_retraction() -> TestResult {
         rotated_operator.authority.key_epoch
     );
 
-    publisher.publish_retraction(&intent_id, &[], now)?;
+    let primary_retraction_now = unix_timestamp_now().max(primary_intent_now);
+    publisher.publish_retraction(&intent_id, &[], primary_retraction_now)?;
     let delivery_status = delivery
         .status_proof
         .as_ref()
@@ -549,7 +518,7 @@ async fn finding_status_retraction() -> TestResult {
             minimum_map_epoch: delivery_status.map_epoch,
             minimum_non_inclusion_checked_at: delivery_status.non_inclusion_checked_at,
         },
-        now,
+        primary_retraction_now,
     ) {
         Ok(()) => return Err(missing("retracted Finding memory-write denial")),
         Err(error) => error,
@@ -566,6 +535,105 @@ async fn finding_status_retraction() -> TestResult {
     let guarded = holder_kernel
         .evaluate_tool_call_blocking(&memory_read_request("m6-holder-retracted-read"))?;
     assert_eq!(guarded.verdict, Verdict::Deny);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn finding_status_freshness_rechecks_after_store_reads() -> TestResult {
+    let admission_lane = open_lane(LaneOptions {
+        install_status_verifier: true,
+        publish_status_proof: false,
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let config = market_config();
+    let admission_store = admission_lane.authority.finding_status_store();
+    let admission_publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            admission_store.clone(),
+            config.status_feed_operator.clone(),
+            config.status_feed_service_bond.clone(),
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    let now = unix_timestamp_now();
+    let live = admission_publisher.publish_non_inclusion(
+        &admission_lane.deployment.web.finding_id,
+        &[],
+        now,
+    )?;
+    let stale_after_store_reads = now + config.status_max_epoch_age_secs + 1;
+    let refreshed_verifier = MarketFindingStatusVerifier::new_with_clock(
+        config.status_feed_operator.clone(),
+        config.status_feed_service_bond.clone(),
+        config.status_max_epoch_age_secs,
+        admission_store,
+        Arc::new(FixedStatusAdmissionClock(stale_after_store_reads)),
+    )?;
+    let live_b64 = STANDARD.encode(&live.proof_bytes);
+    let live_view = chio_kernel::finding_purchase::FindingStatusProofContextView {
+        proof_b64: &live_b64,
+        expected_finding_id: &admission_lane.deployment.web.finding_id,
+        expected_feed_id: &config.status_feed_operator_ref,
+    };
+    let verified_live =
+        chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_proof(
+            &refreshed_verifier,
+            &live_view,
+        )?;
+    let stale_admission =
+        chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_admission(
+            &refreshed_verifier,
+            &live_view,
+            &verified_live,
+            now,
+        )
+        .err()
+        .ok_or("time refreshed after status-store work accepted an expired epoch")?;
+    assert!(
+        stale_admission.contains("stale") || stale_admission.contains("freshness"),
+        "unexpected refreshed-time rejection: {stale_admission}"
+    );
+
+    let cache_lane = open_lane(LaneOptions {
+        install_status_verifier: true,
+        publish_status_proof: false,
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let cache_store = cache_lane.authority.finding_status_store();
+    let cache_publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            cache_store.clone(),
+            config.status_feed_operator.clone(),
+            config.status_feed_service_bond.clone(),
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    cache_publisher.publish_non_inclusion(
+        &cache_lane.deployment.web.finding_id,
+        &[],
+        now,
+    )?;
+    let cache = crate::trust_control::finding_retraction_resolver::SqliteFindingStatusCache::new(
+        &config,
+        cache_store,
+        Arc::new(AdvancingRetractionClock {
+            now: AtomicU64::new(now),
+            step_secs: config.status_max_epoch_age_secs + 1,
+        }),
+    )?;
+    let stale_cache = chio_guards::finding_retraction::FindingStatusCache::authenticated_status(
+        &cache,
+        &cache_lane.deployment.web.finding_id,
+    )
+    .err()
+    .ok_or("time refreshed after cache reads accepted an expired epoch")?;
+    assert!(matches!(
+        &stale_cache,
+        chio_guards::finding_retraction::FindingRetractionResolveError::InvalidStatus(ref message)
+            if message.contains("stale") || message.contains("freshness")
+    ), "unexpected refreshed-cache rejection: {stale_cache:?}");
     Ok(())
 }
 
@@ -629,6 +697,55 @@ async fn finding_status_admission_rechecks_sticky_state_after_proof_verification
     .err()
     .ok_or("concurrent retraction was accepted after final proof verification")?;
     assert!(error.contains("pending"), "unexpected rejection: {error}");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn finding_status_admission_rejects_clock_rollback() -> TestResult {
+    let lane = open_lane(LaneOptions {
+        install_status_verifier: true,
+        publish_status_proof: false,
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let config = market_config();
+    let status_store = lane.authority.finding_status_store();
+    let publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            status_store.clone(),
+            config.status_feed_operator.clone(),
+            config.status_feed_service_bond.clone(),
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    let now = unix_timestamp_now();
+    let live = publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    let live_b64 = STANDARD.encode(&live.proof_bytes);
+    let live_view = chio_kernel::finding_purchase::FindingStatusProofContextView {
+        proof_b64: &live_b64,
+        expected_finding_id: &lane.deployment.web.finding_id,
+        expected_feed_id: &config.status_feed_operator_ref,
+    };
+    let verifier = MarketFindingStatusVerifier::new_with_clock(
+        config.status_feed_operator,
+        config.status_feed_service_bond,
+        config.status_max_epoch_age_secs,
+        status_store,
+        Arc::new(FixedStatusAdmissionClock(now + 1)),
+    )?;
+    let verified =
+        chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_proof(
+            &verifier, &live_view,
+        )?;
+    let error = chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_admission(
+        &verifier,
+        &live_view,
+        &verified,
+        now + 2,
+    )
+    .err()
+    .ok_or("a refreshed wall clock below the durable high-water was accepted")?;
+    assert!(error.contains("clock rollback"), "unexpected rejection: {error}");
     Ok(())
 }
 

@@ -81,6 +81,24 @@ pub(crate) fn finding_status_delivery_denial() -> DeliveryDenial {
     }
 }
 
+/// Make a persisted delivery denial monotonic across replay. Deterministic
+/// delivery checks are recomputed first; if they now allow while the signed
+/// terminal receipt denied, the only mutable gate was current finding status.
+/// Preserve that denial instead of upgrading the terminal to Allow.
+pub(crate) fn preserve_terminal_delivery_denial(
+    retained_decision: Option<&chio_core::receipt::decision::Decision>,
+    evaluation: &mut DeliveryEvaluation,
+) {
+    if evaluation.denial.is_none()
+        && matches!(
+            retained_decision,
+            Some(chio_core::receipt::decision::Decision::Deny { .. })
+        )
+    {
+        evaluation.denial = Some(finding_status_delivery_denial());
+    }
+}
+
 /// The complete delivery verdict for one resolved output, shared by the
 /// durable finalizer and the replay lane so both derive identical
 /// receipts from identical durable state.
@@ -666,6 +684,24 @@ impl ChioKernel {
             )
             .map_err(|error| format!("completed purchase status admission rejected: {error}"))
     }
+
+    /// Preserve a retained terminal denial and apply the current status gate
+    /// before replaying a purchased delivery.
+    pub(crate) fn revalidate_replayed_purchase_delivery(
+        &self,
+        retained_decision: Option<&chio_core::receipt::decision::Decision>,
+        evaluation: &mut DeliveryEvaluation,
+        purchase: Option<&VerifiedFindingPurchase>,
+        now_unix_secs: u64,
+    ) -> Option<String> {
+        preserve_terminal_delivery_denial(retained_decision, evaluation);
+        if evaluation.denial.is_some() {
+            return None;
+        }
+        self.revalidate_completed_purchase_status(purchase, now_unix_secs)
+            .err()
+            .inspect(|_| evaluation.denial = Some(finding_status_delivery_denial()))
+    }
 }
 
 #[cfg(test)]
@@ -884,5 +920,24 @@ mod tests {
             denial.is_some_and(|denial| denial.message.contains("single value delivery")),
             "a stream delivery must deny under a committed digest"
         );
+    }
+
+    #[test]
+    fn retained_terminal_deny_never_replays_as_allow() {
+        let mut evaluation = evaluate_delivery(None, DIGEST, true, b"{}", None);
+        assert!(evaluation.denial.is_none());
+        preserve_terminal_delivery_denial(
+            Some(&chio_core::receipt::decision::Decision::Deny {
+                reason: "finding status changed before durable output release".to_owned(),
+                guard: "finding_status".to_owned(),
+            }),
+            &mut evaluation,
+        );
+        let denial = evaluation.denial.expect("retained denial");
+        assert_eq!(
+            denial.message,
+            "finding status changed before durable output release"
+        );
+        assert_eq!(denial.guard, "finding_status");
     }
 }
