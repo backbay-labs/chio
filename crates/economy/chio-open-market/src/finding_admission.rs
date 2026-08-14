@@ -13,7 +13,7 @@
 //! the real [`bid`] path unchanged.
 
 use chio_finding::{
-    signed_envelope_sha256, verify_signed_admission, verify_signed_bond_backing,
+    signed_envelope_sha256, verify_finding, verify_signed_admission, verify_signed_bond_backing,
     verify_signed_market_terms, FindingAdmission, FindingError, SignedFindingAdmission,
     SignedFindingBondBacking, SignedFindingMarketTerms,
 };
@@ -23,7 +23,7 @@ use crate::bidding::{bid, BidMintContext, BiddingError, SignedAskResponse, Signe
 use crate::capability::scope::{
     Constraint, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount,
 };
-use crate::crypto::PublicKey;
+use crate::crypto::{sha256_hex, PublicKey};
 use crate::evaluation::OpenMarketPenaltyEvaluation;
 use crate::fee_schedule::{OpenMarketBondClass, SignedOpenMarketFeeSchedule};
 use crate::fiscal_adapter::{
@@ -131,6 +131,12 @@ pub enum FindingAdmissionError {
     Bidding(BiddingError),
     #[error("finding artifact is not the finding the admission was issued for")]
     FindingMismatch,
+    #[error("finding artifact rejected: {0}")]
+    FindingArtifact(FindingError),
+    #[error("finding artifact cannot be canonically bound to the admission")]
+    FindingArtifactCanonical,
+    #[error("finding artifact digest does not match the admission binding")]
+    FindingArtifactDigestMismatch,
     #[error("finding is not yet live at the purchase clock")]
     FindingNotYetLive,
     #[error("finding has expired at the purchase clock")]
@@ -589,6 +595,23 @@ fn is_lowercase_sha256_hex(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+fn verify_admitted_finding(
+    admission: &VerifiedFindingAdmission,
+    finding: &chio_finding::Finding,
+) -> Result<(), FindingAdmissionError> {
+    verify_finding(finding).map_err(FindingAdmissionError::FindingArtifact)?;
+    if finding.finding_id != admission.finding_id() {
+        return Err(FindingAdmissionError::FindingMismatch);
+    }
+    let digest = crate::canonical_json_bytes(finding)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|_| FindingAdmissionError::FindingArtifactCanonical)?;
+    if digest != admission.admission().finding_artifact_sha256 {
+        return Err(FindingAdmissionError::FindingArtifactDigestMismatch);
+    }
+    Ok(())
+}
+
 /// Mint a delivery-committed purchase ask for an admitted finding.
 ///
 /// The provider, not the buyer, authors the grant bindings: exactly one
@@ -611,9 +634,7 @@ pub fn bid_with_finding_purchase(
     if !bid_context.grant_constraints.is_empty() || bid_context.dpop_required.is_some() {
         return Err(FindingAdmissionError::MintContextPreoccupied);
     }
-    if finding.finding_id != admission.finding_id() {
-        return Err(FindingAdmissionError::FindingMismatch);
-    }
+    verify_admitted_finding(admission, finding)?;
     if !is_lowercase_sha256_hex(&finding.payload_sha256) {
         return Err(FindingAdmissionError::FindingDigestMalformed);
     }
@@ -655,9 +676,7 @@ pub fn accept_finding_purchase(
     admission: &VerifiedFindingAdmission,
     finding: &chio_finding::Finding,
 ) -> Result<crate::bidding::SignedAcceptedBid, FindingAdmissionError> {
-    if finding.finding_id != admission.finding_id() {
-        return Err(FindingAdmissionError::FindingMismatch);
-    }
+    verify_admitted_finding(admission, finding)?;
     let grants = &ask.body.token_offer.scope.grants;
     let [grant] = grants.as_slice() else {
         return Err(FindingAdmissionError::TokenOfferProfile);

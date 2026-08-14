@@ -150,6 +150,33 @@ BEGIN
     SELECT RAISE(ABORT, 'public purchase request must be retained');
 END;
 
+-- Revision-12 compatibility roster for terminals written before public
+-- request bindings existed. The first authenticated, reservation-compatible
+-- replay promotes one row into public_purchase_requests atomically; this row
+-- remains immutable evidence of the migration boundary.
+CREATE TABLE IF NOT EXISTS prebinding_purchase_terminals (
+    reservation_id TEXT NOT NULL PRIMARY KEY
+        REFERENCES purchase_reservations(reservation_id),
+    terminal_kind TEXT NOT NULL CHECK (
+        terminal_kind IN ('purchase_record', 'failed_delivery')
+    ),
+    terminal_id TEXT NOT NULL CHECK (length(terminal_id) BETWEEN 1 AND 512),
+    receipt_id TEXT NOT NULL CHECK (length(receipt_id) BETWEEN 1 AND 512),
+    UNIQUE (terminal_kind, terminal_id)
+);
+
+CREATE TRIGGER IF NOT EXISTS prebinding_purchase_terminals_immutable
+BEFORE UPDATE ON prebinding_purchase_terminals
+BEGIN
+    SELECT RAISE(ABORT, 'prebinding purchase terminal is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS prebinding_purchase_terminals_no_delete
+BEFORE DELETE ON prebinding_purchase_terminals
+BEGIN
+    SELECT RAISE(ABORT, 'prebinding purchase terminal must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS purchase_capture_intents (
     reservation_id TEXT NOT NULL PRIMARY KEY
         REFERENCES purchase_reservations(reservation_id),

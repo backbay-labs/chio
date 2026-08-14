@@ -295,10 +295,10 @@ pub fn validate_supported_finding_verifier_profile(
     if profile.required_receipt_semantics != MEDIATED_SPEND_PROFILE
         || profile.predicate_engine != FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1
         || profile.verifier_report_signer.key == profile.governance_authority
-        || profile
-            .receipt_signers
-            .iter()
-            .any(|signer| signer.policy.key == profile.verifier_report_signer.key)
+        || profile.receipt_signers.iter().any(|signer| {
+            signer.policy.key == profile.verifier_report_signer.key
+                || signer.policy.key == profile.governance_authority
+        })
         || profile
             .checkpoint_logs
             .iter()

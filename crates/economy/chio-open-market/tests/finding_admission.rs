@@ -101,6 +101,10 @@ fn hex64(fill: char) -> String {
     std::iter::repeat_n(fill, 64).collect()
 }
 
+fn finding_artifact_sha256(finding: &Finding) -> String {
+    sha256_hex(&canonical_json_bytes(finding).test_expect("canonical finding"))
+}
+
 fn keypair(seed: u8) -> Keypair {
     Keypair::from_seed(&[seed; 32])
 }
@@ -269,7 +273,7 @@ fn signed_terms(seller: &Keypair, finding: &Finding, expires_at: u64) -> SignedF
         schema: FINDING_MARKET_TERMS_SCHEMA_V1.to_string(),
         terms_id: String::new(),
         finding_id: finding.finding_id.clone(),
-        finding_artifact_sha256: hex64('d'),
+        finding_artifact_sha256: finding_artifact_sha256(finding),
         listing_id: FINDING_LISTING_ID.to_string(),
         seller: seller.public_key(),
         backing_requirement: FindingBackingRequirement {
@@ -374,7 +378,7 @@ fn signed_admission(
         venue: venue.public_key(),
         venue_id: VENUE_ID.to_string(),
         finding_id: finding.finding_id.clone(),
-        finding_artifact_sha256: hex64('d'),
+        finding_artifact_sha256: finding_artifact_sha256(finding),
         seller_authorization_envelope_sha256: hex64('1'),
         listing_id: FINDING_LISTING_ID.to_string(),
         listing_envelope_sha256: bindings.listing_envelope_sha256.clone(),
@@ -2038,6 +2042,32 @@ fn purchase_mint_rechecks_finding_liveness_at_the_mint_clock() {
 }
 
 #[test]
+fn purchase_mint_rejects_a_modified_signed_finding() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let witness = verify_finding_admission(&web.admission, &web.context(resolver))
+            .test_expect("admission");
+        let scope = format!("finding:{}", web.finding.finding_id);
+        let listing = finding_listing_entry(&web.operator, &web.finding, &scope, 900);
+        let agent = keypair(31);
+        let request = SignedBidRequest::sign(finding_bid_request(&web.finding, 900), &agent)
+            .test_expect("sign purchase bid");
+        let mut modified = web.finding.clone();
+        modified.payload_sha256 = hex64('f');
+
+        assert!(matches!(
+            bid_with_finding_purchase(
+                &request,
+                purchase_mint_context(&listing, &web.operator, &agent),
+                &witness,
+                &modified,
+            ),
+            Err(FindingAdmissionError::FindingArtifact(_))
+        ));
+    });
+}
+
+#[test]
 fn purchase_accept_requires_exact_amounts_and_the_committed_profile() {
     with_fiscal(|resolver| {
         let web = base_web();
@@ -2081,6 +2111,20 @@ fn purchase_accept_requires_exact_amounts_and_the_committed_profile() {
         .test_expect("exact purchase accept");
         assert_eq!(accepted.body.quoted_price, usd(900));
         assert_eq!(accepted.body.bid_receipt_id, "reservation-0001");
+
+        let mut modified = web.finding.clone();
+        modified.expires_at = modified.expires_at.saturating_add(1);
+        assert!(matches!(
+            accept_finding_purchase(
+                &ask,
+                &sign_reservation(900),
+                &agent,
+                NOW + 60,
+                &witness,
+                &modified,
+            ),
+            Err(FindingAdmissionError::FindingArtifact(_))
+        ));
 
         assert_eq!(
             accept_finding_purchase(

@@ -70,12 +70,27 @@ impl SqliteFindingPurchaseStore {
         require_identifier(terminal.terminal_id, "terminal_id")?;
         require_identifier(terminal.receipt_id, "receipt_id")?;
         let mut connection = self.connection()?;
-        let transaction = self.begin_read(&mut connection)?;
+        {
+            let transaction = self.begin_read(&mut connection)?;
+            let reservation = load_reservation_tx(&transaction, reservation_id)?
+                .ok_or(FindingPurchaseStoreError::NotFound)?;
+            validate_public_request_binding_record(&reservation, request)?;
+            if public_request_binding_exists_tx(&transaction, request.request_id)? {
+                require_public_request_binding_tx(&transaction, &reservation, request)?;
+                return require_public_terminal_tx(&transaction, reservation_id, terminal);
+            }
+        }
+        let transaction = self.begin_write(&mut connection)?;
         let reservation = load_reservation_tx(&transaction, reservation_id)?
             .ok_or(FindingPurchaseStoreError::NotFound)?;
         validate_public_request_binding_record(&reservation, request)?;
-        require_public_request_binding_tx(&transaction, reservation_id, request)?;
-        require_public_terminal_tx(&transaction, reservation_id, terminal)
+        let promoted = require_public_request_binding_tx(&transaction, &reservation, request)?;
+        require_public_terminal_tx(&transaction, reservation_id, terminal)?;
+        if !promoted {
+            return Err(invariant("prebinding terminal promotion did not occur"));
+        }
+        self.commit_market_write(transaction)?;
+        self.sync_after_write(&connection)
     }
 
     /// Verify the immutable public request-to-reservation binding without
@@ -88,11 +103,26 @@ impl SqliteFindingPurchaseStore {
     ) -> Result<(), FindingPurchaseStoreError> {
         require_identifier(reservation_id, "reservation_id")?;
         let mut connection = self.connection()?;
-        let transaction = self.begin_read(&mut connection)?;
+        {
+            let transaction = self.begin_read(&mut connection)?;
+            let reservation = load_reservation_tx(&transaction, reservation_id)?
+                .ok_or(FindingPurchaseStoreError::NotFound)?;
+            validate_public_request_binding_record(&reservation, request)?;
+            if public_request_binding_exists_tx(&transaction, request.request_id)? {
+                require_public_request_binding_tx(&transaction, &reservation, request)?;
+                return Ok(());
+            }
+        }
+        let transaction = self.begin_write(&mut connection)?;
         let reservation = load_reservation_tx(&transaction, reservation_id)?
             .ok_or(FindingPurchaseStoreError::NotFound)?;
         validate_public_request_binding_record(&reservation, request)?;
-        require_public_request_binding_tx(&transaction, reservation_id, request)
+        let promoted = require_public_request_binding_tx(&transaction, &reservation, request)?;
+        if !promoted {
+            return Err(invariant("prebinding reservation promotion did not occur"));
+        }
+        self.commit_market_write(transaction)?;
+        self.sync_after_write(&connection)
     }
 }
 
@@ -140,6 +170,19 @@ pub(super) fn validate_public_request_binding(
         }
     }
     Ok(())
+}
+
+fn public_request_binding_exists_tx(
+    transaction: &Transaction<'_>,
+    request_id: &str,
+) -> Result<bool, FindingPurchaseStoreError> {
+    transaction
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM public_purchase_requests WHERE request_id = ?1)",
+            [request_id],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)
 }
 
 fn validate_public_request_binding_record(
@@ -228,9 +271,9 @@ pub(super) fn insert_public_request_binding_tx(
 
 pub(super) fn require_public_request_binding_tx(
     transaction: &Transaction<'_>,
-    reservation_id: &str,
+    reservation: &FindingPurchaseReservationRecord,
     request: &FindingPublicPurchaseRequestBinding<'_>,
-) -> Result<(), FindingPurchaseStoreError> {
+) -> Result<bool, FindingPurchaseStoreError> {
     let row = transaction
         .query_row(
             r#"
@@ -265,11 +308,64 @@ pub(super) fn require_public_request_binding_tx(
         deadline_secs,
     )) = row
     else {
-        return Err(FindingPurchaseStoreError::Conflict(
-            "public purchase request has no durable reservation binding".to_owned(),
-        ));
+        let claimed_request_id: Option<String> = transaction
+            .query_row(
+                "SELECT request_id FROM public_purchase_requests WHERE reservation_id = ?1",
+                [&reservation.reservation_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        if claimed_request_id.is_some() {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "public purchase request is bound to different durable state".to_owned(),
+            ));
+        }
+        let (terminal_kind, terminal_id, receipt_id) =
+            load_prebinding_terminal_tx(transaction, &reservation.reservation_id)?.ok_or_else(
+                || {
+                    FindingPurchaseStoreError::Conflict(
+                        "public purchase request has no durable reservation binding".to_owned(),
+                    )
+                },
+            )?;
+        let inserted = transaction
+            .execute(
+                r#"
+                INSERT INTO public_purchase_requests (
+                    request_id, reservation_id, finding_id, requested_payer,
+                    resolved_payer, payer_hex, max_price_units, currency,
+                    deadline_secs, terminal_kind, terminal_id, receipt_id, bound_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                "#,
+                params![
+                    request.request_id,
+                    reservation.reservation_id,
+                    request.finding_id,
+                    request.requested_payer,
+                    request.resolved_payer,
+                    request.payer_hex,
+                    sqlite_i64(request.max_price_units, "max_price_units")?,
+                    request.currency,
+                    request
+                        .deadline_secs
+                        .map(|value| sqlite_i64(value, "deadline_secs"))
+                        .transpose()?,
+                    terminal_kind,
+                    terminal_id,
+                    receipt_id,
+                    sqlite_i64(reservation.created_at, "bound_at")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        if inserted != 1 {
+            return Err(invariant(
+                "prebinding public replay promotion did not affect one row",
+            ));
+        }
+        return Ok(true);
     };
-    if stored_reservation_id != reservation_id
+    if stored_reservation_id != reservation.reservation_id
         || finding_id != request.finding_id
         || requested_payer.as_deref() != request.requested_payer
         || resolved_payer != request.resolved_payer
@@ -284,6 +380,64 @@ pub(super) fn require_public_request_binding_tx(
         return Err(FindingPurchaseStoreError::Conflict(
             "public purchase request is bound to different durable state".to_owned(),
         ));
+    }
+    Ok(false)
+}
+
+fn load_prebinding_terminal_tx(
+    transaction: &Transaction<'_>,
+    reservation_id: &str,
+) -> Result<Option<(String, String, String)>, FindingPurchaseStoreError> {
+    transaction
+        .query_row(
+            r#"
+            SELECT terminal_kind, terminal_id, receipt_id
+            FROM prebinding_purchase_terminals WHERE reservation_id = ?1
+            "#,
+            [reservation_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(sqlite_error)
+}
+
+pub(super) fn carry_prebinding_purchase_terminals(
+    transaction: &Transaction<'_>,
+    on_disk_version: i32,
+) -> Result<(), FindingPurchaseStoreError> {
+    if on_disk_version >= FINDING_PURCHASE_PUBLIC_REQUEST_VERSION {
+        return Ok(());
+    }
+    let expected: i64 = transaction
+        .query_row(
+            r#"
+            SELECT
+                (SELECT COUNT(*) FROM purchase_records)
+                + (SELECT COUNT(*) FROM failed_delivery_records)
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    let carried = transaction
+        .execute(
+            r#"
+            INSERT INTO prebinding_purchase_terminals (
+                reservation_id, terminal_kind, terminal_id, receipt_id
+            )
+            SELECT reservation_id, 'purchase_record', purchase_key, delivery_receipt_id
+            FROM purchase_records
+            UNION ALL
+            SELECT reservation_id, 'failed_delivery', failed_delivery_id, deny_receipt_id
+            FROM failed_delivery_records
+            "#,
+            [],
+        )
+        .map_err(sqlite_error)?;
+    if i64::try_from(carried).unwrap_or(i64::MAX) != expected {
+        return Err(invariant(format!(
+            "prebinding terminal migration carried {carried} of {expected} rows"
+        )));
     }
     Ok(())
 }

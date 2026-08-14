@@ -16,6 +16,25 @@
       "minItems": 1
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "claims": {
+            "contains": {
+              "type": "object",
+              "required": ["claim_id"],
+              "properties": {
+                "claim_id": { "type": "string", "pattern": "^claim\\.finding\\." }
+              }
+            }
+          }
+        },
+        "required": ["claims"]
+      },
+      "then": { "required": ["subject"] }
+    }
+  ],
   "$defs": {
     "subject": {
       "type": "object",

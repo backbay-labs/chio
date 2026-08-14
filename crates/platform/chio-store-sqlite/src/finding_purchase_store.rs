@@ -73,8 +73,9 @@ use crate::serving_owner::SqliteServingOwner;
 #[path = "finding_purchase_public_request.rs"]
 mod public_request;
 use public_request::{
-    bind_public_terminal_if_present_tx, insert_public_request_binding_tx,
-    require_public_request_binding_tx, validate_public_request_binding,
+    bind_public_terminal_if_present_tx, carry_prebinding_purchase_terminals,
+    insert_public_request_binding_tx, require_public_request_binding_tx,
+    validate_public_request_binding,
 };
 pub use public_request::{
     FindingPublicPurchaseRequestBinding, FindingPublicPurchaseTerminal,
@@ -85,8 +86,9 @@ mod reservation_input;
 use reservation_input::{encumbrance_matches, reservation_matches, validate_reservation_input};
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-/// Revision 11 binds public request policy to a reservation and its exact
-/// terminal before a public route can disclose output. Revision 10 records an immutable capture intent before a payment rail can
+/// Revision 12 atomically promotes pre-v11 terminals on their first compatible
+/// public replay; revision 11 binds public policy to a reservation and terminal.
+/// Revision 10 records an immutable capture intent before a payment rail can
 /// move funds, preventing expiry from abandoning a captured purchase; revision
 /// 9 retains pre-EVM payout rows as non-actionable history; revision
 /// 8 makes new reservation payout capacity provisional until a settlement-capable
@@ -101,7 +103,8 @@ const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
 /// a revision-1 database adopts the new tables on its next open; a
 /// revision-2 database also carries its listing-keyed blocks across in
 /// [`carry_listing_sales_blocks_across`].
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 11;
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 12;
+const FINDING_PURCHASE_PUBLIC_REQUEST_VERSION: i32 = 11;
 /// Revision whose reservation path eagerly admitted payout destinations.
 #[cfg(test)]
 const FINDING_PURCHASE_EAGER_PAYOUT_VERSION: i32 = 7;
@@ -631,11 +634,7 @@ impl SqliteFindingPurchaseStore {
                 .ok_or_else(|| invariant("reservation lost its exposure encumbrance"))?;
             if reservation_matches(&existing, input) && encumbrance_matches(&encumbrance, input) {
                 if let Some(public_request) = public_request {
-                    require_public_request_binding_tx(
-                        &transaction,
-                        input.reservation_id,
-                        public_request,
-                    )?;
+                    require_public_request_binding_tx(&transaction, &existing, public_request)?;
                 }
                 return Ok(FindingPurchaseWriteOutcome::ExistingSame);
             }
@@ -2800,6 +2799,7 @@ pub(crate) fn initialize_finding_purchase_schema(
     transaction
         .execute_batch(FINDING_PURCHASE_SCHEMA)
         .map_err(sqlite_error)?;
+    carry_prebinding_purchase_terminals(&transaction, on_disk)?;
     carry_listing_sales_blocks_across(&transaction)?;
     carry_payout_destinations_across(&transaction)?;
     carry_legacy_reservation_payout_bindings(&transaction)?;
@@ -3232,6 +3232,8 @@ fn finding_purchase_schema_catalog(
                OR tbl_name GLOB 'purchase_capture_intents*'
                OR name GLOB 'public_purchase_requests*'
                OR tbl_name GLOB 'public_purchase_requests*'
+               OR name GLOB 'prebinding_purchase_terminals*'
+               OR tbl_name GLOB 'prebinding_purchase_terminals*'
                OR name GLOB 'seller_exposure_encumbrances*'
                OR tbl_name GLOB 'seller_exposure_encumbrances*'
                OR name GLOB 'pending_purchase_slots*'

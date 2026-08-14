@@ -178,3 +178,29 @@ fn cognition_market_qualified_profile_rejects_unpinned_purchase_record() -> Test
     );
     Ok(())
 }
+
+#[test]
+fn claim_set_schema_requires_a_subject_for_finding_claims() -> TestResult {
+    let schema_path =
+        workspace_root().join("spec/schemas/chio-transaction/v1/claim-set.schema.json");
+    let schema: Value = serde_json::from_slice(&std::fs::read(schema_path)?)?;
+    let validator = jsonschema::validator_for(&schema)?;
+    let claim = |claim_id: &str| {
+        json!({
+            "schema": "chio.transaction.claim-set.v1",
+            "id": "claim-set-schema-regression",
+            "issued_at": "2026-08-14T00:00:00Z",
+            "claims": [{
+                "claim_id": claim_id,
+                "status": "verified",
+                "required_evidence": ["report.json"],
+                "evidence_refs": ["report.json"],
+                "verifier_module": "chio proof verify"
+            }]
+        })
+    };
+
+    assert!(validator.is_valid(&claim("claim.agent_web.digest_bound")));
+    assert!(!validator.is_valid(&claim(COGNITION_MARKET_CLAIMS[0])));
+    Ok(())
+}
