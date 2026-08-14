@@ -2138,9 +2138,11 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
 
     // No new slot can open above the frozen cutoff.
     let blocked_reservation = "reservation-gamma";
-    fixture
-        .purchases
-        .open_reservation(&FindingPurchaseReservationInput {
+    assert!(
+        matches!(
+            fixture
+                .purchases
+                .open_reservation(&FindingPurchaseReservationInput {
             reservation_id: blocked_reservation,
             purchase_intent_id: "intent-gamma",
             authoritative_payment_operation_id: "payment-gamma",
@@ -2161,14 +2163,11 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
             allocation_id: &fixture.allocation_id,
             maximum_sale_exposure_units: REGISTERED_EXPOSURE_CAP,
             created_at: NOW,
-        })
-        .expect("open reservation");
-    assert!(
-        matches!(
-            fixture.purchases.reserve_slot(blocked_reservation, NOW + 6),
-            Err(FindingPurchaseStoreError::SalesBlocked(_))
+                }),
+            Err(FindingPurchaseStoreError::Conflict(message))
+                if message == "listing sales are blocked"
         ),
-        "no slot may open once the upheld transaction has blocked the listing"
+        "no reservation may open once the upheld transaction has blocked the listing"
     );
 
     assert_eq!(
