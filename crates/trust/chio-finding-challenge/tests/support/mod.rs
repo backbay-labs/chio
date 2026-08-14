@@ -62,6 +62,14 @@ use chio_kernel::checkpoint::{
     build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_body_sha256,
     checkpoint_log_id, CheckpointTransparencySummary, KernelCheckpoint,
 };
+use chio_open_market::bidding::{
+    AcceptedBid, BidRequest, RequestedScope, ReservationReceipt, SignedAcceptedBid,
+    SignedBidRequest, SignedReservationReceipt, ACCEPTED_BID_SCHEMA, BID_REQUEST_SCHEMA,
+    RESERVATION_RECEIPT_SCHEMA,
+};
+use chio_open_market::purchase_verification::{
+    derive_payment_operation_id, derive_purchase_intent_id,
+};
 
 pub type TestResult = Result<(), Box<dyn Error>>;
 pub type Built<T> = Result<T, Box<dyn Error>>;
@@ -713,26 +721,82 @@ impl World {
         &self,
         shape: StandingShape,
     ) -> Built<(SignedFindingPurchaseRecord, PurchaseStandingProof)> {
-        let buyer = match shape {
-            StandingShape::ForeignBuyer => keypair(77).public_key(),
-            _ => self.buyer.public_key(),
+        let purchaser = match shape {
+            StandingShape::ForeignBuyer => keypair(77),
+            _ => keypair(41),
         };
+        let buyer = purchaser.public_key();
+        let listing_id = match shape {
+            StandingShape::ForeignListing => "finding-listing-02",
+            _ => LISTING_ID,
+        };
+        let payout_destination = "0x1111111111111111111111111111111111111111";
+        let bid_request = SignedExportEnvelope::sign(
+            BidRequest {
+                schema: BID_REQUEST_SCHEMA.to_string(),
+                agent_id: buyer.to_hex(),
+                payout_destination: Some(payout_destination.to_string()),
+                listing_id: listing_id.to_string(),
+                max_price_per_call: usd(5_000),
+                window_seconds: 300,
+                requested_scope: RequestedScope {
+                    server_id: "finding-provider".to_string(),
+                    tool_name: "finding.reveal".to_string(),
+                    max_invocations: Some(1),
+                    capability_scope_prefix: "finding://".to_string(),
+                },
+                issued_at: 1_739_999_000,
+            },
+            &purchaser,
+        )?;
+        let bid_body_digest = sha256_hex(&canonical_json_bytes(&bid_request.body)?);
+        let accepted_bid = SignedExportEnvelope::sign(
+            AcceptedBid {
+                schema: ACCEPTED_BID_SCHEMA.to_string(),
+                listing_id: listing_id.to_string(),
+                agent_id: buyer.to_hex(),
+                bid_digest: bid_body_digest,
+                ask_digest: HEX64.to_string(),
+                bid_receipt_id: RESERVATION_ID.to_string(),
+                quoted_price: usd(5_000),
+                accepted_at: 1_739_999_500,
+                token_id: "finding-token-42".to_string(),
+                token_subject: buyer.clone(),
+                token_expires_at: 1_800_000_000,
+            },
+            &purchaser,
+        )?;
+        let accepted_bid_envelope_sha256 = signed_envelope_sha256(&accepted_bid)?;
+        let reservation_authority = match shape {
+            StandingShape::AdmissionAuthority => &self.delivery_kernel,
+            _ => &self.purchase_authority,
+        };
+        let reservation_receipt = SignedExportEnvelope::sign(
+            ReservationReceipt {
+                schema: RESERVATION_RECEIPT_SCHEMA.to_string(),
+                receipt_id: RESERVATION_ID.to_string(),
+                agent_id: buyer.to_hex(),
+                listing_id: listing_id.to_string(),
+                ask_digest: HEX64.to_string(),
+                reserved_amount: usd(5_000),
+            },
+            reservation_authority,
+        )?;
+        let purchase_intent_id = derive_purchase_intent_id(RESERVATION_ID);
+        let payment_operation_id = derive_payment_operation_id(RESERVATION_ID);
         let mut record = FindingPurchaseRecord {
             schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_string(),
-            purchase_key: derive_purchase_key(HEX64_THIRD, PAYMENT_OPERATION_ID),
-            purchase_intent_id: PURCHASE_INTENT_ID.to_string(),
-            authoritative_payment_operation_id: PAYMENT_OPERATION_ID.to_string(),
+            purchase_key: derive_purchase_key(&accepted_bid_envelope_sha256, &payment_operation_id),
+            purchase_intent_id,
+            authoritative_payment_operation_id: payment_operation_id.clone(),
             buyer: buyer.clone(),
-            payer: self.buyer.public_key(),
+            payer: buyer,
             finding_id: match shape {
                 StandingShape::ForeignFinding => HEX64_ALT.to_string(),
                 _ => self.finding.finding_id.clone(),
             },
-            listing_id: match shape {
-                StandingShape::ForeignListing => "finding-listing-02".to_string(),
-                _ => LISTING_ID.to_string(),
-            },
-            accepted_bid_envelope_sha256: HEX64_THIRD.to_string(),
+            listing_id: listing_id.to_string(),
+            accepted_bid_envelope_sha256,
             venue_admission_envelope_sha256: HEX64.to_string(),
             accepted_price: usd(5_000),
             realized_spend: usd(5_000),
@@ -740,10 +804,17 @@ impl World {
                 StandingShape::ForeignBacking => HEX64_THIRD.to_string(),
                 _ => HEX64_ALT.to_string(),
             },
-            encumbrance_id: "encumbrance-42".to_string(),
+            encumbrance_id: sha256_hex(
+                format!("chio.finding.encumbrance.v1\0{RESERVATION_ID}").as_bytes(),
+            ),
             delivery_receipt_id: String::new(),
-            payment_reference: "payment-reference-42".to_string(),
-            payout_destination: "0x1111111111111111111111111111111111111111".to_owned(),
+            payment_reference: payment_operation_id,
+            payout_destination: match shape {
+                StandingShape::ForgedPayoutDestination => {
+                    "0x2222222222222222222222222222222222222222".to_owned()
+                }
+                _ => payout_destination.to_owned(),
+            },
             // The only difference of an unnamed record: it is a settled
             // record of the same sale that the challenge does not name.
             recorded_at: match shape {
@@ -774,7 +845,18 @@ impl World {
                 authoritative_payment_operation_id: record
                     .authoritative_payment_operation_id
                     .clone(),
-            }
+            },
+            "financial": {
+                "grant_index": 0,
+                "cost_charged": record.realized_spend.units,
+                "currency": record.realized_spend.currency,
+                "budget_remaining": 0,
+                "budget_total": record.accepted_price.units,
+                "delegation_depth": 0,
+                "root_budget_holder": record.payer.to_hex(),
+                "payment_reference": record.payment_reference,
+                "settlement_status": "settled"
+            },
         });
         let receipt = signed_receipt(
             &self.delivery_kernel,
@@ -810,6 +892,9 @@ impl World {
         Ok((
             signed,
             PurchaseStandingProof {
+                bid_request,
+                accepted_bid,
+                reservation_receipt,
                 delivery_receipt: resolved,
                 delivery_checkpoint: checkpoint,
                 delivery_checkpoint_transparency: checkpoint_transparency,
@@ -1214,9 +1299,14 @@ pub enum StandingShape {
     /// A compromised purchase authority backdates a new record before the
     /// authenticated delivery receipt that is supposed to establish it.
     BackdatedAfterSettlement,
+    /// A compromised purchase authority rewrites the buyer-signed payout.
+    ForgedPayoutDestination,
 }
 
 pub struct PurchaseStandingProof {
+    pub bid_request: SignedBidRequest,
+    pub accepted_bid: SignedAcceptedBid,
+    pub reservation_receipt: SignedReservationReceipt,
     pub delivery_receipt: ResolvedReceiptEvidence,
     pub delivery_checkpoint: KernelCheckpoint,
     pub delivery_checkpoint_transparency: CheckpointTransparencySummary,
@@ -1277,6 +1367,9 @@ impl EvidenceCase {
         FindingChallengeClassEvidence::EvidenceInvalid(FindingEvidenceInvalidEvidence {
             purchase_standing: FindingPurchaseStandingEvidence {
                 purchase_record: &self.purchase_record,
+                bid_request: &self.purchase_standing.bid_request,
+                accepted_bid: &self.purchase_standing.accepted_bid,
+                reservation_receipt: &self.purchase_standing.reservation_receipt,
                 delivery_receipt: &self.purchase_standing.delivery_receipt,
                 delivery_checkpoint: &self.purchase_standing.delivery_checkpoint,
                 delivery_checkpoint_transparency: &self
@@ -1593,6 +1686,9 @@ impl ReplayCase {
         FindingChallengeClassEvidence::ReplayContradiction(FindingReplayContradictionEvidence {
             purchase_standing: FindingPurchaseStandingEvidence {
                 purchase_record: &self.purchase_record,
+                bid_request: &self.purchase_standing.bid_request,
+                accepted_bid: &self.purchase_standing.accepted_bid,
+                reservation_receipt: &self.purchase_standing.reservation_receipt,
                 delivery_receipt: &self.purchase_standing.delivery_receipt,
                 delivery_checkpoint: &self.purchase_standing.delivery_checkpoint,
                 delivery_checkpoint_transparency: &self

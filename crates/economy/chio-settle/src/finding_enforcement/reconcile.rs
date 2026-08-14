@@ -229,6 +229,11 @@ fn match_stored_transaction(
 }
 
 fn hashes_match(left: &str, right: &str) -> bool {
-    left.trim_start_matches("0x")
-        .eq_ignore_ascii_case(right.trim_start_matches("0x"))
+    matches!(
+        (
+            parse_chain_hash(left, "receipt transaction hash"),
+            parse_chain_hash(right, "stored transaction hash"),
+        ),
+        (Ok(left), Ok(right)) if left == right
+    )
 }

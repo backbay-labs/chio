@@ -306,16 +306,34 @@ fn close_challenge(
         .begin_evaluation(&challenge.challenge_id, now)
         .expect("begin evaluation");
     let outcome = format!("outcome-{}", challenge.challenge_id);
-    fixture
-        .store
-        .record_verdict(
-            &challenge.challenge_id,
-            verdict,
-            &digest(&outcome),
-            outcome.as_bytes(),
-            now + 1,
-        )
-        .expect("record verdict")
+    if verdict == FindingChallengeVerdict::Upheld {
+        let exposure = fixture
+            .purchases
+            .list_outstanding_exposure_total(&fixture.allocation_id, now + 1)
+            .expect("read authoritative exposure");
+        fixture
+            .store
+            .record_upheld_verdict_with_exposure_fence(
+                &challenge.challenge_id,
+                &digest(&outcome),
+                outcome.as_bytes(),
+                &fixture.allocation_id,
+                exposure,
+                now + 1,
+            )
+            .expect("record upheld verdict")
+    } else {
+        fixture
+            .store
+            .record_verdict(
+                &challenge.challenge_id,
+                verdict,
+                &digest(&outcome),
+                outcome.as_bytes(),
+                now + 1,
+            )
+            .expect("record verdict")
+    }
 }
 
 fn challenge_state(fixture: &Fixture, challenge_id: &str) -> FindingChallengeState {
@@ -340,6 +358,29 @@ fn open_liability(fixture: &Fixture, liability: &Liability) -> FindingChallengeW
         .store
         .open_liability(&liability.input())
         .expect("open liability")
+}
+
+fn confirm_fee_intent(fixture: &Fixture, intent_key: &str, intent_digest: &str) {
+    fixture
+        .store
+        .record_effect_intent(
+            intent_key,
+            FindingEffectIntentKind::Fee,
+            intent_digest,
+            None,
+            false,
+            NOW,
+        )
+        .expect("record fee intent");
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        fixture
+            .store
+            .advance_effect_intent(intent_key, state, NOW + 1)
+            .expect("confirm fee intent");
+    }
 }
 
 fn confirm_settlement_effects(fixture: &Fixture, liability_key: &str, now: u64) {
@@ -930,17 +971,40 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
             .expect("idempotent begin"),
         FindingChallengeEvaluationStart::AlreadyEvaluating
     );
-    assert_eq!(
-        fixture
-            .store
-            .record_verdict(
+    assert!(
+        matches!(
+            fixture.store.record_verdict(
                 &upheld.challenge_id,
                 FindingChallengeVerdict::Upheld,
                 &outcome,
                 b"outcome-alpha",
                 NOW + 3
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "the generic verdict entrypoint must refuse an upheld transition"
+    );
+    assert_eq!(
+        challenge_state(&fixture, &upheld.challenge_id),
+        FindingChallengeState::Evaluating
+    );
+    assert!(fixture
+        .store
+        .get_outcome_envelope(&outcome)
+        .expect("read rejected generic outcome")
+        .is_none());
+    assert_eq!(
+        fixture
+            .store
+            .record_upheld_verdict_with_exposure_fence(
+                &upheld.challenge_id,
+                &outcome,
+                b"outcome-alpha",
+                &fixture.allocation_id,
+                0,
+                NOW + 3,
             )
-            .expect("record upheld"),
+            .expect("record fenced upheld"),
         FindingChallengeState::Upheld
     );
     let retained = fixture
@@ -953,11 +1017,12 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
     assert_eq!(
         fixture
             .store
-            .record_verdict(
+            .record_upheld_verdict_with_exposure_fence(
                 &upheld.challenge_id,
-                FindingChallengeVerdict::Upheld,
                 &outcome,
                 b"outcome-alpha",
+                &fixture.allocation_id,
+                0,
                 NOW + 4
             )
             .expect("replay upheld"),
@@ -1033,6 +1098,67 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
             Err(FindingChallengeStoreError::NotFound)
         ),
         "an unknown challenge has no verdict to record"
+    );
+}
+
+#[test]
+fn compensated_close_rederives_every_challenge_scoped_intent() {
+    let fixture = fixture();
+    let challenge = Challenge::buyer("compensated-close");
+    submit(&fixture, &challenge);
+    let collected_digest = digest("compensated-close-collection");
+    let returned_digest = digest("compensated-close-return");
+    let funding_digest = digest("compensated-close-funding");
+    confirm_fee_intent(
+        &fixture,
+        &digest("unrelated-collection-key"),
+        &collected_digest,
+    );
+    confirm_fee_intent(&fixture, &digest("unrelated-return-key"), &returned_digest);
+
+    assert!(matches!(
+        fixture.store.close_compensated_unfunded_filing(
+            &challenge.challenge_id,
+            &collected_digest,
+            &returned_digest,
+            "dispute-lock-compensated-close",
+            &funding_digest,
+            NOW + 2,
+        ),
+        Err(FindingChallengeStoreError::NotFound)
+    ));
+    assert_eq!(
+        challenge_state(&fixture, &challenge.challenge_id),
+        FindingChallengeState::Submitted
+    );
+
+    confirm_fee_intent(
+        &fixture,
+        &derive_dispute_fee_collection_intent_key(&challenge.challenge_id),
+        &collected_digest,
+    );
+    confirm_fee_intent(
+        &fixture,
+        &derive_dispute_fee_return_intent_key(&challenge.challenge_id),
+        &returned_digest,
+    );
+    assert_eq!(
+        fixture
+            .store
+            .close_compensated_unfunded_filing(
+                &challenge.challenge_id,
+                &collected_digest,
+                &returned_digest,
+                "dispute-lock-compensated-close",
+                &funding_digest,
+                NOW + 3,
+            )
+            .expect("close exact compensated filing"),
+        FindingChallengeWriteOutcome::Inserted
+    );
+    assert_eq!(
+        challenge_state(&fixture, &challenge.challenge_id),
+        FindingChallengeState::IndeterminateClosed
     );
 }
 
@@ -1280,11 +1406,12 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
         .expect("begin evaluation");
     fixture
         .store
-        .record_verdict(
+        .record_upheld_verdict_with_exposure_fence(
             &upheld.challenge_id,
-            FindingChallengeVerdict::Upheld,
             &digest("outcome-alpha"),
             b"outcome-alpha",
+            &fixture.allocation_id,
+            0,
             NOW + 2,
         )
         .expect("record upheld");
@@ -1865,11 +1992,11 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
         "a cutoff below the slot high-water mark would strand a buyer who paid before the block"
     );
     assert!(
-        !fixture
+        fixture
             .purchases
             .sales_blocked(LISTING_ID)
             .expect("sales blocked"),
-        "a refused uphold must leave the listing selling"
+        "the upheld-verdict fence blocks sales before liability projection"
     );
 
     assert_eq!(
@@ -2002,7 +2129,7 @@ fn upheld_transition_fences_the_signed_exposure_before_blocking_sales() {
         liability(&fixture, &head.liability_key).state,
         FindingLiabilityState::Open
     );
-    assert!(!fixture
+    assert!(fixture
         .purchases
         .sales_blocked(LISTING_ID)
         .expect("read sales block"));
@@ -2172,7 +2299,7 @@ fn a_successful_appeal_returns_the_listing_to_selling() {
     // that it was blocked, from when until when.
     assert_eq!(
         sales_block_episodes(&fixture, LISTING_ID),
-        vec![(1, "lifted".to_owned(), NOW + 5, Some(NOW + 7))]
+        vec![(1, "lifted".to_owned(), NOW + 4, Some(NOW + 7))]
     );
 
     assert_eq!(
@@ -2188,7 +2315,7 @@ fn a_successful_appeal_returns_the_listing_to_selling() {
     );
     assert_eq!(
         sales_block_episodes(&fixture, LISTING_ID),
-        vec![(1, "lifted".to_owned(), NOW + 5, Some(NOW + 7))],
+        vec![(1, "lifted".to_owned(), NOW + 4, Some(NOW + 7))],
         "a replay must not restamp the release"
     );
 }
@@ -2301,7 +2428,7 @@ fn only_an_exoneration_lifts_a_listing_sales_block() {
     );
     assert_eq!(
         sales_block_episodes(&fixture, LISTING_ID),
-        vec![(1, "blocked".to_owned(), NOW + 3, None)]
+        vec![(1, "blocked".to_owned(), NOW + 2, None)]
     );
 }
 
@@ -2343,7 +2470,7 @@ fn a_listing_another_liability_still_holds_stays_blocked() {
     }
     assert_eq!(
         sales_block_episodes(&fixture, LISTING_ID),
-        vec![(1, "blocked".to_owned(), NOW + 3, None)],
+        vec![(1, "blocked".to_owned(), NOW + 2, None)],
         "one listing carries one block however many heads reach it"
     );
 
@@ -2407,8 +2534,8 @@ fn a_listing_another_liability_still_holds_stays_blocked() {
     assert_eq!(
         sales_block_episodes(&fixture, LISTING_ID),
         vec![
-            (1, "lifted".to_owned(), NOW + 3, Some(NOW + 6)),
-            (2, "blocked".to_owned(), NOW + 9, None),
+            (1, "lifted".to_owned(), NOW + 2, Some(NOW + 6)),
+            (2, "blocked".to_owned(), NOW + 8, None),
         ]
     );
 }

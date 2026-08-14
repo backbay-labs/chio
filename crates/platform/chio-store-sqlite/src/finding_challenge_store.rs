@@ -118,6 +118,9 @@ const MAX_FINALIZING_AUTHORIZATION_BYTES: usize = 4_194_304;
 
 const DISPUTE_BOND_FUNDING_DOMAIN: &str = "chio.finding.dispute-bond-funding.v1";
 const DISPUTE_BOND_RETURN_DOMAIN: &str = "chio.finding.dispute-bond-return.v1";
+const EFFECT_FEE_DOMAIN: &str = "chio.finding.effect.fee.v1";
+const DISPUTE_FEE_OPERATION_DOMAIN: &str = "chio.finding.dispute-fee-operation.v1";
+const DISPUTE_FEE_RETURN_OPERATION_DOMAIN: &str = "chio.finding.dispute-fee-return-operation.v1";
 /// Retries one challenge may take after an indeterminate verdict. An
 /// indeterminate result is an infrastructure or authority failure rather
 /// than an answer, so the challenge is entitled to exactly one further
@@ -341,6 +344,22 @@ pub struct FindingDisputeLockInput<'a> {
 #[must_use]
 pub fn derive_dispute_bond_funding_intent_key(challenge_id: &str, lock_id: &str) -> String {
     sha256_hex(format!("{DISPUTE_BOND_FUNDING_DOMAIN}\0{challenge_id}\0{lock_id}").as_bytes())
+}
+
+/// Durable key for the filing-fee debit of one exact challenge.
+#[must_use]
+pub fn derive_dispute_fee_collection_intent_key(challenge_id: &str) -> String {
+    let operation_id =
+        sha256_hex(format!("{DISPUTE_FEE_OPERATION_DOMAIN}\0{challenge_id}").as_bytes());
+    sha256_hex(format!("{EFFECT_FEE_DOMAIN}\0{challenge_id}\0{operation_id}").as_bytes())
+}
+
+/// Durable key for returning the filing fee of one exact challenge.
+#[must_use]
+pub fn derive_dispute_fee_return_intent_key(challenge_id: &str) -> String {
+    let operation_id =
+        sha256_hex(format!("{DISPUTE_FEE_RETURN_OPERATION_DOMAIN}\0{challenge_id}").as_bytes());
+    sha256_hex(format!("{EFFECT_FEE_DOMAIN}\0{challenge_id}\0{operation_id}").as_bytes())
 }
 
 /// Commitment a confirmed funding intent must carry before the store will
@@ -802,6 +821,14 @@ impl SqliteFindingChallengeStore {
         }
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
+        if verdict == FindingChallengeVerdict::Upheld {
+            if load_challenge_tx(&transaction, challenge_id)?.is_none() {
+                return Err(FindingChallengeStoreError::NotFound);
+            }
+            return Err(FindingChallengeStoreError::Conflict(
+                "upheld verdicts require the atomic exposure fence".to_owned(),
+            ));
+        }
         let target = record_verdict_tx(
             &transaction,
             challenge_id,
@@ -1307,21 +1334,22 @@ impl SqliteFindingChallengeStore {
     pub fn close_compensated_unfunded_filing(
         &self,
         challenge_id: &str,
-        collected_fee_intent_key: &str,
-        returned_fee_intent_key: &str,
-        bond_funding_intent_key: &str,
+        collected_fee_intent_digest: &str,
+        returned_fee_intent_digest: &str,
+        bond_lock_id: &str,
+        bond_funding_intent_digest: &str,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
         require_identifier(challenge_id, "challenge_id")?;
-        require_hex64(collected_fee_intent_key, "collected_fee_intent_key")?;
-        require_hex64(returned_fee_intent_key, "returned_fee_intent_key")?;
-        require_hex64(bond_funding_intent_key, "bond_funding_intent_key")?;
+        require_hex64(collected_fee_intent_digest, "collected_fee_intent_digest")?;
+        require_hex64(returned_fee_intent_digest, "returned_fee_intent_digest")?;
+        require_identifier(bond_lock_id, "bond_lock_id")?;
+        require_hex64(bond_funding_intent_digest, "bond_funding_intent_digest")?;
         require_trusted_time(now, "now")?;
-        if collected_fee_intent_key == returned_fee_intent_key {
-            return Err(FindingChallengeStoreError::Conflict(
-                "fee collection and compensation must use distinct intents".to_owned(),
-            ));
-        }
+        let collected_fee_intent_key = derive_dispute_fee_collection_intent_key(challenge_id);
+        let returned_fee_intent_key = derive_dispute_fee_return_intent_key(challenge_id);
+        let bond_funding_intent_key =
+            derive_dispute_bond_funding_intent_key(challenge_id, bond_lock_id);
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         let challenge = load_challenge_tx(&transaction, challenge_id)?
@@ -1336,28 +1364,47 @@ impl SqliteFindingChallengeStore {
                 "a filing with a durable dispute lock is not unfunded".to_owned(),
             ));
         }
-        for (key, label) in [
-            (collected_fee_intent_key, "collection"),
-            (returned_fee_intent_key, "compensation"),
+        for (key, expected_digest, label) in [
+            (
+                collected_fee_intent_key.as_str(),
+                collected_fee_intent_digest,
+                "collection",
+            ),
+            (
+                returned_fee_intent_key.as_str(),
+                returned_fee_intent_digest,
+                "compensation",
+            ),
         ] {
             let intent = load_effect_intent_tx(&transaction, key)?
                 .ok_or(FindingChallengeStoreError::NotFound)?;
             if intent.kind != FindingEffectIntentKind::Fee
                 || intent.liability_key.is_some()
                 || intent.settlement_required
+                || intent.intent_digest != expected_digest
                 || intent.state != FindingEffectIntentState::Confirmed
             {
                 return Err(FindingChallengeStoreError::Conflict(format!(
-                    "fee {label} intent is not independently confirmed"
+                    "fee {} intent is not independently confirmed for this challenge",
+                    label,
                 )));
             }
         }
-        if load_effect_intent_tx(&transaction, bond_funding_intent_key)?
-            .is_some_and(|intent| intent.state == FindingEffectIntentState::Confirmed)
-        {
-            return Err(FindingChallengeStoreError::Conflict(
-                "a confirmed dispute bond cannot close as unfunded".to_owned(),
-            ));
+        if let Some(intent) = load_effect_intent_tx(&transaction, &bond_funding_intent_key)? {
+            if intent.kind != FindingEffectIntentKind::ChallengeBond
+                || intent.liability_key.is_some()
+                || intent.settlement_required
+                || intent.intent_digest != bond_funding_intent_digest
+            {
+                return Err(FindingChallengeStoreError::Conflict(
+                    "bond funding intent does not bind this challenge and lock".to_owned(),
+                ));
+            }
+            if intent.state == FindingEffectIntentState::Confirmed {
+                return Err(FindingChallengeStoreError::Conflict(
+                    "a confirmed dispute bond cannot close as unfunded".to_owned(),
+                ));
+            }
         }
         match challenge.state {
             FindingChallengeState::IndeterminateClosed => {

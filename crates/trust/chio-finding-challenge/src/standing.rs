@@ -7,17 +7,25 @@
 //! evidence branch alone.
 
 use chio_core_types::canonical_json_bytes;
+use chio_core_types::crypto::sha256_hex;
 use chio_core_types::receipt::decision::Decision;
+use chio_core_types::receipt::economics::SettlementStatus;
 use chio_core_types::{
     DeliveryResult, FindingDelivery, FindingDeliverySettlementMode, FindingMediaTypeCheck,
     FindingTransformProfile, FINDING_DELIVERY_METADATA_KEY,
 };
 use chio_finding::{
-    signed_envelope_sha256, verify_signed_purchase_record, FindingChallengeAuthorization,
-    FindingChallengeStanding, FindingPurchaseRecord,
+    canonical_evm_payout_destination, signed_envelope_sha256, verify_signed_purchase_record,
+    FindingChallengeAuthorization, FindingChallengeStanding, FindingPurchaseRecord,
 };
 use chio_finding_verifier::{verify_checkpoint_membership, verify_receipt_strict};
 use chio_kernel::checkpoint::checkpoint_log_id;
+use chio_open_market::bidding::{
+    VerifiedReservationReceipt, ACCEPTED_BID_SCHEMA, BID_REQUEST_SCHEMA,
+};
+use chio_open_market::purchase_verification::{
+    derive_payment_operation_id, derive_purchase_intent_id,
+};
 
 use crate::evaluate::EvaluationContext;
 use crate::input::{FindingChallengeInadmissible, FindingPurchaseStandingEvidence};
@@ -111,6 +119,7 @@ fn authenticate_settlement(
     record: &FindingPurchaseRecord,
     standing: &FindingPurchaseStandingEvidence<'_>,
 ) -> Result<(), FindingChallengeInadmissible> {
+    authenticate_bid_and_reservation(context, record, standing)?;
     let resolved = standing.delivery_receipt;
     let receipt = &resolved.receipt;
     if canonical_json_bytes(receipt).ok().as_deref()
@@ -176,6 +185,80 @@ fn authenticate_settlement(
         || delivery.media_type_check != FindingMediaTypeCheck::Matched
         || delivery.settlement_mode != FindingDeliverySettlementMode::LocalReversibleHold
         || receipt.content_hash != context.finding.payload_sha256
+    {
+        return Err(FindingChallengeInadmissible::StandingSettlementNotEstablished);
+    }
+    let Some(financial) = receipt.financial_metadata() else {
+        return Err(FindingChallengeInadmissible::StandingSettlementNotEstablished);
+    };
+    if financial.cost_charged != record.realized_spend.units
+        || financial.currency != record.realized_spend.currency
+        || financial.settlement_status != SettlementStatus::Settled
+    {
+        return Err(FindingChallengeInadmissible::StandingSettlementNotEstablished);
+    }
+    Ok(())
+}
+
+fn authenticate_bid_and_reservation(
+    context: &EvaluationContext<'_>,
+    record: &FindingPurchaseRecord,
+    standing: &FindingPurchaseStandingEvidence<'_>,
+) -> Result<(), FindingChallengeInadmissible> {
+    let bid = standing.bid_request;
+    let accepted = standing.accepted_bid;
+    if bid.body.schema != BID_REQUEST_SCHEMA
+        || bid.body.validate().is_err()
+        || !matches!(bid.verify_signature(), Ok(true))
+        || accepted.body.schema != ACCEPTED_BID_SCHEMA
+        || !matches!(accepted.verify_signature(), Ok(true))
+    {
+        return Err(FindingChallengeInadmissible::StandingSettlementNotEstablished);
+    }
+    let reservation = VerifiedReservationReceipt::from_signed(
+        standing.reservation_receipt,
+        &context.purchase_authority.key,
+    )
+    .map_err(|_| FindingChallengeInadmissible::StandingSettlementNotEstablished)?;
+    let bid_body_digest = canonical_json_bytes(&bid.body)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|_| FindingChallengeInadmissible::StandingSettlementNotEstablished)?;
+    let accepted_envelope_digest =
+        signed_envelope_sha256(accepted).map_err(FindingChallengeInadmissible::StandingRejected)?;
+    let payout_destination = bid
+        .body
+        .payout_destination
+        .as_deref()
+        .ok_or(FindingChallengeInadmissible::StandingSettlementNotEstablished)
+        .and_then(|destination| {
+            canonical_evm_payout_destination(destination)
+                .map_err(|_| FindingChallengeInadmissible::StandingSettlementNotEstablished)
+        })?;
+    let reservation_id = reservation.receipt_id();
+    let encumbrance_id =
+        sha256_hex(format!("chio.finding.encumbrance.v1\0{reservation_id}").as_bytes());
+    if accepted.signer_key != bid.signer_key
+        || accepted.body.token_subject != bid.signer_key
+        || accepted.body.agent_id != bid.body.agent_id
+        || accepted.body.bid_digest != bid_body_digest
+        || accepted.body.listing_id != bid.body.listing_id
+        || accepted.body.bid_receipt_id != reservation_id
+        || accepted.body.ask_digest != standing.reservation_receipt.body.ask_digest
+        || accepted.body.listing_id != standing.reservation_receipt.body.listing_id
+        || accepted.body.agent_id != standing.reservation_receipt.body.agent_id
+        || accepted.body.quoted_price != *reservation.reserved_amount()
+        || bid.body.max_price_per_call.currency != accepted.body.quoted_price.currency
+        || bid.body.max_price_per_call.units < accepted.body.quoted_price.units
+        || accepted_envelope_digest != record.accepted_bid_envelope_sha256
+        || record.buyer != bid.signer_key
+        || record.payer != bid.signer_key
+        || record.listing_id != accepted.body.listing_id
+        || record.accepted_price != accepted.body.quoted_price
+        || record.payout_destination != payout_destination
+        || record.purchase_intent_id != derive_purchase_intent_id(reservation_id)
+        || record.authoritative_payment_operation_id != derive_payment_operation_id(reservation_id)
+        || record.payment_reference != record.authoritative_payment_operation_id
+        || record.encumbrance_id != encumbrance_id
     {
         return Err(FindingChallengeInadmissible::StandingSettlementNotEstablished);
     }

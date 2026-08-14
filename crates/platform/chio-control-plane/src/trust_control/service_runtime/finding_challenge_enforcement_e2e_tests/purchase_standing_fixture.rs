@@ -16,6 +16,9 @@ pub(super) struct SettledPurchase {
     pub(super) purchase_key: String,
     pub(super) record: SignedFindingPurchaseRecord,
     pub(super) record_envelope_sha256: String,
+    pub(super) bid_request: SignedBidRequest,
+    pub(super) accepted_bid: SignedAcceptedBid,
+    pub(super) reservation_receipt: SignedReservationReceipt,
     pub(super) delivery_receipt: ResolvedReceiptEvidence,
     pub(super) delivery_checkpoint: KernelCheckpoint,
     pub(super) delivery_checkpoint_transparency: CheckpointTransparencySummary,
@@ -51,6 +54,17 @@ pub(super) fn settled_delivery_evidence(
             authoritative_payment_operation_id: record
                 .authoritative_payment_operation_id
                 .clone(),
+        },
+        "financial": {
+            "grant_index": 0,
+            "cost_charged": record.realized_spend.units,
+            "currency": record.realized_spend.currency,
+            "budget_remaining": record.accepted_price.units.saturating_sub(record.realized_spend.units),
+            "budget_total": record.accepted_price.units,
+            "delegation_depth": 0,
+            "root_budget_holder": record.payer.to_hex(),
+            "payment_reference": record.payment_reference,
+            "settlement_status": "settled"
         }
     });
     let receipt = signed_receipt(

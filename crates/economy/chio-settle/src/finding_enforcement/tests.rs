@@ -1537,6 +1537,9 @@ fn evidence_already_used_with_an_insufficient_observation_quarantines() {
     reverted.receipt = Some(receipt(&base.tx_hash, &base.to_address, false));
     let mut foreign_receipt = base.clone();
     foreign_receipt.receipt = Some(receipt(&chain_hash(0xdf), &base.to_address, true));
+    let mut malformed_matching_hash = base.clone();
+    malformed_matching_hash.tx_hash = "0x".to_string();
+    malformed_matching_hash.receipt = Some(receipt("0x", &base.to_address, true));
     let mut foreign_chain = base.clone();
     foreign_chain.chain_id = "eip155:1".to_string();
     let mut foreign_target = base.clone();
@@ -1557,6 +1560,10 @@ fn evidence_already_used_with_an_insufficient_observation_quarantines() {
         (reverted, FindingImpairmentQuarantine::ReceiptReverted),
         (
             foreign_receipt,
+            FindingImpairmentQuarantine::ReceiptTransactionMismatch,
+        ),
+        (
+            malformed_matching_hash,
             FindingImpairmentQuarantine::ReceiptTransactionMismatch,
         ),
         (foreign_chain, FindingImpairmentQuarantine::ChainMismatch),

@@ -14,6 +14,7 @@ use chio_finding::{
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_kernel::checkpoint::{CheckpointTransparencySummary, KernelCheckpoint};
+use chio_open_market::bidding::{SignedAcceptedBid, SignedBidRequest, SignedReservationReceipt};
 
 use crate::ingress::FindingIngressError;
 use crate::reason::FindingChallengeReason;
@@ -165,6 +166,12 @@ pub struct FindingReplayContradictionEvidence<'a> {
 #[derive(Clone, Copy)]
 pub struct FindingPurchaseStandingEvidence<'a> {
     pub purchase_record: &'a SignedFindingPurchaseRecord,
+    /// Buyer-signed bid whose body fixes the purchaser and payout address.
+    pub bid_request: &'a SignedBidRequest,
+    /// Buyer-signed acceptance whose digest is carried by the delivery.
+    pub accepted_bid: &'a SignedAcceptedBid,
+    /// Purchase-authority-signed reservation named by the acceptance.
+    pub reservation_receipt: &'a SignedReservationReceipt,
     pub delivery_receipt: &'a ResolvedReceiptEvidence,
     pub delivery_checkpoint: &'a KernelCheckpoint,
     pub delivery_checkpoint_transparency: &'a CheckpointTransparencySummary,
@@ -199,6 +206,8 @@ pub enum FindingChallengeInadmissible {
     RetainedGovernancePolicyNotLiveAtProfileIssuance,
     #[error("retained governance status does not establish the profile signer at issuance")]
     RetainedGovernanceStatusNotEstablished,
+    #[error("authority-status signer is not independent from a trusted market role")]
+    AuthorityStatusRoleCollision,
     #[error("challenge names a verifier profile other than the one supplied")]
     ProfileBindingMismatch,
     #[error("verifier profile is not the one retained by the authenticated admission")]

@@ -86,6 +86,11 @@ use chio_kernel::checkpoint::{
     build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_body_sha256,
     checkpoint_log_id, CheckpointTransparencySummary, KernelCheckpoint,
 };
+use chio_open_market::bidding::{
+    AcceptedBid, BidRequest, RequestedScope, ReservationReceipt, SignedAcceptedBid,
+    SignedBidRequest, SignedReservationReceipt, ACCEPTED_BID_SCHEMA, BID_REQUEST_SCHEMA,
+    RESERVATION_RECEIPT_SCHEMA,
+};
 use chio_open_market::evaluation::OpenMarketPenaltyEvaluation;
 use chio_open_market::evidence::{OpenMarketEvidenceKind, OpenMarketEvidenceReference};
 use chio_open_market::fee_schedule::{
@@ -119,6 +124,9 @@ use chio_open_market::penalty::{
     OpenMarketAbuseClass, OpenMarketPenaltyAction, OpenMarketPenaltyArtifact,
     OpenMarketPenaltyEffectiveState, OpenMarketPenaltyState, SignedOpenMarketPenalty,
     OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA,
+};
+use chio_open_market::purchase_verification::{
+    derive_payment_operation_id, derive_purchase_intent_id,
 };
 use chio_settle::{
     settlement_devnet_rpc_egress_contract, EvmBondSnapshot, EvmTransactionReceipt,
@@ -1957,6 +1965,9 @@ fn digest_mismatch_case(
 struct EvidenceInvalidCase {
     challenge: SignedFindingChallenge,
     purchase_record: SignedFindingPurchaseRecord,
+    purchase_bid_request: SignedBidRequest,
+    purchase_accepted_bid: SignedAcceptedBid,
+    purchase_reservation_receipt: SignedReservationReceipt,
     purchase_delivery_receipt: ResolvedReceiptEvidence,
     purchase_delivery_checkpoint: KernelCheckpoint,
     purchase_delivery_checkpoint_transparency: CheckpointTransparencySummary,
@@ -1992,6 +2003,9 @@ impl EvidenceInvalidCase {
         FindingChallengeClassEvidence::EvidenceInvalid(FindingEvidenceInvalidEvidence {
             purchase_standing: FindingPurchaseStandingEvidence {
                 purchase_record: &self.purchase_record,
+                bid_request: &self.purchase_bid_request,
+                accepted_bid: &self.purchase_accepted_bid,
+                reservation_receipt: &self.purchase_reservation_receipt,
                 delivery_receipt: &self.purchase_delivery_receipt,
                 delivery_checkpoint: &self.purchase_delivery_checkpoint,
                 delivery_checkpoint_transparency: &self.purchase_delivery_checkpoint_transparency,
@@ -2073,6 +2087,9 @@ fn evidence_invalid_case(
     Ok(EvidenceInvalidCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
         purchase_record: standing.record.clone(),
+        purchase_bid_request: standing.bid_request.clone(),
+        purchase_accepted_bid: standing.accepted_bid.clone(),
+        purchase_reservation_receipt: standing.reservation_receipt.clone(),
         purchase_delivery_receipt: clone_resolved(&standing.delivery_receipt)?,
         purchase_delivery_checkpoint: standing.delivery_checkpoint.clone(),
         purchase_delivery_checkpoint_transparency: standing
@@ -2095,6 +2112,9 @@ fn evidence_invalid_case(
 struct ReplayCase {
     challenge: SignedFindingChallenge,
     purchase_record: SignedFindingPurchaseRecord,
+    purchase_bid_request: SignedBidRequest,
+    purchase_accepted_bid: SignedAcceptedBid,
+    purchase_reservation_receipt: SignedReservationReceipt,
     purchase_delivery_receipt: ResolvedReceiptEvidence,
     purchase_delivery_checkpoint: KernelCheckpoint,
     purchase_delivery_checkpoint_transparency: CheckpointTransparencySummary,
@@ -2124,6 +2144,9 @@ impl ReplayCase {
         FindingChallengeClassEvidence::ReplayContradiction(FindingReplayContradictionEvidence {
             purchase_standing: FindingPurchaseStandingEvidence {
                 purchase_record: &self.purchase_record,
+                bid_request: &self.purchase_bid_request,
+                accepted_bid: &self.purchase_accepted_bid,
+                reservation_receipt: &self.purchase_reservation_receipt,
                 delivery_receipt: &self.purchase_delivery_receipt,
                 delivery_checkpoint: &self.purchase_delivery_checkpoint,
                 delivery_checkpoint_transparency: &self.purchase_delivery_checkpoint_transparency,
@@ -2256,6 +2279,9 @@ fn replay_case(
     Ok(ReplayCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
         purchase_record: standing.record.clone(),
+        purchase_bid_request: standing.bid_request.clone(),
+        purchase_accepted_bid: standing.accepted_bid.clone(),
+        purchase_reservation_receipt: standing.reservation_receipt.clone(),
         purchase_delivery_receipt: clone_resolved(&standing.delivery_receipt)?,
         purchase_delivery_checkpoint: standing.delivery_checkpoint.clone(),
         purchase_delivery_checkpoint_transparency: standing
@@ -2546,8 +2572,6 @@ fn settle_purchase_with(
 ) -> Result<SettledPurchase, AnyError> {
     let (finding, _) = finding_artifact()?;
     let reservation_id = format!("reservation-{tag}");
-    let payment_operation_id = format!("payment-{tag}");
-    let bid = digest(&format!("bid-{tag}"));
     let buyer = if destination == BUYER_TWO_DESTINATION {
         keypair(42)
     } else {
@@ -2563,24 +2587,77 @@ fn settle_purchase_with(
         PayoutAdmission::Admitted => &refund_destination,
         PayoutAdmission::Withheld => &withheld_destination,
     };
+    let buyer_hex = buyer.public_key().to_hex();
+    let ask_digest = digest(&format!("ask-{tag}"));
+    let bid_request = SignedExportEnvelope::sign(
+        BidRequest {
+            schema: BID_REQUEST_SCHEMA.to_string(),
+            agent_id: buyer_hex.clone(),
+            payout_destination: Some(refund_destination.clone()),
+            listing_id: LISTING_ID.to_string(),
+            max_price_per_call: usd(100),
+            window_seconds: 300,
+            requested_scope: RequestedScope {
+                server_id: "finding-provider".to_string(),
+                tool_name: "finding.reveal".to_string(),
+                max_invocations: Some(1),
+                capability_scope_prefix: "finding://".to_string(),
+            },
+            issued_at: now.saturating_sub(10),
+        },
+        &buyer,
+    )?;
+    let bid_body_digest = sha256_hex(&canonical_json_bytes(&bid_request.body)?);
+    let accepted_bid = SignedExportEnvelope::sign(
+        AcceptedBid {
+            schema: ACCEPTED_BID_SCHEMA.to_string(),
+            listing_id: LISTING_ID.to_string(),
+            agent_id: buyer_hex.clone(),
+            bid_digest: bid_body_digest,
+            ask_digest: ask_digest.clone(),
+            bid_receipt_id: reservation_id.clone(),
+            quoted_price: usd(100),
+            accepted_at: now.saturating_sub(5),
+            token_id: format!("finding-token-{tag}"),
+            token_subject: buyer.public_key(),
+            token_expires_at: now + 3_600,
+        },
+        &buyer,
+    )?;
+    let bid = signed_envelope_sha256(&accepted_bid)?;
+    let reservation_receipt = SignedExportEnvelope::sign(
+        ReservationReceipt {
+            schema: RESERVATION_RECEIPT_SCHEMA.to_string(),
+            receipt_id: reservation_id.clone(),
+            agent_id: buyer_hex.clone(),
+            listing_id: LISTING_ID.to_string(),
+            ask_digest: ask_digest.clone(),
+            reserved_amount: usd(100),
+        },
+        &keypair(16),
+    )?;
+    let purchase_intent_id = derive_purchase_intent_id(&reservation_id);
+    let payment_operation_id = derive_payment_operation_id(&reservation_id);
+    let encumbrance_id =
+        sha256_hex(format!("chio.finding.encumbrance.v1\0{reservation_id}").as_bytes());
     deployment
         .purchases
         .open_reservation(&FindingPurchaseReservationInput {
             reservation_id: &reservation_id,
-            purchase_intent_id: &format!("intent-{tag}"),
+            purchase_intent_id: &purchase_intent_id,
             authoritative_payment_operation_id: &payment_operation_id,
-            payer_hex: &buyer.public_key().to_hex(),
-            agent_id: "agent-buyer",
+            payer_hex: &buyer_hex,
+            agent_id: &buyer_hex,
             payout_destination: settlement_destination,
             finding_id: &finding.finding_id,
             listing_id: LISTING_ID,
             bid_envelope_sha256: &bid,
-            ask_digest: &digest(&format!("ask-{tag}")),
+            ask_digest: &ask_digest,
             admission_envelope_sha256: &deployment.admission_envelope_sha256,
             amount_units: 100,
             currency: "USD",
             expires_at: now + 3_600,
-            encumbrance_id: &format!("encumbrance-{tag}"),
+            encumbrance_id: &encumbrance_id,
             allocation_id,
             maximum_sale_exposure_units: REGISTERED_EXPOSURE_CAP,
             created_at: now,
@@ -2589,7 +2666,7 @@ fn settle_purchase_with(
     let mut record = FindingPurchaseRecord {
         schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_string(),
         purchase_key: derive_purchase_key(&bid, &payment_operation_id),
-        purchase_intent_id: format!("intent-{tag}"),
+        purchase_intent_id,
         authoritative_payment_operation_id: payment_operation_id.clone(),
         buyer: buyer.public_key(),
         payer: buyer.public_key(),
@@ -2606,7 +2683,7 @@ fn settle_purchase_with(
             currency: record_currency.to_owned(),
         },
         seller_backing_envelope_sha256: hex64('6'),
-        encumbrance_id: format!("encumbrance-{tag}"),
+        encumbrance_id,
         delivery_receipt_id: String::new(),
         payment_reference: payment_operation_id.clone(),
         payout_destination: refund_destination.clone(),
@@ -2645,6 +2722,9 @@ fn settle_purchase_with(
         record_envelope_sha256: signed_envelope_sha256(&signed)?,
         purchase_key,
         record: signed,
+        bid_request,
+        accepted_bid,
+        reservation_receipt,
         delivery_receipt: delivery.receipt,
         delivery_checkpoint: delivery.checkpoint,
         delivery_checkpoint_transparency: delivery.checkpoint_transparency,

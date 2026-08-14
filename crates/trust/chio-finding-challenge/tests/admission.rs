@@ -77,6 +77,21 @@ fn evaluation_cannot_predate_the_signed_filing() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn authority_status_signer_must_be_independent_from_governance() -> TestResult {
+    let world = world()?;
+    let case = digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let mut input = world.input(&case.challenge, &evidence);
+    input.pinned_authority_status_key = &world.governance_key;
+    let evaluation = evaluate_finding_challenge(&input);
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::AuthorityStatusRoleCollision,
+    )?;
+    Ok(())
+}
+
 /// Every cell of the closed compatibility matrix, evaluated end to end. An
 /// inadmissible pairing must produce no verdict at all, and an admissible one
 /// must reach an adjudication.
@@ -476,6 +491,21 @@ fn standing_must_be_the_record_the_challenge_names() -> TestResult {
     expect_inadmissible(
         &evaluation,
         &FindingChallengeInadmissible::StandingBindingMismatch("purchase_record_envelope_sha256"),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn compromised_purchase_authority_cannot_rewrite_buyer_payout() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::ForgedPayoutDestination)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingSettlementNotEstablished,
     )?;
     Ok(())
 }

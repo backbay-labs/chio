@@ -243,6 +243,7 @@ pub use execution_nonce_store::{SqliteExecutionNonceStore, SqliteExecutionNonceS
 #[cfg(feature = "cognition-market-experimental")]
 pub use finding_challenge_store::{
     derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
+    derive_dispute_fee_collection_intent_key, derive_dispute_fee_return_intent_key,
     dispute_bond_funding_intent_digest, dispute_bond_return_intent_digest,
     FindingChallengeAuthorizationBranch, FindingChallengeEvaluationStart,
     FindingChallengeEvidenceClass, FindingChallengeRecord, FindingChallengeState,

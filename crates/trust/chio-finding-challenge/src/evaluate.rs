@@ -72,6 +72,21 @@ fn adjudicate(
         return Err(FindingChallengeInadmissible::EvaluationPredatesFiling);
     }
 
+    let status_key = input.pinned_authority_status_key;
+    if status_key == input.governance_authority
+        || status_key == input.pinned_audit_authority
+        || status_key == &input.pinned_purchase_authority.key
+        || status_key == &input.pinned_failed_delivery_authority.key
+        || input
+            .profile
+            .body
+            .receipt_signers
+            .iter()
+            .any(|signer| status_key == &signer.policy.key)
+    {
+        return Err(FindingChallengeInadmissible::AuthorityStatusRoleCollision);
+    }
+
     // The profile is a precondition, not evidence: with an unverified profile
     // no role key below means anything.
     verify_signed_profile(input.profile, input.governance_authority)

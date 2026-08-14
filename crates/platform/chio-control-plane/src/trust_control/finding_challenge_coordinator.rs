@@ -110,6 +110,7 @@ use chio_settle::{
 };
 use chio_store_sqlite::{
     derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
+    derive_dispute_fee_collection_intent_key, derive_dispute_fee_return_intent_key,
     dispute_bond_funding_intent_digest, dispute_bond_return_intent_digest,
     FindingChallengeAuthorizationBranch, FindingChallengeEvaluationStart,
     FindingChallengeEvidenceClass, FindingChallengeState, FindingChallengeSubmission,
@@ -153,12 +154,6 @@ const EFFECT_RETRACTION_DOMAIN: &str = "chio.finding.effect.retraction.v1";
 
 /// Domain separator for the anchored evidence leaf an impairment burns.
 const EFFECT_ANCHOR_EVIDENCE_DOMAIN: &str = "chio.finding.effect.anchor-evidence.v1";
-
-/// Domain separator for the deterministic dispute-fee operation id.
-const DISPUTE_FEE_OPERATION_DOMAIN: &str = "chio.finding.dispute-fee-operation.v1";
-
-/// Domain separator for returning a collected fee when its bond never funds.
-const DISPUTE_FEE_RETURN_OPERATION_DOMAIN: &str = "chio.finding.dispute-fee-return-operation.v1";
 
 /// Domain separator for the retraction intent id the retraction effect
 /// key is derived over.
@@ -262,15 +257,11 @@ pub fn derive_fee_intent_key(submission_id: &str, fee_operation_id: &str) -> Str
 }
 
 fn dispute_fee_intent_key(challenge_id: &str) -> String {
-    let operation_id =
-        sha256_hex(format!("{DISPUTE_FEE_OPERATION_DOMAIN}\0{challenge_id}").as_bytes());
-    derive_fee_intent_key(challenge_id, &operation_id)
+    derive_dispute_fee_collection_intent_key(challenge_id)
 }
 
 fn dispute_fee_return_intent_key(challenge_id: &str) -> String {
-    let operation_id =
-        sha256_hex(format!("{DISPUTE_FEE_RETURN_OPERATION_DOMAIN}\0{challenge_id}").as_bytes());
-    derive_fee_intent_key(challenge_id, &operation_id)
+    derive_dispute_fee_return_intent_key(challenge_id)
 }
 
 /// Domain-keyed identity of the enforcement/root semantic intent.
@@ -3146,14 +3137,30 @@ impl FindingChallengeCoordinator {
             }
         }
 
-        let returned_fee_key =
+        let (_returned_fee_key, returned_fee_digest) =
             self.return_dispute_fee(&challenge.challenge_id, submission, pool, now)?;
+        let lock = &submission.dispute_lock_ref;
+        let funding_input = FindingDisputeLockInput {
+            lock_id: &lock.lock_id,
+            challenge_id: &challenge.challenge_id,
+            owner_hex: &owner_hex,
+            schedule_envelope_sha256: &lock.fee_schedule_envelope_sha256,
+            amount_units: lock.amount.units,
+            currency: &lock.amount.currency,
+            pool_principal_id: &pool.principal_id,
+            pool_rail_destination: &pool.rail_destination,
+            pool_authority_epoch: pool.authority_epoch,
+            expires_at: lock.expiry,
+            locked_at: recorded.submitted_at,
+        };
+        let funding_digest = dispute_bond_funding_intent_digest(&funding_input);
         self.challenges
             .close_compensated_unfunded_filing(
                 &challenge.challenge_id,
-                &collected_instruction.idempotency_key,
-                &returned_fee_key,
-                &funding_key,
+                &collected_digest,
+                &returned_fee_digest,
+                &lock.lock_id,
+                &funding_digest,
                 now,
             )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
@@ -4820,7 +4827,7 @@ impl FindingChallengeCoordinator {
         submission: &chio_finding::FindingBuyerSubmission,
         pool: &chio_finding::FindingPoolBinding,
         now: u64,
-    ) -> Result<String, ChallengeCoordinatorError> {
+    ) -> Result<(String, String), ChallengeCoordinatorError> {
         let fee = &submission.dispute_fee_terminal;
         let intent_key = dispute_fee_return_intent_key(challenge_id);
         let instruction = FindingRailInstruction {
@@ -4850,7 +4857,7 @@ impl FindingChallengeCoordinator {
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
                 .map(|record| record.state);
             if state == Some(FindingEffectIntentState::Confirmed) {
-                return Ok(intent_key);
+                return Ok((intent_key, intent_digest));
             }
         }
         self.challenges
@@ -4865,7 +4872,7 @@ impl FindingChallengeCoordinator {
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;
-                Ok(intent_key)
+                Ok((intent_key, intent_digest))
             }
             Ok(_) => {
                 let _ = self.challenges.advance_effect_intent(

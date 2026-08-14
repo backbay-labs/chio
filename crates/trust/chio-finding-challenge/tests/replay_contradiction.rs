@@ -337,6 +337,9 @@ fn a_reproduction_set_smaller_than_the_challenge_is_inadmissible() -> TestResult
         FindingChallengeClassEvidence::ReplayContradiction(FindingReplayContradictionEvidence {
             purchase_standing: FindingPurchaseStandingEvidence {
                 purchase_record: &case.purchase_record,
+                bid_request: &case.purchase_standing.bid_request,
+                accepted_bid: &case.purchase_standing.accepted_bid,
+                reservation_receipt: &case.purchase_standing.reservation_receipt,
                 delivery_receipt: &case.purchase_standing.delivery_receipt,
                 delivery_checkpoint: &case.purchase_standing.delivery_checkpoint,
                 delivery_checkpoint_transparency: &case
