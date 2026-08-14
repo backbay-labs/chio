@@ -71,12 +71,27 @@ impl FindingChallengeCoordinator {
                     inclusion_deadline,
                 )
                 .map_err(|error| ChallengeCoordinatorError::Configuration(error.to_string()))?;
+                let operator_valid_until = self
+                    .status_feed_operator
+                    .revoked_from
+                    .unwrap_or(self.status_feed_operator.authority.valid_until)
+                    .min(self.status_feed_operator.authority.valid_until);
+                let commit_liveness = FindingRetractionIntentCommitLiveness {
+                    valid_from: self
+                        .status_feed_operator
+                        .authority
+                        .valid_from
+                        .max(self.status_feed_service_bond.valid_from),
+                    valid_until: operator_valid_until
+                        .min(self.status_feed_service_bond.valid_until),
+                };
                 self.status
                     .mark_retraction_dispatch_eligible(
                         &record.intent_id,
                         &evidence,
-                        now,
                         self.status_feed_service_bond.inclusion_sla_secs,
+                        commit_liveness,
+                        || self.status_commit_clock.now_unix_secs(now),
                     )
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())

@@ -739,8 +739,9 @@ impl SqliteFindingStatusStore {
         &self,
         intent_id: &str,
         finality_evidence_bytes: &[u8],
-        authorized_at: u64,
         inclusion_sla_secs: u64,
+        liveness: FindingRetractionIntentCommitLiveness,
+        read_now: impl FnOnce() -> u64,
     ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
         require_hex64(intent_id, "intent_id")?;
         require_bytes(
@@ -748,12 +749,14 @@ impl SqliteFindingStatusStore {
             MAX_FINDING_RETRACTION_EVIDENCE_BYTES,
             "finality_evidence_bytes",
         )?;
-        require_positive(authorized_at, "authorized_at")?;
         require_positive(inclusion_sla_secs, "inclusion_sla_secs")?;
-        let inclusion_deadline = authorized_at
-            .checked_add(inclusion_sla_secs)
-            .ok_or_else(|| invariant("dispatch inclusion deadline overflowed"))?;
-        let inclusion_deadline = sqlite_i64(inclusion_deadline, "inclusion_deadline")?;
+        require_positive(liveness.valid_from, "intent authority valid_from")?;
+        if liveness.valid_until <= liveness.valid_from {
+            return Err(invariant(
+                "intent authority valid_until must follow valid_from",
+            ));
+        }
+        sqlite_i64(liveness.valid_until, "intent authority valid_until")?;
         let evidence_sha256 = sha256_hex(finality_evidence_bytes);
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
@@ -764,9 +767,24 @@ impl SqliteFindingStatusStore {
         })?;
         match existing.state {
             FindingRetractionIntentState::WaitingFinality => {
+                let authorized_at = read_now();
+                require_positive(authorized_at, "authorized_at")?;
+                let inclusion_deadline = authorized_at
+                    .checked_add(inclusion_sla_secs)
+                    .ok_or_else(|| invariant("dispatch inclusion deadline overflowed"))?;
+                if authorized_at < liveness.valid_from
+                    || authorized_at >= liveness.valid_until
+                    || inclusion_deadline >= liveness.valid_until
+                {
+                    return Err(FindingStatusStoreError::Conflict(
+                        "retraction dispatch authority or inclusion window expired before durable commit"
+                            .to_owned(),
+                    ));
+                }
                 if authorized_at < existing.created_at {
                     return Err(invariant("dispatch eligibility predates the intent"));
                 }
+                let inclusion_deadline = sqlite_i64(inclusion_deadline, "inclusion_deadline")?;
                 transaction
                     .execute(
                         r#"

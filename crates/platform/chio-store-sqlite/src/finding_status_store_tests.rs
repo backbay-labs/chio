@@ -704,13 +704,31 @@ fn dispatch_eligibility_replay_retains_the_original_authorization_time() {
         .expect("persist intent");
     assert_eq!(
         store
-            .mark_retraction_dispatch_eligible(&intent_id, evidence, NOW + 3, 500)
+            .mark_retraction_dispatch_eligible(
+                &intent_id,
+                evidence,
+                500,
+                FindingRetractionIntentCommitLiveness {
+                    valid_from: NOW,
+                    valid_until: NOW + 1_000,
+                },
+                || NOW + 3,
+            )
             .expect("authorize dispatch"),
         FindingStatusWriteOutcome::Inserted
     );
     assert_eq!(
         store
-            .mark_retraction_dispatch_eligible(&intent_id, evidence, NOW + 30, 500)
+            .mark_retraction_dispatch_eligible(
+                &intent_id,
+                evidence,
+                500,
+                FindingRetractionIntentCommitLiveness {
+                    valid_from: NOW,
+                    valid_until: NOW + 1,
+                },
+                || panic!("exact replay must not sample the expired commit clock"),
+            )
             .expect("replay the same finality evidence at a later retry clock"),
         FindingStatusWriteOutcome::ExactReplay
     );
@@ -721,6 +739,52 @@ fn dispatch_eligibility_replay_retains_the_original_authorization_time() {
     assert_eq!(retained.dispatch_eligible_at, Some(NOW + 3));
     assert_eq!(retained.issued_at, NOW + 3);
     assert_eq!(retained.inclusion_deadline, NOW + 503);
+}
+
+#[test]
+fn dispatch_eligibility_rechecks_liveness_inside_the_write_transaction() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('8');
+    let intent_id = hex64('9');
+    store
+        .issue_retraction_intent(&FindingRetractionIntentInput {
+            intent_id: &intent_id,
+            feed_id: FEED,
+            operator_id: OPERATOR,
+            finding_id: &finding_id,
+            source: FindingRetractionIntentSource::Enforcement,
+            intent_bytes: b"signed-enforcement-intent",
+            issued_at: NOW + 1,
+            inclusion_deadline: NOW + 500,
+            created_at: NOW + 2,
+        })
+        .expect("persist intent");
+
+    let refused = store
+        .mark_retraction_dispatch_eligible(
+            &intent_id,
+            b"confirmed-finality",
+            50,
+            FindingRetractionIntentCommitLiveness {
+                valid_from: NOW,
+                valid_until: NOW + 100,
+            },
+            || NOW + 50,
+        )
+        .expect_err("an inclusion deadline at authority expiry must reject");
+    assert!(matches!(refused, FindingStatusStoreError::Conflict(_)));
+    let retained = store
+        .get_retraction_intent(&intent_id)
+        .expect("load waiting intent")
+        .expect("intent remains durable");
+    assert_eq!(
+        retained.state,
+        FindingRetractionIntentState::WaitingFinality
+    );
+    assert!(retained.finality_evidence_bytes.is_none());
+    assert!(retained.dispatch_eligible_at.is_none());
 }
 
 #[test]
@@ -772,7 +836,16 @@ fn schema_v1_migration_moves_the_inclusion_window_to_finality() {
         })
         .expect("persist intent after migration");
     store
-        .mark_retraction_dispatch_eligible(&intent_id, b"finality", NOW + 40, 500)
+        .mark_retraction_dispatch_eligible(
+            &intent_id,
+            b"finality",
+            500,
+            FindingRetractionIntentCommitLiveness {
+                valid_from: NOW,
+                valid_until: NOW + 1_000,
+            },
+            || NOW + 40,
+        )
         .expect("start inclusion window at finality");
 
     let retained = store

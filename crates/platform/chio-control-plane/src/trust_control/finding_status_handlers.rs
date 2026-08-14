@@ -10,9 +10,9 @@ use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_finding::verify_pinned_envelope;
 use chio_store_sqlite::{
     FindingRetractionIntentCommitLiveness, FindingRetractionIntentInput,
-    FindingRetractionIntentSource, FindingStatusEpochRecord, FindingStatusProofKind,
-    FindingStatusProofRecord, FindingStatusStoreError, FindingStatusWriteOutcome,
-    FindingStickyStatus, SqliteFindingStatusStore,
+    FindingRetractionIntentRecord, FindingRetractionIntentSource, FindingStatusEpochRecord,
+    FindingStatusProofKind, FindingStatusProofRecord, FindingStatusStoreError,
+    FindingStatusWriteOutcome, FindingStickyStatus, SqliteFindingStatusStore,
 };
 
 use super::report_validation::validate_service_auth;
@@ -227,6 +227,16 @@ fn status_context(
     feed_id: &str,
     now: u64,
 ) -> Result<(FindingMarketConfig, SqliteFindingStatusStore), Response> {
+    let config = live_status_config(state, feed_id, now)?;
+    let store = status_store(state)?;
+    Ok((config, store))
+}
+
+fn live_status_config(
+    state: &TrustServiceState,
+    feed_id: &str,
+    now: u64,
+) -> Result<FindingMarketConfig, Response> {
     let Some(config) = state.config.finding_market.clone() else {
         return Err(plain_http_error(
             StatusCode::CONFLICT,
@@ -236,6 +246,10 @@ fn status_context(
     config
         .require_live_status_feed(feed_id, now)
         .map_err(|error| plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error.to_string()))?;
+    Ok(config)
+}
+
+fn status_store(state: &TrustServiceState) -> Result<SqliteFindingStatusStore, Response> {
     let Some(store) = state
         .joint_authority_store
         .as_ref()
@@ -246,7 +260,7 @@ fn status_context(
             "finding status feed requires the durable joint authority store",
         ));
     };
-    Ok((config, store))
+    Ok(store)
 }
 
 fn require_current_epoch(
@@ -429,16 +443,41 @@ fn intent_persistence_time(
     operator: &FindingStatusOperatorPin,
     service_bond: &FindingStatusServiceBond,
     feed_id: &str,
-    retained_exact_replay: bool,
-    initial_now: u64,
     read_now: impl FnOnce() -> u64,
 ) -> Result<u64, Response> {
-    if retained_exact_replay {
-        return Ok(initial_now);
-    }
     let persistence_now = read_now();
     validate_intent_submission(signed, operator, service_bond, feed_id, persistence_now)?;
     Ok(persistence_now)
+}
+
+fn intent_response(record: FindingRetractionIntentRecord, exact_replay: bool) -> Response {
+    let status = match record.state {
+        chio_store_sqlite::FindingRetractionIntentState::WaitingFinality => "waiting_finality",
+        chio_store_sqlite::FindingRetractionIntentState::DispatchEligible => "dispatch_eligible",
+        chio_store_sqlite::FindingRetractionIntentState::Published => "published",
+    };
+    Json(FindingStatusIntentResponse {
+        intent_id: record.intent_id,
+        feed_id: record.feed_id,
+        finding_id: record.finding_id,
+        intent_sha256: record.intent_sha256,
+        status,
+        exact_replay,
+        inclusion_deadline: record.inclusion_deadline,
+    })
+    .into_response()
+}
+
+fn recover_exact_intent_replay(
+    store: &SqliteFindingStatusStore,
+    intent_id: &str,
+    raw: &[u8],
+) -> Result<Option<Response>, Response> {
+    match store.get_retraction_intent(intent_id) {
+        Ok(Some(record)) if record.intent_bytes == raw => Ok(Some(intent_response(record, true))),
+        Ok(_) => Ok(None),
+        Err(error) => Err(status_read_error(error)),
+    }
 }
 
 fn require_authorized_voluntary_source(
@@ -625,11 +664,6 @@ pub(crate) async fn handle_submit_finding_status_intent(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    let now = unix_timestamp_now();
-    let (config, store) = match status_context(&state, &feed_id, now) {
-        Ok(context) => context,
-        Err(response) => return response,
-    };
     let signed = match strict_intent_ingress(&raw) {
         Ok(signed) => signed,
         Err(response) => return response,
@@ -644,32 +678,37 @@ pub(crate) async fn handle_submit_finding_status_intent(
             "status intent does not match the route feed",
         );
     }
-    let retained_exact_replay = match store.get_retraction_intent(&body.intent_id) {
-        Ok(Some(record)) => record.intent_bytes == raw.as_bytes(),
-        Ok(None) => false,
-        Err(error) => return status_read_error(error),
+    let store = match status_store(&state) {
+        Ok(store) => store,
+        Err(response) => return response,
     };
-    if !retained_exact_replay {
-        if let Err(response) = validate_intent_submission(
-            &signed,
-            &config.status_feed_operator,
-            &config.status_feed_service_bond,
-            &feed_id,
-            now,
-        ) {
-            return response;
-        }
-        if let Err(response) = require_authorized_voluntary_source(&state, &signed) {
-            return response;
-        }
+    match recover_exact_intent_replay(&store, &body.intent_id, raw.as_bytes()) {
+        Ok(Some(response)) => return response,
+        Ok(None) => {}
+        Err(response) => return response,
+    }
+    let now = unix_timestamp_now();
+    let config = match live_status_config(&state, &feed_id, now) {
+        Ok(config) => config,
+        Err(response) => return response,
+    };
+    if let Err(response) = validate_intent_submission(
+        &signed,
+        &config.status_feed_operator,
+        &config.status_feed_service_bond,
+        &feed_id,
+        now,
+    ) {
+        return response;
+    }
+    if let Err(response) = require_authorized_voluntary_source(&state, &signed) {
+        return response;
     }
     let persistence_now = match intent_persistence_time(
         &signed,
         &config.status_feed_operator,
         &config.status_feed_service_bond,
         &feed_id,
-        retained_exact_replay,
-        now,
         unix_timestamp_now,
     ) {
         Ok(now) => now,
@@ -716,21 +755,7 @@ pub(crate) async fn handle_submit_finding_status_intent(
         }
         Err(error) => return status_read_error(error),
     };
-    let status = match record.state {
-        chio_store_sqlite::FindingRetractionIntentState::WaitingFinality => "waiting_finality",
-        chio_store_sqlite::FindingRetractionIntentState::DispatchEligible => "dispatch_eligible",
-        chio_store_sqlite::FindingRetractionIntentState::Published => "published",
-    };
-    Json(FindingStatusIntentResponse {
-        intent_id: record.intent_id,
-        feed_id: record.feed_id,
-        finding_id: record.finding_id,
-        intent_sha256: record.intent_sha256,
-        status,
-        exact_replay: outcome == FindingStatusWriteOutcome::ExactReplay,
-        inclusion_deadline: record.inclusion_deadline,
-    })
-    .into_response()
+    intent_response(record, outcome == FindingStatusWriteOutcome::ExactReplay)
 }
 
 #[cfg(test)]
@@ -1067,23 +1092,42 @@ mod tests {
     }
 
     #[test]
-    fn new_intent_refreshes_liveness_at_persistence_but_exact_replay_is_exempt() {
+    fn new_intent_refreshes_liveness_at_persistence() {
         let (operator, bond) = config();
         let signed = SignedExportEnvelope::sign(submission(), &operator_key())
             .test_expect("signed status intent");
-        let response =
-            intent_persistence_time(&signed, &operator, &bond, FEED_ID, false, NOW, || {
-                signed.body.inclusion_deadline
-            })
-            .test_expect_err("intent expiring during validation must not be persisted");
+        let response = intent_persistence_time(&signed, &operator, &bond, FEED_ID, || {
+            signed.body.inclusion_deadline
+        })
+        .test_expect_err("intent expiring during validation must not be persisted");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 
-        let replay_time =
-            intent_persistence_time(&signed, &operator, &bond, FEED_ID, true, NOW, || {
-                panic!("exact replay must not refresh submission liveness")
+    #[test]
+    fn retained_exact_replay_recovers_without_current_liveness() {
+        let (_temp, authority) = provision_authority().test_expect("durable authority store");
+        let store = authority.finding_status_store();
+        let signed = SignedExportEnvelope::sign(submission(), &operator_key())
+            .test_expect("signed status intent");
+        let raw = canonical_json_bytes(&signed).test_expect("canonical signed intent");
+        store
+            .issue_retraction_intent(&FindingRetractionIntentInput {
+                intent_id: &signed.body.intent_id,
+                feed_id: &signed.body.feed_id,
+                operator_id: &signed.body.operator_id,
+                finding_id: &signed.body.finding_id,
+                source: FindingRetractionIntentSource::Voluntary,
+                intent_bytes: &raw,
+                issued_at: signed.body.issued_at,
+                inclusion_deadline: signed.body.inclusion_deadline,
+                created_at: signed.body.issued_at,
             })
-            .test_expect("retained exact replay remains recoverable");
-        assert_eq!(replay_time, NOW);
+            .test_expect("persist exact status intent");
+
+        let response = recover_exact_intent_replay(&store, &signed.body.intent_id, &raw)
+            .test_expect("read retained intent")
+            .test_expect("exact replay returns its retained decision");
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[test]
@@ -1644,7 +1688,11 @@ mod tests {
             })?,
             FindingStatusWriteOutcome::Inserted
         );
-        let state = service_state(Arc::clone(&authority), market);
+        let live_state = service_state(Arc::clone(&authority), market.clone());
+        let mut expired_market = market;
+        expired_market.status_feed_operator.authority.valid_until = now;
+        expired_market.status_feed_service_bond.valid_until = now;
+        let expired_state = service_state(Arc::clone(&authority), expired_market);
         let mut headers = HeaderMap::new();
         headers.insert(
             axum::http::header::AUTHORIZATION,
@@ -1652,7 +1700,7 @@ mod tests {
         );
 
         let response = handle_submit_finding_status_intent(
-            State(state.clone()),
+            State(expired_state),
             AxumPath(FEED_ID.to_string()),
             headers.clone(),
             raw.clone(),
@@ -1690,7 +1738,7 @@ mod tests {
         let stale_new = SignedExportEnvelope::sign(stale_new, &operator_key())?;
         let stale_raw = String::from_utf8(canonical_json_bytes(&stale_new)?)?;
         let response = handle_submit_finding_status_intent(
-            State(state),
+            State(live_state),
             AxumPath(FEED_ID.to_string()),
             headers,
             stale_raw,

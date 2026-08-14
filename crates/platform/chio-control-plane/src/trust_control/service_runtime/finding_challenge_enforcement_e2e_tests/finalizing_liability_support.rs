@@ -69,14 +69,19 @@ fn finalizing_liability_with_prior_retraction(
     let (finding, raw) = finding_artifact()?;
     let challenge = buyer_challenge(&keypair(41))?;
     coordinator.submit(&challenge, &raw, NOW)?;
-    close_challenge(
-        &deployment,
-        &challenge.body.challenge_id,
-        FindingChallengeVerdict::Upheld,
-        &digest("upheld-outcome"),
-        b"upheld-outcome",
-        NOW + 1,
-    )?;
+    deployment
+        .challenges
+        .begin_evaluation(&challenge.body.challenge_id, NOW + 1)?;
+    deployment
+        .challenges
+        .record_upheld_verdict_with_exposure_fence(
+            &challenge.body.challenge_id,
+            &digest("upheld-outcome"),
+            b"upheld-outcome",
+            &byte_hex64(0xa1),
+            0,
+            NOW + 1,
+        )?;
 
     let liability_key = byte_hex64(0xb1);
     let seller = keypair(73).public_key();
@@ -165,7 +170,7 @@ fn finalizing_liability_with_prior_retraction(
     )?;
     if root == EnforcementRoot::Mismatched {
         let merkle_root = chain_hash(0xee);
-        let evidence_hash = anchor_evidence_hash()?;
+        let evidence_hash = sample_anchor_evidence_hash()?;
         deployment.challenges.bind_effect_root(
             &enforcement_root_intent_key(),
             &liability_key,
@@ -508,11 +513,25 @@ impl FinalizingLiability {
             "liability_key": self.enforcement.body.liability_key,
             "tx_hash": tx_hash,
         }))?;
+        let config = market_config();
+        let operator_valid_until = config
+            .status_feed_operator
+            .revoked_from
+            .unwrap_or(config.status_feed_operator.authority.valid_until)
+            .min(config.status_feed_operator.authority.valid_until);
         self.deployment.status.mark_retraction_dispatch_eligible(
             &byte_hex64(0xc3),
             &evidence,
-            now,
-            market_config().status_feed_service_bond.inclusion_sla_secs,
+            config.status_feed_service_bond.inclusion_sla_secs,
+            FindingRetractionIntentCommitLiveness {
+                valid_from: config
+                    .status_feed_operator
+                    .authority
+                    .valid_from
+                    .max(config.status_feed_service_bond.valid_from),
+                valid_until: operator_valid_until.min(config.status_feed_service_bond.valid_until),
+            },
+            || now,
         )?;
         Ok(())
     }

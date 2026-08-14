@@ -246,13 +246,6 @@ fn persist_epoch_tx(
 ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
     let signed_epoch_sha256 = sha256_hex(epoch.signed_epoch_bytes);
     if let Some(floor) = prior_floor {
-        if epoch.recorded_at < floor.advanced_at {
-            return Err(FindingStatusStoreError::ClockRollback {
-                feed_id: epoch.feed_id.to_owned(),
-                high_water: floor.advanced_at,
-                observed: epoch.recorded_at,
-            });
-        }
         if floor.operator_id != epoch.operator_id
             || floor.key_domain_nonce != epoch.key_domain_nonce
         {
@@ -276,6 +269,13 @@ fn persist_epoch_tx(
             return Err(FindingStatusStoreError::Equivocation {
                 feed_id: epoch.feed_id.to_owned(),
                 map_epoch: epoch.map_epoch,
+            });
+        }
+        if epoch.recorded_at < floor.advanced_at {
+            return Err(FindingStatusStoreError::ClockRollback {
+                feed_id: epoch.feed_id.to_owned(),
+                high_water: floor.advanced_at,
+                observed: epoch.recorded_at,
             });
         }
         if epoch.operator_key_epoch < floor.operator_key_epoch {

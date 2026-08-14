@@ -46,6 +46,7 @@
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_core::capability::scope::MonetaryAmount;
@@ -123,10 +124,10 @@ use chio_store_sqlite::{
     FindingDisputeLockInput, FindingDisputeLockRecord, FindingDisputeLockState,
     FindingEffectIntentKind, FindingEffectIntentState, FindingFinalizingAuthorizationInput,
     FindingGovernanceCaseInput, FindingGovernanceCaseKind, FindingLiabilityInput,
-    FindingLiabilityRecord, FindingLiabilityState, FindingRetractionIntentInput,
-    FindingRetractionIntentSource,
-    FindingRetractionIntentState, SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
-    SqliteFindingStatusStore,
+    FindingLiabilityRecord, FindingLiabilityState, FindingRetractionIntentCommitLiveness,
+    FindingRetractionIntentInput,
+    FindingRetractionIntentSource, FindingRetractionIntentState, SqliteFindingChallengeStore,
+    SqliteFindingPurchaseStore, SqliteFindingStatusStore,
 };
 use serde::{Deserialize, Serialize};
 
@@ -883,6 +884,25 @@ pub enum FindingFinalization {
     AwaitingStatusPublication,
 }
 
+/// Clock sampled while the status outbox write transaction is held.
+///
+/// The caller's earlier venue timestamp is supplied only so deterministic
+/// test clocks can model the same instant. Production clocks independently
+/// sample wall time at the durable transition.
+pub trait FindingStatusCommitClock: Send + Sync {
+    fn now_unix_secs(&self, venue_now: u64) -> u64;
+}
+
+struct SystemFindingStatusCommitClock;
+
+impl FindingStatusCommitClock for SystemFindingStatusCommitClock {
+    fn now_unix_secs(&self, _venue_now: u64) -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs())
+    }
+}
+
 /// The authoritative single-operator challenge coordinator.
 pub struct FindingChallengeCoordinator {
     challenges: SqliteFindingChallengeStore,
@@ -907,6 +927,7 @@ pub struct FindingChallengeCoordinator {
     status_feed_operator_ref: String,
     status_feed_operator: FindingStatusOperatorPin,
     status_feed_service_bond: FindingStatusServiceBond,
+    status_commit_clock: Arc<dyn FindingStatusCommitClock>,
     /// Disposition a rejected challenge's bond takes, predeclared by the
     /// admitted market terms rather than chosen per case.
     failed_challenge_disposition: FindingDisputeLockDisposition,
@@ -934,6 +955,38 @@ impl FindingChallengeCoordinator {
         rail: Arc<dyn FindingRailObserver>,
         filings: Arc<dyn FindingFilingResolver>,
         failed_challenge_disposition: FindingDisputeLockDisposition,
+    ) -> Result<Self, ChallengeCoordinatorError> {
+        Self::new_with_status_commit_clock(
+            challenges,
+            purchases,
+            status,
+            config,
+            evaluator_authority,
+            finalization_authority,
+            penalty_authority,
+            authority_status,
+            rail,
+            filings,
+            failed_challenge_disposition,
+            Arc::new(SystemFindingStatusCommitClock),
+        )
+    }
+
+    /// Build with an injected clock for deterministic boundary tests.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_status_commit_clock(
+        challenges: SqliteFindingChallengeStore,
+        purchases: SqliteFindingPurchaseStore,
+        status: SqliteFindingStatusStore,
+        config: &FindingMarketConfig,
+        evaluator_authority: Keypair,
+        finalization_authority: Keypair,
+        penalty_authority: Keypair,
+        authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+        rail: Arc<dyn FindingRailObserver>,
+        filings: Arc<dyn FindingFilingResolver>,
+        failed_challenge_disposition: FindingDisputeLockDisposition,
+        status_commit_clock: Arc<dyn FindingStatusCommitClock>,
     ) -> Result<Self, ChallengeCoordinatorError> {
         config
             .validate()
@@ -1003,6 +1056,7 @@ impl FindingChallengeCoordinator {
             status_feed_operator_ref: config.status_feed_operator_ref.clone(),
             status_feed_operator: config.status_feed_operator.clone(),
             status_feed_service_bond: config.status_feed_service_bond.clone(),
+            status_commit_clock,
             failed_challenge_disposition,
         })
     }
@@ -2193,10 +2247,11 @@ impl FindingChallengeCoordinator {
     /// but queueing or reconciliation delay can age out the snapshot that
     /// closed the appeal. The liability and every semantic effect remain
     /// frozen; only the observer-signed snapshot digest and finalization
-    /// instant change. A retryable dispatch failure may also refresh because
-    /// the semantic intent id and frozen impairment call remain exact, and
-    /// the publisher is required to replay that id idempotently. Dispatched,
-    /// confirmed, or quarantined intents cannot refresh.
+    /// instant change. Refresh ends once the exact enforcement has been
+    /// bound to an anchor proof or the seller impairment has left pending:
+    /// either event makes the signed enforcement identity externally
+    /// observable, so re-signing it would no longer match the anchored
+    /// authorization.
     pub fn refresh_finalizing_enforcement(
         &self,
         authorized: &AuthorizedImpairment,
@@ -2248,13 +2303,41 @@ impl FindingChallengeCoordinator {
             .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
         if seller_intent.kind != FindingEffectIntentKind::SellerImpair
             || seller_intent.liability_key.as_deref() != Some(old.body.liability_key.as_str())
-            || !matches!(
-                seller_intent.state,
-                FindingEffectIntentState::Pending | FindingEffectIntentState::Failed
-            )
+            || seller_intent.state != FindingEffectIntentState::Pending
         {
             return Err(ChallengeCoordinatorError::Settlement(
-                "bond snapshot refresh is permitted only before dispatch or after a retryable failed dispatch"
+                "bond snapshot refresh is permitted only before anchor binding or dispatch"
+                    .to_owned(),
+            ));
+        }
+        let mut root_intents =
+            old.body.effect_intents.iter().filter(|binding| {
+                binding.kind == chio_finding::FindingEffectIntentKind::RootIntent
+            });
+        let root_intent_id = root_intents
+            .next()
+            .map(|binding| binding.intent_id.as_str())
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if root_intents.next().is_some() {
+            return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
+        }
+        let root_intent = self
+            .challenges
+            .get_effect_intent(root_intent_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        let root_binding = self
+            .challenges
+            .get_effect_root_binding(root_intent_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        if root_intent.kind != FindingEffectIntentKind::RootIntent
+            || root_intent.liability_key.as_deref() != Some(old.body.liability_key.as_str())
+            || root_intent.state != FindingEffectIntentState::Pending
+            || root_intent.attempt_count != 0
+            || root_binding.is_some()
+        {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "bond snapshot refresh is permitted only before anchor binding or dispatch"
                     .to_owned(),
             ));
         }

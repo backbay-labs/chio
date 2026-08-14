@@ -1064,6 +1064,27 @@ impl SqliteFindingChallengeStore {
         )
     }
 
+    /// Raw upheld transition for cross-crate integration fixtures only.
+    #[cfg(feature = "cognition-market-test-support")]
+    pub fn record_test_upheld_verdict_with_exposure_fence(
+        &self,
+        challenge_id: &str,
+        outcome_envelope_sha256: &str,
+        outcome_envelope_json: &[u8],
+        allocation_id: &str,
+        expected_open_exposure_units: u64,
+        now: u64,
+    ) -> Result<FindingChallengeState, FindingChallengeStoreError> {
+        self.record_upheld_verdict_with_exposure_fence(
+            challenge_id,
+            outcome_envelope_sha256,
+            outcome_envelope_json,
+            allocation_id,
+            expected_open_exposure_units,
+            now,
+        )
+    }
+
     /// One challenge by its id.
     pub fn get_challenge(
         &self,
