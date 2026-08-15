@@ -309,6 +309,15 @@ fn signed_authorization(
     seller: &Keypair,
     finding: &Finding,
 ) -> SignedFindingSellerAuthorization {
+    signed_authorization_at(issuer, seller, finding, ADMISSION_ISSUED_AT)
+}
+
+fn signed_authorization_at(
+    issuer: &Keypair,
+    seller: &Keypair,
+    finding: &Finding,
+    issued_at: u64,
+) -> SignedFindingSellerAuthorization {
     let mut authorization = FindingSellerAuthorization {
         schema: FINDING_SELLER_AUTHORIZATION_SCHEMA_V1.to_string(),
         authorization_id: String::new(),
@@ -324,7 +333,7 @@ fn signed_authorization(
             currency: "USD".to_string(),
         },
         revocation_status_ref: "revocations/seller-authorization".to_string(),
-        issued_at: ADMISSION_ISSUED_AT,
+        issued_at,
         expires_at: WINDOW_EXPIRES_AT,
     };
     authorization.authorization_id =
@@ -1410,7 +1419,33 @@ fn expired_admission_rejects() {
 #[test]
 fn future_issued_admission_rejects() {
     with_fiscal(|resolver| {
-        let web = base_web();
+        let mut web = base_web();
+        let authorization = signed_authorization_at(
+            &keypair(11),
+            &web.seller,
+            &web.finding,
+            ADMISSION_ISSUED_AT - 1,
+        );
+        let authorization_sha256 =
+            signed_envelope_sha256(&authorization).test_expect("authorization digest");
+        let backing = signed_backing(
+            &keypair(4),
+            &web.seller,
+            &web.finding,
+            &authorization_sha256,
+            &web.schedule_sha256,
+            &web.terms_sha256,
+        );
+        let backing_sha256 = signed_envelope_sha256(&backing).test_expect("backing digest");
+        let mut bindings = web.bindings();
+        bindings.seller_authorization_envelope_sha256 = authorization_sha256.clone();
+        bindings.backing_envelope_sha256 = backing_sha256.clone();
+        bindings.backing_allocation_id = backing.body.allocation_id.clone();
+        web.admission = signed_admission(&web.venue, &web.finding, &bindings);
+        web.authorization = authorization;
+        web.authorization_sha256 = authorization_sha256;
+        web.backing = backing;
+        web.backing_sha256 = backing_sha256;
         let mut context = web.context(resolver);
         context.now = ADMISSION_ISSUED_AT - 1;
         let error = verify_finding_admission(&web.admission, &context).test_unwrap_err();
