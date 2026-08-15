@@ -18,12 +18,12 @@ dependency of any shipped binary.
 | Path | Responsibility |
 |------|----------------|
 | `src/lib.rs` | `Verdict`, `ScenarioCategory`, `VerdictTuple` (`normalized()` sorts `scope_set`, does not dedupe), schema/path constants, and the `driver`/`diff_oracle`/`cross_language` module declarations. Inline `#[cfg(test)]` unit tests. |
-| `src/driver.rs` | `VerdictScenario`/`ScenarioScript` deserialization and identity-field validation; `RustKernelDriver`, the in-process reference driver that builds a `ChioKernel`, registers a synthetic `MatrixToolServer`, issues/revokes capabilities, and evaluates each scenario. Inline unit tests. |
+| `src/driver.rs` | `VerdictScenario`/`ScenarioScript` deserialization and identity-field validation; `RustKernelDriver`, the in-process reference driver that builds a `ChioKernel`, registers a synthetic `MatrixToolServer`, issues/revokes capabilities, and evaluates each scenario. The `delivery_contract` class is evaluated from carrier admission alone (deny-on-unsupported-constraint), matching the Python and Go mock drivers, because the reference kernel does not enforce output digests. Inline unit tests. |
 | `src/diff_oracle.rs` | `VerdictMatrixManifest` parsing/validation, SHA-256 corpus indexing (`scenario_index_hash`, `verify_manifest_corpus_hash`), reason-code registry loading, and expected-vs-driver tuple diffing. No inline tests; exercised only by `tests/diff_oracle_self_test.rs`. |
 | `src/cross_language.rs` | `CrossLanguageReport` aggregation and `diff_cross_language`/`diff_cross_language_against_expected`, the pairwise driver-vs-driver and driver-vs-expected comparison. Inline unit tests. |
 | `manifest.toml` | Pins the corpus root, scenario count and category breakdown, SHA-256 corpus hash, and the per-driver registry (status, entrypoint, sidecar/env requirements) `diff_oracle` and `deployment_shape_smoke` validate against. |
 | `SCENARIOS.md` | Normative scenario JSON schema: required/optional fields, the verdict tuple shape, and the compatibility rules (unknown top-level fields rejected, unknown `script` fields preserved). |
-| `scenarios/**.json` | The 48-scenario corpus in 4 category directories (`capability_subset`, `revocation_propagation`, `replay_verdict`, `redaction_determinism`), 12 scenarios each. |
+| `scenarios/**.json` | The 60-scenario corpus in 5 category directories (`capability_subset`, `revocation_propagation`, `replay_verdict`, `redaction_determinism`, `delivery_contract`), 12 scenarios each. |
 | `drivers/rust/` | Documentation only; the reference driver is `src/driver.rs`. |
 | `drivers/{python,go,typescript}/` | Standalone SDK driver scripts loaded directly by each SDK's own test suite, e.g. the Python SDK's `test_verdict_matrix.py` loads `drivers/python/run_scenarios.py` by file path. |
 | `drivers/wasm-browser/` | `run.sh` entrypoint for the WASM browser kernel path; capability category only. |

@@ -1106,6 +1106,7 @@ fn state_name(state: AdmissionOperationState) -> &'static str {
             "not_accepted_after_dispatch_commit"
         }
         AdmissionOperationState::OutcomeUnknownAfterDispatch => "outcome_unknown_after_dispatch",
+        AdmissionOperationState::DeniedAfterDelivery => "denied_after_delivery",
         AdmissionOperationState::MutationReady => "mutation_ready",
         AdmissionOperationState::MutationSubmitted => "mutation_submitted",
         AdmissionOperationState::EconomicMutationApplied => "economic_mutation_applied",

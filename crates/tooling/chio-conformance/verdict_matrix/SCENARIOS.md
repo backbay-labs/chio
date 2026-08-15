@@ -16,7 +16,7 @@ scenario count, and corpus hash pin.
 | `schema` | string | Must be `chio.verdict-matrix.scenario.v1`. |
 | `id` | string | Stable kebab-case identifier. |
 | `title` | string | Human-readable scenario title. |
-| `category` | string | One of `capability`, `revocation`, `replay`, `redaction`, or `receipt`. |
+| `category` | string | One of `capability`, `revocation`, `replay`, `redaction`, `receipt`, or `delivery_contract`. |
 | `description` | string | Short description of the boundary being checked. |
 | `script` | table | Driver-neutral inputs for the SDK under test. |
 | `expected` | table | Expected semantic verdict tuple. |

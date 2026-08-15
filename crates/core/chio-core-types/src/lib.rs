@@ -89,6 +89,9 @@ pub use plan::{
     PlanEvaluationRequest, PlanEvaluationResponse, PlanVerdict, PlannedToolCall, PlannedToolCallId,
     StepVerdict, StepVerdictKind,
 };
+pub use receipt::metadata::{
+    DeliveryContract, DeliveryResult, DELIVERY_CONTRACT_METADATA_KEY, DELIVERY_CONTRACT_SCHEMA,
+};
 pub use runtime_attestation::{
     verifier_family_for_attestation_schema, AttestationVerifierFamily,
     AWS_NITRO_ATTESTATION_SCHEMA, AWS_NITRO_VERIFIER_ADAPTER, AZURE_MAA_ATTESTATION_SCHEMA,

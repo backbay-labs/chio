@@ -44,6 +44,7 @@
         "compensated_before_dispatch",
         "not_accepted_after_dispatch_commit",
         "outcome_unknown_after_dispatch",
+        "denied_after_delivery",
         "mutation_ready",
         "mutation_submitted",
         "economic_mutation_applied",

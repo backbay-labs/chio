@@ -12,6 +12,7 @@ use crate::error::{Error, Result};
 
 use super::decision::Decision;
 use super::kinds::{BoundaryClass, ObservationOutcome, ReceiptKind, RedactionMode, ToolOrigin};
+use super::validation::{require_exact, require_lowercase_hex_chars};
 
 /// Actor reference carried by signed receipt semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -187,6 +188,93 @@ pub struct GuardEvidence {
     /// Optional details about the guard's decision.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
+}
+
+// Reserved top-level keys in the `ChioReceipt::metadata` object.
+//
+// ADR-0018 item 7 makes this registry normative: the kernel merges its typed
+// blocks under these keys last and rejects a pre-existing collision from caller
+// or hook metadata, so a downstream reader can trust that a block found under a
+// reserved key was written by the kernel and is covered by the receipt
+// signature. These consts are the `chio-core-types` reader-side source of
+// truth; the human-readable table lives in `spec/PROTOCOL.md` 6.4.
+
+/// Financial attribution and settlement metadata block key.
+pub const FINANCIAL_METADATA_KEY: &str = "financial";
+
+/// Governed-transaction intent and approval metadata block key.
+pub const GOVERNED_TRANSACTION_METADATA_KEY: &str = "governed_transaction";
+
+/// Streamed-output channel accounting metadata block key.
+pub const CHANNEL_METADATA_KEY: &str = "channel";
+
+/// Budget-authority lineage metadata block key for monetary receipts.
+pub const BUDGET_AUTHORITY_METADATA_KEY: &str = "budget_authority";
+
+/// Delivery-contract evidence metadata block key (ADR-0018 item 7).
+pub const DELIVERY_CONTRACT_METADATA_KEY: &str = "delivery_contract";
+
+/// Schema identifier pinned by every `delivery_contract` block.
+pub const DELIVERY_CONTRACT_SCHEMA: &str = "chio.delivery-contract.v1";
+
+/// Whether the delivered output matched the frozen expected digest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryResult {
+    /// The delivered output hashed to the expected digest.
+    Matched,
+    /// The delivered output did not hash to the expected digest.
+    Mismatched,
+}
+
+/// Generic delivery evidence for a receipt whose grant carried an output-digest
+/// constraint (`Constraint::OutputDigestSha256`).
+///
+/// The block is authenticated by the enclosing receipt, not by a signature of
+/// its own: it feeds the receipt id and the signing body. It is present only on
+/// a digest-constrained request (its presence would otherwise change every
+/// receipt id): `matched` on an Allow, `mismatched` on the persisted zero-charge
+/// Deny. The typed struct lives here rather than in `chio-kernel` so that M4/M5
+/// evidence consumers and portable verifiers outside the kernel can read it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct DeliveryContract {
+    /// Schema identifier; always [`DELIVERY_CONTRACT_SCHEMA`].
+    pub schema: String,
+    /// Canonical lowercase 64-hex SHA-256 digest the grant fixed in advance.
+    pub expected_digest: String,
+    /// Canonical lowercase 64-hex SHA-256 digest of the delivered output.
+    pub observed_digest: String,
+    /// Whether the observed digest matched the expected digest.
+    pub result: DeliveryResult,
+}
+
+impl DeliveryContract {
+    /// Validate the closed shape: the schema is pinned to
+    /// [`DELIVERY_CONTRACT_SCHEMA`] and both digests are canonical lowercase
+    /// 64-character hex. Returns a typed error otherwise.
+    ///
+    /// This does not assert `result` against the digests; that binding is the
+    /// kernel terminal's responsibility. A portable reader uses this to reject
+    /// a malformed block before trusting either digest.
+    pub fn validate(&self) -> Result<()> {
+        require_exact(
+            &self.schema,
+            DELIVERY_CONTRACT_SCHEMA,
+            "delivery_contract.schema",
+        )?;
+        require_lowercase_hex_chars(
+            &self.expected_digest,
+            64,
+            "delivery_contract.expected_digest",
+        )?;
+        require_lowercase_hex_chars(
+            &self.observed_digest,
+            64,
+            "delivery_contract.observed_digest",
+        )?;
+        Ok(())
+    }
 }
 
 /// Universal receipt-side attribution for capability context.

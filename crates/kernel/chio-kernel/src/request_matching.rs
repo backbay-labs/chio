@@ -436,6 +436,15 @@ fn constraint_matches(
         | Constraint::SellerExact(_)
         | Constraint::MinimumRuntimeAssurance(_)
         | Constraint::MinimumAutonomyTier(_) => Ok(true),
+        // The output-digest carrier is a downgrade attack when expressed as
+        // a Custom key an old kernel would match against arguments; reject
+        // that spelling so only the first-class variant carries a digest.
+        Constraint::Custom(key, _) if key == "output_digest_sha256" => {
+            Err(KernelError::InvalidConstraint(
+                "output_digest_sha256 must use the OutputDigestSha256 constraint, not Custom"
+                    .to_owned(),
+            ))
+        }
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
 
         // Constraints that require domain-specific evaluation (SQL parsing,
@@ -473,6 +482,11 @@ fn constraint_matches(
         Constraint::MemoryWriteDenyPatterns(patterns) => {
             memory_write_deny_patterns_match(arguments, patterns)
         }
+        // Carrier admission only: the output digest is enforced at the
+        // output-aware durable terminal, never against request arguments.
+        // Admitting it here lets the grant match; every surface that cannot
+        // reach that terminal rejects the constraint before dispatch.
+        Constraint::OutputDigestSha256(_) => Ok(true),
     }
 }
 

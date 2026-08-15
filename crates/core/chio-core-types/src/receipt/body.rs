@@ -24,7 +24,11 @@ use super::governance::GovernedTransactionReceiptMetadata;
 use super::kinds::{
     BoundaryClass, ObservationOutcome, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel,
 };
-use super::metadata::{ActorRef, GuardEvidence, ReceiptSemanticFields};
+use super::metadata::{
+    ActorRef, DeliveryContract, GuardEvidence, ReceiptSemanticFields,
+    BUDGET_AUTHORITY_METADATA_KEY, CHANNEL_METADATA_KEY, DELIVERY_CONTRACT_METADATA_KEY,
+    FINANCIAL_METADATA_KEY, GOVERNED_TRANSACTION_METADATA_KEY,
+};
 use super::signing::{
     bind_receipt_signing_nonce, validate_bbs_receipt_binding, BbsReceiptSignature,
     ChioReceiptSigningBody, ReceiptSigningHandle,
@@ -577,17 +581,17 @@ impl ChioReceipt {
     /// Extract typed financial receipt metadata when present.
     #[must_use]
     pub fn financial_metadata(&self) -> Option<FinancialReceiptMetadata> {
-        self.typed_metadata("financial")
+        self.typed_metadata(FINANCIAL_METADATA_KEY)
     }
 
     #[must_use]
     pub fn governed_transaction_metadata(&self) -> Option<GovernedTransactionReceiptMetadata> {
-        self.typed_metadata("governed_transaction")
+        self.typed_metadata(GOVERNED_TRANSACTION_METADATA_KEY)
     }
 
     #[must_use]
     pub fn channel_metadata(&self) -> Option<ChannelReceiptMetadataV1> {
-        self.typed_metadata("channel")
+        self.typed_metadata(CHANNEL_METADATA_KEY)
     }
 
     /// Extract typed budget-authority lineage for monetary receipts when present.
@@ -595,6 +599,17 @@ impl ChioReceipt {
     pub fn financial_budget_authority_metadata(
         &self,
     ) -> Option<FinancialBudgetAuthorityReceiptMetadata> {
-        self.typed_metadata("budget_authority")
+        self.typed_metadata(BUDGET_AUTHORITY_METADATA_KEY)
+    }
+
+    /// Extract the typed delivery-contract evidence block when present.
+    ///
+    /// Present only on a receipt whose grant carried an output-digest
+    /// constraint. The block is authenticated by the enclosing receipt
+    /// signature; a reader that needs to trust the digests should also call
+    /// [`DeliveryContract::validate`].
+    #[must_use]
+    pub fn delivery_contract(&self) -> Option<DeliveryContract> {
+        self.typed_metadata(DELIVERY_CONTRACT_METADATA_KEY)
     }
 }

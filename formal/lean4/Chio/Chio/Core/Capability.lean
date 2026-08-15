@@ -33,6 +33,7 @@ inductive Constraint where
   | regexMatch : String → Constraint
   | maxLength : Nat → Constraint
   | custom : String → String → Constraint
+  | outputDigestSha256 : String → Constraint
   deriving Repr, BEq, DecidableEq, ReflBEq, LawfulBEq
 
 /-- Mirrors: ToolGrant in crates/core/chio-core-types/src/capability/scope.rs. -/

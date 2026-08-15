@@ -760,6 +760,56 @@ impl ChioKernel {
             });
         }
 
+        // Nested dispatch enforces the same delivery-contract boundary as a
+        // root tool call: an output-digest grant is honored only at the
+        // durable output-aware terminal, so reject before any capture when
+        // the lane cannot reach it (legacy, non-reversible rail, governed
+        // prepay).
+        if let Some(selected) = matching_grants
+            .iter()
+            .find(|matching| matching.index == matched_grant_index)
+        {
+            let requires_output_digest = selected
+                .grant
+                .constraints
+                .iter()
+                .any(|constraint| matches!(constraint, Constraint::OutputDigestSha256(_)));
+            if requires_output_digest {
+                let rail_is_reversible = self
+                    .payment_adapter
+                    .as_ref()
+                    .and_then(|adapter| adapter.rail_mode())
+                    .is_none_or(|mode| mode == crate::payment::PaymentRailMode::ReversibleHold);
+                if durable_admission.is_none()
+                    || !rail_is_reversible
+                    || Self::is_governed_mustprepay_request(request)
+                {
+                    let reason = "output-digest delivery requires durable reversible-hold coverage";
+                    warn!(request_id = %request.request_id, reason, "delivery contract denied");
+                    return self.with_pre_invocation_guard_evidence(
+                        &pre_invocation_guard_evidence,
+                        || {
+                            self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                                request,
+                                reason,
+                                timestamp: now,
+                                matched_grant_index,
+                                cap,
+                                budget_mutation: &budget_mutation,
+                                payment_authorization: None,
+                                durable_operation: durable_admission
+                                    .as_ref()
+                                    .map(DurableToolAdmission::operation),
+                                runtime_admission_metadata,
+                                verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                                budget_lease_acquired,
+                            })
+                        },
+                    );
+                }
+            }
+        }
+
         // Nested dispatch has the same financial durability boundary as a root
         // tool call. The selected grant, not the set of candidates, decides
         // whether money is at risk, and no financial hold may cross into the tool

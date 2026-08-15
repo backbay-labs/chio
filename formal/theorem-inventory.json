@@ -1212,6 +1212,42 @@
       "notes": "A finalized pure ledger is absorbing: it cannot reserve again or receive a second positive terminal disposition. Committed and released amount buckets may both be non-zero after partial realization, while the trace still has one terminal hold classification. The theorem is model-level; concrete hold terminality is checked by the debug journal replay and stateful real-store test, not by a production refinement proof."
     },
     {
+      "id": "proof.delivery_contract.settlement_admission_sound",
+      "leanName": "Chio.Proofs.DeliveryContract.settlement_admission_requires_verified_evidence",
+      "file": "formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "proof_path": "formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean",
+      "mapsTo": ["P3"],
+      "notes": "Over finite requirement, evidence, and opaque digest domains, settlement admission implies Allow and proves every required finding purchase is verified and every required output digest matches. The M3 Rust linkage covers the digest comparison; the finding-purchase dimension is the explicit M4 composition boundary. This is not a Rust refinement proof and does not model SHA-256, canonical JSON, signatures, persistence, payment rails, or external settlement."
+    },
+    {
+      "id": "proof.delivery_contract.allow_requires_evidence",
+      "leanName": "Chio.Proofs.DeliveryContract.allow_requires_verified_evidence",
+      "file": "formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "proof_path": "formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean",
+      "mapsTo": ["P3"],
+      "notes": "An Allow in the bounded delivery finalizer implies that any required finding purchase is verified and any required expected and observed digest identities are equal."
+    },
+    {
+      "id": "proof.delivery_contract.denied_after_delivery_no_settlement",
+      "leanName": "Chio.Proofs.DeliveryContract.denied_after_delivery_cannot_settle",
+      "file": "formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "proof_path": "formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean",
+      "mapsTo": ["P3"],
+      "notes": "Every reachable deniedAfterDelivery result in the bounded model carries a blocked settlement gate, matching the M3 DeniedAfterDelivery and ContractualZeroCharge boundary without modeling the external rail."
+    },
+    {
       "id": "proof.treaty_admission_iff_predicate_intersection",
       "leanName": "Chio.Treaty.treaty_admission_iff_predicate_intersection",
       "file": "formal/lean4/Chio/Chio/Treaty/Intersection.lean",

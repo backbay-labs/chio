@@ -24,11 +24,12 @@ use crate::evaluate::EvaluateInput;
 use crate::formal_aeneas::{ledger_apply, ledger_is_terminal, ReservationLedger};
 use crate::formal_core::{
     budget_charge_admits, budget_increment_admits, composite_quota_authorize,
-    family_binding_preserved, guard_pipeline_allows, monetary_cap_is_subset_by_parts,
-    optional_u32_cap_is_subset, quota_maximum_compatible, receipt_fields_coupled,
-    required_true_is_preserved, revocation_lookup_denies, revocation_snapshot_denies,
-    threshold_distinct_eligible_signers, time_window_valid, BudgetAdmissionProjectionError,
-    GuardStep, RevocationCheckTarget,
+    delivery_contract_admits, delivery_denies_settlement, family_binding_preserved,
+    guard_pipeline_allows, monetary_cap_is_subset_by_parts, optional_u32_cap_is_subset,
+    quota_maximum_compatible, receipt_fields_coupled, required_true_is_preserved,
+    revocation_lookup_denies, revocation_snapshot_denies, threshold_distinct_eligible_signers,
+    time_window_valid, BudgetAdmissionProjectionError, DeliveryVerdict, GuardStep,
+    RevocationCheckTarget,
 };
 use crate::guard::PortableToolCallRequest;
 use crate::normalized::{NormalizedOperation, NormalizedScope, NormalizedToolGrant};
@@ -1703,4 +1704,53 @@ pub fn verify_oracle_inclusion_walk_parity() {
     let model_root = model_inclusion_root(leaf, model_index, model_size, &proof.audit_path);
     let actual_root = proof.compute_root_from_hash(leaf).ok();
     assert!(abstract_hash_options_equal(actual_root, model_root));
+}
+
+/// Delivery-contract soundness over the exact digest decision the durable
+/// finalizer executes (`delivery_denies_settlement`, the sole source of
+/// `digest_mismatched` in the terminal's delivery evaluation): a
+/// digest-constrained delivery admitted to settlement is a value delivery
+/// whose observed digest equals the committed digest byte for byte; an
+/// unconstrained delivery is never digest-denied; a non-value delivery
+/// under a constraint always denies, even when its content hash collides
+/// with the commitment; and a byte-identical value delivery is always
+/// admitted. Bounded to short byte strings for tractability; every
+/// property is over exact equality, which does not depend on length.
+#[kani::proof]
+#[kani::unwind(5)]
+pub fn public_delivery_contract_allow_implies_digest_match() {
+    let expected: [u8; 4] = kani::any();
+    let observed: [u8; 4] = kani::any();
+    let (Ok(expected_str), Ok(observed_str)) = (
+        core::str::from_utf8(&expected),
+        core::str::from_utf8(&observed),
+    ) else {
+        return;
+    };
+    let constrained = kani::any::<bool>();
+    let delivered_value = kani::any::<bool>();
+    let committed = if constrained {
+        Some(expected_str)
+    } else {
+        None
+    };
+
+    let denies = delivery_denies_settlement(committed, observed_str, delivered_value);
+    if constrained && !denies {
+        assert!(delivered_value);
+        assert!(expected == observed);
+        assert!(delivery_contract_admits(expected_str, observed_str) == DeliveryVerdict::Allow);
+    }
+    if !constrained {
+        assert!(!denies);
+    }
+    if constrained && !delivered_value {
+        assert!(denies);
+    }
+    if constrained && delivered_value && expected == observed {
+        assert!(!denies);
+    }
+
+    let retry = delivery_denies_settlement(committed, observed_str, delivered_value);
+    assert!(retry == denies);
 }

@@ -31,6 +31,7 @@ harness_groups = [
   "verify revocation view freshness fail-closed gate",
   "verify inclusion step production-extraction equivalence",
   "verify relying-party inclusion walk soundness under ASSUME-SHA256",
+  "verify delivery-contract settlement admission soundness",
 ]
 
 # Public Rust symbols witnessed by the harnesses above.
@@ -55,6 +56,8 @@ covered_symbols = [
   "chio_kernel_core::revocation_view::RevocationView::install_if_newer",
   "chio_core_types::merkle::MerkleProof::compute_root_from_hash",
   "chio_core_types::merkle_steps::inclusion_step",
+  "chio_kernel_core::formal_core::delivery_contract_admits",
+  "chio_kernel_core::formal_core::delivery_denies_settlement",
 ]
 
 # Lane assignment.
@@ -102,6 +105,7 @@ harnesses = [
   "verify_revocation_view_freshness",
   "verify_inclusion_step_equivalence",
   "verify_oracle_inclusion_walk_parity",
+  "public_delivery_contract_allow_implies_digest_match",
 ]
 
 [lanes.nightly_only]

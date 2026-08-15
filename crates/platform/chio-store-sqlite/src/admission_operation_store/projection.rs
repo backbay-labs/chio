@@ -657,6 +657,9 @@ pub(super) fn projected_terminal_state(
         AdmissionTerminalProjection::OutcomeUnknownAfterDispatch { .. } => {
             AdmissionOperationState::OutcomeUnknownAfterDispatch
         }
+        AdmissionTerminalProjection::DeniedAfterDelivery { .. } => {
+            AdmissionOperationState::DeniedAfterDelivery
+        }
         AdmissionTerminalProjection::EconomicMutationApplied { .. } => {
             AdmissionOperationState::EconomicMutationApplied
         }

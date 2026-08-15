@@ -38,11 +38,11 @@ async def test_python_driver_matches_verdict_matrix_corpus() -> None:
     report = await driver.run_scenarios(root)
 
     assert report["driver"] == "python-sdk"
-    assert report["total"] == 48
-    assert report["passed"] == 48
+    assert report["total"] == 60
+    assert report["passed"] == 60
     assert report["failed"] == 0
     assert report["unsupported"] == 0
-    assert len(report["tuples"]) == 48
+    assert len(report["tuples"]) == 60
 
     read_exact = report["tuples"]["capability-subset-001-read-exact"]
     assert read_exact == {
@@ -77,6 +77,22 @@ async def test_python_driver_matches_verdict_matrix_corpus() -> None:
     assert (
         output_mask["reason_code"]
         == "urn:chio:error:guard:output-redacted"
+    )
+
+    carrier_admitted = report["tuples"][
+        "delivery-contract-001-carrier-admitted-read"
+    ]
+    assert carrier_admitted["verdict"] == "deny"
+    assert (
+        carrier_admitted["reason_code"]
+        == "urn:chio:error:kernel:delivery-contract-unsupported-carrier"
+    )
+
+    digest_mismatch = report["tuples"]["delivery-contract-006-mismatched-read"]
+    assert digest_mismatch["verdict"] == "deny"
+    assert (
+        digest_mismatch["reason_code"]
+        == "urn:chio:error:kernel:delivery-contract-digest-mismatch"
     )
 
     prompt_write_scope = driver.scope_for_labels(["prompt:write"])

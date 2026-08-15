@@ -222,7 +222,8 @@ impl ChioKernel {
                 | Constraint::RequireCumulativeApprovalAbove { .. }
                 | Constraint::ModelConstraint { .. }
                 | Constraint::MemoryStoreAllowlist(_)
-                | Constraint::MemoryWriteDenyPatterns(_) => {}
+                | Constraint::MemoryWriteDenyPatterns(_)
+                | Constraint::OutputDigestSha256(_) => {}
             }
         }
 

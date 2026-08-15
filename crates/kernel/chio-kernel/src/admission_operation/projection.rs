@@ -133,6 +133,38 @@ impl VerifiedAdmissionReceipt {
         )
     }
 
+    /// Qualify a signed Deny that a delivery-digest mismatch produced after
+    /// the tool returned. The terminal carries no completed-tool-outcome
+    /// attachment: the delivered output is retained only as the receipt's
+    /// content hash and the delivery-contract block, mirroring the other
+    /// non-`Completed` terminals.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_kernel_verified_denied_after_delivery(
+        receipt: ChioReceipt,
+        expected_kernel_public_key: &PublicKey,
+        expected_decision: &Decision,
+        expected_tool_server: &str,
+        expected_tool_name: &str,
+        expected_content_hash: &AdmissionDigest,
+        operation: &AdmissionOperationV1,
+        context: &AdmissionProjectionContext,
+    ) -> Result<Self, AdmissionOperationError> {
+        Self::qualify(
+            receipt,
+            expected_kernel_public_key,
+            expected_decision,
+            expected_tool_server,
+            expected_tool_name,
+            operation.binding.action_parameter_hash(),
+            expected_content_hash,
+            operation,
+            context,
+            AdmissionOperationState::DeniedAfterDelivery,
+            AdmissionCompensationStatus::NotCompensated,
+            None,
+        )
+    }
+
     #[cfg(any(test, feature = "admission-test-support"))]
     #[allow(clippy::too_many_arguments)]
     pub fn from_kernel_verified_for_test(
@@ -189,6 +221,8 @@ impl VerifiedAdmissionReceipt {
                     expected_decision,
                     Decision::Allow | Decision::Incomplete { .. }
                 ))
+            || (projected_state == AdmissionOperationState::DeniedAfterDelivery
+                && !matches!(expected_decision, Decision::Deny { .. }))
             || receipt.tool_server != expected_tool_server
             || receipt.tool_name != expected_tool_name
             || receipt.action.parameter_hash != expected_parameter_hash.as_str()
@@ -296,13 +330,12 @@ impl AdmissionProjectionCapabilities {
                 )
             }
             AdmissionTerminalProjection::CompensatedBeforeDispatch { evidence, .. }
-            | AdmissionTerminalProjection::NotAcceptedAfterDispatchCommit { evidence, .. } => {
-                require(
-                    !matches!(evidence.as_ref(), AdmissionReceiptOrIncident::Incident(_))
-                        || self.incident_terminal,
-                    "incident_terminal",
-                )
-            }
+            | AdmissionTerminalProjection::NotAcceptedAfterDispatchCommit { evidence, .. }
+            | AdmissionTerminalProjection::DeniedAfterDelivery { evidence, .. } => require(
+                !matches!(evidence.as_ref(), AdmissionReceiptOrIncident::Incident(_))
+                    || self.incident_terminal,
+                "incident_terminal",
+            ),
             AdmissionTerminalProjection::OutcomeUnknownAfterDispatch { .. } => {
                 require(self.incident_terminal, "incident_terminal")
             }
@@ -1185,6 +1218,18 @@ pub enum AdmissionReceiptOrIncident {
     Incident(Box<AdmissionIncident>),
 }
 
+/// Why a delivery was denied after the output was produced. Closed and
+/// extended additively by later milestones (for example a finding
+/// media-type or operator-policy denial), so downstream evidence can key
+/// on the reason without re-deriving it from prose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryDenialReason {
+    /// The final post-transform output hash did not equal the grant's
+    /// committed output digest.
+    DigestMismatch,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "terminal", rename_all = "snake_case")]
 pub enum AdmissionTerminalProjection {
@@ -1197,6 +1242,11 @@ pub enum AdmissionTerminalProjection {
     NotAcceptedAfterDispatchCommit {
         context: AdmissionProjectionContext,
         proof: Box<VerifiedTransportNotAccepted>,
+        evidence: Box<AdmissionReceiptOrIncident>,
+    },
+    DeniedAfterDelivery {
+        context: AdmissionProjectionContext,
+        reason: DeliveryDenialReason,
         evidence: Box<AdmissionReceiptOrIncident>,
     },
     OutcomeUnknownAfterDispatch {
@@ -1334,6 +1384,7 @@ impl AdmissionTerminalProjection {
             Self::Completed(projection) => &projection.context,
             Self::CompensatedBeforeDispatch { context, .. }
             | Self::NotAcceptedAfterDispatchCommit { context, .. }
+            | Self::DeniedAfterDelivery { context, .. }
             | Self::OutcomeUnknownAfterDispatch { context, .. }
             | Self::EconomicMutationApplied { context, .. }
             | Self::EconomicMutationNotApplied { context, .. } => context,
@@ -1524,6 +1575,9 @@ impl AdmissionTerminalProjection {
                     )?,
                     proof,
                 )?);
+                records.push(canonical_receipt_or_incident_record(evidence)?);
+            }
+            Self::DeniedAfterDelivery { evidence, .. } => {
                 records.push(canonical_receipt_or_incident_record(evidence)?);
             }
             Self::OutcomeUnknownAfterDispatch { incident, .. } => {
@@ -1764,6 +1818,21 @@ impl AdmissionOperationV1 {
                     evidence.replay(&projection_digest)?,
                 )
             }
+            AdmissionTerminalProjection::DeniedAfterDelivery { evidence, .. } => {
+                // The delivered output was produced but rejected, so the
+                // hold was released rather than compensated: nothing was
+                // captured to compensate.
+                evidence.validate_against(
+                    self,
+                    context,
+                    AdmissionOperationState::DeniedAfterDelivery,
+                    AdmissionCompensationStatus::NotCompensated,
+                )?;
+                (
+                    AdmissionOperationState::DeniedAfterDelivery,
+                    evidence.replay(&projection_digest)?,
+                )
+            }
             AdmissionTerminalProjection::NotAcceptedAfterDispatchCommit {
                 proof, evidence, ..
             } => {
@@ -1888,6 +1957,11 @@ pub(super) fn validate_terminal_replay(
             AdmissionOperationKind::ToolDispatch | AdmissionOperationKind::GovernedActiveResponse,
             AdmissionOperationState::OutcomeUnknownAfterDispatch,
             Some(AdmissionTerminalReplay::Incident { .. }),
+        ) => true,
+        (
+            AdmissionOperationKind::ToolDispatch | AdmissionOperationKind::GovernedActiveResponse,
+            AdmissionOperationState::DeniedAfterDelivery,
+            Some(AdmissionTerminalReplay::Receipt { .. }),
         ) => true,
         (
             AdmissionOperationKind::GovernedEconomicMutation,

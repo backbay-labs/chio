@@ -6,7 +6,7 @@ driver, and diff oracle living under `crates/tooling/chio-conformance/verdict_ma
 
 ## Corpus
 
-The active corpus contains 48 JSON scenarios:
+The active corpus contains 60 JSON scenarios:
 
 | Class | Directory | Count |
 | --- | --- | --- |
@@ -14,6 +14,7 @@ The active corpus contains 48 JSON scenarios:
 | Revocation propagation | `scenarios/revocation_propagation/` | 12 |
 | Replay verdict | `scenarios/replay_verdict/` | 12 |
 | Redaction determinism | `scenarios/redaction_determinism/` | 12 |
+| Delivery contract | `scenarios/delivery_contract/` | 12 |
 
 `manifest.toml` pins the corpus with `scenario_index_hash`. The hash is computed
 over sorted relative paths and each file SHA-256 digest:
@@ -23,7 +24,7 @@ relative/path.json<TAB>file_sha256<LF>
 ```
 
 The active `corpus_sha256` is
-`47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f`.
+`6ef424c7410290675d796330ec46aef1a1c3a4c56952349f452c72cdc139f0d3`.
 
 The manifest also records the active drivers and the tuple fields asserted by
 the oracle.
@@ -41,7 +42,7 @@ The required verdict-matrix gates are:
 | `typescript-node-http` | no | advisory transport client, sidecar required |
 | `wasm-browser` | no | advisory partial browser surface |
 
-Required drivers must emit all 48 tuples with `unsupported = 0` and zero
+Required drivers must emit all 60 tuples with `unsupported = 0` and zero
 divergence from the Rust kernel expected tuple for each scenario.
 
 ## Corpus rotation
@@ -74,13 +75,19 @@ The Rust driver fails closed:
 
 ## Python and Go Driver Boundaries
 
-The Python SDK driver is required. It emits local semantic tuples for all 48
+The Python SDK driver is required. It emits local semantic tuples for all 60
 scenarios by issuing a mock SDK capability, evaluating the requested tool call
 through `MockChioClient`, and deriving the tuple from the receipt decision and
 scenario requirements. Capability subset, revocation propagation, replay
-verdict, and redaction determinism must all report `unsupported = 0`.
+verdict, redaction determinism, and delivery contract must all report
+`unsupported = 0`. The delivery-contract class is a mock that does not enforce
+output digests: it denies any request carrying the `output_digest_sha256`
+constraint from carrier admission alone (deny-on-unsupported-constraint),
+reporting `urn:chio:error:kernel:delivery-contract-unsupported-carrier`, or
+`urn:chio:error:kernel:delivery-contract-digest-mismatch` for a declared
+mismatch.
 
-The Go HTTP SDK driver is required. It emits local semantic tuples for all 48
+The Go HTTP SDK driver is required. It emits local semantic tuples for all 60
 scenarios through the Go verdict-matrix driver under
 `crates/tooling/chio-conformance/verdict_matrix/drivers/go/` and is checked from
 `sdks/go/chio-go-http` with `go test -run VerdictMatrix ./...`. The required
@@ -114,8 +121,9 @@ or derive verdicts from scenario fields.
 
 The WASM browser driver exercises the real `chio-kernel-browser` `evaluate_pure`
 path for the capability subset. It reports revocation propagation, replay
-verdict, and redaction determinism as unsupported because that browser surface
-does not include a revocation store, execution nonce store, or guard pipeline.
+verdict, redaction determinism, and delivery contract as unsupported because that
+browser surface does not include a revocation store, execution nonce store,
+guard pipeline, or output-aware delivery terminal.
 
 ## Local Gates
 

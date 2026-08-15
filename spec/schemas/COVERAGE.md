@@ -28,7 +28,7 @@ canonical `chio_spec_codegen::GENERATED_HEADER`; it is not exported from
 
 ## Wire schemas: `chio-wire/v1/`
 
-The native Chio message families defined in `spec/WIRE_PROTOCOL.md`. Fifty-one
+The native Chio message families defined in `spec/WIRE_PROTOCOL.md`. Fifty-two
 schema files across eleven subtrees.
 
 ### agent (5)
@@ -92,7 +92,7 @@ projection. See `capability/README.md`.
 | `capability/token.schema.json`                         |   604 |
 | `capability/verified-approval-set.schema.json`         |    44 |
 
-### receipt (4)
+### receipt (5)
 
 Signed receipts produced after tool calls complete, plus lineage and
 inclusion-proof shapes. See `receipt/README.md`.
@@ -100,6 +100,7 @@ inclusion-proof shapes. See `receipt/README.md`.
 | File                                           | Lines |
 |------------------------------------------------|-------|
 | `receipt/admission-metadata.schema.json`       |   153 |
+| `receipt/delivery-contract.schema.json`        |    30 |
 | `receipt/inclusion-proof.schema.json`          |    30 |
 | `receipt/lineage_statement.schema.json`        |    97 |
 | `receipt/record.schema.json`                   |   448 |
@@ -199,7 +200,7 @@ Loose schema files at the root of `spec/schemas/`.
 | `model-card.v1.json`          |    68 | Signed declaration binding a model's loaded weights to an allowed capability set, banned tools, and training-data class. |
 | `receipt-provenance-v1.json`  |    29 | Receipt-provenance record shape. |
 | `chio-tee-frame-v1.json`      |   151 | Capture frame emitted by the chio-tee shadow runner per kernel evaluation. |
-| `registry.json`               |  2091 | Verifier-facing registry of signed artifact schema IDs and their schema files. |
+| `registry.json`               |  2097 | Verifier-facing registry of signed artifact schema IDs and their schema files. |
 
 ## Conformance and vector coverage
 

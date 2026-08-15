@@ -69,7 +69,7 @@ fn first_capability_scenario() -> VerdictScenario {
 #[test]
 fn corpus_satisfies_verdict_matrix_counts() {
     let scenarios = load_corpus();
-    assert_eq!(scenarios.len(), 48);
+    assert_eq!(scenarios.len(), 60);
 
     let counts = category_counts(&scenarios);
     let expected_counts = BTreeMap::from([
@@ -77,6 +77,7 @@ fn corpus_satisfies_verdict_matrix_counts() {
         (ScenarioCategory::Revocation, 12),
         (ScenarioCategory::Replay, 12),
         (ScenarioCategory::Redaction, 12),
+        (ScenarioCategory::DeliveryContract, 12),
     ]);
     assert_eq!(counts, expected_counts);
 }

@@ -52,6 +52,8 @@ pub enum ScenarioCategory {
     Replay,
     Redaction,
     Receipt,
+    #[serde(rename = "delivery_contract")]
+    DeliveryContract,
 }
 
 impl ScenarioCategory {
@@ -62,6 +64,7 @@ impl ScenarioCategory {
             Self::Replay => "replay",
             Self::Redaction => "redaction",
             Self::Receipt => "receipt",
+            Self::DeliveryContract => "delivery_contract",
         }
     }
 }
@@ -76,6 +79,7 @@ impl FromStr for ScenarioCategory {
             "replay" => Ok(Self::Replay),
             "redaction" => Ok(Self::Redaction),
             "receipt" => Ok(Self::Receipt),
+            "delivery_contract" => Ok(Self::DeliveryContract),
             _ => Err(format!("unknown scenario category `{value}`")),
         }
     }
@@ -115,6 +119,14 @@ mod tests {
         assert_eq!(ScenarioCategory::Replay.as_str(), "replay");
         assert_eq!(ScenarioCategory::Redaction.as_str(), "redaction");
         assert_eq!(ScenarioCategory::Receipt.as_str(), "receipt");
+        assert_eq!(
+            ScenarioCategory::DeliveryContract.as_str(),
+            "delivery_contract"
+        );
+        assert_eq!(
+            "delivery_contract".parse::<ScenarioCategory>(),
+            Ok(ScenarioCategory::DeliveryContract)
+        );
     }
 
     #[test]

@@ -1886,6 +1886,10 @@ fn expected_transition(
             ),
         ]);
     }
+    edges.push((
+        AdmissionOperationState::Finalizing,
+        AdmissionOperationState::DeniedAfterDelivery,
+    ));
     edges.extend([
         (
             AdmissionOperationState::DispatchCommitted,

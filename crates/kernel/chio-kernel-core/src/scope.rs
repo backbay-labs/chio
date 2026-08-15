@@ -247,7 +247,8 @@ fn constraint_matches(
         | Constraint::MaxTransactionAmountUsd(_)
         | Constraint::RequireDualApproval(_)
         | Constraint::ModelConstraint { .. }
-        | Constraint::MemoryWriteDenyPatterns(_) => Err(ScopeMatchError::ConstraintError(format!(
+        | Constraint::MemoryWriteDenyPatterns(_)
+        | Constraint::OutputDigestSha256(_) => Err(ScopeMatchError::ConstraintError(format!(
             "portable kernel cannot safely evaluate {}",
             constraint_name(constraint)
         ))),
@@ -361,6 +362,7 @@ fn constraint_name(constraint: &Constraint) -> &'static str {
         Constraint::ModelConstraint { .. } => "model_constraint",
         Constraint::MemoryStoreAllowlist(_) => "memory_store_allowlist",
         Constraint::MemoryWriteDenyPatterns(_) => "memory_write_deny_patterns",
+        Constraint::OutputDigestSha256(_) => "output_digest_sha256",
     }
 }
 

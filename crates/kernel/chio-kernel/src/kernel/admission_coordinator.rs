@@ -630,6 +630,24 @@ impl ChioKernel {
                         .to_owned(),
                 ));
             }
+            // An output-digest grant is honored only after the tool returns,
+            // which is past the prepay point on a final-settlement rail. Refuse
+            // to begin a durable operation for it here, before any hold is
+            // placed, rather than deny mid-flight and unwind a live payment.
+            let requires_output_digest = matching_grants.iter().any(|matching| {
+                matching
+                    .grant
+                    .constraints
+                    .iter()
+                    .any(|constraint| matches!(constraint, Constraint::OutputDigestSha256(_)))
+            });
+            if requires_output_digest
+                && adapter.rail_mode() != Some(crate::payment::PaymentRailMode::ReversibleHold)
+            {
+                return Err(KernelError::DurableAdmission(
+                    "output-digest delivery requires a reversible-hold payment rail".to_owned(),
+                ));
+            }
         }
         if self.execution_nonce_config.is_some() {
             return Err(KernelError::DurableAdmission(
@@ -747,6 +765,7 @@ impl ChioKernel {
                         | AdmissionOperationState::CapturePending
                         | AdmissionOperationState::Finalizing
                         | AdmissionOperationState::Completed
+                        | AdmissionOperationState::DeniedAfterDelivery
                 ) =>
             {
                 operation
