@@ -215,7 +215,11 @@ fn match_stored_transaction(
     if !receipt.status {
         return Err(FindingImpairmentQuarantine::ReceiptReverted);
     }
-    if !hashes_match(&receipt.tx_hash, &stored.tx_hash) {
+    let receipt_tx_hash = parse_chain_hash(&receipt.tx_hash, "receipt transaction hash")
+        .map_err(|_| FindingImpairmentQuarantine::ReceiptTransactionMismatch)?;
+    let stored_tx_hash = parse_chain_hash(&stored.tx_hash, "stored transaction hash")
+        .map_err(|_| FindingImpairmentQuarantine::ReceiptTransactionMismatch)?;
+    if receipt_tx_hash != stored_tx_hash {
         return Err(FindingImpairmentQuarantine::ReceiptTransactionMismatch);
     }
 
@@ -275,17 +279,7 @@ fn match_stored_transaction(
     Ok(ConfirmedFindingImpairmentReconciliation {
         intent_id: intent.intent_id.clone(),
         liability_key: intent.liability_key.clone(),
-        tx_hash: stored.tx_hash.clone(),
+        tx_hash: format!("{stored_tx_hash:#x}"),
         reconciliation_sha256: sha256_hex(&preimage),
     })
-}
-
-fn hashes_match(left: &str, right: &str) -> bool {
-    matches!(
-        (
-            parse_chain_hash(left, "receipt transaction hash"),
-            parse_chain_hash(right, "stored transaction hash"),
-        ),
-        (Ok(left), Ok(right)) if left == right
-    )
 }

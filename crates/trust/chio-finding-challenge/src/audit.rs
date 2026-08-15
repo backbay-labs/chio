@@ -43,6 +43,11 @@ fn require_exact_round(
     {
         return Err(reject("audit trust roots"));
     }
+    if evidence.epoch.body.fee_schedule_envelope_sha256
+        != input.pinned_admission_fee_schedule_envelope_sha256
+    {
+        return Err(reject("fee_schedule_envelope_sha256"));
+    }
     let epoch_digest =
         signed_envelope_sha256(evidence.epoch).map_err(|_| reject("epoch digest"))?;
     if epoch_digest != audit.audit_epoch_envelope_sha256 {

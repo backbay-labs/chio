@@ -1503,6 +1503,21 @@ fn a_matching_finalized_transaction_confirms() {
 }
 
 #[test]
+fn a_matching_transaction_hash_is_retained_in_canonical_form() {
+    let planned = planned();
+    let mut stored = stored_matching(&planned);
+    let canonical_tx_hash = stored.tx_hash.clone();
+    stored.tx_hash = stored.tx_hash.trim_start_matches("0x").to_ascii_uppercase();
+
+    let outcome = reconcile_finding_impairment(
+        planned.intent(),
+        &FindingImpairmentAttempt::Observed { stored },
+    );
+
+    assert_confirmed(&outcome, planned.intent(), &canonical_tx_hash);
+}
+
+#[test]
 fn evidence_already_used_with_a_matching_stored_transaction_confirms() {
     let planned = planned();
     let stored = stored_matching(&planned);

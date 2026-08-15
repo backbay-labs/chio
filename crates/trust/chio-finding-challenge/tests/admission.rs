@@ -230,6 +230,7 @@ fn the_raw_finding_must_be_its_own_canonical_serialization() -> TestResult {
         challenge: &case.challenge,
         pinned_audit_authority: &world.audit_authority_key,
         pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
+        pinned_admission_fee_schedule_envelope_sha256: support::HEX64,
         raw_finding: &padded,
         profile: &world.profile,
         governance_authority: &world.governance_key,
@@ -263,6 +264,7 @@ fn a_self_consistent_retired_profile_cannot_replace_the_admitted_profile() -> Te
         challenge: &challenge,
         pinned_audit_authority: &world.audit_authority_key,
         pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
+        pinned_admission_fee_schedule_envelope_sha256: support::HEX64,
         raw_finding: &world.raw_finding,
         profile: &other_profile,
         governance_authority: &world.governance_key,
@@ -295,6 +297,7 @@ fn the_profile_must_verify_under_the_pinned_governance_root() -> TestResult {
         challenge: &case.challenge,
         pinned_audit_authority: &world.audit_authority_key,
         pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
+        pinned_admission_fee_schedule_envelope_sha256: support::HEX64,
         raw_finding: &world.raw_finding,
         profile: &world.profile,
         governance_authority: &interloper,
@@ -387,6 +390,7 @@ fn the_profile_body_must_name_the_pinned_governance_root() -> TestResult {
         challenge: &challenge,
         pinned_audit_authority: &world.audit_authority_key,
         pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
+        pinned_admission_fee_schedule_envelope_sha256: support::HEX64,
         raw_finding: &world.raw_finding,
         profile: &profile,
         governance_authority: &world.governance_key,
@@ -422,6 +426,7 @@ fn a_venue_audit_must_verify_under_the_pinned_audit_authority() -> TestResult {
         challenge: &case.challenge,
         pinned_audit_authority: &interloper,
         pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
+        pinned_admission_fee_schedule_envelope_sha256: support::HEX64,
         raw_finding: &world.raw_finding,
         profile: &world.profile,
         governance_authority: &world.governance_key,
@@ -501,6 +506,23 @@ fn venue_audit_evidence_cannot_select_its_own_trust_roots() -> TestResult {
 }
 
 #[test]
+fn venue_audit_epoch_must_match_the_admission_fee_schedule() -> TestResult {
+    let world = world()?;
+    let case = venue_digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let mut input = world.input(&case.challenge, &evidence);
+    input.pinned_admission_fee_schedule_envelope_sha256 = support::HEX64_ALT;
+
+    expect_inadmissible(
+        &evaluate_finding_challenge(&input),
+        &FindingChallengeInadmissible::VenueAuditSelectionNotEstablished(
+            "fee_schedule_envelope_sha256",
+        ),
+    )?;
+    Ok(())
+}
+
+#[test]
 fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
     let world = world()?;
     let case = digest_case(&world, &DenyShape::seller_origin())?;
@@ -510,6 +532,7 @@ fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
         challenge: &case.challenge,
         pinned_audit_authority: &world.audit_authority_key,
         pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
+        pinned_admission_fee_schedule_envelope_sha256: support::HEX64,
         raw_finding: &tampered,
         profile: &world.profile,
         governance_authority: &world.governance_key,

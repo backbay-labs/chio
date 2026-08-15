@@ -33,6 +33,9 @@ pub struct FindingChallengeEvaluationInput<'a> {
     /// Independently pinned witness key for audit seed commitments. Audit
     /// evidence cannot select this trust root for itself.
     pub pinned_audit_randomness_witness: &'a PublicKey,
+    /// Fee schedule digest authenticated by the challenged listing's venue
+    /// admission. Audit evidence cannot import a round from another schedule.
+    pub pinned_admission_fee_schedule_envelope_sha256: &'a str,
     /// The EXACT canonical bytes of the signed finding artifact. The typed
     /// view is re-derived here; a deserialized `Finding` is never accepted in
     /// its place.

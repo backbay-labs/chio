@@ -1425,6 +1425,9 @@ impl FindingChallengeCoordinator {
             challenge: request.challenge,
             pinned_audit_authority: &audit_authority,
             pinned_audit_randomness_witness: &audit_randomness_witness,
+            pinned_admission_fee_schedule_envelope_sha256: &admission
+                .body
+                .fee_schedule_envelope_sha256,
             raw_finding: request.raw_finding,
             profile: request.profile,
             governance_authority: &governance_authority,
