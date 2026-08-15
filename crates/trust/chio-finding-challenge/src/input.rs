@@ -30,6 +30,9 @@ pub struct FindingChallengeEvaluationInput<'a> {
     /// The externally pinned audit authority. A venue audit is authorized by
     /// this key alone, so a buyer cannot file a bondless audit.
     pub pinned_audit_authority: &'a PublicKey,
+    /// Independently pinned witness key for audit seed commitments. Audit
+    /// evidence cannot select this trust root for itself.
+    pub pinned_audit_randomness_witness: &'a PublicKey,
     /// The EXACT canonical bytes of the signed finding artifact. The typed
     /// view is re-derived here; a deserialized `Finding` is never accepted in
     /// its place.

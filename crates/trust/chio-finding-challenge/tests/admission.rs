@@ -229,6 +229,7 @@ fn the_raw_finding_must_be_its_own_canonical_serialization() -> TestResult {
     let input = FindingChallengeEvaluationInput {
         challenge: &case.challenge,
         pinned_audit_authority: &world.audit_authority_key,
+        pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
         raw_finding: &padded,
         profile: &world.profile,
         governance_authority: &world.governance_key,
@@ -261,6 +262,7 @@ fn a_self_consistent_retired_profile_cannot_replace_the_admitted_profile() -> Te
     let input = FindingChallengeEvaluationInput {
         challenge: &challenge,
         pinned_audit_authority: &world.audit_authority_key,
+        pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
         raw_finding: &world.raw_finding,
         profile: &other_profile,
         governance_authority: &world.governance_key,
@@ -292,6 +294,7 @@ fn the_profile_must_verify_under_the_pinned_governance_root() -> TestResult {
     let input = FindingChallengeEvaluationInput {
         challenge: &case.challenge,
         pinned_audit_authority: &world.audit_authority_key,
+        pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
         raw_finding: &world.raw_finding,
         profile: &world.profile,
         governance_authority: &interloper,
@@ -383,6 +386,7 @@ fn the_profile_body_must_name_the_pinned_governance_root() -> TestResult {
     let input = FindingChallengeEvaluationInput {
         challenge: &challenge,
         pinned_audit_authority: &world.audit_authority_key,
+        pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
         raw_finding: &world.raw_finding,
         profile: &profile,
         governance_authority: &world.governance_key,
@@ -417,6 +421,7 @@ fn a_venue_audit_must_verify_under_the_pinned_audit_authority() -> TestResult {
     let input = FindingChallengeEvaluationInput {
         challenge: &case.challenge,
         pinned_audit_authority: &interloper,
+        pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
         raw_finding: &world.raw_finding,
         profile: &world.profile,
         governance_authority: &world.governance_key,
@@ -465,6 +470,37 @@ fn a_venue_audit_key_cannot_select_an_undrawn_listing() -> TestResult {
 }
 
 #[test]
+fn venue_audit_evidence_cannot_select_its_own_trust_roots() -> TestResult {
+    let world = world()?;
+    let case = venue_digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let interloper = keypair(9).public_key();
+
+    let mut governance_input = world.input(&case.challenge, &evidence);
+    governance_input
+        .venue_audit_selection
+        .as_mut()
+        .ok_or("venue audit selection")?
+        .pinned_governance_authority = &interloper;
+    expect_inadmissible(
+        &evaluate_finding_challenge(&governance_input),
+        &FindingChallengeInadmissible::VenueAuditSelectionNotEstablished("audit trust roots"),
+    )?;
+
+    let mut witness_input = world.input(&case.challenge, &evidence);
+    witness_input
+        .venue_audit_selection
+        .as_mut()
+        .ok_or("venue audit selection")?
+        .pinned_randomness_witness = &interloper;
+    expect_inadmissible(
+        &evaluate_finding_challenge(&witness_input),
+        &FindingChallengeInadmissible::VenueAuditSelectionNotEstablished("audit trust roots"),
+    )?;
+    Ok(())
+}
+
+#[test]
 fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
     let world = world()?;
     let case = digest_case(&world, &DenyShape::seller_origin())?;
@@ -473,6 +509,7 @@ fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
     let input = FindingChallengeEvaluationInput {
         challenge: &case.challenge,
         pinned_audit_authority: &world.audit_authority_key,
+        pinned_audit_randomness_witness: &world.audit_randomness_witness_key,
         raw_finding: &tampered,
         profile: &world.profile,
         governance_authority: &world.governance_key,

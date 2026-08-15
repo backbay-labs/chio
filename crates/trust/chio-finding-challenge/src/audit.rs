@@ -38,6 +38,11 @@ fn require_exact_round(
     evidence: &FindingVenueAuditSelectionEvidence<'_>,
 ) -> Result<(), FindingChallengeInadmissible> {
     let reject = FindingChallengeInadmissible::VenueAuditSelectionNotEstablished;
+    if evidence.pinned_governance_authority != input.governance_authority
+        || evidence.pinned_randomness_witness != input.pinned_audit_randomness_witness
+    {
+        return Err(reject("audit trust roots"));
+    }
     let epoch_digest =
         signed_envelope_sha256(evidence.epoch).map_err(|_| reject("epoch digest"))?;
     if epoch_digest != audit.audit_epoch_envelope_sha256 {

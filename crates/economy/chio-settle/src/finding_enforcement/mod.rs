@@ -32,10 +32,12 @@ mod verify;
 mod tests;
 
 pub use plan::{
-    finding_enforcement_anchor_parameters, finding_enforcement_anchor_parameters_for_artifact,
-    plan_finding_impairment, plan_finding_impairment_for_reconciliation,
+    finding_anchor_checkpoint_statement_sha256, finding_enforcement_anchor_parameters,
+    finding_enforcement_anchor_parameters_for_artifact, plan_finding_impairment,
+    plan_finding_impairment_for_reconciliation, FindingAnchorCheckpointPublication,
     FindingAnchorPublisherEvidence, FindingImpairmentDestination, FindingImpairmentIntent,
     PlannedFindingImpairment, PlannedFindingImpairmentReconciliation,
+    SignedFindingAnchorCheckpointPublication, FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1,
     FINDING_ENFORCEMENT_ANCHOR_SCHEMA_V1, FINDING_ENFORCEMENT_ANCHOR_TOOL_NAME,
     FINDING_ENFORCEMENT_ANCHOR_TOOL_SERVER,
 };

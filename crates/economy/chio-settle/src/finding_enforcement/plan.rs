@@ -1,8 +1,11 @@
 //! Preparation of the exact call one verified enforcement authorizes.
 
+use chio_core::canonical_json_bytes;
 use chio_core::capability::scope::MonetaryAmount;
 use chio_core::crypto::PublicKey;
 use chio_core::receipt::decision::Decision;
+use chio_core::receipt::lineage::SignedExportEnvelope;
+use chio_core::sha256_hex;
 use chio_core::web3::anchors::{verify_anchor_inclusion_proof, AnchorInclusionProof};
 use chio_finding::{
     signed_envelope_sha256, verify_signed_authority_status, FindingEffectIntentKind,
@@ -32,6 +35,34 @@ pub const FINDING_ENFORCEMENT_ANCHOR_TOOL_NAME: &str = "finding.enforcement-root
 /// receipt leaf.
 pub const FINDING_ENFORCEMENT_ANCHOR_SCHEMA_V1: &str = "chio.finding.enforcement-anchor.v1";
 
+/// Schema for an independent publication-authority attestation over the
+/// exact checkpoint statement used to authorize an impairment.
+pub const FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1: &str =
+    "chio.finding.anchor-checkpoint-publication.v1";
+
+/// Independently timestamped publication evidence for an anchor checkpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingAnchorCheckpointPublication {
+    pub schema: String,
+    pub checkpoint_statement_sha256: String,
+    pub checkpoint_seq: u64,
+    pub published_at: u64,
+    pub observed_at: u64,
+}
+
+pub type SignedFindingAnchorCheckpointPublication =
+    SignedExportEnvelope<FindingAnchorCheckpointPublication>;
+
+/// Canonical digest an independent publication authority attests.
+pub fn finding_anchor_checkpoint_statement_sha256(
+    proof: &AnchorInclusionProof,
+) -> Result<String, SettlementError> {
+    canonical_json_bytes(&proof.checkpoint_statement)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|error| reject(format!("anchor checkpoint digest rejected: {error}")))
+}
+
 /// Independently retained authority and lifecycle evidence for the kernel
 /// that published an enforcement-root receipt.
 ///
@@ -41,6 +72,7 @@ pub const FINDING_ENFORCEMENT_ANCHOR_SCHEMA_V1: &str = "chio.finding.enforcement
 pub struct FindingAnchorPublisherEvidence<'a> {
     pub retained_policy: &'a FindingPenaltyAuthorityPolicy,
     pub signed_status: &'a SignedFindingAuthorityStatus,
+    pub signed_checkpoint_publication: &'a SignedFindingAnchorCheckpointPublication,
     pub status_authority: &'a PublicKey,
     pub max_status_age_secs: u64,
     pub trusted_now_secs: u64,
@@ -241,7 +273,46 @@ pub(super) fn require_anchor_publisher_lifecycle(
             "anchor publisher status does not bind the retained governance policy",
         ));
     }
-    if status.observed_at < published_at || status.observed_at > evidence.trusted_now_secs {
+    let publication = evidence.signed_checkpoint_publication;
+    if publication.signer_key != *evidence.status_authority
+        || !publication
+            .verify_signature()
+            .map_err(|error| reject(format!("anchor checkpoint publication rejected: {error}")))?
+    {
+        return Err(reject(
+            "anchor checkpoint publication is not signed by the independent status authority",
+        ));
+    }
+    let publication_body = &publication.body;
+    if publication_body.schema != FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1
+        || publication_body.checkpoint_statement_sha256
+            != finding_anchor_checkpoint_statement_sha256(proof)?
+        || publication_body.checkpoint_seq != proof.checkpoint_statement.checkpoint_seq
+        || publication_body.published_at != published_at
+    {
+        return Err(reject(
+            "anchor checkpoint publication does not bind the exact checkpoint",
+        ));
+    }
+    if publication_body.observed_at < publication_body.published_at
+        || publication_body.observed_at > evidence.trusted_now_secs
+    {
+        return Err(reject(
+            "anchor checkpoint publication is not an independently timestamped observation",
+        ));
+    }
+    if publication_body.observed_at < policy.valid_from
+        || publication_body.observed_at >= policy.valid_until
+        || publication_body.observed_at < certificate.issued_at
+        || publication_body.observed_at >= certificate.expires_at
+    {
+        return Err(reject(
+            "anchor checkpoint was not independently observed inside the retained publisher lifecycle",
+        ));
+    }
+    if status.observed_at < publication_body.observed_at
+        || status.observed_at > evidence.trusted_now_secs
+    {
         return Err(reject(
             "anchor publisher status is not a post-publication trusted-time reading",
         ));
@@ -261,10 +332,10 @@ pub(super) fn require_anchor_publisher_lifecycle(
     }
     if status
         .revoked_from
-        .is_some_and(|revoked_from| revoked_from <= published_at)
+        .is_some_and(|revoked_from| revoked_from <= publication_body.observed_at)
     {
         return Err(reject(
-            "anchor publisher was revoked when the enforcement root was published",
+            "anchor checkpoint was not independently observed before publisher revocation",
         ));
     }
     Ok(())

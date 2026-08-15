@@ -684,6 +684,7 @@ impl World {
         FindingChallengeEvaluationInput {
             challenge,
             pinned_audit_authority: &self.audit_authority_key,
+            pinned_audit_randomness_witness: &self.audit_randomness_witness_key,
             raw_finding: &self.raw_finding,
             profile: &self.profile,
             governance_authority: &self.governance_key,

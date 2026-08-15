@@ -1772,6 +1772,17 @@ async fn finding_publish_discover_admission() -> TestResult {
     let (status, body) = stack.activate().await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     assert_eq!(json_body(&body)?["outcome"], serde_json::json!("Activated"));
+    let purchase_store = stack
+        .state
+        .joint_authority_store
+        .as_ref()
+        .ok_or_else(|| missing("joint authority store"))?
+        .finding_purchase_store();
+    assert_eq!(
+        purchase_store.list_payout_destinations(&web.allocation_id)?,
+        vec![(0_u8, web.admission.body.community_fund_destination.clone())],
+        "activation must pin the admission-signed community fund before purchases"
+    );
 
     let publication_terminal = web
         .admission
@@ -1863,6 +1874,11 @@ async fn finding_publish_discover_admission() -> TestResult {
         );
     }
     assert_eq!(stack.allocation_state()?, FindingAllocationState::Consumed);
+    assert_eq!(
+        purchase_store.list_payout_destinations(&web.allocation_id)?,
+        vec![(0_u8, web.admission.body.community_fund_destination.clone())],
+        "exact activation replay must preserve one community-fund registration"
+    );
 
     // Consumed collateral cannot back a second admission.
     let reuse_body =

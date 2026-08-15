@@ -76,6 +76,7 @@ fn adjudicate(
     let status_key = input.pinned_authority_status_key;
     if status_key == input.governance_authority
         || status_key == input.pinned_audit_authority
+        || status_key == input.pinned_audit_randomness_witness
         || status_key == &input.pinned_purchase_authority.key
         || status_key == &input.pinned_failed_delivery_authority.key
         || input
@@ -226,6 +227,7 @@ fn require_distinct_challenge_role_keys(
     let authority_roles = [
         input.governance_authority,
         input.pinned_audit_authority,
+        input.pinned_audit_randomness_witness,
         input.pinned_authority_status_key,
         &input.pinned_purchase_authority.key,
         &input.pinned_failed_delivery_authority.key,

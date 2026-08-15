@@ -975,6 +975,13 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::BAD_REQUEST, "finding listing is not active");
     }
     if completed_replay {
+        if let Err(error) = purchase_store.register_community_fund_destination(
+            &admission.backing_allocation_id,
+            &admission.community_fund_destination,
+            now,
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+        }
         return Json(serde_json::json!({
             "admissionId": admission.admission_id,
             "outcome": "ExactReplay",
@@ -1424,11 +1431,20 @@ pub(crate) async fn handle_activate_finding(
     // the active admission, supersedes the prior active row, and marks
     // the durable prepare complete.
     match store.activate_listing(&admission_json, admission, now) {
-        Ok(outcome) => Json(serde_json::json!({
-            "admissionId": admission.admission_id,
-            "outcome": format!("{outcome:?}"),
-        }))
-        .into_response(),
+        Ok(outcome) => {
+            if let Err(error) = purchase_store.register_community_fund_destination(
+                &admission.backing_allocation_id,
+                &admission.community_fund_destination,
+                now,
+            ) {
+                return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+            }
+            Json(serde_json::json!({
+                "admissionId": admission.admission_id,
+                "outcome": format!("{outcome:?}"),
+            }))
+            .into_response()
+        }
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 }

@@ -27,6 +27,23 @@ fn anchor_publisher_status_at(observed_at: u64) -> SignedFindingAuthorityStatus 
     )
 }
 
+fn anchor_checkpoint_publication_at(
+    proof: &AnchorInclusionProof,
+    observed_at: u64,
+) -> SignedFindingAnchorCheckpointPublication {
+    sign(
+        FindingAnchorCheckpointPublication {
+            schema: FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1.to_string(),
+            checkpoint_statement_sha256: finding_anchor_checkpoint_statement_sha256(proof)
+                .test_expect("checkpoint statement digest"),
+            checkpoint_seq: proof.checkpoint_statement.checkpoint_seq,
+            published_at: proof.checkpoint_statement.issued_at,
+            observed_at,
+        },
+        &status_keypair(),
+    )
+}
+
 pub(super) fn plan_with_anchor(
     config: &SettlementChainConfig,
     verified: &VerifiedFindingEnforcement,
@@ -36,6 +53,7 @@ pub(super) fn plan_with_anchor(
 ) -> Result<PlannedFindingImpairment, SettlementError> {
     let policy = anchor_publisher_policy();
     let status = anchor_publisher_status_at(TRUSTED_NOW);
+    let checkpoint_publication = anchor_checkpoint_publication_at(proof, TRUSTED_NOW);
     plan_finding_impairment(
         config,
         verified,
@@ -45,6 +63,7 @@ pub(super) fn plan_with_anchor(
         FindingAnchorPublisherEvidence {
             retained_policy: &policy,
             signed_status: &status,
+            signed_checkpoint_publication: &checkpoint_publication,
             status_authority: &status_keypair().public_key(),
             max_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
             trusted_now_secs: TRUSTED_NOW,
@@ -61,6 +80,7 @@ pub(super) fn plan_reconciliation_with_anchor(
 ) -> Result<PlannedFindingImpairmentReconciliation, SettlementError> {
     let policy = anchor_publisher_policy();
     let status = anchor_publisher_status_at(TRUSTED_NOW);
+    let checkpoint_publication = anchor_checkpoint_publication_at(proof, TRUSTED_NOW);
     plan_finding_impairment_for_reconciliation(
         config,
         verified,
@@ -70,6 +90,7 @@ pub(super) fn plan_reconciliation_with_anchor(
         FindingAnchorPublisherEvidence {
             retained_policy: &policy,
             signed_status: &status,
+            signed_checkpoint_publication: &checkpoint_publication,
             status_authority: &status_keypair().public_key(),
             max_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
             trusted_now_secs: TRUSTED_NOW,
@@ -120,6 +141,7 @@ fn plan_rejects_an_anchor_publisher_outside_the_pinned_lifecycle() {
         },
         &status_keypair(),
     );
+    let checkpoint_publication = anchor_checkpoint_publication_at(&proof, TRUSTED_NOW);
     let error = plan_finding_impairment(
         &sample_config(),
         &verified,
@@ -129,6 +151,7 @@ fn plan_rejects_an_anchor_publisher_outside_the_pinned_lifecycle() {
         FindingAnchorPublisherEvidence {
             retained_policy: &foreign_policy,
             signed_status: &foreign_status,
+            signed_checkpoint_publication: &checkpoint_publication,
             status_authority: &status_keypair().public_key(),
             max_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
             trusted_now_secs: TRUSTED_NOW,
@@ -169,10 +192,12 @@ fn plan_rejects_anchor_receipt_times_outside_publisher_lifecycle() {
     let mut proof = enforcement_anchor_proof(&verified);
     let policy = anchor_publisher_policy();
     let status = anchor_publisher_status_at(TRUSTED_NOW);
+    let checkpoint_publication = anchor_checkpoint_publication_at(&proof, TRUSTED_NOW);
     let status_authority = status_keypair().public_key();
     let evidence = FindingAnchorPublisherEvidence {
         retained_policy: &policy,
         signed_status: &status,
+        signed_checkpoint_publication: &checkpoint_publication,
         status_authority: &status_authority,
         max_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
         trusted_now_secs: TRUSTED_NOW,
@@ -195,6 +220,76 @@ fn plan_rejects_anchor_receipt_times_outside_publisher_lifecycle() {
         error
             .to_string()
             .contains("receipt was signed after its enclosing checkpoint"),
+        "unexpected rejection: {error}"
+    );
+}
+
+#[test]
+fn plan_rejects_checkpoint_publication_for_another_statement() {
+    let verified = verified();
+    let proof = enforcement_anchor_proof(&verified);
+    let policy = anchor_publisher_policy();
+    let status = anchor_publisher_status_at(TRUSTED_NOW);
+    let mut publication_body = anchor_checkpoint_publication_at(&proof, TRUSTED_NOW).body;
+    publication_body.checkpoint_statement_sha256 = "0".repeat(64);
+    let publication = sign(publication_body, &status_keypair());
+    let status_authority = status_keypair().public_key();
+    let error = require_anchor_publisher_lifecycle(
+        &proof,
+        FindingAnchorPublisherEvidence {
+            retained_policy: &policy,
+            signed_status: &status,
+            signed_checkpoint_publication: &publication,
+            status_authority: &status_authority,
+            max_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
+            trusted_now_secs: TRUSTED_NOW,
+        },
+    )
+    .test_expect_err("publication evidence for another checkpoint must be rejected");
+    assert!(
+        error
+            .to_string()
+            .contains("does not bind the exact checkpoint"),
+        "unexpected rejection: {error}"
+    );
+}
+
+#[test]
+fn plan_rejects_a_checkpoint_first_observed_after_publisher_revocation() {
+    let verified = verified();
+    let proof = enforcement_anchor_proof(&verified);
+    let policy = anchor_publisher_policy();
+    let revoked_from = proof.checkpoint_statement.issued_at.saturating_add(1);
+    let status = sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: policy.revocation_status_ref.clone(),
+            authority_id: policy.authority_id.clone(),
+            key: policy.key.clone(),
+            key_epoch: policy.key_epoch,
+            revoked_from: Some(revoked_from),
+            observed_at: TRUSTED_NOW,
+        },
+        &status_keypair(),
+    );
+    let publication = anchor_checkpoint_publication_at(&proof, TRUSTED_NOW);
+    let status_authority = status_keypair().public_key();
+    let error = require_anchor_publisher_lifecycle(
+        &proof,
+        FindingAnchorPublisherEvidence {
+            retained_policy: &policy,
+            signed_status: &status,
+            signed_checkpoint_publication: &publication,
+            status_authority: &status_authority,
+            max_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
+            trusted_now_secs: TRUSTED_NOW,
+        },
+    )
+    .test_expect_err("a post-revocation publication cannot authenticate a backdated checkpoint");
+    assert!(
+        error
+            .to_string()
+            .contains("not independently observed before publisher revocation"),
         "unexpected rejection: {error}"
     );
 }

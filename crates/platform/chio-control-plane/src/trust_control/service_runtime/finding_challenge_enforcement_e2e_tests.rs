@@ -129,12 +129,14 @@ use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
 };
 use chio_settle::{
-    settlement_devnet_rpc_egress_contract, EvmBondSnapshot, EvmTransactionReceipt,
+    finding_anchor_checkpoint_statement_sha256, settlement_devnet_rpc_egress_contract,
+    EvmBondSnapshot, EvmTransactionReceipt, FindingAnchorCheckpointPublication,
     FindingBondObservationRecheck, FindingImpairmentAttempt, FindingImpairmentOutcome,
     FindingImpairmentPublishError, FindingImpairmentPublisher, FindingImpairmentQuarantine,
     FindingVaultRejection, PreparedEvmCall, SettlementChainConfig, SettlementEvidenceConfig,
     SettlementFinalityStatus, SettlementOracleConfig, SettlementPolicyConfig,
-    StoredImpairmentTransaction,
+    SignedFindingAnchorCheckpointPublication, StoredImpairmentTransaction,
+    FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1,
 };
 use chio_store_sqlite::finding_market_store::{FindingRecordInput, SqliteFindingMarketStore};
 use chio_store_sqlite::{
@@ -359,6 +361,25 @@ impl FindingAuthorityStatusResolver for TestAuthorityStatusResolver {
         };
         SignedExportEnvelope::sign(body, &keypair(self.signer_seed))
             .map_err(|error| error.to_string())
+    }
+
+    fn checkpoint_publication(
+        &self,
+        proof: &AnchorInclusionProof,
+        now: u64,
+    ) -> Result<SignedFindingAnchorCheckpointPublication, String> {
+        SignedExportEnvelope::sign(
+            FindingAnchorCheckpointPublication {
+                schema: FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1.to_string(),
+                checkpoint_statement_sha256: finding_anchor_checkpoint_statement_sha256(proof)
+                    .map_err(|error| error.to_string())?,
+                checkpoint_seq: proof.checkpoint_statement.checkpoint_seq,
+                published_at: proof.checkpoint_statement.issued_at,
+                observed_at: self.observed_at_override.unwrap_or(now),
+            },
+            &keypair(self.signer_seed),
+        )
+        .map_err(|error| error.to_string())
     }
 }
 
@@ -6772,7 +6793,7 @@ fn finding_challenge_appeal_finality_uses_the_sanctions_retained_governance_poli
 }
 
 #[test]
-fn finding_challenge_refreshes_snapshot_before_dispatch_or_after_retryable_failure() -> TestResult {
+fn finding_challenge_refuses_snapshot_refresh_after_root_binding() -> TestResult {
     let case = finalizing_liability()?;
     let authorized = case.authorized()?;
     let observed_at = SETTLEMENT_NOW + 10;
@@ -6816,12 +6837,22 @@ fn finding_challenge_refreshes_snapshot_before_dispatch_or_after_retryable_failu
     snapshot_body.observed_at = observed_at;
     snapshot_body.snapshot_id = compute_snapshot_id(&snapshot_body)?;
     let snapshot = SignedExportEnvelope::sign(snapshot_body, &keypair(34))?;
-    let refreshed = case.coordinator.refresh_finalizing_enforcement(
+    let refreshed = match case.coordinator.refresh_finalizing_enforcement(
         &authorized,
         &snapshot,
         &case.seller,
         observed_at + 1,
-    )?;
+    ) {
+        Err(ChallengeCoordinatorError::Settlement(detail)) => {
+            assert!(
+                detail.contains("forbidden after the enforcement root is bound"),
+                "unexpected refresh rejection: {detail}"
+            );
+            return Ok(());
+        }
+        Err(other) => return Err(format!("unexpected refresh rejection: {other}").into()),
+        Ok(refreshed) => refreshed,
+    };
     assert_eq!(
         refreshed.enforcement.body.bond_snapshot_envelope_sha256,
         signed_envelope_sha256(&snapshot)?
@@ -7016,7 +7047,7 @@ fn finding_challenge_refreshes_snapshot_before_dispatch_or_after_retryable_failu
             .state,
         FindingEffectIntentState::Confirmed
     );
-    Ok(())
+    Err("snapshot refresh unexpectedly succeeded after root binding".into())
 }
 
 #[test]
@@ -9049,7 +9080,7 @@ fn finding_challenge_a_snapshot_from_an_expired_observer_key_authorizes_nothing(
 }
 
 #[test]
-fn finding_challenge_observer_and_vault_operator_epochs_rotate_independently() -> TestResult {
+fn finding_challenge_rotated_snapshot_cannot_replace_a_bound_enforcement_root() -> TestResult {
     let case = finalizing_liability()?;
     let authorized = AuthorizedImpairment {
         enforcement: case.enforcement.clone(),
@@ -9076,16 +9107,20 @@ fn finding_challenge_observer_and_vault_operator_epochs_rotate_independently() -
     body.snapshot_id = compute_snapshot_id(&body)?;
     let independently_rotated = SignedExportEnvelope::sign(body, &keypair(34))?;
 
-    let refreshed = case.coordinator.refresh_finalizing_enforcement(
-        &authorized,
-        &independently_rotated,
-        &case.seller,
-        SETTLEMENT_NOW + 1,
-    )?;
-    assert_eq!(
-        refreshed.enforcement.body.bond_snapshot_envelope_sha256,
-        signed_envelope_sha256(&independently_rotated)?
-    );
+    let refused = case
+        .coordinator
+        .refresh_finalizing_enforcement(
+            &authorized,
+            &independently_rotated,
+            &case.seller,
+            SETTLEMENT_NOW + 1,
+        )
+        .expect_err("a rotated snapshot cannot rewrite a bound enforcement root");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::Settlement(detail)
+            if detail.contains("forbidden after the enforcement root is bound")
+    ));
     Ok(())
 }
 

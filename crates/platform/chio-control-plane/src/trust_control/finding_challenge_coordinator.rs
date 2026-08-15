@@ -111,7 +111,7 @@ use chio_settle::{
     FindingImpairmentOutcome, FindingImpairmentPublisher, FindingImpairmentQuarantine,
     FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence, PlannedFindingImpairment,
     PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement, SettlementChainConfig,
-    VerifiedFindingEnforcement,
+    SignedFindingAnchorCheckpointPublication, VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
     derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
@@ -652,6 +652,7 @@ pub trait FindingFilingResolver: Send + Sync {
 /// them is ever read out of an artifact.
 struct ChallengeRolePins {
     audit_authority: FindingAuthorityPin,
+    audit_randomness_witness: FindingAuthorityPin,
     authority_status: FindingAuthorityPin,
     settlement_observer: FindingAuthorityPin,
     anchor_publisher: FindingAuthorityPin,
@@ -712,6 +713,14 @@ pub trait FindingAuthorityStatusResolver: Send + Sync {
         pin: &FindingAuthorityPin,
         now: u64,
     ) -> Result<SignedFindingAuthorityStatus, String>;
+
+    /// Independently attest that the exact signed checkpoint statement was
+    /// durably visible at the resolver's trusted observation time.
+    fn checkpoint_publication(
+        &self,
+        proof: &AnchorInclusionProof,
+        now: u64,
+    ) -> Result<SignedFindingAnchorCheckpointPublication, String>;
 }
 
 /// One adjudication request: the challenge, the artifacts it binds, and
@@ -962,6 +971,7 @@ impl FindingChallengeCoordinator {
             market_config: config.clone(),
             pins: ChallengeRolePins {
                 audit_authority: config.audit_authority.clone(),
+                audit_randomness_witness: config.audit_randomness_witness.clone(),
                 authority_status: config.authority_status.clone(),
                 settlement_observer: config.settlement_observer.clone(),
                 anchor_publisher: config.anchor_publisher.clone(),
@@ -1365,6 +1375,12 @@ impl FindingChallengeCoordinator {
                 .key()
                 .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("audit"))?,
         };
+        let audit_randomness_witness = match &resolved_audit_selection {
+            Some(selection) => selection.randomness_witness.clone(),
+            None => self.pins.audit_randomness_witness.key().map_err(|_| {
+                ChallengeCoordinatorError::AuthorityPinMismatch("audit randomness witness")
+            })?,
+        };
         let profile_envelope_sha256 = self.envelope_digest(request.profile)?;
         if profile_envelope_sha256 != admission.body.profile_envelope_sha256 {
             return Err(ChallengeCoordinatorError::AdmissionBinding(
@@ -1408,6 +1424,7 @@ impl FindingChallengeCoordinator {
         let input = FindingChallengeEvaluationInput {
             challenge: request.challenge,
             pinned_audit_authority: &audit_authority,
+            pinned_audit_randomness_witness: &audit_randomness_witness,
             raw_finding: request.raw_finding,
             profile: request.profile,
             governance_authority: &governance_authority,
@@ -2218,6 +2235,23 @@ impl FindingChallengeCoordinator {
             return Err(ChallengeCoordinatorError::Settlement(
                 "bond snapshot refresh is permitted only before dispatch or after a retryable failed dispatch"
                     .to_owned(),
+            ));
+        }
+        let root_intent_id = old
+            .body
+            .effect_intents
+            .iter()
+            .find(|binding| binding.kind == chio_finding::FindingEffectIntentKind::RootIntent)
+            .map(|binding| binding.intent_id.as_str())
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if self
+            .challenges
+            .get_effect_root_binding(root_intent_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .is_some()
+        {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "bond snapshot refresh is forbidden after the enforcement root is bound".to_owned(),
             ));
         }
         let retained = self.require_retained_finalizing_authorization(
