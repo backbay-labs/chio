@@ -144,6 +144,47 @@ fn a_checkpointed_receipt_that_does_not_verify_upholds() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn a_retired_checkpoint_key_cannot_turn_invalid_bytes_into_fraud() -> TestResult {
+    let world = world_with(
+        FindingClasses::default(),
+        ProductionShape::CheckpointedForeignSignature,
+    )?;
+    let mut case = evidence_case(&world, EvidenceShape::Sound)?;
+    let checkpoint_log_id = &case
+        .checkpoint_transparency
+        .publications
+        .first()
+        .ok_or("checkpoint publication")?
+        .log_id;
+    let checkpoint_policy = world
+        .profile
+        .body
+        .checkpoint_logs
+        .iter()
+        .find(|policy| &policy.log_id == checkpoint_log_id)
+        .map(|policy| &policy.signer)
+        .ok_or("production checkpoint policy")?;
+    case.checkpoint_authority_status = world.status_for_policy(
+        checkpoint_policy,
+        Some(case.challenged_checkpoint.body.issued_at + 1),
+    )?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::EvidenceCheckpointNotEstablished,
+    )?;
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
+    assert!(!evaluation.authorizes_penalty());
+    Ok(())
+}
+
 /// The finding's content address covers a receipt body, and the envelope's
 /// signature sits outside it, so anyone who holds the seller's receipt can
 /// re-sign it and claim the digest of the result. Only the log decides which
@@ -582,6 +623,7 @@ fn an_evidence_set_smaller_than_the_contested_subset_is_inadmissible() -> TestRe
         challenged_receipts: &case.challenged_receipts[..1],
         challenged_checkpoint: &case.challenged_checkpoint,
         checkpoint_transparency: &case.checkpoint_transparency,
+        checkpoint_authority_status: &case.checkpoint_authority_status,
         production_authority_status: &case.production_authority_status,
         revoked_keys: &proofs,
     });

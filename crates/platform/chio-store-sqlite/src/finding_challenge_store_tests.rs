@@ -427,6 +427,17 @@ fn confirm_settlement_effects(fixture: &Fixture, liability_key: &str, now: u64) 
                     now,
                 )
                 .expect("confirm required settlement root");
+        } else if kind == FindingEffectIntentKind::SellerImpair {
+            fixture
+                .store
+                .confirm_reconciled_seller_impairment(
+                    &intent_key,
+                    liability_key,
+                    &digest(&format!("{liability_key}-{tag}-commitment")),
+                    &chain_hash(&format!("{liability_key}-{tag}-transaction")),
+                    now,
+                )
+                .expect("confirm reconciled seller impairment");
         } else {
             fixture
                 .store
@@ -3678,6 +3689,52 @@ fn effect_intents_reconcile_identical_retries_and_reject_conflicts() {
             Err(FindingChallengeStoreError::NotFound)
         ),
         "an unknown intent has no state to advance"
+    );
+}
+
+#[test]
+fn settlement_required_seller_impairment_rejects_generic_confirmation() {
+    let fixture = fixture();
+    let head = Liability::new("seller-confirmation", LISTING_ID, &fixture.allocation_id);
+    open_liability(&fixture, &head);
+    let intent_key = digest("settlement-required-seller-impairment");
+    let intent_digest = digest("settlement-required-seller-commitment");
+    fixture
+        .store
+        .record_effect_intent(
+            &intent_key,
+            FindingEffectIntentKind::SellerImpair,
+            &intent_digest,
+            Some(&head.liability_key),
+            true,
+            NOW,
+        )
+        .expect("record seller impairment");
+    fixture
+        .store
+        .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, NOW + 1)
+        .expect("dispatch seller impairment");
+
+    assert!(matches!(
+        fixture.store.advance_effect_intent(
+            &intent_key,
+            FindingEffectIntentState::Confirmed,
+            NOW + 2,
+        ),
+        Err(FindingChallengeStoreError::Conflict(_))
+    ));
+    assert_eq!(
+        fixture
+            .store
+            .confirm_reconciled_seller_impairment(
+                &intent_key,
+                &head.liability_key,
+                &intent_digest,
+                &chain_hash("seller-impairment-transaction"),
+                NOW + 2,
+            )
+            .expect("confirm through reconciliation surface"),
+        FindingChallengeWriteOutcome::Inserted
     );
 }
 

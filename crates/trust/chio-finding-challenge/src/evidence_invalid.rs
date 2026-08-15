@@ -37,6 +37,7 @@ use chio_finding_verifier::{
     verify_checkpoint_membership, verify_receipt_strict, ReceiptStrictError,
     ResolvedReceiptEvidence,
 };
+use chio_kernel::checkpoint::checkpoint_log_id;
 
 use crate::evaluate::EvaluationContext;
 use crate::input::{
@@ -107,6 +108,46 @@ pub(crate) fn evaluate_evidence_invalid(
         }
     }
     if !checkpoint_matches_reference(evidence.challenged_checkpoint, challenged_checkpoint_ref) {
+        return Ok(adjudication(
+            &challenged_ids,
+            FindingEvidenceInvalidity::InputsUnavailable,
+            FindingChallengeReason::EvidenceCheckpointNotEstablished,
+        ));
+    }
+
+    // An inclusion proof signed by a retired log key is not independent
+    // publication evidence: a later compromise can mint an alternate,
+    // backdated checkpoint around public receipt bytes. Require a fresh
+    // authority-status reading for the exact profile-pinned log signer and
+    // conservatively refuse affirmative invalidity after that signer has
+    // been revoked. Historical evidence remains auditable, but it cannot
+    // authorize a slash without a live independently authenticated log.
+    let log_id = checkpoint_log_id(evidence.challenged_checkpoint);
+    let Some(checkpoint_policy) = context
+        .profile
+        .checkpoint_logs
+        .iter()
+        .find(|policy| policy.log_id == log_id)
+        .map(|policy| &policy.signer)
+    else {
+        return Ok(adjudication(
+            &challenged_ids,
+            FindingEvidenceInvalidity::InputsUnavailable,
+            FindingChallengeReason::EvidenceCheckpointNotEstablished,
+        ));
+    };
+    if !authority_status_establishes_role(
+        evidence.checkpoint_authority_status,
+        context.pinned_authority_status_key,
+        checkpoint_policy,
+        context.finding.issued_at,
+        context.evaluated_at,
+    ) || evidence
+        .checkpoint_authority_status
+        .body
+        .revoked_from
+        .is_some()
+    {
         return Ok(adjudication(
             &challenged_ids,
             FindingEvidenceInvalidity::InputsUnavailable,

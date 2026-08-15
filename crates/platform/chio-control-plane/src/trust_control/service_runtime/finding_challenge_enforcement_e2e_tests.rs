@@ -148,12 +148,13 @@ use chio_store_sqlite::{
 
 use crate::trust_control::finding_challenge_coordinator::{
     anchor_evidence_intent_commitment, derive_anchor_evidence_intent_key, derive_defect_key,
-    derive_liability_key, root_intent_commitment, AppealDisposition, AppealResolution,
-    AuthorizedImpairment, ChallengeCoordinatorError, ChallengeEvaluationRequest,
-    ChallengeSubmissionOutcome, EvaluationAdmission, FindingAuditRound, FindingAuthorityStatus,
-    FindingAuthorityStatusResolver, FindingChallengeCoordinator, FindingCollateralFacts,
-    FindingFilingResolver, FindingFinalization, FindingLiabilityIdentity, FindingPenaltyGovernance,
-    FindingPenaltyOutcome, UpheldLiability, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
+    derive_liability_key, require_admitted_replay_decision_rule, root_intent_commitment,
+    AppealDisposition, AppealResolution, AuthorizedImpairment, ChallengeCoordinatorError,
+    ChallengeEvaluationRequest, ChallengeSubmissionOutcome, EvaluationAdmission, FindingAuditRound,
+    FindingAuthorityStatus, FindingAuthorityStatusResolver, FindingChallengeCoordinator,
+    FindingCollateralFacts, FindingFilingResolver, FindingFinalization, FindingLiabilityIdentity,
+    FindingPenaltyGovernance, FindingPenaltyOutcome, UpheldLiability,
+    FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
 use crate::trust_control::{
     FederationAdmissionRateLimiter, FindingAuthorityPin, FindingChallengeSubmissionExecutor,
@@ -1994,6 +1995,7 @@ struct EvidenceInvalidCase {
     receipts: Vec<ResolvedReceiptEvidence>,
     checkpoint: KernelCheckpoint,
     checkpoint_transparency: CheckpointTransparencySummary,
+    checkpoint_authority_status: SignedFindingAuthorityStatus,
     production_authority_status: SignedFindingAuthorityStatus,
     /// A checkpoint carrying the named identity but not the artifact the
     /// reference names, which is an unresolved input rather than a
@@ -2033,6 +2035,7 @@ impl EvidenceInvalidCase {
             challenged_receipts: &self.receipts,
             challenged_checkpoint: checkpoint,
             checkpoint_transparency,
+            checkpoint_authority_status: &self.checkpoint_authority_status,
             production_authority_status: &self.production_authority_status,
             revoked_keys: &[],
         })
@@ -2084,6 +2087,26 @@ fn evidence_invalid_case(
         build_checkpoint_transparency(core::slice::from_ref(&evidence.checkpoint))?;
     let unresolved_checkpoint_transparency =
         build_checkpoint_transparency(core::slice::from_ref(&unresolved_checkpoint))?;
+    let production_log_id = log_id_for(&production_log_signer())?;
+    let checkpoint_policy = challenged
+        .profile
+        .body
+        .checkpoint_logs
+        .iter()
+        .find(|policy| policy.log_id == production_log_id)
+        .ok_or("missing production checkpoint policy")?;
+    let checkpoint_authority_status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: checkpoint_policy.signer.revocation_status_ref.clone(),
+            authority_id: checkpoint_policy.signer.authority_id.clone(),
+            key: checkpoint_policy.signer.key.clone(),
+            key_epoch: checkpoint_policy.signer.key_epoch,
+            revoked_from: None,
+            observed_at: NOW,
+        },
+        &keypair(36),
+    )?;
     let production_policy = challenged
         .profile
         .body
@@ -2118,6 +2141,7 @@ fn evidence_invalid_case(
         receipts: evidence.receipts,
         checkpoint: evidence.checkpoint,
         checkpoint_transparency,
+        checkpoint_authority_status,
         production_authority_status,
         unresolved_checkpoint,
         unresolved_checkpoint_transparency,
@@ -3120,6 +3144,36 @@ fn market_terms(claim_window_secs: u64) -> Result<SignedFindingMarketTerms, AnyE
     };
     terms.terms_id = compute_terms_id(&terms)?;
     Ok(SignedExportEnvelope::sign(terms, &seller)?)
+}
+
+#[test]
+fn finding_challenge_terms_reject_an_unlisted_replay_rule() -> TestResult {
+    let profile_envelope_sha256 = signed_envelope_sha256(&verifier_profile()?)?;
+    let allowed = replay_recipe(&profile_envelope_sha256);
+    let allowed_evidence = FindingChallengeEvidence::ReplayContradiction {
+        reproduction: Vec::new(),
+        recipe_preimage: canonical_json_string(&allowed)?,
+        purchase_record_envelope_sha256: hex64('1'),
+    };
+    require_admitted_replay_decision_rule(&market_terms(CLAIM_WINDOW_SECS)?, &allowed_evidence)?;
+
+    let mut disallowed = allowed;
+    disallowed.decision_rule_ref = "decision/replay-v2".to_string();
+    let disallowed_evidence = FindingChallengeEvidence::ReplayContradiction {
+        reproduction: Vec::new(),
+        recipe_preimage: canonical_json_string(&disallowed)?,
+        purchase_record_envelope_sha256: hex64('1'),
+    };
+    assert!(matches!(
+        require_admitted_replay_decision_rule(
+            &market_terms(CLAIM_WINDOW_SECS)?,
+            &disallowed_evidence,
+        ),
+        Err(ChallengeCoordinatorError::ReplayDecisionRule(
+            "decision_rule_ref"
+        ))
+    ));
+    Ok(())
 }
 
 /// The standard admitted terms with one field bent, re-addressed and

@@ -120,6 +120,10 @@ pub struct FindingEvidenceInvalidEvidence<'a> {
     pub challenged_checkpoint: &'a KernelCheckpoint,
     /// Retained publication records for the exact checkpoint set.
     pub checkpoint_transparency: &'a CheckpointTransparencySummary,
+    /// Fresh independently signed lifecycle reading for the checkpoint-log
+    /// key. A historical checkpoint whose signer has since been revoked is
+    /// not enough to turn invalid receipt bytes into seller fraud.
+    pub checkpoint_authority_status: &'a SignedFindingAuthorityStatus,
     /// Fresh authenticated lifecycle reading for the production receipt role.
     /// This proves non-revocation when no revocation statement exists.
     pub production_authority_status: &'a SignedFindingAuthorityStatus,

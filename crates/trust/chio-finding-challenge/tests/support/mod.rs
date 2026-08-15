@@ -1333,6 +1333,7 @@ pub struct EvidenceCase {
     pub challenged_receipts: Vec<ResolvedReceiptEvidence>,
     pub challenged_checkpoint: KernelCheckpoint,
     pub checkpoint_transparency: CheckpointTransparencySummary,
+    pub checkpoint_authority_status: SignedFindingAuthorityStatus,
     pub production_authority_status: SignedFindingAuthorityStatus,
     pub revoked_keys: Vec<RevokedKey>,
 }
@@ -1393,6 +1394,7 @@ impl EvidenceCase {
             challenged_receipts: &self.challenged_receipts,
             challenged_checkpoint: &self.challenged_checkpoint,
             checkpoint_transparency: &self.checkpoint_transparency,
+            checkpoint_authority_status: &self.checkpoint_authority_status,
             production_authority_status: &self.production_authority_status,
             revoked_keys: proofs,
         })
@@ -1540,6 +1542,17 @@ fn build_evidence_case(
     let checkpoint_transparency =
         build_checkpoint_transparency(core::slice::from_ref(&challenged_checkpoint))
             .unwrap_or_default();
+    let production_log_id = log_id_for(&world.production_checkpoint)?;
+    let checkpoint_policy = world
+        .profile
+        .body
+        .checkpoint_logs
+        .iter()
+        .find(|policy| policy.log_id == production_log_id)
+        .map(|policy| &policy.signer)
+        .ok_or("missing production checkpoint policy")?;
+    let checkpoint_authority_status =
+        signed_authority_status(checkpoint_policy, &world.authority_status, None)?;
     let production_policy = world
         .profile
         .body
@@ -1557,6 +1570,7 @@ fn build_evidence_case(
         challenged_receipts,
         challenged_checkpoint,
         checkpoint_transparency,
+        checkpoint_authority_status,
         production_authority_status,
         revoked_keys,
     })

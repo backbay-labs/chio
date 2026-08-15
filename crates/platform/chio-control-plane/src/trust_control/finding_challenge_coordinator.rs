@@ -58,10 +58,11 @@ use chio_finding::{
     verify_signed_audit_round_authorization, verify_signed_challenge,
     verify_signed_challenge_outcome, verify_signed_market_terms, verify_signed_purchase_record,
     Finding, FindingChallenge, FindingChallengeAuthorization, FindingChallengeEnforcement,
-    FindingChallengeEvidenceKind, FindingChallengeOutcome, FindingEffectIntentBinding,
-    FindingEnforcementDestination, FindingPenaltyCalculation, FindingPurchaseRecord,
-    SignedFindingAdmission, SignedFindingAuditEpoch, SignedFindingAuditRoundAuthorization,
-    SignedFindingChallenge, SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
+    FindingChallengeEvidence, FindingChallengeEvidenceKind, FindingChallengeOutcome,
+    FindingEffectIntentBinding, FindingEnforcementDestination, FindingPenaltyCalculation,
+    FindingPurchaseRecord, FindingReplayRecipeInput, SignedFindingAdmission,
+    SignedFindingAuditEpoch, SignedFindingAuditRoundAuthorization, SignedFindingChallenge,
+    SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
     SignedFindingChallengeVerifierProfile, SignedFindingFinalizedBondSnapshot,
     SignedFindingMarketTerms, SignedFindingPurchaseRecord, FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1,
     FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
@@ -409,6 +410,8 @@ pub enum ChallengeCoordinatorError {
     UnknownMarketTerms,
     #[error("filing terms are not the ones this venue admitted for the listing: {0}")]
     FilingTermsBinding(&'static str),
+    #[error("replay recipe is not admitted by the seller-signed market terms: {0}")]
+    ReplayDecisionRule(&'static str),
     #[error("filing is outside the seller-signed filing window")]
     FilingWindowClosed,
     #[error("admitted market terms do not enable venue audits for this listing")]
@@ -1316,6 +1319,7 @@ impl FindingChallengeCoordinator {
         let listing_requirement = Self::listing_bond_requirement(&schedule)?;
         let terms = self.resolve_market_terms(body)?;
         Self::require_signed_base_stake(&terms, request.collateral)?;
+        require_admitted_replay_decision_rule(&terms, &body.evidence)?;
         // Funding admits evaluator work, but the lifecycle transition waits
         // for adjudication so an immutable refusal cannot strand the funded
         // filing in `evaluating`.
@@ -2637,7 +2641,13 @@ impl FindingChallengeCoordinator {
                 // dispatchable would invite a second impairment of the
                 // same collateral.
                 self.challenges
-                    .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
+                    .confirm_reconciled_seller_impairment(
+                        &intent_key,
+                        liability_key,
+                        &intent.intent_digest,
+                        tx_hash,
+                        now,
+                    )
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;
@@ -6017,6 +6027,7 @@ impl FindingChallengeCoordinator {
                     self.canonical_digest(standing.delivery_checkpoint)?,
                     self.canonical_digest(standing.delivery_checkpoint_transparency)?,
                     self.envelope_digest(standing.delivery_authority_status)?,
+                    self.envelope_digest(resolved.checkpoint_authority_status)?,
                     self.envelope_digest(resolved.production_authority_status)?,
                 ];
                 if let Some(status) = purchase_authority_status {
@@ -6122,6 +6133,43 @@ impl FindingChallengeCoordinator {
     ) -> Result<String, ChallengeCoordinatorError> {
         signed_envelope_sha256(envelope).map_err(|_| ChallengeCoordinatorError::Canonical)
     }
+}
+
+/// Bind a replay recipe's decision rule to the exact seller-signed terms
+/// resolved from durable venue state. Recipe semantics remain the pure
+/// evaluator's responsibility; this is the missing economic-policy edge.
+pub(crate) fn require_admitted_replay_decision_rule(
+    terms: &SignedFindingMarketTerms,
+    evidence: &FindingChallengeEvidence,
+) -> Result<(), ChallengeCoordinatorError> {
+    let FindingChallengeEvidence::ReplayContradiction {
+        recipe_preimage, ..
+    } = evidence
+    else {
+        return Ok(());
+    };
+    let strict = canonical_json_bytes_from_str(recipe_preimage)
+        .map_err(|_| ChallengeCoordinatorError::ReplayDecisionRule("recipe is not canonical"))?;
+    let recipe: FindingReplayRecipeInput = serde_json::from_slice(&strict)
+        .map_err(|_| ChallengeCoordinatorError::ReplayDecisionRule("recipe is not typed"))?;
+    recipe
+        .validate()
+        .map_err(|_| ChallengeCoordinatorError::ReplayDecisionRule("recipe is invalid"))?;
+    if canonical_json_bytes(&recipe).map_err(|_| ChallengeCoordinatorError::Canonical)? != strict {
+        return Err(ChallengeCoordinatorError::ReplayDecisionRule(
+            "recipe projection is not exact",
+        ));
+    }
+    if !terms
+        .body
+        .decision_rule_refs
+        .contains(&recipe.decision_rule_ref)
+    {
+        return Err(ChallengeCoordinatorError::ReplayDecisionRule(
+            "decision_rule_ref",
+        ));
+    }
+    Ok(())
 }
 
 /// Whether a quarantine reason describes an observation that has not
