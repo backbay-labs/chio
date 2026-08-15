@@ -2097,7 +2097,7 @@ fn live_status_proof_b64_at(
 
 struct Handshake {
     bid: SignedBidRequest,
-    ask: SignedAskResponse,
+    ask: chio_open_market::finding_admission::VerifiedFindingPurchaseAsk,
     ask_digest: String,
     buyer_signature_hex: String,
     reservation_id: String,

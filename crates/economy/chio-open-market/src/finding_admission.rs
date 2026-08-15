@@ -21,7 +21,7 @@ use chio_fiscal::FiscalResolver;
 
 use crate::bidding::{bid, BidMintContext, BiddingError, SignedAskResponse, SignedBidRequest};
 use crate::capability::scope::{
-    Constraint, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount,
+    Constraint, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount, Operation,
 };
 use crate::crypto::{sha256_hex, PublicKey};
 use crate::evaluation::OpenMarketPenaltyEvaluation;
@@ -69,6 +69,8 @@ pub enum FindingAdmissionError {
     TermsDigestMismatch,
     #[error("terms envelope rejected: {0}")]
     TermsEnvelope(FindingError),
+    #[error("market terms are not yet live at the verification time")]
+    TermsNotYetLive,
     #[error("backing envelope digest does not match the admission binding")]
     BackingDigestMismatch,
     #[error("backing envelope rejected: {0}")]
@@ -127,6 +129,8 @@ pub enum FindingAdmissionError {
     ListingMismatch,
     #[error("bid pricing hint is not the hint the admission binds")]
     PricingHintMismatch,
+    #[error("purchase mint authority does not match the admitted listing provider")]
+    ProviderAuthorityMismatch,
     #[error("bid rejected: {0}")]
     Bidding(BiddingError),
     #[error("finding artifact is not the finding the admission was issued for")]
@@ -287,6 +291,38 @@ impl VerifiedFindingAdmission {
     pub fn expires_at(&self) -> u64 {
         self.admission.expires_at
     }
+
+    /// Unix seconds when the admission becomes current.
+    #[must_use]
+    pub fn issued_at(&self) -> u64 {
+        self.admission.issued_at
+    }
+}
+
+/// A purchase ask minted through the provider-authenticated admission seam.
+///
+/// Construction is private so acceptance cannot be reached with an arbitrary
+/// self-signed ask that merely imitates the public token shape.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(transparent)]
+pub struct VerifiedFindingPurchaseAsk {
+    ask: SignedAskResponse,
+}
+
+impl VerifiedFindingPurchaseAsk {
+    /// The signed ask for reservation and transport.
+    #[must_use]
+    pub fn signed_ask(&self) -> &SignedAskResponse {
+        &self.ask
+    }
+}
+
+impl std::ops::Deref for VerifiedFindingPurchaseAsk {
+    type Target = SignedAskResponse;
+
+    fn deref(&self) -> &Self::Target {
+        self.signed_ask()
+    }
 }
 
 /// Verify a venue-signed admission bundle against externally pinned
@@ -364,6 +400,9 @@ fn verify_finding_admission_inner(
         return Err(FindingAdmissionError::TermsDigestMismatch);
     }
     verify_signed_market_terms(context.terms).map_err(FindingAdmissionError::TermsEnvelope)?;
+    if context.now < context.terms.body.issued_at {
+        return Err(FindingAdmissionError::TermsNotYetLive);
+    }
     if context.terms.body.finding_id != admission.finding_id
         || context.terms.body.finding_artifact_sha256 != admission.finding_artifact_sha256
         || context.terms.body.listing_id != admission.listing_id
@@ -562,6 +601,9 @@ pub fn bid_with_finding_admission(
 ) -> Result<SignedAskResponse, FindingAdmissionError> {
     // The witness certifies bindings as of its own verification time, so
     // spending it later must re-check currency against the bid clock.
+    if bid_context.now < admission.issued_at() {
+        return Err(FindingAdmissionError::AdmissionNotYetLive);
+    }
     if bid_context.now >= admission.expires_at() {
         return Err(FindingAdmissionError::AdmissionExpired);
     }
@@ -630,7 +672,7 @@ pub fn bid_with_finding_purchase(
     mut bid_context: BidMintContext<'_>,
     admission: &VerifiedFindingAdmission,
     finding: &chio_finding::Finding,
-) -> Result<SignedAskResponse, FindingAdmissionError> {
+) -> Result<VerifiedFindingPurchaseAsk, FindingAdmissionError> {
     if !bid_context.grant_constraints.is_empty() || bid_context.dpop_required.is_some() {
         return Err(FindingAdmissionError::MintContextPreoccupied);
     }
@@ -647,6 +689,16 @@ pub fn bid_with_finding_purchase(
     if request.body.requested_scope.max_invocations != Some(1) {
         return Err(FindingAdmissionError::InvocationCardinality);
     }
+    if bid_context.issuer_keypair.public_key()
+        != bid_context
+            .listing
+            .listing
+            .body
+            .namespace_ownership
+            .signer_public_key
+    {
+        return Err(FindingAdmissionError::ProviderAuthorityMismatch);
+    }
     bid_context.grant_constraints = vec![
         Constraint::OutputDigestSha256(finding.payload_sha256.clone()),
         Constraint::RequireFindingPurchase(Box::new(FindingPurchaseMarkerV1 {
@@ -657,6 +709,7 @@ pub fn bid_with_finding_purchase(
     ];
     bid_context.dpop_required = Some(true);
     bid_with_finding_admission(request, bid_context, admission)
+        .map(|ask| VerifiedFindingPurchaseAsk { ask })
 }
 
 /// Accept a delivery-committed purchase ask against the authoritative
@@ -669,14 +722,18 @@ pub fn bid_with_finding_purchase(
 /// price, both grant ceilings, and the reserved amount, all in one
 /// currency, so an oversized reservation cannot mask a mispriced mint.
 pub fn accept_finding_purchase(
-    ask: &SignedAskResponse,
+    ask: &VerifiedFindingPurchaseAsk,
     reservation: &crate::bidding::VerifiedReservationReceipt,
     acceptor_keypair: &crate::crypto::Keypair,
     accepted_at: u64,
     admission: &VerifiedFindingAdmission,
     finding: &chio_finding::Finding,
 ) -> Result<crate::bidding::SignedAcceptedBid, FindingAdmissionError> {
+    let ask = ask.signed_ask();
     verify_admitted_finding(admission, finding)?;
+    if accepted_at < admission.issued_at() {
+        return Err(FindingAdmissionError::AdmissionNotYetLive);
+    }
     if accepted_at < finding.issued_at {
         return Err(FindingAdmissionError::FindingNotYetLive);
     }
@@ -690,7 +747,10 @@ pub fn accept_finding_purchase(
     let [grant] = grants.as_slice() else {
         return Err(FindingAdmissionError::TokenOfferProfile);
     };
-    if grant.max_invocations != Some(1)
+    if ask.body.listing_id != admission.listing_id()
+        || grant.server_id != admission.admission().server_id
+        || grant.operations.as_slice() != [Operation::Invoke]
+        || grant.max_invocations != Some(1)
         || grant.dpop_required != Some(true)
         || !ask.body.token_offer.scope.resource_grants.is_empty()
         || !ask.body.token_offer.scope.prompt_grants.is_empty()

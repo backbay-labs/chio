@@ -45,6 +45,7 @@ use chio_open_market::{
         verify_finding_admission, verify_finding_admission_for_activation, FindingAdmissionContext,
         FindingAdmissionError, FindingAdmissionPenaltyGate, FindingAllocationSnapshot,
         FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
+        VerifiedFindingPurchaseAsk,
     },
     finding_pheromone::{
         admit_and_resolve_finding_pheromone_hint, finding_pheromone_subject_policy,
@@ -939,6 +940,7 @@ include!("finding_admission/pheromone_carrier.rs");
 
 include!("finding_admission/pheromone_freshness.rs");
 include!("finding_admission/fee_schedule_lifecycle.rs");
+include!("finding_admission/review_round_regressions.rs");
 
 #[test]
 fn finding_pheromone_reassesses_immutable_listing_freshness_at_the_current_clock() {
@@ -1935,7 +1937,7 @@ fn signed_purchase_ask(
     resolver: &FiscalResolver<'_>,
     agent: &Keypair,
     price_units: u64,
-) -> chio_open_market::bidding::SignedAskResponse {
+) -> VerifiedFindingPurchaseAsk {
     let witness =
         verify_finding_admission(&web.admission, &web.context(resolver)).test_expect("admission");
     let expected_scope = format!("finding:{}", web.finding.finding_id);
