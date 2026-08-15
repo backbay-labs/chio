@@ -10,9 +10,22 @@ pub(crate) fn write_cli_error(
         serde_json::to_writer(&mut *writer, &report).map_err(std::io::Error::other)?;
         writeln!(writer)
     } else {
-        writeln!(writer, "error [{}]: {}", report.code, report.message)?;
-        writeln!(writer, "context: {}", report.context)?;
-        writeln!(writer, "suggested fix: {}", report.suggested_fix)
+        writeln!(
+            writer,
+            "error [{}]: {}",
+            terminal_safe(&report.code),
+            terminal_safe(&report.message)
+        )?;
+        writeln!(
+            writer,
+            "context: {}",
+            terminal_safe(&report.context.to_string())
+        )?;
+        writeln!(
+            writer,
+            "suggested fix: {}",
+            terminal_safe(&report.suggested_fix)
+        )
     }
 }
 
@@ -59,5 +72,18 @@ mod dispatch_output_tests {
         assert!(rendered.ends_with('\n'));
         assert!(rendered.contains("\n  \"schema\": \"chio.test/v1\""));
         assert!(rendered.contains("\n  \"allowed\": true"));
+    }
+
+    #[test]
+    fn human_errors_cannot_inject_terminal_controls() {
+        let error = CliError::cli_other_error("bad\n\u{1b}[2Jforged".to_string());
+        let mut output = Vec::new();
+        write_cli_error(&mut output, &error, false)
+            .unwrap_or_else(|write_error| panic!("write human error: {write_error}"));
+        let rendered = String::from_utf8(output)
+            .unwrap_or_else(|utf8_error| panic!("rendered output is UTF-8: {utf8_error}"));
+        assert!(rendered.contains("bad\\n\\u{1b}[2Jforged"));
+        assert_eq!(rendered.chars().filter(|character| *character == '\n').count(), 3);
+        assert!(!rendered.contains('\u{1b}'));
     }
 }

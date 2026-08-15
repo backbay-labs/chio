@@ -23,6 +23,9 @@ use chio_finding::{
 use chio_fiscal::FiscalResolver;
 
 use crate::bidding::{bid, BidMintContext, BiddingError, SignedAskResponse, SignedBidRequest};
+use crate::capability::scope::{
+    Constraint, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount,
+};
 use crate::crypto::PublicKey;
 use crate::fee_schedule::{OpenMarketBondClass, SignedOpenMarketFeeSchedule};
 use crate::fiscal_adapter::{
@@ -107,6 +110,22 @@ pub enum FindingAdmissionError {
     PricingHintMismatch,
     #[error("bid rejected: {0}")]
     Bidding(BiddingError),
+    #[error("finding artifact is not the finding the admission was issued for")]
+    FindingMismatch,
+    #[error("finding is not yet live at the purchase clock")]
+    FindingNotYetLive,
+    #[error("finding has expired at the purchase clock")]
+    FindingExpired,
+    #[error("finding payload digest is not canonical lowercase 64-hex")]
+    FindingDigestMalformed,
+    #[error("purchase mint requires the caller to leave grant authorship to the provider")]
+    MintContextPreoccupied,
+    #[error("purchase bid must request exactly one invocation")]
+    InvocationCardinality,
+    #[error("purchase token offer violates the single-grant delivery profile")]
+    TokenOfferProfile,
+    #[error("purchase amounts must be exactly equal in units and currency")]
+    AmountMismatch,
 }
 
 /// Lifecycle state of the allocation named by a finding admission.
@@ -502,4 +521,129 @@ pub fn bid_with_finding_admission(
         return Err(FindingAdmissionError::PricingHintMismatch);
     }
     bid(request, bid_context).map_err(FindingAdmissionError::Bidding)
+}
+
+fn is_lowercase_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// Mint a delivery-committed purchase ask for an admitted finding.
+///
+/// The provider, not the buyer, authors the grant bindings: exactly one
+/// output-digest constraint equal to the signed finding's payload
+/// commitment and exactly one purchase marker naming the admitted finding
+/// and listing under the local reversible-hold rail, with a mandatory DPoP
+/// binding and a single invocation. The caller supplies a mint context with
+/// no constraints of its own; a preoccupied context is rejected rather than
+/// merged so grant authorship stays unambiguous.
+///
+/// The finding's liveness bounds are re-checked at the mint clock: the
+/// artifact validator is deliberately clockless, so currency is this
+/// caller's responsibility.
+pub fn bid_with_finding_purchase(
+    request: &SignedBidRequest,
+    mut bid_context: BidMintContext<'_>,
+    admission: &VerifiedFindingAdmission,
+    finding: &chio_finding::Finding,
+) -> Result<SignedAskResponse, FindingAdmissionError> {
+    if !bid_context.grant_constraints.is_empty() || bid_context.dpop_required.is_some() {
+        return Err(FindingAdmissionError::MintContextPreoccupied);
+    }
+    if finding.finding_id != admission.finding_id() {
+        return Err(FindingAdmissionError::FindingMismatch);
+    }
+    if !is_lowercase_sha256_hex(&finding.payload_sha256) {
+        return Err(FindingAdmissionError::FindingDigestMalformed);
+    }
+    if bid_context.now < finding.issued_at {
+        return Err(FindingAdmissionError::FindingNotYetLive);
+    }
+    if bid_context.now >= finding.expires_at {
+        return Err(FindingAdmissionError::FindingExpired);
+    }
+    if request.body.requested_scope.max_invocations != Some(1) {
+        return Err(FindingAdmissionError::InvocationCardinality);
+    }
+    bid_context.grant_constraints = vec![
+        Constraint::OutputDigestSha256(finding.payload_sha256.clone()),
+        Constraint::RequireFindingPurchase(Box::new(FindingPurchaseMarkerV1 {
+            finding_id: finding.finding_id.clone(),
+            listing_id: admission.listing_id().to_string(),
+            settlement: FindingSettlementSelector::LocalReversibleHold,
+        })),
+    ];
+    bid_context.dpop_required = Some(true);
+    bid_with_finding_admission(request, bid_context, admission)
+}
+
+/// Accept a delivery-committed purchase ask against the authoritative
+/// reservation, enforcing the exact single-grant delivery profile and
+/// exact amount equality before delegating to the unchanged pure
+/// [`accept`](crate::bidding::accept).
+///
+/// The pure accept path tolerates a reservation that covers at least the
+/// token liability; a purchase requires exact equality across the quoted
+/// price, both grant ceilings, and the reserved amount, all in one
+/// currency, so an oversized reservation cannot mask a mispriced mint.
+pub fn accept_finding_purchase(
+    ask: &SignedAskResponse,
+    reservation: &crate::bidding::VerifiedReservationReceipt,
+    acceptor_keypair: &crate::crypto::Keypair,
+    accepted_at: u64,
+    admission: &VerifiedFindingAdmission,
+    finding: &chio_finding::Finding,
+) -> Result<crate::bidding::SignedAcceptedBid, FindingAdmissionError> {
+    if finding.finding_id != admission.finding_id() {
+        return Err(FindingAdmissionError::FindingMismatch);
+    }
+    let grants = &ask.body.token_offer.scope.grants;
+    let [grant] = grants.as_slice() else {
+        return Err(FindingAdmissionError::TokenOfferProfile);
+    };
+    if grant.max_invocations != Some(1)
+        || grant.dpop_required != Some(true)
+        || !ask.body.token_offer.scope.resource_grants.is_empty()
+        || !ask.body.token_offer.scope.prompt_grants.is_empty()
+    {
+        return Err(FindingAdmissionError::TokenOfferProfile);
+    }
+    let mut digests = grant.constraints.iter().filter_map(|constraint| {
+        if let Constraint::OutputDigestSha256(digest) = constraint {
+            Some(digest)
+        } else {
+            None
+        }
+    });
+    match (digests.next(), digests.next()) {
+        (Some(digest), None) if digest == &finding.payload_sha256 => {}
+        _ => return Err(FindingAdmissionError::TokenOfferProfile),
+    }
+    let mut markers = grant.constraints.iter().filter_map(|constraint| {
+        if let Constraint::RequireFindingPurchase(marker) = constraint {
+            Some(marker)
+        } else {
+            None
+        }
+    });
+    match (markers.next(), markers.next()) {
+        (Some(marker), None)
+            if marker.finding_id == finding.finding_id
+                && marker.listing_id == admission.listing_id()
+                && marker.settlement == FindingSettlementSelector::LocalReversibleHold => {}
+        _ => return Err(FindingAdmissionError::TokenOfferProfile),
+    }
+    let price = &ask.body.quoted_price;
+    let exact =
+        |amount: &MonetaryAmount| amount.units == price.units && amount.currency == price.currency;
+    if !grant.max_cost_per_invocation.as_ref().is_some_and(exact)
+        || !grant.max_total_cost.as_ref().is_some_and(exact)
+        || !exact(reservation.reserved_amount())
+    {
+        return Err(FindingAdmissionError::AmountMismatch);
+    }
+    crate::bidding::accept(ask, reservation, acceptor_keypair, accepted_at)
+        .map_err(FindingAdmissionError::Bidding)
 }

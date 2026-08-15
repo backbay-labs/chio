@@ -202,44 +202,82 @@ pub(super) fn insert_terminal_projection(
             }
         }
         if let Some(observer) = &completed.observer_work {
-            let record = require_canonical_record(
+            insert_observer_attempt_row(
+                transaction,
+                context,
+                &completed.receipt.receipt().id,
+                observer.pending(),
+                require_canonical_record(
+                    canonical,
+                    AdmissionProjectionRecordKind::ObservationAttemptZero,
+                )?,
+            )?;
+        }
+    }
+    if let AdmissionTerminalProjection::DeniedAfterDelivery {
+        evidence,
+        observer_work: Some(observer),
+        ..
+    } = projection
+    {
+        let AdmissionReceiptOrIncident::Receipt(receipt) = evidence.as_ref() else {
+            return Err(invariant(
+                "denied-delivery observation requires receipt evidence",
+            ));
+        };
+        insert_observer_attempt_row(
+            transaction,
+            context,
+            &receipt.receipt().id,
+            observer.pending(),
+            require_canonical_record(
                 canonical,
                 AdmissionProjectionRecordKind::ObservationAttemptZero,
-            )?;
-            let inserted = transaction
-                .execute(
-                    r#"
-                    INSERT INTO admission_operation_observer_attempts (
-                        operation_id, receipt_id, work_state, attempts,
-                        next_visible_at_unix_ms, row_version, last_error,
-                        record_digest, record_json, created_at_unix_ms,
-                        updated_at_unix_ms, store_uuid, store_lease_id,
-                        store_owner_epoch
-                    ) VALUES (?1, ?2, 'pending', 0, ?3, 0, NULL, ?4, ?5,
-                              ?6, ?6, ?7, ?8, ?9)
-                    "#,
-                    params![
-                        context.operation_id.as_str(),
-                        &completed.receipt.receipt().id,
-                        sqlite_i64(
-                            observer.pending().next_visible_at_ms,
-                            "observer_next_visible_at_unix_ms"
-                        )?,
-                        record.commitment().record_digest().as_str(),
-                        record.canonical_bytes(),
-                        sqlite_i64(context.trusted_time_unix_ms, "observer_created_at_unix_ms")?,
-                        &context.store_fence.store_uuid,
-                        &context.store_fence.lease_id,
-                        sqlite_i64(context.store_fence.owner_epoch, "store_owner_epoch")?,
-                    ],
-                )
-                .map_err(sqlite_error)?;
-            if inserted != 1 {
-                return Err(invariant(
-                    "observer attempt zero did not insert exactly one row",
-                ));
-            }
-        }
+            )?,
+        )?;
+    }
+    Ok(())
+}
+
+fn insert_observer_attempt_row(
+    transaction: &Transaction<'_>,
+    context: &chio_kernel::admission_operation::AdmissionProjectionContext,
+    receipt_id: &str,
+    pending: &chio_kernel::receipt_store::PendingSettlementObservation,
+    record: &CanonicalAdmissionProjectionRecord,
+) -> Result<(), AdmissionOperationStoreError> {
+    let inserted = transaction
+        .execute(
+            r#"
+            INSERT INTO admission_operation_observer_attempts (
+                operation_id, receipt_id, work_state, attempts,
+                next_visible_at_unix_ms, row_version, last_error,
+                record_digest, record_json, created_at_unix_ms,
+                updated_at_unix_ms, store_uuid, store_lease_id,
+                store_owner_epoch
+            ) VALUES (?1, ?2, 'pending', 0, ?3, 0, NULL, ?4, ?5,
+                      ?6, ?6, ?7, ?8, ?9)
+            "#,
+            params![
+                context.operation_id.as_str(),
+                receipt_id,
+                sqlite_i64(
+                    pending.next_visible_at_ms,
+                    "observer_next_visible_at_unix_ms"
+                )?,
+                record.commitment().record_digest().as_str(),
+                record.canonical_bytes(),
+                sqlite_i64(context.trusted_time_unix_ms, "observer_created_at_unix_ms")?,
+                &context.store_fence.store_uuid,
+                &context.store_fence.lease_id,
+                sqlite_i64(context.store_fence.owner_epoch, "store_owner_epoch")?,
+            ],
+        )
+        .map_err(sqlite_error)?;
+    if inserted != 1 {
+        return Err(invariant(
+            "observer attempt zero did not insert exactly one row",
+        ));
     }
     Ok(())
 }
@@ -781,6 +819,50 @@ fn verify_exact_typed_projection_rows(
         .map_err(sqlite_error)?;
 
     let AdmissionTerminalProjection::Completed(completed) = projection else {
+        if let AdmissionTerminalProjection::DeniedAfterDelivery {
+            evidence,
+            observer_work,
+            ..
+        } = projection
+        {
+            if authorization.is_some() {
+                return Err(invariant(
+                    "denied-delivery projection cannot consume an authorization",
+                ));
+            }
+            match (observer_work, observer) {
+                (None, None) => {}
+                (Some(_), Some(stored)) => {
+                    let AdmissionReceiptOrIncident::Receipt(receipt) = evidence.as_ref() else {
+                        return Err(invariant(
+                            "denied-delivery observation requires receipt evidence",
+                        ));
+                    };
+                    let record = require_canonical_record(
+                        canonical,
+                        AdmissionProjectionRecordKind::ObservationAttemptZero,
+                    )?;
+                    let committed_at =
+                        sqlite_i64(context.trusted_time_unix_ms, "committed_at_unix_ms")?;
+                    if stored.0 != receipt.receipt().id
+                        || stored.6 != record.commitment().record_digest().as_str()
+                        || stored.7 != record.canonical_bytes()
+                        || stored.8 != committed_at
+                        || stored.10 != context.store_fence.store_uuid
+                    {
+                        return Err(invariant(
+                            "observer attempt zero differs from terminal projection",
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(invariant(
+                        "observer attempt presence differs from terminal projection",
+                    ));
+                }
+            }
+            return Ok(());
+        }
         if authorization.is_some() || observer.is_some() {
             return Err(invariant(
                 "non-completed projection has completed-only sidecars",
@@ -1016,6 +1098,13 @@ pub(super) fn verify_stored_terminal_projection(
             "terminal projection context does not match its operation",
         ));
     }
+    verify_stored_participant_projection(
+        connection,
+        operation,
+        &projection_body.context,
+        &projection.projection_json,
+        &records,
+    )?;
     verify_obligation_projection(
         connection,
         operation.binding().operation_id(),
@@ -1077,6 +1166,134 @@ fn projection_record(
         )));
     }
     Ok(first)
+}
+
+fn verify_stored_participant_projection(
+    connection: &Connection,
+    operation: &AdmissionOperationV1,
+    context: &AdmissionProjectionContext,
+    projection_json: &[u8],
+    records: &[StoredProjectionRecord],
+) -> Result<(), AdmissionOperationStoreError> {
+    if operation.state() == AdmissionOperationState::DeniedAfterDelivery {
+        verify_stored_denied_record_shape(operation, projection_json, records)?;
+    }
+    let payment_record =
+        projection_record(records, AdmissionProjectionRecordKind::PaymentTerminal)?;
+    let payment_entry = payment_record
+        .map(|record| {
+            AdmissionIdentifier::try_new("payment_terminal_record_id", record.record_id.clone())
+                .map(|record_id| (record_id, record.record_json.as_slice()))
+        })
+        .transpose()?;
+    let receipt_record = projection_record(records, AdmissionProjectionRecordKind::Receipt)?
+        .map(|record| record.record_json.as_slice());
+    verify_payment_terminal_source(
+        connection,
+        operation,
+        context,
+        operation.state(),
+        payment_entry
+            .as_ref()
+            .map(|(record_id, record_json)| (record_id, *record_json))
+            .into_iter(),
+        receipt_record,
+        projection_json,
+    )
+}
+
+fn verify_stored_denied_record_shape(
+    operation: &AdmissionOperationV1,
+    projection_json: &[u8],
+    records: &[StoredProjectionRecord],
+) -> Result<(), AdmissionOperationStoreError> {
+    let body: serde_json::Value = serde_json::from_slice(projection_json)
+        .map_err(|error| invariant(format!("delivery-denied projection is invalid: {error}")))?;
+    let body = body
+        .as_object()
+        .ok_or_else(|| invariant("delivery-denied projection is not an object"))?;
+    let exact_fields = [
+        "context",
+        "evidence",
+        "observer_work",
+        "payment_evidence",
+        "reason",
+        "terminal",
+    ];
+    if body.len() != exact_fields.len()
+        || exact_fields.iter().any(|field| !body.contains_key(*field))
+        || body.get("terminal").and_then(serde_json::Value::as_str) != Some("denied_after_delivery")
+        || !matches!(
+            body.get("reason").and_then(serde_json::Value::as_str),
+            Some("digest_mismatch" | "envelope_malformed" | "media_type_mismatch")
+        )
+        || body
+            .get("evidence")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|evidence| evidence.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            != Some("receipt")
+    {
+        return Err(invariant(
+            "delivery-denied projection has an invalid terminal body shape",
+        ));
+    }
+    let requirements = operation.binding().participant_requirements();
+    let payment_present = body
+        .get("payment_evidence")
+        .is_some_and(|value| !value.is_null());
+    let observer_present = body
+        .get("observer_work")
+        .is_some_and(|value| !value.is_null());
+    if payment_present != requirements.payment
+        || observer_present != requirements.observation_attempt_zero
+        || requirements.authorization_consumption
+        || requirements.outcome_eligibility
+        || requirements.obligation
+        || requirements.channel
+    {
+        return Err(invariant(
+            "delivery-denied projection participant shape differs from its request",
+        ));
+    }
+    let receipt = projection_record(records, AdmissionProjectionRecordKind::Receipt)?
+        .ok_or_else(|| invariant("delivery-denied projection has no receipt record"))?;
+    let receipt_value: ChioReceipt = serde_json::from_slice(&receipt.record_json)
+        .map_err(|error| invariant(format!("delivery-denied receipt is invalid: {error}")))?;
+    let payment = projection_record(records, AdmissionProjectionRecordKind::PaymentTerminal)?;
+    let observer = projection_record(
+        records,
+        AdmissionProjectionRecordKind::ObservationAttemptZero,
+    )?;
+    let expected_records =
+        1 + usize::from(requirements.payment) + usize::from(requirements.observation_attempt_zero);
+    if records.len() != expected_records
+        || receipt.record_id != receipt_value.id
+        || payment.is_some() != requirements.payment
+        || payment
+            .is_some_and(|record| record.record_id != operation.binding().operation_id().as_str())
+        || observer.is_some() != requirements.observation_attempt_zero
+        || observer.is_some_and(|record| record.record_id != receipt_value.id)
+    {
+        return Err(invariant(
+            "delivery-denied projection records differ from its participant shape",
+        ));
+    }
+    if let Some(observer) = observer {
+        let pending = body
+            .get("observer_work")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|work| work.get("pending"))
+            .ok_or_else(|| invariant("delivery-denied observer has no pending record"))?;
+        if canonical_json_bytes(pending).map_err(|error| invariant(error.to_string()))?
+            != observer.record_json
+        {
+            return Err(invariant(
+                "delivery-denied observer record differs from its terminal body",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn verify_stored_authorization_projection(

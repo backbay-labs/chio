@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 27975bf17d3c195d530b2e28ac498870376a2aeb649e8b3126f61b882beedf84
+# Schema sha256: d7264a73c6278a903994c0945d1fc7ba5300063d0cc3a6b8666fdf08f66175e5
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -31,6 +31,7 @@ class ProjectedState(Enum):
     compensated_before_dispatch = "compensated_before_dispatch"
     not_accepted_after_dispatch_commit = "not_accepted_after_dispatch_commit"
     outcome_unknown_after_dispatch = "outcome_unknown_after_dispatch"
+    denied_after_delivery = "denied_after_delivery"
     mutation_ready = "mutation_ready"
     mutation_submitted = "mutation_submitted"
     economic_mutation_applied = "economic_mutation_applied"

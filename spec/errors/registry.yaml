@@ -685,6 +685,39 @@ codes:
     consumed_by:
       - chio-kernel
       - chio-conformance
+  - urn: "urn:chio:error:kernel:finding-purchase-unsupported-admission"
+    domain: kernel
+    severity: error
+    summary: "Grant carried a finding-purchase marker the evaluator cannot admit."
+    help: "Route the reveal to a deployment with purchase-aware admission, or drop the require_finding_purchase marker before retrying."
+    string_code: "CHIO-KERNEL-FINDING-PURCHASE-UNSUPPORTED-ADMISSION"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-kernel
+      - chio-conformance
+  - urn: "urn:chio:error:kernel:finding-purchase-context-invalid"
+    domain: kernel
+    severity: error
+    summary: "Finding-purchase marker or its signed purchase context failed verification."
+    help: "Present a well-formed local reversible-hold marker with the matching signed purchase context, the exact offered token, and a finding_id argument equal to the marked sale."
+    string_code: "CHIO-KERNEL-FINDING-PURCHASE-CONTEXT-INVALID"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-kernel
+      - chio-conformance
+  - urn: "urn:chio:error:kernel:finding-delivery-media-type-mismatch"
+    domain: kernel
+    severity: error
+    summary: "Revealed finding payload did not carry the media type the signed finding advertises."
+    help: "The reveal is rejected and the hold is released. Re-run the reveal so the delivered envelope carries the advertised media type."
+    string_code: "CHIO-KERNEL-FINDING-DELIVERY-MEDIA-TYPE-MISMATCH"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-kernel
+      - chio-conformance
   - urn: "urn:chio:error:transport:protocol-version-unsupported"
     domain: transport
     severity: error

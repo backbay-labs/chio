@@ -233,6 +233,8 @@ fn bid_happy_path_mints_scoped_capability_token() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -295,6 +297,8 @@ fn bid_rejects_unbound_token_issuer() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("unbound issuer rejected");
@@ -328,6 +332,8 @@ fn bid_rejects_scope_widening_outside_listing_server() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("scope widening rejected");
@@ -358,6 +364,8 @@ fn bid_fails_closed_on_revoked_listing() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("revoked listing rejected");
@@ -389,6 +397,8 @@ fn bid_fails_closed_on_stale_pricing_hint() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 250,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("stale pricing rejected");
@@ -421,6 +431,8 @@ fn bid_fails_closed_on_tampered_listing_signature() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("tampered listing rejected");
@@ -452,6 +464,8 @@ fn bid_fails_closed_when_max_price_below_advertised() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("under-priced bid rejected");
@@ -481,6 +495,8 @@ fn accept_records_receipt_and_verifies_ask_signature() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -521,6 +537,8 @@ fn accept_rejects_tampered_ask_signature() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -555,6 +573,8 @@ fn accept_rejects_tampered_token_offer_signature() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -590,6 +610,8 @@ fn accept_rejects_expired_ask() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -625,6 +647,8 @@ fn bid_rejects_tampered_bid_signature() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-1".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("tampered bid rejected");

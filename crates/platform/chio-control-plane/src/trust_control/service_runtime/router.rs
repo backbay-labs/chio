@@ -740,6 +740,11 @@ fn finding_market_routes() -> Router<TrustServiceState> {
             post(handle_finding_participation),
         )
         .route(FINDING_ADMISSION_PATH, get(handle_get_finding_admission))
+        .route(
+            FINDING_PURCHASE_PATH,
+            post(handle_purchase_finding)
+                .layer(DefaultBodyLimit::max(FINDING_PURCHASE_MAX_BODY_BYTES)),
+        )
 }
 
 #[cfg(not(feature = "cognition-market-experimental"))]
@@ -754,3 +759,7 @@ mod tests;
 #[cfg(all(test, feature = "cognition-market-experimental"))]
 #[path = "finding_market_exit_tests.rs"]
 mod finding_market_exit_tests;
+
+#[cfg(all(test, feature = "cognition-market-experimental"))]
+#[path = "finding_wedge_purchase_e2e_tests.rs"]
+mod finding_wedge_purchase_e2e_tests;

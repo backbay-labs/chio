@@ -68,6 +68,8 @@ pub enum FindingError {
     CurrencyMismatch(&'static str),
     #[error("amount arithmetic overflow: {0}")]
     AmountOverflow(&'static str),
+    #[error("value is not canonical JSON: {0}")]
+    NonCanonicalBytes(&'static str),
 }
 
 /// Upper bound on opaque identifiers carried by finding-market artifacts.
@@ -81,7 +83,6 @@ pub const MAX_FINDING_EVIDENCE_RECEIPTS: usize = 256;
 
 /// Upper bound on variable-length collections carried by market artifacts.
 pub const MAX_FINDING_ARTIFACT_ITEMS: usize = 256;
-
 pub(crate) fn is_hex64(value: &str) -> bool {
     value.len() == 64
         && value
@@ -155,6 +156,31 @@ pub(crate) fn require_nonzero(value: u64, field: &'static str) -> Result<(), Fin
 pub(crate) fn require_currency(currency: &str, field: &'static str) -> Result<(), FindingError> {
     if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
         return Err(FindingError::InvalidCurrency(field));
+    }
+    Ok(())
+}
+
+/// Require a carried member to be present, bounded, and byte-identical to
+/// its own strict canonicalization.
+///
+/// Carried bytes are transport, never authority: the consumer re-derives
+/// every identity from them, so a member that does not canonicalize back to
+/// itself is rejected before anything reads its content.
+pub(crate) fn require_canonical_json_text(
+    value: &str,
+    field: &'static str,
+    max_bytes: usize,
+) -> Result<(), FindingError> {
+    if value.is_empty() {
+        return Err(FindingError::EmptyField(field));
+    }
+    if value.len() > max_bytes {
+        return Err(FindingError::SizeLimitExceeded(field));
+    }
+    let canonical = chio_core_types::canonical_json_bytes_from_str(value)
+        .map_err(|_| FindingError::NonCanonicalBytes(field))?;
+    if canonical.as_slice() != value.as_bytes() {
+        return Err(FindingError::NonCanonicalBytes(field));
     }
     Ok(())
 }

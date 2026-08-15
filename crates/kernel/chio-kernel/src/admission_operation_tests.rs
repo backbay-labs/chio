@@ -229,6 +229,22 @@ fn signed_projection_receipt_with_tenant(
     tenant_id: Option<String>,
     keypair: &Keypair,
 ) -> ChioReceipt {
+    signed_projection_receipt_with_decision(
+        operation,
+        metadata,
+        tenant_id,
+        Decision::Allow,
+        keypair,
+    )
+}
+
+fn signed_projection_receipt_with_decision(
+    operation: &AdmissionOperationV1,
+    metadata: Option<AdmissionReceiptMetadataV1>,
+    tenant_id: Option<String>,
+    decision: Decision,
+    keypair: &Keypair,
+) -> ChioReceipt {
     let timestamp = metadata
         .as_ref()
         .map_or(1, |value| value.trusted_time_unix_ms / 1_000);
@@ -240,7 +256,7 @@ fn signed_projection_receipt_with_tenant(
         tool_name: TOOL_NAME.to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({}))
             .expect("test action must be valid"),
-        decision: Some(Decision::Allow),
+        decision: Some(decision),
         receipt_kind: Default::default(),
         boundary_class: Default::default(),
         observation_outcome: None,

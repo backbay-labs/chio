@@ -74,6 +74,7 @@ Full flag reference: `chio <command> [<subcommand>...] --help`.
 | `attest` | `buyer`, `supply-chain`, `runtime-quote` | Verify offline attestation evidence and buyer proof packages. |
 | `runtime` | `admit`, `sign-trust-input`, `policy`, `peer-weights`, `pheromone`, `orchestrate`, `ops`, `run-loopback` | Evaluate local live-runtime admission artifacts. |
 | `pheromone` | `receive`, `query`, `relay` (relay nests ~45 more, 7 levels deep) | Receive, query, and relay pheromone artifacts. |
+| `finding` | `publish`, `search`, `verify`, `buy` | Publish, discover, verify, and purchase cognition-market findings. Requires the `cognition-market-experimental` feature. |
 | `replay <log>` | `traffic` | Re-verify a captured receipt log against the current build. |
 | `settle` | `status` | Inspect pending, settled, and dead-lettered settlements. |
 | `lineage` | `query`, `diff`, `roots` | Query, diff, and list anchored roots in the lineage DAG. |
@@ -128,6 +129,8 @@ chio mcp serve --policy policy.yaml --server-id fs -- \
 | Flag | Effect |
 |---|---|
 | `tee-quotes` | Enables `chio-attest-verify/tee-quotes`: TCB-collateral parsing for `chio attest runtime-quote verify` (Intel TDX, AMD SEV-SNP, AWS Nitro). |
+| `iroh` | Links `chio-federation-transport-iroh` into the binary. Off by default so the shipped `chio` keeps the smaller supply-chain surface. |
+| `cognition-market-experimental` | Compiles the `chio finding` family and forwards to `chio-control-plane/cognition-market-experimental`, whose finding routes carry the same flag. Default builds link none of the finding crates. |
 
 ## Testing
 

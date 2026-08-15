@@ -205,6 +205,14 @@ impl ChioKernel {
                 return self.build_deny_response(request, &msg, now, None);
             }
         };
+        let required_delivery_grant_index =
+            match super::evaluation_helpers::required_delivery_grant_index(&matching_grants) {
+                Ok(index) => index,
+                Err(reason) => {
+                    warn!(request_id = %request.request_id, reason, "delivery contract denied");
+                    return self.build_deny_response(request, reason, now, None);
+                }
+            };
 
         // DPoP enforcement before budget charge: if any matching grant requires
         // DPoP, verify the proof now so an attacker cannot drain the budget with
@@ -359,6 +367,9 @@ impl ChioKernel {
         let mut guard_denial = None;
         let mut selected = None;
         for matching in &matching_grants {
+            if required_delivery_grant_index.is_some_and(|required| matching.index != required) {
+                continue;
+            }
             if durable_admission
                 .as_ref()
                 .is_some_and(|admission| !admission.permits_matching_grant(matching))
@@ -564,7 +575,18 @@ impl ChioKernel {
                         .release_runtime_admission_reservations_for_pre_dispatch_denial(
                             runtime_admission_metadata,
                         );
-                    budget_error = Some(error);
+                    budget_error = Some(
+                        if required_delivery_grant_index == Some(matching.index)
+                            && matching_grants.len() > 1
+                        {
+                            KernelError::DurableAdmission(
+                                "a delivery-marked grant cannot be bypassed by sibling grant selection"
+                                    .to_string(),
+                            )
+                        } else {
+                            error
+                        },
+                    );
                     if !runtime_release_confirmed {
                         budget_error_metadata = runtime_admission_metadata;
                         break;
@@ -722,6 +744,45 @@ impl ChioKernel {
         };
 
         if self.execution_nonce_preflight_required(request) {
+            // Nonce-preflight authorizes without producing output, so an
+            // output-digest grant cannot be enforced on it. The root lane
+            // rejects this shape before any mint; the nested lane must not
+            // be a softer path to the same authorization.
+            if matching_grants
+                .iter()
+                .find(|matching| matching.index == matched_grant_index)
+                .is_some_and(|selected| {
+                    selected
+                        .grant
+                        .constraints
+                        .iter()
+                        .any(|constraint| matches!(constraint, Constraint::OutputDigestSha256(_)))
+                })
+            {
+                let reason =
+                    "output-digest delivery cannot be enforced on a no-output authorization path";
+                warn!(request_id = %request.request_id, reason, "delivery contract denied");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata,
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
+            }
             return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
                 self.build_execution_nonce_preflight_allow_response_after_cleanup(
                     request,
@@ -807,6 +868,56 @@ impl ChioKernel {
                         },
                     );
                 }
+            }
+            // Nested dispatch enforces the same purchase boundary as a
+            // root tool call: a purchase-marked grant requires the
+            // verified signed purchase context and an open slot-reserved
+            // reservation before any mutation.
+            if let Err(reason) = self.verify_purchase_admission(selected.grant, request, now) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase denied");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &reason,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata,
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
+            }
+            if let Err(reason) = self.verify_recovery_admission(selected.grant, request, now) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery denied");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &reason,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata,
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
             }
         }
 

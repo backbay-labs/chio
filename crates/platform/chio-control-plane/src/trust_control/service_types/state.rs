@@ -22,6 +22,12 @@ pub(crate) struct TrustServiceState {
     /// `None` fails activation closed.
     #[cfg(feature = "cognition-market-experimental")]
     pub(crate) finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>>,
+    /// Explicit deployment adapter for the end-to-end finding purchase.
+    /// Absent by default so the public route fails closed until the seller,
+    /// coordinator, durable store, and purchase-aware kernel are wired.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) finding_purchase_executor:
+        Option<super::super::finding_purchase_routes::SharedFindingPurchaseExecutor>,
 }
 
 /// Coordinates the single background cluster-sync loop with budget-write

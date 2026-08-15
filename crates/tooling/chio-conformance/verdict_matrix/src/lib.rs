@@ -54,6 +54,8 @@ pub enum ScenarioCategory {
     Receipt,
     #[serde(rename = "delivery_contract")]
     DeliveryContract,
+    #[serde(rename = "finding_purchase")]
+    FindingPurchase,
 }
 
 impl ScenarioCategory {
@@ -65,6 +67,7 @@ impl ScenarioCategory {
             Self::Redaction => "redaction",
             Self::Receipt => "receipt",
             Self::DeliveryContract => "delivery_contract",
+            Self::FindingPurchase => "finding_purchase",
         }
     }
 }
@@ -80,6 +83,7 @@ impl FromStr for ScenarioCategory {
             "redaction" => Ok(Self::Redaction),
             "receipt" => Ok(Self::Receipt),
             "delivery_contract" => Ok(Self::DeliveryContract),
+            "finding_purchase" => Ok(Self::FindingPurchase),
             _ => Err(format!("unknown scenario category `{value}`")),
         }
     }
@@ -126,6 +130,14 @@ mod tests {
         assert_eq!(
             "delivery_contract".parse::<ScenarioCategory>(),
             Ok(ScenarioCategory::DeliveryContract)
+        );
+        assert_eq!(
+            ScenarioCategory::FindingPurchase.as_str(),
+            "finding_purchase"
+        );
+        assert_eq!(
+            "finding_purchase".parse::<ScenarioCategory>(),
+            Ok(ScenarioCategory::FindingPurchase)
         );
     }
 

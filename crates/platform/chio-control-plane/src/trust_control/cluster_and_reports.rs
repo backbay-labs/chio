@@ -100,6 +100,8 @@ mod cluster_and_reports_tests {
             cluster_progress,
             #[cfg(feature = "cognition-market-experimental")]
             finding_rail: None,
+            #[cfg(feature = "cognition-market-experimental")]
+            finding_purchase_executor: None,
         };
         // A fresh peer starts with force_snapshot = true (it must snapshot before
         // its acks are trusted). Witness tests model

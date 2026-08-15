@@ -10,7 +10,7 @@ use super::*;
 
 mod async_evaluation_core;
 mod evaluation_entry;
-mod evaluation_helpers;
+pub(crate) mod evaluation_helpers;
 mod nested_flow_evaluation;
 mod sync_evaluation_wrapper;
 

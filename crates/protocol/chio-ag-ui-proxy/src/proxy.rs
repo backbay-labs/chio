@@ -1211,6 +1211,53 @@ mod tests {
     }
 
     #[test]
+    fn delivery_carrier_constraints_are_never_satisfied_by_the_proxy_path() {
+        use chio_core::capability::scope::{FindingPurchaseMarkerV1, FindingSettlementSelector};
+
+        let carrier_grant = |carrier: Constraint| ToolGrant {
+            server_id: AG_UI_SERVER_ID.to_string(),
+            tool_name: "submit".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints: vec![
+                Constraint::Custom("session_id".to_string(), "sess-1".to_string()),
+                Constraint::Custom("target_component_type".to_string(), "chat".to_string()),
+                carrier,
+            ],
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        };
+        let event = make_event(EventClassification::Submit);
+        let carriers = [
+            Constraint::OutputDigestSha256("aa".repeat(32)),
+            Constraint::RequireFindingPurchase(Box::new(FindingPurchaseMarkerV1 {
+                finding_id: "finding-1".to_string(),
+                listing_id: "listing-1".to_string(),
+                settlement: FindingSettlementSelector::LocalReversibleHold,
+            })),
+        ];
+        for carrier in carriers {
+            let grant = carrier_grant(carrier.clone());
+            assert!(
+                !super::helpers::grant_binds_event(&grant, &event),
+                "the proxy cannot enforce {carrier:?} and must not treat it as satisfied"
+            );
+        }
+
+        // The same grant without a carrier binds, so the denial above is
+        // attributable to the carrier alone.
+        let unconstrained = ToolGrant {
+            constraints: vec![
+                Constraint::Custom("session_id".to_string(), "sess-1".to_string()),
+                Constraint::Custom("target_component_type".to_string(), "chat".to_string()),
+            ],
+            ..carrier_grant(Constraint::OutputDigestSha256("aa".repeat(32)))
+        };
+        assert!(super::helpers::grant_binds_event(&unconstrained, &event));
+    }
+
+    #[test]
     fn receipt_includes_transport_and_event_metadata() {
         let kp = Keypair::generate();
         let proxy = AgUiProxy::new(AgUiProxyConfig::default(), kp);

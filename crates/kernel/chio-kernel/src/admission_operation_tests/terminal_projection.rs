@@ -103,6 +103,7 @@ fn completed_projection_cannot_omit_required_atomic_sidecars() {
         &receipt,
         outcome_id,
         outcome_version,
+        AdmissionOperationState::Completed,
     )
     .expect("attempt zero must bind immediate visibility");
     let completed = AdmissionCompletedProjection {
@@ -446,12 +447,20 @@ fn terminal_participant_evidence_rejects_cross_binding_and_substitution() {
             recorded_at,
             outcome_id.clone(),
             outcome_version,
+            AdmissionOperationState::Completed,
         )
     };
     let payment =
         payment_from("payment-1", 900).expect("exact payment participant evidence must qualify");
     assert!(payment
-        .validate_against(&operation, &context, &receipt, &outcome_id, outcome_version,)
+        .validate_against(
+            &operation,
+            &context,
+            &receipt,
+            &outcome_id,
+            outcome_version,
+            AdmissionOperationState::Completed,
+        )
         .is_ok());
     assert!(matches!(
         payment_from("payment-2", 900),
@@ -468,6 +477,7 @@ fn terminal_participant_evidence_rejects_cross_binding_and_substitution() {
             &receipt,
             &outcome_id,
             outcome_version + 1,
+            AdmissionOperationState::Completed,
         ),
         Err(AdmissionOperationError::TerminalProjectionBindingMismatch)
     );
@@ -495,6 +505,7 @@ fn terminal_participant_evidence_rejects_cross_binding_and_substitution() {
             &substituted_receipt,
             &outcome_id,
             outcome_version,
+            AdmissionOperationState::Completed,
         ),
         Err(AdmissionOperationError::TerminalProjectionBindingMismatch)
     );
@@ -510,6 +521,7 @@ fn terminal_participant_evidence_rejects_cross_binding_and_substitution() {
         950,
         outcome_id.clone(),
         outcome_version,
+        AdmissionOperationState::Completed,
     )
     .is_ok());
     assert!(matches!(
@@ -524,6 +536,7 @@ fn terminal_participant_evidence_rejects_cross_binding_and_substitution() {
             950,
             outcome_id.clone(),
             outcome_version,
+            AdmissionOperationState::Completed,
         ),
         Err(AdmissionOperationError::TerminalProjectionBindingMismatch)
     ));
@@ -672,6 +685,7 @@ fn authorization_and_attempt_zero_are_exact_source_verified_contracts() {
         &receipt,
         outcome_id.clone(),
         outcome_version,
+        AdmissionOperationState::Completed,
     )
     .expect("attempt zero must qualify");
     assert_eq!(
@@ -680,7 +694,14 @@ fn authorization_and_attempt_zero_are_exact_source_verified_contracts() {
     );
     let delayed = attempt_zero.with_visibility_for_test(context.trusted_time_unix_ms + 1);
     assert_eq!(
-        delayed.validate_against(&operation, &context, &receipt, &outcome_id, outcome_version,),
+        delayed.validate_against(
+            &operation,
+            &context,
+            &receipt,
+            &outcome_id,
+            outcome_version,
+            AdmissionOperationState::Completed,
+        ),
         Err(AdmissionOperationError::TerminalProjectionBindingMismatch)
     );
 }
@@ -783,6 +804,158 @@ fn terminal_projection_accepts_new_owner_fence_only_on_the_same_store() {
         ),
         Err(AdmissionOperationError::TerminalProjectionBindingMismatch)
     ));
+}
+
+#[test]
+fn denied_after_delivery_projection_round_trips_through_the_signed_envelope() {
+    let requirements = AdmissionParticipantRequirements {
+        broker_attempt: true,
+        budget_capture: true,
+        payment: true,
+        observation_attempt_zero: true,
+        ..AdmissionParticipantRequirements::NONE
+    };
+    let operation = finalizing_tool_operation_with(requirements);
+    let context = projection_context(&operation);
+    let outcome_id = digest("tool_outcome_id", POLICY_HASH);
+    let outcome_version = 3;
+    let kernel = Keypair::generate();
+    let decision = Decision::Deny {
+        reason: "delivered output does not match the committed output digest".to_string(),
+        guard: "delivery_contract".to_string(),
+    };
+    let metadata = receipt_metadata(
+        &operation,
+        &context,
+        AdmissionOperationState::DeniedAfterDelivery,
+        AdmissionCompensationStatus::NotCompensated,
+    );
+    let receipt = ChioReceipt::sign(
+        ChioReceiptBody {
+            id: "test-receipt-denied-delivery".to_string(),
+            timestamp: context.trusted_time_unix_ms / 1_000,
+            capability_id: operation.binding.capability_id.as_str().to_owned(),
+            tool_server: TOOL_SERVER.to_string(),
+            tool_name: TOOL_NAME.to_string(),
+            action: ToolCallAction::from_parameters(serde_json::json!({}))
+                .expect("test action must be valid"),
+            decision: Some(decision.clone()),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            content_hash: CONTENT_HASH.to_string(),
+            policy_hash: operation.binding.policy_hash.as_str().to_owned(),
+            evidence: Vec::new(),
+            metadata: Some(serde_json::json!({
+                ADMISSION_RECEIPT_METADATA_KEY: metadata,
+                "delivery_contract": chio_core::receipt::metadata::DeliveryContract {
+                        schema: chio_core::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
+                        expected_digest: POLICY_HASH.to_owned(),
+                        observed_digest: CONTENT_HASH.to_owned(),
+                        result: chio_core::receipt::metadata::DeliveryResult::Mismatched,
+                    }
+            })),
+            trust_level: Default::default(),
+            tenant_id: Some("tenant-123".to_string()),
+            kernel_key: kernel.public_key(),
+            bbs_projection_version: None,
+        },
+        &kernel,
+    )
+    .expect("deny receipt must sign");
+    let receipt = VerifiedAdmissionReceipt::from_kernel_verified_for_test(
+        receipt,
+        &kernel.public_key(),
+        &decision,
+        TOOL_SERVER,
+        TOOL_NAME,
+        &digest("expected_parameter_hash", EMPTY_PARAMETER_HASH),
+        &digest("expected_content_hash", CONTENT_HASH),
+        &operation,
+        &context,
+        AdmissionOperationState::DeniedAfterDelivery,
+        AdmissionCompensationStatus::NotCompensated,
+        None,
+    )
+    .expect("denied receipt must qualify");
+    let payment_evidence = PaymentTerminalEvidence::from_source_verified(
+        &operation,
+        &context,
+        &receipt,
+        identifier("payment_participant_id", "payment-1"),
+        digest("payment_source_authority_digest", AUTH_HASH),
+        identifier("payment_source_record_id", "payment:op-denied"),
+        digest("payment_source_record_digest", CONTENT_HASH),
+        900,
+        outcome_id.clone(),
+        outcome_version,
+        AdmissionOperationState::DeniedAfterDelivery,
+    )
+    .expect("payment evidence must bind the denied terminal");
+    let observer_work = ObservationAttemptZero::from_verified(
+        &operation,
+        &context,
+        &receipt,
+        outcome_id,
+        outcome_version,
+        AdmissionOperationState::DeniedAfterDelivery,
+    )
+    .expect("observation attempt must bind the denied terminal");
+    let projection = AdmissionTerminalProjection::DeniedAfterDelivery {
+        context,
+        reason: DeliveryDenialReason::DigestMismatch,
+        evidence: Box::new(AdmissionReceiptOrIncident::Receipt(Box::new(receipt))),
+        payment_evidence: Some(Box::new(payment_evidence)),
+        observer_work: Some(Box::new(observer_work)),
+    };
+    let envelope = SignedAdmissionTerminalProjectionV1::from_verified(
+        &operation,
+        &projection,
+        &full_projection_capabilities(),
+        &kernel,
+    )
+    .expect("denied projection must produce a signed envelope");
+
+    let mismatched_replay = envelope
+        .clone()
+        .with_replay_receipt_id_for_test(
+            identifier("tampered_receipt_id", "other-receipt"),
+            &kernel,
+        )
+        .expect("the test envelope must be re-signed");
+    assert_eq!(
+        mismatched_replay.verify(),
+        Err(AdmissionOperationError::TerminalProjectionBindingMismatch),
+        "the terminal replay must identify the projected receipt"
+    );
+
+    let verified = envelope
+        .verify()
+        .expect("denied terminal envelope must import");
+    assert_eq!(verified.source_operation(), &operation);
+    assert_eq!(
+        verified.terminal_operation().state(),
+        AdmissionOperationState::DeniedAfterDelivery
+    );
+    let terminal = verified.terminal().expect("terminal must project");
+    assert_eq!(terminal.state, AdmissionOperationState::DeniedAfterDelivery);
+    assert!(matches!(
+        terminal.replay,
+        AdmissionTerminalReplay::Receipt { .. }
+    ));
+    let kinds: Vec<_> = verified
+        .records()
+        .iter()
+        .map(VerifiedAdmissionTerminalProjectionRecordV1::kind)
+        .collect();
+    assert!(kinds.contains(&AdmissionProjectionRecordKind::Receipt));
+    assert!(kinds.contains(&AdmissionProjectionRecordKind::PaymentTerminal));
+    assert!(kinds.contains(&AdmissionProjectionRecordKind::ObservationAttemptZero));
+    assert!(verified.observer().is_some());
+    assert!(verified.authorization_consumption().is_none());
 }
 
 #[test]
@@ -1198,4 +1371,208 @@ fn terminal_replay_reference_is_typed_and_retained() {
             terminal_replay: Some(replay)
         }
     );
+}
+
+#[test]
+fn denied_after_delivery_projection_requires_participant_evidence() {
+    let requirements = AdmissionParticipantRequirements {
+        broker_attempt: true,
+        budget_capture: true,
+        payment: true,
+        observation_attempt_zero: true,
+        ..AdmissionParticipantRequirements::NONE
+    };
+    let operation = finalizing_tool_operation_with(requirements);
+    let context = projection_context(&operation);
+    let outcome_id = digest("outcome_id", POLICY_HASH);
+    let outcome_version = 3;
+    let denied_decision = Decision::Deny {
+        reason: "delivered output does not match the committed output digest".to_string(),
+        guard: "delivery_contract".to_string(),
+    };
+    let kernel = Keypair::generate();
+    let receipt = VerifiedAdmissionReceipt::from_kernel_verified_for_test(
+        signed_projection_receipt_with_decision(
+            &operation,
+            Some(receipt_metadata(
+                &operation,
+                &context,
+                AdmissionOperationState::DeniedAfterDelivery,
+                AdmissionCompensationStatus::NotCompensated,
+            )),
+            Some("tenant-123".to_string()),
+            denied_decision.clone(),
+            &kernel,
+        ),
+        &kernel.public_key(),
+        &denied_decision,
+        TOOL_SERVER,
+        TOOL_NAME,
+        &digest("expected_parameter_hash", EMPTY_PARAMETER_HASH),
+        &digest("expected_content_hash", CONTENT_HASH),
+        &operation,
+        &context,
+        AdmissionOperationState::DeniedAfterDelivery,
+        AdmissionCompensationStatus::NotCompensated,
+        None,
+    )
+    .expect("the signed delivery denial must qualify");
+    let payment = PaymentTerminalEvidence::from_source_verified(
+        &operation,
+        &context,
+        &receipt,
+        identifier("payment_participant_id", "payment-1"),
+        digest("payment_authority_digest", AUTH_HASH),
+        identifier("payment_record_id", "payment-record-1"),
+        digest("payment_record_digest", REQUEST_HASH),
+        900,
+        outcome_id.clone(),
+        outcome_version,
+        AdmissionOperationState::DeniedAfterDelivery,
+    )
+    .expect("payment evidence must bind the denied terminal");
+    let observer = ObservationAttemptZero::from_verified(
+        &operation,
+        &context,
+        &receipt,
+        outcome_id.clone(),
+        outcome_version,
+        AdmissionOperationState::DeniedAfterDelivery,
+    )
+    .expect("the release observation must bind the denied terminal");
+
+    validate_denied_after_delivery_participant_presence(
+        requirements,
+        Some(&payment),
+        Some(&observer),
+    )
+    .expect("a paid observed denial carries both participants");
+    for (missing_payment, missing_observer) in [(true, false), (false, true), (true, true)] {
+        assert_eq!(
+            validate_denied_after_delivery_participant_presence(
+                requirements,
+                (!missing_payment).then_some(&payment),
+                (!missing_observer).then_some(&observer),
+            ),
+            Err(AdmissionOperationError::TerminalProjectionBindingMismatch),
+            "a required participant record must not be omittable"
+        );
+    }
+    // Requirements the denied terminal cannot represent deny outright.
+    assert_eq!(
+        validate_denied_after_delivery_participant_presence(
+            AdmissionParticipantRequirements {
+                obligation: true,
+                ..requirements
+            },
+            Some(&payment),
+            Some(&observer),
+        ),
+        Err(AdmissionOperationError::TerminalProjectionBindingMismatch)
+    );
+
+    let projection = AdmissionTerminalProjection::DeniedAfterDelivery {
+        context: context.clone(),
+        reason: DeliveryDenialReason::DigestMismatch,
+        evidence: Box::new(AdmissionReceiptOrIncident::Receipt(Box::new(
+            receipt.clone(),
+        ))),
+        payment_evidence: Some(Box::new(payment.clone())),
+        observer_work: Some(Box::new(observer.clone())),
+    };
+    for (capabilities, capability) in [
+        (
+            AdmissionProjectionCapabilities {
+                payment_terminal: false,
+                ..full_projection_capabilities()
+            },
+            "payment_terminal",
+        ),
+        (
+            AdmissionProjectionCapabilities {
+                observation_attempt_zero: false,
+                ..full_projection_capabilities()
+            },
+            "observation_attempt_zero",
+        ),
+    ] {
+        assert_eq!(
+            operation.apply_terminal_projection(&projection, &capabilities),
+            Err(AdmissionOperationError::MissingProjectionCapability { capability })
+        );
+    }
+    let terminal = operation
+        .apply_terminal_projection(&projection, &full_projection_capabilities())
+        .expect("the complete denied projection must apply");
+    assert_eq!(
+        terminal.state(),
+        AdmissionOperationState::DeniedAfterDelivery
+    );
+    assert!(matches!(
+        terminal.terminal_replay(),
+        Some(AdmissionTerminalReplay::Receipt { .. })
+    ));
+    let canonical = projection
+        .canonical_projection()
+        .expect("the denied projection must canonicalize");
+    let mut kinds = canonical
+        .records()
+        .iter()
+        .map(|record| record.commitment().kind())
+        .collect::<Vec<_>>();
+    kinds.sort();
+    let mut expected_kinds = vec![
+        AdmissionProjectionRecordKind::Receipt,
+        AdmissionProjectionRecordKind::PaymentTerminal,
+        AdmissionProjectionRecordKind::ObservationAttemptZero,
+    ];
+    expected_kinds.sort();
+    assert_eq!(
+        kinds, expected_kinds,
+        "the denied terminal commits its participant records"
+    );
+
+    // A stripped projection for the same paid operation must not apply:
+    // the terminal cannot silently drop the release evidence.
+    let stripped = AdmissionTerminalProjection::DeniedAfterDelivery {
+        context: context.clone(),
+        reason: DeliveryDenialReason::DigestMismatch,
+        evidence: Box::new(AdmissionReceiptOrIncident::Receipt(Box::new(
+            receipt.clone(),
+        ))),
+        payment_evidence: None,
+        observer_work: None,
+    };
+    assert_eq!(
+        operation.apply_terminal_projection(&stripped, &full_projection_capabilities()),
+        Err(AdmissionOperationError::TerminalProjectionBindingMismatch)
+    );
+
+    // Participant evidence bound to the completed terminal cannot be
+    // replayed onto the denied one.
+    assert!(matches!(
+        PaymentTerminalEvidence::from_source_verified(
+            &operation,
+            &context,
+            &receipt,
+            identifier("payment_participant_id", "payment-1"),
+            digest("payment_authority_digest", AUTH_HASH),
+            identifier("payment_record_id", "payment-record-1"),
+            digest("payment_record_digest", REQUEST_HASH),
+            900,
+            outcome_id,
+            outcome_version,
+            AdmissionOperationState::Completed,
+        )
+        .expect("completed-bound evidence still qualifies on its own terms")
+        .validate_against(
+            &operation,
+            &context,
+            &receipt,
+            &digest("outcome_id", POLICY_HASH),
+            outcome_version,
+            AdmissionOperationState::DeniedAfterDelivery,
+        ),
+        Err(AdmissionOperationError::TerminalProjectionBindingMismatch)
+    ));
 }

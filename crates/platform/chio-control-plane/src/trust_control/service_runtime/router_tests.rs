@@ -54,6 +54,8 @@ fn metrics_state(service_token: &str) -> TrustServiceState {
         cluster_progress: None,
         #[cfg(feature = "cognition-market-experimental")]
         finding_rail: None,
+        #[cfg(feature = "cognition-market-experimental")]
+        finding_purchase_executor: None,
     }
 }
 

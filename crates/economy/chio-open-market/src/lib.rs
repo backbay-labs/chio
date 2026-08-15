@@ -31,6 +31,10 @@ pub mod fee_schedule;
 pub mod finding_admission;
 pub mod fiscal_adapter;
 pub mod penalty;
+#[cfg(feature = "cognition-market-experimental")]
+pub mod purchase_verification;
+#[cfg(feature = "cognition-market-experimental")]
+pub mod recovery;
 pub(crate) mod validation;
 
 #[cfg(test)]

@@ -225,6 +225,19 @@ fn constraint_matches(
         }
         Constraint::MaxLength(max) => Ok(string_leaves.iter().all(|leaf| leaf.value.len() <= *max)),
         Constraint::MaxArgsSize(max) => Ok(arguments.to_string().len() <= *max),
+        // The delivery carriers are enforced only where an output-aware
+        // terminal exists. Spelling either as a Custom key must never
+        // satisfy a grant by argument matching alone, so the spelling
+        // fails the grant it appears on without condemning its sibling
+        // grants; the first-class variants below still deny the whole
+        // evaluation on this surface.
+        Constraint::Custom(key, _)
+            if key == "output_digest_sha256"
+                || key == "require_finding_purchase"
+                || key == "require_finding_recovery" =>
+        {
+            Ok(false)
+        }
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
         Constraint::AudienceAllowlist(allowed) => {
             Ok(audience_allowlist_matches(arguments, allowed))
@@ -248,7 +261,9 @@ fn constraint_matches(
         | Constraint::RequireDualApproval(_)
         | Constraint::ModelConstraint { .. }
         | Constraint::MemoryWriteDenyPatterns(_)
-        | Constraint::OutputDigestSha256(_) => Err(ScopeMatchError::ConstraintError(format!(
+        | Constraint::OutputDigestSha256(_)
+        | Constraint::RequireFindingPurchase(_)
+        | Constraint::RequireFindingRecovery(_) => Err(ScopeMatchError::ConstraintError(format!(
             "portable kernel cannot safely evaluate {}",
             constraint_name(constraint)
         ))),
@@ -363,6 +378,8 @@ fn constraint_name(constraint: &Constraint) -> &'static str {
         Constraint::MemoryStoreAllowlist(_) => "memory_store_allowlist",
         Constraint::MemoryWriteDenyPatterns(_) => "memory_write_deny_patterns",
         Constraint::OutputDigestSha256(_) => "output_digest_sha256",
+        Constraint::RequireFindingPurchase(_) => "require_finding_purchase",
+        Constraint::RequireFindingRecovery(_) => "require_finding_recovery",
     }
 }
 
@@ -661,4 +678,77 @@ fn is_memory_store_key(key: &str) -> bool {
         key.to_ascii_lowercase().as_str(),
         "store" | "memory_store" | "collection" | "namespace"
     )
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod delivery_spelling_tests {
+    use alloc::vec;
+
+    use super::*;
+
+    fn grant(constraints: Vec<Constraint>) -> ToolGrant {
+        ToolGrant {
+            server_id: "srv".to_string(),
+            tool_name: "tool".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints,
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        }
+    }
+
+    #[test]
+    fn custom_delivery_spellings_never_match_and_never_poison_siblings() {
+        for (key, value) in [
+            ("output_digest_sha256", "aa"),
+            ("require_finding_purchase", "finding-1"),
+        ] {
+            let scope = ChioScope {
+                grants: vec![
+                    grant(vec![Constraint::Custom(key.to_string(), value.to_string())]),
+                    grant(Vec::new()),
+                ],
+                ..ChioScope::default()
+            };
+            let arguments = serde_json::Value::Object(serde_json::Map::from_iter([(
+                key.to_string(),
+                serde_json::Value::String(value.to_string()),
+            )]));
+            let matches = resolve_matching_grants(&scope, "tool", "srv", &arguments)
+                .expect("a custom delivery spelling must not fail the whole candidate set");
+            assert_eq!(
+                matches.len(),
+                1,
+                "only the clean sibling may match for {key}"
+            );
+            assert_eq!(matches[0].index, 1);
+        }
+    }
+
+    #[test]
+    fn first_class_delivery_constraints_still_deny_the_whole_evaluation() {
+        let digest = "aa".repeat(32);
+        for constraint in [
+            Constraint::OutputDigestSha256(digest),
+            Constraint::Custom("path".to_string(), "unrelated".to_string()),
+        ] {
+            let expect_error = matches!(constraint, Constraint::OutputDigestSha256(_));
+            let scope = ChioScope {
+                grants: vec![grant(vec![constraint]), grant(Vec::new())],
+                ..ChioScope::default()
+            };
+            let result = resolve_matching_grants(&scope, "tool", "srv", &serde_json::json!({}));
+            if expect_error {
+                assert!(
+                    matches!(result, Err(ScopeMatchError::ConstraintError(_))),
+                    "a first-class delivery constraint denies this surface outright"
+                );
+            } else {
+                assert!(result.is_ok());
+            }
+        }
+    }
 }

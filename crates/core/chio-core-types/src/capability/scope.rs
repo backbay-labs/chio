@@ -419,6 +419,87 @@ pub enum Constraint {
     /// the output-aware terminal ordering rejects the constraint before it
     /// mutates budget or payment.
     OutputDigestSha256(String),
+    /// Delivery: this grant authorizes exactly one purchased finding
+    /// reveal. The provider-signed marker names the exact finding and
+    /// listing being sold and closes over the settlement rail, so omitted
+    /// purchase context can never downgrade into a generic
+    /// digest-constrained call.
+    ///
+    /// Admission requires the request to name the same finding, a verified
+    /// purchase context, and the settlement profile the selector admits.
+    /// Surfaces without purchase-aware admission reject the marker before
+    /// any budget or payment mutation.
+    RequireFindingPurchase(Box<FindingPurchaseMarkerV1>),
+    /// Delivery: this grant authorizes a bounded no-charge redelivery of a
+    /// finding whose paid delivery was already settled. Recovery is a
+    /// distinct authorization profile: it never satisfies a purchase marker
+    /// and never enters a payment path.
+    ///
+    /// Admission requires the dedicated recovery carrier named by this
+    /// marker and an exact top-level `finding_id` argument. Surfaces without
+    /// recovery-aware admission reject the marker before dispatch.
+    RequireFindingRecovery(Box<FindingRecoveryMarkerV1>),
+}
+
+/// Closed settlement selector for a purchased finding reveal.
+///
+/// The selector is signed into the grant by the provider, so a purchase
+/// admitted for one rail cannot be replayed against another by omitting
+/// its companion evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum FindingSettlementSelector {
+    /// Single-operator settlement over a local reversible hold: authorize
+    /// before dispatch, capture only after the delivered output passes the
+    /// digest and media checks, release on any failure.
+    LocalReversibleHold,
+    /// Cross-organization escrow settlement. The digest pins the exact
+    /// settlement-profile envelope the escrow witness must satisfy.
+    /// Registered for wire compatibility; admission rejects it until an
+    /// escrow witness lane exists.
+    CrossOrgEscrow {
+        /// Canonical lowercase 64-hex SHA-256 digest of the signed
+        /// settlement-profile envelope.
+        settlement_profile_sha256: String,
+    },
+}
+
+/// Provider-signed purchase binding carried by
+/// [`Constraint::RequireFindingPurchase`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingPurchaseMarkerV1 {
+    /// Content-addressed id of the finding being sold.
+    pub finding_id: String,
+    /// Listing the sale was admitted under.
+    pub listing_id: String,
+    /// Closed settlement rail selector for this sale.
+    pub settlement: FindingSettlementSelector,
+}
+
+/// Provider-signed binding for a no-charge finding redelivery.
+///
+/// `recovery_id` is deterministically derived from the original capability,
+/// settled purchase record, and successful delivery receipt. It is the
+/// durable quota key, so minting the same authority again cannot reset the
+/// retry budget.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingRecoveryMarkerV1 {
+    /// Deterministic lowercase 64-hex recovery identity.
+    pub recovery_id: String,
+    /// Content-addressed finding id being redelivered.
+    pub finding_id: String,
+    /// Listing under which the original purchase settled.
+    pub listing_id: String,
+    /// Capability id used for the original paid delivery.
+    pub original_capability_id: String,
+    /// Signed Allow receipt id for the original delivery.
+    pub original_delivery_receipt_id: String,
+    /// Derived key of the signed settled purchase record.
+    pub purchase_key: String,
+    /// Durable attempt ceiling shared by every re-mint of `recovery_id`.
+    pub max_recoveries: u32,
 }
 
 impl Constraint {
@@ -495,6 +576,16 @@ impl Constraint {
             // A delivery digest is preserved only by an identical digest:
             // a child cannot loosen or drop the expected output.
             (Self::OutputDigestSha256(parent), Self::OutputDigestSha256(child)) => parent == child,
+            // A purchase marker is preserved only by an identical marker:
+            // delegation cannot retarget the finding, listing, or rail.
+            (Self::RequireFindingPurchase(parent), Self::RequireFindingPurchase(child)) => {
+                parent == child
+            }
+            // A recovery marker is preserved only by an identical marker:
+            // delegation cannot retarget its durable quota or lineage.
+            (Self::RequireFindingRecovery(parent), Self::RequireFindingRecovery(child)) => {
+                parent == child
+            }
             _ => self == child,
         }
     }

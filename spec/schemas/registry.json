@@ -288,10 +288,40 @@
       "schemaFile": "spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json"
     },
     {
+      "schema": "chio.finding.delivery.v1",
+      "artifactKind": "finding_delivery",
+      "introducedBy": "finding-delivery-v1",
+      "schemaFile": "spec/schemas/chio-wire/v1/receipt/finding-delivery.schema.json"
+    },
+    {
+      "schema": "chio.finding.failed-delivery.v1",
+      "artifactKind": "finding_failed_delivery",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/failed-delivery.schema.json"
+    },
+    {
       "schema": "chio.finding.market-terms.v1",
       "artifactKind": "finding_market_terms",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/market-terms.schema.json"
+    },
+    {
+      "schema": "chio.finding.purchase-context.v1",
+      "artifactKind": "finding_purchase_context",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/purchase-context.schema.json"
+    },
+    {
+      "schema": "chio.finding.purchase-record.v1",
+      "artifactKind": "finding_purchase_record",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/purchase-record.schema.json"
+    },
+    {
+      "schema": "chio.finding.recovery-context.v1",
+      "artifactKind": "finding_recovery_context",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/recovery-context.schema.json"
     },
     {
       "schema": "chio.finding.replay-recipe-input.v1",

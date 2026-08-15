@@ -22,6 +22,22 @@ struct VerifiedTerminalParticipantSourceV1 {
     outcome_version: u64,
 }
 
+/// The two terminal states that retain a delivered tool outcome and may
+/// therefore carry outcome-bound participant evidence: a completed
+/// delivery and a delivery denied after the output was produced. Every
+/// other terminal has no delivered outcome to bind against.
+fn validate_delivered_terminal_state(
+    projected_state: AdmissionOperationState,
+) -> Result<(), AdmissionOperationError> {
+    if !matches!(
+        projected_state,
+        AdmissionOperationState::Completed | AdmissionOperationState::DeniedAfterDelivery
+    ) {
+        return Err(AdmissionOperationError::TerminalProjectionBindingMismatch);
+    }
+    Ok(())
+}
+
 impl VerifiedTerminalParticipantSourceV1 {
     #[allow(clippy::too_many_arguments)]
     fn from_source_verified(
@@ -34,8 +50,10 @@ impl VerifiedTerminalParticipantSourceV1 {
         source_recorded_at_unix_ms: u64,
         outcome_id: AdmissionDigest,
         outcome_version: u64,
+        projected_state: AdmissionOperationState,
     ) -> Result<Self, AdmissionOperationError> {
         let receipt = receipt.receipt();
+        validate_delivered_terminal_state(projected_state)?;
         validate_positive_ijson("source_recorded_at_unix_ms", source_recorded_at_unix_ms)?;
         validate_positive_ijson("participant_outcome_version", outcome_version)?;
         operation.validate_completed_tool_outcome_attachment(&outcome_id)?;
@@ -46,7 +64,7 @@ impl VerifiedTerminalParticipantSourceV1 {
             binding: AdmissionExactProjectionBindingV1::from_verified(
                 operation,
                 context,
-                AdmissionOperationState::Completed,
+                projected_state,
             )?,
             source_authority_digest,
             source_record_id,
@@ -69,10 +87,12 @@ impl VerifiedTerminalParticipantSourceV1 {
         receipt: &VerifiedAdmissionReceipt,
         outcome_id: &AdmissionDigest,
         outcome_version: u64,
+        projected_state: AdmissionOperationState,
     ) -> Result<(), AdmissionOperationError> {
         let receipt = receipt.receipt();
+        validate_delivered_terminal_state(projected_state)?;
         self.binding
-            .validate_against(operation, context, AdmissionOperationState::Completed)?;
+            .validate_against(operation, context, projected_state)?;
         validate_positive_ijson(
             "source_recorded_at_unix_ms",
             self.source_recorded_at_unix_ms,
@@ -112,6 +132,7 @@ macro_rules! attached_terminal_participant {
                 source_recorded_at_unix_ms: u64,
                 outcome_id: AdmissionDigest,
                 outcome_version: u64,
+                projected_state: AdmissionOperationState,
             ) -> Result<Self, AdmissionOperationError> {
                 if !matches!(
                     operation.attachment(AdmissionAttachmentKind::$kind),
@@ -130,6 +151,7 @@ macro_rules! attached_terminal_participant {
                         source_recorded_at_unix_ms,
                         outcome_id,
                         outcome_version,
+                        projected_state,
                     )?,
                     $field,
                 })
@@ -142,6 +164,7 @@ macro_rules! attached_terminal_participant {
                 receipt: &VerifiedAdmissionReceipt,
                 outcome_id: &AdmissionDigest,
                 outcome_version: u64,
+                projected_state: AdmissionOperationState,
             ) -> Result<(), AdmissionOperationError> {
                 if !matches!(
                     operation.attachment(AdmissionAttachmentKind::$kind),
@@ -155,8 +178,10 @@ macro_rules! attached_terminal_participant {
                     receipt,
                     outcome_id,
                     outcome_version,
+                    projected_state,
                 )
             }
+
         }
     };
 }
@@ -175,6 +200,12 @@ attached_terminal_participant!(
     OutcomeEligibility,
     OutcomeEligibilityDigest
 );
+
+impl PaymentTerminalEvidence {
+    pub(in crate::admission_operation) const fn outcome_version(&self) -> u64 {
+        self.source.outcome_version
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ObligationProjection {
@@ -276,6 +307,7 @@ impl ObligationProjection {
                 atom.created_at_unix_ms(),
                 outcome_id.clone(),
                 outcome_version,
+                AdmissionOperationState::Completed,
             )?,
             atom,
             disposition_record,
@@ -351,6 +383,7 @@ impl ObligationProjection {
                 atom.created_at_unix_ms(),
                 tool_outcome.outcome_id().clone(),
                 tool_outcome.outcome_version(),
+                AdmissionOperationState::Completed,
             )?,
             atom: atom.clone(),
             disposition_record,
@@ -436,6 +469,7 @@ impl ObligationProjection {
                 atom.created_at_unix_ms(),
                 outcome_id,
                 outcome_version,
+                AdmissionOperationState::Completed,
             )?,
             atom,
             disposition_record,
@@ -475,8 +509,14 @@ impl ObligationProjection {
         {
             validate_economic_receipt_obligation(&self.atom, receipt.receipt(), None)?;
         }
-        self.source
-            .validate_against(operation, context, receipt, outcome_id, outcome_version)
+        self.source.validate_against(
+            operation,
+            context,
+            receipt,
+            outcome_id,
+            outcome_version,
+            AdmissionOperationState::Completed,
+        )
     }
 
     pub(in crate::admission_operation) fn obligation_id(&self) -> &AdmissionIdentifier {

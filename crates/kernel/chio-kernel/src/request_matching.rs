@@ -436,12 +436,24 @@ fn constraint_matches(
         | Constraint::SellerExact(_)
         | Constraint::MinimumRuntimeAssurance(_)
         | Constraint::MinimumAutonomyTier(_) => Ok(true),
-        // The output-digest carrier is a downgrade attack when expressed as
-        // a Custom key an old kernel would match against arguments; reject
-        // that spelling so only the first-class variant carries a digest.
-        Constraint::Custom(key, _) if key == "output_digest_sha256" => {
+        // The delivery carriers are downgrade attacks when expressed as
+        // Custom keys an old kernel would match against arguments. The
+        // spelling never satisfies a grant, so only the first-class
+        // variants carry the semantics, and a grant carrying the spelling
+        // simply fails to match without condemning its sibling grants.
+        Constraint::Custom(key, _)
+            if key == "output_digest_sha256" || key == "require_finding_purchase" =>
+        {
+            Ok(false)
+        }
+        Constraint::Custom(key, _)
+            if matches!(
+                key.as_str(),
+                "require_finding_recovery" | "recovery_of_receipt_id" | "recovery_of_capability_id"
+            ) =>
+        {
             Err(KernelError::InvalidConstraint(
-                "output_digest_sha256 must use the OutputDigestSha256 constraint, not Custom"
+                "finding recovery must use the RequireFindingRecovery constraint, not Custom"
                     .to_owned(),
             ))
         }
@@ -487,6 +499,23 @@ fn constraint_matches(
         // Admitting it here lets the grant match; every surface that cannot
         // reach that terminal rejects the constraint before dispatch.
         Constraint::OutputDigestSha256(_) => Ok(true),
+        // A purchase-marked grant serves exactly one reveal request: the
+        // argument object must name the sold finding as a typed string
+        // equal to the signed marker. A missing, wrong, or wrong-typed
+        // argument fails the match here, before any nonce, budget, or
+        // payment mutation. The purchase context itself is verified by the
+        // purchase-aware admission gate, not at argument matching.
+        Constraint::RequireFindingPurchase(marker) => Ok(arguments
+            .get("finding_id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|finding_id| finding_id == marker.finding_id)),
+        // Recovery uses the same exact top-level finding binding, but is a
+        // distinct no-charge authorization profile. The dedicated recovery
+        // admission gate verifies its evidence carrier and durable quota.
+        Constraint::RequireFindingRecovery(marker) => Ok(arguments
+            .get("finding_id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|finding_id| finding_id == marker.finding_id)),
     }
 }
 
@@ -621,6 +650,70 @@ mod tests {
     }
 
     #[test]
+    fn custom_delivery_spellings_never_match_and_never_poison_siblings() {
+        let issuer = Keypair::generate();
+        let grant = |constraints: Vec<Constraint>| ToolGrant {
+            server_id: "srv".to_string(),
+            tool_name: "tool".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints,
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        };
+        for (key, value) in [
+            ("output_digest_sha256", "aa"),
+            ("require_finding_purchase", "finding-1"),
+        ] {
+            let capability = CapabilityToken::sign(
+                CapabilityTokenBody {
+                    id: format!("cap-custom-{key}"),
+                    issuer: issuer.public_key(),
+                    subject: issuer.public_key(),
+                    scope: ChioScope {
+                        grants: vec![
+                            grant(vec![Constraint::Custom(key.to_string(), value.to_string())]),
+                            grant(Vec::new()),
+                        ],
+                        ..ChioScope::default()
+                    },
+                    issued_at: 1,
+                    expires_at: u64::MAX,
+                    delegation_chain: Vec::new(),
+                    aggregate_invocation_budget: None,
+                },
+                &issuer,
+            )
+            .expect("sign capability");
+            let arguments = serde_json::Value::Object(serde_json::Map::from_iter([(
+                key.to_string(),
+                serde_json::Value::String(value.to_string()),
+            )]));
+            let matches = resolve_matching_grants(&capability, "tool", "srv", &arguments, None)
+                .expect("a custom delivery spelling must not fail the whole candidate set");
+            assert_eq!(
+                matches
+                    .iter()
+                    .map(|matching| matching.index)
+                    .collect::<Vec<_>>(),
+                vec![1],
+                "only the unconstrained sibling may match for {key}"
+            );
+
+            let capability = capability_with_constraints(vec![Constraint::Custom(
+                key.to_string(),
+                value.to_string(),
+            )]);
+            assert!(
+                !capability_matches_request(&capability, "tool", "srv", &arguments)
+                    .expect("the spelling must fail its own grant, not the evaluation"),
+                "a {key} custom spelling must never satisfy a grant"
+            );
+        }
+    }
+
+    #[test]
     fn audience_allowlist_rejects_non_string_values() {
         assert!(audience_allowlist_matches(
             &serde_json::json!({"recipient": "#ops"}),
@@ -650,6 +743,134 @@ mod tests {
             &serde_json::json!({"store": null}),
             &["session-cache".to_string()]
         ));
+    }
+
+    fn purchase_marker(finding_id: &str) -> Constraint {
+        Constraint::RequireFindingPurchase(Box::new(
+            chio_core::capability::scope::FindingPurchaseMarkerV1 {
+                finding_id: finding_id.to_string(),
+                listing_id: "listing-1".to_string(),
+                settlement:
+                    chio_core::capability::scope::FindingSettlementSelector::LocalReversibleHold,
+            },
+        ))
+    }
+
+    #[test]
+    fn finding_purchase_marker_requires_the_exact_typed_finding_argument() {
+        let capability = capability_with_constraints(vec![purchase_marker("finding-a")]);
+
+        assert!(capability_matches_request(
+            &capability,
+            "tool",
+            "srv",
+            &serde_json::json!({"finding_id": "finding-a"}),
+        )
+        .expect("matching finding argument admits the carrier"));
+        for arguments in [
+            serde_json::json!({}),
+            serde_json::json!({"finding_id": "finding-b"}),
+            serde_json::json!({"finding_id": ["finding-a"]}),
+            serde_json::json!({"finding_id": {"id": "finding-a"}}),
+            serde_json::json!({"finding": "finding-a"}),
+        ] {
+            assert!(
+                !capability_matches_request(&capability, "tool", "srv", &arguments)
+                    .expect("evaluate request match"),
+                "argument shape {arguments} must fail the purchase-marked grant"
+            );
+        }
+    }
+
+    #[test]
+    fn finding_purchase_custom_spelling_is_rejected_as_downgrade() {
+        let capability = capability_with_constraints(vec![Constraint::Custom(
+            "require_finding_purchase".to_string(),
+            "finding-a".to_string(),
+        )]);
+
+        let result = capability_matches_request(
+            &capability,
+            "tool",
+            "srv",
+            &serde_json::json!({"finding_id": "finding-a"}),
+        );
+        assert!(
+            matches!(result, Err(KernelError::InvalidConstraint(_))),
+            "custom spelling must be rejected, got {result:?}"
+        );
+    }
+
+    fn recovery_marker(finding_id: &str) -> Constraint {
+        Constraint::RequireFindingRecovery(Box::new(
+            chio_core::capability::scope::FindingRecoveryMarkerV1 {
+                recovery_id: "a".repeat(64),
+                finding_id: finding_id.to_string(),
+                listing_id: "listing-1".to_string(),
+                original_capability_id: "capability-original".to_string(),
+                original_delivery_receipt_id: "receipt-original".to_string(),
+                purchase_key: "b".repeat(64),
+                max_recoveries: 2,
+            },
+        ))
+    }
+
+    #[test]
+    fn finding_recovery_marker_requires_exact_top_level_finding() {
+        let capability = capability_with_constraints(vec![recovery_marker("finding-a")]);
+        assert!(capability_matches_request(
+            &capability,
+            "tool",
+            "srv",
+            &serde_json::json!({"finding_id": "finding-a"}),
+        )
+        .expect("exact recovery finding"));
+        for arguments in [
+            serde_json::json!({"finding": "finding-a"}),
+            serde_json::json!({"finding_id": "finding-b", "nested": {"finding_id": "finding-a"}}),
+            serde_json::json!({"finding_id": ["finding-a"]}),
+        ] {
+            assert!(
+                !capability_matches_request(&capability, "tool", "srv", &arguments)
+                    .expect("evaluate recovery match")
+            );
+        }
+    }
+
+    #[test]
+    fn finding_recovery_custom_spelling_is_rejected_as_downgrade() {
+        let capability = capability_with_constraints(vec![Constraint::Custom(
+            "require_finding_recovery".to_string(),
+            "finding-a".to_string(),
+        )]);
+        assert!(matches!(
+            capability_matches_request(
+                &capability,
+                "tool",
+                "srv",
+                &serde_json::json!({"require_finding_recovery": "finding-a"}),
+            ),
+            Err(KernelError::InvalidConstraint(_))
+        ));
+    }
+
+    #[test]
+    fn legacy_custom_only_recovery_authority_is_rejected() {
+        for key in ["recovery_of_receipt_id", "recovery_of_capability_id"] {
+            let capability = capability_with_constraints(vec![Constraint::Custom(
+                key.to_owned(),
+                "original".to_owned(),
+            )]);
+            assert!(matches!(
+                capability_matches_request(
+                    &capability,
+                    "tool",
+                    "srv",
+                    &serde_json::json!({key: "original"}),
+                ),
+                Err(KernelError::InvalidConstraint(_))
+            ));
+        }
     }
 }
 

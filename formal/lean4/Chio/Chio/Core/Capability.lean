@@ -34,6 +34,8 @@ inductive Constraint where
   | maxLength : Nat → Constraint
   | custom : String → String → Constraint
   | outputDigestSha256 : String → Constraint
+  | requireFindingPurchase : String → String → String → Constraint
+  | requireFindingRecovery : String → String → String → String → String → String → Nat → Constraint
   deriving Repr, BEq, DecidableEq, ReflBEq, LawfulBEq
 
 /-- Mirrors: ToolGrant in crates/core/chio-core-types/src/capability/scope.rs. -/

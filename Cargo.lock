@@ -2943,6 +2943,8 @@ dependencies = [
  "chio-federation",
  "chio-federation-authority",
  "chio-federation-transport-iroh",
+ "chio-finding",
+ "chio-finding-verifier",
  "chio-guard-registry",
  "chio-guards",
  "chio-hosted-mcp",
@@ -2967,6 +2969,7 @@ dependencies = [
  "chio-runtime-harness",
  "chio-selective-disclosure",
  "chio-settle",
+ "chio-spec-validate",
  "chio-store-sqlite",
  "chio-swarm-authority",
  "chio-tee-frame",
@@ -3135,6 +3138,7 @@ dependencies = [
 name = "chio-control-plane"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum 0.8.8",
  "base64 0.22.1",
  "chio-agent-web-interop",
@@ -3601,6 +3605,7 @@ dependencies = [
 name = "chio-finding"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chio-core-types",
  "chio-spec-validate",
  "serde",
@@ -4173,6 +4178,7 @@ dependencies = [
 name = "chio-open-market"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chio-core-types",
  "chio-finding",
  "chio-fiscal",

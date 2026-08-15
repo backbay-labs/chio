@@ -8,7 +8,30 @@ use chio_http_serve::{
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "cognition-market-experimental")]
 pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliError> {
+    serve_async_inner(config, None).await
+}
+
+#[cfg(not(feature = "cognition-market-experimental"))]
+pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliError> {
+    serve_async_inner(config).await
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) async fn serve_async_with_finding_purchase_executor(
+    config: TrustServiceConfig,
+    executor: super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+) -> Result<(), CliError> {
+    serve_async_inner(config, Some(executor)).await
+}
+
+async fn serve_async_inner(
+    config: TrustServiceConfig,
+    #[cfg(feature = "cognition-market-experimental")] finding_purchase_executor: Option<
+        super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    >,
+) -> Result<(), CliError> {
     config.validate()?;
     let enterprise_provider_registry = load_enterprise_provider_registry(
         config.enterprise_providers_file.as_deref(),
@@ -85,6 +108,8 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
         cluster_progress,
         #[cfg(feature = "cognition-market-experimental")]
         finding_rail,
+        #[cfg(feature = "cognition-market-experimental")]
+        finding_purchase_executor,
     };
     let controller = ShutdownController::install();
     let cluster_sync_task = state

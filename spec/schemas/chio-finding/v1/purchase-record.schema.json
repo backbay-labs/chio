@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/purchase-record.schema.json",
+  "title": "Chio Finding Purchase Record (signed envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "purchase_key",
+        "purchase_intent_id",
+        "authoritative_payment_operation_id",
+        "buyer",
+        "payer",
+        "finding_id",
+        "listing_id",
+        "accepted_bid_envelope_sha256",
+        "venue_admission_envelope_sha256",
+        "accepted_price",
+        "realized_spend",
+        "seller_backing_envelope_sha256",
+        "encumbrance_id",
+        "delivery_receipt_id",
+        "payment_reference",
+        "payout_destination",
+        "recorded_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.purchase-record.v1"
+        },
+        "purchase_key": {
+          "$ref": "#/$defs/sha256"
+        },
+        "purchase_intent_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "authoritative_payment_operation_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "buyer": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "payer": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "finding_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "listing_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "accepted_bid_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "venue_admission_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "accepted_price": {
+          "$ref": "#/$defs/monetaryAmountNonzero"
+        },
+        "realized_spend": {
+          "$ref": "#/$defs/monetaryAmount"
+        },
+        "seller_backing_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "encumbrance_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "delivery_receipt_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "payment_reference": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "payout_destination": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "boundedIdentifier": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 512
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64Nonzero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "currency"
+      ],
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "monetaryAmountNonzero": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "currency"
+      ],
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

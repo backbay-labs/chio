@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/recovery-context.schema.json",
+  "title": "Chio Finding Recovery Context (unsigned)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "recovery_id",
+    "original_capability_json",
+    "purchase_context_json",
+    "purchase_record_envelope_json",
+    "original_delivery_receipt_json"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.finding.recovery-context.v1"
+    },
+    "recovery_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "original_capability_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "purchase_context_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "purchase_record_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "original_delivery_receipt_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    }
+  },
+  "$defs": {
+    "canonicalJsonText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1048576
+    }
+  }
+}

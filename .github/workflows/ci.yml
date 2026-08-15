@@ -279,6 +279,7 @@ jobs:
           cargo test -p chio-control-plane --lib --features cognition-market-experimental
           cargo test -p chio-store-sqlite --features cognition-market-experimental
           cargo test -p chio-open-market --features cognition-market-experimental
+          cargo test -p chio-cli --features cognition-market-experimental --bin chio finding
           cargo test -p chio-finding -p chio-finding-verifier
 
       - name: Wasm guards library tests

@@ -20,7 +20,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::capability::{
-    scope::{ChioScope, MonetaryAmount, Operation, ToolGrant},
+    scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenBody},
 };
 use crate::crypto::{sha256_hex, Keypair, PublicKey};
@@ -282,6 +282,11 @@ impl VerifiedReservationReceipt {
     pub fn receipt_id(&self) -> &str {
         &self.receipt_id
     }
+
+    #[must_use]
+    pub fn reserved_amount(&self) -> &MonetaryAmount {
+        &self.reserved_amount
+    }
 }
 
 /// Parameters the provider supplies when minting a token under a bid.
@@ -300,6 +305,13 @@ pub struct BidMintContext<'a> {
     /// Unix seconds when the provider evaluates the bid. Used as the
     /// `issued_at` on the ask and the minted token.
     pub now: u64,
+    /// Provider-authored constraints signed into the minted grant. The
+    /// buyer's bid cannot request or alter these; delivery-committed asks
+    /// carry their digest and purchase bindings here.
+    pub grant_constraints: Vec<Constraint>,
+    /// Whether the minted grant demands a DPoP proof-of-possession on
+    /// every invocation.
+    pub dpop_required: Option<bool>,
 }
 
 /// Execute the bid/ask flow: validate the request, apply fail-closed checks
@@ -394,7 +406,7 @@ pub fn bid(
                 server_id: listing.listing.body.subject.actor_id.clone(),
                 tool_name: request.body.requested_scope.tool_name.clone(),
                 operations: vec![Operation::Invoke],
-                constraints: Vec::new(),
+                constraints: context.grant_constraints.clone(),
                 max_invocations: request.body.requested_scope.max_invocations,
                 max_cost_per_invocation: Some(advertised_price.clone()),
                 max_total_cost: match request.body.requested_scope.max_invocations {
@@ -407,7 +419,7 @@ pub fn bid(
                     }),
                     None => None,
                 },
-                dpop_required: None,
+                dpop_required: context.dpop_required,
             }],
             resource_grants: Vec::new(),
             prompt_grants: Vec::new(),

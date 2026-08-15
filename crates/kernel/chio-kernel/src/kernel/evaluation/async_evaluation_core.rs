@@ -307,6 +307,20 @@ impl ChioKernel {
                 );
             }
         };
+        let required_delivery_grant_index =
+            match super::evaluation_helpers::required_delivery_grant_index(&matching_grants) {
+                Ok(index) => index,
+                Err(reason) => {
+                    warn!(request_id = %request.request_id, reason, "delivery contract denied");
+                    return self.build_deny_response_with_metadata(
+                        request,
+                        reason,
+                        now,
+                        None,
+                        extra_metadata.clone(),
+                    );
+                }
+            };
 
         // DPoP enforcement before budget charge: if any matching grant requires
         // DPoP, verify the proof now so an attacker cannot drain the budget with
@@ -415,6 +429,9 @@ impl ChioKernel {
         let mut guard_denial = None;
         let mut selected = None;
         for matching in &matching_grants {
+            if required_delivery_grant_index.is_some_and(|required| matching.index != required) {
+                continue;
+            }
             if durable_admission
                 .as_ref()
                 .is_some_and(|admission| !admission.permits_matching_grant(matching))
@@ -625,7 +642,18 @@ impl ChioKernel {
                         .release_runtime_admission_reservations_for_pre_dispatch_denial(
                             runtime_metadata,
                         );
-                    budget_error = Some(error);
+                    budget_error = Some(
+                        if required_delivery_grant_index == Some(matching.index)
+                            && matching_grants.len() > 1
+                        {
+                            KernelError::DurableAdmission(
+                                "a delivery-marked grant cannot be bypassed by sibling grant selection"
+                                    .to_string(),
+                            )
+                        } else {
+                            error
+                        },
+                    );
                     if !runtime_release_confirmed {
                         budget_error_metadata = runtime_metadata;
                         break;
@@ -1217,6 +1245,61 @@ impl ChioKernel {
                         },
                     );
                 }
+            }
+            // A purchase-marked grant additionally requires the verified
+            // signed purchase context, the identity output pipeline, and
+            // an open slot-reserved reservation before any nonce, budget,
+            // or payment mutation. The verification result is discarded
+            // here and re-derived deterministically at the durable
+            // terminal from the frozen request.
+            if let Err(reason) = self.verify_purchase_admission(selected.grant, request, now) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase denied");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &reason,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata: extra_metadata.clone(),
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
+            }
+            // Recovery is a separate no-charge admission profile. Its
+            // verifier atomically reserves the durable recovery-id quota
+            // here, before dispatch, and never invokes payment handling.
+            if let Err(reason) = self.verify_recovery_admission(selected.grant, request, now) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery denied");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &reason,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata: extra_metadata.clone(),
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
             }
         }
 

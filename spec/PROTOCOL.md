@@ -457,7 +457,21 @@ The shipped scope model includes:
 
 The shipped `constraints` surface includes ordinary argument constraints plus
 governed-transaction controls such as `governed_intent_required`,
-`require_approval_above`, and `seller_exact`.
+`require_approval_above`, and `seller_exact`, and three delivery controls:
+`output_digest_sha256` (the expected post-transform output digest, enforced
+at the output-aware durable terminal), `require_finding_purchase` (a
+provider-signed purchase marker binding `finding_id`, `listing_id`, and a
+closed settlement selector whose modes are `local_reversible_hold` and
+`cross_org_escrow` with a pinned `settlement_profile_sha256`), and
+`require_finding_recovery` (a no-charge recovery marker binding the original
+capability, settled purchase, successful delivery receipt, and one durable
+attempt ceiling shared by every deterministic re-mint). Recovery capabilities
+are undelegated, DPoP-bound, single-grant authorities with exactly one output
+digest and no monetary ceiling. Surfaces without the corresponding
+output-aware, purchase-aware, or recovery-aware admission reject these
+delivery controls fail-closed before any budget or payment mutation. Their
+`Custom`-keyed spellings, including the retired receipt- and
+capability-keyed recovery aliases, are rejected as downgrade attempts.
 
 ### Capability Attenuation
 
@@ -1075,6 +1089,7 @@ receipt signature. Unknown fields and unsupported schema versions fail closed.
 | `governed_transaction` | kernel | Governed-transaction intent and approval metadata. |
 | `admission_operation` | kernel | Durable admission projection, schema `chio.admission-receipt.v1` (see below). |
 | `delivery_contract` | kernel | Output-digest delivery evidence, schema `chio.delivery-contract.v1` (see below). |
+| `finding_delivery` | kernel | Purchased-finding delivery overlay, schema `chio.finding.delivery.v1` (see below). |
 
 Subject and issuer attribution, streamed-output chunk metadata, and
 portable-trust and federation provenance are additive extensions layered over
@@ -1099,6 +1114,22 @@ its own and is authenticated by the enclosing receipt. The machine-readable
 contract is registered at
 `spec/schemas/chio-wire/v1/receipt/delivery-contract.schema.json`; unknown
 fields, a non-pinned schema, and non-hex digests fail closed.
+
+A reveal admitted under a provider-signed finding purchase marker carries a
+`finding_delivery` block alongside the generic one, with schema
+`chio.finding.delivery.v1`. It names the `finding_id` and `listing_id` the sale
+was admitted under, the kernel-proved `transform_profile`, the `digest_check`
+and `media_type_check` comparisons, the `settlement_mode` the admitted selector
+named, the canonical SHA-256 digests of the accepted-bid and venue-admission
+envelopes, and the authoritative `reservation_id`, `purchase_intent_id`, and
+`authoritative_payment_operation_id`. Every field derives from kernel-verified
+state, never from a caller-asserted value, and the block appears only when the
+purchase context arrived through verified signed artifacts. Like the generic
+block it carries no signature of its own and is authenticated by the enclosing
+receipt. The machine-readable contract is registered at
+`spec/schemas/chio-wire/v1/receipt/finding-delivery.schema.json`; unknown
+fields, a non-pinned schema, non-hex envelope digests, and unrecognized
+comparison, profile, or settlement values fail closed.
 
 Governed receipt metadata now also admits a versioned
 `economic_authorization` envelope with `version`, `economic_mode`, `payer`,
@@ -1430,23 +1461,31 @@ perform those checks separately before relying on the corresponding claim.
 
 #### 6.4.7.1 Market envelope discipline
 
-Six families travel as signed export envelopes
+Eight families travel as signed export envelopes
 (`{body, signerKey, signature}`): `chio.finding.challenge-verifier-profile.v1`,
 `chio.finding.market-terms.v1`, `chio.finding.seller-authorization.v1`,
-`chio.finding.bond-backing.v1`, `chio.finding.verifier-report.v1`, and
-`chio.finding.admission.v1`. This differs from the inline-signed
-`chio.finding.v1` and from the unsigned `chio.finding.replay-recipe-input.v1`,
-which carries no envelope at all. Each of the six envelope bodies is strict
-snake_case JSON that rejects unknown members, names its own signing
-authority, and carries a content-addressed
-identifier computed exactly like `finding_id`: the SHA-256 digest of
+`chio.finding.bond-backing.v1`, `chio.finding.verifier-report.v1`,
+`chio.finding.admission.v1`, `chio.finding.purchase-record.v1`, and
+`chio.finding.failed-delivery.v1`. This differs from the inline-signed
+`chio.finding.v1` and from the unsigned
+`chio.finding.replay-recipe-input.v1` and
+`chio.finding.purchase-context.v1`, which carry no envelope at all. Each of
+the eight envelope bodies is strict snake_case JSON that rejects unknown
+members and carries a stable identifier. Seven of them are
+content-addressed exactly like `finding_id`: the SHA-256 digest of
 canonical JSON for the body after setting only the id member to the empty
-JSON string `""`, with every other member present. Envelope verification
+JSON string `""`, with every other member present.
+`chio.finding.purchase-record.v1` is the exception and derives its
+`purchase_key` from a domain-separated preimage instead (6.4.7.10). The
+first six additionally name their own signing authority in the body; the
+two purchase terminals name the buyer and are authorized only by the
+external pin. Envelope verification
 MUST verify strictly against an EXTERNALLY pinned authority key, MUST
 reject weak Ed25519 keys, MUST require the embedded `signerKey` to equal
-the pinned authority, and MUST require the body's authority member to
-equal the envelope signer. Verifying an envelope against its own embedded
-key alone is never sufficient for any market or value-moving decision.
+the pinned authority, and MUST require the body's authority member, where
+one exists, to equal the envelope signer. Verifying an envelope against
+its own embedded key alone is never sufficient for any market or
+value-moving decision.
 Envelope digests referenced by other artifacts are SHA-256 over the
 canonical JSON of the COMPLETE envelope (body, signer key, and signature),
 never over the body alone.
@@ -1566,10 +1605,60 @@ liveness uses both bounds: a finding with `issued_at > now` or
 `expires_at <= now` MUST NOT be indexable, admittable, or pairable with a
 fresh pricing hint.
 
-The finding family registers `chio.finding.v1`, the six signed market
-artifacts above, and the unsigned replay-recipe input at this stage.
-Delivery, challenge, and status-epoch artifacts remain unsupported until a
-future revision of this specification defines and registers them.
+#### 6.4.7.9 `chio.finding.purchase-context.v1`
+
+The UNSIGNED bounded carrier a buyer presents at reveal admission. Like the
+replay-recipe input, it registers in the public schema registry and manifest
+but MUST NOT enter the signed-artifact allowlist. It holds the exact
+canonical JSON TEXT of the signed finding, the listing, pricing-hint,
+admission, terms, seller-authorization, verifier-profile, backing, and
+verifier-report envelopes, the bid-request, ask-response, accepted-bid, and
+reservation-receipt envelopes, the authoritative reservation store key, and
+the capability token offer. Members stay opaque text because the token is
+compared for BYTE identity against the token the ask embedded, and a typed
+round-trip would normalize that comparison away. A presentation MUST be
+rejected before decoding when it exceeds the encoded bound, and after
+decoding when it exceeds the canonical bound, when the decoded bytes are not
+byte-identical to their own strict canonicalization, when any member is
+absent, oversized, or not itself strictly canonical, or when the carried
+members together exceed the carrier bound. The carrier authorizes nothing:
+the reveal path MUST re-verify every member from its bytes.
+
+#### 6.4.7.10 `chio.finding.purchase-record.v1`
+
+The purchase-authority-signed record of one settled sale: the purchase
+intent, the authoritative payment operation, buyer and payer keys, the exact
+finding, listing, accepted-bid envelope, venue-admission envelope, and
+seller-backing envelope digests, the accepted price and the realized spend
+in one currency, the encumbrance, the delivery receipt, the payment
+reference, a rail-tagged payout destination, and the record time. Its
+`purchase_key` is the SHA-256 digest of the domain-separated preimage
+`"chio.finding.purchase.v1\0"` followed by the accepted-bid envelope digest,
+a NUL byte, and the authoritative payment operation identifier. That key is
+the settling store's idempotency key: a retry of the same sale MUST
+recompute the same key, and a second payment operation for the same bid MUST
+NOT reuse it. `realized_spend` MAY fall below `accepted_price` for a partial
+capture but MUST NOT exceed it, and both amounts MUST share one currency.
+
+#### 6.4.7.11 `chio.finding.failed-delivery.v1`
+
+The failed-delivery-authority-signed terminal for a reveal denied before any
+value moved. It binds the buyer, the exact finding, listing, and
+accepted-bid envelope digest, the reservation, purchase intent, and
+authoritative payment operation, the exact hold attempt and its release
+terminal (`released` or `cancelled_before_authorization`; unknown terminals
+reject), both halves of the deny evidence (receipt identifier and digest,
+checkpoint reference and digest), the currency, and the record time. Its
+`realized_spend_units` MUST be zero and its `payout_eligible` MUST be false;
+both are encoded rather than implied so a spend on this path is a
+schema-level rejection rather than a reconciliation surprise. Silence is not
+evidence: without this signed terminal a released hold is indistinguishable
+from a captured one.
+
+The finding family registers `chio.finding.v1`, the eight signed market
+artifacts above, and the two unsigned carriers at this stage. Challenge and
+status-epoch artifacts remain unsupported until a future revision of this
+specification defines and registers them.
 
 ### 6.5 Checkpoints
 

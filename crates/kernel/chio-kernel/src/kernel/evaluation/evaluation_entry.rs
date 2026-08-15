@@ -342,10 +342,19 @@ impl ChioKernel {
             }
         };
 
-        let matched_grant_index = matching_grants
-            .first()
-            .map(|matching| matching.index)
-            .unwrap_or(0);
+        let matched_grant_index =
+            match super::evaluation_helpers::required_delivery_grant_index(&matching_grants) {
+                Ok(Some(index)) => index,
+                Ok(None) => matching_grants.first().map_or(0, |matching| matching.index),
+                Err(reason) => {
+                    return StepVerdict {
+                        step_index: index,
+                        verdict: StepVerdictKind::Denied,
+                        reason: Some(reason.to_owned()),
+                        guard: None,
+                    };
+                }
+            };
 
         // Fail-closed: any guard error reads as a denial so the caller still
         // sees a per-step reason string.

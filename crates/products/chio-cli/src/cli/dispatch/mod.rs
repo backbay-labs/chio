@@ -5,6 +5,9 @@ mod attest;
 mod certify_cert;
 mod did_passport;
 mod federation;
+#[cfg(feature = "cognition-market-experimental")]
+#[path = "finding.rs"]
+mod finding_cmd;
 #[path = "lineage.rs"]
 mod lineage_cmd;
 #[path = "market.rs"]
@@ -42,6 +45,8 @@ pub(crate) use self::federation::{
     dispatch_chio_authority_command, dispatch_chio_federation_command,
     dispatch_chio_treaty_command,
 };
+#[cfg(feature = "cognition-market-experimental")]
+use finding_cmd::dispatch_finding;
 #[allow(unused_imports)]
 pub(crate) use self::lineage_cmd::{dispatch_lineage, emit_lineage_report};
 #[allow(unused_imports)]
@@ -74,6 +79,18 @@ fn escape_log_field(value: &str) -> String {
     value.chars().flat_map(char::escape_debug).collect()
 }
 
+fn terminal_safe(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for character in value.chars() {
+        if character.is_control() {
+            encoded.extend(character.escape_default());
+        } else {
+            encoded.push(character);
+        }
+    }
+    encoded
+}
+
 /// Format a redacted tracing event into one stderr line. Both field names and
 /// values are control-encoded so no field can introduce a line break and forge
 /// an additional log record.
@@ -101,7 +118,7 @@ fn write_redacted_event_to_stderr(event: chio_log_redact::RedactedEvent) {
 
 #[cfg(test)]
 mod redacted_format_tests {
-    use super::{escape_log_field, format_redacted_event_line};
+    use super::{escape_log_field, format_redacted_event_line, terminal_safe};
     use chio_log_redact::{RedactedEvent, RedactedField};
 
     #[test]
@@ -132,6 +149,14 @@ mod redacted_format_tests {
     fn escape_log_field_leaves_ordinary_text_intact() {
         assert_eq!(escape_log_field("cap-1234 allow"), "cap-1234 allow");
         assert_eq!(escape_log_field("tab\there"), "tab\\there");
+    }
+
+    #[test]
+    fn terminal_fields_escape_controls_without_rewriting_printable_text() {
+        assert_eq!(
+            terminal_safe("quoted \"value\"\n\u{1b}[2J"),
+            "quoted \"value\"\\n\\u{1b}[2J"
+        );
     }
 }
 
@@ -239,6 +264,10 @@ pub(crate) fn run() {
         Commands::Attest { command } => dispatch_chio_attest_command(command),
         Commands::Runtime { command } => dispatch_chio_runtime_command(command),
         Commands::Pheromone { command } => dispatch_chio_pheromone_command(command),
+        #[cfg(feature = "cognition-market-experimental")]
+        Commands::Finding { command } => {
+            dispatch_finding(command, json_output, control_url, control_token)
+        }
         Commands::Replay(args) => cmd_replay(&args),
         Commands::Lineage { command } => dispatch_lineage(command, json_output),
         Commands::Settle { command } => dispatch_settle(command, json_output, receipt_db),

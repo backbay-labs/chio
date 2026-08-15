@@ -43,6 +43,107 @@ struct CleanupReleaseOutcome {
     confirmed: bool,
 }
 
+/// True when a grant carries a delivery carrier constraint: a committed
+/// output digest or a purchase marker.
+fn grant_is_delivery_marked(grant: &chio_core::capability::scope::ToolGrant) -> bool {
+    grant.constraints.iter().any(|constraint| {
+        matches!(
+            constraint,
+            Constraint::OutputDigestSha256(_) | Constraint::RequireFindingPurchase(_)
+        )
+    })
+}
+
+/// Resolves the only grant that may carry a delivery for this call. The
+/// selected grant is validated before durable admission, approval, guards,
+/// or budget mutation, and callers restrict grant selection to the returned
+/// index. Recovery applies the same rule to the recorded selection.
+pub(crate) fn required_delivery_grant_index(
+    matching_grants: &[MatchingGrant<'_>],
+) -> Result<Option<usize>, &'static str> {
+    let mut marked = matching_grants
+        .iter()
+        .filter(|matching| grant_is_delivery_marked(matching.grant));
+    let Some(required) = marked.next() else {
+        return Ok(None);
+    };
+    if marked.next().is_some() {
+        return Err("delivery-marked grant candidates are ambiguous for this call");
+    }
+    if required
+        .grant
+        .constraints
+        .iter()
+        .any(|constraint| matches!(constraint, Constraint::RequireFindingPurchase(_)))
+        && matching_grants.len() != 1
+    {
+        return Err("a purchase-marked call requires exactly one matching grant");
+    }
+    if let Some(reason) = delivery_commitment_denial(required.grant) {
+        return Err(reason);
+    }
+    Ok(Some(required.index))
+}
+
+/// Checks a recorded selection against the delivery policy derived from the
+/// complete matching-grant set.
+pub(crate) fn delivery_marked_selection_denial(
+    matching_grants: &[MatchingGrant<'_>],
+    matched_grant_index: usize,
+) -> Option<&'static str> {
+    match required_delivery_grant_index(matching_grants) {
+        Err(reason) => Some(reason),
+        Ok(Some(required)) if required != matched_grant_index => {
+            Some("a delivery-marked grant cannot be bypassed by sibling grant selection")
+        }
+        Ok(_) => None,
+    }
+}
+
+/// The validity rule for the selected grant's delivery commitment,
+/// enforced before any hold is placed. A grant that fixes a delivery must
+/// fix exactly one committed digest in canonical form: a second digest, a
+/// non-canonical value, the fixed no-output content hash, or a purchase
+/// marker missing its paired digest could otherwise run the tool and then
+/// sign a receipt violating the registered delivery-contract schema, or
+/// strand the operation in finalization with its hold open.
+pub(crate) fn delivery_commitment_denial(
+    grant: &chio_core::capability::scope::ToolGrant,
+) -> Option<&'static str> {
+    let mut digests = grant.constraints.iter().filter_map(|constraint| {
+        if let Constraint::OutputDigestSha256(digest) = constraint {
+            Some(digest.as_str())
+        } else {
+            None
+        }
+    });
+    let first = digests.next();
+    let ambiguous = digests.next().is_some();
+    let Some(digest) = first else {
+        let marked = grant
+            .constraints
+            .iter()
+            .any(|constraint| matches!(constraint, Constraint::RequireFindingPurchase(_)));
+        return marked
+            .then_some("a purchase-marked grant requires exactly one committed output digest");
+    };
+    if ambiguous {
+        return Some("a grant may commit at most one output digest");
+    }
+    if crate::admission_operation::AdmissionDigest::try_new(
+        "expected_output_digest",
+        digest.to_owned(),
+    )
+    .is_err()
+    {
+        return Some("a committed output digest must be canonical lowercase sha-256 hex");
+    }
+    if digest == chio_core::crypto::sha256_hex(b"null") {
+        return Some("a committed output digest must not be the fixed no-output content hash");
+    }
+    None
+}
+
 impl ChioKernel {
     pub(crate) fn compensate_durable_admission_after_pre_dispatch_cleanup(
         &self,
@@ -841,5 +942,82 @@ impl ChioKernel {
             EXECUTION_NONCE_AUTHORIZATION_RESERVED_REASON,
             reserved_hold,
         )
+    }
+}
+
+#[cfg(test)]
+mod delivery_candidate_tests {
+    use super::*;
+
+    fn grant(constraints: Vec<Constraint>) -> ToolGrant {
+        ToolGrant {
+            server_id: "server".to_owned(),
+            tool_name: "tool".to_owned(),
+            operations: vec![Operation::Invoke],
+            constraints,
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        }
+    }
+
+    fn matching(index: usize, grant: &ToolGrant) -> MatchingGrant<'_> {
+        MatchingGrant {
+            index,
+            grant,
+            specificity: (0, 0, 0),
+        }
+    }
+
+    #[test]
+    fn delivery_candidate_policy_is_singular_closed_and_canonical() {
+        let digest = chio_core::crypto::sha256_hex(b"delivery");
+        let marked = grant(vec![Constraint::OutputDigestSha256(digest.clone())]);
+        let sibling = grant(Vec::new());
+        assert_eq!(
+            required_delivery_grant_index(&[matching(3, &marked), matching(7, &sibling)]),
+            Ok(Some(3))
+        );
+        assert_eq!(
+            delivery_marked_selection_denial(&[matching(3, &marked), matching(7, &sibling)], 7,),
+            Some("a delivery-marked grant cannot be bypassed by sibling grant selection")
+        );
+
+        let second = grant(vec![Constraint::OutputDigestSha256(digest)]);
+        assert_eq!(
+            required_delivery_grant_index(&[matching(3, &marked), matching(7, &second)]),
+            Err("delivery-marked grant candidates are ambiguous for this call")
+        );
+
+        let malformed = grant(vec![Constraint::OutputDigestSha256("zz".to_owned())]);
+        assert_eq!(
+            required_delivery_grant_index(&[matching(3, &malformed)]),
+            Err("a committed output digest must be canonical lowercase sha-256 hex")
+        );
+    }
+
+    #[test]
+    fn purchase_marked_delivery_requires_one_matching_grant() {
+        let purchase = grant(vec![
+            Constraint::OutputDigestSha256(chio_core::crypto::sha256_hex(b"delivery")),
+            Constraint::RequireFindingPurchase(Box::new(
+                chio_core::capability::scope::FindingPurchaseMarkerV1 {
+                    finding_id: "finding-1".to_owned(),
+                    listing_id: "listing-1".to_owned(),
+                    settlement:
+                        chio_core::capability::scope::FindingSettlementSelector::LocalReversibleHold,
+                },
+            )),
+        ]);
+        let sibling = grant(Vec::new());
+        assert_eq!(
+            required_delivery_grant_index(&[matching(1, &purchase), matching(2, &sibling)]),
+            Err("a purchase-marked call requires exactly one matching grant")
+        );
+        assert_eq!(
+            required_delivery_grant_index(&[matching(1, &purchase)]),
+            Ok(Some(1))
+        );
     }
 }

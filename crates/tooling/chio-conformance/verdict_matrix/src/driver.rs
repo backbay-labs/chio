@@ -42,6 +42,12 @@ pub const REASON_DELIVERY_DIGEST_MISMATCH: &str =
     "urn:chio:error:kernel:delivery-contract-digest-mismatch";
 pub const REASON_DELIVERY_UNSUPPORTED_CARRIER: &str =
     "urn:chio:error:kernel:delivery-contract-unsupported-carrier";
+pub const REASON_FINDING_PURCHASE_UNSUPPORTED_ADMISSION: &str =
+    "urn:chio:error:kernel:finding-purchase-unsupported-admission";
+pub const REASON_FINDING_PURCHASE_CONTEXT_INVALID: &str =
+    "urn:chio:error:kernel:finding-purchase-context-invalid";
+pub const REASON_FINDING_DELIVERY_MEDIA_TYPE_MISMATCH: &str =
+    "urn:chio:error:kernel:finding-delivery-media-type-mismatch";
 
 #[derive(Debug, Error)]
 pub enum DriverError {
@@ -140,6 +146,18 @@ pub struct ScenarioScript {
     pub delivery_lane: DeliveryLane,
     #[serde(default)]
     pub delivery_result: DeliveryResult,
+    #[serde(default)]
+    pub marker_present: bool,
+    #[serde(default)]
+    pub marker_state: FindingMarkerState,
+    #[serde(default)]
+    pub purchase_context_present: bool,
+    #[serde(default)]
+    pub token_matches_offer: bool,
+    #[serde(default)]
+    pub argument_matches_marker: bool,
+    #[serde(default)]
+    pub media_type_result: FindingMediaTypeResult,
     #[serde(default)]
     pub source_fixture: Option<String>,
     #[serde(flatten)]
@@ -251,6 +269,38 @@ pub enum DeliveryLane {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DeliveryResult {
+    #[default]
+    None,
+    Matched,
+    Mismatched,
+}
+
+/// Condition of the provider-signed purchase marker riding the grant.
+///
+/// A marked reveal is admissible only when the marker is well formed and
+/// names the local reversible-hold settlement rail; every other state is
+/// a fail-closed rejection the mock drivers can represent without holding
+/// any market authority key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingMarkerState {
+    #[default]
+    WellFormed,
+    Malformed,
+    UnknownSelector,
+    CrossOrg,
+    ContextMismatch,
+}
+
+/// Outcome of comparing the revealed payload envelope against the media
+/// type the signed finding advertises.
+///
+/// A driver without purchase-aware admission never reaches the comparison
+/// itself; the scenario declares the outcome so a media-type rejection
+/// stays distinguishable from a purchase-context rejection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingMediaTypeResult {
     #[default]
     None,
     Matched,
@@ -404,6 +454,10 @@ fn evaluate_scenario(scenario: &VerdictScenario) -> Result<VerdictTuple, String>
         return Ok(evaluate_delivery_contract_scenario(scenario));
     }
 
+    if scenario.category == ScenarioCategory::FindingPurchase {
+        return Ok(evaluate_finding_purchase_scenario(scenario));
+    }
+
     let mut kernel = ChioKernel::new(kernel_config());
     configure_replay_store(&mut kernel, scenario);
     configure_redaction_hooks(&mut kernel, scenario);
@@ -490,6 +544,65 @@ fn evaluate_delivery_contract_scenario(scenario: &VerdictScenario) -> VerdictTup
             scope_set,
         ),
     }
+}
+
+/// Evaluate a `finding_purchase` scenario from marker admission alone.
+///
+/// Admitting a marked reveal takes a verified signed purchase context, a
+/// typed `finding_id` argument equal to the marker, the exact token the
+/// ask offered, proof of possession, and the local reversible-hold
+/// settlement rail. The kernel behind this driver carries none of those
+/// authorities, so a request whose grant carries the purchase marker can
+/// only fail closed. The scenario declares the marker and context ground
+/// truth; this evaluator derives the tuple from those fields without ever
+/// verifying a signature, mirroring the Python and Go mock drivers byte
+/// for byte so the diff oracle sees one verdict tuple across every
+/// language.
+///
+/// An unmarked request carries no purchase overlay at all, so it keeps
+/// whatever verdict capability admission already reached.
+fn evaluate_finding_purchase_scenario(scenario: &VerdictScenario) -> VerdictTuple {
+    let script = &scenario.script;
+    let scope_set = script.capability_scopes.clone();
+
+    if script.revoked {
+        return tuple(Verdict::Deny, REASON_REVOKED, scope_set);
+    }
+    if let Some(required) = script.required_scope.as_deref() {
+        if !scope_set.iter().any(|scope| scope == required) {
+            return tuple(Verdict::Deny, REASON_SCOPE_EXCEEDED, scope_set);
+        }
+    }
+
+    if !script.marker_present {
+        return tuple(Verdict::Allow, REASON_NONE, scope_set);
+    }
+
+    if script.marker_state != FindingMarkerState::WellFormed
+        || !script.purchase_context_present
+        || !script.token_matches_offer
+        || !script.argument_matches_marker
+    {
+        return tuple(
+            Verdict::Deny,
+            REASON_FINDING_PURCHASE_CONTEXT_INVALID,
+            scope_set,
+        );
+    }
+
+    if script.media_type_result == FindingMediaTypeResult::Mismatched {
+        return tuple(
+            Verdict::Deny,
+            REASON_FINDING_DELIVERY_MEDIA_TYPE_MISMATCH,
+            scope_set,
+        );
+    }
+
+    tuple(
+        Verdict::Deny,
+        REASON_FINDING_PURCHASE_UNSUPPORTED_ADMISSION,
+        scope_set,
+    )
 }
 
 fn tuple(verdict: Verdict, reason_code: &str, scope_set: Vec<String>) -> VerdictTuple {
@@ -1020,6 +1133,12 @@ mod tests {
                 carrier_present: false,
                 delivery_lane: DeliveryLane::Durable,
                 delivery_result: DeliveryResult::None,
+                marker_present: false,
+                marker_state: FindingMarkerState::WellFormed,
+                purchase_context_present: false,
+                token_matches_offer: false,
+                argument_matches_marker: false,
+                media_type_result: FindingMediaTypeResult::None,
                 source_fixture: Some("fixtures/scenario-a.ndjson".to_string()),
                 extra: BTreeMap::new(),
             },
@@ -1141,6 +1260,106 @@ mod tests {
         );
         assert_eq!(
             evaluate_delivery_contract_scenario(&no_carrier),
+            tuple(Verdict::Allow, REASON_NONE, vec!["tool:read".to_string()])
+        );
+    }
+
+    fn admissible_finding_purchase_scenario() -> VerdictScenario {
+        let mut scenario = valid_scenario();
+        scenario.category = ScenarioCategory::FindingPurchase;
+        scenario.script.marker_present = true;
+        scenario.script.marker_state = FindingMarkerState::WellFormed;
+        scenario.script.purchase_context_present = true;
+        scenario.script.token_matches_offer = true;
+        scenario.script.argument_matches_marker = true;
+        scenario.script.media_type_result = FindingMediaTypeResult::Matched;
+        scenario
+    }
+
+    #[test]
+    fn finding_purchase_denies_from_marker_admission_alone() {
+        // Every purchase artifact lines up and the reveal still fails
+        // closed: this driver cannot verify a signed purchase context.
+        let admissible = admissible_finding_purchase_scenario();
+        assert_eq!(
+            evaluate_finding_purchase_scenario(&admissible),
+            tuple(
+                Verdict::Deny,
+                REASON_FINDING_PURCHASE_UNSUPPORTED_ADMISSION,
+                vec!["tool:read".to_string()]
+            )
+        );
+
+        // Any marker that is not a well-formed local reversible-hold
+        // marker denies as an invalid purchase context.
+        for state in [
+            FindingMarkerState::Malformed,
+            FindingMarkerState::UnknownSelector,
+            FindingMarkerState::CrossOrg,
+            FindingMarkerState::ContextMismatch,
+        ] {
+            let mut scenario = admissible_finding_purchase_scenario();
+            scenario.script.marker_state = state;
+            assert_eq!(
+                evaluate_finding_purchase_scenario(&scenario).reason_code,
+                REASON_FINDING_PURCHASE_CONTEXT_INVALID,
+                "marker state {state:?} must deny the reveal"
+            );
+        }
+
+        // A marked reveal without its context, with a substituted token,
+        // or naming a different finding denies the same way.
+        let mut missing_context = admissible_finding_purchase_scenario();
+        missing_context.script.purchase_context_present = false;
+        assert_eq!(
+            evaluate_finding_purchase_scenario(&missing_context).reason_code,
+            REASON_FINDING_PURCHASE_CONTEXT_INVALID
+        );
+        let mut substituted_token = admissible_finding_purchase_scenario();
+        substituted_token.script.token_matches_offer = false;
+        assert_eq!(
+            evaluate_finding_purchase_scenario(&substituted_token).reason_code,
+            REASON_FINDING_PURCHASE_CONTEXT_INVALID
+        );
+        let mut wrong_argument = admissible_finding_purchase_scenario();
+        wrong_argument.script.argument_matches_marker = false;
+        assert_eq!(
+            evaluate_finding_purchase_scenario(&wrong_argument).reason_code,
+            REASON_FINDING_PURCHASE_CONTEXT_INVALID
+        );
+
+        // A declared media-type mismatch keeps its own reason.
+        let mut media_mismatch = admissible_finding_purchase_scenario();
+        media_mismatch.script.media_type_result = FindingMediaTypeResult::Mismatched;
+        assert_eq!(
+            evaluate_finding_purchase_scenario(&media_mismatch),
+            tuple(
+                Verdict::Deny,
+                REASON_FINDING_DELIVERY_MEDIA_TYPE_MISMATCH,
+                vec!["tool:read".to_string()]
+            )
+        );
+
+        // Capability admission runs first, so revocation and scope deny
+        // before the marker is ever inspected.
+        let mut revoked = admissible_finding_purchase_scenario();
+        revoked.script.revoked = true;
+        assert_eq!(
+            evaluate_finding_purchase_scenario(&revoked).reason_code,
+            REASON_REVOKED
+        );
+        let mut scope_denied = admissible_finding_purchase_scenario();
+        scope_denied.script.required_scope = Some("tool:write".to_string());
+        assert_eq!(
+            evaluate_finding_purchase_scenario(&scope_denied).reason_code,
+            REASON_SCOPE_EXCEEDED
+        );
+
+        // No marker means no purchase overlay; the admit stands.
+        let mut unmarked = admissible_finding_purchase_scenario();
+        unmarked.script.marker_present = false;
+        assert_eq!(
+            evaluate_finding_purchase_scenario(&unmarked),
             tuple(Verdict::Allow, REASON_NONE, vec!["tool:read".to_string()])
         );
     }

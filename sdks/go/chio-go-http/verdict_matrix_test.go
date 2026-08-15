@@ -52,14 +52,14 @@ func TestVerdictMatrixGoDriverMatchesCorpus(t *testing.T) {
 	if report.Driver != "go-http-sdk" {
 		t.Fatalf("expected go-http-sdk driver, got %q", report.Driver)
 	}
-	if report.Total != 60 || report.Passed != 60 || report.Failed != 0 || report.Unsupported != 0 {
+	if report.Total != 72 || report.Passed != 72 || report.Failed != 0 || report.Unsupported != 0 {
 		t.Fatalf("unexpected report counts: %+v", report)
 	}
-	if len(report.Tuples) != 60 {
-		t.Fatalf("expected 60 tuples for active Go SDK scenarios, got %d", len(report.Tuples))
+	if len(report.Tuples) != 72 {
+		t.Fatalf("expected 72 tuples for active Go SDK scenarios, got %d", len(report.Tuples))
 	}
-	if len(report.Outcomes) != 60 {
-		t.Fatalf("expected 60 outcomes, got %d", len(report.Outcomes))
+	if len(report.Outcomes) != 72 {
+		t.Fatalf("expected 72 outcomes, got %d", len(report.Outcomes))
 	}
 	for _, outcome := range report.Outcomes {
 		if outcome.Status != "pass" {
@@ -88,5 +88,21 @@ func TestVerdictMatrixGoDriverMatchesCorpus(t *testing.T) {
 	digestMismatch := report.Tuples["delivery-contract-006-mismatched-read"]
 	if digestMismatch["verdict"] != "deny" || digestMismatch["reason_code"] != "urn:chio:error:kernel:delivery-contract-digest-mismatch" {
 		t.Fatalf("unexpected digest-mismatch tuple: %+v", digestMismatch)
+	}
+	markedReveal := report.Tuples["finding-purchase-001-marked-reveal-admission-unsupported"]
+	if markedReveal["verdict"] != "deny" || markedReveal["reason_code"] != "urn:chio:error:kernel:finding-purchase-unsupported-admission" {
+		t.Fatalf("unexpected marked-reveal tuple: %+v", markedReveal)
+	}
+	crossOrgSelector := report.Tuples["finding-purchase-005-cross-org-escrow-selector"]
+	if crossOrgSelector["verdict"] != "deny" || crossOrgSelector["reason_code"] != "urn:chio:error:kernel:finding-purchase-context-invalid" {
+		t.Fatalf("unexpected cross-org-selector tuple: %+v", crossOrgSelector)
+	}
+	mediaTypeMismatch := report.Tuples["finding-purchase-010-media-type-mismatch"]
+	if mediaTypeMismatch["verdict"] != "deny" || mediaTypeMismatch["reason_code"] != "urn:chio:error:kernel:finding-delivery-media-type-mismatch" {
+		t.Fatalf("unexpected media-type-mismatch tuple: %+v", mediaTypeMismatch)
+	}
+	unmarkedCall := report.Tuples["finding-purchase-002-unmarked-call-no-overlay"]
+	if unmarkedCall["verdict"] != "allow" || unmarkedCall["reason_code"] != "urn:chio:error:none" {
+		t.Fatalf("unexpected unmarked-call tuple: %+v", unmarkedCall)
 	}
 }
