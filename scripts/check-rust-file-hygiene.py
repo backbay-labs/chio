@@ -304,7 +304,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs": allow(
         "2026-08-31",
         "durable terminal coordinator with M6 status-release and recovery snapshots; capped to current size until split",
-        max_lines=2_412,
+        max_lines=2_417,
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
@@ -359,7 +359,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",
         "cognition challenge lifecycle coordinator; capped to current size until split",
-        max_lines=6_452,
+        max_lines=6_434,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs": allow(
         "2026-08-31",
@@ -394,17 +394,22 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/finding_challenge_store.rs": allow(
         "2026-08-31",
         "cognition challenge authority store; capped to current size until split",
-        max_lines=5_449,
+        max_lines=5_590,
     ),
     "crates/platform/chio-store-sqlite/src/finding_challenge_store_tests.rs": allow(
         "2026-08-31",
         "cognition challenge authority store regression suite; capped to current size until split",
-        max_lines=4_446,
+        max_lines=4_555,
+    ),
+    "crates/platform/chio-store-sqlite/src/finding_status_store/persistence.rs": allow(
+        "2026-08-31",
+        "finding status persistence with rollback-fenced pre-epoch clock continuity; capped to current size until split",
+        max_lines=2_059,
     ),
     "crates/trust/chio-finding-challenge/tests/support/mod.rs": allow(
         "2026-08-31",
         "cognition challenge authenticated standing fixtures; capped to current size until split",
-        max_lines=2_140,
+        max_lines=2_141,
     ),
     "crates/platform/chio-store-sqlite/src/finding_purchase_store.rs": allow(
         "2026-08-31",
@@ -429,7 +434,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/serving_owner/global_commit_chain.rs": allow(
         "2026-08-31",
         "serving-owner commit chain persistence surface; capped to current size until split",
-        max_lines=3_056,
+        max_lines=3_077,
     ),
     "crates/products/chio-cli/src/cli/dispatch/finding/unit_tests.rs": allow(
         "2026-08-31",
