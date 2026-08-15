@@ -10,7 +10,8 @@ mod open;
 mod qualification;
 
 pub(super) use qualification::{
-    receipt_actor_saturated_error, receipt_actor_unavailable_error, ReceiptWriterQualification,
+    receipt_actor_saturated_error, receipt_actor_unavailable_error, verify_rollback,
+    ReceiptWriterQualification,
 };
 pub(crate) use qualification::{receipt_pool_connection, ReceiptSinkQualification};
 

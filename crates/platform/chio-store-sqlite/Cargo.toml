@@ -50,6 +50,7 @@ chio-fiscal = { workspace = true }
 chio-kernel = { workspace = true }
 chio-kernel-core = { workspace = true }
 chio-settle = { workspace = true }
+chio-sqlite-file-identity = { path = "../chio-sqlite-file-identity" }
 chio-supervisor = { workspace = true }
 hex = { workspace = true }
 hmac = { workspace = true }

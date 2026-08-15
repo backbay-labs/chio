@@ -2,6 +2,42 @@ use super::super::*;
 use super::support::*;
 use chio_credit::IouEnvelopeStore as _;
 
+#[cfg(unix)]
+#[test]
+fn qualified_receipt_sink_binds_validation_to_the_borrowed_database_file(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let directory = tempfile::tempdir()?;
+    std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))?;
+    let database = directory.path().join("qualified-original.sqlite3");
+    let replacement = directory.path().join("qualified-copy.sqlite3");
+    let store = SqliteReceiptStore::open(&database)?;
+    store.flush_receipt_writes()?;
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    let sink_id = connection.query_row(
+        "SELECT sink_id FROM chio_receipt_sink_identity WHERE singleton = 1",
+        [],
+        |row| row.get::<_, String>(0),
+    )?;
+    drop(connection);
+    drop(store);
+    std::fs::copy(&database, &replacement)?;
+
+    let qualification = ReceiptSinkQualification::capture(&database, &sink_id)?;
+    let borrowed_replacement = rusqlite::Connection::open(&replacement)?;
+    let error = qualification
+        .validate_connection(&borrowed_replacement)
+        .err()
+        .ok_or("qualified validation accepted a different borrowed SQLite file")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("borrowed file identity changed")),
+        "unexpected borrowed-file identity error: {error}"
+    );
+    Ok(())
+}
+
 #[test]
 fn qualified_receipt_sink_rejects_atomic_database_replacement(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -255,6 +291,51 @@ fn qualified_receipt_sink_anchors_lineage_only_duplicate_mutations(
         matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
         "unexpected lineage-only rollback error: {error}"
     );
+    Ok(())
+}
+
+#[test]
+fn qualified_receipt_sink_verifies_rollback_anchor_before_metadata_jobs(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-metadata-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("qualified-metadata.sqlite3");
+    let snapshot = directory.path().join("before-receipt.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    store.flush_receipt_writes()?;
+    let checkpoint = rusqlite::Connection::open(&database)?;
+    checkpoint.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(checkpoint);
+    std::fs::copy(&database, &snapshot)?;
+
+    let receipt = super::support::sample_receipt_with_id("metadata-anchor-advance");
+    chio_kernel::ReceiptStore::append_chio_receipt_returning_seq(&store, &receipt)?;
+    store.flush_receipt_writes()?;
+    let checkpoint = rusqlite::Connection::open(&database)?;
+    checkpoint.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(checkpoint);
+    std::fs::copy(&snapshot, &database)?;
+
+    let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let ran_in_job = Arc::clone(&ran);
+    let error = store
+        .writer_handle()
+        .run_write(move |_connection| {
+            ran_in_job.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        })
+        .err()
+        .ok_or("metadata job ran against a rolled-back qualified database")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
+        "unexpected metadata rollback error: {error}"
+    );
+    assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     Ok(())
 }
 

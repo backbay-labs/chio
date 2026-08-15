@@ -101,6 +101,7 @@ impl ReceiptSinkQualification {
         connection: &Connection,
     ) -> Result<(), ReceiptStoreError> {
         self.validate_filesystem_identity()?;
+        self.validate_borrowed_file_identity(connection)?;
         let internal_sink_id = connection
             .query_row(
                 "SELECT sink_id FROM chio_receipt_sink_identity WHERE singleton = 1",
@@ -115,6 +116,33 @@ impl ReceiptSinkQualification {
         if internal_sink_id != self.internal_sink_id {
             return Err(ReceiptStoreError::Conflict(
                 "qualified receipt database internal sink identity changed".to_owned(),
+            ));
+        }
+        self.validate_borrowed_file_identity(connection)?;
+        self.validate_filesystem_identity()?;
+        Ok(())
+    }
+
+    fn validate_borrowed_file_identity(
+        &self,
+        connection: &Connection,
+    ) -> Result<(), ReceiptStoreError> {
+        let identity = chio_sqlite_file_identity::main_database_file_identity(connection).map_err(
+            |error| {
+                ReceiptStoreError::Conflict(format!(
+                    "qualified receipt database borrowed file identity is unavailable: {error}"
+                ))
+            },
+        )?;
+        #[cfg(unix)]
+        if identity.device != self.device || identity.inode != self.inode {
+            return Err(ReceiptStoreError::Conflict(
+                "qualified receipt database borrowed file identity changed".to_owned(),
+            ));
+        }
+        if identity.link_count != 1 {
+            return Err(ReceiptStoreError::Conflict(
+                "qualified receipt database borrowed file is unlinked".to_owned(),
             ));
         }
         Ok(())
@@ -140,6 +168,23 @@ pub(crate) fn receipt_pool_connection(
         qualification.validate_connection(&connection)?;
     }
     Ok(connection)
+}
+
+pub(in crate::receipt_store) fn verify_rollback(
+    connection: &Connection,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
+    appends_receipts: bool,
+) -> Result<(), ReceiptStoreError> {
+    if appends_receipts {
+        return Ok(());
+    }
+    let Some(anchor) = rollback_anchor else {
+        return Ok(());
+    };
+    let generation = load_receipt_rollback_generation(connection)?;
+    anchor.verify(generation).map_err(|error| {
+        ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+    })
 }
 
 fn append_binding_part(material: &mut Vec<u8>, part: &[u8]) {

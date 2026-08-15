@@ -1696,7 +1696,8 @@ fn handle_non_append_command(
                                 Ok(())
                             }
                         })
-                    };
+                    }
+                    .and_then(|()| verify_rollback(&connection, rollback_anchor, appends_receipts));
                     if let Err(error) = pre_check {
                         let (respond, _) = job.reject(error);
                         // Decrement before the response reaches the caller.
