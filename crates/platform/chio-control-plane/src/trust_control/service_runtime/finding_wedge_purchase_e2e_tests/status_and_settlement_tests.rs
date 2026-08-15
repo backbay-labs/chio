@@ -512,7 +512,7 @@ async fn finding_status_retraction() -> TestResult {
         second_publish_now,
         200,
     )?;
-    assert!(refresh_candidates
+    assert!(!refresh_candidates
         .iter()
         .any(|candidate| candidate.intent_id == intent_id));
     assert!(status_gate_store
@@ -565,7 +565,7 @@ async fn finding_status_retraction() -> TestResult {
         .publish_epoch_refresh(&finalized_anchors, anchor_refresh_at)?;
     assert_eq!(anchored_epoch.body.map_epoch, prior_anchor_epoch + 1);
     assert_eq!(anchored_epoch.body.anchor_refs, finalized_anchors);
-    assert!(status_gate_store
+    assert!(!status_gate_store
         .list_publication_candidates(
             &config.status_feed_operator_ref,
             &config.status_feed_operator.authority.key_hex,

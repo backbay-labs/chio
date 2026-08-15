@@ -692,20 +692,17 @@ fn persist_proof_tx(
             ],
         )
         .map_err(sqlite_error)?;
-    if proof.kind == FindingStatusProofKind::NonInclusion {
-        transaction
-            .execute(
-                "DELETE FROM finding_status_proofs \
-                 WHERE feed_id = ?1 AND finding_id = ?2 \
-                   AND proof_kind = 'non_inclusion' AND map_epoch < ?3",
-                params![
-                    proof.feed_id,
-                    proof.finding_id,
-                    sqlite_i64(proof.map_epoch, "map_epoch")?,
-                ],
-            )
-            .map_err(sqlite_error)?;
-    }
+    transaction
+        .execute(
+            "DELETE FROM finding_status_proofs \
+             WHERE feed_id = ?1 AND finding_id = ?2 AND map_epoch < ?3",
+            params![
+                proof.feed_id,
+                proof.finding_id,
+                sqlite_i64(proof.map_epoch, "map_epoch")?,
+            ],
+        )
+        .map_err(sqlite_error)?;
     Ok(FindingStatusWriteOutcome::Inserted)
 }
 
@@ -1889,13 +1886,14 @@ pub(crate) fn initialize_finding_status_schema(
             .execute_batch("DROP TRIGGER IF EXISTS finding_retraction_intents_lifecycle;")
             .map_err(sqlite_error)?;
     }
-    if (1..=3).contains(&on_disk) {
+    if (1..=4).contains(&on_disk) {
         // Revision 3 permits authenticated revocation-state changes for the
         // same operator key and key epoch. Key substitution remains fenced.
-        // It also permits deletion of superseded non-inclusion proofs. Recreate
-        // both changed triggers because revision 1 and 2 databases retain the
-        // earlier unconditional proof-retention trigger. Revision 4 also lets
-        // an otherwise unchanged feed floor advance its trusted-time high-water.
+        // Revision 3 permits deletion of superseded non-inclusion proofs, and
+        // revision 5 extends that bounded retention to inclusion proofs.
+        // Recreate both changed triggers because older databases retain a
+        // stricter proof-retention definition. Revision 4 also lets an otherwise
+        // unchanged feed floor advance its trusted-time high-water.
         transaction
             .execute_batch(
                 "DROP TRIGGER IF EXISTS finding_status_feed_floors_monotonic;\

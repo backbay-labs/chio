@@ -6,8 +6,9 @@
 //! boundary. The store accepts only the exact signed epoch bytes that caller
 //! verified and derives their digest itself. It then enforces the durable
 //! invariants that cannot safely live in an in-memory verifier: one stable
-//! operator identity per feed, an advancing epoch floor, immutable epoch and
-//! proof history, and sticky pending or retracted state per finding.
+//! operator identity per feed, an advancing epoch floor, immutable epoch
+//! history, bounded current point-proof retention, and sticky pending or
+//! retracted state per finding.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -26,7 +27,7 @@ use crate::finding_challenge_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_STATUS_SCHEMA_KEY: &str = "finding_status";
-pub(crate) const FINDING_STATUS_SUPPORTED_SCHEMA_VERSION: i32 = 4;
+pub(crate) const FINDING_STATUS_SUPPORTED_SCHEMA_VERSION: i32 = 5;
 const FINDING_STATUS_SCHEMA_ANCHORS: &[&str] = &[
     "finding_status_feeds",
     "admission_operations",
@@ -1217,9 +1218,10 @@ impl SqliteFindingStatusStore {
         Ok(intents)
     }
 
-    /// Return work the cadence publisher must revisit. This includes newly
-    /// dispatch-eligible intents and published sticky leaves whose inclusion
-    /// proof is absent at the current floor or is no longer fresh.
+    /// Return unpublished work for the cadence publisher. Published sticky
+    /// leaves are not rescheduled after every epoch advance; their current
+    /// inclusion proof is generated only when a consumer explicitly requests
+    /// that intent from the publisher.
     pub fn list_publication_candidates(
         &self,
         feed_id: &str,
@@ -1251,47 +1253,15 @@ impl SqliteFindingStatusStore {
                        published_epoch_id, created_at, updated_at
                 FROM finding_retraction_intents AS intent
                 WHERE intent.feed_id = ?1
-                  AND (
-                    intent.state = 'dispatch_eligible'
-                    OR (
-                      intent.state = 'published'
-                      AND EXISTS (
-                        SELECT 1
-                        FROM finding_status_feed_floors AS floor
-                        WHERE floor.feed_id = intent.feed_id
-                          AND (
-                            floor.operator_key <> ?2
-                            OR floor.operator_authorization_sha256 <> ?3
-                            OR NOT EXISTS (
-                              SELECT 1
-                              FROM finding_status_proofs AS proof
-                              WHERE proof.feed_id = floor.feed_id
-                                AND proof.map_epoch = floor.map_epoch
-                                AND proof.finding_id = intent.finding_id
-                                AND proof.proof_kind = 'inclusion'
-                                AND proof.valid_until > ?4
-                            )
-                          )
-                      )
-                    )
-                  )
-                ORDER BY CASE intent.state
-                           WHEN 'dispatch_eligible' THEN 0 ELSE 1
-                         END,
-                         intent.created_at, intent.intent_id
-                LIMIT ?5
+                  AND intent.state = 'dispatch_eligible'
+                ORDER BY intent.created_at, intent.intent_id
+                LIMIT ?2
                 "#,
             )
             .map_err(sqlite_error)?;
         let rows = statement
             .query_map(
-                params![
-                    feed_id,
-                    operator_key,
-                    operator_authorization_sha256,
-                    sqlite_i64(trusted_now, "trusted_now")?,
-                    sqlite_i64(limit as u64, "limit")?,
-                ],
+                params![feed_id, sqlite_i64(limit as u64, "limit")?,],
                 raw_intent_from_row,
             )
             .map_err(sqlite_error)?

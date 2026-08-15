@@ -125,9 +125,8 @@ use chio_store_sqlite::{
     FindingEffectIntentKind, FindingEffectIntentState, FindingFinalizingAuthorizationInput,
     FindingGovernanceCaseInput, FindingGovernanceCaseKind, FindingLiabilityInput,
     FindingLiabilityRecord, FindingLiabilityState, FindingRetractionIntentCommitLiveness,
-    FindingRetractionIntentInput,
-    FindingRetractionIntentSource, FindingRetractionIntentState, SqliteFindingChallengeStore,
-    SqliteFindingPurchaseStore, SqliteFindingStatusStore,
+    FindingRetractionIntentInput, FindingRetractionIntentSource, FindingRetractionIntentState,
+    SqliteFindingChallengeStore, SqliteFindingPurchaseStore, SqliteFindingStatusStore,
 };
 use serde::{Deserialize, Serialize};
 

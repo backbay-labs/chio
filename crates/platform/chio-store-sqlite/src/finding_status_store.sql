@@ -426,13 +426,11 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS finding_status_proofs_no_delete
 BEFORE DELETE ON finding_status_proofs
-WHEN OLD.proof_kind <> 'non_inclusion'
-  OR NOT EXISTS (
+WHEN NOT EXISTS (
       SELECT 1
       FROM finding_status_proofs AS newer
       WHERE newer.feed_id = OLD.feed_id
         AND newer.finding_id = OLD.finding_id
-        AND newer.proof_kind = 'non_inclusion'
         AND newer.map_epoch > OLD.map_epoch
   )
 BEGIN

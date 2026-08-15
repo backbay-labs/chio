@@ -81,7 +81,8 @@ pub fn finding_memory_dependents(
         edges,
         truncated: None,
     };
-    reverse(&typed, &[delivery_receipt_id], bounds)
+    let delivery_node_id = format!("rcpt:{delivery_receipt_id}");
+    reverse(&typed, &[&delivery_node_id], bounds)
 }
 
 fn build_outgoing(edges: &[LineageEdge]) -> HashMap<String, Vec<usize>> {
@@ -317,7 +318,7 @@ mod tests {
 
         let result = finding_memory_dependents(
             &g,
-            "rcpt:delivery",
+            "delivery",
             QueryBounds {
                 depth_limit: 4,
                 row_limit: 10,

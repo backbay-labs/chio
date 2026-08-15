@@ -268,9 +268,10 @@ impl FindingStatusEpochPublisher {
     }
 
     /// Publish the root-only cadence work exposed by
-    /// [`Self::epoch_refresh_required`]. Advancing the floor makes every
-    /// displaced inclusion and non-inclusion proof visible to the existing
-    /// bounded candidate queries without requiring an unrelated status event.
+    /// [`Self::epoch_refresh_required`]. Advancing the floor makes displaced
+    /// non-inclusion proofs visible to the bounded live-proof query. Inclusion
+    /// proofs for sticky leaves remain available through explicit point
+    /// requests without rescheduling every historical retraction.
     pub fn publish_epoch_refresh(
         &self,
         anchor_refs: &[String],

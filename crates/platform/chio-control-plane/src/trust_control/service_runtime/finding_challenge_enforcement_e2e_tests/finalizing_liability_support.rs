@@ -74,7 +74,7 @@ fn finalizing_liability_with_prior_retraction(
         .begin_evaluation(&challenge.body.challenge_id, NOW + 1)?;
     deployment
         .challenges
-        .record_upheld_verdict_with_exposure_fence(
+        .record_test_upheld_verdict_with_exposure_fence(
             &challenge.body.challenge_id,
             &digest("upheld-outcome"),
             b"upheld-outcome",

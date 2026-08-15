@@ -298,6 +298,60 @@ fn imported_inclusion_reconciles_a_matching_local_outbox_intent() {
 }
 
 #[test]
+fn current_inclusion_replaces_the_same_findings_superseded_proof() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('8');
+    let intent_sha256 = hex64('9');
+    let epoch_one_id = hex64('a');
+    let epoch_one_root = hex64('b');
+    let epoch_two_id = hex64('c');
+    let epoch_two_root = hex64('d');
+    let proof_one = inclusion(
+        1,
+        &epoch_one_id,
+        &epoch_one_root,
+        &finding_id,
+        &intent_sha256,
+        b"inclusion-one",
+    );
+    store
+        .advance_epoch(&FindingStatusEpochAdvance {
+            epoch: epoch(1, &epoch_one_id, &epoch_one_root, b"epoch-one", 1),
+            leaves: &[],
+            proofs: &[proof_one],
+        })
+        .expect("persist first inclusion");
+    let proof_two = inclusion(
+        2,
+        &epoch_two_id,
+        &epoch_two_root,
+        &finding_id,
+        &intent_sha256,
+        b"inclusion-two",
+    );
+    store
+        .advance_epoch(&FindingStatusEpochAdvance {
+            epoch: epoch(2, &epoch_two_id, &epoch_two_root, b"epoch-two", 1),
+            leaves: &[],
+            proofs: &[proof_two],
+        })
+        .expect("replace inclusion at the current floor");
+
+    let connection = Connection::open(&fixture.database).expect("open proof reader");
+    let (count, retained_epoch): (i64, i64) = connection
+        .query_row(
+            "SELECT COUNT(*), MAX(map_epoch) FROM finding_status_proofs \
+             WHERE feed_id = ?1 AND finding_id = ?2",
+            params![FEED, finding_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read retained point proofs");
+    assert_eq!((count, retained_epoch), (1, 2));
+}
+
+#[test]
 fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();
@@ -415,7 +469,7 @@ fn cadence_enumerates_live_proofs_displaced_or_expired_at_the_floor() {
 }
 
 #[test]
-fn cadence_schedules_all_proof_kinds_after_operator_authorization_changes() {
+fn cadence_does_not_reschedule_published_inclusions_after_operator_changes() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();
     let store = authority.finding_status_store();
@@ -496,8 +550,7 @@ fn cadence_schedules_all_proof_kinds_after_operator_authorization_changes() {
         (signed_epoch.operator_key, hex64('c')),
     ] {
         let published = publication_candidates(operator_key, &authorization);
-        assert_eq!(published.len(), 1);
-        assert_eq!(published[0].intent_id, intent_id);
+        assert!(published.is_empty());
         let live = live_candidates(operator_key, &authorization);
         assert_eq!(live.len(), 1);
         assert_eq!(live[0].finding_id, live_finding_id);
@@ -1048,7 +1101,7 @@ fn schema_v1_migration_moves_the_inclusion_window_to_finality() {
 }
 
 #[test]
-fn schema_v2_migration_recreates_conditional_proof_retention() {
+fn schema_v2_migration_recreates_bounded_current_proof_retention() {
     let fixture = DurableFixture::new();
     let connection = Connection::open(&fixture.database).expect("open authority database");
     connection
@@ -1078,7 +1131,7 @@ fn schema_v2_migration_recreates_conditional_proof_retention() {
             |row| row.get(0),
         )
         .expect("load migrated proof-retention trigger");
-    assert!(trigger_sql.contains("WHEN OLD.proof_kind <> 'non_inclusion'"));
+    assert!(!trigger_sql.contains("proof_kind <> 'non_inclusion'"));
     assert!(trigger_sql.contains("newer.map_epoch > OLD.map_epoch"));
 }
 
