@@ -153,6 +153,9 @@ pub struct FindingMarketConfig {
     /// Signs finalized bond snapshots. The control plane only verifies
     /// against this pin; it never holds the observer's private key.
     pub settlement_observer: FindingAuthorityPin,
+    /// Kernel authorized to publish the mediated enforcement-root receipt
+    /// that the settlement planner accepts.
+    pub anchor_publisher: FindingAuthorityPin,
     /// Oldest collateral snapshot the settlement choke point may accept.
     pub max_snapshot_age_secs: u64,
     /// Chain finality required before a finding enforcement may impair
@@ -269,6 +272,7 @@ impl FindingMarketConfig {
             ("venue finalization", &self.venue_finalization),
             ("market penalty", &self.market_penalty),
             ("settlement observer", &self.settlement_observer),
+            ("anchor publisher", &self.anchor_publisher),
             ("audit authority", &self.audit_authority),
             ("audit randomness witness", &self.audit_randomness_witness),
         ];

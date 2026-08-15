@@ -1,13 +1,18 @@
 //! Preparation of the exact call one verified enforcement authorizes.
 
 use chio_core::capability::scope::MonetaryAmount;
+use chio_core::crypto::PublicKey;
 use chio_core::receipt::decision::Decision;
-use chio_core::web3::anchors::AnchorInclusionProof;
+use chio_core::web3::anchors::{verify_anchor_inclusion_proof, AnchorInclusionProof};
 use chio_finding::{
-    signed_envelope_sha256, FindingEffectIntentKind, SignedFindingChallengeEnforcement,
+    signed_envelope_sha256, verify_signed_authority_status, FindingEffectIntentKind,
+    SignedFindingAuthorityStatus, SignedFindingChallengeEnforcement,
+    FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
 
-use super::verify::{ReconciledFindingEnforcement, VerifiedFindingEnforcement};
+use super::verify::{
+    FindingPenaltyAuthorityPolicy, ReconciledFindingEnforcement, VerifiedFindingEnforcement,
+};
 use super::{parse_chain_hash, parse_evm_address, reject};
 use crate::{
     prepare_bond_impair, scale_chio_amount_to_token_minor_units, EvmBondSnapshot,
@@ -25,6 +30,20 @@ pub const FINDING_ENFORCEMENT_ANCHOR_TOOL_NAME: &str = "finding.enforcement-root
 /// Schema of the exact enforcement identity committed by the anchored
 /// receipt leaf.
 pub const FINDING_ENFORCEMENT_ANCHOR_SCHEMA_V1: &str = "chio.finding.enforcement-anchor.v1";
+
+/// Independently retained authority and lifecycle evidence for the kernel
+/// that published an enforcement-root receipt.
+///
+/// The proof cannot select this policy or the status signer. Callers obtain
+/// both from deployment governance and its authenticated revocation source.
+#[derive(Debug, Clone, Copy)]
+pub struct FindingAnchorPublisherEvidence<'a> {
+    pub retained_policy: &'a FindingPenaltyAuthorityPolicy,
+    pub signed_status: &'a SignedFindingAuthorityStatus,
+    pub status_authority: &'a PublicKey,
+    pub max_status_age_secs: u64,
+    pub trusted_now_secs: u64,
+}
 
 /// Build the exact action parameters an enforcement-root receipt must carry.
 ///
@@ -109,7 +128,11 @@ fn enforcement_anchor_parameters(
 fn require_enforcement_anchor_binding(
     verified: &VerifiedFindingEnforcement,
     anchor_proof: &AnchorInclusionProof,
+    publisher: FindingAnchorPublisherEvidence<'_>,
 ) -> Result<(), SettlementError> {
+    verify_anchor_inclusion_proof(anchor_proof)
+        .map_err(|error| reject(format!("anchor proof rejected: {error}")))?;
+    require_anchor_publisher_lifecycle(anchor_proof, publisher)?;
     let receipt = &anchor_proof.receipt;
     if receipt.tool_server != FINDING_ENFORCEMENT_ANCHOR_TOOL_SERVER
         || receipt.tool_name != FINDING_ENFORCEMENT_ANCHOR_TOOL_NAME
@@ -131,6 +154,86 @@ fn require_enforcement_anchor_binding(
     if receipt.action.parameters != finding_enforcement_anchor_parameters(verified) {
         return Err(reject(
             "anchor proof receipt does not bind this enforcement, penalty, and root intent",
+        ));
+    }
+    Ok(())
+}
+
+fn require_anchor_publisher_lifecycle(
+    proof: &AnchorInclusionProof,
+    evidence: FindingAnchorPublisherEvidence<'_>,
+) -> Result<(), SettlementError> {
+    let policy = evidence.retained_policy;
+    policy.validate("anchor publisher")?;
+    if evidence.status_authority == &policy.key {
+        return Err(reject(
+            "anchor publisher and authority status signer must be distinct keys",
+        ));
+    }
+    if evidence.max_status_age_secs == 0 {
+        return Err(reject(
+            "anchor publisher status maximum age must be nonzero",
+        ));
+    }
+
+    let published_at = proof.checkpoint_statement.issued_at;
+    let certificate = &proof.key_binding_certificate.certificate;
+    if proof.receipt.kernel_key != policy.key
+        || proof.checkpoint_statement.kernel_key != policy.key
+        || certificate.chio_public_key != policy.key
+    {
+        return Err(reject(
+            "anchor proof publisher does not match the retained governance policy",
+        ));
+    }
+    if published_at < policy.valid_from || published_at >= policy.valid_until {
+        return Err(reject(
+            "anchor proof was published outside the retained authority window",
+        ));
+    }
+    if published_at < certificate.issued_at || published_at >= certificate.expires_at {
+        return Err(reject(
+            "anchor proof was published outside its key-binding certificate window",
+        ));
+    }
+
+    verify_signed_authority_status(evidence.signed_status, evidence.status_authority)
+        .map_err(|error| reject(format!("anchor publisher status rejected: {error}")))?;
+    let status = &evidence.signed_status.body;
+    if status.schema != FINDING_AUTHORITY_STATUS_SCHEMA_V1
+        || status.status_ref != policy.revocation_status_ref
+        || status.authority_id != policy.authority_id
+        || status.key != policy.key
+        || status.key_epoch != policy.key_epoch
+    {
+        return Err(reject(
+            "anchor publisher status does not bind the retained governance policy",
+        ));
+    }
+    if status.observed_at < published_at || status.observed_at > evidence.trusted_now_secs {
+        return Err(reject(
+            "anchor publisher status is not a post-publication trusted-time reading",
+        ));
+    }
+    if evidence.trusted_now_secs.saturating_sub(status.observed_at) > evidence.max_status_age_secs {
+        return Err(reject(
+            "anchor publisher status is older than the configured maximum age",
+        ));
+    }
+    if status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from > status.observed_at)
+    {
+        return Err(reject(
+            "anchor publisher status declares an unobserved future revocation",
+        ));
+    }
+    if status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= published_at)
+    {
+        return Err(reject(
+            "anchor publisher was revoked when the enforcement root was published",
         ));
     }
     Ok(())
@@ -255,11 +358,12 @@ pub fn plan_finding_impairment(
     operator_address: &str,
     vault_snapshot: &EvmBondSnapshot,
     anchor_proof: &AnchorInclusionProof,
+    anchor_publisher: FindingAnchorPublisherEvidence<'_>,
 ) -> Result<PlannedFindingImpairment, SettlementError> {
     config.validate()?;
     let enforcement = verified.enforcement();
     let snapshot = verified.snapshot();
-    require_enforcement_anchor_binding(verified, anchor_proof)?;
+    require_enforcement_anchor_binding(verified, anchor_proof, anchor_publisher)?;
 
     if config.chain_id != snapshot.chain_id {
         return Err(reject(
@@ -345,6 +449,7 @@ pub fn plan_finding_impairment_for_reconciliation(
     operator_address: &str,
     vault_snapshot: &EvmBondSnapshot,
     anchor_proof: &AnchorInclusionProof,
+    anchor_publisher: FindingAnchorPublisherEvidence<'_>,
 ) -> Result<PlannedFindingImpairmentReconciliation, SettlementError> {
     plan_finding_impairment(
         config,
@@ -352,6 +457,7 @@ pub fn plan_finding_impairment_for_reconciliation(
         operator_address,
         vault_snapshot,
         anchor_proof,
+        anchor_publisher,
     )
     .map(|planned| PlannedFindingImpairmentReconciliation { planned })
 }

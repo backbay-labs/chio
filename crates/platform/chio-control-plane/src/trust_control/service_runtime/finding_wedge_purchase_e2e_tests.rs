@@ -1,5 +1,4 @@
-//! End-to-end coverage for a purchased finding reveal: an admitted listing
-//! is discovered through the serve router, bid on through the real
+//! End-to-end coverage for a purchased finding reveal: an admitted listing is discovered through the serve router, bid on through the real
 //! marketplace path, reserved by the authoritative purchase coordinator,
 //! revealed through the mediating kernel under a delivery-committed grant,
 //! settled into a signed purchase record, and recorded into buyer memory
@@ -247,6 +246,7 @@ fn market_config() -> FindingMarketConfig {
         venue_finalization: authority_pin(32, "venue-finalization"),
         market_penalty: authority_pin(33, "market-penalty"),
         settlement_observer: authority_pin(34, "settlement-observer"),
+        anchor_publisher: authority_pin(7, "anchor-publisher"),
         max_snapshot_age_secs: 3_600,
         settlement_finality_requirement: chio_settle::FindingFinalityRequirement::Confirmations {
             min_depth: 64,

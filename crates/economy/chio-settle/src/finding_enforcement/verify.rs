@@ -158,7 +158,7 @@ pub struct FindingSettlementObserverEvidence<'a> {
 }
 
 impl FindingPenaltyAuthorityPolicy {
-    fn validate(&self, role: &str) -> Result<(), SettlementError> {
+    pub(super) fn validate(&self, role: &str) -> Result<(), SettlementError> {
         if self.authority_id.trim().is_empty() {
             return Err(SettlementError::InvalidInput(format!(
                 "{role} authority id must be non-empty"

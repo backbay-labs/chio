@@ -101,12 +101,12 @@ use chio_settle::{
     plan_finding_impairment_for_reconciliation, recheck_finding_bond_observation,
     reobserve_finding_impairment, reobserve_finding_impairment_for_reconciliation,
     verify_finding_collateral_snapshot, verify_finding_enforcement,
-    verify_finding_enforcement_for_reconciliation, EvmBondSnapshot, FindingBondObservationSource,
-    FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
-    FindingImpairmentOutcome, FindingImpairmentPublisher, FindingImpairmentQuarantine,
-    FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence, PlannedFindingImpairment,
-    PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement, SettlementChainConfig,
-    VerifiedFindingEnforcement,
+    verify_finding_enforcement_for_reconciliation, EvmBondSnapshot, FindingAnchorPublisherEvidence,
+    FindingBondObservationSource, FindingDispatchPolicy, FindingEnforcementPins,
+    FindingFinalityRequirement, FindingImpairmentOutcome, FindingImpairmentPublisher,
+    FindingImpairmentQuarantine, FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence,
+    PlannedFindingImpairment, PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement,
+    SettlementChainConfig, VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
     derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
@@ -128,6 +128,8 @@ use super::finding_handlers::{
 };
 use super::service_types::{FindingAuthorityPin, FindingMarketConfig};
 
+#[path = "finding_challenge_coordinator/anchor_publisher.rs"]
+mod anchor_publisher;
 #[path = "finding_challenge_coordinator/finalization_authority.rs"]
 mod finalization_authority;
 
@@ -622,6 +624,7 @@ struct ChallengeRolePins {
     audit_authority: FindingAuthorityPin,
     authority_status: FindingAuthorityPin,
     settlement_observer: FindingAuthorityPin,
+    anchor_publisher: FindingAuthorityPin,
     settlement_finality_requirement: FindingFinalityRequirement,
 }
 
@@ -931,6 +934,7 @@ impl FindingChallengeCoordinator {
                 audit_authority: config.audit_authority.clone(),
                 authority_status: config.authority_status.clone(),
                 settlement_observer: config.settlement_observer.clone(),
+                anchor_publisher: config.anchor_publisher.clone(),
                 settlement_finality_requirement: config.settlement_finality_requirement,
             },
             evaluator_authority,
@@ -2436,6 +2440,7 @@ impl FindingChallengeCoordinator {
             finality_requirement: self.pins.settlement_finality_requirement,
             max_snapshot_age_secs: self.market_config.max_snapshot_age_secs,
         };
+        let anchor_publisher = self.authenticate_anchor_publisher(anchor_proof, now)?;
         if seller_was_confirmed {
             // Recovery authenticates the frozen observation but does not
             // require it to remain publication-fresh. The transaction and
@@ -2453,6 +2458,7 @@ impl FindingChallengeCoordinator {
                 operator_address,
                 vault_snapshot,
                 anchor_proof,
+                anchor_publisher.evidence(),
             )
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
             let intent = self
@@ -2528,6 +2534,7 @@ impl FindingChallengeCoordinator {
             operator_address,
             vault_snapshot,
             anchor_proof,
+            anchor_publisher.evidence(),
         )
         .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
 

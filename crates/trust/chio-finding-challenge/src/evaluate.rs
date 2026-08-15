@@ -91,6 +91,7 @@ fn adjudicate(
     // no role key below means anything.
     verify_signed_profile(input.profile, input.governance_authority)
         .map_err(FindingChallengeInadmissible::ProfileRejected)?;
+    require_distinct_challenge_role_keys(input)?;
     let governance_policy = input.pinned_governance_policy;
     if governance_policy.key != input.governance_authority
         || governance_policy.authority_id.trim().is_empty()
@@ -214,6 +215,65 @@ fn adjudicate(
         _ => return Err(FindingChallengeInadmissible::ClassEvidenceMismatch),
     };
     Ok(FindingChallengeEvaluation::Adjudicated(adjudication))
+}
+
+fn require_distinct_challenge_role_keys(
+    input: &FindingChallengeEvaluationInput<'_>,
+) -> Result<(), FindingChallengeInadmissible> {
+    let profile = &input.profile.body;
+    let authority_roles = [
+        input.governance_authority,
+        input.pinned_audit_authority,
+        input.pinned_authority_status_key,
+        &input.pinned_purchase_authority.key,
+        &input.pinned_failed_delivery_authority.key,
+        &profile.verifier_report_signer.key,
+    ];
+    for (index, key) in authority_roles.iter().enumerate() {
+        if authority_roles
+            .iter()
+            .skip(index.saturating_add(1))
+            .any(|candidate| candidate == key)
+        {
+            return Err(FindingChallengeInadmissible::AuthorityStatusRoleCollision);
+        }
+    }
+
+    for signer in &profile.receipt_signers {
+        if authority_roles.iter().any(|key| *key == &signer.policy.key) {
+            return Err(FindingChallengeInadmissible::AuthorityStatusRoleCollision);
+        }
+    }
+    for (index, signer) in profile.receipt_signers.iter().enumerate() {
+        if profile
+            .receipt_signers
+            .iter()
+            .skip(index.saturating_add(1))
+            .any(|candidate| candidate.policy.key == signer.policy.key)
+        {
+            return Err(FindingChallengeInadmissible::AuthorityStatusRoleCollision);
+        }
+    }
+
+    for checkpoint in &profile.checkpoint_logs {
+        if authority_roles
+            .iter()
+            .any(|key| *key == &checkpoint.signer.key)
+        {
+            return Err(FindingChallengeInadmissible::AuthorityStatusRoleCollision);
+        }
+    }
+    for (index, checkpoint) in profile.checkpoint_logs.iter().enumerate() {
+        if profile
+            .checkpoint_logs
+            .iter()
+            .skip(index.saturating_add(1))
+            .any(|candidate| candidate.signer.key == checkpoint.signer.key)
+        {
+            return Err(FindingChallengeInadmissible::AuthorityStatusRoleCollision);
+        }
+    }
+    Ok(())
 }
 
 fn governance_status_establishes_profile_issuance(

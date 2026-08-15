@@ -269,7 +269,6 @@ pub struct World {
     pub evidence_checkpoint: KernelCheckpoint,
     pub evidence_checkpoint_ref: FindingCheckpointRef,
 }
-
 /// How the finding under challenge classifies itself.
 #[derive(Debug, Clone, Copy)]
 pub struct FindingClasses {
@@ -721,6 +720,7 @@ impl World {
         &self,
         shape: StandingShape,
     ) -> Built<(SignedFindingPurchaseRecord, PurchaseStandingProof)> {
+        let rotated_purchase_authority = keypair(43);
         let purchaser = match shape {
             StandingShape::ForeignBuyer => keypair(77),
             _ => keypair(41),
@@ -768,7 +768,7 @@ impl World {
         )?;
         let accepted_bid_envelope_sha256 = signed_envelope_sha256(&accepted_bid)?;
         let reservation_authority = match shape {
-            StandingShape::AdmissionAuthority => &self.delivery_kernel,
+            StandingShape::AdmissionAuthority => &rotated_purchase_authority,
             _ => &self.purchase_authority,
         };
         let reservation_receipt = SignedExportEnvelope::sign(
@@ -870,7 +870,7 @@ impl World {
         record.delivery_receipt_id = receipt.id.clone();
         let authority = match shape {
             StandingShape::ForeignAuthority => &self.buyer,
-            StandingShape::AdmissionAuthority => &self.delivery_kernel,
+            StandingShape::AdmissionAuthority => &rotated_purchase_authority,
             _ => &self.purchase_authority,
         };
         let signed = SignedExportEnvelope::sign(record, authority)?;

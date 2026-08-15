@@ -92,6 +92,24 @@ fn authority_status_signer_must_be_independent_from_governance() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn purchase_authority_must_be_independent_from_evidence_roles() -> TestResult {
+    let world = world()?;
+    let case = digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let mut aliased_purchase = world.profile.body.purchase_authority.clone();
+    aliased_purchase.key = world.delivery_kernel.public_key();
+    let mut input = world.input(&case.challenge, &evidence);
+    input.pinned_purchase_authority = &aliased_purchase;
+
+    let evaluation = evaluate_finding_challenge(&input);
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::AuthorityStatusRoleCollision,
+    )?;
+    Ok(())
+}
+
 /// Every cell of the closed compatibility matrix, evaluated end to end. An
 /// inadmissible pairing must produce no verdict at all, and an admissible one
 /// must reach an adjudication.
@@ -458,7 +476,7 @@ fn standing_uses_the_exact_admission_purchase_authority_after_rotation() -> Test
     let evidence = case.evidence(&proofs);
     let mut admission_policy = world.profile.body.purchase_authority.clone();
     admission_policy.authority_id = "purchase-rotated".to_owned();
-    admission_policy.key = world.delivery_kernel.public_key();
+    admission_policy.key = keypair(43).public_key();
     admission_policy.key_epoch += 1;
     let admission_status = world.status_for_policy(&admission_policy, None)?;
     let mut input = world.input(&case.challenge, &evidence);

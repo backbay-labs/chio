@@ -180,6 +180,7 @@ fn market_config() -> FindingMarketConfig {
         venue_finalization: authority_pin(32, "venue-finalization"),
         market_penalty: authority_pin(33, "market-penalty"),
         settlement_observer: authority_pin(34, "settlement-observer"),
+        anchor_publisher: authority_pin(7, "anchor-publisher"),
         max_snapshot_age_secs: 3_600,
         settlement_finality_requirement: chio_settle::FindingFinalityRequirement::Confirmations {
             min_depth: 64,
@@ -204,8 +205,7 @@ fn market_config() -> FindingMarketConfig {
     }
 }
 
-/// Rail observer that always refuses to settle, driving the
-/// crash-before-observation activation leg.
+/// Rail observer that always refuses the crash-before-observation activation leg.
 struct FailingRail;
 
 impl FindingRailObserver for FailingRail {
