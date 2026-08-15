@@ -32,7 +32,8 @@
 //! refines a root intent with the exact Merkle root and evidence hash that
 //! publication must confirm, while
 //! `finding_seller_impairment_reconciliations` retains the exact verified
-//! transaction evidence that allowed a seller impairment to confirm.
+//! transaction evidence that allowed a seller impairment to confirm;
+//! `effect_root_bindings_refreshes` retains each failed-retry root replacement.
 //!
 //! Writes run under `TransactionBehavior::Immediate` behind the
 //! serving-owner fence; reads run `Deferred`; a commit whose outcome
@@ -96,12 +97,13 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-/// Revision 12 retains authenticated seller-impairment reconciliations;
-/// revision 11 retains pre-dispatch finalizing-authorization refreshes;
+/// Revision 13 combines authenticated seller-impairment reconciliations with
+/// append-only enforcement-root refreshes; revision 11 retains pre-dispatch
+/// finalizing-authorization refreshes.
 /// revision 10 retains the initial exact finalizing authorization atomically
 /// with the liability transition; revision 9 retains exact signed evaluator
 /// outcomes with their verdict.
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 12;
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 13;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "challenges",
     "finding_challenge_projection_commits",
@@ -2713,9 +2715,9 @@ impl SqliteFindingChallengeStore {
         Ok(FindingChallengeWriteOutcome::Inserted)
     }
 
-    /// Refine a pending root intent with the exact proof values that will be
-    /// published and passed to the vault. The binding is immutable and must
-    /// exist before the root intent can enter `dispatched`.
+    /// Refine a root intent with the exact proof values published and passed
+    /// to the vault. The first binding is immutable. A failed seller retry
+    /// appends a chained refresh while retaining every earlier binding.
     pub fn bind_effect_root(
         &self,
         intent_key: &str,
@@ -2739,6 +2741,20 @@ impl SqliteFindingChallengeStore {
                 && existing.evidence_hash == evidence_hash
             {
                 return Ok(FindingChallengeWriteOutcome::ExistingSame);
+            }
+            if try_append_effect_root_refresh(
+                &transaction,
+                &intent,
+                &existing,
+                intent_key,
+                liability_key,
+                merkle_root,
+                evidence_hash,
+                now,
+            )? {
+                self.commit_write(transaction)?;
+                self.sync_after_write(&connection)?;
+                return Ok(FindingChallengeWriteOutcome::Inserted);
             }
             return Err(FindingChallengeStoreError::Conflict(
                 "root intent is already bound to a different anchor proof".to_owned(),
@@ -4119,44 +4135,6 @@ fn load_seller_impairment_reconciliation_tx(
         )
         .transpose()
 }
-
-fn load_effect_root_binding_tx(
-    transaction: &Transaction<'_>,
-    intent_key: &str,
-) -> Result<Option<FindingEffectRootBindingRecord>, FindingChallengeStoreError> {
-    transaction
-        .query_row(
-            r#"
-            SELECT intent_key, liability_key, merkle_root, evidence_hash, bound_at
-            FROM effect_root_bindings WHERE intent_key = ?1
-            "#,
-            [intent_key],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, i64>(4)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(sqlite_error)?
-        .map(
-            |(intent_key, liability_key, merkle_root, evidence_hash, bound_at)| {
-                Ok(FindingEffectRootBindingRecord {
-                    intent_key,
-                    liability_key,
-                    merkle_root,
-                    evidence_hash,
-                    bound_at: stored_u64(bound_at, "bound_at")?,
-                })
-            },
-        )
-        .transpose()
-}
-
 fn advance_challenge_state_tx(
     transaction: &Transaction<'_>,
     challenge_id: &str,
@@ -4691,10 +4669,15 @@ pub(crate) fn initialize_finding_challenge_schema(
     if on_disk == FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
         return verify_finding_challenge_invariants(connection);
     }
-    if matches!(on_disk, 10 | 11) {
+    if matches!(on_disk, 10..=12) {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;
+        if table_has_rows_where(&transaction, "liability_heads", "state = 'finalizing'")? {
+            return Err(invariant(
+                "legacy finalizing liability has no retained settlement observer policy",
+            ));
+        }
         transaction
             .execute_batch(FINDING_CHALLENGE_SCHEMA)
             .map_err(sqlite_error)?;
@@ -5309,6 +5292,7 @@ pub(crate) fn verify_finding_challenge_invariants(
             "confirmed seller impairment reconciliation coverage is not exact",
         ));
     }
+    verify_effect_root_refresh_invariants(connection)?;
     Ok(())
 }
 
@@ -5635,6 +5619,8 @@ fn sqlite_error(error: rusqlite::Error) -> FindingChallengeStoreError {
         other => FindingChallengeStoreError::Unavailable(other.to_string()),
     }
 }
+
+include!("finding_challenge_store_root_refresh.rs");
 
 #[cfg(test)]
 #[path = "finding_challenge_store_tests.rs"]

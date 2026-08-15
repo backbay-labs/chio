@@ -646,9 +646,9 @@ BEGIN
     SELECT RAISE(ABORT, 'seller impairment reconciliation must be retained');
 END;
 
--- The root intent is liability-scoped before the anchor proof exists. This
--- immutable refinement is installed before publication and binds that intent
--- to the exact Merkle root and evidence leaf the vault call will carry.
+-- The root intent is liability-scoped before the anchor proof exists. Its
+-- immutable base refinement is installed before publication and binds that
+-- intent to the exact Merkle root and evidence leaf the vault call will carry.
 CREATE TABLE IF NOT EXISTS effect_root_bindings (
     intent_key TEXT NOT NULL PRIMARY KEY REFERENCES effect_intents(intent_key),
     liability_key TEXT NOT NULL REFERENCES liability_heads(liability_key),
@@ -701,6 +701,92 @@ CREATE TRIGGER IF NOT EXISTS effect_root_bindings_no_delete
 BEFORE DELETE ON effect_root_bindings
 BEGIN
     SELECT RAISE(ABORT, 'effect root binding must be retained');
+END;
+
+-- A retryable seller impairment may outlive the observer snapshot that
+-- authorized its first attempt. Each renewed enforcement needs a newly
+-- published root, but the original binding remains audit evidence. This
+-- append-only chain selects the latest binding without mutating the base.
+CREATE TABLE IF NOT EXISTS effect_root_bindings_refreshes (
+    intent_key TEXT NOT NULL REFERENCES effect_root_bindings(intent_key),
+    refresh_ordinal INTEGER NOT NULL CHECK (refresh_ordinal > 0),
+    liability_key TEXT NOT NULL REFERENCES liability_heads(liability_key),
+    previous_merkle_root TEXT NOT NULL CHECK (
+        length(previous_merkle_root) = 66
+        AND substr(previous_merkle_root, 1, 2) = '0x'
+        AND substr(previous_merkle_root, 3) NOT GLOB '*[^0-9a-f]*'
+    ),
+    previous_evidence_hash TEXT NOT NULL CHECK (
+        length(previous_evidence_hash) = 66
+        AND substr(previous_evidence_hash, 1, 2) = '0x'
+        AND substr(previous_evidence_hash, 3) NOT GLOB '*[^0-9a-f]*'
+    ),
+    previous_bound_at INTEGER NOT NULL CHECK (previous_bound_at > 0),
+    merkle_root TEXT NOT NULL CHECK (
+        length(merkle_root) = 66
+        AND substr(merkle_root, 1, 2) = '0x'
+        AND substr(merkle_root, 3) NOT GLOB '*[^0-9a-f]*'
+    ),
+    evidence_hash TEXT NOT NULL CHECK (
+        length(evidence_hash) = 66
+        AND substr(evidence_hash, 1, 2) = '0x'
+        AND substr(evidence_hash, 3) NOT GLOB '*[^0-9a-f]*'
+    ),
+    bound_at INTEGER NOT NULL CHECK (bound_at > previous_bound_at),
+    PRIMARY KEY (intent_key, refresh_ordinal)
+);
+
+CREATE TRIGGER IF NOT EXISTS effect_root_bindings_refreshes_valid
+BEFORE INSERT ON effect_root_bindings_refreshes
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM effect_intents AS root
+    WHERE root.intent_key = NEW.intent_key
+      AND root.liability_key = NEW.liability_key
+      AND root.kind = 'root_intent'
+      AND root.state = 'confirmed'
+      AND root.settlement_required = 1
+      AND EXISTS (
+          SELECT 1 FROM effect_intents AS seller
+          WHERE seller.liability_key = NEW.liability_key
+            AND seller.kind = 'seller_impair'
+            AND seller.state = 'failed'
+            AND seller.settlement_required = 1
+      )
+) OR (
+    NEW.refresh_ordinal = 1 AND NOT EXISTS (
+        SELECT 1 FROM effect_root_bindings AS base
+        WHERE base.intent_key = NEW.intent_key
+          AND base.liability_key = NEW.liability_key
+          AND base.merkle_root = NEW.previous_merkle_root
+          AND base.evidence_hash = NEW.previous_evidence_hash
+          AND base.bound_at = NEW.previous_bound_at
+    )
+) OR (
+    NEW.refresh_ordinal > 1 AND NOT EXISTS (
+        SELECT 1 FROM effect_root_bindings_refreshes AS previous
+        WHERE previous.intent_key = NEW.intent_key
+          AND previous.refresh_ordinal = NEW.refresh_ordinal - 1
+          AND previous.liability_key = NEW.liability_key
+          AND previous.merkle_root = NEW.previous_merkle_root
+          AND previous.evidence_hash = NEW.previous_evidence_hash
+          AND previous.bound_at = NEW.previous_bound_at
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'effect root refresh requires the retained failed intent and prior binding');
+END;
+
+CREATE TRIGGER IF NOT EXISTS effect_root_bindings_refreshes_immutable
+BEFORE UPDATE ON effect_root_bindings_refreshes
+BEGIN
+    SELECT RAISE(ABORT, 'effect root binding refresh is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS effect_root_bindings_refreshes_no_delete
+BEFORE DELETE ON effect_root_bindings_refreshes
+BEGIN
+    SELECT RAISE(ABORT, 'effect root binding refresh must be retained');
 END;
 
 -- Immutable local history for the challenge projection. Every mutation of

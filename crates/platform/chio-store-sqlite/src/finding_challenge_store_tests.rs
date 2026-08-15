@@ -4301,7 +4301,7 @@ fn v10_schema_adds_append_only_finalizing_authorization_refreshes() {
 }
 
 #[test]
-fn v11_schema_adds_authenticated_seller_impairment_reconciliations() {
+fn v12_schema_adds_authenticated_seller_impairment_reconciliations() {
     let mut connection = Connection::open_in_memory().expect("open previous database");
     connection
         .execute_batch(FINDING_CHALLENGE_SCHEMA)
@@ -4316,10 +4316,10 @@ fn v11_schema_adds_authenticated_seller_impairment_reconciliations() {
             "#,
         )
         .expect("rewind seller impairment reconciliation schema objects");
-    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 11)
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 12)
         .expect("stamp previous schema");
 
-    initialize_finding_challenge_schema(&mut connection).expect("migrate revision eleven");
+    initialize_finding_challenge_schema(&mut connection).expect("migrate revision twelve");
 
     let version: i32 = connection
         .query_row(
@@ -4374,6 +4374,7 @@ fn empty_v4_schema_adds_authenticated_projection_history() {
     )
     .expect("inspect projection history"));
 }
+include!("finding_challenge_store_root_refresh_tests.rs");
 
 #[test]
 fn nonempty_v4_schema_is_not_adopted_without_projection_history() {

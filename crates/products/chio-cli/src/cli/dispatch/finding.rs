@@ -39,9 +39,9 @@ const FINDING_STATUS_RESPONSE_MAX_BYTES: usize = 512 * 1024;
 
 #[path = "finding/status_floor.rs"]
 mod status_floor;
-use status_floor::FindingStatusFloorObservation;
+use status_floor::{FindingStatusFloorLock, FindingStatusFloorObservation};
 #[cfg(test)]
-use status_floor::{read_status_floor, FindingStatusFloorLock};
+use status_floor::read_status_floor;
 
 pub(crate) fn dispatch_finding(
     command: FindingCommands,
@@ -654,17 +654,20 @@ impl FindingStatusProofResponse {
     }
 }
 
+#[cfg(test)]
 fn advance_status_floor(
     path: &Path,
     status: &FindingStatusProofResponse,
     authorization: &chio_finding::FindingStatusOperatorAuthorization,
     authorization_sha256: &str,
+    trusted_now: u64,
 ) -> Result<(), CliError> {
     status_floor::advance_status_floor(
         path,
         &status.floor_observation(),
         authorization,
         authorization_sha256,
+        trusted_now,
     )
 }
 
@@ -949,10 +952,12 @@ fn cmd_finding_status(
     }
     let authorization = load_status_operator_authorization(operator_authorization, feed_id)?;
     let authorization_sha256 = chio_core::sha256_hex(&chio_core::canonical_json_bytes(&authorization)?);
+    let _floor_lock = FindingStatusFloorLock::acquire(rollback_floor)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| CliError::cli_other_error(format!("system clock is invalid: {error}")))?
         .as_secs();
+    status_floor::require_trusted_time(rollback_floor, now)?;
     let service_bond = load_status_service_bond(
         service_bond,
         feed_id,
@@ -986,6 +991,12 @@ fn cmd_finding_status(
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| CliError::cli_other_error(format!("system clock is invalid: {error}")))?
         .as_secs();
+    if post_fetch_now < now {
+        return Err(CliError::cli_other_error(
+            "finding status host clock rolled back during proof retrieval".to_owned(),
+        ));
+    }
+    status_floor::require_trusted_time(rollback_floor, post_fetch_now)?;
     if !service_bond.covers(post_fetch_now) {
         return Err(CliError::cli_other_error(
             "finding status service bond expired while fetching the proof".to_owned(),
@@ -1000,11 +1011,12 @@ fn cmd_finding_status(
         max_epoch_age_secs,
         post_fetch_now,
     )?;
-    advance_status_floor(
+    status_floor::advance_status_floor_locked(
         rollback_floor,
-        &status,
+        &status.floor_observation(),
         &authorization,
         &authorization_sha256,
+        post_fetch_now,
     )?;
     if json_output {
         let mut verified = serde_json::to_value(&status)?;

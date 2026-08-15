@@ -257,19 +257,18 @@ impl FindingChallengeCoordinator {
         // re-observe its block and operator qualification before the
         // quarantine can be cleared.
         if liability.quarantined {
-            self.require_live_settlement_observer(bond_snapshot, now)?;
+            let (retained, _) = self.load_retained_finalizing_authorization(liability_key)?;
             let settlement_observer = self.require_live_role(
-                &self.pins.settlement_observer,
+                &retained.settlement_observer_policy,
                 bond_snapshot.body.observed_at,
                 now,
-                "settlement observer",
+                "historical settlement observer",
             )?;
             let seller = PublicKey::from_hex(&liability.seller_hex).map_err(|_| {
                 ChallengeCoordinatorError::ChallengeStore(
                     "liability carries an invalid durable seller key".to_owned(),
                 )
             })?;
-            let (retained, _) = self.load_retained_finalizing_authorization(liability_key)?;
             let (finalization_authority, _) = self.require_enforcement_signature(
                 enforcement,
                 &retained.finalization_policy,

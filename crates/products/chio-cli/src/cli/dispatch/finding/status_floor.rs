@@ -25,6 +25,7 @@ pub(super) struct FindingStatusCliFloor {
     pub(super) map_epoch: u64,
     pub(super) epoch_id: String,
     pub(super) root_hash: String,
+    pub(super) trusted_time_floor: u64,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -52,7 +53,7 @@ enum FindingStatusCliFloorState {
 }
 
 impl FindingStatusCliFloorV1 {
-    fn into_v2(self) -> (FindingStatusCliFloor, BTreeSet<String>) {
+    fn into_v2(self, trusted_now: u64) -> (FindingStatusCliFloor, BTreeSet<String>) {
         (
             FindingStatusCliFloor {
                 schema: FINDING_STATUS_FLOOR_SCHEMA_V2.to_owned(),
@@ -66,6 +67,7 @@ impl FindingStatusCliFloorV1 {
                 map_epoch: self.map_epoch,
                 epoch_id: self.epoch_id,
                 root_hash: self.root_hash,
+                trusted_time_floor: trusted_now,
             },
             self.retracted_finding_ids,
         )
@@ -381,16 +383,52 @@ fn persist_status_retraction(
     )
 }
 
+#[cfg(test)]
 pub(super) fn advance_status_floor(
     path: &Path,
     status: &FindingStatusFloorObservation<'_>,
     authorization: &chio_finding::FindingStatusOperatorAuthorization,
     authorization_sha256: &str,
+    trusted_now: u64,
 ) -> Result<(), CliError> {
     let _lock = FindingStatusFloorLock::acquire(path)?;
+    advance_status_floor_locked(
+        path,
+        status,
+        authorization,
+        authorization_sha256,
+        trusted_now,
+    )
+}
+
+pub(super) fn require_trusted_time(path: &Path, trusted_now: u64) -> Result<(), CliError> {
+    if trusted_now == 0 {
+        return Err(CliError::cli_other_error(
+            "finding status trusted time must be positive".to_owned(),
+        ));
+    }
+    if let Some(FindingStatusCliFloorState::V2(current)) = read_status_floor_state(path)? {
+        if trusted_now < current.trusted_time_floor {
+            return Err(CliError::cli_other_error(format!(
+                "finding status host clock rolled back below the durable trusted-time floor {}",
+                current.trusted_time_floor
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn advance_status_floor_locked(
+    path: &Path,
+    status: &FindingStatusFloorObservation<'_>,
+    authorization: &chio_finding::FindingStatusOperatorAuthorization,
+    authorization_sha256: &str,
+    trusted_now: u64,
+) -> Result<(), CliError> {
+    require_trusted_time(path, trusted_now)?;
     if let Some(state) = read_status_floor_state(path)? {
         let (current, legacy_retractions) = match state {
-            FindingStatusCliFloorState::V1(floor) => floor.into_v2(),
+            FindingStatusCliFloorState::V1(floor) => floor.into_v2(trusted_now),
             FindingStatusCliFloorState::V2(floor) => (floor, BTreeSet::new()),
         };
         if current.feed_id != status.feed_id
@@ -496,6 +534,7 @@ pub(super) fn advance_status_floor(
             map_epoch: status.map_epoch,
             epoch_id: status.epoch_id.to_owned(),
             root_hash: status.root_hash.to_owned(),
+            trusted_time_floor: trusted_now,
         },
     )
 }

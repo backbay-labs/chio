@@ -769,6 +769,16 @@ impl SqliteFindingStatusStore {
             FindingRetractionIntentState::WaitingFinality => {
                 let authorized_at = read_now();
                 require_positive(authorized_at, "authorized_at")?;
+                let floor = load_floor_tx(&transaction, &existing.feed_id)?;
+                if let Some(floor) = floor.as_ref() {
+                    if authorized_at < floor.advanced_at {
+                        return Err(FindingStatusStoreError::ClockRollback {
+                            feed_id: existing.feed_id.clone(),
+                            high_water: floor.advanced_at,
+                            observed: authorized_at,
+                        });
+                    }
+                }
                 let inclusion_deadline = authorized_at
                     .checked_add(inclusion_sla_secs)
                     .ok_or_else(|| invariant("dispatch inclusion deadline overflowed"))?;
@@ -783,6 +793,21 @@ impl SqliteFindingStatusStore {
                 }
                 if authorized_at < existing.created_at {
                     return Err(invariant("dispatch eligibility predates the intent"));
+                }
+                if let Some(floor) = floor.filter(|floor| authorized_at > floor.advanced_at) {
+                    let changed = transaction
+                        .execute(
+                            "UPDATE finding_status_feed_floors SET advanced_at = ?2 WHERE feed_id = ?1 AND advanced_at = ?3",
+                            params![
+                                existing.feed_id,
+                                sqlite_i64(authorized_at, "authorized_at")?,
+                                sqlite_i64(floor.advanced_at, "advanced_at")?,
+                            ],
+                        )
+                        .map_err(sqlite_error)?;
+                    if changed != 1 {
+                        return Err(invariant("finding status clock floor changed concurrently"));
+                    }
                 }
                 let inclusion_deadline = sqlite_i64(inclusion_deadline, "inclusion_deadline")?;
                 transaction

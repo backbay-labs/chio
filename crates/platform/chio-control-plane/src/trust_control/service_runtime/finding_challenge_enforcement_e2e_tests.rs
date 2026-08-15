@@ -7026,6 +7026,64 @@ fn finding_challenge_snapshot_refresh_stops_once_exact_enforcement_is_anchored()
 }
 
 #[test]
+fn finding_challenge_failed_impairment_renews_snapshot_and_retains_root_lineage() -> TestResult {
+    let case = finalizing_liability()?;
+    let publisher = MiningPublisher::new();
+    case.finalize(&publisher, SETTLEMENT_NOW)?;
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Failed);
+    let original_binding = case
+        .deployment
+        .challenges
+        .get_effect_root_binding(&enforcement_root_intent_key())?
+        .ok_or("the first published root is retained")?;
+
+    let refresh_at = SETTLEMENT_NOW + 120;
+    let mut snapshot_body = case.snapshot.body.clone();
+    snapshot_body.observed_at = refresh_at - 1;
+    snapshot_body.snapshot_id.clear();
+    snapshot_body.snapshot_id = compute_snapshot_id(&snapshot_body)?;
+    let snapshot = SignedExportEnvelope::sign(snapshot_body, &keypair(34))?;
+    let refreshed = case.coordinator.refresh_finalizing_enforcement(
+        &case.authorized()?,
+        &snapshot,
+        &case.seller,
+        refresh_at,
+    )?;
+    let completed = case.coordinator.finalize(
+        &case.liability_key,
+        &refreshed.enforcement,
+        &case.penalty,
+        &snapshot,
+        &case.seller,
+        &settlement_config()?,
+        &settlement_config()?.operator_address,
+        &evm_vault_snapshot(),
+        &enforcement_anchor_proof(&refreshed.enforcement)?,
+        &ScriptedObservations::qualified(),
+        &publisher,
+        refresh_at + 1,
+    )?;
+    assert!(matches!(
+        completed,
+        FindingFinalization::Reconciled(FindingImpairmentOutcome::Confirmed { .. })
+    ));
+    let current_binding = case
+        .deployment
+        .challenges
+        .get_effect_root_binding(&enforcement_root_intent_key())?
+        .ok_or("the renewed published root is retained")?;
+    assert_ne!(current_binding, original_binding);
+    let connection = rusqlite::Connection::open(&case.deployment.database)?;
+    let refreshes = connection.query_row(
+        "SELECT COUNT(*) FROM effect_root_bindings_refreshes WHERE intent_key = ?1",
+        [&enforcement_root_intent_key()],
+        |row| row.get::<_, i64>(0),
+    )?;
+    assert_eq!(refreshes, 1, "the original root remains in the base row");
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_appeal_finality_refuses_a_window_that_has_not_closed() -> TestResult {
     let case = upheld_liability()?;
     let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
@@ -8344,7 +8402,8 @@ fn finding_challenge_regressed_confirmation_depth_never_reaches_the_publisher() 
 }
 
 #[test]
-fn finding_challenge_confirmed_impairment_recovers_across_operator_rotation() -> TestResult {
+fn finding_challenge_confirmed_impairment_recovers_across_observer_and_operator_rotation(
+) -> TestResult {
     let case = finalizing_liability()?;
     let publisher = MiningPublisher::new();
 
@@ -8389,11 +8448,36 @@ fn finding_challenge_confirmed_impairment_recovers_across_operator_rotation() ->
         operator_key_epoch: 4,
         ..qualified_observation()
     };
-    let recovered = case.finalize_observing(
+    let mut rotated_config = market_config();
+    rotated_config.settlement_observer = authority_pin(51, "settlement-observer-rotated");
+    let rotated_coordinator = FindingChallengeCoordinator::new_with_status_commit_clock(
+        case.deployment.challenges.clone(),
+        case.deployment.purchases.clone(),
+        case.deployment.status.clone(),
+        &rotated_config,
+        keypair(31),
+        keypair(32),
+        keypair(33),
+        Arc::new(TestAuthorityStatusResolver::live()),
+        case.deployment.rail.clone(),
+        case.deployment.filings.clone(),
+        FindingDisputeLockDisposition::Forfeited,
+        Arc::new(FixtureStatusCommitClock),
+    )?;
+    let recovered = rotated_coordinator.finalize(
+        &case.liability_key,
+        &case.enforcement,
+        &case.penalty,
+        &case.snapshot,
+        &case.seller,
+        &settlement_config()?,
+        &settlement_config()?.operator_address,
+        &evm_vault_snapshot(),
+        &enforcement_anchor_proof(&case.enforcement)?,
         &ScriptedObservations::then_qualified(vec![still_rotated]),
         &UnreachablePublisher,
         SETTLEMENT_NOW + 120,
-    )??;
+    )?;
     assert_eq!(recovered, FindingFinalization::AwaitingStatusPublication);
     let reconciled = case.head()?;
     assert_eq!(reconciled.state, FindingLiabilityState::Finalizing);

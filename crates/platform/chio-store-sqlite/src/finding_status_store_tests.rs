@@ -788,6 +788,72 @@ fn dispatch_eligibility_rechecks_liveness_inside_the_write_transaction() {
 }
 
 #[test]
+fn dispatch_eligibility_rejects_commit_clock_rollback_inside_the_transaction() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('a');
+    let intent_id = hex64('b');
+    let epoch_id = hex64('c');
+    let root_hash = hex64('d');
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &epoch_id,
+            &root_hash,
+            br#"{"schema":"chio.finding.status-epoch.v1","map_epoch":1}"#,
+            1,
+        ))
+        .expect("establish the feed clock floor");
+    store
+        .issue_retraction_intent(&FindingRetractionIntentInput {
+            intent_id: &intent_id,
+            feed_id: FEED,
+            operator_id: OPERATOR,
+            finding_id: &finding_id,
+            source: FindingRetractionIntentSource::Enforcement,
+            intent_bytes: b"signed-enforcement-intent",
+            issued_at: NOW + 1,
+            inclusion_deadline: NOW + 500,
+            created_at: NOW + 2,
+        })
+        .expect("persist intent");
+    store
+        .observe_trusted_time(FEED, NOW + 50)
+        .expect("advance the durable clock floor");
+
+    let refused = store
+        .mark_retraction_dispatch_eligible(
+            &intent_id,
+            b"confirmed-finality",
+            50,
+            FindingRetractionIntentCommitLiveness {
+                valid_from: NOW,
+                valid_until: NOW + 1_000,
+            },
+            || NOW + 40,
+        )
+        .expect_err("a regressed commit clock must reject");
+    assert!(matches!(
+        refused,
+        FindingStatusStoreError::ClockRollback {
+            high_water,
+            observed,
+            ..
+        } if high_water == NOW + 50 && observed == NOW + 40
+    ));
+    let retained = store
+        .get_retraction_intent(&intent_id)
+        .expect("load waiting intent")
+        .expect("intent remains durable");
+    assert_eq!(
+        retained.state,
+        FindingRetractionIntentState::WaitingFinality
+    );
+    assert!(retained.finality_evidence_bytes.is_none());
+}
+
+#[test]
 fn schema_v1_migration_moves_the_inclusion_window_to_finality() {
     let fixture = DurableFixture::new();
     let connection = Connection::open(&fixture.database).expect("open authority database");

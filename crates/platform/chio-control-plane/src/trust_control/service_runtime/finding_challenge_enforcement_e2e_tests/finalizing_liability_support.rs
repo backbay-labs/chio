@@ -351,6 +351,7 @@ fn finalizing_liability_with_prior_retraction(
         "enforcement": enforcement.clone(),
         "slash": slash.clone(),
         "finalizationPolicy": market_config().venue_finalization,
+        "settlementObserverPolicy": market_config().settlement_observer,
         "sanctionCaseId": FIXTURE_SANCTION_CASE_ID,
         "heldPenaltyId": FIXTURE_HELD_PENALTY_ID,
     });

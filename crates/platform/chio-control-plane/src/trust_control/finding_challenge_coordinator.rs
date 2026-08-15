@@ -851,6 +851,7 @@ struct RetainedAuthorizedImpairment {
     enforcement: SignedFindingChallengeEnforcement,
     slash: FindingPenaltyOutcome,
     finalization_policy: FindingAuthorityPin,
+    settlement_observer_policy: FindingAuthorityPin,
     sanction_case_id: String,
     held_penalty_id: String,
 }
@@ -2247,11 +2248,9 @@ impl FindingChallengeCoordinator {
     /// but queueing or reconciliation delay can age out the snapshot that
     /// closed the appeal. The liability and every semantic effect remain
     /// frozen; only the observer-signed snapshot digest and finalization
-    /// instant change. Refresh ends once the exact enforcement has been
-    /// bound to an anchor proof or the seller impairment has left pending:
-    /// either event makes the signed enforcement identity externally
-    /// observable, so re-signing it would no longer match the anchored
-    /// authorization.
+    /// instant change. Before a first attempt, no root may be bound. After a
+    /// retryable failed attempt, the published root stays in its append-only
+    /// lineage and the next exact proof replaces only the active refinement.
     pub fn refresh_finalizing_enforcement(
         &self,
         authorized: &AuthorizedImpairment,
@@ -2303,7 +2302,10 @@ impl FindingChallengeCoordinator {
             .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
         if seller_intent.kind != FindingEffectIntentKind::SellerImpair
             || seller_intent.liability_key.as_deref() != Some(old.body.liability_key.as_str())
-            || seller_intent.state != FindingEffectIntentState::Pending
+            || !matches!(
+                seller_intent.state,
+                FindingEffectIntentState::Pending | FindingEffectIntentState::Failed
+            )
         {
             return Err(ChallengeCoordinatorError::Settlement(
                 "bond snapshot refresh is permitted only before anchor binding or dispatch"
@@ -2330,11 +2332,22 @@ impl FindingChallengeCoordinator {
             .challenges
             .get_effect_root_binding(root_intent_id)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        let root_is_refreshable = match seller_intent.state {
+            FindingEffectIntentState::Pending => {
+                root_intent.state == FindingEffectIntentState::Pending
+                    && root_intent.attempt_count == 0
+                    && root_binding.is_none()
+            }
+            FindingEffectIntentState::Failed => {
+                root_intent.state == FindingEffectIntentState::Confirmed && root_binding.is_some()
+            }
+            FindingEffectIntentState::Dispatched
+            | FindingEffectIntentState::Confirmed
+            | FindingEffectIntentState::Quarantined => false,
+        };
         if root_intent.kind != FindingEffectIntentKind::RootIntent
             || root_intent.liability_key.as_deref() != Some(old.body.liability_key.as_str())
-            || root_intent.state != FindingEffectIntentState::Pending
-            || root_intent.attempt_count != 0
-            || root_binding.is_some()
+            || !root_is_refreshable
         {
             return Err(ChallengeCoordinatorError::Settlement(
                 "bond snapshot refresh is permitted only before anchor binding or dispatch"
@@ -2441,6 +2454,7 @@ impl FindingChallengeCoordinator {
             enforcement: refreshed_authorization.enforcement.clone(),
             slash: refreshed_authorization.slash.clone(),
             finalization_policy: self.finalization_pin.clone(),
+            settlement_observer_policy: self.pins.settlement_observer.clone(),
             sanction_case_id: retained.sanction_case_id,
             held_penalty_id: retained.held_penalty_id,
         };
@@ -2603,7 +2617,15 @@ impl FindingChallengeCoordinator {
             // history under its original observer even after the configured
             // operator rotates; the confirmed transaction itself is
             // independently re-observed below.
-            (bond_snapshot.signer_key.clone(), None)
+            (
+                self.require_live_role(
+                    &retained.settlement_observer_policy,
+                    bond_snapshot.body.observed_at,
+                    now,
+                    "historical settlement observer",
+                )?,
+                None,
+            )
         } else {
             self.require_live_settlement_observer(bond_snapshot, now)?;
             let (key, status) = self.resolve_live_role(
@@ -4252,49 +4274,6 @@ impl FindingChallengeCoordinator {
         Ok(())
     }
 
-    /// Bind a still-pending root intent to the concrete proof this finalize
-    /// attempt prepared. The generic liability and penalty commitment is
-    /// checked first, so a mismatched intent cannot be poisoned with a
-    /// binding that belongs elsewhere.
-    fn bind_enforcement_root(
-        &self,
-        liability_key: &str,
-        verified: &VerifiedFindingEnforcement,
-        planned: &chio_settle::FindingImpairmentIntent,
-        now: u64,
-    ) -> Result<(), ChallengeCoordinatorError> {
-        let root = self
-            .challenges
-            .get_effect_intent(verified.root_intent_id())
-            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
-            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
-        let expected = sha256_hex(
-            root_intent_commitment(
-                liability_key,
-                &verified.enforcement().penalty_envelope_sha256,
-            )
-            .as_bytes(),
-        );
-        if root.kind != FindingEffectIntentKind::RootIntent
-            || root.liability_key.as_deref() != Some(liability_key)
-            || root.intent_digest != expected
-        {
-            return Err(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
-                "the named root intent does not fence this liability and penalty",
-            ));
-        }
-        self.challenges
-            .bind_effect_root(
-                verified.root_intent_id(),
-                liability_key,
-                &planned.merkle_root,
-                &planned.evidence_hash,
-                now,
-            )
-            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
-        Ok(())
-    }
-
     /// Require the exact root this impairment carries to be published and
     /// confirmed.
     ///
@@ -5910,6 +5889,7 @@ impl FindingChallengeCoordinator {
             enforcement: authorized.enforcement.clone(),
             slash: authorized.slash.clone(),
             finalization_policy: self.finalization_pin.clone(),
+            settlement_observer_policy: self.pins.settlement_observer.clone(),
             sanction_case_id: sanction_case_id.to_owned(),
             held_penalty_id: held_penalty_id.to_owned(),
         };
