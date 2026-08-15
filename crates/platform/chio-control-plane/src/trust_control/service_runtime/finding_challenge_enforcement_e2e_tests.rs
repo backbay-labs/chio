@@ -150,15 +150,13 @@ use chio_store_sqlite::{
 };
 
 use crate::trust_control::finding_challenge_coordinator::{
-    anchor_evidence_intent_commitment, audit_epoch_precommitment_sha256,
-    derive_anchor_evidence_intent_key, derive_defect_key, derive_liability_key,
-    require_admitted_replay_decision_rule, root_intent_commitment, AppealDisposition,
-    AppealResolution, AuthorizedImpairment, ChallengeCoordinatorError, ChallengeEvaluationRequest,
-    ChallengeSubmissionOutcome, EvaluationAdmission, FindingAuditRound,
-    FindingAuditRoundAuthorization, FindingAuthorityStatus, FindingAuthorityStatusResolver,
-    FindingChallengeCoordinator, FindingCollateralFacts, FindingFilingResolver,
-    FindingFinalization, FindingLiabilityIdentity, FindingPenaltyGovernance, FindingPenaltyOutcome,
-    UpheldLiability, FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1,
+    anchor_evidence_intent_commitment, derive_anchor_evidence_intent_key, derive_defect_key,
+    derive_liability_key, require_admitted_replay_decision_rule, root_intent_commitment,
+    AppealDisposition, AppealResolution, AuthorizedImpairment, ChallengeCoordinatorError,
+    ChallengeEvaluationRequest, ChallengeSubmissionOutcome, EvaluationAdmission, FindingAuditRound,
+    FindingAuthorityStatus, FindingAuthorityStatusResolver, FindingChallengeCoordinator,
+    FindingCollateralFacts, FindingFilingResolver, FindingFinalization, FindingLiabilityIdentity,
+    FindingPenaltyGovernance, FindingPenaltyOutcome, UpheldLiability,
     FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
 use crate::trust_control::{
@@ -6531,6 +6529,7 @@ fn finding_challenge_appeal_accepts_a_prior_hold_across_penalty_rotation() -> Te
     let coordinator = FindingChallengeCoordinator::new_with_status_commit_clock(
         case.deployment.challenges.clone(),
         case.deployment.purchases.clone(),
+        case.deployment.status.clone(),
         &rotated_config,
         keypair(31),
         keypair(32),

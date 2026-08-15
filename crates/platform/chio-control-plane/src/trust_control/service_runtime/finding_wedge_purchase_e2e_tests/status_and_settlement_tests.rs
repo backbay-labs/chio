@@ -136,6 +136,46 @@ impl crate::trust_control::finding_status_verifier::FindingStatusAdmissionClock
     }
 }
 
+struct RejectCurrentRecoveryStatusVerifier {
+    inner: MarketFindingStatusVerifier,
+}
+
+impl chio_kernel::finding_purchase::FindingStatusProofVerifier
+    for RejectCurrentRecoveryStatusVerifier
+{
+    fn verify_status_proof(
+        &self,
+        view: &chio_kernel::finding_purchase::FindingStatusProofContextView<'_>,
+    ) -> Result<chio_kernel::finding_purchase::VerifiedFindingStatusProof, String> {
+        chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_proof(
+            &self.inner,
+            view,
+        )
+    }
+
+    fn verify_status_admission(
+        &self,
+        view: &chio_kernel::finding_purchase::FindingStatusProofContextView<'_>,
+        verified: &chio_kernel::finding_purchase::VerifiedFindingStatusProof,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_admission(
+            &self.inner,
+            view,
+            verified,
+            now_unix_secs,
+        )
+    }
+
+    fn verify_current_status_admission(
+        &self,
+        _view: &chio_kernel::finding_purchase::FindingCurrentStatusContextView<'_>,
+        _now_unix_secs: u64,
+    ) -> Result<(), String> {
+        Err("finding recovery became ineligible after dispatch".to_owned())
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn finding_purchase_without_status_verifier_denies_before_effects() -> TestResult {
     let lane = open_lane(LaneOptions {

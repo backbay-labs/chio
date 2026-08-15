@@ -1691,6 +1691,19 @@ impl ChioKernel {
                     Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
             }
         }
+        if delivery_evaluation.denial.is_none() {
+            if let Err(reason) = self.revalidate_completed_recovery_status(
+                matched_grant_index,
+                request,
+                recovery.as_ref(),
+                recovery_status.as_ref(),
+                current_unix_timestamp_ms() / 1_000,
+            ) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery final terminal output withheld");
+                delivery_evaluation.denial =
+                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
+            }
+        }
         let delivery_denied = delivery_evaluation.denial.is_some();
         let projected_terminal_state = if delivery_denied {
             AdmissionOperationState::DeniedAfterDelivery
@@ -2196,18 +2209,6 @@ impl ChioKernel {
         } else {
             None
         };
-        self.revalidate_completed_recovery_status(
-            matched_grant_index,
-            request,
-            recovery.as_ref(),
-            recovery_status.as_ref(),
-            current_unix_timestamp_ms() / 1_000,
-        )
-        .map_err(|reason| {
-            KernelError::DurableAdmission(format!(
-                "finding recovery terminal status revalidation failed: {reason}"
-            ))
-        })?;
         let projected_receipt = receipt.receipt().clone();
         let (terminal, expected_terminal_state) = if let Some(denial) =
             delivery_evaluation.denial.as_ref()

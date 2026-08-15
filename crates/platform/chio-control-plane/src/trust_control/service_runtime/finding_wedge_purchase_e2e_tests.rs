@@ -3631,7 +3631,7 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         original_capability_id: lane.purchase.capability.id.clone(),
         original_delivery_receipt_id: response.receipt.id.clone(),
         purchase_key: purchase_record.body.purchase_key.clone(),
-        max_recoveries: 2,
+        max_recoveries: 3,
     };
     let verification_arguments = serde_json::json!({
         "finding_id": finding_id,
@@ -3682,7 +3682,7 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         &verified,
         &lane.deployment.web.operator,
         "recovery-token-0001".to_owned(),
-        2,
+        3,
         now.saturating_sub(5),
         now.saturating_add(600),
     )?;
@@ -3852,10 +3852,48 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
         &verified,
         &lane.deployment.web.operator,
         "recovery-token-0002".to_owned(),
-        2,
+        3,
         now,
         now.saturating_add(600),
     )?;
+    let mut late_status_kernel = build_reveal_kernel(&RevealKernelInputs {
+        authority: &lane.authority,
+        kernel_keypair: &keypair(40),
+        web: &lane.deployment.web,
+        rail: Rail::ReversibleHold,
+        calls: &lane.calls,
+        invocations: &lane.invocations,
+        install_verifier: true,
+        install_status_verifier: false,
+    })?;
+    late_status_kernel.set_finding_status_proof_verifier(Arc::new(
+        RejectCurrentRecoveryStatusVerifier {
+            inner: MarketFindingStatusVerifier::new(
+                config.status_feed_operator.clone(),
+                config.status_feed_service_bond.clone(),
+                config.status_max_epoch_age_secs,
+                status_store.clone(),
+            )?,
+        },
+    ));
+    let late_status_denial =
+        late_status_kernel.evaluate_tool_call_blocking(&finding_recovery_request(
+            "wedge-recovery-late-status-denial",
+            &remint,
+            &lane.buyer,
+            &finding_id,
+            recovery_context_b64,
+            Some(&live_status_proof_b64),
+            "nonce-recovery-late-status-denial",
+        )?)?;
+    assert_eq!(
+        late_status_denial.verdict,
+        Verdict::Deny,
+        "{:?}",
+        late_status_denial.reason
+    );
+    assert!(late_status_denial.output.is_none());
+
     let second = restarted.evaluate_tool_call_blocking(&finding_recovery_request(
         "wedge-recovery-2",
         &remint,
@@ -3902,7 +3940,7 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
     assert_denied_with(&retracted_recovery, "status proof rejected");
     assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 1);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
-    assert_eq!(lane.invocations.load(Ordering::SeqCst), 3);
+    assert_eq!(lane.invocations.load(Ordering::SeqCst), 4);
     Ok(())
 }
 
