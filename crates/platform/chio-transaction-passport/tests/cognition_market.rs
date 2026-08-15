@@ -608,6 +608,8 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         },
         &verifier_status_authority,
     )?;
+    let purchase_authority_status =
+        purchase_authority_status(&trusted_verifier_profile, &verifier_status_authority)?;
     let status_operator_authorization = status_authorization(&status_keypair);
     let signed_status_operator_authorization = SignedExportEnvelope::sign(
         status_operator_authorization.clone(),
@@ -642,6 +644,12 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         },
         finding_verifier_authority: verifier_keypair().public_key(),
         purchase_authority: purchase_authority_keypair().public_key(),
+        purchase_authority_status: Some(CognitionMarketVerifierAuthorityStatusTrust {
+            signed_status: purchase_authority_status,
+            status_authority: profile_key_policy(10, "verifier-status-authority"),
+            checked_at: CHECKED_AT,
+            max_age_secs: 60,
+        }),
         trusted_verifier_profile_envelope_sha256,
         trusted_verifier_profile,
         trusted_trust_root_snapshot_sha256: "45".repeat(32),
@@ -701,6 +709,9 @@ fn verify(bundle: &QualifiedBundle) -> TestResult {
 fn set_authority_status_checked_at(bundle: &mut QualifiedBundle, checked_at: u64) {
     bundle.trust.profile_governance_authority_status.checked_at = checked_at;
     bundle.trust.verifier_authority_status.checked_at = checked_at;
+    if let Some(status) = &mut bundle.trust.purchase_authority_status {
+        status.checked_at = checked_at;
+    }
 }
 
 fn replace_trusted_profile(

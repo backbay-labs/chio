@@ -183,6 +183,7 @@ fn cognition_market_qualified_profile_rejects_backdated_report_after_finding_exp
     replace_trusted_profile(&mut bundle, |profile| {
         profile.expires_at = finding.expires_at + 600;
         profile.verifier_report_signer.valid_until = finding.expires_at + 600;
+        profile.purchase_authority.valid_until = finding.expires_at + 600;
     })?;
     let mut status = bundle
         .trust
@@ -217,6 +218,16 @@ fn cognition_market_qualified_profile_rejects_backdated_report_after_finding_exp
         .profile_governance_authority_status
         .signed_status =
         SignedExportEnvelope::sign(governance_status, &Keypair::from_seed(&[10_u8; 32]))?;
+    let purchase_status = bundle
+        .trust
+        .purchase_authority_status
+        .as_mut()
+        .ok_or("purchase authority status missing")?;
+    purchase_status.status_authority.valid_until = finding.expires_at + 1;
+    let mut purchase_standing = purchase_status.signed_status.body.clone();
+    purchase_standing.observed_at = finding.expires_at;
+    purchase_status.signed_status =
+        SignedExportEnvelope::sign(purchase_standing, &Keypair::from_seed(&[10_u8; 32]))?;
 
     let error = verify(&bundle)
         .err()

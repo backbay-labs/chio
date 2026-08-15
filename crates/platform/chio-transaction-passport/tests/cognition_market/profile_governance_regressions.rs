@@ -63,6 +63,31 @@ fn cognition_market_qualified_profile_rejects_verifier_as_governance_status_auth
 }
 
 #[test]
+fn cognition_market_rejects_governance_as_operator_standing_authority() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle
+        .trust
+        .status
+        .as_mut()
+        .ok_or("status trust missing")?
+        .operator_authority_status
+        .status_authority
+        .key = bundle.trust.profile_governance_authority.key.clone();
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("profile governance key was accepted as the operator standing authority")?
+        .to_string();
+    assert!(
+        error.contains(
+            "status-operator standing authority and profile governance authority must be distinct"
+        ),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn cognition_market_qualified_profile_rejects_backdated_profile_after_governance_revocation(
 ) -> TestResult {
     let mut bundle = build_bundle()?;

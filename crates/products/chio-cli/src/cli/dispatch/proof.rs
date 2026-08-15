@@ -1161,10 +1161,15 @@ fn verify_transaction_passport_file_with_mode(
             &finding_claim_set,
             chio_control_plane::transaction_passport::COGNITION_MARKET_CLAIMS[2],
         )?;
+        let purchase_claim_selected = claim_set_bytes_advertise_verified_claim(
+            &finding_claim_set,
+            chio_control_plane::transaction_passport::COGNITION_MARKET_CLAIMS[0],
+        )?;
         let trust = cognition_market_proof_trust_from_env(
             &trusted_transaction_root_keys,
             &trusted_transaction_checkpoint_keys,
             status_claim_selected,
+            purchase_claim_selected,
         )?;
         let externally_verified_claims = verified_claims_from_family_reports(&family_reports);
         let report = chio_control_plane::transaction_passport::

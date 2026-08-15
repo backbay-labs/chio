@@ -46,6 +46,8 @@ pub const COGNITION_MARKET_CLAIMS: [&str; 4] = [
 ];
 
 const FINDING_VERIFIER_MODULE: &str = "chio-finding-verifier";
+const PURCHASE_AUTHORITY_STANDING_REQUIRED: &str =
+    "delivery-bound claim requires current authenticated purchase-authority standing";
 
 /// Exact verified status material that must cross a durable trust boundary
 /// before a cognition-market claim can be granted.
@@ -84,6 +86,9 @@ pub struct CognitionMarketProofTrust {
     pub finding_verifier_authority: PublicKey,
     /// Deployment-pinned signer for settled Finding purchase records.
     pub purchase_authority: PublicKey,
+    /// Fresh, independently signed standing for the purchase-record signer.
+    /// Required whenever the delivery-bound claim is selected.
+    pub purchase_authority_status: Option<CognitionMarketVerifierAuthorityStatusTrust>,
     pub trusted_verifier_profile_envelope_sha256: String,
     pub trusted_verifier_profile: SignedFindingChallengeVerifierProfile,
     pub trusted_trust_root_snapshot_sha256: String,
@@ -267,6 +272,14 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "status-operator standing authority and finding verifier authority must be distinct",
         ));
     }
+    if trust.status.as_ref().is_some_and(|status| {
+        status.operator_authority_status.status_authority.key
+            == trust.profile_governance_authority.key
+    }) {
+        return Err(claim_failed(
+            "status-operator standing authority and profile governance authority must be distinct",
+        ));
+    }
     // Validate the signed root and the complete graph shape before interpreting
     // cognition-market roles. This also rejects unsupported registered schemas,
     // dangling/cyclic edges, and advisory authority edges.
@@ -433,6 +446,26 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
             "pinned verifier profile purchase authority and deployment key disagree",
         ));
     }
+    let purchase_authority_status = if purchase_record_node.is_some() {
+        let purchase_authority_status = trust
+            .purchase_authority_status
+            .as_ref()
+            .ok_or_else(|| claim_failed(PURCHASE_AUTHORITY_STANDING_REQUIRED))?;
+        if purchase_authority_status.status_authority.key == trust.profile_governance_authority.key
+        {
+            return Err(claim_failed(
+                "purchase standing authority and profile governance authority must be distinct",
+            ));
+        }
+        verify_purchase_authority_status(
+            &trust.trusted_verifier_profile.body.purchase_authority,
+            purchase_authority_status,
+            trust.verifier_authority_status.checked_at,
+        )?;
+        Some(purchase_authority_status)
+    } else {
+        None
+    };
     verify_profile_governance_authority_status(
         &trust.profile_governance_authority,
         &trust.profile_governance_authority_status,
@@ -562,6 +595,22 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         }
         verify_signed_purchase_record(&purchase_record, &trust.purchase_authority)
             .map_err(|error| invalid_artifact(purchase_record_node.path, error.to_string()))?;
+        let purchase_policy = &trust.trusted_verifier_profile.body.purchase_authority;
+        if purchase_record.body.recorded_at < purchase_policy.valid_from
+            || purchase_record.body.recorded_at >= purchase_policy.valid_until
+        {
+            return Err(claim_failed(
+                "signed Finding purchase record is outside the deployment-pinned purchase-authority lifecycle",
+            ));
+        }
+        let purchase_checked_at = purchase_authority_status
+            .ok_or_else(|| claim_failed(PURCHASE_AUTHORITY_STANDING_REQUIRED))?
+            .checked_at;
+        if purchase_record.body.recorded_at > purchase_checked_at {
+            return Err(claim_failed(
+                "signed Finding purchase record is later than the current trusted verification time",
+            ));
+        }
         require_delivery_transaction_binding(&report, &purchase_record)?;
     }
 
@@ -840,6 +889,77 @@ fn verify_verifier_authority_status(
     if status.revoked_from.is_some() {
         return Err(claim_failed(
             "unanchored signed verifier report cannot be accepted after verifier-key revocation",
+        ));
+    }
+    Ok(())
+}
+
+fn verify_purchase_authority_status(
+    policy: &FindingAuthorityKeyPolicy,
+    trust: &CognitionMarketVerifierAuthorityStatusTrust,
+    expected_checked_at: u64,
+) -> Result<(), TransactionPassportError> {
+    if trust.checked_at == 0 || trust.max_age_secs == 0 || trust.checked_at != expected_checked_at {
+        return Err(claim_failed(
+            "purchase authority standing freshness policy is invalid",
+        ));
+    }
+    policy
+        .validate("purchase authority")
+        .map_err(|error| claim_failed(format!("purchase authority policy is invalid: {error}")))?;
+    trust
+        .status_authority
+        .validate("purchase standing authority")
+        .map_err(|error| {
+            claim_failed(format!("purchase standing authority is invalid: {error}"))
+        })?;
+    if trust.status_authority.key == policy.key {
+        return Err(claim_failed(
+            "purchase standing authority must be independent from the purchase-record signer",
+        ));
+    }
+    if trust.checked_at < trust.status_authority.valid_from
+        || trust.checked_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "purchase standing authority is not live at the current trusted verification time",
+        ));
+    }
+    verify_signed_authority_status(&trust.signed_status, &trust.status_authority.key).map_err(
+        |error| claim_failed(format!("purchase authority standing is invalid: {error}")),
+    )?;
+    let status = &trust.signed_status.body;
+    if status.observed_at < trust.status_authority.valid_from
+        || status.observed_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "purchase authority standing was signed outside the standing-authority lifecycle",
+        ));
+    }
+    if status.status_ref != policy.revocation_status_ref
+        || status.authority_id != policy.authority_id
+        || status.key != policy.key
+        || status.key_epoch != policy.key_epoch
+    {
+        return Err(claim_failed(
+            "purchase authority standing does not match the deployment-pinned purchase policy",
+        ));
+    }
+    if status.observed_at > trust.checked_at
+        || trust.checked_at.saturating_sub(status.observed_at) > trust.max_age_secs
+    {
+        return Err(claim_failed(
+            "purchase authority standing is stale at the current trusted verification time",
+        ));
+    }
+    if trust.checked_at >= policy.valid_until {
+        return Err(claim_failed(
+            "unanchored purchase record cannot be accepted after purchase-authority key expiration",
+        ));
+    }
+    if status.revoked_from.is_some() {
+        return Err(claim_failed(
+            "unanchored purchase record cannot be accepted after purchase-authority key revocation",
         ));
     }
     Ok(())

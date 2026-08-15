@@ -139,6 +139,7 @@ export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH=<canonical-profile-
 export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_STATUS_PATH=<canonical-signed-governance-status.json>
 export CHIO_FINDING_VERIFIER_AUTHORITY_KEY=<finding-verifier-public-key>
 export CHIO_FINDING_PURCHASE_AUTHORITY_KEY=<purchase-record-public-key>
+export CHIO_FINDING_PURCHASE_AUTHORITY_STATUS_PATH=<canonical-signed-purchase-authority-status.json>
 export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_PATH=<canonical-signed-authority-status.json>
 export CHIO_FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH=<canonical-authority-status-signer-policy.json>
 export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT=<trusted-verification-time>
@@ -163,8 +164,9 @@ profile-governance key and policy, and its report signer must equal the
 separately pinned verifier key. The verifier loads the profile's exact
 canonical bytes, requires their digest to match the out-of-band profile pin,
 and verifies the profile signature and lifecycle. It also requires fresh
-signed status witnesses for the profile-governance signer, report signer, and
-status operator from the separately pinned status-authority policy, requires
+signed status witnesses for the profile-governance signer, report signer,
+purchase-record signer, and status operator from the separately pinned
+status-authority policy, requires
 that policy to cover each witness observation and the shared current trusted
 verification time, and rejects newly backdated artifacts after any key is
 revoked or expires. The report must bind the
@@ -172,8 +174,9 @@ deployment-pinned trust-root snapshot, resolver policy, and trusted-time
 input. Verification fails closed when any profile floor, snapshot commitment,
 pin, authorization, durable authority store, trusted time, or freshness limit
 is missing or malformed. A delivery-bound claim also requires a purchase
-record under the separately pinned purchase authority. Its exact sale identity
-must match the verifier-signed delivery overlay carried by the report.
+record under the separately pinned purchase authority, within that authority's
+lifecycle, and with fresh non-revoked standing. Its exact sale identity must
+match the verifier-signed delivery overlay carried by the report.
 Provision the authority database and secure lock directory before verification
 and reuse them for every bundle from that feed and stable operator identity.
 The store advances the signed epoch high-water mark and retains sticky

@@ -5,6 +5,25 @@ fn purchase_authority_keypair() -> Keypair {
     Keypair::from_seed(&[11_u8; 32])
 }
 
+fn purchase_authority_status(
+    profile: &SignedFindingChallengeVerifierProfile,
+    status_authority: &Keypair,
+) -> TestResult<SignedExportEnvelope<FindingAuthorityStatus>> {
+    let policy = &profile.body.purchase_authority;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: policy.revocation_status_ref.clone(),
+            authority_id: policy.authority_id.clone(),
+            key: policy.key.clone(),
+            key_epoch: policy.key_epoch,
+            revoked_from: None,
+            observed_at: CHECKED_AT,
+        },
+        status_authority,
+    )?)
+}
+
 fn finding_delivery_overlay() -> FindingDelivery {
     FindingDelivery {
         schema: FINDING_DELIVERY_SCHEMA.to_owned(),
@@ -57,6 +76,28 @@ fn purchase_record_bytes() -> TestResult<Vec<u8>> {
     purchase.validate()?;
     let signed = SignedExportEnvelope::sign(purchase, &purchase_authority_keypair())?;
     Ok(canonical_json_bytes(&signed)?)
+}
+
+fn replace_purchase_record(
+    bundle: &mut QualifiedBundle,
+    mutate: impl FnOnce(&mut FindingPurchaseRecord),
+) -> TestResult {
+    let signed: SignedExportEnvelope<FindingPurchaseRecord> = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("purchase-record.json")
+            .ok_or("purchase record missing")?,
+    )?;
+    let mut record = signed.body;
+    mutate(&mut record);
+    record.validate()?;
+    let signed = SignedExportEnvelope::sign(record, &purchase_authority_keypair())?;
+    replace_graph_artifact(
+        bundle,
+        "purchase-record.json",
+        canonical_json_bytes(&signed)?,
+    )?;
+    resign_graph(bundle)
 }
 
 #[test]
@@ -174,6 +215,88 @@ fn cognition_market_qualified_profile_rejects_purchase_authority_outside_profile
         .to_string();
     assert!(
         error.contains("pinned verifier profile purchase authority and deployment key disagree"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_delivery_claim_requires_purchase_authority_standing() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle.trust.purchase_authority_status = None;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("delivery claim without purchase-authority standing was accepted")?
+        .to_string();
+    assert!(
+        error.contains("requires current authenticated purchase-authority standing"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_purchase_record_must_fall_within_the_pinned_authority_lifecycle() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let valid_from = bundle
+        .trust
+        .trusted_verifier_profile
+        .body
+        .purchase_authority
+        .valid_from;
+    replace_purchase_record(&mut bundle, |record| {
+        record.recorded_at = valid_from.saturating_sub(1);
+    })?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("out-of-window purchase record was accepted")?
+        .to_string();
+    assert!(
+        error.contains("purchase-authority lifecycle"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_rejects_unanchored_purchase_after_authority_expiry() -> TestResult {
+    let mut bundle = build_bundle()?;
+    replace_trusted_profile(&mut bundle, |profile| {
+        profile.purchase_authority.valid_until = CHECKED_AT;
+    })?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("purchase record under an expired authority was accepted")?
+        .to_string();
+    assert!(
+        error.contains("after purchase-authority key expiration"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cognition_market_rejects_unanchored_purchase_after_authority_revocation() -> TestResult {
+    let mut bundle = build_bundle()?;
+    let purchase_status = bundle
+        .trust
+        .purchase_authority_status
+        .as_mut()
+        .ok_or("purchase authority status missing")?;
+    let mut standing = purchase_status.signed_status.body.clone();
+    standing.revoked_from = Some(CHECKED_AT);
+    purchase_status.signed_status =
+        SignedExportEnvelope::sign(standing, &Keypair::from_seed(&[10_u8; 32]))?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("purchase record under a revoked authority was accepted")?
+        .to_string();
+    assert!(
+        error.contains("after purchase-authority key revocation"),
         "unexpected error: {error}"
     );
     Ok(())

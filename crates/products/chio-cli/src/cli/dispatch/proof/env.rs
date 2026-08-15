@@ -17,6 +17,8 @@ const TRANSACTION_TRUSTED_CHECKPOINT_KEYS_ENV: &str =
     "CHIO_TRANSACTION_TRUSTED_CHECKPOINT_KEYS";
 const FINDING_VERIFIER_AUTHORITY_KEY_ENV: &str = "CHIO_FINDING_VERIFIER_AUTHORITY_KEY";
 const FINDING_PURCHASE_AUTHORITY_KEY_ENV: &str = "CHIO_FINDING_PURCHASE_AUTHORITY_KEY";
+const FINDING_PURCHASE_AUTHORITY_STATUS_PATH_ENV: &str =
+    "CHIO_FINDING_PURCHASE_AUTHORITY_STATUS_PATH";
 const FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV: &str =
     "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY";
 const FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH_ENV: &str =
@@ -258,6 +260,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
     trusted_passport_signer_keys: &[chio_core_types::PublicKey],
     trusted_checkpoint_signer_keys: &[chio_core_types::PublicKey],
     status_claim_selected: bool,
+    purchase_claim_selected: bool,
 ) -> Result<chio_control_plane::transaction_passport::CognitionMarketProofTrust, CliError> {
     let governance_keys = required_public_keys_from_env(
         FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY_ENV,
@@ -371,6 +374,17 @@ pub(super) fn cognition_market_proof_trust_from_env(
         checked_at,
         max_age_secs,
     )?;
+    let purchase_authority_status = purchase_claim_selected
+        .then(|| {
+            finding_authority_status_trust_from_env(
+                FINDING_PURCHASE_AUTHORITY_STATUS_PATH_ENV,
+                &purchase_authority,
+                &status_authority,
+                checked_at,
+                max_age_secs,
+            )
+        })
+        .transpose()?;
     let status_liveness_required = status_claim_selected
         || trusted_verifier_profile
             .body
@@ -402,6 +416,7 @@ pub(super) fn cognition_market_proof_trust_from_env(
             profile_governance_authority_status,
             finding_verifier_authority,
             purchase_authority,
+            purchase_authority_status,
             trusted_verifier_profile_envelope_sha256,
             trusted_verifier_profile,
             trusted_trust_root_snapshot_sha256,

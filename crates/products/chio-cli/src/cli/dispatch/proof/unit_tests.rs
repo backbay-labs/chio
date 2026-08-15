@@ -70,6 +70,7 @@ fn verifier_authority_status_fixture(
     std::path::PathBuf,
     std::path::PathBuf,
     std::path::PathBuf,
+    std::path::PathBuf,
 ) {
     let status_authority = chio_core_types::Keypair::from_seed(&[102_u8; 32]);
     let governance_policy = chio_finding::FindingAuthorityKeyPolicy {
@@ -145,6 +146,33 @@ fn verifier_authority_status_fixture(
         ),
         "write verifier authority status fixture",
     );
+    let purchase_policy = &profile.body.purchase_authority;
+    let purchase_status = proof_test_ok(
+        chio_core_types::receipt::lineage::SignedExportEnvelope::sign(
+            chio_finding::FindingAuthorityStatus {
+                schema: chio_finding::FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: purchase_policy.revocation_status_ref.clone(),
+                authority_id: purchase_policy.authority_id.clone(),
+                key: purchase_policy.key.clone(),
+                key_epoch: purchase_policy.key_epoch,
+                revoked_from: None,
+                observed_at: 1_784_880_030,
+            },
+            &status_authority,
+        ),
+        "sign purchase authority status fixture",
+    );
+    let purchase_status_path = directory.join("purchase-authority-status.json");
+    proof_test_ok(
+        std::fs::write(
+            &purchase_status_path,
+            proof_test_ok(
+                chio_core_types::canonical_json_bytes(&purchase_status),
+                "serialize purchase authority status fixture",
+            ),
+        ),
+        "write purchase authority status fixture",
+    );
     let policy = chio_finding::FindingAuthorityKeyPolicy {
         authority_id: "qualified-verifier-status-authority".to_owned(),
         key: status_authority.public_key(),
@@ -169,6 +197,7 @@ fn verifier_authority_status_fixture(
         governance_policy_path,
         governance_status_path,
         path,
+        purchase_status_path,
         policy_path,
     )
 }
@@ -278,6 +307,7 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
         governance_policy_path,
         governance_status_path,
         verifier_status_path,
+        _purchase_status_path,
         verifier_status_authority_policy_path,
     ) = verifier_authority_status_fixture(tempdir.path(), &profile);
     let governance_key = profile.body.governance_authority.to_hex();
@@ -353,10 +383,11 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
     let passport_key = chio_core_types::Keypair::from_seed(&[85_u8; 32]).public_key();
 
     let trust = proof_test_ok(
-        cognition_market_proof_trust_from_env(&[passport_key], &[], false),
+        cognition_market_proof_trust_from_env(&[passport_key], &[], false, false),
         "build non-status Finding trust",
     );
     assert!(trust.status.is_none());
+    assert!(trust.purchase_authority_status.is_none());
     assert_eq!(
         trust.trusted_verifier_profile.body.required_facets,
         profile.body.required_facets
@@ -370,7 +401,7 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
             "CHIO_FINDING_PURCHASE_AUTHORITY_KEY",
             std::ffi::OsStr::new(&mismatched_purchase_key),
         )]);
-        let error = match cognition_market_proof_trust_from_env(&[], &[], false) {
+        let error = match cognition_market_proof_trust_from_env(&[], &[], false, false) {
             Ok(_) => panic!("purchase authority outside the verifier profile was accepted"),
             Err(error) => error.to_string(),
         };
@@ -387,7 +418,7 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
         "CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY",
         std::ffi::OsStr::new(&unauthorized_governance),
     )]);
-    let error = match cognition_market_proof_trust_from_env(&[], &[], false) {
+    let error = match cognition_market_proof_trust_from_env(&[], &[], false, false) {
         Ok(_) => panic!("self-pinned profile governance authority was accepted"),
         Err(error) => error.to_string(),
     };
@@ -433,6 +464,7 @@ fn cognition_market_trust_loads_status_for_profile_liveness_floor() {
         governance_policy_path,
         governance_status_path,
         verifier_status_path,
+        _purchase_status_path,
         verifier_status_authority_policy_path,
     ) = verifier_authority_status_fixture(tempdir.path(), &signed);
     let _env = TestEnvGuard::set(&[
@@ -509,7 +541,7 @@ fn cognition_market_trust_loads_status_for_profile_liveness_floor() {
         "CHIO_FINDING_STATUS_MAX_AGE_SECONDS",
     ]);
 
-    let error = match cognition_market_proof_trust_from_env(&[], &[], false) {
+    let error = match cognition_market_proof_trust_from_env(&[], &[], false, false) {
         Ok(_) => panic!("profile-required status trust was not loaded"),
         Err(error) => error.to_string(),
     };
@@ -623,6 +655,7 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         governance_policy_path,
         governance_status_path,
         verifier_status_path,
+        purchase_status_path,
         verifier_status_authority_policy_path,
     ) = verifier_authority_status_fixture(tempdir.path(), &profile);
     let governance_key = profile.body.governance_authority.to_hex();
@@ -787,6 +820,10 @@ fn proof_verify_routes_finding_claims_through_the_cognition_verifier() {
         (
             "CHIO_FINDING_PURCHASE_AUTHORITY_KEY",
             std::ffi::OsStr::new(&purchase_authority_hex),
+        ),
+        (
+            "CHIO_FINDING_PURCHASE_AUTHORITY_STATUS_PATH",
+            purchase_status_path.as_os_str(),
         ),
         (
             "CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_PATH",
