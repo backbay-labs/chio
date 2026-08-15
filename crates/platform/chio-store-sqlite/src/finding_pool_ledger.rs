@@ -1782,12 +1782,19 @@ mod tests {
         })
     }
 
+    #[cfg(unix)]
     #[test]
     fn qualified_open_rejects_anchor_on_the_database_snapshot_device() {
+        use std::os::unix::fs::PermissionsExt as _;
+
         let identity = Ed25519Backend::new(Keypair::from_seed(&[71_u8; 32]));
         for (suffix, use_database_root) in [("same-directory", true), ("same-device", false)] {
             let database_root = tempfile::tempdir().test_expect("create database root");
             let anchor_root = tempfile::tempdir().test_expect("create sibling anchor root");
+            for root in [database_root.path(), anchor_root.path()] {
+                std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))
+                    .test_expect("secure qualification test root");
+            }
             let selected_anchor = if use_database_root {
                 database_root.path()
             } else {
