@@ -47,8 +47,9 @@ pub use publish::{
     FindingImpairmentPublisher,
 };
 pub use reconcile::{
-    reconcile_finding_impairment, FindingImpairmentAttempt, FindingImpairmentOutcome,
-    FindingImpairmentQuarantine, FindingVaultRejection, StoredImpairmentTransaction,
+    reconcile_finding_impairment, ConfirmedFindingImpairmentReconciliation,
+    FindingImpairmentAttempt, FindingImpairmentOutcome, FindingImpairmentQuarantine,
+    FindingVaultRejection, StoredImpairmentTransaction,
 };
 pub use verify::{
     recheck_finding_bond_observation, verify_finding_collateral_snapshot,

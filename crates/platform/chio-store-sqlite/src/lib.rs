@@ -254,7 +254,8 @@ pub use finding_challenge_store::{
     FindingEffectIntentState, FindingEffectRootBindingRecord, FindingFinalizingAuthorizationInput,
     FindingFinalizingAuthorizationRecord, FindingGovernanceCaseInput, FindingGovernanceCaseKind,
     FindingGovernanceCaseRecord, FindingLiabilityInput, FindingLiabilityRecord,
-    FindingLiabilityState, SqliteFindingChallengeStore,
+    FindingLiabilityState, FindingSellerImpairmentReconciliationRecord,
+    SqliteFindingChallengeStore,
 };
 #[cfg(feature = "cognition-market-experimental")]
 pub use finding_market_store::{

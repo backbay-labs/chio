@@ -5,7 +5,7 @@
 //! case, the sealed claim snapshot, and the domain-keyed effect intents
 //! fenced before anything leaves this operator.
 //!
-//! Eleven tables back the lane. `challenges` is the adjudication record:
+//! Dedicated tables back the lane. `challenges` is the adjudication record:
 //! one authorization branch, one evidence class, one bounded retry, and a
 //! lifecycle that only ever runs
 //! `submitted -> evaluating -> rejected | indeterminate_retryable |
@@ -30,7 +30,9 @@
 //! `effect_intents` is the durable fence every external effect passes
 //! through before it is dispatched. `effect_root_bindings` immutably
 //! refines a root intent with the exact Merkle root and evidence hash that
-//! publication must confirm.
+//! publication must confirm, while
+//! `finding_seller_impairment_reconciliations` retains the exact verified
+//! transaction evidence that allowed a seller impairment to confirm.
 //!
 //! Writes run under `TransactionBehavior::Immediate` behind the
 //! serving-owner fence; reads run `Deferred`; a commit whose outcome
@@ -74,6 +76,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use chio_core::{sha256_hex, StoreMutationFence};
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
+use chio_settle::ConfirmedFindingImpairmentReconciliation;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use thiserror::Error;
 
@@ -85,11 +88,12 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-/// Revision 11 retains pre-dispatch finalizing-authorization refreshes;
+/// Revision 12 retains authenticated seller-impairment reconciliations;
+/// revision 11 retains pre-dispatch finalizing-authorization refreshes;
 /// revision 10 retains the initial exact finalizing authorization atomically
 /// with the liability transition; revision 9 retains exact signed evaluator
 /// outcomes with their verdict.
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 11;
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 12;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "challenges",
     "finding_challenge_projection_commits",
@@ -577,6 +581,26 @@ pub struct FindingEffectIntentRecord {
     pub attempt_count: u64,
     pub recorded_at: u64,
     pub updated_at: u64,
+}
+
+/// Exact reconciliation evidence retained with a confirmed seller
+/// impairment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FindingSellerImpairmentReconciliationRecord {
+    pub intent_key: String,
+    pub liability_key: String,
+    pub intent_digest: String,
+    pub tx_hash: String,
+    pub reconciliation_sha256: String,
+    pub recorded_at: u64,
+}
+
+#[derive(Clone, Copy)]
+struct SellerImpairmentReconciliationEvidence<'a> {
+    intent_key: &'a str,
+    liability_key: &'a str,
+    tx_hash: &'a str,
+    reconciliation_sha256: &'a str,
 }
 
 /// Immutable anchor-proof refinement for one root effect intent.
@@ -2825,66 +2849,41 @@ impl SqliteFindingChallengeStore {
         Ok(FindingChallengeWriteOutcome::Inserted)
     }
 
-    /// Confirm a settlement-required seller impairment only after the
-    /// settlement choke point has reconciled one finalized transaction to
-    /// the exact fenced intent.
+    /// Confirm a settlement-required seller impairment only with the opaque
+    /// evidence emitted by the settlement reconciliation choke point.
     ///
-    /// The generic lifecycle deliberately cannot express this transition.
-    /// Requiring the immutable intent digest, liability identity, and
-    /// observed transaction hash keeps recovery callers on the same
-    /// reconciliation-specific surface as fresh dispatch.
+    /// The generic lifecycle deliberately cannot express this transition,
+    /// and this surface accepts no caller-authored transaction hash. The
+    /// exact reconciliation digest and transaction are retained atomically
+    /// with confirmation for restart recovery and rollback protection.
     pub fn confirm_reconciled_seller_impairment(
         &self,
-        intent_key: &str,
-        liability_key: &str,
-        intent_digest: &str,
-        observed_tx_hash: &str,
+        reconciliation: &ConfirmedFindingImpairmentReconciliation,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        self.confirm_seller_impairment_with_evidence(
+            &SellerImpairmentReconciliationEvidence {
+                intent_key: reconciliation.intent_id(),
+                liability_key: reconciliation.liability_key(),
+                tx_hash: reconciliation.tx_hash(),
+                reconciliation_sha256: reconciliation.reconciliation_sha256(),
+            },
+            false,
+            now,
+        )
+    }
+
+    /// Exact authenticated reconciliation retained for one seller
+    /// impairment intent.
+    pub fn get_seller_impairment_reconciliation(
+        &self,
+        intent_key: &str,
+    ) -> Result<Option<FindingSellerImpairmentReconciliationRecord>, FindingChallengeStoreError>
+    {
         require_hex64(intent_key, "intent_key")?;
-        require_hex64(liability_key, "liability_key")?;
-        require_hex64(intent_digest, "intent_digest")?;
-        require_chain_hash(observed_tx_hash, "observed_tx_hash")?;
-        require_trusted_time(now, "now")?;
         let mut connection = self.connection()?;
-        let transaction = self.begin_write(&mut connection)?;
-        let intent = load_effect_intent_tx(&transaction, intent_key)?
-            .ok_or(FindingChallengeStoreError::NotFound)?;
-        if intent.kind != FindingEffectIntentKind::SellerImpair
-            || !intent.settlement_required
-            || intent.liability_key.as_deref() != Some(liability_key)
-            || intent.intent_digest != intent_digest
-        {
-            return Err(FindingChallengeStoreError::Conflict(
-                "seller impairment confirmation does not match its reconciled intent".to_owned(),
-            ));
-        }
-        if intent.state == FindingEffectIntentState::Confirmed {
-            return Ok(FindingChallengeWriteOutcome::ExistingSame);
-        }
-        if intent.state != FindingEffectIntentState::Dispatched {
-            return Err(FindingChallengeStoreError::Conflict(format!(
-                "seller impairment cannot confirm from {}",
-                effect_intent_state_name(intent.state)
-            )));
-        }
-        let changed = transaction
-            .execute(
-                r#"
-                UPDATE effect_intents SET state = 'confirmed', updated_at = ?2
-                WHERE intent_key = ?1 AND state = 'dispatched'
-                "#,
-                params![intent_key, sqlite_i64(now, "now")?],
-            )
-            .map_err(sqlite_error)?;
-        if changed != 1 {
-            return Err(invariant(
-                "seller impairment confirmation did not affect one intent",
-            ));
-        }
-        self.commit_write(transaction)?;
-        self.sync_after_write(&connection)?;
-        Ok(FindingChallengeWriteOutcome::Inserted)
+        let transaction = self.begin_read(&mut connection)?;
+        load_seller_impairment_reconciliation_tx(&transaction, intent_key)
     }
 
     /// Confirm one seller impairment and quarantine its liability in the
@@ -2897,26 +2896,48 @@ impl SqliteFindingChallengeStore {
     /// finalizer could settle the liability from stale state.
     pub fn confirm_seller_impairment_and_quarantine(
         &self,
-        intent_key: &str,
-        liability_key: &str,
+        reconciliation: &ConfirmedFindingImpairmentReconciliation,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
-        require_hex64(intent_key, "intent_key")?;
-        require_hex64(liability_key, "liability_key")?;
+        self.confirm_seller_impairment_with_evidence(
+            &SellerImpairmentReconciliationEvidence {
+                intent_key: reconciliation.intent_id(),
+                liability_key: reconciliation.liability_key(),
+                tx_hash: reconciliation.tx_hash(),
+                reconciliation_sha256: reconciliation.reconciliation_sha256(),
+            },
+            true,
+            now,
+        )
+    }
+
+    fn confirm_seller_impairment_with_evidence(
+        &self,
+        evidence: &SellerImpairmentReconciliationEvidence<'_>,
+        quarantine: bool,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        require_hex64(evidence.intent_key, "intent_key")?;
+        require_hex64(evidence.liability_key, "liability_key")?;
+        require_chain_hash(evidence.tx_hash, "reconciliation.tx_hash")?;
+        require_hex64(
+            evidence.reconciliation_sha256,
+            "reconciliation.reconciliation_sha256",
+        )?;
         require_trusted_time(now, "now")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
-        let intent = load_effect_intent_tx(&transaction, intent_key)?
+        let intent = load_effect_intent_tx(&transaction, evidence.intent_key)?
             .ok_or(FindingChallengeStoreError::NotFound)?;
         if intent.kind != FindingEffectIntentKind::SellerImpair
-            || intent.liability_key.as_deref() != Some(liability_key)
             || !intent.settlement_required
+            || intent.liability_key.as_deref() != Some(evidence.liability_key)
         {
             return Err(FindingChallengeStoreError::Conflict(
-                "only the liability's required seller impairment may quarantine it".to_owned(),
+                "seller impairment confirmation does not match its reconciled intent".to_owned(),
             ));
         }
-        let liability = load_liability_tx(&transaction, liability_key)?
+        let liability = load_liability_tx(&transaction, evidence.liability_key)?
             .ok_or(FindingChallengeStoreError::NotFound)?;
         if liability.state != FindingLiabilityState::Finalizing {
             return Err(FindingChallengeStoreError::Conflict(format!(
@@ -2926,35 +2947,71 @@ impl SqliteFindingChallengeStore {
         }
 
         let mut changed = false;
-        if intent.state != FindingEffectIntentState::Confirmed {
-            if !effect_intent_edge_is_legal(intent.state, FindingEffectIntentState::Confirmed) {
+        match intent.state {
+            FindingEffectIntentState::Confirmed => {
+                let retained =
+                    load_seller_impairment_reconciliation_tx(&transaction, evidence.intent_key)?
+                        .ok_or_else(|| {
+                            invariant("confirmed seller impairment has no retained reconciliation")
+                        })?;
+                if retained.liability_key != evidence.liability_key
+                    || retained.intent_digest != intent.intent_digest
+                    || retained.tx_hash != evidence.tx_hash
+                    || retained.reconciliation_sha256 != evidence.reconciliation_sha256
+                {
+                    return Err(FindingChallengeStoreError::Conflict(
+                        "seller impairment is already bound to another reconciliation".to_owned(),
+                    ));
+                }
+            }
+            FindingEffectIntentState::Dispatched => {
+                let inserted = transaction
+                    .execute(
+                        r#"
+                        INSERT INTO finding_seller_impairment_reconciliations (
+                            intent_key, liability_key, intent_digest, tx_hash,
+                            reconciliation_sha256, recorded_at
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                        "#,
+                        params![
+                            evidence.intent_key,
+                            evidence.liability_key,
+                            intent.intent_digest,
+                            evidence.tx_hash,
+                            evidence.reconciliation_sha256,
+                            sqlite_i64(now, "now")?,
+                        ],
+                    )
+                    .map_err(sqlite_error)?;
+                if inserted != 1 {
+                    return Err(invariant(
+                        "seller impairment reconciliation insert did not affect one row",
+                    ));
+                }
+                let updated = transaction
+                    .execute(
+                        r#"
+                        UPDATE effect_intents SET state = 'confirmed', updated_at = ?2
+                        WHERE intent_key = ?1 AND state = 'dispatched'
+                        "#,
+                        params![evidence.intent_key, sqlite_i64(now, "now")?],
+                    )
+                    .map_err(sqlite_error)?;
+                if updated != 1 {
+                    return Err(invariant(
+                        "seller impairment confirmation did not affect one intent",
+                    ));
+                }
+                changed = true;
+            }
+            state => {
                 return Err(FindingChallengeStoreError::Conflict(format!(
-                    "effect intent cannot move from {} to confirmed",
-                    effect_intent_state_name(intent.state)
+                    "seller impairment cannot confirm from {}",
+                    effect_intent_state_name(state)
                 )));
             }
-            let updated = transaction
-                .execute(
-                    r#"
-                    UPDATE effect_intents
-                    SET state = 'confirmed', updated_at = ?3
-                    WHERE intent_key = ?1 AND state = ?2
-                    "#,
-                    params![
-                        intent_key,
-                        effect_intent_state_name(intent.state),
-                        sqlite_i64(now, "now")?,
-                    ],
-                )
-                .map_err(sqlite_error)?;
-            if updated != 1 {
-                return Err(invariant(
-                    "effect intent confirmation did not affect one row",
-                ));
-            }
-            changed = true;
         }
-        if !liability.quarantined {
+        if quarantine && !liability.quarantined {
             let updated = transaction
                 .execute(
                     r#"
@@ -2962,7 +3019,7 @@ impl SqliteFindingChallengeStore {
                     SET quarantined = 1, updated_at = ?2
                     WHERE liability_key = ?1 AND state = 'finalizing' AND quarantined = 0
                     "#,
-                    params![liability_key, sqlite_i64(now, "now")?],
+                    params![evidence.liability_key, sqlite_i64(now, "now")?],
                 )
                 .map_err(sqlite_error)?;
             if updated != 1 {
@@ -2976,6 +3033,59 @@ impl SqliteFindingChallengeStore {
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingChallengeWriteOutcome::Inserted)
+    }
+
+    #[cfg(test)]
+    fn confirm_reconciled_seller_impairment_for_tests(
+        &self,
+        intent_key: &str,
+        liability_key: &str,
+        intent_digest: &str,
+        tx_hash: &str,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        let reconciliation_sha256 = sha256_hex(
+            format!(
+                "chio.finding.test-impairment-reconciliation.v1\0{intent_key}\0{liability_key}\0{intent_digest}\0{tx_hash}"
+            )
+            .as_bytes(),
+        );
+        self.confirm_seller_impairment_with_evidence(
+            &SellerImpairmentReconciliationEvidence {
+                intent_key,
+                liability_key,
+                tx_hash,
+                reconciliation_sha256: &reconciliation_sha256,
+            },
+            false,
+            now,
+        )
+    }
+
+    #[cfg(test)]
+    fn confirm_seller_impairment_and_quarantine_for_tests(
+        &self,
+        intent_key: &str,
+        liability_key: &str,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        let tx_hash = format!("0x{}", sha256_hex(intent_key.as_bytes()));
+        let reconciliation_sha256 = sha256_hex(
+            format!(
+                "chio.finding.test-impairment-quarantine.v1\0{intent_key}\0{liability_key}\0{tx_hash}"
+            )
+            .as_bytes(),
+        );
+        self.confirm_seller_impairment_with_evidence(
+            &SellerImpairmentReconciliationEvidence {
+                intent_key,
+                liability_key,
+                tx_hash: &tx_hash,
+                reconciliation_sha256: &reconciliation_sha256,
+            },
+            true,
+            now,
+        )
     }
 
     /// One effect intent by its domain-separated key.
@@ -3871,6 +3981,54 @@ fn load_effect_intent_tx(
     raw.map(effect_intent_from_raw).transpose()
 }
 
+fn load_seller_impairment_reconciliation_tx(
+    transaction: &Transaction<'_>,
+    intent_key: &str,
+) -> Result<Option<FindingSellerImpairmentReconciliationRecord>, FindingChallengeStoreError> {
+    transaction
+        .query_row(
+            r#"
+            SELECT intent_key, liability_key, intent_digest, tx_hash,
+                   reconciliation_sha256, recorded_at
+            FROM finding_seller_impairment_reconciliations
+            WHERE intent_key = ?1
+            "#,
+            [intent_key],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(sqlite_error)?
+        .map(
+            |(
+                intent_key,
+                liability_key,
+                intent_digest,
+                tx_hash,
+                reconciliation_sha256,
+                recorded_at,
+            )| {
+                Ok(FindingSellerImpairmentReconciliationRecord {
+                    intent_key,
+                    liability_key,
+                    intent_digest,
+                    tx_hash,
+                    reconciliation_sha256,
+                    recorded_at: stored_u64(recorded_at, "recorded_at")?,
+                })
+            },
+        )
+        .transpose()
+}
+
 fn load_effect_root_binding_tx(
     transaction: &Transaction<'_>,
     intent_key: &str,
@@ -4442,7 +4600,7 @@ pub(crate) fn initialize_finding_challenge_schema(
     if on_disk == FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
         return verify_finding_challenge_invariants(connection);
     }
-    if on_disk == 10 {
+    if matches!(on_disk, 10 | 11) {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;
@@ -5026,6 +5184,40 @@ pub(crate) fn verify_finding_challenge_invariants(
             "finalizing authorization refresh lineage is invalid",
         ));
     }
+    let invalid_seller_reconciliation = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM effect_intents AS intent
+                LEFT JOIN finding_seller_impairment_reconciliations AS reconciliation
+                  ON reconciliation.intent_key = intent.intent_key
+                WHERE intent.kind = 'seller_impair'
+                  AND intent.settlement_required = 1
+                  AND intent.state = 'confirmed'
+                  AND reconciliation.intent_key IS NULL
+            ) OR EXISTS(
+                SELECT 1
+                FROM finding_seller_impairment_reconciliations AS reconciliation
+                LEFT JOIN effect_intents AS intent
+                  ON intent.intent_key = reconciliation.intent_key
+                WHERE intent.intent_key IS NULL
+                   OR intent.kind <> 'seller_impair'
+                   OR intent.settlement_required <> 1
+                   OR intent.state <> 'confirmed'
+                   OR intent.liability_key <> reconciliation.liability_key
+                   OR intent.intent_digest <> reconciliation.intent_digest
+            )
+            "#,
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(sqlite_error)?;
+    if invalid_seller_reconciliation {
+        return Err(invariant(
+            "confirmed seller impairment reconciliation coverage is not exact",
+        ));
+    }
     Ok(())
 }
 
@@ -5055,6 +5247,8 @@ fn finding_challenge_schema_catalog(
                OR tbl_name GLOB 'claim_snapshots*'
                OR name GLOB 'effect_intents*'
                OR tbl_name GLOB 'effect_intents*'
+               OR name GLOB 'finding_seller_impairment_reconciliations*'
+               OR tbl_name GLOB 'finding_seller_impairment_reconciliations*'
                OR name GLOB 'effect_root_bindings*'
                OR tbl_name GLOB 'effect_root_bindings*'
                ORDER BY type, name, tbl_name

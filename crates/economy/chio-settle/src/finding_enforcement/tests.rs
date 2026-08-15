@@ -59,6 +59,23 @@ fn chain_hash(byte: u8) -> String {
     format!("0x{}", hex64(byte))
 }
 
+fn assert_confirmed(
+    outcome: &FindingImpairmentOutcome,
+    expected_intent: &FindingImpairmentIntent,
+    expected_tx_hash: &str,
+) {
+    let FindingImpairmentOutcome::Confirmed { reconciliation } = outcome else {
+        panic!("expected confirmed impairment, got {outcome:?}");
+    };
+    assert_eq!(reconciliation.intent_id(), expected_intent.intent_id);
+    assert_eq!(
+        reconciliation.liability_key(),
+        expected_intent.liability_key
+    );
+    assert_eq!(reconciliation.tx_hash(), expected_tx_hash);
+    assert_eq!(reconciliation.reconciliation_sha256().len(), 64);
+}
+
 fn vault_id() -> String {
     chain_hash(0x44)
 }
@@ -1482,12 +1499,7 @@ fn a_matching_finalized_transaction_confirms() {
         },
     );
 
-    assert_eq!(
-        outcome,
-        FindingImpairmentOutcome::Confirmed {
-            tx_hash: stored.tx_hash
-        }
-    );
+    assert_confirmed(&outcome, planned.intent(), &stored.tx_hash);
 }
 
 #[test]
@@ -1503,12 +1515,7 @@ fn evidence_already_used_with_a_matching_stored_transaction_confirms() {
         },
     );
 
-    assert_eq!(
-        outcome,
-        FindingImpairmentOutcome::Confirmed {
-            tx_hash: stored.tx_hash
-        }
-    );
+    assert_confirmed(&outcome, planned.intent(), &stored.tx_hash);
 }
 
 #[test]
@@ -1777,12 +1784,7 @@ fn the_publisher_seam_dispatches_the_frozen_call_and_reconciles_it() {
     let outcome =
         dispatch_finding_impairment(&planned, &publisher).test_expect("a fenced intent dispatches");
 
-    assert_eq!(
-        outcome,
-        FindingImpairmentOutcome::Confirmed {
-            tx_hash: stored.tx_hash
-        }
-    );
+    assert_confirmed(&outcome, planned.intent(), &stored.tx_hash);
 }
 
 #[test]
@@ -1800,12 +1802,7 @@ fn the_publisher_seam_reobserves_the_frozen_call_without_dispatch() {
     let outcome = reobserve_finding_impairment(&planned, &publisher)
         .test_expect("a stored transaction can be re-observed");
 
-    assert_eq!(
-        outcome,
-        FindingImpairmentOutcome::Confirmed {
-            tx_hash: stored.tx_hash
-        }
-    );
+    assert_confirmed(&outcome, planned.intent(), &stored.tx_hash);
 }
 
 #[test]
@@ -1824,12 +1821,7 @@ fn reconciliation_authority_can_only_observe_the_frozen_call() {
     let outcome = reobserve_finding_impairment_for_reconciliation(&planned, &publisher)
         .test_expect("reconciliation observes without dispatching");
 
-    assert_eq!(
-        outcome,
-        FindingImpairmentOutcome::Confirmed {
-            tx_hash: stored.tx_hash
-        }
-    );
+    assert_confirmed(&outcome, planned.intent(), &stored.tx_hash);
 }
 
 #[test]

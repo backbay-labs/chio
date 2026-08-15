@@ -430,7 +430,7 @@ fn confirm_settlement_effects(fixture: &Fixture, liability_key: &str, now: u64) 
         } else if kind == FindingEffectIntentKind::SellerImpair {
             fixture
                 .store
-                .confirm_reconciled_seller_impairment(
+                .confirm_reconciled_seller_impairment_for_tests(
                     &intent_key,
                     liability_key,
                     &digest(&format!("{liability_key}-{tag}-commitment")),
@@ -3350,7 +3350,11 @@ fn settlement_waits_for_every_required_effect_confirmation() {
         if *kind == FindingEffectIntentKind::SellerImpair {
             fixture
                 .store
-                .confirm_seller_impairment_and_quarantine(intent_key, &head.liability_key, NOW + 7)
+                .confirm_seller_impairment_and_quarantine_for_tests(
+                    intent_key,
+                    &head.liability_key,
+                    NOW + 7,
+                )
                 .expect("confirm seller impairment and quarantine liability");
         } else {
             fixture
@@ -3364,6 +3368,13 @@ fn settlement_waits_for_every_required_effect_confirmation() {
                 .expect("confirm required root effect");
         }
     }
+    let retained_reconciliation = fixture
+        .store
+        .get_seller_impairment_reconciliation(&required[0].0)
+        .expect("read seller impairment reconciliation")
+        .expect("confirmed seller impairment retains reconciliation evidence");
+    assert_eq!(retained_reconciliation.liability_key, head.liability_key);
+    assert_eq!(retained_reconciliation.intent_digest, required[0].2);
     assert!(
         matches!(
             fixture.store.settle_liability(
@@ -3393,7 +3404,11 @@ fn settlement_waits_for_every_required_effect_confirmation() {
     assert_eq!(
         fixture
             .store
-            .confirm_seller_impairment_and_quarantine(&required[0].0, &head.liability_key, NOW + 9,)
+            .confirm_seller_impairment_and_quarantine_for_tests(
+                &required[0].0,
+                &head.liability_key,
+                NOW + 9,
+            )
             .expect("replay atomic confirmation and quarantine"),
         FindingChallengeWriteOutcome::ExistingSame
     );
@@ -3723,19 +3738,6 @@ fn settlement_required_seller_impairment_rejects_generic_confirmation() {
         ),
         Err(FindingChallengeStoreError::Conflict(_))
     ));
-    assert_eq!(
-        fixture
-            .store
-            .confirm_reconciled_seller_impairment(
-                &intent_key,
-                &head.liability_key,
-                &intent_digest,
-                &chain_hash("seller-impairment-transaction"),
-                NOW + 2,
-            )
-            .expect("confirm through reconciliation surface"),
-        FindingChallengeWriteOutcome::Inserted
-    );
 }
 
 #[test]
@@ -4160,6 +4162,10 @@ fn v10_schema_adds_append_only_finalizing_authorization_refreshes() {
             DROP TRIGGER finding_finalizing_authorization_refreshes_immutable;
             DROP TRIGGER finding_finalizing_authorization_refreshes_no_delete;
             DROP TABLE finding_finalizing_authorization_refreshes;
+            DROP TRIGGER finding_seller_impairment_reconciliations_valid;
+            DROP TRIGGER finding_seller_impairment_reconciliations_immutable;
+            DROP TRIGGER finding_seller_impairment_reconciliations_no_delete;
+            DROP TABLE finding_seller_impairment_reconciliations;
             "#,
         )
         .expect("rewind authorization refresh schema objects");
@@ -4183,6 +4189,45 @@ fn v10_schema_adds_append_only_finalizing_authorization_refreshes() {
             |row| row.get::<_, bool>(0),
         )
         .expect("inspect authorization refresh table"));
+    verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
+fn v11_schema_adds_authenticated_seller_impairment_reconciliations() {
+    let mut connection = Connection::open_in_memory().expect("open previous database");
+    connection
+        .execute_batch(FINDING_CHALLENGE_SCHEMA)
+        .expect("install current challenge schema");
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER finding_seller_impairment_reconciliations_valid;
+            DROP TRIGGER finding_seller_impairment_reconciliations_immutable;
+            DROP TRIGGER finding_seller_impairment_reconciliations_no_delete;
+            DROP TABLE finding_seller_impairment_reconciliations;
+            "#,
+        )
+        .expect("rewind seller impairment reconciliation schema objects");
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 11)
+        .expect("stamp previous schema");
+
+    initialize_finding_challenge_schema(&mut connection).expect("migrate revision eleven");
+
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_CHALLENGE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION);
+    assert!(connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'finding_seller_impairment_reconciliations')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect seller impairment reconciliation table"));
     verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
 }
 

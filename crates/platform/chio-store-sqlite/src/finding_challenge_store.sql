@@ -600,6 +600,52 @@ BEGIN
     SELECT RAISE(ABORT, 'effect intent must be retained');
 END;
 
+CREATE TABLE IF NOT EXISTS finding_seller_impairment_reconciliations (
+    intent_key TEXT NOT NULL PRIMARY KEY REFERENCES effect_intents(intent_key),
+    liability_key TEXT NOT NULL REFERENCES liability_heads(liability_key),
+    intent_digest TEXT NOT NULL CHECK (
+        length(intent_digest) = 64
+        AND intent_digest NOT GLOB '*[^0-9a-f]*'
+    ),
+    tx_hash TEXT NOT NULL CHECK (
+        length(tx_hash) = 66
+        AND substr(tx_hash, 1, 2) = '0x'
+        AND substr(tx_hash, 3) NOT GLOB '*[^0-9a-f]*'
+    ),
+    reconciliation_sha256 TEXT NOT NULL CHECK (
+        length(reconciliation_sha256) = 64
+        AND reconciliation_sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+    recorded_at INTEGER NOT NULL CHECK (recorded_at > 0)
+);
+
+CREATE TRIGGER IF NOT EXISTS finding_seller_impairment_reconciliations_valid
+BEFORE INSERT ON finding_seller_impairment_reconciliations
+WHEN NOT EXISTS (
+    SELECT 1 FROM effect_intents
+    WHERE intent_key = NEW.intent_key
+      AND liability_key = NEW.liability_key
+      AND kind = 'seller_impair'
+      AND intent_digest = NEW.intent_digest
+      AND settlement_required = 1
+      AND state = 'dispatched'
+)
+BEGIN
+    SELECT RAISE(ABORT, 'seller impairment reconciliation requires its dispatched intent');
+END;
+
+CREATE TRIGGER IF NOT EXISTS finding_seller_impairment_reconciliations_immutable
+BEFORE UPDATE ON finding_seller_impairment_reconciliations
+BEGIN
+    SELECT RAISE(ABORT, 'seller impairment reconciliation is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS finding_seller_impairment_reconciliations_no_delete
+BEFORE DELETE ON finding_seller_impairment_reconciliations
+BEGIN
+    SELECT RAISE(ABORT, 'seller impairment reconciliation must be retained');
+END;
+
 -- The root intent is liability-scoped before the anchor proof exists. This
 -- immutable refinement is installed before publication and binds that intent
 -- to the exact Merkle root and evidence leaf the vault call will carry.

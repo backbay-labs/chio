@@ -2,7 +2,9 @@
 
 use alloy_primitives::U256;
 use alloy_sol_types::SolCall;
+use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_web3_bindings::IChioBondVault;
+use serde::Serialize;
 
 use super::plan::FindingImpairmentIntent;
 use super::{decode_call_data, parse_chain_hash, parse_evm_address};
@@ -10,7 +12,7 @@ use crate::{EvmTransactionReceipt, SettlementFinalityStatus};
 
 /// One raw transaction the durable publisher stored for an intent, plus what
 /// it later observed for that transaction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StoredImpairmentTransaction {
     /// Authenticated chain on which the publisher observed the transaction.
     pub chain_id: String,
@@ -100,8 +102,9 @@ pub enum FindingImpairmentAttempt {
 pub enum FindingImpairmentOutcome {
     /// A finalized transaction proved to be exactly this intent.
     Confirmed {
-        /// Transaction that carried it.
-        tx_hash: String,
+        /// Opaque proof emitted only after the reconciliation choke point
+        /// matched the finalized receipt and raw call to the frozen intent.
+        reconciliation: ConfirmedFindingImpairmentReconciliation,
     },
     /// External state is ambiguous. The liability stays open for operator
     /// reconciliation; this is not an impairment and must never be reported
@@ -115,6 +118,45 @@ pub enum FindingImpairmentOutcome {
         /// The vault's rejection.
         reason: FindingVaultRejection,
     },
+}
+
+const IMPAIRMENT_RECONCILIATION_DOMAIN: &[u8] = b"chio.finding.impairment-reconciliation.v1\0";
+
+/// Opaque evidence that one canonical finalized transaction carried the
+/// exact frozen seller-impairment intent.
+///
+/// Its fields are private so a storage or recovery caller cannot turn an
+/// arbitrary transaction hash into confirmation. The only constructor is
+/// the reconciliation choke point after it verifies the receipt, finality,
+/// target, raw call data, and ordered distribution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfirmedFindingImpairmentReconciliation {
+    intent_id: String,
+    liability_key: String,
+    tx_hash: String,
+    reconciliation_sha256: String,
+}
+
+impl ConfirmedFindingImpairmentReconciliation {
+    #[must_use]
+    pub fn intent_id(&self) -> &str {
+        &self.intent_id
+    }
+
+    #[must_use]
+    pub fn liability_key(&self) -> &str {
+        &self.liability_key
+    }
+
+    #[must_use]
+    pub fn tx_hash(&self) -> &str {
+        &self.tx_hash
+    }
+
+    #[must_use]
+    pub fn reconciliation_sha256(&self) -> &str {
+        &self.reconciliation_sha256
+    }
 }
 
 /// Reconcile one publisher attempt against the frozen intent.
@@ -140,7 +182,7 @@ pub fn reconcile_finding_impairment(
             rejection: FindingVaultRejection::EvidenceAlreadyUsed,
             stored: Some(stored),
         } => match match_stored_transaction(intent, stored) {
-            Ok(tx_hash) => FindingImpairmentOutcome::Confirmed { tx_hash },
+            Ok(reconciliation) => FindingImpairmentOutcome::Confirmed { reconciliation },
             Err(reason) => FindingImpairmentOutcome::Quarantined { reason },
         },
         FindingImpairmentAttempt::Rejected {
@@ -159,7 +201,7 @@ pub fn reconcile_finding_impairment(
 fn match_stored_transaction(
     intent: &FindingImpairmentIntent,
     stored: &StoredImpairmentTransaction,
-) -> Result<String, FindingImpairmentQuarantine> {
+) -> Result<ConfirmedFindingImpairmentReconciliation, FindingImpairmentQuarantine> {
     if stored.chain_id != intent.chain_id {
         return Err(FindingImpairmentQuarantine::ChainMismatch);
     }
@@ -225,7 +267,17 @@ fn match_stored_transaction(
         }
     }
 
-    Ok(stored.tx_hash.clone())
+    let evidence = canonical_json_bytes(&(intent, stored))
+        .map_err(|_| FindingImpairmentQuarantine::EvidenceProvenanceUnavailable)?;
+    let mut preimage = Vec::with_capacity(IMPAIRMENT_RECONCILIATION_DOMAIN.len() + evidence.len());
+    preimage.extend_from_slice(IMPAIRMENT_RECONCILIATION_DOMAIN);
+    preimage.extend_from_slice(&evidence);
+    Ok(ConfirmedFindingImpairmentReconciliation {
+        intent_id: intent.intent_id.clone(),
+        liability_key: intent.liability_key.clone(),
+        tx_hash: stored.tx_hash.clone(),
+        reconciliation_sha256: sha256_hex(&preimage),
+    })
 }
 
 fn hashes_match(left: &str, right: &str) -> bool {

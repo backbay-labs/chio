@@ -105,12 +105,13 @@ use chio_settle::{
     plan_finding_impairment_for_reconciliation, recheck_finding_bond_observation,
     reobserve_finding_impairment, reobserve_finding_impairment_for_reconciliation,
     verify_finding_collateral_snapshot, verify_finding_enforcement,
-    verify_finding_enforcement_for_reconciliation, EvmBondSnapshot, FindingAnchorPublisherEvidence,
-    FindingBondObservationSource, FindingDispatchPolicy, FindingEnforcementPins,
-    FindingFinalityRequirement, FindingImpairmentOutcome, FindingImpairmentPublisher,
-    FindingImpairmentQuarantine, FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence,
-    PlannedFindingImpairment, PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement,
-    SettlementChainConfig, VerifiedFindingEnforcement,
+    verify_finding_enforcement_for_reconciliation, ConfirmedFindingImpairmentReconciliation,
+    EvmBondSnapshot, FindingAnchorPublisherEvidence, FindingBondObservationSource,
+    FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
+    FindingImpairmentOutcome, FindingImpairmentPublisher, FindingImpairmentQuarantine,
+    FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence, PlannedFindingImpairment,
+    PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement, SettlementChainConfig,
+    VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
     derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
@@ -2636,7 +2637,8 @@ impl FindingChallengeCoordinator {
         };
 
         match &outcome {
-            FindingImpairmentOutcome::Confirmed { tx_hash } => {
+            FindingImpairmentOutcome::Confirmed { reconciliation } => {
+                let tx_hash = reconciliation.tx_hash();
                 // Settling is the separate question. The head closes only
                 // if the observation the amount was computed against is
                 // still the canonical one at the receipt's finality; a
@@ -2647,27 +2649,33 @@ impl FindingChallengeCoordinator {
                 // transaction on that failure path, so no concurrent
                 // finalizer can observe the confirmation without its
                 // fail-closed head state.
-                if let Err(error) =
-                    self.require_reobserved_impairment(&planned, publisher, Some(tx_hash.as_str()))
-                {
-                    // The publisher is idempotent by intent, so a failed
-                    // recheck returns this intent to the recoverable lane
-                    // without authorizing another semantic impairment.
-                    self.challenges
-                        .advance_effect_intent(&intent_key, FindingEffectIntentState::Failed, now)
-                        .map_err(|store| {
-                            ChallengeCoordinatorError::ChallengeStore(store.to_string())
-                        })?;
-                    self.challenges
-                        .set_liability_quarantine(liability_key, true, now)
-                        .map_err(|store| {
-                            ChallengeCoordinatorError::ChallengeStore(store.to_string())
-                        })?;
-                    return Err(error);
-                }
+                let confirmed =
+                    match self.require_reobserved_impairment(&planned, publisher, Some(tx_hash)) {
+                        Ok(confirmed) => confirmed,
+                        Err(error) => {
+                            // The publisher is idempotent by intent, so a failed
+                            // recheck returns this intent to the recoverable lane
+                            // without authorizing another semantic impairment.
+                            self.challenges
+                                .advance_effect_intent(
+                                    &intent_key,
+                                    FindingEffectIntentState::Failed,
+                                    now,
+                                )
+                                .map_err(|store| {
+                                    ChallengeCoordinatorError::ChallengeStore(store.to_string())
+                                })?;
+                            self.challenges
+                                .set_liability_quarantine(liability_key, true, now)
+                                .map_err(|store| {
+                                    ChallengeCoordinatorError::ChallengeStore(store.to_string())
+                                })?;
+                            return Err(error);
+                        }
+                    };
                 if let Err(error) = self.require_qualified_observation(&verified, observations) {
                     self.challenges
-                        .confirm_seller_impairment_and_quarantine(&intent_key, liability_key, now)
+                        .confirm_seller_impairment_and_quarantine(&confirmed, now)
                         .map_err(|store| {
                             ChallengeCoordinatorError::ChallengeStore(store.to_string())
                         })?;
@@ -2678,13 +2686,7 @@ impl FindingChallengeCoordinator {
                 // dispatchable would invite a second impairment of the
                 // same collateral.
                 self.challenges
-                    .confirm_reconciled_seller_impairment(
-                        &intent_key,
-                        liability_key,
-                        &intent.intent_digest,
-                        tx_hash,
-                        now,
-                    )
+                    .confirm_reconciled_seller_impairment(&confirmed, now)
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;
@@ -4347,7 +4349,7 @@ impl FindingChallengeCoordinator {
         planned: &PlannedFindingImpairment,
         publisher: &dyn FindingImpairmentPublisher,
         expected_tx_hash: Option<&str>,
-    ) -> Result<(), ChallengeCoordinatorError> {
+    ) -> Result<ConfirmedFindingImpairmentReconciliation, ChallengeCoordinatorError> {
         let outcome = reobserve_finding_impairment(planned, publisher)
             .map_err(|error| ChallengeCoordinatorError::Publisher(error.to_string()))?;
         Self::require_reobserved_impairment_outcome(outcome, expected_tx_hash)
@@ -4358,7 +4360,7 @@ impl FindingChallengeCoordinator {
         planned: &PlannedFindingImpairmentReconciliation,
         publisher: &dyn FindingImpairmentPublisher,
         expected_tx_hash: Option<&str>,
-    ) -> Result<(), ChallengeCoordinatorError> {
+    ) -> Result<ConfirmedFindingImpairmentReconciliation, ChallengeCoordinatorError> {
         let outcome = reobserve_finding_impairment_for_reconciliation(planned, publisher)
             .map_err(|error| ChallengeCoordinatorError::Publisher(error.to_string()))?;
         Self::require_reobserved_impairment_outcome(outcome, expected_tx_hash)
@@ -4367,12 +4369,12 @@ impl FindingChallengeCoordinator {
     fn require_reobserved_impairment_outcome(
         outcome: FindingImpairmentOutcome,
         expected_tx_hash: Option<&str>,
-    ) -> Result<(), ChallengeCoordinatorError> {
+    ) -> Result<ConfirmedFindingImpairmentReconciliation, ChallengeCoordinatorError> {
         match outcome {
-            FindingImpairmentOutcome::Confirmed { tx_hash }
-                if expected_tx_hash.is_none_or(|expected| expected == tx_hash) =>
+            FindingImpairmentOutcome::Confirmed { reconciliation }
+                if expected_tx_hash.is_none_or(|expected| expected == reconciliation.tx_hash()) =>
             {
-                Ok(())
+                Ok(reconciliation)
             }
             FindingImpairmentOutcome::Confirmed { .. } => {
                 Err(ChallengeCoordinatorError::Settlement(

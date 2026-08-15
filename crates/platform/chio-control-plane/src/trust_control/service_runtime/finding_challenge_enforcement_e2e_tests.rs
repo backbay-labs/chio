@@ -8308,11 +8308,21 @@ fn finding_challenge_an_unmined_broadcast_stays_dispatchable_and_settles_when_it
     // The same transaction then mines and finalizes, and the liability
     // reaches its terminal instead of staying blocked forever.
     let second = case.finalize(&publisher, SETTLEMENT_NOW + 60)?;
+    let FindingFinalization::Reconciled(FindingImpairmentOutcome::Confirmed { reconciliation }) =
+        second
+    else {
+        return Err("finalized retry did not reconcile the impairment".into());
+    };
+    assert_eq!(reconciliation.tx_hash(), chain_hash(0x77));
+    let retained = case
+        .deployment
+        .challenges
+        .get_seller_impairment_reconciliation(&case.intent_key)?
+        .ok_or("confirmed impairment retains its reconciliation")?;
+    assert_eq!(retained.tx_hash, chain_hash(0x77));
     assert_eq!(
-        second,
-        FindingFinalization::Reconciled(FindingImpairmentOutcome::Confirmed {
-            tx_hash: chain_hash(0x77)
-        })
+        retained.reconciliation_sha256,
+        reconciliation.reconciliation_sha256()
     );
     assert_eq!(publisher.attempts(), 2);
     assert_eq!(case.intent_state()?, FindingEffectIntentState::Confirmed);
