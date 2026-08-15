@@ -275,6 +275,7 @@ impl SqliteFindingPoolLedger {
             .pool
             .get()
             .map_err(|error| FindingPoolLedgerError::Storage(error.to_string()))?;
+        self.database_identity.validate_connection(&connection)?;
         verify_rollback_anchor(&connection, &self.rollback_anchor)?;
         Ok(connection)
     }
@@ -283,7 +284,7 @@ impl SqliteFindingPoolLedger {
         &self,
         connection: &'connection mut rusqlite::Connection,
     ) -> Result<AnchoredLedgerTransaction<'connection>, FindingPoolLedgerError> {
-        self.database_identity.validate()?;
+        self.database_identity.validate_connection(connection)?;
         AnchoredLedgerTransaction::begin(connection, Arc::clone(&self.rollback_anchor))
     }
 
@@ -1874,6 +1875,31 @@ mod tests {
         assert!(details
             .iter()
             .any(|detail| detail.contains("finding_pool_receipt_outbox_pending")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn qualified_ledger_binds_validation_to_the_borrowed_database_file() {
+        let directory = tempfile::tempdir().test_expect("create pool ledger directory");
+        let database = directory.path().join("pool.sqlite3");
+        let replacement = directory.path().join("replacement.sqlite3");
+        let ledger = open_qualified(&database, "ledger:test-borrowed-file")
+            .test_expect("open qualified pool ledger");
+        {
+            let connection = ledger.pool.get().test_expect("borrow qualified database");
+            connection
+                .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+                .test_expect("checkpoint qualified database");
+        }
+        std::fs::copy(&database, &replacement).test_expect("copy qualified database");
+        let borrowed_replacement =
+            rusqlite::Connection::open(&replacement).test_expect("open replacement database");
+
+        let error = ledger
+            .database_identity
+            .validate_connection(&borrowed_replacement)
+            .test_expect_err("different borrowed database file must reject");
+        assert!(error.to_string().contains("borrowed file identity changed"));
     }
 
     #[test]

@@ -977,6 +977,21 @@ impl WriterHandle {
         self.run_receipt_write_kind(job, false)
     }
 
+    /// Bounded variant of [`run_write_anchored_metadata`]. The writer owns the
+    /// anchored transaction after caller timeout, so a successful late commit
+    /// still advances the external rollback generation.
+    pub(crate) fn run_write_anchored_metadata_with_timeout<T, F>(
+        &self,
+        job: F,
+        timeout: Duration,
+    ) -> Result<T, ReceiptStoreError>
+    where
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        self.run_receipt_write_kind_with_timeout(job, false, timeout)
+    }
+
     fn run_critical_receipt_write<T, F>(&self, job: F) -> Result<T, ReceiptStoreError>
     where
         F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, ReceiptStoreError> + Send + 'static,

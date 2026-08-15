@@ -157,6 +157,57 @@ fn delegated_bounded_snapshot_reads_parent_depth_inside_the_writer_job() {
     let _ = fs::remove_file(path);
 }
 
+#[cfg(unix)]
+#[test]
+fn qualified_capability_snapshots_advance_the_external_rollback_generation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let database_directory = tempfile::tempdir()?;
+    let anchor_directory = tempfile::Builder::new()
+        .prefix("capability-lineage-anchor")
+        .tempdir_in("/dev/shm")?;
+    for root in [database_directory.path(), anchor_directory.path()] {
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let path = database_directory.path().join("qualified.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&path, anchor_directory.path())?;
+    let generation = || -> Result<u64, Box<dyn std::error::Error>> {
+        let value: String = store.connection()?.query_row(
+            "SELECT store_generation FROM chio_receipt_sink_generation WHERE singleton = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(value.parse()?)
+    };
+    let before = generation()?;
+    let issuer = Keypair::generate();
+    let first = make_token(
+        "cap-anchored-unbounded",
+        &Keypair::generate(),
+        &issuer,
+        1_000,
+        2_000,
+    );
+    let second = make_token(
+        "cap-anchored-bounded",
+        &Keypair::generate(),
+        &issuer,
+        1_000,
+        2_000,
+    );
+
+    store.record_capability_snapshot(&first, None)?;
+    assert_eq!(generation()?, before + 1);
+    store.record_capability_snapshot_with_timeout(
+        &second,
+        None,
+        std::time::Duration::from_secs(2),
+    )?;
+    assert_eq!(generation()?, before + 2);
+    Ok(())
+}
+
 #[test]
 fn record_capability_snapshot_is_idempotent() {
     let path = unique_db_path("cl-idempotent");

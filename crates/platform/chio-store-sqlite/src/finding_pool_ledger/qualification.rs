@@ -61,6 +61,31 @@ impl QualifiedDatabaseIdentity {
         }
         Ok(())
     }
+
+    pub(super) fn validate_connection(
+        &self,
+        connection: &rusqlite::Connection,
+    ) -> Result<(), FindingPoolLedgerError> {
+        self.validate()?;
+        let identity = chio_sqlite_file_identity::main_database_file_identity(connection).map_err(
+            |error| {
+                FindingPoolLedgerError::Storage(format!(
+                    "qualified finding pool borrowed file identity is unavailable: {error}"
+                ))
+            },
+        )?;
+        if identity.device != self.device || identity.inode != self.inode {
+            return Err(FindingPoolLedgerError::Storage(
+                "qualified finding pool borrowed file identity changed".to_owned(),
+            ));
+        }
+        if identity.link_count != 1 {
+            return Err(FindingPoolLedgerError::Storage(
+                "qualified finding pool borrowed file is unlinked".to_owned(),
+            ));
+        }
+        self.validate()
+    }
 }
 
 pub(super) struct AnchoredLedgerTransaction<'connection> {
