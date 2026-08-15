@@ -1303,6 +1303,15 @@ pub(crate) async fn handle_activate_finding(
         Ok(context) => context,
         Err(response) => return response,
     };
+    let purchase_store = match state.joint_authority_store.as_ref() {
+        Some(authority) => authority.finding_purchase_store(),
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "finding market requires the joint authority store",
+            )
+        }
+    };
     let admission = &request.admission.body;
     if admission.finding_id != finding_id {
         return plain_http_error(StatusCode::BAD_REQUEST, "admission names another finding");
@@ -1400,15 +1409,6 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
 
-    let purchase_store = match state.joint_authority_store.as_ref() {
-        Some(authority) => authority.finding_purchase_store(),
-        None => {
-            return plain_http_error(
-                StatusCode::CONFLICT,
-                "finding market requires the joint authority store",
-            )
-        }
-    };
     match purchase_store.sales_blocked(&admission.listing_id) {
         Ok(true) => {
             if prepared_replay {
@@ -1818,6 +1818,7 @@ pub(crate) async fn handle_activate_finding(
         fee_schedule: &request.fee_schedule,
         fee_schedule_gate: gate,
         trusted_local_operator_signers: &trusted_signers,
+        provider_tool: &authorization.provider_tool,
         terms: &request.terms,
         backing: &request.backing,
         allocation_snapshot: AdmissionAllocationSnapshot {

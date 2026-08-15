@@ -131,6 +131,10 @@ pub enum FindingAdmissionError {
     PricingHintMismatch,
     #[error("purchase mint authority does not match the admitted listing provider")]
     ProviderAuthorityMismatch,
+    #[error("purchase scope does not match the admitted provider server and reveal tool")]
+    ProviderToolMismatch,
+    #[error("purchase ask was minted under a different admission")]
+    MintingAdmissionMismatch,
     #[error("bid rejected: {0}")]
     Bidding(BiddingError),
     #[error("finding artifact is not the finding the admission was issued for")]
@@ -226,6 +230,9 @@ pub struct FindingAdmissionContext<'a> {
     pub fee_schedule_gate: FindingFeeScheduleGate<'a>,
     /// Trusted open-market governing authority signers.
     pub trusted_local_operator_signers: &'a [PublicKey],
+    /// Provider tool resolved from the exact authenticated seller
+    /// authorization whose envelope digest the admission binds.
+    pub provider_tool: &'a str,
     /// The seller-signed terms envelope the admission binds by digest.
     pub terms: &'a SignedFindingMarketTerms,
     /// The collateral-authority-signed backing envelope the admission
@@ -258,6 +265,8 @@ pub struct FindingAdmissionContext<'a> {
 #[derive(Debug, Clone)]
 pub struct VerifiedFindingAdmission {
     admission: FindingAdmission,
+    admission_envelope_sha256: String,
+    provider_tool: String,
 }
 
 impl VerifiedFindingAdmission {
@@ -297,6 +306,18 @@ impl VerifiedFindingAdmission {
     pub fn issued_at(&self) -> u64 {
         self.admission.issued_at
     }
+
+    /// Digest of the exact signed admission that produced this witness.
+    #[must_use]
+    pub fn admission_envelope_sha256(&self) -> &str {
+        &self.admission_envelope_sha256
+    }
+
+    /// Reveal tool authenticated by the admission's seller authorization.
+    #[must_use]
+    pub fn provider_tool(&self) -> &str {
+        &self.provider_tool
+    }
 }
 
 /// A purchase ask minted through the provider-authenticated admission seam.
@@ -307,6 +328,12 @@ impl VerifiedFindingAdmission {
 #[serde(transparent)]
 pub struct VerifiedFindingPurchaseAsk {
     ask: SignedAskResponse,
+    #[serde(skip)]
+    minting_admission_id: String,
+    #[serde(skip)]
+    minting_admission_envelope_sha256: String,
+    #[serde(skip)]
+    provider_tool: String,
 }
 
 impl VerifiedFindingPurchaseAsk {
@@ -365,6 +392,9 @@ fn verify_finding_admission_inner(
     verify_signed_admission(signed, context.venue_authority, context.venue_id)
         .map_err(FindingAdmissionError::AdmissionEnvelope)?;
     let admission = &signed.body;
+    if context.provider_tool.is_empty() || context.provider_tool.trim() != context.provider_tool {
+        return Err(FindingAdmissionError::ProviderToolMismatch);
+    }
 
     // Liveness at the caller's clock, both bounds.
     if context.now < admission.issued_at {
@@ -584,8 +614,12 @@ fn verify_finding_admission_inner(
         return Err(FindingAdmissionError::BackingBindingMismatch);
     }
 
+    let admission_envelope_sha256 =
+        signed_envelope_sha256(signed).map_err(FindingAdmissionError::AdmissionEnvelope)?;
     Ok(VerifiedFindingAdmission {
         admission: admission.clone(),
+        admission_envelope_sha256,
+        provider_tool: context.provider_tool.to_owned(),
     })
 }
 
@@ -689,6 +723,11 @@ pub fn bid_with_finding_purchase(
     if request.body.requested_scope.max_invocations != Some(1) {
         return Err(FindingAdmissionError::InvocationCardinality);
     }
+    if request.body.requested_scope.server_id != admission.admission().server_id
+        || request.body.requested_scope.tool_name != admission.provider_tool()
+    {
+        return Err(FindingAdmissionError::ProviderToolMismatch);
+    }
     if bid_context.issuer_keypair.public_key()
         != bid_context
             .listing
@@ -708,8 +747,14 @@ pub fn bid_with_finding_purchase(
         })),
     ];
     bid_context.dpop_required = Some(true);
-    bid_with_finding_admission(request, bid_context, admission)
-        .map(|ask| VerifiedFindingPurchaseAsk { ask })
+    bid_with_finding_admission(request, bid_context, admission).map(|ask| {
+        VerifiedFindingPurchaseAsk {
+            ask,
+            minting_admission_id: admission.admission().admission_id.clone(),
+            minting_admission_envelope_sha256: admission.admission_envelope_sha256().to_owned(),
+            provider_tool: admission.provider_tool().to_owned(),
+        }
+    })
 }
 
 /// Accept a delivery-committed purchase ask against the authoritative
@@ -729,8 +774,14 @@ pub fn accept_finding_purchase(
     admission: &VerifiedFindingAdmission,
     finding: &chio_finding::Finding,
 ) -> Result<crate::bidding::SignedAcceptedBid, FindingAdmissionError> {
-    let ask = ask.signed_ask();
     verify_admitted_finding(admission, finding)?;
+    if ask.minting_admission_id != admission.admission().admission_id
+        || ask.minting_admission_envelope_sha256 != admission.admission_envelope_sha256()
+        || ask.provider_tool != admission.provider_tool()
+    {
+        return Err(FindingAdmissionError::MintingAdmissionMismatch);
+    }
+    let ask = ask.signed_ask();
     if accepted_at < admission.issued_at() {
         return Err(FindingAdmissionError::AdmissionNotYetLive);
     }
@@ -749,6 +800,7 @@ pub fn accept_finding_purchase(
     };
     if ask.body.listing_id != admission.listing_id()
         || grant.server_id != admission.admission().server_id
+        || grant.tool_name != admission.provider_tool()
         || grant.operations.as_slice() != [Operation::Invoke]
         || grant.max_invocations != Some(1)
         || grant.dpop_required != Some(true)

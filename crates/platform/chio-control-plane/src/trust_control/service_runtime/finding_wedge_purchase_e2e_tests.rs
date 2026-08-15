@@ -1636,6 +1636,7 @@ fn admission_witness(
         fee_schedule: &web.schedule,
         fee_schedule_gate: FindingFeeScheduleGate::Legacy,
         trusted_local_operator_signers: &trusted_signers,
+        provider_tool: &web.authorization.body.provider_tool,
         terms: &web.terms,
         backing: &web.backing,
         allocation_snapshot: SeamAllocationSnapshot {

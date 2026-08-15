@@ -229,7 +229,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/receipt_store.rs": allow(
         "2026-08-31",
         "receipt store hot-path module with anchored receipt, lineage metadata, checkpoint, and retention writes plus qualified read verification; capped to current size until split",
-        max_lines=5_806,
+        max_lines=5_808,
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs": allow(
         "2026-08-31",
@@ -384,7 +384,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/finding_handlers.rs": allow(
         "2026-08-31",
         "cognition finding handler surface with authenticated status-operator standing and live service-bond renewal; capped to current M9 size until split",
-        max_lines=2_456,
+        max_lines=2_457,
     ),
     "crates/economy/chio-finding/tests/challenge_families.rs": allow(
         "2026-08-31",
@@ -414,12 +414,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
         "2026-08-31",
         "cognition market exit regression suite with status-gated activation and admission-view coverage; capped to current size until split",
-        max_lines=3_389,
+        max_lines=3_390,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
         "cognition purchase and recovery end-to-end regression suite with durable public-terminal replay validation; capped until split",
-        max_lines=6_146,
+        max_lines=6_147,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",

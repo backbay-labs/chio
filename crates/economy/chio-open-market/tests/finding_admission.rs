@@ -543,6 +543,7 @@ impl Web {
                 binding: None,
             },
             trusted_local_operator_signers: &self.trusted_signers,
+            provider_tool: "read_finding",
             terms: &self.terms,
             backing: &self.backing,
             allocation_snapshot: FindingAllocationSnapshot {
