@@ -1,7 +1,8 @@
 use super::support::{
     ensure_checkpoint_transparency_guards, ensure_transparency_projection_guards,
     insert_receipt_retention_watermark, load_claim_tree_canonical_bytes_range,
-    load_persisted_checkpoint_row, parse_persisted_checkpoint_row, store_kernel_checkpoint_atomic,
+    load_persisted_checkpoint_row, parse_persisted_checkpoint_row,
+    store_kernel_checkpoint_validated_tx,
 };
 use super::*;
 
@@ -69,9 +70,48 @@ impl SqliteReceiptStore {
 
     /// Store a signed KernelCheckpoint in the kernel_checkpoints table.
     pub fn store_checkpoint(&self, checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
+        enum CheckpointStoreAttempt {
+            Committed,
+            Rejected(ReceiptStoreError),
+            Panicked(Box<dyn std::any::Any + Send>),
+        }
+
         let checkpoint = checkpoint.clone();
-        self.writer_handle()
-            .run_write(move |connection| store_kernel_checkpoint_atomic(connection, &checkpoint))
+        let attempt = self
+            .writer_handle()
+            .run_write_anchored_metadata(move |tx| {
+                ensure_checkpoint_transparency_guards(tx)?;
+                ensure_transparency_projection_guards(tx)?;
+                tx.execute_batch("SAVEPOINT chio_store_checkpoint_candidate")?;
+                let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    store_kernel_checkpoint_validated_tx(tx, &checkpoint)
+                }));
+                match attempt {
+                    Ok(Ok(())) => {
+                        tx.execute_batch("RELEASE SAVEPOINT chio_store_checkpoint_candidate")?;
+                        Ok(CheckpointStoreAttempt::Committed)
+                    }
+                    Ok(Err(error)) => {
+                        tx.execute_batch(
+                            "ROLLBACK TO SAVEPOINT chio_store_checkpoint_candidate; \
+                         RELEASE SAVEPOINT chio_store_checkpoint_candidate;",
+                        )?;
+                        Ok(CheckpointStoreAttempt::Rejected(error))
+                    }
+                    Err(payload) => {
+                        tx.execute_batch(
+                            "ROLLBACK TO SAVEPOINT chio_store_checkpoint_candidate; \
+                         RELEASE SAVEPOINT chio_store_checkpoint_candidate;",
+                        )?;
+                        Ok(CheckpointStoreAttempt::Panicked(payload))
+                    }
+                }
+            })?;
+        match attempt {
+            CheckpointStoreAttempt::Committed => Ok(()),
+            CheckpointStoreAttempt::Rejected(error) => Err(error),
+            CheckpointStoreAttempt::Panicked(payload) => std::panic::resume_unwind(payload),
+        }
     }
 
     /// Load a KernelCheckpoint by its checkpoint_seq.
@@ -816,6 +856,7 @@ pub(super) fn rotate_on_writer_connection(
     connection: &mut rusqlite::Connection,
     config: &RetentionConfig,
     verified_checkpoint_ceiling: Option<u64>,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Result<u64, ReceiptStoreError> {
     if config.tenant_id.is_some() {
         return Err(ReceiptStoreError::RetentionTenantScopeUnsupported);
@@ -843,6 +884,7 @@ pub(super) fn rotate_on_writer_connection(
         cutoff,
         &config.archive_path,
         verified_checkpoint_ceiling,
+        rollback_anchor,
     )
 }
 
@@ -856,6 +898,7 @@ fn archive_range(
     cutoff_unix_secs: u64,
     archive_path: &str,
     verified_checkpoint_ceiling: Option<u64>,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Result<u64, ReceiptStoreError> {
     // Never archive past the checkpoint boundary the caller has verified. The
     // ceiling is itself a checkpoint `batch_end_seq`, and `compute_archival_watermark`
@@ -897,7 +940,13 @@ fn archive_range(
         create_archive_schema(connection)?;
         let archived = copy_archived_prefix(connection, w)?;
         verify_co_archival_complete(connection, w)?; // RetentionArchiveIncomplete on any shortfall
-        delete_archived_prefix_in_tx(connection, w, cutoff_unix_secs, &archive_path)?;
+        delete_archived_prefix_in_tx(
+            connection,
+            w,
+            cutoff_unix_secs,
+            &archive_path,
+            rollback_anchor,
+        )?;
         Ok(archived)
     })();
 
@@ -1085,8 +1134,30 @@ pub(super) fn create_archive_schema(
         CREATE TABLE IF NOT EXISTS archive.checkpoint_publication_trust_anchor_bindings (
             checkpoint_seq INTEGER PRIMARY KEY, binding_json TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS archive.chio_receipt_sink_identity (
+            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+            sink_id TEXT NOT NULL UNIQUE
+        ) STRICT;
         "#,
     )?;
+    transaction.execute(
+        "INSERT OR IGNORE INTO archive.chio_receipt_sink_identity (singleton, sink_id) \
+         VALUES (1, ?1)",
+        [uuid::Uuid::now_v7().to_string()],
+    )?;
+    let archive_sink_id = transaction.query_row(
+        "SELECT sink_id FROM archive.chio_receipt_sink_identity WHERE singleton = 1",
+        [],
+        |row| row.get::<_, String>(0),
+    )?;
+    let parsed_archive_sink_id = uuid::Uuid::parse_str(&archive_sink_id).map_err(|_| {
+        ReceiptStoreError::Conflict("retention archive sink identity is invalid".to_owned())
+    })?;
+    if parsed_archive_sink_id.to_string() != archive_sink_id {
+        return Err(ReceiptStoreError::Conflict(
+            "retention archive sink identity is not canonical".to_owned(),
+        ));
+    }
     if archive_schema_version < RECEIPT_COST_PROJECTION_SCHEMA_VERSION {
         migrate_archive_receipt_cost_projection(&transaction)?;
     }
@@ -1519,12 +1590,22 @@ pub(super) fn delete_archived_prefix_in_tx(
     w: i64,
     cutoff_unix_secs: u64,
     archive_path: &str,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Result<(), ReceiptStoreError> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let rollback_generation = rollback_anchor
+        .map(|anchor| {
+            let generation = super::load_receipt_rollback_generation(&tx)?;
+            anchor.verify(generation).map_err(|error| {
+                ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+            })?;
+            Ok::<_, ReceiptStoreError>(generation)
+        })
+        .transpose()?;
     // The archive copy and its completeness check ran before this transaction
     // took the write lock, so a second store handle or process could have
     // committed a new dependent row (a reconciliation or authorization-
@@ -1602,8 +1683,34 @@ pub(super) fn delete_archived_prefix_in_tx(
         now,
     )?;
     ensure_transparency_projection_guards(&tx)?; // recreate all reject-delete/update guards
-    tx.commit()?;
-    Ok(())
+    match (rollback_anchor, rollback_generation) {
+        (Some(anchor), Some(generation)) => {
+            let next = generation.checked_add(1).ok_or_else(|| {
+                ReceiptStoreError::Conflict("receipt rollback generation overflowed".to_owned())
+            })?;
+            let changed = tx.execute(
+                "UPDATE chio_receipt_sink_generation SET store_generation = ?1 \
+                 WHERE singleton = 1 AND store_generation = ?2",
+                params![next.to_string(), generation.to_string()],
+            )?;
+            if changed != 1 {
+                return Err(ReceiptStoreError::Conflict(
+                    "receipt rollback generation compare-and-set failed".to_owned(),
+                ));
+            }
+            anchor
+                .advance_while(generation, next, || {
+                    tx.commit()
+                        .map_err(|error| format!("SQLite commit failed: {error}"))
+                })
+                .map_err(|error| {
+                    ReceiptStoreError::Conflict(format!(
+                        "receipt rollback protection failed: {error}"
+                    ))
+                })
+        }
+        _ => tx.commit().map_err(ReceiptStoreError::Sqlite),
+    }
 }
 
 /// Recover a store whose claim-log projection rows survived a source-row

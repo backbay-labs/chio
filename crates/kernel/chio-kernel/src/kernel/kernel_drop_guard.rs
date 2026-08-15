@@ -14,6 +14,8 @@ use super::{
 const POST_ADMISSION_DROP_REASON: &str = "tool evaluation future dropped after admission";
 const POST_DISPATCH_CREDENTIAL_COMMIT_FAILURE_REASON: &str =
     "dispatch credential commit failed after tool execution";
+const POST_DISPATCH_URL_ELICITATION_REASON: &str =
+    "tool server returned URL elicitation after dispatch; outcome is unknown";
 const PRE_DISPATCH_CLEANUP_FAULT_REASON: &str =
     "tool evaluation future dropped before dispatch with cleanup fault";
 
@@ -162,6 +164,41 @@ impl<'a> PostAdmissionDropGuard<'a> {
     /// receipt instead of returning a raw error with no audit trail.
     pub(crate) fn mark_dispatch_credential_commit_failed(&mut self) {
         self.post_dispatch_reason = POST_DISPATCH_CREDENTIAL_COMMIT_FAILURE_REASON;
+    }
+
+    /// The caller durably terminalized the admission but still needs the
+    /// armed post-dispatch path to record its signed ambiguity receipt and
+    /// retain non-durable reservations.
+    pub(crate) fn mark_durable_operation_terminalized(&mut self) {
+        self.durable_operation = None;
+    }
+
+    /// Persist the terminal ambiguity receipt on a normal URL-error return.
+    /// The guard remains armed until the append succeeds, so a synchronous
+    /// persistence failure is returned to the caller and Drop still retries it
+    /// best-effort without terminalizing the durable operation twice.
+    pub(crate) fn persist_url_elicitation_cancellation(&mut self) -> Result<(), KernelError> {
+        self.post_dispatch_reason = POST_DISPATCH_URL_ELICITATION_REASON;
+        self.record_buffered_child_receipts()?;
+        let receipt_metadata = self.kernel.ambiguous_dispatch_receipt_metadata(
+            self.budget_mutation,
+            self.payment_authorization,
+            self.receipt_context.extra_metadata.clone(),
+        );
+        let _guard_evidence_scope = scope_pre_invocation_guard_evidence(
+            self.receipt_context.pre_invocation_guard_evidence.clone(),
+        );
+        self.kernel
+            .build_cancelled_response_with_metadata_and_payee_binding(
+                self.request,
+                self.post_dispatch_reason,
+                current_unix_timestamp(),
+                self.matched_grant_index,
+                receipt_metadata,
+                self.receipt_context.verified_payee_binding.as_ref(),
+            )?;
+        self.disarm();
+        Ok(())
     }
 
     pub(crate) fn disarm(&mut self) {

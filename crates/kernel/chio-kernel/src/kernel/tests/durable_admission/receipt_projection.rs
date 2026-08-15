@@ -48,6 +48,10 @@ impl ReceiptStore for AdmissionReceiptProjectionStore {
         Ok(())
     }
 
+    fn durable_sink_id(&self) -> Option<&str> {
+        Some("receipt-sink:admission-projection-test")
+    }
+
     fn load_chio_receipt(
         &self,
         receipt_id: &str,

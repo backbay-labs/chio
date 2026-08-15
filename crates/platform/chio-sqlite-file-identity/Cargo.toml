@@ -1,0 +1,18 @@
+[package]
+name = "chio-sqlite-file-identity"
+description = "Audited SQLite VFS file identity boundary for Chio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+rusqlite = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

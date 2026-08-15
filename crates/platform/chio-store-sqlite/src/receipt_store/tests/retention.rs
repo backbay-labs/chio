@@ -4457,7 +4457,7 @@ fn delete_fails_closed_when_a_dependent_row_escapes_the_copy(
                  VALUES (?1, 'settled', NULL, 1)",
                 rusqlite::params![receipt_id],
             )?;
-            let result = delete_archived_prefix_in_tx(connection, 2, 150, &archive_path);
+            let result = delete_archived_prefix_in_tx(connection, 2, 150, &archive_path, None);
             connection.execute_batch("DETACH DATABASE archive")?;
             Ok(result.is_err())
         }
@@ -4553,7 +4553,7 @@ fn delete_rechecks_archive_path_under_the_write_lock() -> Result<(), Box<dyn std
             connection.execute_batch(&format!("ATTACH DATABASE '{escaped}' AS archive"))?;
             create_archive_schema(connection)?;
             copy_archived_prefix(connection, 4)?;
-            let result = delete_archived_prefix_in_tx(connection, 4, 250, &archive_b_path);
+            let result = delete_archived_prefix_in_tx(connection, 4, 250, &archive_b_path, None);
             connection.execute_batch("DETACH DATABASE archive")?;
             Ok(result.err().map(|error| error.to_string()))
         }

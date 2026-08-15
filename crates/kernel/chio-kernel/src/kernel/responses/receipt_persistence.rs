@@ -22,10 +22,69 @@ fn receipts_match(left: &ChioReceipt, right: &ChioReceipt) -> Result<bool, Kerne
 }
 
 impl ChioKernel {
+    /// Sign the exact state transition a qualified finding-pool backend is
+    /// about to commit. The backend stores this receipt in its transaction,
+    /// then the kernel copies the durable outbox entry into the ordinary
+    /// receipt log.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn build_finding_pool_mutation_receipt(
+        &self,
+        mutation: &crate::finding_pool::FindingPoolMutation,
+    ) -> Result<ChioReceipt, KernelError> {
+        let parameters = serde_json::to_value(mutation)
+            .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?;
+        let action = ToolCallAction::from_parameters(parameters.clone())
+            .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?;
+        let canonical_content = chio_core::canonical::canonical_json_bytes(mutation)
+            .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?;
+        let content_hash = chio_core::crypto::sha256_hex(&canonical_content);
+        let timestamp = mutation
+            .occurred_at_unix_ms
+            .parse::<u64>()
+            .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?
+            / 1_000;
+        let authority = self
+            .finding_pool_receipt_authority
+            .as_ref()
+            .ok_or_else(|| {
+                KernelError::ReceiptSigningFailed(
+                    crate::finding_pool::FindingPoolLedgerError::ReceiptAuthorityMissing
+                        .to_string(),
+                )
+            })?;
+        self.build_and_sign_receipt_with_authority(
+            ReceiptParams {
+                request_id: None,
+                capability_id: &mutation.allocation_envelope_sha256,
+                tool_name: "finding_pool_mutation",
+                server_id: "chio-kernel",
+                decision: Decision::Allow,
+                action,
+                content_hash,
+                canonical_content,
+                metadata: Some(serde_json::json!({
+                    "finding_pool_mutation": parameters,
+                })),
+                timestamp,
+                trust_level: chio_core::receipt::kinds::TrustLevel::Mediated,
+                tenant_id: mutation.tenant_id.clone(),
+            },
+            authority,
+        )
+    }
+
     /// Build and sign a receipt from a `ReceiptParams` descriptor.
     pub(crate) fn build_and_sign_receipt(
         &self,
         params: ReceiptParams<'_>,
+    ) -> Result<ChioReceipt, KernelError> {
+        self.build_and_sign_receipt_with_authority(params, &self.config.keypair)
+    }
+
+    fn build_and_sign_receipt_with_authority(
+        &self,
+        params: ReceiptParams<'_>,
+        authority: &chio_core::crypto::Keypair,
     ) -> Result<ChioReceipt, KernelError> {
         let expected_action = params.action.clone();
         let expected_decision = params.decision.clone();
@@ -78,7 +137,7 @@ impl ChioKernel {
             metadata,
             trust_level: params.trust_level,
             tenant_id,
-            kernel_key: self.config.keypair.public_key(),
+            kernel_key: authority.public_key(),
             bbs_projection_version: None,
         };
         let expected = ReceiptCouplingExpectation {
@@ -112,7 +171,7 @@ impl ChioKernel {
         // direct call into `chio_kernel_core::sign_receipt_with_handle`. Receipt
         // body assembly, metadata shaping, and persistence remain
         // operational-shell behavior outside the current bounded proof claim.
-        let backend = chio_core::crypto::Ed25519Backend::new(self.config.keypair.clone());
+        let backend = chio_core::crypto::Ed25519Backend::new(authority.clone());
         chio_kernel_core::sign_receipt_with_handle(body, &backend, handle).map_err(|error| {
             use chio_kernel_core::ReceiptSigningError;
             let message = match error {
@@ -159,8 +218,8 @@ impl ChioKernel {
         if receipt.is_allowed() {
             self.check_revocation(&request.capability)?;
         }
-        let (trace_event, settlement_visible_at_ms) =
-            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition)?;
+        let (trace_event, settlement_visible_at_ms) = self
+            .record_chio_receipt_during_trace_transition(receipt, &trace_transition, true, false)?;
         drop(trace_transition);
         self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)?;
         self.apply_federation_cosign_for_admitted_request_with_snapshot(
@@ -229,8 +288,44 @@ impl ChioKernel {
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
         let trace_transition = self.lock_runtime_trace_transition()?;
-        let (trace_event, settlement_visible_at_ms) =
-            self.record_chio_receipt_during_trace_transition(receipt, &trace_transition)?;
+        let (trace_event, settlement_visible_at_ms) = self
+            .record_chio_receipt_during_trace_transition(receipt, &trace_transition, true, false)?;
+        drop(trace_transition);
+        self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)
+    }
+
+    /// Persist an internal audit receipt without presenting it to the
+    /// financial settlement observer. The durable receipt store and local
+    /// trace still receive the exact signed receipt.
+    #[cfg(test)]
+    pub(crate) fn record_chio_receipt_without_settlement(
+        &self,
+        receipt: &ChioReceipt,
+    ) -> Result<(), KernelError> {
+        let trace_transition = self.lock_runtime_trace_transition()?;
+        let (trace_event, settlement_visible_at_ms) = self
+            .record_chio_receipt_during_trace_transition(
+                receipt,
+                &trace_transition,
+                false,
+                false,
+            )?;
+        drop(trace_transition);
+        self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)
+    }
+
+    /// Project an internal audit receipt once, using retained durable history
+    /// as the replay authority. Exact replay after an outbox worker stops
+    /// between append and acknowledgement must not duplicate the local mirror
+    /// or runtime trace.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn record_chio_receipt_without_settlement_once(
+        &self,
+        receipt: &ChioReceipt,
+    ) -> Result<(), KernelError> {
+        let trace_transition = self.lock_runtime_trace_transition()?;
+        let (trace_event, settlement_visible_at_ms) = self
+            .record_chio_receipt_during_trace_transition(receipt, &trace_transition, false, true)?;
         drop(trace_transition);
         self.finish_record_chio_receipt(receipt, trace_event, settlement_visible_at_ms)
     }
@@ -239,12 +334,17 @@ impl ChioKernel {
         &self,
         receipt: &ChioReceipt,
         _trace_transition: &std::sync::MutexGuard<'_, ()>,
+        settlement_eligible: bool,
+        suppress_exact_durable_replay: bool,
     ) -> Result<(Option<RuntimeTraceEvent>, Option<u64>), KernelError> {
-        let settlement_visible_at_ms = self
-            .settlement_observer
-            .as_ref()
-            .map(|_| current_unix_timestamp_ms());
-        {
+        let settlement_visible_at_ms = if settlement_eligible {
+            self.settlement_observer
+                .as_ref()
+                .map(|_| current_unix_timestamp_ms())
+        } else {
+            None
+        };
+        let projected = {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())
             })?;
@@ -264,6 +364,31 @@ impl ChioKernel {
                     // Surface it as due work instead of losing it on the timeout.
                     crate::settlement_routing::record_unresolved_claim_missed(&receipt.id);
                 })?;
+                self.append_chio_receipt_to_local_log(receipt.clone());
+                true
+            } else if suppress_exact_durable_replay {
+                let inserted = self
+                    .with_receipt_store(|store| {
+                        match store.load_retained_chio_receipt(&receipt.id)? {
+                            Some(existing) if receipts_match(&existing, receipt)? => Ok(false),
+                            Some(_) => Err(KernelError::DurableAdmission(format!(
+                                "receipt projection {} conflicts with retained durable history",
+                                receipt.id
+                            ))),
+                            None => {
+                                store.append_chio_receipt_with_timeout(
+                                    receipt,
+                                    self.config.deadlines.receipt_append_budget(),
+                                )?;
+                                Ok(true)
+                            }
+                        }
+                    })?
+                    .unwrap_or(true);
+                if inserted {
+                    self.append_chio_receipt_to_local_log(receipt.clone());
+                }
+                inserted
             } else {
                 // Bound the commit round trip so a wedged writer cannot pin
                 // the kernel-wide receipt write lock indefinitely. On timeout
@@ -274,8 +399,12 @@ impl ChioKernel {
                         self.config.deadlines.receipt_append_budget(),
                     )?)
                 })?;
+                self.append_chio_receipt_to_local_log(receipt.clone());
+                true
             }
-            self.append_chio_receipt_to_local_log(receipt.clone());
+        };
+        if !projected {
+            return Ok((None, None));
         }
         let trace_event = if self.runtime_trace_observer.is_some() {
             Some(RuntimeTraceEvent::ReceiptAppended {

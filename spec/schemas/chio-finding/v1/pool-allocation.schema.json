@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/pool-allocation.schema.json",
+  "title": "Chio Finding Pool Allocation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "allocation_id",
+        "ledger_domain",
+        "ledger_store_binding_sha256",
+        "pool_id",
+        "pool_sha256",
+        "graph_id",
+        "purpose",
+        "purchaser_id",
+        "purchaser_key",
+        "currency",
+        "amount_units",
+        "nonce",
+        "authority",
+        "issued_at_unix_ms",
+        "expires_at_unix_ms"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.pool-allocation.v1"
+        },
+        "allocation_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "ledger_domain": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "ledger_store_binding_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "pool_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "pool_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "graph_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "purpose": {
+          "const": "cognition_market_finding_purchase_v1"
+        },
+        "purchaser_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "purchaser_key": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]{1,16}$"
+        },
+        "amount_units": {
+          "$ref": "#/$defs/positiveU64Decimal"
+        },
+        "nonce": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "authority": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "issued_at_unix_ms": {
+          "$ref": "#/$defs/u64"
+        },
+        "expires_at_unix_ms": {
+          "$ref": "#/$defs/u64"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nonBlankString": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[\\u0020-\\u007E]*[\\u0021-\\u007E][\\u0020-\\u007E]*$"
+    },
+    "u64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveU64Decimal": {
+      "type": "string",
+      "pattern": "^(?:[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|18446744073709550[0-9]{3}|18446744073709551[0-5][0-9]{2}|1844674407370955160[0-9]|1844674407370955161[0-4]|18446744073709551615)$"
+    }
+  }
+}

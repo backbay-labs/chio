@@ -360,6 +360,12 @@
       "schemaFile": "spec/schemas/chio-finding/v1/market-terms.schema.json"
     },
     {
+      "schema": "chio.finding.pool-allocation.v1",
+      "artifactKind": "finding_pool_allocation",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/pool-allocation.schema.json"
+    },
+    {
       "schema": "chio.finding.purchase-context.v1",
       "artifactKind": "finding_purchase_context",
       "introducedBy": "finding-market-v1",

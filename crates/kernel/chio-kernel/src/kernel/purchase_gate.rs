@@ -5,6 +5,8 @@ use base64::Engine as _;
 use chio_core::capability::scope::{
     Constraint, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount, ToolGrant,
 };
+#[cfg(feature = "cognition-market-experimental")]
+use chio_core::crypto::PublicKey;
 use serde::Deserialize;
 
 use crate::finding_purchase::{
@@ -330,6 +332,141 @@ pub(crate) fn purchase_marked_grant(
 }
 
 impl ChioKernel {
+    /// Pin the long-lived signer for cognition-market pool mutation receipts.
+    /// Reinstall this key unchanged when the ordinary kernel key rotates.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub fn set_finding_pool_receipt_authority(
+        &mut self,
+        authority: chio_core::crypto::Keypair,
+    ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+        validate_finding_pool_receipt_authority(&authority.public_key())?;
+        if self.finding_pool_receipt_authority.is_some() {
+            return Err(
+                crate::finding_pool::FindingPoolLedgerError::ReceiptAuthorityAlreadyConfigured,
+            );
+        }
+        self.finding_pool_receipt_authority = Some(authority);
+        Ok(())
+    }
+
+    /// Pin the single qualified pool ledger for this deployment kernel.
+    /// Once installed it cannot be replaced, preventing callers from routing
+    /// successive debits for one signed allocation through disjoint ledgers.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub fn set_finding_pool_ledger(
+        &mut self,
+        ledger: std::sync::Arc<dyn crate::finding_pool::QualifiedFindingPoolLedger>,
+    ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+        if self.finding_pool_ledger.is_some() {
+            return Err(crate::finding_pool::FindingPoolLedgerError::AlreadyConfigured);
+        }
+        let receipt_authority = self
+            .finding_pool_receipt_authority
+            .as_ref()
+            .ok_or(crate::finding_pool::FindingPoolLedgerError::ReceiptAuthorityMissing)?
+            .public_key();
+        if self.receipt_store.is_none() {
+            return Err(crate::finding_pool::FindingPoolLedgerError::DurableReceiptStoreMissing);
+        }
+        if self.config.retention_config.is_some() {
+            return Err(crate::finding_pool::FindingPoolLedgerError::UnqualifiedRetentionArchive);
+        }
+        let receipt_sink_id = self
+            .receipt_store
+            .as_ref()
+            .and_then(|store| store.durable_sink_id())
+            .ok_or(crate::finding_pool::FindingPoolLedgerError::InvalidReceiptSink)?;
+        self.ensure_finding_pool_configuration_precedes_startup_reconciliation()?;
+        ledger.bind_receipt_configuration(&receipt_authority, receipt_sink_id)?;
+        self.finding_pool_ledger = Some(ledger);
+        Ok(())
+    }
+
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn finding_pool_allocation_authority(&self) -> Option<&PublicKey> {
+        self.finding_pool_allocation_authority.as_ref()
+    }
+
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn finding_pool_ledger(
+        &self,
+    ) -> Option<&dyn crate::finding_pool::QualifiedFindingPoolLedger> {
+        self.finding_pool_ledger.as_deref()
+    }
+
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn verify_finding_status_for_pool(
+        &self,
+        proof_b64: Option<&str>,
+        expected_finding_id: &str,
+        expected_feed_id: &str,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        match (self.finding_status_proof_verifier.as_ref(), proof_b64) {
+            (Some(status_verifier), Some(proof_b64)) => {
+                if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
+                    return Err(
+                        "finding status proof carrier exceeds the kernel size bound".to_owned()
+                    );
+                }
+                let view = FindingStatusProofContextView {
+                    proof_b64,
+                    expected_finding_id,
+                    expected_feed_id,
+                };
+                let verified = status_verifier
+                    .verify_status_proof(&view)
+                    .map_err(|error| format!("finding status proof rejected: {error}"))?;
+                status_verifier
+                    .verify_status_admission(&view, &verified, now_unix_secs)
+                    .map_err(|error| format!("finding status admission rejected: {error}"))
+            }
+            (Some(_), None) => {
+                Err("M6-qualified finding pool debit requires a portable status proof".to_owned())
+            }
+            (None, Some(_)) => {
+                Err("finding status proof requires a configured kernel verifier".to_owned())
+            }
+            (None, None) => Ok(()),
+        }
+    }
+
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn verify_purchase_context_for_pool(
+        &self,
+        view: &FindingPurchaseContextView<'_>,
+    ) -> Result<VerifiedFindingPurchase, String> {
+        let verifier = self.finding_purchase_verifier.as_ref().ok_or_else(|| {
+            "finding pool debit requires the kernel's configured purchase verifier".to_owned()
+        })?;
+        let verified = verifier
+            .verify_purchase(view)
+            .map_err(|error| format!("purchase context rejected: {error}"))?;
+        if verified.finding_id != view.marker.finding_id
+            || verified.listing_id != view.marker.listing_id
+            || verified.payload_sha256 != view.expected_output_digest
+            || verified.payer_key_hex != view.capability.subject.to_hex()
+        {
+            return Err("purchase context does not bind the pool debit request".to_owned());
+        }
+        Ok(verified)
+    }
+
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn verify_purchase_admission_for_pool(
+        &self,
+        view: &FindingPurchaseContextView<'_>,
+        verified: &VerifiedFindingPurchase,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        let verifier = self.finding_purchase_verifier.as_ref().ok_or_else(|| {
+            "finding pool debit requires the kernel's configured purchase verifier".to_owned()
+        })?;
+        verifier
+            .verify_purchase_admission(view, verified, now_unix_secs)
+            .map_err(|error| format!("purchase admission rejected: {error}"))
+    }
+
     /// Deterministically verify the purchase context for a marked grant
     /// and cross-check the result against the grant, the request, and the
     /// paying capability. Returns `Ok(None)` for an unmarked grant; every
@@ -702,6 +839,18 @@ impl ChioKernel {
             .err()
             .inspect(|_| evaluation.denial = Some(finding_status_delivery_denial()))
     }
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) fn validate_finding_pool_receipt_authority(
+    authority: &chio_core::crypto::PublicKey,
+) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+    if authority.algorithm() != chio_core::crypto::SigningAlgorithm::Ed25519
+        || authority.is_weak_ed25519()
+    {
+        return Err(crate::finding_pool::FindingPoolLedgerError::InvalidReceiptAuthority);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

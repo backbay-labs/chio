@@ -404,7 +404,7 @@ fn shared_db_background_build_adopts_external_checkpoint() -> Result<(), Box<dyn
         claim_log_max_seq: max_batch,
     };
     let signer_a = signer(&keypair, max_batch);
-    let result = build_due_checkpoints(&store.pool, &mut stale_head, &signer_a);
+    let result = build_due_checkpoints(&store.pool, &mut stale_head, &signer_a, None, None);
     assert!(
         result.is_ok(),
         "stale-head background build must adopt the external checkpoint, got {result:?}"
@@ -467,6 +467,8 @@ fn successful_checkpoint_build_clears_stale_error() -> Result<(), Box<dyn std::e
         &mut head,
         &Some(signer(&keypair, max_batch)),
         &health,
+        None,
+        None,
     );
     assert!(
         store.load_checkpoint_by_seq(1)?.is_some(),
@@ -747,12 +749,12 @@ fn chain_connected_rejects_missing_earlier_checkpoint() -> Result<(), Box<dyn st
     Ok(())
 }
 
-/// The OPERATOR/IMPORT checkpoint append (store_checkpoint ->
-/// store_kernel_checkpoint_atomic) only parses the LATEST checkpoint as
-/// predecessor, so a mid-chain tamper whose latest row still parses would let an
-/// operator extend an already-corrupt chain. The operator path must re-verify the
-/// full chain and fail closed. (This does NOT touch the background builder, which
-/// stays on the incremental head and never walks full history.)
+/// The OPERATOR/IMPORT checkpoint append only parses the LATEST checkpoint as
+/// predecessor unless its validated transaction re-verifies the chain, so a
+/// mid-chain tamper whose latest row still parses would let an operator extend
+/// an already-corrupt chain. The operator path must re-verify the full chain and
+/// fail closed. (This does NOT touch the background builder, which stays on the
+/// incremental head and never walks full history.)
 #[test]
 fn operator_checkpoint_append_reverifies_chain() -> Result<(), Box<dyn std::error::Error>> {
     let path = unique_db_path("chio-operator-reverify-chain");
@@ -992,6 +994,7 @@ fn frontier_rebuild_adopts_concurrent_checkpoint_winner() -> Result<(), Box<dyn 
         &mut connection,
         &mut stale_head,
         &signer(&keypair, max_batch),
+        None,
     )?;
     assert!(
         advanced,
@@ -1085,6 +1088,7 @@ fn frontier_cache_miss_rejects_disconnected_legacy_prefix_after_failed_build(
         &mut connection,
         &mut head,
         &signer(&wrong_keypair, max_batch),
+        None,
     )
     .err()
     .ok_or("the mismatched signer must fail after consuming the cached frontier")?;
@@ -1171,9 +1175,14 @@ fn frontier_cache_miss_rejects_disconnected_legacy_prefix_after_failed_build(
         1
     );
 
-    let error = maybe_build_checkpoint(&mut connection, &mut head, &signer(&keypair, max_batch))
-        .err()
-        .ok_or("a cache-miss retry must reject the disconnected legacy prefix")?;
+    let error = maybe_build_checkpoint(
+        &mut connection,
+        &mut head,
+        &signer(&keypair, max_batch),
+        None,
+    )
+    .err()
+    .ok_or("a cache-miss retry must reject the disconnected legacy prefix")?;
     assert!(
         matches!(error, ReceiptStoreError::Conflict(_))
             && error
@@ -1256,9 +1265,14 @@ fn frontier_cache_miss_rejects_disconnected_legacy_prefix_after_failed_build(
         1
     );
 
-    let error = maybe_build_checkpoint(&mut connection, &mut head, &signer(&keypair, max_batch))
-        .err()
-        .ok_or("a cache-miss retry must reject a coherent same-length fork")?;
+    let error = maybe_build_checkpoint(
+        &mut connection,
+        &mut head,
+        &signer(&keypair, max_batch),
+        None,
+    )
+    .err()
+    .ok_or("a cache-miss retry must reject a coherent same-length fork")?;
     assert!(
         matches!(error, ReceiptStoreError::Conflict(_))
             && error

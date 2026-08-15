@@ -9,6 +9,28 @@ use crate::{
 };
 
 pub trait PheromoneSubstrate {
+    type NonceReservation;
+
+    /// Atomically reserve a nonce before an expensive receiver-owned
+    /// resolution. The reservation must be committed by `deposit_reserved` or
+    /// released on every resolution failure.
+    fn preflight_deposit_nonce(
+        &self,
+        deposit: &PheromoneDeposit,
+    ) -> Result<Self::NonceReservation, PheromoneError>;
+
+    fn release_deposit_nonce(
+        &self,
+        reservation: &Self::NonceReservation,
+    ) -> Result<(), PheromoneError>;
+
+    fn deposit_reserved(
+        &self,
+        deposit: PheromoneDeposit,
+        context: &PheromoneValidationContext,
+        reservation: &Self::NonceReservation,
+    ) -> Result<(), PheromoneError>;
+
     fn deposit(
         &self,
         deposit: PheromoneDeposit,
@@ -34,14 +56,26 @@ pub trait PheromoneSubstrate {
 pub(crate) type ScarcityBucketKey = (u64, String, String, String, String);
 pub(crate) type PairBucketKey = (u64, String, String, String, String, String, String);
 pub(crate) type PassportCapKey = (u64, String, String, String, String, String);
+pub(crate) type DepositNonceKey = (String, String, String);
+
+#[derive(Debug, Default)]
+pub(crate) struct PheromoneNonceState {
+    pub(crate) seen: BTreeSet<DepositNonceKey>,
+    pub(crate) reserved: BTreeSet<DepositNonceKey>,
+}
 
 #[derive(Debug, Default)]
 pub struct InMemoryPheromoneSubstrate {
     deposits: Mutex<Vec<PheromoneDeposit>>,
-    seen_nonces: Mutex<BTreeSet<(String, String, String)>>,
+    nonce_state: Mutex<PheromoneNonceState>,
     scarcity_buckets: Mutex<BTreeMap<ScarcityBucketKey, u64>>,
     pair_counts: Mutex<BTreeMap<PairBucketKey, u64>>,
     passports_by_kernel_class: Mutex<BTreeMap<PassportCapKey, BTreeSet<String>>>,
+}
+
+#[derive(Debug)]
+pub struct InMemoryPheromoneNonceReservation {
+    nonce_key: DepositNonceKey,
 }
 
 impl InMemoryPheromoneSubstrate {
@@ -52,6 +86,58 @@ impl InMemoryPheromoneSubstrate {
 }
 
 impl PheromoneSubstrate for InMemoryPheromoneSubstrate {
+    type NonceReservation = InMemoryPheromoneNonceReservation;
+
+    fn preflight_deposit_nonce(
+        &self,
+        deposit: &PheromoneDeposit,
+    ) -> Result<Self::NonceReservation, PheromoneError> {
+        let nonce_key = (
+            deposit.body.kernel_id.clone(),
+            deposit.body.agent_passport_key_hash.clone(),
+            deposit.body.nonce.clone(),
+        );
+        let mut nonce_state = self.nonce_state.lock()?;
+        if nonce_state.seen.contains(&nonce_key) || !nonce_state.reserved.insert(nonce_key.clone())
+        {
+            return Err(PheromoneError::ReplayWindowExceeded(
+                deposit.body.nonce.clone(),
+            ));
+        }
+        Ok(InMemoryPheromoneNonceReservation { nonce_key })
+    }
+
+    fn release_deposit_nonce(
+        &self,
+        reservation: &Self::NonceReservation,
+    ) -> Result<(), PheromoneError> {
+        self.nonce_state
+            .lock()?
+            .reserved
+            .remove(&reservation.nonce_key);
+        Ok(())
+    }
+
+    fn deposit_reserved(
+        &self,
+        deposit: PheromoneDeposit,
+        context: &PheromoneValidationContext,
+        reservation: &Self::NonceReservation,
+    ) -> Result<(), PheromoneError> {
+        validate_deposit_for_admission(&deposit, context)?;
+        commit_admission_state(
+            &deposit,
+            &self.nonce_state,
+            Some(&reservation.nonce_key),
+            context,
+            &self.scarcity_buckets,
+            &self.pair_counts,
+            &self.passports_by_kernel_class,
+        )?;
+        self.deposits.lock()?.push(deposit);
+        Ok(())
+    }
+
     fn deposit(
         &self,
         deposit: PheromoneDeposit,
@@ -60,7 +146,8 @@ impl PheromoneSubstrate for InMemoryPheromoneSubstrate {
         validate_deposit_for_admission(&deposit, context)?;
         commit_admission_state(
             &deposit,
-            &self.seen_nonces,
+            &self.nonce_state,
+            None,
             context,
             &self.scarcity_buckets,
             &self.pair_counts,

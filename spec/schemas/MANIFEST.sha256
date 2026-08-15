@@ -1,4 +1,4 @@
-8cad5ed7d88ef518b7c944176cdaddb81c748fb6deebeb08ec3bfe12bdc42ae4  spec/schemas/MANIFEST.sha256
+ddd4c5cbe6eb409167fdd40418928041cc6795f888f992399b624403a00715db  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -128,6 +128,7 @@ c5bc56c8965281047d38e79a228b00ab427d4e97d8afa792a71297090cc6f53b  spec/schemas/c
 895a7fa9cf80094b289227db48889077dcc254fdce22cccf5a0f765e7ae280dc  spec/schemas/chio-finding/v1/key-revocation.schema.json
 dd0bb78a638d0798450a524347cb82158aba382116de9fd5206bd31c88618df6  spec/schemas/chio-finding/v1/market-penalty.schema.json
 161f372dc1c5f89758bf2fd84253082e34058fc814d9580154e65a66cdf55d72  spec/schemas/chio-finding/v1/market-terms.schema.json
+e059c863d53a29c3acd7929e2a08765c54b2102ca20b002a9e3dee75f9b47947  spec/schemas/chio-finding/v1/pool-allocation.schema.json
 87dc0f50befcda8ba0f347401161fedb3e6fbc2d9c4d1d59839574abdbdff398  spec/schemas/chio-finding/v1/purchase-context.schema.json
 a4bc54088b6aef5d000ad717275342a966cd55fd0391e6c555aaa93bcc111395  spec/schemas/chio-finding/v1/purchase-record.schema.json
 730eef07858d4d7e64749cfed9f617924d50d52d088181236f1a6a23299131a2  spec/schemas/chio-finding/v1/recovery-context.schema.json
@@ -432,4 +433,4 @@ ff4f655a0f0c7afda5c0674f3afde1e3961f1d58292584ed39f8bb5b96e30c8b  spec/schemas/c
 f109672e496e5e3bb56c5a3d61ed882b922d8bbade45899975d1852921f7890e  spec/schemas/financial-credential-defs.v1.schema.json
 049d7788253b57ddf472ebed0e8e6cb1a26e2249e9645e9e18cfdc3606a2b669  spec/schemas/fiscal-defs.v1.schema.json
 216ca7d9c174f728a1931f84791858702bb365cb5f5acba24c5e936bc923955e  spec/schemas/policy/analysis-report.schema.json
-7bbe085d6886074ace3b0ed46394661ff9300f245612e1edefe492d418424189  spec/schemas/registry.json
+7f2ad1eb8ca727ea582485b2cc5a9ec056c5bc1ccaa1fc9c5f5e552d28f2cdbf  spec/schemas/registry.json

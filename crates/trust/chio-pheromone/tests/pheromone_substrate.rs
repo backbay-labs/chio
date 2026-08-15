@@ -369,6 +369,34 @@ fn signed_deposit_roundtrip_and_store_query() {
 }
 
 #[test]
+fn concurrent_preflight_reserves_one_nonce() {
+    let passport_key = key(1);
+    let deposit = sign_deposit(body(&passport_key), &passport_key).expect("sign deposit");
+    let substrate = std::sync::Arc::new(InMemoryPheromoneSubstrate::new());
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+    let mut workers = Vec::new();
+    for _ in 0..2 {
+        let substrate = std::sync::Arc::clone(&substrate);
+        let barrier = std::sync::Arc::clone(&barrier);
+        let deposit = deposit.clone();
+        workers.push(std::thread::spawn(move || {
+            barrier.wait();
+            substrate.preflight_deposit_nonce(&deposit).is_ok()
+        }));
+    }
+    barrier.wait();
+    let admitted = workers
+        .into_iter()
+        .map(|worker| worker.join().expect("preflight worker"))
+        .filter(|admitted| *admitted)
+        .count();
+    assert_eq!(
+        admitted, 1,
+        "only one concurrent resolver may reserve a nonce"
+    );
+}
+
+#[test]
 fn live_deposit_without_scarcity_policy_is_rejected() {
     let passport_key = key(1);
     let kernel_key = key(2);

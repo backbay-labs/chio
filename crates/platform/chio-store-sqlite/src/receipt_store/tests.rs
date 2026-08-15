@@ -16,6 +16,8 @@ mod insert;
 mod liability;
 #[path = "tests/lineage.rs"]
 mod lineage;
+#[path = "tests/qualified_finding_pool.rs"]
+mod qualified_finding_pool;
 #[path = "tests/query.rs"]
 mod query;
 #[path = "tests/retained_commitments.rs"]

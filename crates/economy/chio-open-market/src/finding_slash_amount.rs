@@ -349,6 +349,8 @@ pub fn compute_frozen_slash_distribution(
 mod tests {
     use super::*;
 
+    const COMMUNITY_FUND_DESTINATION: &str = "0xcccccccccccccccccccccccccccccccccccccccc";
+
     fn usd(units: u64) -> MonetaryAmount {
         MonetaryAmount {
             units,
@@ -386,7 +388,7 @@ mod tests {
             open_per_sale_encumbrances: 0,
             live_allocated_collateral: u64::MAX,
             listing_required_amount: required,
-            community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc",
+            community_fund_destination: COMMUNITY_FUND_DESTINATION,
         }
     }
 
@@ -467,7 +469,7 @@ mod tests {
         let paid: u64 = distribution
             .entries
             .iter()
-            .filter(|entry| entry.destination != "rail:community")
+            .filter(|entry| entry.destination != COMMUNITY_FUND_DESTINATION)
             .map(|entry| entry.amount_units)
             .sum();
         assert_eq!(paid, distribution.buyer_pool_units);
@@ -493,7 +495,10 @@ mod tests {
         assert_eq!(distribution.buyer_pool_units, 0);
         assert_eq!(distribution.community_fund_units, 400);
         assert_eq!(distribution.entries.len(), 1);
-        assert_eq!(distribution.entries[0].destination, "rail:community");
+        assert_eq!(
+            distribution.entries[0].destination,
+            COMMUNITY_FUND_DESTINATION
+        );
     }
 
     #[test]
@@ -559,7 +564,7 @@ mod tests {
         let stake = usd(10);
         let required = usd(5_000);
         let base = inputs(&stake, &required);
-        let harms = [harm("key-a", "rail:community", 10)];
+        let harms = [harm("key-a", COMMUNITY_FUND_DESTINATION, 10)];
         assert_eq!(
             compute_slash_distribution(&base, &harms).unwrap_err(),
             SlashAmountError::CommunityFundCollision

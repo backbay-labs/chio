@@ -24,6 +24,10 @@ use chio_open_market::{
     },
     capability::scope::MonetaryAmount,
     crypto::Keypair,
+    finding_bid_policy::{
+        finding_bid_ceiling, BuyerFindingEstimate, FindingBidCeilingInput, FindingBidCeilingPolicy,
+        BUYER_METERING_HISTORY_V1,
+    },
     listing::{
         GenericListingActorKind, GenericListingArtifact, GenericListingBoundary,
         GenericListingCompatibilityReference, GenericListingFreshnessState,
@@ -50,28 +54,30 @@ fn finding_scope(finding: &Finding) -> String {
     format!("finding:{}", finding.finding_id)
 }
 
-/// Buyer-local elicitation arithmetic: a supplied re-derivation estimate
-/// discounted by planner-owned priors and capped by a supplied budget
-/// remainder. No authenticated quote producer or authoritative allocation
-/// is wired here.
-struct FindingBidBasis {
-    rederivation_estimate_units: u64,
-    would_have_run_bps: u16,
-    sibling_redundancy_bps: u16,
-    guarantee_class_bps: u16,
-    budget_remaining_units: u64,
-}
-
-fn finding_bid_ceiling(basis: &FindingBidBasis) -> u64 {
-    const BPS: u128 = 10_000;
-    let would = u128::from(basis.would_have_run_bps.min(10_000));
-    let keep = BPS - u128::from(basis.sibling_redundancy_bps.min(10_000));
-    let class = u128::from(basis.guarantee_class_bps.min(10_000));
-    let discounted =
-        u128::from(basis.rederivation_estimate_units) * would / BPS * keep / BPS * class / BPS;
-    u64::try_from(discounted)
-        .unwrap_or(u64::MAX)
-        .min(basis.budget_remaining_units)
+fn finding_bid_basis(estimate_units: &str) -> FindingBidCeilingInput {
+    FindingBidCeilingInput {
+        estimate: BuyerFindingEstimate {
+            units: estimate_units.to_string(),
+            currency: "USD".to_string(),
+            provenance: BUYER_METERING_HISTORY_V1.to_string(),
+            source_sha256: hex64('9'),
+            context_sha256: hex64('8'),
+            replay_recipe_sha256: hex64('7'),
+            observed_at_unix_ms: "1000".to_string(),
+            valid_until_unix_ms: "2000".to_string(),
+        },
+        policy: FindingBidCeilingPolicy {
+            budget_remaining_units: "10000".to_string(),
+            currency: "USD".to_string(),
+            would_have_run_bps: "6000".to_string(),
+            sibling_redundancy_bps: "2500".to_string(),
+            guarantee_class_bps: "10000".to_string(),
+        },
+        expected_source_sha256: hex64('9'),
+        expected_context_sha256: hex64('8'),
+        expected_replay_recipe_sha256: hex64('7'),
+        now_unix_ms: "1100".to_string(),
+    }
 }
 
 fn sealed_negative_result() -> Finding {
@@ -294,24 +300,22 @@ fn finding_purchase_clears_the_real_bid_path() {
 /// re-derivation estimate, and capped by the supplied budget remainder. It
 /// makes no claim about true value or authoritative funds.
 #[test]
-fn finding_bid_ceiling_is_bounded_and_budget_capped() {
-    let mut basis = FindingBidBasis {
-        rederivation_estimate_units: 4_200,
-        would_have_run_bps: 6_000,
-        sibling_redundancy_bps: 2_500,
-        guarantee_class_bps: 10_000,
-        budget_remaining_units: 10_000,
-    };
-    let ceiling = finding_bid_ceiling(&basis);
+fn finding_bid_ceiling_at_ceiling_clears_and_above_ceiling_rejects_real_marketplace() {
+    let mut basis = finding_bid_basis("4200");
+    let ceiling = finding_bid_ceiling(&basis)
+        .test_expect("compute buyer-local ceiling")
+        .parse::<u64>()
+        .test_expect("ceiling fits u64");
     // 4200 x 0.60 x 0.75 x 1.00 = 1890.
     assert_eq!(ceiling, 1_890);
-    assert!(ceiling <= basis.rederivation_estimate_units);
+    assert!(ceiling <= 4_200);
 
-    let mut higher_quote = FindingBidBasis {
-        rederivation_estimate_units: 8_400,
-        ..basis
-    };
-    assert!(finding_bid_ceiling(&higher_quote) >= ceiling);
+    let mut higher_quote = finding_bid_basis("8400");
+    let higher_ceiling = finding_bid_ceiling(&higher_quote)
+        .test_expect("compute higher buyer-local ceiling")
+        .parse::<u64>()
+        .test_expect("higher ceiling fits u64");
+    assert!(higher_ceiling >= ceiling);
 
     let operator = Keypair::generate();
     let agent = Keypair::generate();
@@ -352,9 +356,15 @@ fn finding_bid_ceiling_is_bounded_and_budget_capped() {
         Err(BiddingError::BidCeilingTooLow)
     ));
 
-    basis.budget_remaining_units = 500;
-    assert_eq!(finding_bid_ceiling(&basis), 500);
+    basis.policy.budget_remaining_units = "500".to_string();
+    assert_eq!(
+        finding_bid_ceiling(&basis).test_expect("compute budget-capped ceiling"),
+        "500"
+    );
 
-    higher_quote.would_have_run_bps = 0;
-    assert_eq!(finding_bid_ceiling(&higher_quote), 0);
+    higher_quote.policy.would_have_run_bps = "0".to_string();
+    assert_eq!(
+        finding_bid_ceiling(&higher_quote).test_expect("compute zero-policy ceiling"),
+        "0"
+    );
 }

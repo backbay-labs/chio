@@ -156,6 +156,10 @@ pub enum AdmissionOperationError {
     MissingProjectionCapability { capability: &'static str },
     #[error("durable admission mutation sequencer is poisoned")]
     MutationSequencerPoisoned,
+    #[error(
+        "durable admission store cannot be replaced after the finding pool ledger is configured"
+    )]
+    FindingPoolLedgerAlreadyConfigured,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

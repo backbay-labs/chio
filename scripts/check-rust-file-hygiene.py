@@ -223,13 +223,18 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store.rs": allow(
         "2026-08-31",
-        "receipt store hot-path module after batch-bounded rework; capped to current size until split",
-        max_lines=5_375,
+        "receipt store hot-path module with anchored receipt, lineage metadata, checkpoint, and retention writes plus qualified read verification; capped to current size until split",
+        max_lines=5_806,
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs": allow(
         "2026-08-31",
         "receipt retention regression suite; capped to current size until split",
         max_lines=4_668,
+    ),
+    "crates/platform/chio-store-sqlite/src/receipt_store/tests/verified_head.rs": allow(
+        "2026-08-31",
+        "receipt verified-head regression suite with live qualified rollback coverage; capped to current size until split",
+        max_lines=2_048,
     ),
     "crates/trust/chio-federation-transport-iroh/src/lanes/pheromone.rs": allow(
         "2026-08-31",
@@ -286,6 +291,11 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "market admission and quote test suite; capped to current size until split",
         max_lines=2_747,
     ),
+    "crates/economy/chio-open-market/tests/finding_admission.rs": allow(
+        "2026-08-31",
+        "cognition-market admission regression suite; capped to current M8 size until split",
+        max_lines=2_383,
+    ),
     "crates/economy/chio-settle/src/channel/tests/support.rs": allow(
         "2026-08-31",
         "settlement channel test support module; capped to current size until split",
@@ -303,13 +313,18 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs": allow(
         "2026-08-31",
-        "durable terminal coordinator with M6 status-release and recovery snapshots; capped to current size until split",
-        max_lines=2_418,
+        "durable terminal coordinator with M6 status-release and recovery snapshots plus M8 signed outcome and pool-claim binding; capped to current size until split",
+        max_lines=2_433,
+    ),
+    "crates/kernel/chio-kernel/src/kernel/construction.rs": allow(
+        "2026-08-31",
+        "kernel construction surface with M8 finding-pool ledger and receipt-flush lock wiring; capped to current size until split",
+        max_lines=2_034,
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
         "2026-08-31",
-        "kernel async evaluation core with M6 dispatch-frozen recovery status; capped to current size until split",
-        max_lines=2_199,
+        "kernel async evaluation core with M6 recovery status and M8 pool dispatch continuity; capped to current size until split",
+        max_lines=2_248,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/budget.rs": allow(
         "2026-08-31",
@@ -338,8 +353,13 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/kernel/chio-kernel/src/kernel/dispatch.rs": allow(
         "2026-08-31",
-        "kernel dispatch surface with M6 purchase and recovery status snapshots; capped to current size until split",
-        max_lines=2_025,
+        "kernel dispatch surface with M6 status snapshots and M8 request-scoped pool claims; capped to current size until split",
+        max_lines=2_060,
+    ),
+    "crates/kernel/chio-kernel/src/tool_outcome/release.rs": allow(
+        "2026-08-31",
+        "tool-outcome release surface; capped to current size until split",
+        max_lines=2_118,
     ),
     "crates/platform/chio-control-plane/src/lib.rs": allow(
         "2026-08-31",
@@ -396,6 +416,11 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "cognition challenge authority store; capped to current size until split",
         max_lines=5_590,
     ),
+    "crates/platform/chio-store-sqlite/src/finding_pool_ledger.rs": allow(
+        "2026-08-31",
+        "cognition pool ledger with durable delivery claims; capped to current M8 size until split",
+        max_lines=2_283,
+    ),
     "crates/platform/chio-store-sqlite/src/finding_challenge_store_tests.rs": allow(
         "2026-08-31",
         "cognition challenge authority store regression suite; capped to current size until split",
@@ -429,7 +454,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/support.rs": allow(
         "2026-08-31",
         "receipt store test support module; capped to current size until split",
-        max_lines=2_050,
+        max_lines=2_056,
     ),
     "crates/platform/chio-store-sqlite/src/serving_owner/global_commit_chain.rs": allow(
         "2026-08-31",

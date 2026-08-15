@@ -5,6 +5,9 @@ use chio_log_redact::redacted;
 use serde::Serialize;
 use tracing::warn;
 
+#[cfg(feature = "cognition-market-experimental")]
+#[path = "admission_coordinator/finding_pool_recovery.rs"]
+mod finding_pool_recovery;
 #[path = "admission_coordinator/terminal.rs"]
 mod terminal;
 pub(crate) use terminal::DurableToolReturnInput;
@@ -141,6 +144,26 @@ impl DurableAdmissionRuntime {
             .map_err(|_| unavailable())?
             .ok_or_else(unavailable)?;
         Ok((outcome, evaluation))
+    }
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+impl ChioKernel {
+    pub(super) fn ensure_finding_pool_configuration_precedes_startup_reconciliation(
+        &self,
+    ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+        let Some(runtime) = self.durable_admission_runtime.as_ref() else {
+            return Ok(());
+        };
+        let reconciled = runtime.startup_reconciled.lock().map_err(|_| {
+            crate::finding_pool::FindingPoolLedgerError::Storage(
+                "durable startup reconciliation lock is poisoned".to_owned(),
+            )
+        })?;
+        if *reconciled {
+            return Err(crate::finding_pool::FindingPoolLedgerError::StartupAlreadyReconciled);
+        }
+        Ok(())
     }
 }
 
@@ -353,10 +376,22 @@ impl ChioKernel {
             return Ok(0);
         }
         let operation_count = self.reconcile_recoverable_admissions()?;
+        #[cfg(feature = "cognition-market-experimental")]
+        let finding_pool_receipt_count = self.reconcile_finding_pool_mutation_receipts()?;
+        #[cfg(not(feature = "cognition-market-experimental"))]
+        let finding_pool_receipt_count = 0_usize;
+        #[cfg(feature = "cognition-market-experimental")]
+        let finding_pool_count = self.reconcile_finding_pool_terminal_claims()?;
+        #[cfg(not(feature = "cognition-market-experimental"))]
+        let finding_pool_count = 0_usize;
         let receipt_count = self.reconcile_durable_admission_receipt_projections()?;
-        let total = operation_count.checked_add(receipt_count).ok_or_else(|| {
-            KernelError::DurableAdmission("startup reconciliation count overflow".to_owned())
-        })?;
+        let total = operation_count
+            .checked_add(finding_pool_receipt_count)
+            .and_then(|count| count.checked_add(finding_pool_count))
+            .and_then(|count| count.checked_add(receipt_count))
+            .ok_or_else(|| {
+                KernelError::DurableAdmission("startup reconciliation count overflow".to_owned())
+            })?;
         *reconciled = true;
         Ok(total)
     }
@@ -537,6 +572,16 @@ impl ChioKernel {
             store_fence: runtime.fence.clone(),
         };
         let projection = verified_outcome_unknown_after_dispatch_projection(operation, context)?;
+        #[cfg(feature = "cognition-market-experimental")]
+        self.finalize_finding_pool_claim_after_unknown_dispatch(
+            operation.binding().operation_id().as_str(),
+            trusted_now_unix_ms,
+        )
+        .map_err(|error| {
+            KernelError::DurableAdmission(format!(
+                "outcome-unknown finding pool finalization failed: {error}"
+            ))
+        })?;
         let terminal = runtime
             .store
             .commit_admission_projection(&projection)
@@ -1710,6 +1755,16 @@ impl ChioKernel {
                 ));
             }
         }
+        #[cfg(feature = "cognition-market-experimental")]
+        self.release_finding_pool_claim_before_dispatch(
+            current.binding().operation_id().as_str(),
+            trusted_now_unix_ms,
+        )
+        .map_err(|error| {
+            KernelError::DurableAdmission(format!(
+                "pre-dispatch finding pool claim release failed: {error}"
+            ))
+        })?;
         let projection = verified_released_pre_dispatch_compensation_projection(
             &current,
             context,

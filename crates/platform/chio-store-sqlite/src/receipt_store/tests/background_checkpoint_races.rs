@@ -545,7 +545,7 @@ fn cache_miss_uses_locked_legacy_replacement_frontier_when_no_build_is_due(
     );
 
     head.chain_frontier = None;
-    let advanced = maybe_build_checkpoint(&mut connection, &mut head, &signer(&keypair, 1))?;
+    let advanced = maybe_build_checkpoint(&mut connection, &mut head, &signer(&keypair, 1), None)?;
     assert!(advanced, "the locked audit must adopt checkpoint B");
     assert_eq!(head.latest_checkpoint.as_ref(), Some(&checkpoint_b));
     let adopted_frontier = head
@@ -624,6 +624,7 @@ fn cache_hit_adopts_valid_different_batch_winner_frontier() -> Result<(), Box<dy
         Some(&checkpoint_one),
         &prior_frontier,
         &loser,
+        None,
     )?;
     assert_eq!(adopted, winner);
     assert_eq!(adopted_frontier.root(), winner.body.chain_root);
@@ -787,6 +788,7 @@ fn archived_peer_checkpoint_winner_is_authenticated_before_adoption(
         Some(&checkpoint_one),
         &prior_frontier,
         &loser,
+        None,
     )?;
     assert_eq!(
         adopted, winner,
@@ -935,6 +937,7 @@ fn archived_peer_checkpoint_winner_is_authenticated_before_adoption(
         Some(&checkpoint_one),
         &prior_frontier,
         &loser,
+        None,
     )
     .err()
     .ok_or("attacker-signed archived winner must be rejected")?;

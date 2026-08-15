@@ -1,5 +1,9 @@
 use super::*;
 
+use std::path::PathBuf;
+
+use r2d2_sqlite::SqliteConnectionManager;
+
 /// Tables that identify a database this receipt store may open, all of them the
 /// store's own: `chio_tool_receipts` is the current anchor (also the table the
 /// store shipped before schema stamping existed) and `http_receipts` /
@@ -112,6 +116,138 @@ fn settlement_store_binding_if_ready(
     )))
 }
 
+fn ensure_receipt_sink_identity(connection: &Connection) -> Result<String, ReceiptStoreError> {
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chio_receipt_sink_identity (\
+             singleton INTEGER PRIMARY KEY CHECK (singleton = 1), \
+             sink_id TEXT NOT NULL UNIQUE\
+         ) STRICT;",
+    )?;
+    connection.execute(
+        "INSERT OR IGNORE INTO chio_receipt_sink_identity (singleton, sink_id) VALUES (1, ?1)",
+        [uuid::Uuid::now_v7().to_string()],
+    )?;
+    load_receipt_sink_identity(connection)
+}
+
+fn load_receipt_sink_identity(connection: &Connection) -> Result<String, ReceiptStoreError> {
+    let sink_id = connection
+        .query_row(
+            "SELECT sink_id FROM chio_receipt_sink_identity WHERE singleton = 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| {
+            ReceiptStoreError::Conflict(format!(
+                "receipt database has no durable sink identity: {error}"
+            ))
+        })?;
+    let parsed = uuid::Uuid::parse_str(&sink_id).map_err(|_| {
+        ReceiptStoreError::Conflict("receipt database sink identity is invalid".to_owned())
+    })?;
+    if parsed.to_string() != sink_id {
+        return Err(ReceiptStoreError::Conflict(
+            "receipt database sink identity is not canonical".to_owned(),
+        ));
+    }
+    Ok(sink_id)
+}
+
+fn receipt_sink_filesystem_path(path: &Path) -> Result<PathBuf, ReceiptStoreError> {
+    let Some(path_text) = path.to_str() else {
+        return Ok(path.to_path_buf());
+    };
+    if crate::is_in_memory_sqlite_path(path_text) {
+        return Err(ReceiptStoreError::Conflict(
+            "finding-pool receipt sink requires a durable SQLite path".to_string(),
+        ));
+    }
+    let path_without_fragment = path_text
+        .split_once('#')
+        .map_or(path_text, |(database, _)| database);
+    let filesystem_path = crate::sqlite_filesystem_path(path_without_fragment);
+    let filesystem_path = if path_text.starts_with("file:") {
+        PathBuf::from(crate::percent_decode_sqlite_uri(
+            filesystem_path.to_string_lossy().as_ref(),
+        ))
+    } else {
+        filesystem_path
+    };
+    Ok(filesystem_path)
+}
+
+type QualifiedReceiptSinkParts = (
+    Option<String>,
+    Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
+    Option<Arc<ReceiptSinkQualification>>,
+);
+
+fn qualify_receipt_sink(
+    path: &Path,
+    connection: &Connection,
+    internal_sink_id: &str,
+    rollback_anchor_root: Option<&Path>,
+) -> Result<QualifiedReceiptSinkParts, ReceiptStoreError> {
+    let Some(rollback_anchor_root) = rollback_anchor_root else {
+        return Ok((None, None, None));
+    };
+    let filesystem_path = receipt_sink_filesystem_path(path)?;
+    crate::rollback_generation::require_separate_snapshot_domain(
+        &filesystem_path,
+        rollback_anchor_root,
+    )
+    .map_err(|error| {
+        ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+    })?;
+    let qualification = Arc::new(ReceiptSinkQualification::capture(
+        &filesystem_path,
+        internal_sink_id,
+    )?);
+    let file_sink_binding = qualification.durable_file_binding();
+    ensure_receipt_rollback_generation(connection)?;
+    let mut scope = Vec::new();
+    append_receipt_sink_binding_part(&mut scope, b"chio.receipt-store.rollback-generation.v1");
+    append_receipt_sink_binding_part(&mut scope, file_sink_binding.as_bytes());
+    let anchor =
+        crate::rollback_generation::RollbackGenerationAnchor::open(rollback_anchor_root, &scope)
+            .map(Arc::new)
+            .map_err(|error| {
+                ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+            })?;
+    anchor
+        .bind_initial_while(|| {
+            let generation =
+                load_receipt_rollback_generation(connection).map_err(|error| error.to_string())?;
+            let has_receipts =
+                receipt_store_has_receipts(connection).map_err(|error| error.to_string())?;
+            Ok((generation, !has_receipts))
+        })
+        .map_err(|error| {
+            ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+        })?;
+    let anchor_instance_id = anchor.instance_id().map_err(|error| {
+        ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+    })?;
+    let durable_sink_id = anchored_receipt_sink_binding(&file_sink_binding, &anchor_instance_id);
+    Ok((Some(durable_sink_id), Some(anchor), Some(qualification)))
+}
+
+fn anchored_receipt_sink_binding(file_sink_binding: &str, anchor_instance_id: &str) -> String {
+    let mut material = Vec::new();
+    append_receipt_sink_binding_part(
+        &mut material,
+        b"chio.receipt-store.anchored-durable-sink-binding.v1",
+    );
+    append_receipt_sink_binding_part(&mut material, file_sink_binding.as_bytes());
+    append_receipt_sink_binding_part(&mut material, anchor_instance_id.as_bytes());
+    sha256_hex(&material)
+}
+
+fn append_receipt_sink_binding_part(material: &mut Vec<u8>, part: &[u8]) {
+    material.extend_from_slice(&(part.len() as u64).to_be_bytes());
+    material.extend_from_slice(part);
+}
+
 fn settlement_projection_schema_is_installed(
     connection: &Connection,
 ) -> Result<bool, ReceiptStoreError> {
@@ -217,22 +353,80 @@ impl SqliteReceiptStore {
         path: impl AsRef<Path>,
         options: crate::SqliteStoreOptions,
     ) -> Result<Self, ReceiptStoreError> {
-        Self::open_with_pool_config_and_flags(path, options, true)
+        Self::open_with_pool_config_and_flags(path, options, true, None)
     }
 
     pub fn open_existing_with_options(
         path: impl AsRef<Path>,
         options: crate::SqliteStoreOptions,
     ) -> Result<Self, ReceiptStoreError> {
-        Self::open_with_pool_config_and_flags(path, options, false)
+        Self::open_with_pool_config_and_flags(path, options, false, None)
+    }
+
+    /// Open a receipt store that may be bound to a qualified finding-pool
+    /// ledger. The anchor root must live on a different filesystem device from
+    /// the SQLite database and must be private to the effective user.
+    pub fn open_for_finding_pool(
+        path: impl AsRef<Path>,
+        rollback_anchor_root: impl AsRef<Path>,
+    ) -> Result<Self, ReceiptStoreError> {
+        Self::open_with_pool_config_and_flags(
+            path,
+            crate::SqliteStoreOptions::default(),
+            true,
+            Some(rollback_anchor_root.as_ref()),
+        )
+    }
+
+    /// Reopen an existing receipt store with its protected finding-pool sink
+    /// generation. An existing populated store cannot be adopted if its
+    /// external anchor is absent.
+    pub fn open_existing_for_finding_pool(
+        path: impl AsRef<Path>,
+        rollback_anchor_root: impl AsRef<Path>,
+    ) -> Result<Self, ReceiptStoreError> {
+        Self::open_with_pool_config_and_flags(
+            path,
+            crate::SqliteStoreOptions::default(),
+            false,
+            Some(rollback_anchor_root.as_ref()),
+        )
     }
 
     fn open_with_pool_config_and_flags(
         path: impl AsRef<Path>,
         options: crate::SqliteStoreOptions,
         create_if_missing: bool,
+        rollback_anchor_root: Option<&Path>,
     ) -> Result<Self, ReceiptStoreError> {
         let path = path.as_ref();
+        if rollback_anchor_root.is_some() {
+            let Some(path_text) = path.to_str() else {
+                return Err(ReceiptStoreError::Conflict(
+                    "finding-pool receipt sink requires a durable SQLite path".to_string(),
+                ));
+            };
+            if crate::is_in_memory_sqlite_path(path_text) {
+                return Err(ReceiptStoreError::Conflict(
+                    "finding-pool receipt sink requires a durable SQLite path".to_string(),
+                ));
+            }
+            if crate::sqlite_uri_disables_locking(path_text) {
+                return Err(ReceiptStoreError::Conflict(
+                    "finding-pool receipt sink SQLite URI disables file locking".to_string(),
+                ));
+            }
+            if crate::sqlite_uri_is_read_only(path_text) {
+                return Err(ReceiptStoreError::Conflict(
+                    "finding-pool receipt sink SQLite URI is read-only".to_string(),
+                ));
+            }
+            if crate::sqlite_uri_has_nonlocal_authority(path_text) {
+                return Err(ReceiptStoreError::Conflict(
+                    "finding-pool receipt sink SQLite URI has a non-local authority".to_string(),
+                ));
+            }
+        }
         let connection_flags = if create_if_missing {
             None
         } else {
@@ -281,6 +475,9 @@ impl SqliteReceiptStore {
             configure_sqlite_connection(&mut connection, options.pool.max_page_count)?;
             super::support::ensure_transparency_projection_guards(&connection)?;
             verify_receipt_cost_projection(&connection)?;
+            let internal_sink_id = load_receipt_sink_identity(&connection)?;
+            let (durable_sink_id, rollback_anchor, receipt_sink_qualification) =
+                qualify_receipt_sink(path, &connection, &internal_sink_id, rollback_anchor_root)?;
             let settlement_store_binding = settlement_store_binding_if_ready(&connection)?;
             drop(connection);
 
@@ -290,6 +487,7 @@ impl SqliteReceiptStore {
                 "reader",
                 connection_flags,
                 options.pool.max_page_count,
+                receipt_sink_qualification.clone(),
             )?;
             let writer_pool = build_receipt_pool(
                 path,
@@ -297,15 +495,21 @@ impl SqliteReceiptStore {
                 "writer",
                 connection_flags,
                 options.pool.max_page_count,
+                receipt_sink_qualification.clone(),
             )?;
 
             return Ok(Self {
                 receipt_commit_actor: ReceiptCommitActor::start(
                     writer_pool,
                     options.incremental_verification,
+                    rollback_anchor.clone(),
+                    receipt_sink_qualification.clone(),
                 ),
+                rollback_anchor,
                 pool: reader_pool,
                 settlement_store_binding,
+                durable_sink_id,
+                receipt_sink_qualification,
                 strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
                 incremental_verification: options.incremental_verification,
             });
@@ -1306,6 +1510,7 @@ impl SqliteReceiptStore {
         let migration =
             connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         ensure_capability_lineage_provenance_columns(&migration)?;
+        let internal_sink_id = ensure_receipt_sink_identity(&migration)?;
         crate::stamp_schema_version(
             &migration,
             RECEIPT_STORE_SCHEMA_KEY,
@@ -1313,6 +1518,9 @@ impl SqliteReceiptStore {
         )
         .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
         migration.commit()?;
+
+        let (durable_sink_id, rollback_anchor, receipt_sink_qualification) =
+            qualify_receipt_sink(path, &connection, &internal_sink_id, rollback_anchor_root)?;
 
         let settlement_store_binding = settlement_store_binding_if_ready(&connection)?;
 
@@ -1324,6 +1532,7 @@ impl SqliteReceiptStore {
             "reader",
             connection_flags,
             options.pool.max_page_count,
+            receipt_sink_qualification.clone(),
         )?;
         let writer_pool = build_receipt_pool(
             path,
@@ -1331,15 +1540,21 @@ impl SqliteReceiptStore {
             "writer",
             connection_flags,
             options.pool.max_page_count,
+            receipt_sink_qualification.clone(),
         )?;
 
         Ok(Self {
             receipt_commit_actor: ReceiptCommitActor::start(
                 writer_pool,
                 options.incremental_verification,
+                rollback_anchor.clone(),
+                receipt_sink_qualification.clone(),
             ),
+            rollback_anchor,
             pool: reader_pool,
             settlement_store_binding,
+            durable_sink_id,
+            receipt_sink_qualification,
             strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
             incremental_verification: options.incremental_verification,
         })
@@ -1367,6 +1582,7 @@ fn build_receipt_pool(
     pool_name: &str,
     flags: Option<rusqlite::OpenFlags>,
     max_page_count: Option<u32>,
+    receipt_sink_qualification: Option<Arc<ReceiptSinkQualification>>,
 ) -> Result<Pool<SqliteConnectionManager>, ReceiptStoreError> {
     if max_size == 0 {
         return Err(ReceiptStoreError::Pool(format!(
@@ -1381,7 +1597,13 @@ fn build_receipt_pool(
         configure_sqlite_connection(connection, max_page_count).map_err(|error| match error {
             ReceiptStoreError::Sqlite(error) => error,
             other => rusqlite::Error::InvalidParameterName(other.to_string()),
-        })
+        })?;
+        if let Some(qualification) = receipt_sink_qualification.as_deref() {
+            qualification
+                .validate_connection(connection)
+                .map_err(|error| rusqlite::Error::InvalidParameterName(error.to_string()))?;
+        }
+        Ok(())
     });
     Pool::builder()
         .max_size(max_size)

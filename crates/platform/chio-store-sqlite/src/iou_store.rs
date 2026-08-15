@@ -17,6 +17,8 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
 
+use crate::receipt_store::{receipt_pool_connection, verify_rollback, ReceiptSinkQualification};
+
 /// SQL migration applied by [`SqliteIouEnvelopeStore::open_with_pool`]
 /// to create the `iou_envelope` table.
 pub const IOU_ENVELOPE_MIGRATION: &str = r#"
@@ -45,6 +47,8 @@ pub struct SqliteIouEnvelopeStore {
     /// serialized through the receipt store's single writer connection.
     /// `None` only for the standalone `open_with_pool` path.
     writer: Option<crate::receipt_store::WriterHandle>,
+    rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
+    receipt_sink_qualification: Option<Arc<ReceiptSinkQualification>>,
 }
 
 impl SqliteIouEnvelopeStore {
@@ -59,7 +63,12 @@ impl SqliteIouEnvelopeStore {
         connection
             .execute_batch(IOU_ENVELOPE_MIGRATION)
             .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
-        Ok(Self { pool, writer: None })
+        Ok(Self {
+            pool,
+            writer: None,
+            rollback_anchor: None,
+            receipt_sink_qualification: None,
+        })
     }
 
     /// Construct the store sharing the connection pool of an
@@ -76,7 +85,7 @@ impl SqliteIouEnvelopeStore {
         // Run the additive migration on the writer connection so the reader
         // pool never executes DDL.
         writer
-            .run_write(|connection| {
+            .run_write_anchored_metadata(|connection| {
                 connection
                     .execute_batch(IOU_ENVELOPE_MIGRATION)
                     .map_err(chio_kernel::ReceiptStoreError::from)
@@ -85,7 +94,20 @@ impl SqliteIouEnvelopeStore {
         Ok(Self {
             pool: store.pool.clone(),
             writer: Some(writer),
+            rollback_anchor: store.rollback_anchor.clone(),
+            receipt_sink_qualification: store.receipt_sink_qualification.clone(),
         })
+    }
+
+    fn connection(
+        &self,
+    ) -> Result<r2d2::PooledConnection<SqliteConnectionManager>, IouEnvelopeStoreError> {
+        let connection =
+            receipt_pool_connection(&self.pool, self.receipt_sink_qualification.as_deref())
+                .map_err(|error| IouEnvelopeStoreError::Backend(error.to_string()))?;
+        verify_rollback(&connection, self.rollback_anchor.as_deref(), false)
+            .map_err(|error| IouEnvelopeStoreError::Backend(error.to_string()))?;
+        Ok(connection)
     }
 }
 
@@ -189,7 +211,7 @@ impl IouEnvelopeStore for SqliteIouEnvelopeStore {
                 let issuer_key = issuer_key_str.clone();
                 let canonical = canonical_str.to_string();
                 writer
-                    .run_write(move |connection| {
+                    .run_write_anchored_metadata(move |connection| {
                         // Propagate the IOU insert result to the writer.
                         // Wrapping the inner result in `Ok(...)` would make the
                         // writer actor record EVERY insert as committed -
@@ -235,10 +257,7 @@ impl IouEnvelopeStore for SqliteIouEnvelopeStore {
                     })
             }
             None => {
-                let connection = self
-                    .pool
-                    .get()
-                    .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
+                let connection = self.connection()?;
                 insert_envelope_on_connection(
                     &connection,
                     envelope.body.receipt_id.as_str(),
@@ -258,10 +277,7 @@ impl IouEnvelopeStore for SqliteIouEnvelopeStore {
         &self,
         receipt_id: &str,
     ) -> Result<Option<IouEnvelope>, IouEnvelopeStoreError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
+        let connection = self.connection()?;
         let row = connection
             .query_row(
                 "SELECT canonical_json FROM iou_envelope WHERE receipt_id = ?1",
@@ -440,6 +456,54 @@ mod tests {
             .expect("envelope was inserted");
         assert_eq!(fetched, envelope);
         std::mem::forget(dir);
+    }
+
+    #[test]
+    fn qualified_alongside_store_rejects_iou_rollback() {
+        let dir = tempdir().unwrap();
+        let anchor_dir = tempfile::Builder::new()
+            .prefix("chio-iou-anchor")
+            .tempdir_in("/dev/shm")
+            .unwrap();
+        #[cfg(unix)]
+        for root in [dir.path(), anchor_dir.path()] {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let path = dir.path().join("qualified-iou.sqlite3");
+        let snapshot = dir.path().join("before-iou.sqlite3");
+        let receipt_store =
+            crate::SqliteReceiptStore::open_for_finding_pool(&path, anchor_dir.path()).unwrap();
+        let store = SqliteIouEnvelopeStore::open_alongside(&receipt_store).unwrap();
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .unwrap();
+        drop(connection);
+        std::fs::copy(&path, &snapshot).unwrap();
+
+        let kp = Keypair::generate();
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [kp.public_key()],
+        );
+        let receipt = make_priced_receipt(&kp, "qualified-iou", 42);
+        let envelope = account.evaluate(&receipt).unwrap().unwrap();
+        assert!(store.insert(&envelope).unwrap());
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .unwrap();
+        drop(connection);
+        std::fs::copy(&snapshot, &path).unwrap();
+
+        let error = store
+            .get_by_receipt_id(&receipt.id)
+            .expect_err("IOU rollback must fail a qualified read");
+        assert!(
+            matches!(error, IouEnvelopeStoreError::Backend(ref message) if message.contains("rollback protection")),
+            "unexpected IOU rollback error: {error}"
+        );
     }
 
     #[test]

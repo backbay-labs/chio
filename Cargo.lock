@@ -3860,6 +3860,7 @@ dependencies = [
  "chio-settle",
  "chio-store-sqlite",
  "chio-supervisor",
+ "chio-swarm-authority",
  "chio-test-support",
  "chio-tool-call-fabric",
  "chio-underwriting",
@@ -4202,6 +4203,7 @@ dependencies = [
  "chio-fiscal",
  "chio-governance",
  "chio-listing",
+ "chio-pheromone",
  "chio-test-support",
  "serde",
  "serde_json",
@@ -4653,6 +4655,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-sqlite-file-identity"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "tempfile",
+]
+
+[[package]]
 name = "chio-store-sqlite"
 version = "0.1.0"
 dependencies = [
@@ -4667,8 +4677,11 @@ dependencies = [
  "chio-fiscal",
  "chio-kernel",
  "chio-kernel-core",
+ "chio-open-market",
  "chio-settle",
+ "chio-sqlite-file-identity",
  "chio-supervisor",
+ "chio-swarm-authority",
  "chio-test-support",
  "criterion",
  "frost-ed25519",

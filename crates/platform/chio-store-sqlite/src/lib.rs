@@ -48,6 +48,8 @@ pub mod finding_challenge_store;
 #[cfg(feature = "cognition-market-experimental")]
 pub mod finding_market_store;
 #[cfg(feature = "cognition-market-experimental")]
+pub mod finding_pool_ledger;
+#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_purchase_store;
 #[cfg(feature = "cognition-market-experimental")]
 pub mod finding_recovery_store;
@@ -64,6 +66,7 @@ pub mod receipt_query;
 pub mod receipt_store;
 mod replay_clock;
 pub mod revocation_store;
+mod rollback_generation;
 pub mod schema_version;
 pub mod serving_owner;
 pub mod settle_attempts;
@@ -145,18 +148,140 @@ pub fn is_in_memory_sqlite_path(path: &str) -> bool {
     let Some(rest) = path.strip_prefix("file:") else {
         return false;
     };
+    // SQLite URI fragments do not participate in either the filename or the
+    // query. Strip them before interpreting the durability-sensitive parts.
+    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
+    // SQLite terminates a percent-decoded filename or URI parameter at NUL.
+    // Classify any such URI as non-durable so qualified stores reject it
+    // before SQLite can silently open a temporary or in-memory database.
+    if percent_decode_sqlite_uri(rest).contains('\0') {
+        return true;
+    }
     let (name, query) = match rest.split_once('?') {
         Some((name, query)) => (name, Some(query)),
         None => (rest, None),
     };
-    if name.eq_ignore_ascii_case(":memory:") {
+    let decoded_name = percent_decode_sqlite_uri(name);
+    if decoded_name.eq_ignore_ascii_case(":memory:") {
         return true;
     }
     query.is_some_and(|query| {
-        query
+        percent_decode_sqlite_uri(query)
             .split('&')
-            .any(|param| param.eq_ignore_ascii_case("mode=memory"))
+            .filter_map(|parameter| parameter.split_once('='))
+            .any(|(key, value)| {
+                (key.eq_ignore_ascii_case("mode") && value.eq_ignore_ascii_case("memory"))
+                    || (key.eq_ignore_ascii_case("vfs") && value.eq_ignore_ascii_case("memdb"))
+            })
     })
+}
+
+fn percent_decode_sqlite_uri(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            if let (Some(high), Some(low)) =
+                (hex_nibble(bytes[index + 1]), hex_nibble(bytes[index + 2]))
+            {
+                decoded.push((high << 4) | low);
+                index += 3;
+                continue;
+            }
+        }
+        decoded.push(bytes[index]);
+        index += 1;
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+fn percent_decode_sqlite_uri_component(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let high = *bytes.get(index + 1)?;
+            let low = *bytes.get(index + 2)?;
+            decoded.push(
+                hex_nibble(high)?
+                    .checked_mul(16)?
+                    .checked_add(hex_nibble(low)?)?,
+            );
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
+}
+
+pub(crate) fn sqlite_uri_has_nonlocal_authority(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("file://") else {
+        return false;
+    };
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let Some(authority) = percent_decode_sqlite_uri_component(&rest[..authority_end]) else {
+        return true;
+    };
+    !authority.is_empty() && !authority.eq_ignore_ascii_case("localhost")
+}
+
+pub(crate) fn sqlite_uri_disables_locking(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("file:") else {
+        return false;
+    };
+    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
+    let Some((_, query)) = rest.split_once('?') else {
+        return false;
+    };
+    query.split('&').any(|pair| {
+        let (key, value) = pair.split_once('=').map_or((pair, ""), |parts| parts);
+        let Some(key) = percent_decode_sqlite_uri_component(key) else {
+            return true;
+        };
+        let Some(value) = percent_decode_sqlite_uri_component(value) else {
+            return true;
+        };
+        key.eq_ignore_ascii_case("nolock")
+            || (key.eq_ignore_ascii_case("vfs") && value.eq_ignore_ascii_case("unix-none"))
+    })
+}
+
+pub(crate) fn sqlite_uri_is_read_only(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("file:") else {
+        return false;
+    };
+    let rest = rest.split_once('#').map_or(rest, |(uri, _)| uri);
+    let Some((_, query)) = rest.split_once('?') else {
+        return false;
+    };
+    query.split('&').any(|pair| {
+        let (key, value) = pair.split_once('=').map_or((pair, ""), |parts| parts);
+        let (Some(key), Some(value)) = (
+            percent_decode_sqlite_uri_component(key),
+            percent_decode_sqlite_uri_component(value),
+        ) else {
+            return true;
+        };
+        (key.eq_ignore_ascii_case("mode") && value.eq_ignore_ascii_case("ro"))
+            || (key.eq_ignore_ascii_case("immutable")
+                && !matches!(
+                    value.to_ascii_lowercase().as_str(),
+                    "0" | "off" | "false" | "no"
+                ))
+    })
+}
+
+const fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 /// The directory that must exist before SQLite opens `path`, or `None` when
@@ -550,7 +675,9 @@ pub use tool_outcome_store::SqliteToolOutcomeStore;
 
 #[cfg(test)]
 mod tests {
-    use super::{is_in_memory_sqlite_path, sqlite_parent_dir_to_create};
+    use super::{
+        is_in_memory_sqlite_path, sqlite_parent_dir_to_create, sqlite_uri_has_nonlocal_authority,
+    };
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -595,6 +722,13 @@ mod tests {
             "file::memory:",
             "file:receipts.db?mode=memory",
             "file:receipts.db?cache=shared&mode=memory",
+            "file:pool?vfs=memdb",
+            "file:pool?mode%3Dmemory",
+            "file:pool?mode=%6demory",
+            "file:%3Amemory%3A",
+            "file:%00",
+            "file::memory:%00",
+            "file:pool?mode=memory%00",
         ] {
             assert!(
                 is_in_memory_sqlite_path(path),
@@ -616,6 +750,28 @@ mod tests {
                 !is_in_memory_sqlite_path(path),
                 "{path} must classify as durable"
             );
+        }
+    }
+
+    #[test]
+    fn classifies_sqlite_uri_authorities() {
+        for path in [
+            "receipts.db",
+            "file:/var/lib/chio/receipts.db",
+            "file:///var/lib/chio/receipts.db",
+            "file://localhost/var/lib/chio/receipts.db",
+            "file://LOCALHOST/var/lib/chio/receipts.db",
+            "file://%6cocalhost/var/lib/chio/receipts.db",
+        ] {
+            assert!(!sqlite_uri_has_nonlocal_authority(path), "{path}");
+        }
+        for path in [
+            "file://remote-host/var/lib/chio/receipts.db",
+            "file://%72emote-host/var/lib/chio/receipts.db",
+            "file://localhost%00/var/lib/chio/receipts.db",
+            "file://%zz/var/lib/chio/receipts.db",
+        ] {
+            assert!(sqlite_uri_has_nonlocal_authority(path), "{path}");
         }
     }
 }

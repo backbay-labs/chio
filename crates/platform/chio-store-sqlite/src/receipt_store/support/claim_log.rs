@@ -55,6 +55,7 @@ pub(crate) use self::state_converters::{
 };
 pub(crate) use self::validation::{
     backfill_claim_receipt_log_entries, validate_claim_receipt_log_entries,
+    validate_or_backfill_claim_receipt_log_entries_in_transaction,
 };
 // Reachable in the lib build only through `backfill_claim_receipt_log_entries`
 // / `validate_claim_receipt_log_entries` above; this re-export exists so

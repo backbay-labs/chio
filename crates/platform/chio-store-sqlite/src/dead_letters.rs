@@ -15,6 +15,8 @@
 //! `CREATE INDEX IF NOT EXISTS`, so it can run repeatedly against a
 //! receipt-store database that already holds other tables.
 
+use std::sync::Arc;
+
 use chio_core::canonical::canonical_json_bytes;
 use chio_settle::{DeadLetterRecord, SETTLE_DEAD_LETTER_SCHEMA};
 use r2d2::Pool;
@@ -22,6 +24,8 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
 use thiserror::Error;
+
+use crate::receipt_store::{receipt_pool_connection, verify_rollback, ReceiptSinkQualification};
 
 /// SQL migration applied by [`SqliteDeadLetterStore::open_with_pool`]
 /// to create the `settle_dead_letters` table.
@@ -86,6 +90,8 @@ struct DeadLetterSchemaProbe {
 pub struct SqliteDeadLetterStore {
     pool: Pool<SqliteConnectionManager>,
     writer: Option<crate::receipt_store::WriterHandle>,
+    rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
+    receipt_sink_qualification: Option<Arc<ReceiptSinkQualification>>,
 }
 
 fn encode_dead_letter(record: &DeadLetterRecord) -> Result<(i64, Vec<u8>), DeadLetterStoreError> {
@@ -340,7 +346,12 @@ impl SqliteDeadLetterStore {
         connection
             .execute_batch(SETTLE_DEAD_LETTERS_MIGRATION)
             .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
-        Ok(Self { pool, writer: None })
+        Ok(Self {
+            pool,
+            writer: None,
+            rollback_anchor: None,
+            receipt_sink_qualification: None,
+        })
     }
 
     /// Construct the store sharing the connection pool of an existing
@@ -348,7 +359,7 @@ impl SqliteDeadLetterStore {
     pub fn open_alongside(store: &crate::SqliteReceiptStore) -> Result<Self, DeadLetterStoreError> {
         let writer = store.writer_handle();
         writer
-            .run_write(|connection| {
+            .run_write_anchored_metadata(|connection| {
                 connection
                     .execute_batch(SETTLE_DEAD_LETTERS_MIGRATION)
                     .map_err(chio_kernel::ReceiptStoreError::from)
@@ -357,7 +368,20 @@ impl SqliteDeadLetterStore {
         Ok(Self {
             pool: store.pool.clone(),
             writer: Some(writer),
+            rollback_anchor: store.rollback_anchor.clone(),
+            receipt_sink_qualification: store.receipt_sink_qualification.clone(),
         })
+    }
+
+    fn connection(
+        &self,
+    ) -> Result<r2d2::PooledConnection<SqliteConnectionManager>, DeadLetterStoreError> {
+        let connection =
+            receipt_pool_connection(&self.pool, self.receipt_sink_qualification.as_deref())
+                .map_err(dead_letter_error_from_receipt_store)?;
+        verify_rollback(&connection, self.rollback_anchor.as_deref(), false)
+            .map_err(dead_letter_error_from_receipt_store)?;
+        Ok(connection)
     }
 
     /// Persist a dead-letter record. Idempotent on byte-identical
@@ -368,17 +392,14 @@ impl SqliteDeadLetterStore {
             Some(writer) => {
                 let record = record.clone();
                 writer
-                    .run_write(move |connection| {
-                        insert_dead_letter_transaction(connection, &record)
+                    .run_write_anchored_metadata(move |connection| {
+                        insert_dead_letter_on_connection(connection, &record)
                             .map_err(dead_letter_error_into_receipt_store)
                     })
                     .map_err(dead_letter_error_from_receipt_store)
             }
             None => {
-                let mut connection = self
-                    .pool
-                    .get()
-                    .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
+                let mut connection = self.connection()?;
                 insert_dead_letter_transaction(&mut connection, record)
             }
         }
@@ -386,20 +407,14 @@ impl SqliteDeadLetterStore {
 
     /// Look up a single dead-letter record by `receipt_id`.
     pub fn get(&self, receipt_id: &str) -> Result<Option<DeadLetterRecord>, DeadLetterStoreError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
+        let connection = self.connection()?;
         read_dead_letter_on_connection(&connection, receipt_id)
     }
 
     /// List all dead-letter records sorted by finalization time then
     /// receipt id (matching the deterministic settlement ordering).
     pub fn list(&self) -> Result<Vec<DeadLetterRecord>, DeadLetterStoreError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
+        let connection = self.connection()?;
         let mut stmt = connection
             .prepare(
                 "SELECT receipt_id, finalized_at, attempts, reason, pipeline_error, canonical_json \
@@ -424,17 +439,14 @@ impl SqliteDeadLetterStore {
             Some(writer) => {
                 let receipt_id = receipt_id.to_string();
                 writer
-                    .run_write(move |connection| {
+                    .run_write_anchored_metadata(move |connection| {
                         clear_dead_letter_on_connection(connection, &receipt_id)
                             .map_err(dead_letter_error_into_receipt_store)
                     })
                     .map_err(dead_letter_error_from_receipt_store)
             }
             None => {
-                let connection = self
-                    .pool
-                    .get()
-                    .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
+                let connection = self.connection()?;
                 clear_dead_letter_on_connection(&connection, receipt_id)
             }
         }
@@ -765,6 +777,53 @@ mod tests {
             .failed_total;
 
         assert_eq!(failed_after, failed_before + 1);
+    }
+
+    #[test]
+    fn qualified_alongside_store_rejects_dead_letter_rollback() {
+        let dir = tempdir().test_expect("temporary directory creates");
+        let anchor_dir = tempfile::Builder::new()
+            .prefix("chio-dead-letter-anchor")
+            .tempdir_in("/dev/shm")
+            .test_expect("anchor directory creates");
+        #[cfg(unix)]
+        for root in [dir.path(), anchor_dir.path()] {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))
+                .test_expect("test directory permissions update");
+        }
+        let path = dir.path().join("qualified-dead-letter.sqlite3");
+        let snapshot = dir.path().join("before-dead-letter.sqlite3");
+        let receipt_store =
+            crate::SqliteReceiptStore::open_for_finding_pool(&path, anchor_dir.path())
+                .test_expect("qualified receipt store opens");
+        let store = SqliteDeadLetterStore::open_alongside(&receipt_store)
+            .test_expect("dead-letter store opens alongside qualified receipt store");
+        let connection = rusqlite::Connection::open(&path).test_expect("database opens");
+        connection
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .test_expect("snapshot checkpoint completes");
+        drop(connection);
+        std::fs::copy(&path, &snapshot).test_expect("database snapshot copies");
+
+        let record = sample_record("qualified-dead-letter", 1);
+        store
+            .insert(&record)
+            .test_expect("dead-letter insert commits");
+        let connection = rusqlite::Connection::open(&path).test_expect("database reopens");
+        connection
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .test_expect("mutation checkpoint completes");
+        drop(connection);
+        std::fs::copy(&snapshot, &path).test_expect("database rollback restores snapshot");
+
+        let error = store
+            .get(&record.receipt_id)
+            .test_expect_err("dead-letter rollback must fail a qualified read");
+        assert!(
+            matches!(error, DeadLetterStoreError::Backend(ref message) if message.contains("rollback protection")),
+            "unexpected dead-letter rollback error: {error}"
+        );
     }
 
     #[test]

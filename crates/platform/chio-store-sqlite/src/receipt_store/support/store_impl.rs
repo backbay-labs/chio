@@ -245,11 +245,9 @@ impl SqliteReceiptStore {
         let parent_receipt_id = parent_receipt_id.map(ToString::to_string);
         let chain_id = chain_id.map(ToString::to_string);
         let statement_json = statement_json.clone();
-        self.writer_handle().run_write(move |connection| {
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        self.writer_handle().run_write_anchored_metadata(move |tx| {
             persist_receipt_lineage_statement_tx(
-                &tx,
+                tx,
                 &child_receipt_id,
                 request_id.as_deref(),
                 session_id.as_deref(),
@@ -261,7 +259,6 @@ impl SqliteReceiptStore {
                 RECEIPT_LINEAGE_SOURCE_KIND,
                 &statement_json,
             )?;
-            tx.commit()?;
             Ok(())
         })
     }
@@ -271,13 +268,10 @@ impl SqliteReceiptStore {
         receipt_id: &str,
     ) -> Result<Vec<ReceiptLineageStatementLink>, ReceiptStoreError> {
         let receipt_id = receipt_id.to_string();
-        self.writer_handle().run_write(move |connection| {
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt_id)?;
-            refresh_receipt_lineage_rows_for_parent_receipt_tx(&tx, &receipt_id)?;
-            let links = load_receipt_lineage_statement_links(&tx, &receipt_id)?;
-            tx.commit()?;
+        self.writer_handle().run_write_anchored_metadata(move |tx| {
+            ensure_receipt_lineage_statement_for_receipt_id_tx(tx, &receipt_id)?;
+            refresh_receipt_lineage_rows_for_parent_receipt_tx(tx, &receipt_id)?;
+            let links = load_receipt_lineage_statement_links(tx, &receipt_id)?;
             Ok(links)
         })
     }
@@ -288,10 +282,8 @@ impl SqliteReceiptStore {
     ) -> Result<Option<chio_core::receipt::lineage::ReceiptLineageStatement>, ReceiptStoreError>
     {
         let receipt_id = receipt_id.to_string();
-        self.writer_handle().run_write(move |connection| {
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt_id)?;
+        self.writer_handle().run_write_anchored_metadata(move |tx| {
+            ensure_receipt_lineage_statement_for_receipt_id_tx(tx, &receipt_id)?;
             let raw = tx
                 .query_row(
                     "SELECT raw_json FROM receipt_lineage_statements WHERE receipt_id = ?1",
@@ -307,7 +299,6 @@ impl SqliteReceiptStore {
                     .map_err(ReceiptStoreError::from)
                 })
                 .transpose()?;
-            tx.commit()?;
             Ok(statement)
         })
     }
@@ -317,12 +308,9 @@ impl SqliteReceiptStore {
         receipt_id: &str,
     ) -> Result<Option<ReceiptLineageVerification>, ReceiptStoreError> {
         let receipt_id = receipt_id.to_string();
-        self.writer_handle().run_write(move |connection| {
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt_id)?;
-            let verification = load_receipt_lineage_verification(&tx, &receipt_id)?;
-            tx.commit()?;
+        self.writer_handle().run_write_anchored_metadata(move |tx| {
+            ensure_receipt_lineage_statement_for_receipt_id_tx(tx, &receipt_id)?;
+            let verification = load_receipt_lineage_verification(tx, &receipt_id)?;
             Ok(verification)
         })
     }
@@ -358,17 +346,15 @@ impl SqliteReceiptStore {
     fn build_child_receipt_write_job(
         receipt: &ChildRequestReceipt,
     ) -> Result<
-        impl FnOnce(&mut SqliteStoreConnection) -> Result<u64, ReceiptStoreError> + Send + 'static,
+        impl FnOnce(&rusqlite::Transaction<'_>) -> Result<u64, ReceiptStoreError> + Send + 'static,
         ReceiptStoreError,
     > {
         let raw_json = serde_json::to_string(receipt)?;
         let lineage_json = child_receipt_request_lineage_json(receipt)?;
         let receipt = receipt.clone();
-        Ok(move |connection: &mut SqliteStoreConnection| {
+        Ok(move |connection: &rusqlite::Transaction<'_>| {
             ensure_checkpoint_transparency_guards(connection)?;
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            let inserted = tx.execute(
+            let inserted = connection.execute(
                 r#"
                 INSERT INTO chio_child_receipts (
                     receipt_id,
@@ -398,7 +384,7 @@ impl SqliteReceiptStore {
                 ],
             )?;
             if inserted == 0 {
-                let (existing_source_seq, existing_raw_json) = tx.query_row(
+                let (existing_source_seq, existing_raw_json) = connection.query_row(
                     "SELECT seq, raw_json FROM chio_child_receipts WHERE receipt_id = ?1",
                     params![receipt.id.as_str()],
                     |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
@@ -411,20 +397,23 @@ impl SqliteReceiptStore {
                 }
                 let existing_source_seq =
                     sqlite_positive_u64(existing_source_seq, "child receipt source_seq")?;
-                let entry_seq =
-                    claim_log_entry_seq_for_source_tx(&tx, "child_receipt", existing_source_seq)?;
-                tx.commit()?;
+                let entry_seq = claim_log_entry_seq_for_source_tx(
+                    connection,
+                    "child_receipt",
+                    existing_source_seq,
+                )?;
                 return Ok(entry_seq);
             }
-            let source_seq = tx.query_row(
+            let source_seq = connection.query_row(
                 "SELECT seq FROM chio_child_receipts WHERE receipt_id = ?1",
                 params![receipt.id.as_str()],
                 |row| row.get::<_, i64>(0),
             )?;
             let source_seq = sqlite_positive_u64(source_seq, "child receipt source_seq")?;
-            let entry_seq = claim_log_entry_seq_for_source_tx(&tx, "child_receipt", source_seq)?;
+            let entry_seq =
+                claim_log_entry_seq_for_source_tx(connection, "child_receipt", source_seq)?;
             persist_request_lineage_tx(
-                &tx,
+                connection,
                 receipt.session_id.as_str(),
                 receipt.request_id.as_str(),
                 Some(receipt.parent_request_id.as_str()),
@@ -434,7 +423,6 @@ impl SqliteReceiptStore {
                 CHILD_RECEIPT_BACKFILL_SOURCE_KIND,
                 &lineage_json,
             )?;
-            tx.commit()?;
             Ok(entry_seq)
         })
     }
@@ -443,7 +431,7 @@ impl SqliteReceiptStore {
         receipt: &ChioReceipt,
         pending: &PendingSettlementObservation,
     ) -> Result<
-        impl FnOnce(&mut SqliteStoreConnection) -> Result<u64, ReceiptStoreError> + Send + 'static,
+        impl FnOnce(&rusqlite::Transaction<'_>) -> Result<u64, ReceiptStoreError> + Send + 'static,
         ReceiptStoreError,
     > {
         ensure_chio_receipt_verified(receipt)?;
@@ -455,22 +443,20 @@ impl SqliteReceiptStore {
         let raw_json = serde_json::to_string(receipt)?;
         let receipt = receipt.clone();
         let next_visible_at_ms = pending.next_visible_at_ms;
-        Ok(move |connection: &mut SqliteStoreConnection| {
+        Ok(move |connection: &rusqlite::Transaction<'_>| {
             ensure_checkpoint_transparency_guards(connection)?;
-            let tx =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             let (seq, inserted) =
-                append_chio_receipt_tx_with_insert_status(&tx, &receipt, &raw_json)?;
-            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt.id)?;
+                append_chio_receipt_tx_with_insert_status(connection, &receipt, &raw_json)?;
+            ensure_receipt_lineage_statement_for_receipt_id_tx(connection, &receipt.id)?;
             if inserted {
                 crate::settle_attempts::insert_attempt_zero_tx(
-                    &tx,
+                    connection,
                     &receipt.id,
                     receipt.timestamp,
                     next_visible_at_ms,
                 )?;
             } else {
-                let settlement_obligation_exists = tx.query_row(
+                let settlement_obligation_exists = connection.query_row(
                     "SELECT EXISTS(SELECT 1 FROM settle_attempts WHERE receipt_id = ?1 \
                      UNION ALL SELECT 1 FROM settle_dead_letters WHERE receipt_id = ?1)",
                     [receipt.id.as_str()],
@@ -483,7 +469,6 @@ impl SqliteReceiptStore {
                     )));
                 }
             }
-            tx.commit()?;
             Ok(seq)
         })
     }
@@ -492,6 +477,10 @@ impl SqliteReceiptStore {
 impl ReceiptStore for SqliteReceiptStore {
     fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
         self.append_chio_receipt_returning_seq(receipt).map(|_| ())
+    }
+
+    fn durable_sink_id(&self) -> Option<&str> {
+        self.durable_sink_id.as_deref()
     }
 
     fn settlement_store_binding(&self) -> Option<chio_settle::SettlementStoreBinding> {
@@ -1052,11 +1041,11 @@ impl SqliteReceiptStore {
             ))
         })?;
 
-        self.writer_handle().run_write(move |connection| {
-            ensure_checkpoint_transparency_guards(connection)?;
-            ensure_transparency_projection_guards(connection)?;
+        self.writer_handle().run_write_anchored_metadata(move |tx| {
+            ensure_checkpoint_transparency_guards(tx)?;
+            ensure_transparency_projection_guards(tx)?;
 
-            let existing = connection
+            let existing = tx
                 .query_row(
                     r#"
                 SELECT binding_json
@@ -1080,7 +1069,7 @@ impl SqliteReceiptStore {
                     )))
                 }
                 None => {
-                    connection.execute(
+                    tx.execute(
                         r#"
                     INSERT INTO checkpoint_publication_trust_anchor_bindings (
                         checkpoint_seq,

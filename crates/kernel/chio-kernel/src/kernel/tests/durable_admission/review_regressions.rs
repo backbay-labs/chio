@@ -75,6 +75,244 @@ fn durable_exact_output_guard_runs_after_transform_and_again_at_replay_release()
 }
 
 #[test]
+fn durable_server_url_elicitation_terminalizes_as_outcome_unknown() {
+    let (mut kernel, request, store, _invocations) =
+        durable_admission_fixture("durable-url-elicit");
+    kernel.register_tool_server(Box::new(DurableUrlElicitationServer {
+        store: store.clone(),
+    }));
+
+    let result = kernel.evaluate_tool_call_blocking(&request);
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "unexpected durable URL elicitation result: {result:?}"
+    );
+    assert_eq!(
+        store.operation().state(),
+        AdmissionOperationState::OutcomeUnknownAfterDispatch
+    );
+    assert!(!kernel.receipt_log().receipts().is_empty());
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn durable_server_url_elicitation_finalizes_the_pool_claim() {
+    use crate::finding_pool::tests::RecordingLedger;
+    use crate::finding_pool::FindingPoolLedger;
+
+    let (mut kernel, request, store, _invocations) =
+        durable_admission_fixture("durable-url-elicit-pool-release-crash");
+    kernel.register_tool_server(Box::new(DurableUrlElicitationServer {
+        store: store.clone(),
+    }));
+    kernel
+        .set_receipt_store(Box::new(AdmissionReceiptProjectionStore::default()))
+        .expect("pool mutation receipt store");
+    kernel
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[93; 32]))
+        .expect("pool mutation receipt authority");
+    let ledger = std::sync::Arc::new(RecordingLedger::default());
+    kernel
+        .set_finding_pool_ledger(ledger.clone())
+        .expect("qualified finding pool ledger");
+
+    let error = kernel.evaluate_tool_call_blocking(&request);
+    assert!(matches!(
+        error,
+        Err(KernelError::UrlElicitationsRequired { .. })
+    ));
+    let terminal = store.operation();
+    assert_eq!(
+        terminal.state(),
+        AdmissionOperationState::OutcomeUnknownAfterDispatch
+    );
+    assert!(ledger
+        .list_claimed_admission_operations(None, 10)
+        .expect("read finalized pool claims")
+        .is_empty());
+    assert_eq!(
+        ledger.unknown_dispatch_finalizations(),
+        vec![terminal.binding().operation_id().as_str().to_owned()]
+    );
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn durable_startup_reconciliation_rejects_late_pool_ledger_installation() {
+    use crate::finding_pool::tests::RecordingLedger;
+    use crate::finding_pool::FindingPoolLedgerError;
+
+    let (mut kernel, _request, _store, _invocations) =
+        durable_admission_fixture("late-pool-ledger-installation");
+    kernel
+        .set_receipt_store(Box::new(AdmissionReceiptProjectionStore::default()))
+        .expect("pool mutation receipt store");
+    kernel
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[95; 32]))
+        .expect("pool mutation receipt authority");
+    kernel
+        .reconcile_durable_admission_startup()
+        .expect("complete startup reconciliation before pool configuration");
+
+    let ledger = std::sync::Arc::new(RecordingLedger::default());
+    assert_eq!(
+        kernel.set_finding_pool_ledger(ledger.clone()),
+        Err(FindingPoolLedgerError::StartupAlreadyReconciled)
+    );
+    assert_eq!(ledger.receipt_sink_id(), None);
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn durable_startup_reconciliation_drains_the_pool_receipt_outbox() {
+    use crate::finding_pool::tests::{purchase, RecordingLedger};
+
+    let (mut kernel, _request, _store, _invocations) =
+        durable_admission_fixture("startup-pool-outbox-drain");
+    let projection = AdmissionReceiptProjectionStore::default();
+    kernel
+        .set_receipt_store(Box::new(projection.clone()))
+        .expect("pool mutation receipt store");
+    kernel
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[97; 32]))
+        .expect("pool mutation receipt authority");
+    let ledger = std::sync::Arc::new(RecordingLedger::default());
+    kernel
+        .set_finding_pool_ledger(ledger.clone())
+        .expect("qualified finding pool ledger");
+    kernel
+        .claim_finding_pool_delivery(
+            &purchase(),
+            "request:startup-outbox",
+            12_345,
+            Some("operation:startup-outbox"),
+        )
+        .expect("commit a pool mutation with a pending signed receipt");
+    ledger.clear_active_claim_operations();
+    assert_eq!(
+        ledger
+            .pending_mutation_receipts()
+            .expect("pending pool receipt")
+            .len(),
+        1
+    );
+    assert_eq!(projection.successful_appends(), 0);
+
+    assert_eq!(
+        kernel
+            .reconcile_durable_admission_startup()
+            .expect("startup reconciliation drains the pool outbox"),
+        1
+    );
+    assert!(ledger
+        .pending_mutation_receipts()
+        .expect("drained pool outbox")
+        .is_empty());
+    assert_eq!(projection.successful_appends(), 1);
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn configured_pool_ledger_freezes_the_durable_admission_runtime() {
+    use crate::admission_operation::AdmissionOperationError;
+    use crate::finding_pool::tests::RecordingLedger;
+
+    let (mut kernel, _request, store, _invocations) =
+        durable_admission_fixture("pool-freezes-durable-admission-runtime");
+    kernel
+        .set_receipt_store(Box::new(AdmissionReceiptProjectionStore::default()))
+        .expect("pool mutation receipt store");
+    kernel
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[96; 32]))
+        .expect("pool mutation receipt authority");
+    kernel
+        .set_finding_pool_ledger(std::sync::Arc::new(RecordingLedger::default()))
+        .expect("qualified finding pool ledger");
+
+    assert_eq!(
+        kernel.set_durable_admission_store(
+            store.clone(),
+            store,
+            admission_test_fence(),
+        ),
+        Err(AdmissionOperationError::FindingPoolLedgerAlreadyConfigured)
+    );
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn pool_ledger_allows_the_initial_durable_admission_runtime() {
+    use crate::admission_operation::AdmissionOperationError;
+    use crate::finding_pool::tests::RecordingLedger;
+
+    let mut config = make_config();
+    config.policy_hash = sha256_hex(b"pool-before-durable-runtime");
+    let mut kernel = make_kernel(config);
+    kernel
+        .set_receipt_store(Box::new(AdmissionReceiptProjectionStore::default()))
+        .expect("pool mutation receipt store");
+    kernel
+        .set_finding_pool_receipt_authority(Keypair::from_seed(&[97; 32]))
+        .expect("pool mutation receipt authority");
+    kernel
+        .set_finding_pool_ledger(std::sync::Arc::new(RecordingLedger::default()))
+        .expect("qualified finding pool ledger");
+    let fence = admission_test_fence();
+    let store = std::sync::Arc::new(TestAdmissionOperationStore::new(fence.clone()));
+    kernel
+        .set_durable_admission_store(store.clone(), store.clone(), fence)
+        .expect("initial durable runtime after the pool ledger");
+    assert_eq!(
+        kernel.set_durable_admission_store(
+            store.clone(),
+            store,
+            admission_test_fence(),
+        ),
+        Err(AdmissionOperationError::FindingPoolLedgerAlreadyConfigured)
+    );
+}
+
+#[test]
+fn nested_durable_url_elicitation_terminalizes_as_outcome_unknown() {
+    let (mut kernel, request, store, _invocations) =
+        durable_admission_fixture("nested-durable-url-elicit");
+    kernel.register_tool_server(Box::new(DurableUrlElicitationServer {
+        store: store.clone(),
+    }));
+    let session_id = kernel
+        .open_session("nested-url-elicit-parent".to_owned(), Vec::new())
+        .expect("parent session");
+    kernel
+        .activate_session(&session_id)
+        .expect("activate parent session");
+    let parent_context = make_operation_context(
+        &session_id,
+        "nested-url-elicit-parent-request",
+        "nested-url-elicit-parent",
+    );
+    kernel
+        .begin_session_request(&parent_context, OperationKind::ToolCall, true)
+        .expect("begin parent request");
+    let mut client = NoopNestedFlowClient;
+
+    let result = kernel.evaluate_tool_call_with_nested_flow_client(
+        &parent_context,
+        &request,
+        &mut client,
+        None,
+    );
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "unexpected nested durable URL elicitation result: {result:?}"
+    );
+    assert_eq!(
+        store.operation().state(),
+        AdmissionOperationState::OutcomeUnknownAfterDispatch
+    );
+    assert!(!kernel.receipt_log().receipts().is_empty());
+}
+
+#[test]
 fn durable_terminal_receipt_uses_the_admitted_tenant() {
     let request_id = "durable-tenant-receipt";
     let (kernel, request, store, invocations) = durable_admission_fixture(request_id);

@@ -1,6 +1,81 @@
 use super::super::*;
 use super::support::*;
 
+#[cfg(unix)]
+#[test]
+fn qualified_receipt_sink_rejects_locking_disabled_sqlite_uris(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-nolock-anchor")?;
+    for root in [directory.path(), anchor_directory.path()] {
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    for (name, query) in [
+        ("nolock.sqlite3", "nolock=1"),
+        ("unix-none.sqlite3", "vfs=unix-none"),
+    ] {
+        let uri = format!("file:{}?{query}", directory.path().join(name).display());
+        let error = match SqliteReceiptStore::open_for_finding_pool(
+            std::path::PathBuf::from(uri),
+            anchor_directory.path(),
+        ) {
+            Ok(_) => return Err("locking-disabled URI was accepted".into()),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            ReceiptStoreError::Conflict(message) if message.contains("disables file locking")
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn qualified_reader_and_reopen_reject_live_rollback_after_writer_routed_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-rollback-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("qualified-writer-routed.sqlite3");
+    let snapshot = directory.path().join("before-child.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    store.flush_receipt_writes()?;
+    let checkpoint = rusqlite::Connection::open(&database)?;
+    checkpoint.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(checkpoint);
+    std::fs::copy(&database, &snapshot)?;
+
+    let child = sample_child_receipt_with_id_and_timestamp("anchored-child", 2);
+    store.append_child_receipt(&child)?;
+    store.flush_receipt_writes()?;
+    assert_eq!(store.max_child_receipt_seq()?, 1);
+    let checkpoint = rusqlite::Connection::open(&database)?;
+    checkpoint.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(checkpoint);
+
+    std::fs::copy(&snapshot, &database)?;
+    let read_error = store
+        .max_child_receipt_seq()
+        .err()
+        .ok_or("live rollback must fail a qualified receipt read")?;
+    assert!(
+        matches!(read_error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
+        "unexpected live rollback error: {read_error}"
+    );
+    drop(store);
+    assert!(matches!(
+        SqliteReceiptStore::open_existing_for_finding_pool(&database, anchor_directory.path()),
+        Err(ReceiptStoreError::Conflict(message)) if message.contains("rollback protection")
+    ));
+    Ok(())
+}
+
 fn open_seeded_store(
     prefix: &str,
     receipts: usize,
@@ -1081,7 +1156,7 @@ fn stale_head_validates_adopted_delta_before_trusting() -> Result<(), Box<dyn st
         ensure_lineage: false,
         response,
     }];
-    let error = append_receipt_batch(&store.pool, &mut stale_head, true, &requests)
+    let error = append_receipt_batch(&store.pool, &mut stale_head, true, None, None, &requests)
         .err()
         .ok_or("stale-head append over an out-of-band orphan row must be denied")?;
     match &error {
@@ -1112,7 +1187,7 @@ fn stale_head_validates_adopted_delta_before_trusting() -> Result<(), Box<dyn st
         ensure_lineage: false,
         response,
     }];
-    let results = append_receipt_batch(&store.pool, &mut fresh_head, true, &requests)?;
+    let results = append_receipt_batch(&store.pool, &mut fresh_head, true, None, None, &requests)?;
     assert!(
         results.iter().all(|result| result.is_ok()),
         "empty-delta append must add no validation and succeed: {results:?}"
@@ -1951,7 +2026,8 @@ fn store_wide_append_failure_poisons_the_head() -> Result<(), Box<dyn std::error
         response,
     }];
 
-    let flush_error = commit_receipt_batch(&store.pool, &mut head_state, true, requests, &health);
+    let flush_error =
+        commit_receipt_batch(&store.pool, &mut head_state, true, None, requests, &health);
 
     assert!(
         flush_error.is_some(),

@@ -1380,7 +1380,7 @@ fn chio_runtime_admission_does_not_release_destructive_lease_after_dispatch_fail
 }
 
 #[test]
-fn chio_runtime_admission_releases_reservations_on_non_durable_url_elicitation(
+fn chio_runtime_admission_retains_reservations_on_non_durable_url_elicitation(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut kernel = make_kernel(make_config());
     let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
@@ -1425,15 +1425,15 @@ fn chio_runtime_admission_releases_reservations_on_non_durable_url_elicitation(
     assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
     assert_eq!(
         releases.load(Ordering::SeqCst),
-        1,
-        "non-durable URL elicitation must release runtime reservations for retry"
+        0,
+        "a tool-controlled URL elicitation cannot prove that dispatch had no side effects"
     );
     let receipt_log = kernel.receipt_log();
     assert_eq!(receipt_log.len(), 1);
     let receipt = receipt_log
         .get(0)
-        .ok_or_else(|| std::io::Error::other("URL elicitation cleanup receipt missing"))?;
-    assert!(receipt.is_denied());
+        .ok_or_else(|| std::io::Error::other("URL elicitation ambiguity receipt missing"))?;
+    assert!(receipt.is_cancelled());
     assert!(receipt.verify_signature()?);
     Ok(())
 }
@@ -4002,7 +4002,7 @@ fn dispatch_not_registered_retains_full_budget_state_nested_flow(
 }
 
 #[test]
-fn non_durable_url_elicitation_releases_full_budget_state() -> Result<(), Box<dyn std::error::Error>>
+fn non_durable_url_elicitation_retains_full_budget_state() -> Result<(), Box<dyn std::error::Error>>
 {
     let mut kernel = make_kernel(make_config());
     let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
@@ -4055,16 +4055,17 @@ fn non_durable_url_elicitation_releases_full_budget_state() -> Result<(), Box<dy
     let slot_reusable =
         kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
     assert!(
-        slot_reusable,
-        "non-durable URL elicitation must release the invocation slot"
+        !slot_reusable,
+        "a tool-controlled URL elicitation must retain the invocation slot fail-closed"
     );
     assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(releases.load(Ordering::SeqCst), 1);
+    assert_eq!(releases.load(Ordering::SeqCst), 0);
+    assert_eq!(kernel.receipt_log().len(), 1);
     Ok(())
 }
 
 #[test]
-fn non_durable_url_elicitation_releases_full_budget_state_nested_flow(
+fn non_durable_url_elicitation_retains_full_budget_state_nested_flow(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut kernel = make_kernel(make_config());
     let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
@@ -4133,11 +4134,12 @@ fn non_durable_url_elicitation_releases_full_budget_state_nested_flow(
     let slot_reusable =
         kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
     assert!(
-        slot_reusable,
-        "nested non-durable URL elicitation must release the invocation slot"
+        !slot_reusable,
+        "a nested tool-controlled URL elicitation must retain the invocation slot fail-closed"
     );
     assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(releases.load(Ordering::SeqCst), 1);
+    assert_eq!(releases.load(Ordering::SeqCst), 0);
+    assert_eq!(kernel.receipt_log().len(), 1);
     Ok(())
 }
 
@@ -4215,7 +4217,7 @@ fn make_sibling_sum_url_fixture(prefix: &str) -> SiblingSumInvocationFixture {
 }
 
 #[test]
-fn non_durable_url_elicitation_releases_sibling_budget() -> Result<(), Box<dyn std::error::Error>> {
+fn non_durable_url_elicitation_retains_sibling_budget() -> Result<(), Box<dyn std::error::Error>> {
     // Refcount: admit_capability_budget takes a holder lease per evaluation. An
     // earlier evaluation holds child_a's edge (lease 1). A second overlapping
     // evaluation that reaches dispatch takes a second lease and retains it when
@@ -4253,12 +4255,12 @@ fn non_durable_url_elicitation_releases_sibling_budget() -> Result<(), Box<dyn s
     kernel
         .release_admitted_capability_budget(&child_a)
         .map_err(std::io::Error::other)?;
-    assert!(kernel.admit_capability_budget(&child_b).is_ok());
+    assert!(kernel.admit_capability_budget(&child_b).is_err());
     Ok(())
 }
 
 #[test]
-fn non_durable_url_elicitation_releases_sibling_budget_nested_flow(
+fn non_durable_url_elicitation_retains_sibling_budget_nested_flow(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // The nested-flow arm must retain its holder lease after dispatch entry.
     let SiblingSumInvocationFixture {
@@ -4309,7 +4311,7 @@ fn non_durable_url_elicitation_releases_sibling_budget_nested_flow(
     kernel
         .release_admitted_capability_budget(&child_a)
         .map_err(std::io::Error::other)?;
-    assert!(kernel.admit_capability_budget(&child_b).is_ok());
+    assert!(kernel.admit_capability_budget(&child_b).is_err());
     Ok(())
 }
 

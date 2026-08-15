@@ -118,6 +118,80 @@ pub(crate) fn checkpoint_guarded_immediate<T>(
     }
 }
 
+fn commit_checkpoint_transaction(
+    tx: rusqlite::Transaction<'_>,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
+    generation: Option<u64>,
+) -> Result<(), ReceiptStoreError> {
+    match (rollback_anchor, generation) {
+        (Some(anchor), Some(generation)) => {
+            let next = generation.checked_add(1).ok_or_else(|| {
+                ReceiptStoreError::Conflict("receipt rollback generation overflowed".to_owned())
+            })?;
+            let changed = tx.execute(
+                "UPDATE chio_receipt_sink_generation SET store_generation = ?1 \
+                 WHERE singleton = 1 AND store_generation = ?2",
+                params![next.to_string(), generation.to_string()],
+            )?;
+            if changed != 1 {
+                return Err(ReceiptStoreError::Conflict(
+                    "receipt rollback generation compare-and-set failed".to_owned(),
+                ));
+            }
+            anchor
+                .advance_while(generation, next, || {
+                    tx.commit()
+                        .map_err(|error| format!("SQLite commit failed: {error}"))
+                })
+                .map_err(|error| {
+                    ReceiptStoreError::Conflict(format!(
+                        "receipt rollback protection failed: {error}"
+                    ))
+                })
+        }
+        _ => tx.commit().map_err(ReceiptStoreError::Sqlite),
+    }
+}
+
+fn checkpoint_guarded_anchored_immediate<T>(
+    connection: &mut Connection,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
+    operation: impl FnOnce(&Connection) -> Result<T, ReceiptStoreError>,
+) -> Result<T, ReceiptStoreError> {
+    let mut tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    ensure_checkpoint_transparency_guards(&tx)?;
+    ensure_transparency_projection_guards(&tx)?;
+    let generation = rollback_anchor
+        .map(|anchor| {
+            let generation = load_receipt_rollback_generation(&tx)?;
+            anchor.verify(generation).map_err(|error| {
+                ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+            })?;
+            Ok::<_, ReceiptStoreError>(generation)
+        })
+        .transpose()?;
+    let savepoint = tx.savepoint()?;
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| operation(&savepoint))) {
+        Ok(Ok(value)) => {
+            savepoint.commit()?;
+            commit_checkpoint_transaction(tx, rollback_anchor, generation)?;
+            Ok(value)
+        }
+        Ok(Err(error)) => {
+            savepoint.finish()?;
+            commit_checkpoint_transaction(tx, rollback_anchor, generation)?;
+            Err(error)
+        }
+        Err(payload) => {
+            if savepoint.finish().is_ok() {
+                let _guard_commit_result =
+                    commit_checkpoint_transaction(tx, rollback_anchor, generation);
+            }
+            std::panic::resume_unwind(payload);
+        }
+    }
+}
+
 pub(crate) fn load_persisted_checkpoint_row(
     connection: &Connection,
     checkpoint_seq: u64,
@@ -802,8 +876,9 @@ pub(crate) fn insert_background_checkpoint_guarded(
     predecessor: Option<&KernelCheckpoint>,
     prior_frontier: &CheckpointChainFrontier,
     checkpoint: &KernelCheckpoint,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Result<(KernelCheckpoint, CheckpointChainFrontier), ReceiptStoreError> {
-    checkpoint_guarded_immediate(connection, |tx| {
+    checkpoint_guarded_anchored_immediate(connection, rollback_anchor, |tx| {
         let adopted = insert_checkpoint_incremental_tx(tx, predecessor, checkpoint)?;
         let frontier = extend_frontier_with_adopted_checkpoint(prior_frontier, &adopted)?;
         Ok((adopted, frontier))
@@ -1030,114 +1105,111 @@ pub(crate) fn validate_persisted_checkpoint_against_live_or_archived_claim_log(
     }
 }
 
-pub(crate) fn store_kernel_checkpoint_atomic(
-    connection: &mut Connection,
+pub(crate) fn store_kernel_checkpoint_validated_tx(
+    tx: &Connection,
     checkpoint: &KernelCheckpoint,
 ) -> Result<(), ReceiptStoreError> {
-    checkpoint_guarded_immediate(connection, |tx| {
-        // Operator / import append re-verification: a
-        // manually stored or externally imported checkpoint is a rare, off-hot-path
-        // surface. `store_kernel_checkpoint_tx` only parses the LATEST checkpoint as
-        // the predecessor, so a mid-chain tamper (an earlier checkpoint or a
-        // projection row whose latest row still parses) would go undetected and this
-        // append would extend an already-corrupt chain. Re-verify the FULL persisted
-        // chain here so the operator path fails closed. This is the operator/import
-        // surface ONLY; the background builder (maybe_build_checkpoint /
-        // insert_checkpoint_incremental_tx) deliberately stays on the O(b)
-        // incremental head and does not run through here. Full-chain cost is
-        // accepted here precisely because this is the rare operator path.
-        verify_checkpoint_chain_integrity(tx)?;
-        // An extending checkpoint that carries a chain commitment must commit
-        // exactly the persisted chain plus its own leaf; anything else is caught
-        // here rather than on the next append. Idempotent re-imports of an
-        // already-persisted sequence are byte-compared by
-        // `store_kernel_checkpoint_tx` instead.
-        if let Some(chain_root) = checkpoint.body.chain_root {
-            let chain_leaf_hashes = load_checkpoint_chain_leaf_hashes(tx)?;
-            if checkpoint.body.checkpoint_seq == chain_leaf_hashes.len() as u64 + 1 {
-                let mut chain_frontier =
-                    chio_kernel::checkpoint::CheckpointChainFrontier::from_leaves(
-                        &chain_leaf_hashes,
-                    );
-                chain_frontier.append(
-                    chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint.body)
-                        .map_err(checkpoint_error_to_receipt_store)?,
-                );
-                let expected_chain_root = chain_frontier.root().ok_or_else(|| {
-                    ReceiptStoreError::Conflict(
-                        "extended checkpoint chain frontier is unexpectedly empty".to_string(),
-                    )
-                })?;
-                if chain_root != expected_chain_root {
-                    return Err(ReceiptStoreError::Conflict(format!(
-                        "checkpoint {} chain_root does not extend the persisted chain",
-                        checkpoint.body.checkpoint_seq
-                    )));
-                }
+    // Operator / import append re-verification: a manually stored or
+    // externally imported checkpoint is a rare, off-hot-path surface.
+    // `store_kernel_checkpoint_tx` only parses the LATEST checkpoint as the
+    // predecessor, so re-verify the FULL persisted chain before extending it.
+    verify_checkpoint_chain_integrity(tx)?;
+    // An extending checkpoint that carries a chain commitment must commit
+    // exactly the persisted chain plus its own leaf. Idempotent re-imports of
+    // an existing sequence are byte-compared by `store_kernel_checkpoint_tx`.
+    if let Some(chain_root) = checkpoint.body.chain_root {
+        let chain_leaf_hashes = load_checkpoint_chain_leaf_hashes(tx)?;
+        if checkpoint.body.checkpoint_seq == chain_leaf_hashes.len() as u64 + 1 {
+            let mut chain_frontier =
+                chio_kernel::checkpoint::CheckpointChainFrontier::from_leaves(&chain_leaf_hashes);
+            chain_frontier.append(
+                chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint.body)
+                    .map_err(checkpoint_error_to_receipt_store)?,
+            );
+            let expected_chain_root = chain_frontier.root().ok_or_else(|| {
+                ReceiptStoreError::Conflict(
+                    "extended checkpoint chain frontier is unexpectedly empty".to_string(),
+                )
+            })?;
+            if chain_root != expected_chain_root {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "checkpoint {} chain_root does not extend the persisted chain",
+                    checkpoint.body.checkpoint_seq
+                )));
             }
         }
-        store_kernel_checkpoint_tx(tx, checkpoint)
-    })
+    }
+    store_kernel_checkpoint_tx(tx, checkpoint)
 }
 
-pub(crate) fn create_next_receipt_checkpoint_atomic(
+pub(crate) fn create_checkpoint_anchored(
     connection: &mut Connection,
     max_batch: u64,
     keypair: &Keypair,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
-    checkpoint_guarded_immediate(connection, |tx| {
-        let previous_checkpoint = verify_checkpoint_chain_integrity(tx)?;
-        let latest_committed_entry_seq = super::latest_claim_log_entry_seq(tx)?;
-        let Some(range) = super::next_checkpoint_range_for_connection(tx, max_batch)? else {
-            let latest_checkpointed_entry_seq = previous_checkpoint
-                .as_ref()
-                .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
-            return Ok(ReceiptCheckpointCreateReport {
-                created: false,
-                checkpoint_seq: None,
-                batch_start_seq: None,
-                batch_end_seq: None,
-                latest_committed_entry_seq,
-                latest_checkpointed_entry_seq,
-            });
-        };
+    checkpoint_guarded_anchored_immediate(connection, rollback_anchor, |tx| {
+        validate_or_backfill_claim_receipt_log_entries_in_transaction(tx, false)?;
+        create_next_receipt_checkpoint_tx(tx, max_batch, keypair)
+    })
+}
 
-        let receipt_bytes =
-            load_claim_tree_canonical_bytes_range(tx, range.start_seq, range.end_seq)?
-                .into_iter()
-                .map(|(_, bytes)| bytes)
-                .collect::<Vec<_>>();
-        let checkpoint_seq = previous_checkpoint.as_ref().map_or(Ok(1), |checkpoint| {
-            checkpoint
-                .body
-                .checkpoint_seq
-                .checked_add(1)
-                .ok_or_else(|| {
-                    ReceiptStoreError::Conflict(
-                        "checkpoint_seq overflow while creating receipt checkpoint".to_string(),
-                    )
-                })
-        })?;
-        let chain_leaf_hashes = load_checkpoint_chain_leaf_hashes(tx)?;
-        let checkpoint = chio_kernel::build_checkpoint_with_previous(
-            checkpoint_seq,
-            range.start_seq,
-            range.end_seq,
-            &receipt_bytes,
-            keypair,
-            previous_checkpoint.as_ref(),
-            &chain_leaf_hashes,
-        )
-        .map_err(checkpoint_error_to_receipt_store)?;
-        store_kernel_checkpoint_tx(tx, &checkpoint)?;
-        Ok(ReceiptCheckpointCreateReport {
-            created: true,
-            checkpoint_seq: Some(checkpoint.body.checkpoint_seq),
-            batch_start_seq: Some(checkpoint.body.batch_start_seq),
-            batch_end_seq: Some(checkpoint.body.batch_end_seq),
+fn create_next_receipt_checkpoint_tx(
+    connection: &Connection,
+    max_batch: u64,
+    keypair: &Keypair,
+) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
+    let previous_checkpoint = verify_checkpoint_chain_integrity(connection)?;
+    let latest_committed_entry_seq = super::latest_claim_log_entry_seq(connection)?;
+    let Some(range) = super::next_checkpoint_range_for_connection(connection, max_batch)? else {
+        let latest_checkpointed_entry_seq = previous_checkpoint
+            .as_ref()
+            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+        return Ok(ReceiptCheckpointCreateReport {
+            created: false,
+            checkpoint_seq: None,
+            batch_start_seq: None,
+            batch_end_seq: None,
             latest_committed_entry_seq,
-            latest_checkpointed_entry_seq: checkpoint.body.batch_end_seq,
-        })
+            latest_checkpointed_entry_seq,
+        });
+    };
+
+    let receipt_bytes =
+        load_claim_tree_canonical_bytes_range(connection, range.start_seq, range.end_seq)?
+            .into_iter()
+            .map(|(_, bytes)| bytes)
+            .collect::<Vec<_>>();
+    let checkpoint_seq = previous_checkpoint.as_ref().map_or(Ok(1), |checkpoint| {
+        checkpoint
+            .body
+            .checkpoint_seq
+            .checked_add(1)
+            .ok_or_else(|| {
+                ReceiptStoreError::Conflict(
+                    "checkpoint_seq overflow while creating receipt checkpoint".to_string(),
+                )
+            })
+    })?;
+    let chain_leaf_hashes = load_checkpoint_chain_leaf_hashes(connection)?;
+    let checkpoint = chio_kernel::build_checkpoint_with_previous(
+        checkpoint_seq,
+        range.start_seq,
+        range.end_seq,
+        &receipt_bytes,
+        keypair,
+        previous_checkpoint.as_ref(),
+        &chain_leaf_hashes,
+    )
+    .map_err(checkpoint_error_to_receipt_store)?;
+    store_kernel_checkpoint_tx(connection, &checkpoint)?;
+    Ok(ReceiptCheckpointCreateReport {
+        created: true,
+        checkpoint_seq: Some(checkpoint.body.checkpoint_seq),
+        batch_start_seq: Some(checkpoint.body.batch_start_seq),
+        batch_end_seq: Some(checkpoint.body.batch_end_seq),
+        latest_committed_entry_seq,
+        latest_checkpointed_entry_seq: checkpoint.body.batch_end_seq,
     })
 }
 
@@ -1150,7 +1222,7 @@ pub(crate) fn create_next_receipt_checkpoint_atomic(
 /// concurrently committed winner that was adopted) so the caller can catch
 /// its cached head up to it.
 pub(crate) fn insert_checkpoint_incremental_tx(
-    tx: &rusqlite::Savepoint<'_>,
+    tx: &Connection,
     predecessor: Option<&KernelCheckpoint>,
     checkpoint: &KernelCheckpoint,
 ) -> Result<KernelCheckpoint, ReceiptStoreError> {
@@ -1279,7 +1351,7 @@ pub(crate) fn insert_checkpoint_incremental_tx(
 }
 
 fn store_kernel_checkpoint_tx(
-    tx: &rusqlite::Savepoint<'_>,
+    tx: &Connection,
     checkpoint: &KernelCheckpoint,
 ) -> Result<(), ReceiptStoreError> {
     chio_kernel::checkpoint::validate_checkpoint(checkpoint)

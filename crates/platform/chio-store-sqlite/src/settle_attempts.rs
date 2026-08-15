@@ -1,5 +1,7 @@
 //! SQLite-backed leased settlement work.
 
+use std::sync::Arc;
+
 use chio_core::hashing::sha256;
 use chio_kernel::ReceiptStoreError;
 use chio_settle::{
@@ -16,6 +18,7 @@ use crate::dead_letters::{
     insert_dead_letter_on_connection, read_dead_letter_on_connection, DeadLetterStoreError,
     SETTLE_DEAD_LETTERS_MIGRATION,
 };
+use crate::receipt_store::{receipt_pool_connection, ReceiptSinkQualification};
 
 /// Additive schema for pending and retryable settlement work.
 pub const SETTLE_ATTEMPTS_MIGRATION: &str = r#"
@@ -96,6 +99,7 @@ pub struct SqliteSettlementOutcomeStore {
     pool: Pool<SqliteConnectionManager>,
     writer: Option<crate::receipt_store::WriterHandle>,
     binding: SettlementStoreBinding,
+    receipt_sink_qualification: Option<Arc<ReceiptSinkQualification>>,
 }
 
 impl SqliteSettlementOutcomeStore {
@@ -114,6 +118,7 @@ impl SqliteSettlementOutcomeStore {
             pool,
             writer: None,
             binding: new_store_binding(),
+            receipt_sink_qualification: None,
         })
     }
 
@@ -124,9 +129,9 @@ impl SqliteSettlementOutcomeStore {
             return Err(invalid_record("receipt store lacks settlement projection"));
         };
         writer
-            .run_write(|connection| {
-                connection.execute_batch(SETTLE_DEAD_LETTERS_MIGRATION)?;
-                connection.execute_batch(SETTLE_ATTEMPTS_MIGRATION)?;
+            .run_write_anchored_metadata(|transaction| {
+                transaction.execute_batch(SETTLE_DEAD_LETTERS_MIGRATION)?;
+                transaction.execute_batch(SETTLE_ATTEMPTS_MIGRATION)?;
                 Ok(())
             })
             .map_err(receipt_error_to_route)?;
@@ -134,21 +139,31 @@ impl SqliteSettlementOutcomeStore {
             pool: store.pool.clone(),
             writer: Some(writer),
             binding,
+            receipt_sink_qualification: store.receipt_sink_qualification.clone(),
         })
     }
 
     fn run_write<T, F>(&self, job: F) -> Result<T, SettlementRouteError>
     where
         T: Send + 'static,
-        F: FnOnce(&mut rusqlite::Connection) -> Result<T, SettlementRouteError> + Send + 'static,
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, SettlementRouteError> + Send + 'static,
     {
         match &self.writer {
             Some(writer) => writer
-                .run_write(move |connection| job(connection).map_err(route_error_to_receipt))
+                .run_write_anchored_metadata(move |transaction| {
+                    job(transaction).map_err(route_error_to_receipt)
+                })
                 .map_err(receipt_error_to_route),
             None => {
-                let mut connection = self.pool.get().map_err(backend_error)?;
-                job(&mut connection)
+                let mut connection =
+                    receipt_pool_connection(&self.pool, self.receipt_sink_qualification.as_deref())
+                        .map_err(backend_error)?;
+                let transaction = connection
+                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                    .map_err(backend_error)?;
+                let result = job(&transaction)?;
+                transaction.commit().map_err(backend_error)?;
+                Ok(result)
             }
         }
     }
@@ -786,12 +801,9 @@ impl SettlementOutcomeStore for SqliteSettlementOutcomeStore {
             .ok_or_else(|| invalid_record("settlement lease deadline overflows u64"))?;
         let receipt_id = receipt_id.to_string();
         let worker_id = worker_id.to_string();
-        self.run_write(move |connection| {
-            let tx = connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map_err(backend_error)?;
+        self.run_write(move |tx| {
             let claim = claim_one_tx(
-                &tx,
+                tx,
                 &receipt_id,
                 &worker_id,
                 now_ms,
@@ -799,7 +811,6 @@ impl SettlementOutcomeStore for SqliteSettlementOutcomeStore {
                 lease_until_ms,
                 lease_until_i64,
             )?;
-            tx.commit().map_err(backend_error)?;
             Ok(claim)
         })
     }
@@ -819,10 +830,7 @@ impl SettlementOutcomeStore for SqliteSettlementOutcomeStore {
             .try_into()
             .map_err(|_| invalid_record("settlement claim limit exceeds SQLite range"))?;
         let worker_id = worker_id.to_string();
-        self.run_write(move |connection| {
-            let tx = connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map_err(backend_error)?;
+        self.run_write(move |tx| {
             let receipt_ids = {
                 let mut statement = tx
                     .prepare(
@@ -841,7 +849,7 @@ impl SettlementOutcomeStore for SqliteSettlementOutcomeStore {
             let mut claims = Vec::with_capacity(receipt_ids.len());
             for receipt_id in receipt_ids {
                 let claim = claim_one_tx(
-                    &tx,
+                    tx,
                     &receipt_id,
                     &worker_id,
                     now_ms,
@@ -852,7 +860,6 @@ impl SettlementOutcomeStore for SqliteSettlementOutcomeStore {
                 .ok_or_else(|| conflict("due settlement row changed before batch claim"))?;
                 claims.push(claim);
             }
-            tx.commit().map_err(backend_error)?;
             Ok(claims)
         })
     }
@@ -871,35 +878,30 @@ impl SettlementOutcomeStore for SqliteSettlementOutcomeStore {
         let decision = classify_attempt(&policy, claim.attempts, outcome);
         let terminal = expected_dead_letter(claim, &decision)?;
         let claim = claim.clone();
-        self.run_write(move |connection| {
-            let tx = connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map_err(backend_error)?;
-
-            if read_dead_letter_on_connection(&tx, &claim.receipt_id)
+        self.run_write(move |tx| {
+            if read_dead_letter_on_connection(tx, &claim.receipt_id)
                 .map_err(dead_letter_error_to_route)?
                 .is_some()
             {
                 let Some((record, attempts)) = terminal.as_ref() else {
                     return Err(conflict("terminal settlement state blocks this outcome"));
                 };
-                let inserted = insert_dead_letter_on_connection(&tx, record)
+                let inserted = insert_dead_letter_on_connection(tx, record)
                     .map_err(dead_letter_error_to_route)?;
                 if inserted {
                     return Err(backend_error(
                         "terminal settlement row disappeared during replay",
                     ));
                 }
-                tx.commit().map_err(backend_error)?;
                 return Ok(SettlementRoute::DeadLettered {
                     attempts: *attempts,
                 });
             }
 
-            verify_live_claim(&tx, &claim, observed_at_ms)?;
+            verify_live_claim(tx, &claim, observed_at_ms)?;
             let route = match decision {
                 RetryDecision::Accepted | RetryDecision::Skip { .. } => {
-                    delete_claimed_attempt(&tx, &claim, observed_at_i64)?;
+                    delete_claimed_attempt(tx, &claim, observed_at_i64)?;
                     SettlementRoute::NoAction
                 }
                 RetryDecision::Retry {
@@ -908,7 +910,7 @@ impl SettlementOutcomeStore for SqliteSettlementOutcomeStore {
                     reason,
                 } => {
                     let next_visible_at_ms = schedule_retry(
-                        &tx,
+                        tx,
                         &claim,
                         observed_at_ms,
                         observed_at_i64,
@@ -927,8 +929,8 @@ impl SettlementOutcomeStore for SqliteSettlementOutcomeStore {
                             "dead-letter decision lacks a terminal record",
                         ));
                     };
-                    delete_claimed_attempt(&tx, &claim, observed_at_i64)?;
-                    let inserted = insert_dead_letter_on_connection(&tx, record)
+                    delete_claimed_attempt(tx, &claim, observed_at_i64)?;
+                    let inserted = insert_dead_letter_on_connection(tx, record)
                         .map_err(dead_letter_error_to_route)?;
                     if !inserted {
                         return Err(conflict(
@@ -940,7 +942,6 @@ impl SettlementOutcomeStore for SqliteSettlementOutcomeStore {
                     }
                 }
             };
-            tx.commit().map_err(backend_error)?;
             Ok(route)
         })
     }

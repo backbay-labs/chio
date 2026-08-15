@@ -291,6 +291,16 @@ impl ChioKernel {
             finding_recovery_verifier: None,
             finding_status_proof_verifier: None,
             finding_delivery_receipt_authorities: Vec::new(),
+            #[cfg(feature = "cognition-market-experimental")]
+            finding_pool_allocation_authority: None,
+            #[cfg(feature = "cognition-market-experimental")]
+            finding_pool_receipt_authority: None,
+            #[cfg(feature = "cognition-market-experimental")]
+            finding_pool_ledger: None,
+            #[cfg(feature = "cognition-market-experimental")]
+            finding_pool_outbox_worker_id: uuid::Uuid::now_v7().to_string(),
+            #[cfg(feature = "cognition-market-experimental")]
+            finding_pool_mutation_receipt_flush_lock: Mutex::new(()),
             price_oracle: None,
             runtime_admission_hook: None,
             runtime_admission_readiness_timeout: Duration::from_millis(
@@ -735,6 +745,12 @@ impl ChioKernel {
         outcome_store: Arc<dyn crate::tool_outcome::QualifiedToolOutcomeStore>,
         fence: crate::admission_operation::StoreMutationFence,
     ) -> Result<(), crate::admission_operation::AdmissionOperationError> {
+        #[cfg(feature = "cognition-market-experimental")]
+        if self.finding_pool_ledger.is_some() && self.durable_admission_runtime.is_some() {
+            return Err(
+                crate::admission_operation::AdmissionOperationError::FindingPoolLedgerAlreadyConfigured,
+            );
+        }
         self.durable_admission_runtime = Some(DurableAdmissionRuntime::new(
             store,
             outcome_store,
@@ -778,6 +794,13 @@ impl ChioKernel {
         &mut self,
         receipt_store: Arc<dyn ReceiptStore>,
     ) -> Result<(), KernelError> {
+        #[cfg(feature = "cognition-market-experimental")]
+        if self.finding_pool_ledger.is_some() {
+            return Err(KernelError::Internal(
+                "receipt store cannot be replaced after the finding pool ledger is configured"
+                    .to_owned(),
+            ));
+        }
         if let Some(runtime) = self.settlement_observer.as_ref() {
             Self::validate_settlement_receipt_store(receipt_store.as_ref(), runtime)?;
         }
@@ -929,6 +952,22 @@ impl ChioKernel {
         authorities: Vec<chio_core::crypto::PublicKey>,
     ) {
         self.finding_delivery_receipt_authorities = authorities;
+    }
+
+    /// Pin the authority permitted to sign cognition-market pool
+    /// allocations. Debit callers cannot override this trust root.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub fn set_finding_pool_allocation_authority(
+        &mut self,
+        authority: chio_core::crypto::PublicKey,
+    ) -> Result<(), crate::finding_pool::FindingPoolLedgerError> {
+        if authority.algorithm() != chio_core::crypto::SigningAlgorithm::Ed25519
+            || authority.is_weak_ed25519()
+        {
+            return Err(crate::finding_pool::FindingPoolLedgerError::InvalidAllocationAuthority);
+        }
+        self.finding_pool_allocation_authority = Some(authority);
+        Ok(())
     }
 
     pub fn set_price_oracle(&mut self, price_oracle: Box<dyn PriceOracle>) {

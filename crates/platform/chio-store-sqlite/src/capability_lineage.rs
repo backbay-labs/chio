@@ -7,7 +7,7 @@ use rusqlite::types::Type;
 use rusqlite::{params, OptionalExtension, Row};
 
 use crate::receipt_store::support::sqlite_i64;
-use crate::receipt_store::{SqliteReceiptStore, SqliteStoreConnection};
+use crate::receipt_store::SqliteReceiptStore;
 
 pub(crate) fn snapshot_from_row(row: &Row<'_>) -> rusqlite::Result<CapabilitySnapshot> {
     snapshot_from_row_with_boundary(row, true)
@@ -340,9 +340,7 @@ impl SqliteReceiptStore {
             signed_capability: Some(signed_capability.clone()),
         })?;
         let parent_capability_id = parent_capability_id.map(ToString::to_string);
-        let job = move |connection: &mut SqliteStoreConnection| {
-            let transaction =
-                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let job = move |transaction: &rusqlite::Transaction<'_>| {
             // Resolve the parent's delegation depth on the writer connection,
             // inside the bounded job, so the read shares the same wall-clock
             // budget as the insert. Running it earlier on a reader-pool
@@ -375,13 +373,14 @@ impl SqliteReceiptStore {
                 signed_capability: Some(signed_capability),
             };
             validate_snapshot_for_transport(&incoming)?;
-            persist_compatible_snapshot(&transaction, &incoming)?;
-            transaction.commit()?;
+            persist_compatible_snapshot(transaction, &incoming)?;
             Ok(())
         };
         match budget {
-            Some(budget) => self.writer_handle().run_write_with_timeout(job, budget)?,
-            None => self.writer_handle().run_write(job)?,
+            Some(budget) => self
+                .writer_handle()
+                .run_write_anchored_metadata_with_timeout(job, budget)?,
+            None => self.writer_handle().run_write_anchored_metadata(job)?,
         }
 
         Ok(())

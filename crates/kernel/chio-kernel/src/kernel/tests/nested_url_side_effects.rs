@@ -9,6 +9,26 @@ struct NestedNotificationThenUrlElicitationServer;
 
 struct CancellationPollThenUrlElicitationServer;
 
+struct RejectingUrlCancellationReceiptStore {
+    appends: std::sync::Arc<AtomicU64>,
+}
+
+impl ReceiptStore for RejectingUrlCancellationReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        self.appends.fetch_add(1, Ordering::SeqCst);
+        Err(ReceiptStoreError::Conflict(
+            "injected URL cancellation receipt failure".to_owned(),
+        ))
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+}
+
 struct RevalidationReadyRuntimeAdmissionHook {
     calls: std::sync::Arc<AtomicU64>,
     releases: std::sync::Arc<AtomicU64>,
@@ -270,7 +290,7 @@ fn nested_child_before_url_elicitation_is_terminal_and_consumes_nonce(
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let response = runtime.block_on(async {
+    let result = runtime.block_on(async {
         let mut client = NoopNestedFlowClient;
         kernel
             .evaluate_tool_call_operation_with_nested_flow_client_async(
@@ -279,16 +299,11 @@ fn nested_child_before_url_elicitation_is_terminal_and_consumes_nonce(
                 &mut client,
             )
             .await
-    })?;
+    });
 
-    assert_eq!(response.verdict, Verdict::Deny);
     assert!(matches!(
-        response.terminal_state,
-        OperationTerminalState::Incomplete { .. }
-    ));
-    assert!(matches!(
-        &response.receipt.decision,
-        Some(Decision::Incomplete { .. })
+        result,
+        Err(KernelError::UrlElicitationsRequired { .. })
     ));
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
     assert_eq!(child_operations.load(Ordering::SeqCst), 1);
@@ -298,8 +313,10 @@ fn nested_child_before_url_elicitation_is_terminal_and_consumes_nonce(
         0,
         "runtime admission reservations must remain consumed after nested work"
     );
-    let metadata = response
-        .receipt
+    let parent_receipts = kernel.receipt_log();
+    assert_eq!(parent_receipts.len(), 1);
+    let parent_receipt_entries = parent_receipts.receipts();
+    let metadata = parent_receipt_entries[0]
         .metadata
         .as_ref()
         .ok_or_else(|| std::io::Error::other("parent receipt metadata missing"))?;
@@ -314,11 +331,9 @@ fn nested_child_before_url_elicitation_is_terminal_and_consumes_nonce(
         "the execution nonce must not be reusable after nested work"
     );
 
-    let parent_receipts = kernel.receipt_log();
-    assert_eq!(parent_receipts.len(), 1);
     assert!(matches!(
         &parent_receipts.receipts()[0].decision,
-        Some(Decision::Incomplete { .. })
+        Some(Decision::Cancelled { .. })
     ));
     let child_receipts = kernel.child_receipt_log();
     assert_eq!(child_receipts.len(), 1);
@@ -373,7 +388,7 @@ fn nested_notification_before_url_elicitation_is_terminal_without_child_receipt(
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let response = runtime.block_on(async {
+    let result = runtime.block_on(async {
         let mut client = NoopNestedFlowClient;
         kernel
             .evaluate_tool_call_operation_with_nested_flow_client_async(
@@ -382,11 +397,11 @@ fn nested_notification_before_url_elicitation_is_terminal_without_child_receipt(
                 &mut client,
             )
             .await
-    })?;
+    });
 
     assert!(matches!(
-        response.terminal_state,
-        OperationTerminalState::Incomplete { .. }
+        result,
+        Err(KernelError::UrlElicitationsRequired { .. })
     ));
     assert_eq!(kernel.receipt_log().len(), 1);
     assert!(kernel.child_receipt_log().is_empty());
@@ -394,7 +409,77 @@ fn nested_notification_before_url_elicitation_is_terminal_without_child_receipt(
 }
 
 #[test]
-fn cancellation_poll_before_url_elicitation_preserves_typed_pre_effect_result(
+fn nested_url_elicitation_surfaces_cancellation_receipt_failure(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let appends = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_receipt_store(Box::new(RejectingUrlCancellationReceiptStore {
+        appends: std::sync::Arc::clone(&appends),
+    }))?;
+    kernel.register_tool_server(Box::new(NestedNotificationThenUrlElicitationServer));
+
+    let agent_keypair = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent_keypair,
+        make_scope(vec![make_grant("nested-notification-server", "notify")]),
+        300,
+    );
+    let request = make_request(
+        "nested-notification-url-receipt-failure",
+        &capability,
+        "notify",
+        "nested-notification-server",
+    );
+    let session_id = kernel.open_session(
+        agent_keypair.public_key().to_hex(),
+        vec![capability.clone()],
+    )?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        &request.request_id,
+        &agent_keypair.public_key().to_hex(),
+    );
+    let operation = ToolCallOperation {
+        capability,
+        server_id: request.server_id,
+        tool_name: request.tool_name,
+        arguments: request.arguments,
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        execution_nonce: None,
+        model_metadata: None,
+        extra_metadata: None,
+    };
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let result = runtime.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        kernel
+            .evaluate_tool_call_operation_with_nested_flow_client_async(
+                &context,
+                &operation,
+                &mut client,
+            )
+            .await
+    });
+
+    let error = result.expect_err("receipt persistence failure must replace the URL error");
+    assert!(error
+        .to_string()
+        .contains("injected URL cancellation receipt failure"));
+    assert!(appends.load(Ordering::SeqCst) >= 1);
+    Ok(())
+}
+
+#[test]
+fn cancellation_poll_before_url_elicitation_records_ambiguous_dispatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(CancellationPollThenUrlElicitationServer));
@@ -439,7 +524,12 @@ fn cancellation_poll_before_url_elicitation_preserves_typed_pre_effect_result(
         Err(KernelError::UrlElicitationsRequired { message, .. })
             if message == "URL elicitation requested after a cancellation poll"
     ));
-    assert!(kernel.receipt_log().is_empty());
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(receipt_log.len(), 1);
+    assert!(matches!(
+        &receipt_log.receipts()[0].decision,
+        Some(Decision::Cancelled { .. })
+    ));
     assert!(kernel.child_receipt_log().is_empty());
     Ok(())
 }

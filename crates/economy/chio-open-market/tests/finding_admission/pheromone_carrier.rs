@@ -1,0 +1,185 @@
+#[test]
+fn finding_pheromone_positive_hint_re_resolves_current_listing_without_purchase_authority() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let deposit = finding_pheromone_deposit(&web, &listing, &passport, "hint-positive", 125);
+        let substrate = InMemoryPheromoneSubstrate::new();
+        let resolved = admit_and_resolve_finding_pheromone_hint(
+            &substrate,
+            deposit,
+            &finding_pheromone_context(&passport, &kernel),
+            &finding_pheromone_convention(),
+            AuthenticatedCurrentFindingListing::new(
+                &listing,
+                &finding_current_listing_assertion(&listing, &web.operator),
+            ),
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect("fully admit and resolve finding pheromone");
+        assert_eq!(resolved.indicator.finding_id, web.finding.finding_id);
+        assert_eq!(resolved.admission.listing_id(), FINDING_LISTING_ID);
+        assert!(!resolved.grants_purchase_authority());
+    });
+}
+
+#[test]
+fn finding_pheromone_bounds_admission_envelopes_before_verification() {
+    with_fiscal(|resolver| {
+        let mut web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let assertion = finding_current_listing_assertion(&listing, &web.operator);
+        let deposit =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-oversized-admission", 125);
+        web.admission.body.venue_id = "x".repeat(1_000_000);
+
+        let error = admit_and_resolve_finding_pheromone_hint(
+            &InMemoryPheromoneSubstrate::new(),
+            deposit,
+            &finding_pheromone_context(&passport, &kernel),
+            &finding_pheromone_convention(),
+            AuthenticatedCurrentFindingListing::new(&listing, &assertion),
+            &web.admission,
+            &web.context(resolver),
+        )
+        .test_expect_err("oversized admission rejects before signature verification");
+        assert!(matches!(
+            error,
+            FindingPheromoneError::AdmissionEnvelopeMalformed
+        ));
+    });
+}
+
+#[test]
+fn finding_pheromone_rejects_oversized_indicator_before_authenticated_resolution() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let mut oversized =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-oversized", 125);
+        oversized.body.indicator = serde_json::json!({
+            "schema": FINDING_PHEROMONE_INDICATOR_SCHEMA_V1,
+            "finding_id": web.finding.finding_id.clone(),
+            "listing_id": "x".repeat(1_000_000),
+            "listing_envelope_sha256": "a".repeat(64),
+            "admission_envelope_sha256": "b".repeat(64),
+            "capability_scope": format!("finding:{}", web.finding.finding_id),
+        });
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                oversized,
+                &finding_pheromone_context(&passport, &kernel),
+                &finding_pheromone_convention(),
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::CarrierMalformed)
+        ));
+
+        let mut oversized_nonce =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-nonce", 125);
+        oversized_nonce.body.nonce = "n".repeat(1_000_000);
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                oversized_nonce,
+                &finding_pheromone_context(&passport, &kernel),
+                &finding_pheromone_convention(),
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::CarrierMalformed)
+        ));
+
+        let mut invalid_carrier =
+            finding_pheromone_deposit(&web, &listing, &passport, "hint-carrier", 125);
+        invalid_carrier.body.schema = "chio.pheromone-deposit.future".to_owned();
+        invalid_carrier.body.indicator = serde_json::json!(["x".repeat(1_000_000)]);
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                invalid_carrier,
+                &finding_pheromone_context(&passport, &kernel),
+                &finding_pheromone_convention(),
+                AuthenticatedCurrentFindingListing::new(
+                    &listing,
+                    &finding_current_listing_assertion(&listing, &web.operator),
+                ),
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::CarrierMalformed)
+        ));
+    });
+}
+
+#[test]
+fn finding_pheromone_rejects_a_weak_registry_key() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let passport = keypair(81);
+        let kernel = keypair(82);
+        let listing = finding_listing_entry(
+            &web.operator,
+            &web.finding,
+            &format!("finding:{}", web.finding.finding_id),
+            900,
+        );
+        let assertion = finding_current_listing_assertion(&listing, &web.operator);
+        let mut convention = finding_pheromone_convention();
+        convention.registry_key = PublicKey::from_hex(
+            "0100000000000000000000000000000000000000000000000000000000000000",
+        )
+        .test_expect("construct weak Ed25519 registry key");
+
+        assert!(matches!(
+            admit_and_resolve_finding_pheromone_hint(
+                &InMemoryPheromoneSubstrate::new(),
+                finding_pheromone_deposit(
+                    &web,
+                    &listing,
+                    &passport,
+                    "hint-weak-registry-key",
+                    125,
+                ),
+                &finding_pheromone_context(&passport, &kernel),
+                &convention,
+                AuthenticatedCurrentFindingListing::new(&listing, &assertion),
+                &web.admission,
+                &web.context(resolver),
+            ),
+            Err(FindingPheromoneError::Convention("receiver policy"))
+        ));
+    });
+}

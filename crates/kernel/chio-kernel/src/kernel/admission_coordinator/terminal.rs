@@ -754,6 +754,7 @@ impl ChioKernel {
         let ResolvedToolOutcomeV1::Resolved {
             resolved_output: expected_output,
             resolved_output_size_bytes,
+            settlement_disposition: _settlement_disposition,
             ..
         } = tool_return.outcome.disposition()
         else {
@@ -769,6 +770,14 @@ impl ChioKernel {
             return Err(KernelError::DurableAdmission(
                 "completed output conflicts with its retained preimage".to_owned(),
             ));
+        }
+        #[cfg(feature = "cognition-market-experimental")]
+        if let Some(binding) = purchase.as_ref() {
+            self.settle_finding_pool_delivery_terminal(
+                admission.operation.binding().operation_id().as_str(),
+                binding,
+                _settlement_disposition,
+            )?;
         }
         let retained_financial_metadata = receipt
             .metadata
@@ -1586,13 +1595,7 @@ impl ChioKernel {
             "resolved_output_digest",
             receipt_content.content_hash.clone(),
         )?;
-        // Delivery contract: a grant that fixed an expected output digest
-        // is honored only if the delivered post-transform output hashes to
-        // it, and a purchase-marked delivery additionally resolves to the
-        // strict reveal envelope of the advertised media type. The
-        // comparisons run here, after the transform and before any money
-        // decision, and drive the terminal decision so the verdict
-        // participates in the existing frozen replay contract below.
+        // Evaluate the frozen delivery contract after transforms and before settlement.
         if purchase.is_some() && !plan.hook_identities.is_empty() {
             return Err(KernelError::DurableAdmission(
                 "purchase-marked delivery requires the frozen identity output plan".to_owned(),
@@ -1749,6 +1752,10 @@ impl ChioKernel {
             SettlementDispositionV1::NotApplicable,
             |(_, disposition)| disposition.clone(),
         );
+        #[cfg(feature = "cognition-market-experimental")]
+        if let Some(binding) = purchase.as_ref() {
+            self.require_finding_pool_delivery_terminal(binding, &settlement_disposition)?;
+        }
         let pricing_verdict_digest = admission_digest(
             "pricing_verdict_digest",
             &KernelPricingVerdict {
@@ -1907,6 +1914,14 @@ impl ChioKernel {
                 })
             })
             .transpose()?;
+        #[cfg(feature = "cognition-market-experimental")]
+        if let Some(binding) = purchase.as_ref() {
+            self.settle_finding_pool_delivery_terminal(
+                admission.operation.binding().operation_id().as_str(),
+                binding,
+                &settlement_disposition,
+            )?;
+        }
         let tool_outcome = runtime
             .verify_terminal_outcome(&admission.operation, &context)
             .map_err(tool_outcome_error)?;

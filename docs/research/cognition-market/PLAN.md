@@ -105,7 +105,7 @@ production surface half-wired.
 | M5 | Challenge and audit lane | frozen-v1 `FraudulentListing` mapping plus signed finding challenge outcome; challenge evaluator; verifiable audit schedule; slash wiring | M4 | implemented on `codex/cognition-market-m5`; plan and recorded results [plans/2026-07-30-M5-challenge-and-audit-lane.md](plans/2026-07-30-M5-challenge-and-audit-lane.md) |
 | M6 | Status feed and retraction | oracle instance; control-plane root/proof surfaces; purchase-time non-inclusion; challenge-outcome outbox; quarantine guard rule; ops runbook | M4, M5 | implemented; plan and recorded results [plans/2026-07-31-M6-status-feed-retraction.md](plans/2026-07-31-M6-status-feed-retraction.md) |
 | M7 | Cross-org escrow path | delivery-receipt settlement-authority bridge; bilateral evidence flow; funded escrow and watchdog runbook | M4, M5, M6 | blocked pending bilateral demand and ADR-C |
-| M8 | Pool purchasing and SDK | swarm purchasing convention; elicitation ceiling in SDKs; pheromone hint convention | M4 | plan after M4 |
+| M8 | Pool purchasing and SDK | swarm purchasing convention; elicitation ceiling in SDKs; pheromone hint convention | M4 | implemented; plan and recorded results [plans/2026-07-31-M8-pool-purchasing-sdk.md](plans/2026-07-31-M8-pool-purchasing-sdk.md) |
 | M9 | Qualification and claims | bounded-matrix entries; CLAIM_REGISTRY rows; RC guarantee entries; R&D-instance extensions | M5, M6 | plan after M6 |
 
 ## 2. Per-milestone definition
@@ -1417,6 +1417,8 @@ normative scope statement.
 
 ### M8 Pool purchasing and SDK
 
+- Implementation and named qualification record:
+  [2026-07-31-M8-pool-purchasing-sdk.md](plans/2026-07-31-M8-pool-purchasing-sdk.md).
 - Elicitation ceiling (`finding_bid_ceiling`) in TypeScript/Python SDK buyer
   helpers is buyer-local policy. The shipped `MeteredBillingQuote` is an
   unsigned caller-carried input and is not an authenticated re-derivation
@@ -1427,20 +1429,24 @@ normative scope statement.
 - Specify the arithmetic over canonical decimal-string integers with checked
   wide intermediates, currency equality, explicit rounding, and basis points
   restricted to `0..=10_000`. Reject overflow, negative/fractional/NaN
-  encodings, currency mismatch, stale or substituted sources, values beyond
-  JavaScript's safe-integer range, and inputs above the Rust `u64` boundary
-  rather than rounding them.
+  encodings, currency mismatch, stale or substituted sources, unsafe
+  JavaScript numeric values beyond the safe-integer range, and inputs above
+  the Rust `u64` boundary rather than rounding them. Canonical decimal strings
+  remain exact and accepted through the full `u64` domain.
 - One-purchaser-per-pool is only a convention until the pool is authoritative:
   current `SwarmBudgetPool` amounts are unsigned and substitutable under the
   same string id, and remote budget mode is advisory. Add a signed/digested
   companion pool-allocation envelope and kernel-ledger debit binding, then
   restrict the hard-ceiling claim to a qualifying atomic or linearizable
-  backend. Otherwise label the helper advisory.
+  backend. The signed allocation fixes one persistent qualified-ledger domain,
+  and pool projections are bounded before canonicalization. Otherwise label
+  the helper advisory.
 - A finding pheromone is a fully admitted deposit, not indicator JSON alone:
   define its subject/namespace, listing scope, signer/passport, severity,
   confidence, decay, nonce, `SubjectClassPolicy`, and cost. It grants no
   purchase authority and the buyer always re-resolves the signed current
-  listing and M2 admission bundle.
+  listing under a receiver-pinned registry authority and the M2 admission
+  bundle.
 - Exit: named TypeScript and Python SDK parity tests produce the same
   `finding_bid_ceiling` for golden buyer-estimate inputs, including values
   above `2^53`, and prove at-ceiling bids clear and above-ceiling bids reject
