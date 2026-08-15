@@ -299,10 +299,10 @@ pub fn validate_supported_finding_verifier_profile(
             signer.policy.key == profile.verifier_report_signer.key
                 || signer.policy.key == profile.governance_authority
         })
-        || profile
-            .checkpoint_logs
-            .iter()
-            .any(|log| log.signer.key == profile.verifier_report_signer.key)
+        || profile.checkpoint_logs.iter().any(|log| {
+            log.signer.key == profile.verifier_report_signer.key
+                || log.signer.key == profile.governance_authority
+        })
         || profile.receipt_signers.iter().any(|receipt| {
             profile.checkpoint_logs.iter().any(|checkpoint| {
                 receipt.policy.key == checkpoint.signer.key

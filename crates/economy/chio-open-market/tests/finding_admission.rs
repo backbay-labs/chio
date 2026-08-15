@@ -2112,6 +2112,33 @@ fn purchase_accept_requires_exact_amounts_and_the_committed_profile() {
         assert_eq!(accepted.body.quoted_price, usd(900));
         assert_eq!(accepted.body.bid_receipt_id, "reservation-0001");
 
+        assert_eq!(
+            accept_finding_purchase(
+                &ask,
+                &sign_reservation(900),
+                &agent,
+                witness.expires_at(),
+                &witness,
+                &web.finding,
+            )
+            .err(),
+            Some(FindingAdmissionError::AdmissionExpired),
+            "an ask cannot outlive the admission that authorized its mint"
+        );
+        assert_eq!(
+            accept_finding_purchase(
+                &ask,
+                &sign_reservation(900),
+                &agent,
+                web.finding.expires_at,
+                &witness,
+                &web.finding,
+            )
+            .err(),
+            Some(FindingAdmissionError::FindingExpired),
+            "an ask cannot outlive the signed Finding"
+        );
+
         let mut modified = web.finding.clone();
         modified.expires_at = modified.expires_at.saturating_add(1);
         assert!(matches!(

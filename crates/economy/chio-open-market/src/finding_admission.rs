@@ -677,6 +677,15 @@ pub fn accept_finding_purchase(
     finding: &chio_finding::Finding,
 ) -> Result<crate::bidding::SignedAcceptedBid, FindingAdmissionError> {
     verify_admitted_finding(admission, finding)?;
+    if accepted_at < finding.issued_at {
+        return Err(FindingAdmissionError::FindingNotYetLive);
+    }
+    if accepted_at >= finding.expires_at {
+        return Err(FindingAdmissionError::FindingExpired);
+    }
+    if accepted_at >= admission.expires_at() {
+        return Err(FindingAdmissionError::AdmissionExpired);
+    }
     let grants = &ask.body.token_offer.scope.grants;
     let [grant] = grants.as_slice() else {
         return Err(FindingAdmissionError::TokenOfferProfile);

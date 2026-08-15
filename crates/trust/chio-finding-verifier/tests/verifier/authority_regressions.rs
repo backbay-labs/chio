@@ -249,6 +249,13 @@ fn report_signing_key_must_be_distinct_from_governance_and_evidence() -> TestRes
         Some(FindingVerifierError::ProfileInvalid)
     );
 
+    let mut governance_checkpoint_aliased = fx.profile.body.clone();
+    governance_checkpoint_aliased.checkpoint_logs[0].signer.key = fx.governance.public_key();
+    assert_eq!(
+        validate_supported_finding_verifier_profile(&governance_checkpoint_aliased).err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
+
     let mut evidence_roles_aliased = fx.profile.body.clone();
     evidence_roles_aliased.checkpoint_logs[0].signer.key = evidence_roles_aliased
         .receipt_signers
