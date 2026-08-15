@@ -562,6 +562,7 @@ fn advance_verified_status_floor(
     authorization: &chio_finding::FindingStatusOperatorAuthorization,
     freshness: chio_finding::FindingStatusFreshnessPolicy,
 ) -> Result<(), CliError> {
+    let trusted_now = freshness.now;
     let proof = chio_finding::parse_status_proof_input(proof_bytes).map_err(|error| {
         CliError::cli_other_error(format!("finding status proof is invalid: {error}"))
     })?;
@@ -572,7 +573,7 @@ fn advance_verified_status_floor(
             ))
         },
     )?;
-    advance_parsed_status_floor(path, &proof, &epoch, authorization)
+    advance_parsed_status_floor(path, &proof, &epoch, authorization, trusted_now)
 }
 
 fn persist_authenticated_status_retraction(
@@ -584,6 +585,7 @@ fn persist_authenticated_status_retraction(
     expected_finding_id: &str,
     expected_feed_id: &str,
 ) -> Result<bool, CliError> {
+    let trusted_now = freshness.now;
     let proof = chio_finding::parse_status_proof_input(proof_bytes).map_err(|error| {
         CliError::cli_other_error(format!("finding status proof is invalid: {error}"))
     })?;
@@ -608,7 +610,7 @@ fn persist_authenticated_status_retraction(
     else {
         return Ok(false);
     };
-    advance_parsed_status_floor(path, &proof, &epoch, authorization)?;
+    advance_parsed_status_floor(path, &proof, &epoch, authorization, trusted_now)?;
     Ok(true)
 }
 
@@ -617,6 +619,7 @@ fn advance_parsed_status_floor(
     proof: &chio_finding::FindingStatusProofInput,
     epoch: &chio_finding::SignedFindingStatusEpoch,
     authorization: &chio_finding::FindingStatusOperatorAuthorization,
+    trusted_now: u64,
 ) -> Result<(), CliError> {
     let authorization_sha256 = sha256_hex(&canonical_json_bytes(authorization)?);
     let finding_id = proof.finding_id().to_owned();
@@ -624,7 +627,8 @@ fn advance_parsed_status_floor(
         proof,
         chio_finding::FindingStatusProofInput::Inclusion(_)
     );
-    advance_status_floor(
+    let _floor_lock = FindingStatusFloorLock::acquire(path)?;
+    status_floor::advance_status_floor_locked(
         path,
         &FindingStatusFloorObservation {
             feed_id: &epoch.body.feed_id,
@@ -637,6 +641,7 @@ fn advance_parsed_status_floor(
         },
         authorization,
         &authorization_sha256,
+        trusted_now,
     )
 }
 
@@ -1102,6 +1107,7 @@ mod tests {
                 map_epoch: epoch.body.map_epoch.saturating_add(1),
                 epoch_id: "a".repeat(64),
                 root_hash: "b".repeat(64),
+                trusted_time_floor: freshness.now,
             },
         )?;
 
@@ -1128,7 +1134,7 @@ mod tests {
                 ));
             }
         };
-        let error = advance_status_floor(
+        let error = status_floor::advance_status_floor(
             &floor_path,
             &FindingStatusFloorObservation {
                 feed_id: &authorization.feed_id,
@@ -1141,6 +1147,7 @@ mod tests {
             },
             &authorization,
             &authorization_sha256,
+            freshness.now,
         )
         .err()
         .ok_or_else(|| CliError::cli_other_error("retracted Finding was revived".to_string()))?;
@@ -1193,6 +1200,7 @@ mod tests {
                 map_epoch: epoch.body.map_epoch.saturating_add(1),
                 epoch_id: "a".repeat(64),
                 root_hash: "b".repeat(64),
+                trusted_time_floor: non_inclusion.checked_at,
             },
         )?;
 

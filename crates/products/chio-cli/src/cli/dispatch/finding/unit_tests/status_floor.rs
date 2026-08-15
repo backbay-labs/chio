@@ -40,7 +40,7 @@ fn response(proof_kind: &str) -> FindingStatusProofResponse {
 fn advance(path: &Path, status: &FindingStatusProofResponse) -> Result<(), CliError> {
     let authorization = authorization();
     let digest = sha256_hex(&canonical_json_bytes(&authorization)?);
-    advance_status_floor(path, &status.floor_observation(), &authorization, &digest)
+    advance_status_floor(path, status, &authorization, &digest, status.checked_at)
 }
 
 #[test]
@@ -48,6 +48,10 @@ fn status_floor_rejects_rollback_and_same_epoch_equivocation() {
     let dir = tempfile::tempdir().unwrap();
     let floor_path = dir.path().join("status-floor.json");
     advance(&floor_path, &response("non_inclusion")).unwrap();
+    assert!(super::super::status_floor::require_trusted_time(&floor_path, 1_799_999_999)
+        .unwrap_err()
+        .to_string()
+        .contains("host clock rolled back"));
 
     let mut rollback = response("non_inclusion");
     rollback.map_epoch = 7;
@@ -73,9 +77,10 @@ fn status_floor_accepts_same_key_authorization_refresh_and_rejects_key_equivocat
     let initial_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
     advance_status_floor(
         &floor_path,
-        &status.floor_observation(),
+        &status,
         &authorization,
         &initial_sha256,
+        1_800_000_000,
     )
     .unwrap();
 
@@ -83,9 +88,10 @@ fn status_floor_accepts_same_key_authorization_refresh_and_rejects_key_equivocat
     let refreshed_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
     assert!(advance_status_floor(
         &floor_path,
-        &status.floor_observation(),
+        &status,
         &authorization,
         &refreshed_sha256,
+        1_800_000_001,
     )
     .unwrap_err()
     .to_string()
@@ -95,9 +101,10 @@ fn status_floor_accepts_same_key_authorization_refresh_and_rejects_key_equivocat
     status.root_hash = "6".repeat(64);
     advance_status_floor(
         &floor_path,
-        &status.floor_observation(),
+        &status,
         &authorization,
         &refreshed_sha256,
+        1_800_000_001,
     )
     .unwrap();
     let floor = read_status_floor(&floor_path).unwrap().unwrap();
@@ -109,9 +116,10 @@ fn status_floor_accepts_same_key_authorization_refresh_and_rejects_key_equivocat
     status.map_epoch = 10;
     assert!(advance_status_floor(
         &floor_path,
-        &status.floor_observation(),
+        &status,
         &authorization,
         &substituted_sha256,
+        1_800_000_002,
     )
     .unwrap_err()
     .to_string()
@@ -162,9 +170,10 @@ fn status_floor_rejects_a_legacy_retraction_on_the_first_migration_read() {
     attempted_revival.root_hash = "4".repeat(64);
     let error = advance_status_floor(
         &floor_path,
-        &attempted_revival.floor_observation(),
+        &attempted_revival,
         &authorization,
         &authorization_sha256,
+        attempted_revival.checked_at,
     )
     .unwrap_err()
     .to_string();
@@ -200,9 +209,10 @@ fn status_floor_migrates_v1_epoch_and_sticky_retractions() {
     status.finding_id = "f".repeat(64);
     advance_status_floor(
         &floor_path,
-        &status.floor_observation(),
+        &status,
         &authorization,
         &authorization_sha256,
+        status.checked_at,
     )
     .unwrap();
 
@@ -222,9 +232,10 @@ fn status_floor_migrates_v1_epoch_and_sticky_retractions() {
     status.finding_id = GOLDEN_FINDING_ID.to_owned();
     assert!(advance_status_floor(
         &floor_path,
-        &status.floor_observation(),
+        &status,
         &authorization,
         &authorization_sha256,
+        status.checked_at,
     )
     .unwrap_err()
     .to_string()

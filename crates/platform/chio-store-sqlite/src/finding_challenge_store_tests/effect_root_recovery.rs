@@ -92,6 +92,11 @@ fn v11_schema_migrates_the_legacy_anchor_recovery_trigger() {
     assert_legacy_anchor_recovery_trigger_migrates(11);
 }
 
+#[test]
+fn v12_schema_migrates_the_legacy_anchor_recovery_trigger() {
+    assert_legacy_anchor_recovery_trigger_migrates(12);
+}
+
 fn assert_legacy_anchor_recovery_trigger_migrates(previous_version: i32) {
     let mut connection = Connection::open_in_memory().expect("open previous database");
     connection
