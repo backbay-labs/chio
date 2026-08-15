@@ -244,7 +244,7 @@ fn require_distinct_challenge_role_keys(
     }
 
     for signer in &profile.receipt_signers {
-        if authority_roles.iter().any(|key| *key == &signer.policy.key) {
+        if authority_roles.contains(&&signer.policy.key) {
             return Err(FindingChallengeInadmissible::AuthorityStatusRoleCollision);
         }
         if profile
@@ -267,10 +267,7 @@ fn require_distinct_challenge_role_keys(
     }
 
     for checkpoint in &profile.checkpoint_logs {
-        if authority_roles
-            .iter()
-            .any(|key| *key == &checkpoint.signer.key)
-        {
+        if authority_roles.contains(&&checkpoint.signer.key) {
             return Err(FindingChallengeInadmissible::AuthorityStatusRoleCollision);
         }
     }
