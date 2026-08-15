@@ -525,7 +525,9 @@ impl SqliteFindingStatusStore {
             }
         }
         ensure_feed_tx(&transaction, input.feed_id, input.operator_id, created_at)?;
-        advance_trusted_time_floor_tx(&transaction, input.feed_id, created_at)?;
+        if load_floor_tx(&transaction, input.feed_id)?.is_some() {
+            advance_trusted_time_floor_tx(&transaction, input.feed_id, created_at)?;
+        }
 
         let (initial_state, finality_sha256, finality_bytes, dispatch_eligible_at) = match input
             .source
